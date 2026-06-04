@@ -17,6 +17,34 @@ use rocket_empty::EmptyResponse;
 
 use crate::{guard::AuthHeader, webhook_body::WebhookBody};
 
+fn room_metadata_from_webhook(metadata: &str) -> Option<RoomMetadata> {
+    let metadata = metadata.trim();
+    if metadata.is_empty() {
+        return None;
+    }
+
+    serde_json::from_str::<RoomMetadata>(metadata).ok()
+}
+
+async fn voice_channel_from_webhook(
+    db: &Database,
+    channel_id: &str,
+    room_metadata: Option<&str>,
+) -> UserVoiceChannel {
+    if let Ok(channel) = Reference::from_unchecked(channel_id).as_channel(db).await {
+        return UserVoiceChannel::from_channel(&channel);
+    }
+
+    let server_id = room_metadata
+        .and_then(room_metadata_from_webhook)
+        .and_then(|metadata| metadata.server);
+
+    UserVoiceChannel {
+        id: channel_id.to_string(),
+        server_id,
+    }
+}
+
 #[post("/<node>", data = "<body>")]
 pub async fn ingress(
     db: &State<Database>,
@@ -62,22 +90,14 @@ pub async fn ingress(
 
     let channel_id = event.room.as_ref().map(|r| &r.name);
     let user_id = event.participant.as_ref().map(|r| &r.identity);
-    let room_metadata = if let Some(room) = event.room.as_ref() {
-        Some(serde_json::from_str::<RoomMetadata>(&room.metadata).to_internal_error()?)
-    } else {
-        None
-    };
+    let room_metadata = event.room.as_ref().map(|room| room.metadata.as_str());
 
     match event.event.as_str() {
         // User joined a channel
         "participant_joined" => {
             let channel_id = channel_id.to_internal_error()?;
             let user_id = user_id.to_internal_error()?;
-            let server_id = room_metadata.to_internal_error()?.server;
-            let channel = UserVoiceChannel {
-                id: channel_id.clone(),
-                server_id: server_id.clone(),
-            };
+            let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             let joined_at = Timestamp::UNIX_EPOCH
                 .checked_add(Duration::seconds(event.created_at))
@@ -154,11 +174,7 @@ pub async fn ingress(
         "participant_left" => {
             let channel_id = channel_id.to_internal_error()?;
             let user_id = user_id.to_internal_error()?;
-            let server_id = room_metadata.to_internal_error()?.server;
-            let channel = UserVoiceChannel {
-                id: channel_id.clone(),
-                server_id: server_id.clone(),
-            };
+            let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             delete_voice_state(&channel, user_id).await?;
 
@@ -224,11 +240,7 @@ pub async fn ingress(
             let channel_id = channel_id.to_internal_error()?;
             let user_id = user_id.to_internal_error()?;
             let track = event.track.as_ref().to_internal_error()?;
-            let server_id = room_metadata.to_internal_error()?.server;
-            let channel = UserVoiceChannel {
-                id: channel_id.clone(),
-                server_id: server_id.clone(),
-            };
+            let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             let user = Reference::from_unchecked(user_id).as_user(db).await?;
 
@@ -298,11 +310,7 @@ pub async fn ingress(
         }
         "room_finished" => {
             let channel_id = channel_id.to_internal_error()?;
-            let server_id = room_metadata.to_internal_error()?.server;
-            let channel = UserVoiceChannel {
-                id: channel_id.clone(),
-                server_id: server_id.clone(),
-            };
+            let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             let members = get_voice_channel_members(&channel)
                 .await?
@@ -322,4 +330,28 @@ pub async fn ingress(
     };
 
     Ok(EmptyResponse)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::room_metadata_from_webhook;
+
+    #[test]
+    fn empty_room_metadata_is_absent_not_invalid() {
+        assert_eq!(room_metadata_from_webhook(""), None);
+        assert_eq!(room_metadata_from_webhook("   "), None);
+    }
+
+    #[test]
+    fn valid_room_metadata_is_parsed() {
+        let metadata = room_metadata_from_webhook(r#"{"server":"server-id"}"#)
+            .expect("room metadata");
+
+        assert_eq!(metadata.server.as_deref(), Some("server-id"));
+    }
+
+    #[test]
+    fn invalid_room_metadata_is_ignored_for_fallback_resolution() {
+        assert_eq!(room_metadata_from_webhook("{"), None);
+    }
 }
