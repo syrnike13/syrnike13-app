@@ -1,0 +1,103 @@
+[package]
+name = "syrnike-database"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: Database Implementation"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+# Databases
+mongodb = ["dep:mongodb", "bson", "authifier/database-mongodb"]
+
+# ... Other
+tasks = ["isahc", "linkify", "url-escape"]
+async-std-runtime = ["async-std", "authifier/async-std-runtime"]
+rocket-impl = [
+    "rocket",
+    "schemars",
+    "revolt_okapi",
+    "revolt_rocket_okapi",
+    "authifier/rocket_impl",
+]
+axum-impl = ["axum", "syrnike-result/axum"]
+redis-is-patched = ["syrnike-presence/redis-is-patched"]
+voice = ["livekit-api", "livekit-protocol", "livekit-runtime"]
+
+# Default Features
+default = ["mongodb", "async-std-runtime", "tasks"]
+
+[dependencies]
+# Core
+syrnike-config = { workspace = true, features = ["report-macros"] }
+syrnike-result = { workspace = true }
+syrnike-models = { workspace = true, features = ["validator"] }
+syrnike-presence = { workspace = true }
+syrnike-permissions = { workspace = true, features = ["serde", "bson"] }
+syrnike-parser = { workspace = true }
+syrnike-coalesced = { workspace = true }
+
+# Utility
+log = { workspace = true }
+lru = { workspace = true }
+rand = { workspace = true }
+ulid = { workspace = true }
+nanoid = { workspace = true }
+base64 = { workspace = true }
+once_cell = { workspace = true }
+indexmap = { workspace = true }
+decancer = { workspace = true }
+deadqueue = { workspace = true }
+linkify = { workspace = true, optional = true }
+url-escape = { workspace = true, optional = true }
+validator = { workspace = true, features = ["derive"] }
+isahc = { workspace = true, features = ["json"], optional = true }
+
+# Serialisation
+serde_json = { workspace = true }
+syrnike_optional_struct = { workspace = true }
+serde = { workspace = true }
+iso8601-timestamp = { workspace = true, features = ["serde", "bson"] }
+
+# Events
+redis-kiss = { workspace = true }
+
+# Database
+bson = { workspace = true, optional = true }
+mongodb = { workspace = true, optional = true }
+
+# Database Migration
+unicode-segmentation = { workspace = true }
+regex = { workspace = true }
+
+# Async Language Features
+futures = { workspace = true }
+async-lock = { workspace = true }
+async-trait = { workspace = true }
+async-recursion = { workspace = true }
+
+# Async
+async-std = { workspace = true, features = ["attributes"], optional = true }
+
+# Axum Impl
+axum = { workspace = true, optional = true }
+
+# Rocket Impl
+schemars = { workspace = true, optional = true }
+rocket = { workspace = true, features = ["json"], optional = true }
+revolt_okapi = { workspace = true, optional = true }
+revolt_rocket_okapi = { workspace = true, optional = true }
+
+# Authifier
+authifier = { workspace = true }
+
+# RabbitMQ
+lapin = { workspace = true, features = ["tokio"] }
+
+# Voice
+livekit-api = { workspace = true, features = ["rustls-tls-native-roots"], optional = true }
+livekit-protocol = { workspace = true, optional = true }
+livekit-runtime = { workspace = true, features = ["tokio"], optional = true }

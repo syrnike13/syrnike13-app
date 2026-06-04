@@ -11,5 +11,5 @@ target/
 secrets.env
 Revolt.toml
 livekit.yml
-data/
-data*/
+/data/
+/data*/

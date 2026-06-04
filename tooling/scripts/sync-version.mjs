@@ -21,6 +21,10 @@ function writeJson(relativePath, value) {
 }
 
 function syncPackageJson(relativePath) {
+  if (!fs.existsSync(path.join(root, relativePath))) {
+    return
+  }
+
   const data = readJson(relativePath)
   data.version = version
   writeJson(relativePath, data)
@@ -44,6 +48,10 @@ function walk(directory, matcher, files = []) {
 
 function syncBackendCargoVersions() {
   const backendRoot = path.join(root, 'services/backend')
+  if (!fs.existsSync(backendRoot)) {
+    return
+  }
+
   const cargoFiles = [
     path.join(backendRoot, 'Cargo.toml'),
     ...walk(path.join(backendRoot, 'crates'), (file) => file.endsWith('Cargo.toml')),
