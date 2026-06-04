@@ -1,13 +1,12 @@
 import type { LocalParticipant, Participant, RemoteParticipant } from 'livekit-client'
 import { Track } from 'livekit-client'
 
-/** Фактическая публикация микрофона: трек важнее флага isMicrophoneEnabled. */
+/** Фактическая публикация микрофона: publication metadata важнее локального флага. */
 export function participantMicPublishing(participant: Participant) {
   for (const publication of participant.trackPublications.values()) {
     if (publication.kind !== Track.Kind.Audio) continue
     if (publication.source !== Track.Source.Microphone) continue
-    if (!publication.track || publication.isMuted) continue
-    if ('isSubscribed' in publication && !publication.isSubscribed) continue
+    if (publication.isMuted) continue
     return true
   }
 

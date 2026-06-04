@@ -8,11 +8,18 @@ const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const LOCAL_USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 const REMOTE_USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AE'
 
-function participant(identity: string) {
-  return {
+function participant(
+  identity: string,
+  publication: {
+    track?: unknown
+    isMuted?: boolean
+    isSubscribed?: boolean
+    isMicrophoneEnabled?: boolean
+  } = {},
+) {
+  const value: Record<string, unknown> = {
     identity,
     joinedAt: new Date('2026-06-04T12:00:00.000Z'),
-    isMicrophoneEnabled: true,
     isCameraEnabled: false,
     isScreenShareEnabled: false,
     trackPublications: new Map([
@@ -21,13 +28,19 @@ function participant(identity: string) {
         {
           kind: Track.Kind.Audio,
           source: Track.Source.Microphone,
-          track: {},
-          isMuted: false,
-          isSubscribed: true,
+          track: publication.track ?? {},
+          isMuted: publication.isMuted ?? false,
+          isSubscribed: publication.isSubscribed ?? true,
         },
       ],
     ]),
   }
+
+  if (publication.isMicrophoneEnabled !== undefined) {
+    value.isMicrophoneEnabled = publication.isMicrophoneEnabled
+  }
+
+  return value
 }
 
 describe('syncLiveKitRoomParticipants', () => {
@@ -35,7 +48,9 @@ describe('syncLiveKitRoomParticipants', () => {
     syncStore.reset()
 
     const room = {
-      localParticipant: participant(LOCAL_USER_ID),
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: true,
+      }),
       remoteParticipants: new Map([[REMOTE_USER_ID, participant(REMOTE_USER_ID)]]),
     }
 
@@ -53,6 +68,34 @@ describe('syncLiveKitRoomParticipants', () => {
         is_publishing: true,
         is_receiving: true,
       },
+    })
+  })
+
+  it('keeps remote microphone enabled when publication is not subscribed yet', () => {
+    syncStore.reset()
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: true,
+      }),
+      remoteParticipants: new Map([
+        [
+          REMOTE_USER_ID,
+          participant(REMOTE_USER_ID, {
+            track: undefined,
+            isSubscribed: false,
+          }),
+        ],
+      ]),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[REMOTE_USER_ID],
+    ).toMatchObject({
+      id: REMOTE_USER_ID,
+      is_publishing: true,
     })
   })
 })
