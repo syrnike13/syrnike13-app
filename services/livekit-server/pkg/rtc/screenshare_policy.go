@@ -77,7 +77,7 @@ func isAllowedScreenShareLayer(layer *livekit.VideoLayer) bool {
 	case 625_000:
 		return layer.Width <= 960 && layer.Height <= 540
 	case 2_500_000:
-		return layer.Width <= 1280 && layer.Height <= 720
+		return layer.Width <= screenShareMaxWidth && layer.Height <= screenShareMaxHeight
 	case 2_000_000, 4_000_000, 8_000_000:
 		return layer.Width <= screenShareMaxWidth && layer.Height <= screenShareMaxHeight
 	default:
