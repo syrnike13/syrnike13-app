@@ -75,12 +75,12 @@ export class EventsGateway {
           return
         }
 
+        this.#eventListeners.forEach((listener) => listener(event))
+
         if (event.type === 'Error') {
           this.#setState('disconnected')
           return
         }
-
-        this.#eventListeners.forEach((listener) => listener(event))
 
         if (event.type === 'Ready') {
           this.#setState('connected')

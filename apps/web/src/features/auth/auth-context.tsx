@@ -139,6 +139,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
+    return eventsGateway.subscribeEvents((event) => {
+      const data = event.data
+      if (
+        event.type === 'Error' &&
+        typeof data === 'object' &&
+        data !== null &&
+        'type' in data &&
+        data.type === 'InvalidSession'
+      ) {
+        invalidateSession('Сессия недействительна. Войдите снова.')
+      }
+    })
+  }, [invalidateSession])
+
+  useEffect(() => {
     if (!session?.token || !onboardingQuery.isError) return
     if (!isUnauthorizedError(onboardingQuery.error)) return
     invalidateSession('Сессия недействительна. Войдите снова.')

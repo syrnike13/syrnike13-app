@@ -46,23 +46,29 @@ export async function apiRequest<T>(
   }
 
   const text = await response.text()
-  const parsed = text ? (JSON.parse(text) as unknown) : undefined
+  const contentType = response.headers.get('Content-Type') ?? ''
+  const parsed =
+    text && contentType.includes('application/json')
+      ? (JSON.parse(text) as unknown)
+      : undefined
 
   if (!response.ok) {
-    let message = response.statusText
+    let message = response.statusText || `HTTP ${response.status}`
 
     if (typeof parsed === 'object' && parsed !== null) {
       if ('type' in parsed && typeof parsed.type === 'string') {
         message = parsed.type
       } else if (
         'message' in parsed &&
-        typeof parsed.message === 'string'
+          typeof parsed.message === 'string'
       ) {
         message = parsed.message
       }
+    } else if (text) {
+      message = text
     }
 
-    throw new ApiError(message, response.status, parsed)
+    throw new ApiError(message, response.status, parsed ?? text)
   }
 
   return parsed as T
