@@ -82,6 +82,7 @@ export function syncLiveKitRoomParticipants(
   const syncState = syncStore.getState()
   const localUserId = room.localParticipant.identity
   const liveIds = new Set(fromRoom.map((participant) => participant.id))
+  const existing = syncState.voiceParticipants[channelId] ?? {}
 
   const byId = new Map<string, UserVoiceState>()
   for (const participant of fromRoom) {
@@ -99,7 +100,6 @@ export function syncLiveKitRoomParticipants(
     )
   }
 
-  const existing = syncState.voiceParticipants[channelId] ?? {}
   for (const [id, participant] of Object.entries(existing)) {
     if (liveIds.has(id)) continue
     if (
