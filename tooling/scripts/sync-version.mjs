@@ -72,20 +72,18 @@ function syncBackendCargoVersions() {
 }
 
 function syncGeneratedVersionFiles() {
-  fs.writeFileSync(
-    path.join(root, 'apps/web/src/version.gen.ts'),
-    `export const APP_VERSION = '${version}'\n`,
-  )
+  const files = [
+    ['apps/web/src/version.gen.ts', `export const APP_VERSION = '${version}'\n`],
+    ['services/backend/VERSION', `${version}\n`],
+    ['services/livekit-server/APP_VERSION', `${version}\n`],
+  ]
 
-  fs.writeFileSync(
-    path.join(root, 'services/backend/VERSION'),
-    `${version}\n`,
-  )
-
-  fs.writeFileSync(
-    path.join(root, 'services/livekit-server/APP_VERSION'),
-    `${version}\n`,
-  )
+  for (const [relativePath, content] of files) {
+    const absolutePath = path.join(root, relativePath)
+    if (fs.existsSync(path.dirname(absolutePath))) {
+      fs.writeFileSync(absolutePath, content)
+    }
+  }
 }
 
 syncPackageJson('package.json')
