@@ -53,9 +53,8 @@ export function mergeVoiceParticipants(
             ...existing,
             ...participant,
             joined_at: Math.min(existing.joined_at, participant.joined_at),
-            camera: existing.camera || participant.camera,
-            screensharing:
-              existing.screensharing || participant.screensharing,
+            camera: participant.camera,
+            screensharing: participant.screensharing,
             is_publishing: participant.is_publishing,
             is_receiving:
               participant.id === localUserId

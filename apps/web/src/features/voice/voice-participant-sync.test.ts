@@ -15,25 +15,45 @@ function participant(
     isMuted?: boolean
     isSubscribed?: boolean
     isMicrophoneEnabled?: boolean
+    isScreenShareEnabled?: boolean
+    screenShareTrack?: unknown
   } = {},
 ) {
   const value: Record<string, unknown> = {
     identity,
     joinedAt: new Date('2026-06-04T12:00:00.000Z'),
     isCameraEnabled: false,
-    isScreenShareEnabled: false,
+    isScreenShareEnabled: publication.isScreenShareEnabled ?? false,
     trackPublications: new Map([
       [
         'microphone',
         {
           kind: Track.Kind.Audio,
           source: Track.Source.Microphone,
-          track: publication.track ?? {},
+          track: Object.hasOwn(publication, 'track') ? publication.track : {},
           isMuted: publication.isMuted ?? false,
           isSubscribed: publication.isSubscribed ?? true,
         },
       ],
     ]),
+  }
+
+  if (
+    publication.screenShareTrack !== undefined ||
+    publication.isScreenShareEnabled !== undefined
+  ) {
+    value.trackPublications = new Map([
+      ...(value.trackPublications as Map<string, unknown>),
+      [
+        'screen',
+        {
+          kind: Track.Kind.Video,
+          source: Track.Source.ScreenShare,
+          track: publication.screenShareTrack,
+          isMuted: false,
+        },
+      ],
+    ])
   }
 
   if (publication.isMicrophoneEnabled !== undefined) {
@@ -96,6 +116,49 @@ describe('syncLiveKitRoomParticipants', () => {
     ).toMatchObject({
       id: REMOTE_USER_ID,
       is_publishing: true,
+    })
+  })
+
+  it('marks local microphone unavailable when browser kept the enabled flag without a track', () => {
+    syncStore.reset()
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: true,
+        track: undefined,
+      }),
+      remoteParticipants: new Map(),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[LOCAL_USER_ID],
+    ).toMatchObject({
+      id: LOCAL_USER_ID,
+      is_publishing: false,
+    })
+  })
+
+  it('clears local screen share when browser stopped the track outside the app UI', () => {
+    syncStore.reset()
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: true,
+        isScreenShareEnabled: true,
+        screenShareTrack: undefined,
+      }),
+      remoteParticipants: new Map(),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[LOCAL_USER_ID],
+    ).toMatchObject({
+      id: LOCAL_USER_ID,
+      screensharing: false,
     })
   })
 })

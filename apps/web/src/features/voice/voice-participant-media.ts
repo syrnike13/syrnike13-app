@@ -3,15 +3,14 @@ import { Track } from 'livekit-client'
 
 /** Фактическая публикация микрофона: publication metadata важнее локального флага. */
 export function participantMicPublishing(participant: Participant) {
+  const localParticipant = 'isMicrophoneEnabled' in participant
+
   for (const publication of participant.trackPublications.values()) {
     if (publication.kind !== Track.Kind.Audio) continue
     if (publication.source !== Track.Source.Microphone) continue
     if (publication.isMuted) continue
+    if (localParticipant && !publication.track) continue
     return true
-  }
-
-  if ('isMicrophoneEnabled' in participant) {
-    return participant.isMicrophoneEnabled
   }
 
   return false
@@ -25,9 +24,6 @@ export function participantHasCamera(participant: Participant) {
 }
 
 export function participantHasScreenShare(participant: Participant) {
-  if ('isScreenShareEnabled' in participant && participant.isScreenShareEnabled) {
-    return true
-  }
   return hasPublishedVideoSource(participant, Track.Source.ScreenShare)
 }
 

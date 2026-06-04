@@ -36,7 +36,7 @@ export function describeMicDeviceError(error: unknown): VoiceMicIssue {
   if (name === 'NotReadableError' || name === 'TrackStartError') {
     return {
       label: 'Микрофон занят',
-      hint: 'Закройте другие программы, которые используют микрофон.',
+      hint: 'Закройте другие вкладки, профили Chrome или программы, которые используют микрофон.',
     }
   }
 
@@ -55,7 +55,7 @@ export function describeMicDeviceError(error: unknown): VoiceMicIssue {
 
 export const MIC_BLOCKED_WITHOUT_ERROR: VoiceMicIssue = {
   label: 'Микрофон не работает',
-  hint: 'Браузер не передал доступ к микрофону. Проверьте разрешения сайта.',
+  hint: 'Браузер не передал звук с микрофона. Проверьте разрешения и другие вкладки или профили Chrome.',
 }
 
 export function isMicVisuallyMuted(options: {

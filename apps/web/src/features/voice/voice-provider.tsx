@@ -41,7 +41,10 @@ import {
   removeLocalUserFromAllVoiceChannels,
   syncLiveKitRoomParticipants,
 } from '#/features/voice/voice-participant-sync'
-import { participantMicPublishing } from '#/features/voice/voice-participant-media'
+import {
+  localParticipantVoiceFlags,
+  participantMicPublishing,
+} from '#/features/voice/voice-participant-media'
 import {
   appendVoicePingSample,
   type VoicePingSample,
@@ -127,6 +130,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const audioElementsRef = useRef<HTMLAudioElement[]>([])
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
+  const micIssueRef = useRef<VoiceMicIssue | null>(null)
   const joinBlockedUntilRef = useRef(0)
   const joinInFlightRef = useRef<{
     channelId: string
@@ -168,6 +172,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   channelIdRef.current = channelId
   deafenedRef.current = deafened
 
+  const setCurrentMicIssue = useCallback(
+    (issue: VoiceMicIssue | null, notify = false) => {
+      const previous = micIssueRef.current
+      micIssueRef.current = issue
+      setMicIssue(issue)
+
+      if (issue && notify && previous?.hint !== issue.hint) {
+        toast.error(issue.hint)
+      }
+    },
+    [],
+  )
+
   const syncRoomParticipants = useCallback(() => {
     const room = roomRef.current
     const activeChannelId = channelIdRef.current
@@ -176,8 +193,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const participants = liveKitChannelParticipants(room, receiving)
     setLiveChannelParticipants(participants)
     syncLiveKitRoomParticipants(activeChannelId, room, receiving)
-    setCameraEnabled(room.localParticipant.isCameraEnabled)
-    setScreenShareEnabled(room.localParticipant.isScreenShareEnabled)
+    const localMedia = localParticipantVoiceFlags(room.localParticipant)
+    setCameraEnabled(localMedia.camera)
+    setScreenShareEnabled(localMedia.screensharing)
   }, [])
 
   const cleanupAudio = useCallback(() => {
@@ -191,10 +209,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const prefs = readVoicePreferences()
     setMicEnabled(prefs.micEnabled)
     setMicPublishing(prefs.micEnabled)
-    setMicIssue(null)
+    setCurrentMicIssue(null)
     setDeafened(prefs.deafened)
     deafenedRef.current = prefs.deafened
-  }, [])
+  }, [setCurrentMicIssue])
 
   const syncMicFromRoom = useCallback(
     (room: Room, issue?: VoiceMicIssue | null) => {
@@ -206,20 +224,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setMicPublishing(publishing)
 
       if (issue !== undefined) {
-        setMicIssue(issue)
+        setCurrentMicIssue(issue, issue != null)
       } else if (publishing) {
-        setMicIssue(null)
+        setCurrentMicIssue(null)
       } else if (wantsMic) {
-        setMicIssue((current) => current ?? MIC_BLOCKED_WITHOUT_ERROR)
+        setCurrentMicIssue(
+          micIssueRef.current ?? MIC_BLOCKED_WITHOUT_ERROR,
+          true,
+        )
       } else {
-        setMicIssue(null)
+        setCurrentMicIssue(null)
       }
 
       if (activeChannelId && userId) {
         patchLocalVoiceMic(activeChannelId, userId, publishing)
       }
     },
-    [auth.user?._id],
+    [auth.user?._id, setCurrentMicIssue],
   )
 
   const syncVoiceStateToServer = useCallback(
@@ -244,7 +265,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setChannelId(null)
     setStatus('idle')
     restoreVoicePreferences()
-    setMicIssue(null)
+    setCurrentMicIssue(null)
     setParticipantCount(0)
     setLiveChannelParticipants([])
     setSpeakingUserIds(new Set())
@@ -257,7 +278,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setFocusUserId(null)
     setStageFullscreen(false)
     setScreenShareDialogOpen(false)
-  }, [restoreVoicePreferences])
+  }, [restoreVoicePreferences, setCurrentMicIssue])
 
   const abortJoinAttempt = useCallback(() => {
     cleanupAudio()
@@ -427,6 +448,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
       room.on(RoomEvent.LocalTrackPublished, onParticipantsChanged)
       room.on(RoomEvent.LocalTrackUnpublished, onParticipantsChanged)
+      room.on(RoomEvent.TrackMuted, onParticipantsChanged)
+      room.on(RoomEvent.TrackUnmuted, onParticipantsChanged)
       room.on(RoomEvent.ActiveSpeakersChanged, syncSpeakers)
 
       room.on(RoomEvent.Connected, () => {
@@ -620,12 +643,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
         videoTrack?.on('ended', () => {
           void room.localParticipant.setScreenShareEnabled(false).then(() => {
-            setScreenShareEnabled(room.localParticipant.isScreenShareEnabled)
+            setScreenShareEnabled(
+              localParticipantVoiceFlags(room.localParticipant).screensharing,
+            )
             syncRoomParticipants()
           })
         })
 
-        setScreenShareEnabled(room.localParticipant.isScreenShareEnabled)
+        setScreenShareEnabled(
+          localParticipantVoiceFlags(room.localParticipant).screensharing,
+        )
         syncRoomParticipants()
       } catch (error) {
         toast.error(
@@ -680,7 +707,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     voicePreferenceStore.setMicEnabled(nextMic)
     setMicEnabled(nextMic)
     if (!nextMic) {
-      setMicIssue(null)
+      setCurrentMicIssue(null)
     }
 
     const wasDeafened = deafenedRef.current
@@ -705,7 +732,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         .catch((error) => {
           syncMicFromRoom(room, describeMicDeviceError(error))
           syncRoomParticipants()
-          toast.error(describeMicDeviceError(error).hint)
         })
       return
     }
@@ -714,7 +740,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (activeChannelId && userId) {
       patchLocalVoiceMic(activeChannelId, userId, nextMic)
     }
-  }, [auth.user?._id, syncMicFromRoom, syncRoomParticipants])
+  }, [auth.user?._id, setCurrentMicIssue, syncMicFromRoom, syncRoomParticipants])
 
   const toggleDeafen = useCallback(() => {
     const room = roomRef.current
@@ -730,7 +756,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       voicePreferenceStore.setMicEnabled(false)
       setMicEnabled(false)
       setMicPublishing(false)
-      setMicIssue(null)
+      setCurrentMicIssue(null)
       if (room) {
         void room.localParticipant.setMicrophoneEnabled(false)
       }
@@ -751,7 +777,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (room && activeChannelId) {
       syncRoomParticipants()
     }
-  }, [auth.user?._id, status, syncRoomParticipants, syncVoiceStateToServer])
+  }, [
+    auth.user?._id,
+    setCurrentMicIssue,
+    status,
+    syncRoomParticipants,
+    syncVoiceStateToServer,
+  ])
 
   useEffect(() => {
     if (status === 'connected') {

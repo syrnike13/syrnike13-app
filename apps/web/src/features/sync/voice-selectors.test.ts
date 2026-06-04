@@ -47,6 +47,15 @@ describe('mergeVoiceParticipants', () => {
     )
     expect(merged[0]?.is_receiving).toBe(false)
   })
+
+  it('uses live media state to clear stale screen share', () => {
+    const merged = mergeVoiceParticipants(
+      [participant('me', { screensharing: true })],
+      [participant('me', { screensharing: false })],
+      'me',
+    )
+    expect(merged[0]?.screensharing).toBe(false)
+  })
 })
 
 describe('applyLocalVoiceSessionOverride', () => {
