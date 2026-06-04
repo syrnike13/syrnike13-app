@@ -4,6 +4,7 @@ pub use rocket::http::Status;
 pub use rocket::response::Redirect;
 use rocket::{Build, Rocket};
 
+mod auth_account;
 mod bots;
 mod channels;
 mod customisation;
@@ -33,7 +34,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
             "/safety" => safety::routes(),
-            "/auth/account" => rocket_authifier::routes::account::routes(),
+            "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
             "/auth/mfa" => rocket_authifier::routes::mfa::routes(),
             "/onboard" => onboard::routes(),
@@ -54,7 +55,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
             "/safety" => safety::routes(),
-            "/auth/account" => rocket_authifier::routes::account::routes(),
+            "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
             "/auth/mfa" => rocket_authifier::routes::mfa::routes(),
             "/onboard" => onboard::routes(),
@@ -76,7 +77,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
             "/safety" => safety::routes(),
-            "/auth/account" => rocket_authifier::routes::account::routes(),
+            "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
             "/auth/mfa" => rocket_authifier::routes::mfa::routes(),
             "/onboard" => onboard::routes(),
@@ -96,7 +97,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
             "/safety" => safety::routes(),
-            "/auth/account" => rocket_authifier::routes::account::routes(),
+            "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
             "/auth/mfa" => rocket_authifier::routes::mfa::routes(),
             "/onboard" => onboard::routes(),

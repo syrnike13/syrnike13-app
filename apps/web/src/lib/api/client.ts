@@ -58,9 +58,17 @@ export async function apiRequest<T>(
     if (typeof parsed === 'object' && parsed !== null) {
       if ('type' in parsed && typeof parsed.type === 'string') {
         message = parsed.type
+
+        if (
+          parsed.type === 'IncorrectData' &&
+          'with' in parsed &&
+          parsed.with === 'email'
+        ) {
+          message = 'Аккаунт с таким email уже существует'
+        }
       } else if (
         'message' in parsed &&
-          typeof parsed.message === 'string'
+        typeof parsed.message === 'string'
       ) {
         message = parsed.message
       }
