@@ -608,6 +608,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           {
             resolution: capture.resolution,
             audio: withAudio,
+          },
+          {
             screenShareEncoding: capture.encoding,
           },
         )
