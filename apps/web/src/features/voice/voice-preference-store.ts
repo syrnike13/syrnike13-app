@@ -22,6 +22,11 @@ export type VoicePreferenceState = {
   screenShareAudio: boolean
 }
 
+export type VoiceJoinPreferences = Pick<
+  VoicePreferenceState,
+  'micEnabled' | 'deafened'
+>
+
 const DEFAULT_STATE: VoicePreferenceState = {
   micEnabled: true,
   deafened: false,
@@ -32,6 +37,15 @@ const DEFAULT_STATE: VoicePreferenceState = {
   screenShareQuality: 'low',
   screenShareQualityAsk: true,
   screenShareAudio: true,
+}
+
+export function effectiveVoiceJoinPreferences(
+  preferences: VoiceJoinPreferences,
+): VoiceJoinPreferences {
+  return {
+    micEnabled: preferences.deafened ? false : preferences.micEnabled,
+    deafened: preferences.deafened,
+  }
 }
 
 function parseNoiseSuppression(value: unknown): NoiseSuppressionMode {

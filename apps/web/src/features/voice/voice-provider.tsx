@@ -59,6 +59,7 @@ import {
 } from '#/features/voice/voice-mic-status'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
+  effectiveVoiceJoinPreferences,
   readVoicePreferences,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
@@ -346,7 +347,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const finishLocalVoiceSetup = useCallback(
     async (room: Room, targetChannelId: string) => {
-      const prefs = readVoicePreferences()
+      const prefs = effectiveVoiceJoinPreferences(readVoicePreferences())
       try {
         await room.localParticipant.setMicrophoneEnabled(prefs.micEnabled)
         if (prefs.micEnabled) {
@@ -366,12 +367,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const userId = auth.user?._id
       if (userId) {
         patchLocalVoiceDeafen(targetChannelId, userId, prefs.deafened)
-        if (prefs.deafened) {
-          void syncVoiceStateToServer(targetChannelId, {
-            is_receiving: false,
-            is_publishing: false,
-          })
-        }
+        void syncVoiceStateToServer(targetChannelId, {
+          is_receiving: !prefs.deafened,
+          is_publishing: participantMicPublishing(room.localParticipant),
+        })
       }
     },
     [
