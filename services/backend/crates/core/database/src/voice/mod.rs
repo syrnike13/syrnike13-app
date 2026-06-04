@@ -313,7 +313,15 @@ pub async fn update_voice_state_tracks(
     added: bool,
     track: i32,
 ) -> Result<PartialUserVoiceState> {
-    let partial = match track {
+    let partial = partial_voice_state_for_track(added, track);
+
+    update_voice_state(channel, user_id, &partial).await?;
+
+    Ok(partial)
+}
+
+fn partial_voice_state_for_track(added: bool, track: i32) -> PartialUserVoiceState {
+    match track {
         /* TrackSource::Unknown */ 0 => PartialUserVoiceState::default(),
         /* TrackSource::Camera */
         1 => PartialUserVoiceState {
@@ -325,17 +333,15 @@ pub async fn update_voice_state_tracks(
             is_publishing: Some(added),
             ..Default::default()
         },
-        /* TrackSource::ScreenShare | TrackSource::ScreenShareAudio */
-        3 | 4 => PartialUserVoiceState {
+        /* TrackSource::ScreenShare */
+        3 => PartialUserVoiceState {
             screensharing: Some(added),
             ..Default::default()
         },
+        /* TrackSource::ScreenShareAudio */
+        4 => PartialUserVoiceState::default(),
         _ => unreachable!(),
-    };
-
-    update_voice_state(channel, user_id, &partial).await?;
-
-    Ok(partial)
+    }
 }
 
 pub async fn update_voice_state(
@@ -743,5 +749,30 @@ impl ToRedisArgs for UserVoiceChannel {
 impl FromRedisValue for UserVoiceChannel {
     fn from_redis_value(v: &Value) -> Result<Self, RedisError> {
         String::from_redis_value(v).map(UserVoiceChannel::from_string)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::partial_voice_state_for_track;
+
+    #[test]
+    fn screen_share_video_updates_streaming_state() {
+        let partial = partial_voice_state_for_track(true, 3);
+
+        assert_eq!(partial.screensharing, Some(true));
+        assert_eq!(partial.camera, None);
+        assert_eq!(partial.is_publishing, None);
+        assert_eq!(partial.is_receiving, None);
+    }
+
+    #[test]
+    fn screen_share_audio_does_not_clear_streaming_state() {
+        let partial = partial_voice_state_for_track(false, 4);
+
+        assert_eq!(partial.screensharing, None);
+        assert_eq!(partial.camera, None);
+        assert_eq!(partial.is_publishing, None);
+        assert_eq!(partial.is_receiving, None);
     }
 }

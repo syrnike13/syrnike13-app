@@ -78,10 +78,10 @@ pub async fn call(
         .ok_or_else(|| create_error!(UnknownNode))?
         .clone();
 
-    if force_disconnect == Some(true) {
-        // Finds and disconnects any existing voice connections by the user,
-        // should only ever loop once but just to cover our backs.
+    if user.bot.is_none() {
+        voice_client.remove_user_from_all_rooms(&user.id).await?;
 
+        // Finds and disconnects any existing voice connections by the user,
         for previous_channel in get_user_voice_channels(&user.id).await? {
             remove_user_from_voice_channel(voice_client, &previous_channel, &user.id).await?;
         }

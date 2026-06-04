@@ -8,10 +8,10 @@ use livekit_api::{
     services::room::{CreateRoomOptions, RoomClient as InnerRoomClient, UpdateParticipantOptions},
 };
 use livekit_protocol::{ParticipantInfo, ParticipantPermission, Room};
+use std::{collections::HashMap, time::Duration};
 use syrnike_config::{config, LiveKitNode};
 use syrnike_permissions::{ChannelPermission, PermissionValue};
 use syrnike_result::{create_error, Result, ToSyrnikeError};
-use std::{collections::HashMap, time::Duration};
 
 use super::get_allowed_sources;
 
@@ -149,6 +149,54 @@ impl VoiceClient {
             .remove_participant(channel_id, user_id)
             .await
             .to_internal_error()
+    }
+
+    pub async fn remove_user_from_all_rooms(&self, user_id: &str) -> Result<()> {
+        for (node_name, room) in &self.rooms {
+            let rooms = room.client.list_rooms(Vec::new()).await.inspect_err(|error| {
+                log::warn!(
+                    "Failed to list LiveKit rooms on node {node_name} while enforcing single voice session for user {user_id}: {error}"
+                );
+            }).to_internal_error()?;
+
+            for livekit_room in rooms {
+                if livekit_room.name.is_empty() {
+                    continue;
+                }
+
+                let participants = room
+                    .client
+                    .list_participants(&livekit_room.name)
+                    .await
+                    .inspect_err(|error| {
+                        log::warn!(
+                            "Failed to list LiveKit participants in room {} on node {node_name} while enforcing single voice session for user {user_id}: {error}",
+                            livekit_room.name
+                        );
+                    })
+                    .to_internal_error()?;
+
+                if !participants
+                    .iter()
+                    .any(|participant| participant.identity == user_id)
+                {
+                    continue;
+                }
+
+                room.client
+                    .remove_participant(&livekit_room.name, user_id)
+                    .await
+                    .inspect_err(|error| {
+                        log::warn!(
+                            "Failed to remove LiveKit participant {user_id} from room {} on node {node_name}: {error}",
+                            livekit_room.name
+                        );
+                    })
+                    .to_internal_error()?;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn delete_room(&self, node: &str, channel_id: &str) -> Result<()> {

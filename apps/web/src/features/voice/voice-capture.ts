@@ -15,6 +15,7 @@ export function createVoiceRoomOptions(): RoomOptions {
     dynacast: true,
     audioCaptureDefaults: {
       deviceId: prefs.preferredAudioInputDevice,
+      channelCount: 1,
       echoCancellation: prefs.echoCancellation,
       noiseSuppression: prefs.noiseSuppression === 'browser',
       autoGainControl: prefs.autoGainControl,
