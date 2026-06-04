@@ -25,9 +25,6 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/syrnike13/livekit-server/pkg/sfu/buffer"
-	"github.com/syrnike13/livekit-server/pkg/sfu/mime"
-	"github.com/syrnike13/livekit-server/pkg/telemetry/telemetryfakes"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
@@ -36,6 +33,9 @@ import (
 	"github.com/livekit/protocol/signalling"
 	"github.com/livekit/protocol/utils"
 	"github.com/livekit/protocol/utils/guid"
+	"github.com/syrnike13/livekit-server/pkg/sfu/buffer"
+	"github.com/syrnike13/livekit-server/pkg/sfu/mime"
+	"github.com/syrnike13/livekit-server/pkg/telemetry/telemetryfakes"
 
 	"github.com/syrnike13/livekit-server/pkg/config"
 	"github.com/syrnike13/livekit-server/pkg/routing"
@@ -227,6 +227,96 @@ func TestTrackPublishing(t *testing.T) {
 		})
 		// an error response for disallowed source should send a `RequestResponse`.
 		require.Equal(t, 2, sink.WriteMessageCallCount())
+	})
+
+	t.Run("should reject screen share above preset bitrate", func(t *testing.T) {
+		p := newParticipantForTest("test")
+		sink := p.params.Sink.(*routingfakes.FakeMessageSink)
+
+		p.AddTrack(&livekit.AddTrackRequest{
+			Cid:    "cid",
+			Name:   "screen",
+			Type:   livekit.TrackType_VIDEO,
+			Source: livekit.TrackSource_SCREEN_SHARE,
+			Width:  1920,
+			Height: 1080,
+			Layers: []*livekit.VideoLayer{
+				{Quality: livekit.VideoQuality_LOW, Width: 960, Height: 540, Bitrate: 625_000},
+				{Quality: livekit.VideoQuality_HIGH, Width: 1920, Height: 1080, Bitrate: 12_000_000},
+			},
+		})
+
+		require.Equal(t, 1, sink.WriteMessageCallCount())
+		res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
+		require.Equal(t, livekit.RequestResponse_NOT_ALLOWED, res.GetRequestResponse().Reason)
+		require.Nil(t, p.pendingTracks["cid"])
+	})
+
+	t.Run("should reject screen share outside preset ladder", func(t *testing.T) {
+		p := newParticipantForTest("test")
+		sink := p.params.Sink.(*routingfakes.FakeMessageSink)
+
+		p.AddTrack(&livekit.AddTrackRequest{
+			Cid:    "cid",
+			Name:   "screen",
+			Type:   livekit.TrackType_VIDEO,
+			Source: livekit.TrackSource_SCREEN_SHARE,
+			Width:  1920,
+			Height: 1080,
+			Layers: []*livekit.VideoLayer{
+				{Quality: livekit.VideoQuality_HIGH, Width: 1920, Height: 1080, Bitrate: 6_000_000},
+			},
+		})
+
+		require.Equal(t, 1, sink.WriteMessageCallCount())
+		res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
+		require.Equal(t, livekit.RequestResponse_NOT_ALLOWED, res.GetRequestResponse().Reason)
+		require.Nil(t, p.pendingTracks["cid"])
+	})
+
+	t.Run("should allow screen share preset bitrate", func(t *testing.T) {
+		p := newParticipantForTest("test")
+		sink := p.params.Sink.(*routingfakes.FakeMessageSink)
+
+		p.AddTrack(&livekit.AddTrackRequest{
+			Cid:    "cid",
+			Name:   "screen",
+			Type:   livekit.TrackType_VIDEO,
+			Source: livekit.TrackSource_SCREEN_SHARE,
+			Width:  1920,
+			Height: 1080,
+			Layers: []*livekit.VideoLayer{
+				{Quality: livekit.VideoQuality_LOW, Width: 960, Height: 540, Bitrate: 625_000},
+				{Quality: livekit.VideoQuality_HIGH, Width: 1920, Height: 1080, Bitrate: 8_000_000},
+			},
+		})
+
+		require.Equal(t, 1, sink.WriteMessageCallCount())
+		res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
+		require.NotNil(t, res.GetTrackPublished())
+		require.NotNil(t, p.pendingTracks["cid"])
+	})
+
+	t.Run("should allow text screen share preset bitrate", func(t *testing.T) {
+		p := newParticipantForTest("test")
+		sink := p.params.Sink.(*routingfakes.FakeMessageSink)
+
+		p.AddTrack(&livekit.AddTrackRequest{
+			Cid:    "cid",
+			Name:   "screen",
+			Type:   livekit.TrackType_VIDEO,
+			Source: livekit.TrackSource_SCREEN_SHARE,
+			Width:  1920,
+			Height: 1080,
+			Layers: []*livekit.VideoLayer{
+				{Quality: livekit.VideoQuality_HIGH, Width: 1920, Height: 1080, Bitrate: 2_000_000},
+			},
+		})
+
+		require.Equal(t, 1, sink.WriteMessageCallCount())
+		res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
+		require.NotNil(t, res.GetTrackPublished())
+		require.NotNil(t, p.pendingTracks["cid"])
 	})
 }
 

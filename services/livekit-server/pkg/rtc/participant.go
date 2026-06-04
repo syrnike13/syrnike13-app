@@ -1430,6 +1430,17 @@ func (p *ParticipantImpl) AddTrack(req *livekit.AddTrackRequest) {
 		return
 	}
 
+	if err := validateScreenSharePublish(req); err != nil {
+		p.pubLogger.Warnw("screen share publish rejected by preset policy", err, "trackID", req.Sid, "kind", req.Type, "source", req.Source)
+		p.sendRequestResponse(&livekit.RequestResponse{
+			Reason: livekit.RequestResponse_NOT_ALLOWED,
+			Request: &livekit.RequestResponse_AddTrack{
+				AddTrack: utils.CloneProto(req),
+			},
+		})
+		return
+	}
+
 	p.pendingTracksLock.Lock()
 	ti := p.addPendingTrackLocked(req)
 	p.pendingTracksLock.Unlock()
