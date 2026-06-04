@@ -83,12 +83,21 @@ function RegisterPage() {
 
       setSubmitting(true)
       try {
-        await createAccount({
-          email: parsed.data.email,
-          password: parsed.data.password,
-          invite: parsed.data.invite?.trim() || undefined,
-          captcha,
-        })
+        try {
+          await createAccount({
+            email: parsed.data.email,
+            password: parsed.data.password,
+            invite: parsed.data.invite?.trim() || undefined,
+            captcha,
+          })
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Не удалось зарегистрироваться',
+          )
+          return
+        }
 
         if (emailVerification) {
           setPendingVerifyEmail(parsed.data.email)
