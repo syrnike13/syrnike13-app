@@ -99,16 +99,16 @@ docker compose ps
 
 `compose.yml` uses syrnike13-owned images:
 
-- `ghcr.io/syrnike13/api:latest`
-- `ghcr.io/syrnike13/events:latest`
-- `ghcr.io/syrnike13/file-server:latest`
-- `ghcr.io/syrnike13/proxy:latest`
-- `ghcr.io/syrnike13/gifbox:latest`
-- `ghcr.io/syrnike13/crond:latest`
-- `ghcr.io/syrnike13/pushd:latest`
-- `ghcr.io/syrnike13/voice-ingress:latest`
-- `ghcr.io/syrnike13/for-web:latest`
-- `ghcr.io/syrnike13/livekit-server:latest`
+- `ghcr.io/syrnike13/app-api:latest`
+- `ghcr.io/syrnike13/app-events:latest`
+- `ghcr.io/syrnike13/app-file-server:latest`
+- `ghcr.io/syrnike13/app-proxy:latest`
+- `ghcr.io/syrnike13/app-gifbox:latest`
+- `ghcr.io/syrnike13/app-crond:latest`
+- `ghcr.io/syrnike13/app-pushd:latest`
+- `ghcr.io/syrnike13/app-voice-ingress:latest`
+- `ghcr.io/syrnike13/app-web:latest`
+- `ghcr.io/syrnike13/app-livekit-server:latest`
 
 Backend, web, desktop, and LiveKit release jobs are published from this monorepo.
 
