@@ -7,6 +7,7 @@ import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useChannelVoiceState } from '#/features/voice/use-channel-voice-state'
 import { useVoice } from '#/features/voice/voice-provider'
+import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
 
 /** Совпадает с началом названия канала: px-3 + icon 16px + gap-2 */
@@ -44,15 +45,14 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
   const storeParticipants = useSyncStore((s) =>
     getChannelVoiceParticipants(s, channelId, auth.user?._id),
   )
-  const inThisChannel =
-    voice.channelId === channelId && voice.status === 'connected'
+  const inThisChannel = isVoiceSessionInChannel(voice, channelId)
   const participants = useMergedChannelVoiceParticipants(
     channelId,
     storeParticipants,
     voice.liveChannelParticipants,
     inThisChannel,
     inThisChannel ? auth.user?._id : undefined,
-    inThisChannel ? voice.micEnabled : undefined,
+    inThisChannel ? voice.micPublishing : undefined,
     inThisChannel ? voice.deafened : undefined,
   )
 

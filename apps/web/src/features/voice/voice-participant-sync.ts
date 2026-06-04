@@ -5,6 +5,7 @@ import { isResolvableVoiceParticipant } from '#/features/sync/voice-participant-
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
   localParticipantVoiceFlags,
+  participantMicPublishing,
   remoteParticipantVoiceFlags,
 } from '#/features/voice/voice-participant-media'
 
@@ -34,7 +35,7 @@ function localVoiceState(
 ): UserVoiceState {
   const media = localParticipantVoiceFlags(participant)
   return participantState(participant.identity, {
-    isPublishing: participant.isMicrophoneEnabled,
+    isPublishing: participantMicPublishing(participant),
     isReceiving,
     camera: media.camera,
     screensharing: media.screensharing,
@@ -45,7 +46,7 @@ function localVoiceState(
 function remoteVoiceState(participant: RemoteParticipant): UserVoiceState {
   const media = remoteParticipantVoiceFlags(participant)
   return participantState(participant.identity, {
-    isPublishing: participant.isMicrophoneEnabled,
+    isPublishing: participantMicPublishing(participant),
     isReceiving: true,
     camera: media.camera,
     screensharing: media.screensharing,
@@ -84,7 +85,18 @@ export function syncLiveKitRoomParticipants(
 
   const byId = new Map<string, UserVoiceState>()
   for (const participant of fromRoom) {
-    byId.set(participant.id, participant)
+    if (participant.id === localUserId) {
+      byId.set(participant.id, participant)
+      continue
+    }
+
+    const existingParticipant = existing[participant.id]
+    byId.set(
+      participant.id,
+      existingParticipant
+        ? { ...participant, is_receiving: existingParticipant.is_receiving }
+        : participant,
+    )
   }
 
   const existing = syncState.voiceParticipants[channelId] ?? {}

@@ -20,6 +20,7 @@ import {
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useChannelVoiceState } from '#/features/voice/use-channel-voice-state'
 import { useVoice } from '#/features/voice/voice-provider'
+import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   shouldShowVoiceInviteSlot,
   voiceStageGridClass,
@@ -57,19 +58,18 @@ export function VoiceStageView({
   const storeParticipants = useSyncStore((s) =>
     getChannelVoiceParticipants(s, channelId, auth.user?._id),
   )
-  const inThisVoiceCall =
-    voice.channelId === channelId && voice.status === 'connected'
-  const connecting =
-    voice.channelId === channelId && voice.status === 'connecting'
+  const inVoiceSession = isVoiceSessionInChannel(voice, channelId)
+  const inThisVoiceCall = voice.status === 'connected' && inVoiceSession
+  const connecting = voice.status === 'connecting' && inVoiceSession
 
   const participants = useMergedChannelVoiceParticipants(
     channelId,
     storeParticipants,
     voice.liveChannelParticipants,
-    inThisVoiceCall,
-    inThisVoiceCall ? auth.user?._id : undefined,
-    inThisVoiceCall ? voice.micEnabled : undefined,
-    inThisVoiceCall ? voice.deafened : undefined,
+    inVoiceSession,
+    inVoiceSession ? auth.user?._id : undefined,
+    inVoiceSession ? voice.micPublishing : undefined,
+    inVoiceSession ? voice.deafened : undefined,
   )
 
   const showInviteSlot = shouldShowVoiceInviteSlot(participants.length)

@@ -1,13 +1,13 @@
-import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import {
   HeadphoneOffIcon,
   HeadphonesIcon,
-  LogOutIcon,
   MicIcon,
   MicOffIcon,
   SettingsIcon,
 } from 'lucide-react'
 import { VoiceConnectionStrip } from '#/components/voice/voice-connection-strip'
+import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import {
@@ -18,7 +18,11 @@ import {
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { useVoice } from '#/features/voice/voice-provider'
-import { presenceLabel } from '#/lib/presence'
+import {
+  isMicVisuallyMuted,
+  micControlTitle,
+} from '#/features/voice/voice-mic-status'
+import { userStatusSubtitle } from '#/lib/presence'
 import { USER_PANEL_SPAN_WIDTH } from '#/components/layout/left-sidebar-stack'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
@@ -36,33 +40,40 @@ const gatewayLabels = {
 
 export function UserPanel() {
   const auth = useAuth()
-  const navigate = useNavigate()
   const { openSettings } = useSettingsModal()
   const voice = useVoice()
+  const [menuOpen, setMenuOpen] = useState(false)
   const user = auth.user
   if (!user) return null
 
   const displayName = user.display_name ?? user.username
+  const usernameLabel = `@${user.username}`
   const inVoiceSession =
     voice.channelId != null &&
     (voice.status === 'connected' || voice.status === 'connecting')
   const inVoice = voice.status === 'connected'
-  const gatewayOnline = auth.gatewayState === 'connected'
-  const micMuted = !voice.micEnabled
+  const gatewayConnected = auth.gatewayState === 'connected'
+  const micMuted = isMicVisuallyMuted({
+    inVoiceSession,
+    micEnabled: voice.micEnabled,
+    micPublishing: voice.micPublishing,
+  })
   const soundOff = voice.deafened
 
   const statusLabel = inVoice
-    ? micMuted
-      ? soundOff
-        ? 'Глухой режим'
-        : 'Микрофон выключен'
-      : 'В голосовом канале'
+    ? voice.micIssue
+      ? voice.micIssue.label
+      : micMuted
+        ? soundOff
+          ? 'Глухой режим'
+          : 'Микрофон выключен'
+        : 'В голосовом канале'
     : soundOff
       ? 'Звук выключен'
       : micMuted
         ? 'Микрофон выключен'
-        : gatewayOnline
-          ? presenceLabel(user)
+        : gatewayConnected
+          ? userStatusSubtitle(user)
           : gatewayLabels[auth.gatewayState]
 
   return (
@@ -88,11 +99,11 @@ export function UserPanel() {
             FLOATING_BAR_HEIGHT_CLASS,
           )}
         >
-          <Popover>
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-white/5"
+                className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-white/5"
               >
                 <UserAvatar
                   user={user}
@@ -104,46 +115,44 @@ export function UserPanel() {
                   <p className="truncate text-sm font-semibold leading-4">
                     {displayName}
                   </p>
-                  <p
-                    className={cn(
-                      'truncate text-xs leading-4',
-                      gatewayOnline || inVoice
-                        ? 'text-muted-foreground'
-                        : 'text-destructive/80',
-                    )}
-                  >
-                    {statusLabel}
-                  </p>
+                  <div className="relative h-4 overflow-hidden">
+                    <p
+                      className={cn(
+                        'truncate text-xs leading-4 transition-[transform,opacity] duration-200 ease-out',
+                        'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
+                        gatewayConnected || inVoice
+                          ? 'text-muted-foreground'
+                          : 'text-destructive/80',
+                      )}
+                    >
+                      {statusLabel}
+                    </p>
+                    <p
+                      className={cn(
+                        'absolute inset-x-0 top-0 truncate text-xs leading-4 text-muted-foreground',
+                        'translate-y-full opacity-0 transition-[transform,opacity] duration-200 ease-out',
+                        'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
+                      )}
+                    >
+                      {usernameLabel}
+                    </p>
+                  </div>
                 </div>
               </button>
             </PopoverTrigger>
-            <PopoverContent side="top" align="start" className="w-52 p-1">
-              <Button
-                variant="ghost"
-                className="h-9 w-full justify-start gap-2 px-2 font-normal"
-                onClick={() => openSettings('account')}
-              >
-                <SettingsIcon className="size-4" />
-                Настройки
-              </Button>
-              <Button
-                variant="ghost"
-                className="h-9 w-full justify-start gap-2 px-2 font-normal"
-                onClick={() => openSettings('voice')}
-              >
-                <HeadphonesIcon className="size-4" />
-                Голос и видео
-              </Button>
-              <Button
-                variant="ghost"
-                className="h-9 w-full justify-start gap-2 px-2 font-normal text-destructive hover:text-destructive"
-                onClick={() => {
-                  void auth.logout().then(() => navigate({ to: '/login' }))
-                }}
-              >
-                <LogOutIcon className="size-4" />
-                Выйти
-              </Button>
+            <PopoverContent
+              side="top"
+              align="start"
+              sideOffset={8}
+              collisionPadding={16}
+              style={{ width: USER_PANEL_SPAN_WIDTH }}
+              className="z-[200] max-w-[calc(100vw-1rem)] overflow-hidden border-0 bg-card p-0 text-foreground shadow-xl ring-1 ring-shell-divider"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
+              <CurrentUserProfileMenu
+                user={user}
+                onClose={() => setMenuOpen(false)}
+              />
             </PopoverContent>
           </Popover>
 
@@ -156,15 +165,11 @@ export function UserPanel() {
                 'size-8 shrink-0 rounded-md bg-[#35373c] hover:bg-[#3f4147]',
                 micMuted && 'text-destructive',
               )}
-              title={
-                inVoice
-                  ? micMuted
-                    ? 'Включить микрофон'
-                    : 'Выключить микрофон'
-                  : micMuted
-                    ? 'Микрофон выключен (применится при входе в голос)'
-                    : 'Выключить микрофон до входа в голос'
-              }
+              title={micControlTitle({
+                inVoice,
+                micMuted,
+                micIssue: voice.micIssue,
+              })}
               disabled={voice.status === 'connecting'}
               onClick={voice.toggleMic}
             >

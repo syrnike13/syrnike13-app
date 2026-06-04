@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, Loader2Icon, PencilIcon } from 'lucide-react'
+import { PencilIcon } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -27,17 +27,17 @@ import { useAuth } from '#/features/auth/auth-context'
 import { profileSchema } from '#/features/auth/schemas'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'
+import {
+  useProfileDraftRegistration,
+  type ProfileDraftController,
+} from '#/components/settings/profile-draft-context'
 import { cn } from '#/lib/utils'
-
-const TEXT_AUTOSAVE_MS = 700
 
 type ProfileBaseline = {
   displayName: string
   statusText: string
   bio: string
 }
-
-type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
 function revokeObjectUrl(url: string | null) {
   if (url?.startsWith('blob:')) {
@@ -53,13 +53,20 @@ export function SettingsProfilePanel() {
 
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
-  const baselineRef = useRef<ProfileBaseline>({
+  const savedBaselineRef = useRef<ProfileBaseline>({
     displayName: '',
     statusText: '',
     bio: '',
   })
+
+  const commitSavedBaseline = useCallback((next: ProfileBaseline) => {
+    savedBaselineRef.current = {
+      displayName: next.displayName,
+      statusText: next.statusText,
+      bio: next.bio,
+    }
+  }, [])
   const saveInFlightRef = useRef(false)
-  const savedFadeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hydratedUserIdRef = useRef<string | null>(null)
   const profileBioSyncedRef = useRef(false)
 
@@ -74,7 +81,7 @@ export function SettingsProfilePanel() {
   const [statusText, setStatusText] = useState('')
   const [bio, setBio] = useState('')
   const [hydrated, setHydrated] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [isSaving, setIsSaving] = useState(false)
   const [avatarPreviewOverride, setAvatarPreviewOverride] = useState<
     string | null | undefined
   >(undefined)
@@ -98,7 +105,10 @@ export function SettingsProfilePanel() {
       if (!profileBioSyncedRef.current && profileQuery.isFetched) {
         const content = profileQuery.data?.content ?? ''
         setBio(content)
-        baselineRef.current.bio = content
+        commitSavedBaseline({
+          ...savedBaselineRef.current,
+          bio: content,
+        })
         profileBioSyncedRef.current = true
       }
       return
@@ -112,19 +122,20 @@ export function SettingsProfilePanel() {
       statusText: user.status?.text ?? '',
       bio: profileQuery.data?.content ?? '',
     }
-    baselineRef.current = nextBaseline
+    commitSavedBaseline(nextBaseline)
     setDisplayName(nextBaseline.displayName)
     setStatusText(nextBaseline.statusText)
     setBio(nextBaseline.bio)
     setAvatarPreviewOverride(undefined)
     setBannerPreviewOverride(undefined)
     setHydrated(true)
-    setSaveStatus('idle')
+    setIsSaving(false)
   }, [
     hydrated,
     profileQuery.data?.content,
     profileQuery.isFetched,
     profileReady,
+    commitSavedBaseline,
     user,
   ])
 
@@ -146,17 +157,8 @@ export function SettingsProfilePanel() {
     return () => {
       revokeObjectUrl(avatarPreview)
       revokeObjectUrl(bannerPreview)
-      if (savedFadeRef.current) clearTimeout(savedFadeRef.current)
     }
   }, [avatarPreview, bannerPreview])
-
-  const markSaved = useCallback(() => {
-    setSaveStatus('saved')
-    if (savedFadeRef.current) clearTimeout(savedFadeRef.current)
-    savedFadeRef.current = setTimeout(() => {
-      setSaveStatus('idle')
-    }, 2000)
-  }, [])
 
   const persistProfile = useCallback(
     async (patch: DataEditUser) => {
@@ -173,7 +175,7 @@ export function SettingsProfilePanel() {
       if (!hasChange) return true
 
       saveInFlightRef.current = true
-      setSaveStatus('saving')
+      setIsSaving(true)
 
       try {
         await updateCurrentUser(token, patch)
@@ -181,10 +183,8 @@ export function SettingsProfilePanel() {
         await queryClient.invalidateQueries({
           queryKey: queryKeys.users.profile(user._id),
         })
-        markSaved()
         return true
       } catch (error) {
-        setSaveStatus('error')
         toast.error(
           error instanceof Error
             ? error.message
@@ -193,13 +193,29 @@ export function SettingsProfilePanel() {
         return false
       } finally {
         saveInFlightRef.current = false
+        setIsSaving(false)
       }
     },
-    [auth, markSaved, queryClient, token, user],
+    [auth, queryClient, token, user],
   )
 
-  const saveTextFields = useCallback(async () => {
-    if (!user) return
+  const resetTextFields = useCallback((): boolean => {
+    const saved = savedBaselineRef.current
+    const wasDirty =
+      displayName.trim() !== saved.displayName.trim() ||
+      statusText.trim() !== saved.statusText.trim() ||
+      bio.trim() !== saved.bio.trim()
+
+    if (!wasDirty) return false
+
+    setDisplayName(saved.displayName)
+    setStatusText(saved.statusText)
+    setBio(saved.bio)
+    return true
+  }, [bio, displayName, statusText])
+
+  const saveTextFields = useCallback(async (): Promise<boolean> => {
+    if (!user) return false
 
     const parsed = profileSchema.safeParse({
       display_name: displayName,
@@ -207,17 +223,17 @@ export function SettingsProfilePanel() {
       bio,
     })
     if (!parsed.success) {
-      setSaveStatus('error')
-      return
+      toast.error('Проверьте поля профиля')
+      return false
     }
 
     const trimmedName = parsed.data.display_name.trim()
     if (trimmedName.length > 0 && trimmedName.length < 2) {
-      setSaveStatus('error')
-      return
+      toast.error('Имя должно быть не короче 2 символов')
+      return false
     }
 
-    const baseline = baselineRef.current
+    const baseline = savedBaselineRef.current
     const changes: DataEditUser = { remove: [] }
     const remove = changes.remove as FieldsUser[]
 
@@ -243,33 +259,37 @@ export function SettingsProfilePanel() {
     }
 
     const ok = await persistProfile(changes)
-    if (!ok) return
+    if (!ok) return false
 
-    baselineRef.current = {
+    commitSavedBaseline({
       displayName: trimmedName,
       statusText: trimmedStatus,
       bio: trimmedBio,
+    })
+    setDisplayName(trimmedName)
+    setStatusText(trimmedStatus)
+    setBio(trimmedBio)
+    return true
+  }, [bio, commitSavedBaseline, displayName, persistProfile, statusText, user])
+
+  const saved = savedBaselineRef.current
+  const textDirty =
+    hydrated &&
+    (displayName.trim() !== saved.displayName.trim() ||
+      statusText.trim() !== saved.statusText.trim() ||
+      bio.trim() !== saved.bio.trim())
+
+  const draftRegistration = useMemo((): ProfileDraftController | null => {
+    if (!hydrated) return null
+    return {
+      isDirty: textDirty,
+      isSaving,
+      save: saveTextFields,
+      reset: resetTextFields,
     }
-  }, [bio, displayName, persistProfile, statusText, user])
+  }, [hydrated, textDirty, isSaving, saveTextFields, resetTextFields])
 
-  useEffect(() => {
-    if (!hydrated || !token) return
-
-    const baseline = baselineRef.current
-    const textDirty =
-      displayName.trim() !== baseline.displayName.trim() ||
-      statusText.trim() !== baseline.statusText.trim() ||
-      bio.trim() !== baseline.bio.trim()
-
-    if (!textDirty) return
-
-    setSaveStatus((current) => (current === 'saving' ? current : 'pending'))
-    const timer = window.setTimeout(() => {
-      void saveTextFields()
-    }, TEXT_AUTOSAVE_MS)
-
-    return () => window.clearTimeout(timer)
-  }, [bio, displayName, hydrated, saveTextFields, statusText, token])
+  useProfileDraftRegistration(draftRegistration)
 
   const uploadAvatar = useCallback(
     async (file: File) => {
@@ -335,7 +355,7 @@ export function SettingsProfilePanel() {
 
   const username = user.username
 
-  const mediaBusy = saveStatus === 'saving'
+  const mediaBusy = isSaving
   const hasAvatar =
     Boolean(user.avatar) ||
     avatarPreviewOverride !== undefined ||
@@ -377,8 +397,6 @@ export function SettingsProfilePanel() {
       />
 
       <div className="space-y-6">
-        <SaveStatusLine status={saveStatus} />
-
         <section className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="profile-display-name">Отображаемое имя</Label>
@@ -454,33 +472,6 @@ export function SettingsProfilePanel() {
         />
       </aside>
     </div>
-  )
-}
-
-function SaveStatusLine({ status }: { status: SaveStatus }) {
-  if (status === 'idle') return null
-
-  return (
-    <p
-      className={cn(
-        'flex items-center gap-1.5 text-xs',
-        status === 'error' ? 'text-destructive' : 'text-muted-foreground',
-      )}
-    >
-      {status === 'pending' || status === 'saving' ? (
-        <>
-          <Loader2Icon className="size-3.5 animate-spin" />
-          Сохранение…
-        </>
-      ) : null}
-      {status === 'saved' ? (
-        <>
-          <CheckIcon className="size-3.5 text-[#23a559]" />
-          Сохранено
-        </>
-      ) : null}
-      {status === 'error' ? 'Не удалось сохранить — проверьте поля' : null}
-    </p>
   )
 }
 

@@ -6,12 +6,11 @@ import {
   MoreHorizontalIcon,
   UserMinusIcon,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
-import { UserAvatar } from '#/components/user/user-avatar'
+import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { FloatingMenuItem } from '#/components/ui/floating-menu'
@@ -25,19 +24,9 @@ import {
   banServerMember,
   kickServerMember,
 } from '#/features/api/servers-api'
-import {
-  blockUser,
-  fetchUserProfile,
-  openDirectMessage,
-} from '#/features/api/users-api'
-import { queryKeys } from '#/lib/api/query-keys'
-import { userBannerUrl } from '#/lib/media'
-import { cn } from '#/lib/utils'
-import {
-  memberRoleEntries,
-  type MemberRoleEntry,
-} from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { blockUser, openDirectMessage } from '#/features/api/users-api'
+import type { MemberRoleEntry } from '#/features/sync/selectors'
+import { syncStore } from '#/features/sync/sync-store'
 export type UserProfileCardProps = {
   user: User
   hideMessage?: boolean
@@ -45,11 +34,6 @@ export type UserProfileCardProps = {
   serverName?: string
   roles?: MemberRoleEntry[]
   onClose?: () => void
-}
-
-function roleDotStyle(colour: string | null) {
-  if (!colour) return { backgroundColor: 'var(--muted-foreground)' }
-  return { backgroundColor: colour.startsWith('#') ? colour : `#${colour}` }
 }
 
 export function UserProfileCard({
@@ -62,15 +46,6 @@ export function UserProfileCard({
 }: UserProfileCardProps) {
   const auth = useAuth()
   const navigate = useNavigate()
-  const server = useSyncStore((s) =>
-    serverId ? s.servers[serverId] : undefined,
-  )
-  const member = useSyncStore((s) =>
-    serverId ? s.members[`${serverId}:${profile._id}`] : undefined,
-  )
-  const roles =
-    rolesProp ?? (member ? memberRoleEntries(server, member) : [])
-  const serverName = serverNameProp ?? server?.name
 
   const [busy, setBusy] = useState(false)
   const [actionsOpen, setActionsOpen] = useState(false)
@@ -79,18 +54,6 @@ export function UserProfileCard({
   const isSelf = profile._id === auth.user?._id
   const canMessage = !hideMessage && !isSelf
   const canModerate = Boolean(serverId) && !isSelf
-  const displayName = profile.display_name ?? profile.username
-  const token = auth.session?.token
-
-  const profileQuery = useQuery({
-    queryKey: queryKeys.users.profile(profile._id),
-    queryFn: () => fetchUserProfile(token!, profile._id),
-    enabled: Boolean(token),
-    staleTime: 60_000,
-  })
-
-  const bannerUrl = userBannerUrl(profileQuery.data?.background)
-  const profileBio = profileQuery.data?.content?.trim()
 
   function dismiss() {
     onClose?.()
@@ -187,138 +150,72 @@ export function UserProfileCard({
     }
   }
 
-  return (
-    <>
-      <div className="relative">
-        <div
-          className={cn(
-            'relative w-full overflow-hidden',
-            bannerUrl ? 'h-[120px]' : 'h-[88px]',
-            !bannerUrl &&
-              'bg-gradient-to-br from-primary via-chart-4 to-sidebar-primary',
-          )}
+  const bannerActions =
+    canModerate || !isSelf ? (
+      <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 rounded-full bg-foreground/20 text-primary-foreground hover:bg-foreground/30 hover:text-primary-foreground"
+          >
+            <MoreHorizontalIcon className="size-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="left"
+          align="start"
+          sideOffset={8}
+          className="z-[250] w-auto min-w-[11rem] p-1"
+          onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          {bannerUrl ? (
+          {canModerate ? (
             <>
-              <img
-                src={bannerUrl}
-                alt=""
-                className="size-full object-cover"
-              />
-              <div
-                className="absolute inset-0 bg-background/30"
-                aria-hidden
-              />
+              <FloatingMenuItem
+                onClick={() => {
+                  setActionsOpen(false)
+                  void handleKick()
+                }}
+              >
+                <UserMinusIcon className="size-3.5" />
+                Исключить
+              </FloatingMenuItem>
+              <FloatingMenuItem
+                onClick={() => {
+                  setActionsOpen(false)
+                  void handleBan()
+                }}
+              >
+                <BanIcon className="size-3.5" />
+                Бан на сервере
+              </FloatingMenuItem>
             </>
           ) : null}
-        </div>
-        {(canModerate || !isSelf) && (
-          <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2 size-8 rounded-full bg-foreground/20 text-primary-foreground hover:bg-foreground/30 hover:text-primary-foreground"
-              >
-                <MoreHorizontalIcon className="size-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="left"
-              align="start"
-              sideOffset={8}
-              className="z-[250] w-auto min-w-[11rem] p-1"
-              onOpenAutoFocus={(event) => event.preventDefault()}
+          {!isSelf ? (
+            <FloatingMenuItem
+              onClick={() => {
+                setActionsOpen(false)
+                void handleBlock()
+              }}
             >
-              {canModerate ? (
-                <>
-                  <FloatingMenuItem
-                    onClick={() => {
-                      setActionsOpen(false)
-                      void handleKick()
-                    }}
-                  >
-                    <UserMinusIcon className="size-3.5" />
-                    Исключить
-                  </FloatingMenuItem>
-                  <FloatingMenuItem
-                    onClick={() => {
-                      setActionsOpen(false)
-                      void handleBan()
-                    }}
-                  >
-                    <BanIcon className="size-3.5" />
-                    Бан на сервере
-                  </FloatingMenuItem>
-                </>
-              ) : null}
-              {!isSelf ? (
-                <FloatingMenuItem
-                  onClick={() => {
-                    setActionsOpen(false)
-                    void handleBlock()
-                  }}
-                >
-                  <BanIcon className="size-3.5" />
-                  Заблокировать
-                </FloatingMenuItem>
-              ) : null}
-            </PopoverContent>
-          </Popover>
-        )}
-        <div className="absolute -bottom-8 left-4">
-          <UserAvatar
-            user={profile}
-            className="size-20"
-            fallbackClassName="size-20 text-xl ring-[6px] ring-muted"
-            showPresence
-            presenceRingClassName="border-muted"
-            presenceClassName="size-7 translate-x-[16%] translate-y-[16%] border-4"
-          />
-        </div>
-      </div>
+              <BanIcon className="size-3.5" />
+              Заблокировать
+            </FloatingMenuItem>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    ) : null
 
-      <div className="px-4 pt-10 pb-3">
-        <h2 className="truncate text-xl font-bold leading-tight text-foreground">
-          {displayName}
-        </h2>
-        <p className="truncate text-sm text-muted-foreground">
-          {profile.display_name ? `@${profile.username}` : profile.username}
-        </p>
-        {profileBio ? (
-          <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-            {profileBio}
-          </p>
-        ) : null}
-        {serverName ? (
-          <p className="mt-1 text-xs text-muted-foreground/80">
-            Участник · {serverName}
-          </p>
-        ) : null}
-      </div>
-
-      {roles.length > 0 ? (
-        <div className="px-4 py-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Роли
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {roles.map((role) => (
-              <span
-                key={role.id}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground"
-              >
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={roleDotStyle(role.colour)}
-                />
-                <span className="truncate">{role.name}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
+  return (
+    <>
+      <UserProfileCardHeader
+        user={profile}
+        serverId={serverId}
+        serverName={serverNameProp}
+        roles={rolesProp}
+        bannerActions={bannerActions}
+      />
 
       {canMessage ? (
         <form

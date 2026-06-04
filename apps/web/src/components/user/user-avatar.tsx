@@ -2,7 +2,7 @@ import type { User } from '@syrnike13/api-types'
 
 import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
 import { userAvatarUrl } from '#/lib/media'
-import { isUserOnline } from '#/lib/presence'
+import { presenceDotClass, presenceDotTitle } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
 function initials(name: string) {
@@ -33,7 +33,6 @@ export function UserAvatar({
   presenceClassName,
 }: UserAvatarProps) {
   const name = user?.display_name ?? user?.username ?? '?'
-  const online = isUserOnline(user)
   const showDot = showPresence && user && user.relationship !== 'Blocked'
   const avatarSrc = user ? userAvatarUrl(user.avatar) : null
 
@@ -50,10 +49,10 @@ export function UserAvatar({
           className={cn(
             'absolute right-0 bottom-0 z-10 size-3 translate-x-[22%] translate-y-[22%] rounded-full border-2',
             presenceRingClassName,
-            online ? 'bg-chart-3' : 'bg-muted-foreground',
+            presenceDotClass(user),
             presenceClassName,
           )}
-          title={online ? 'В сети' : 'Не в сети'}
+          title={presenceDotTitle(user)}
         />
       ) : null}
     </div>

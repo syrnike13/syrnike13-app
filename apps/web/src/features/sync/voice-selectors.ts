@@ -34,27 +34,38 @@ export function isUserInAnyVoice(state: SyncState, userId: string) {
 }
 
 export function mergeVoiceParticipants(
-  ...lists: UserVoiceState[][]
+  storeParticipants: UserVoiceState[],
+  liveParticipants: UserVoiceState[],
+  localUserId?: string,
 ): UserVoiceState[] {
   const map = new Map<string, UserVoiceState>()
-  for (const list of lists) {
-    for (const participant of list) {
-      const existing = map.get(participant.id)
-      map.set(
-        participant.id,
-        existing
-          ? {
-              ...existing,
-              ...participant,
-              joined_at: Math.min(existing.joined_at, participant.joined_at),
-              camera: existing.camera || participant.camera,
-              screensharing:
-                existing.screensharing || participant.screensharing,
-            }
-          : participant,
-      )
-    }
+
+  for (const participant of storeParticipants) {
+    map.set(participant.id, participant)
   }
+
+  for (const participant of liveParticipants) {
+    const existing = map.get(participant.id)
+    map.set(
+      participant.id,
+      existing
+        ? {
+            ...existing,
+            ...participant,
+            joined_at: Math.min(existing.joined_at, participant.joined_at),
+            camera: existing.camera || participant.camera,
+            screensharing:
+              existing.screensharing || participant.screensharing,
+            is_publishing: participant.is_publishing,
+            is_receiving:
+              participant.id === localUserId
+                ? participant.is_receiving
+                : existing.is_receiving,
+          }
+        : participant,
+    )
+  }
+
   return [...map.values()].sort((a, b) => a.joined_at - b.joined_at)
 }
 
@@ -94,6 +105,7 @@ export function useMergedChannelVoiceParticipants(
     const merged = mergeVoiceParticipants(
       storeParticipants,
       liveActive ? liveParticipants : [],
+      localUserId,
     )
     const localSession =
       liveActive && localUserId != null && localMicEnabled != null && localDeafened != null

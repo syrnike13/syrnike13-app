@@ -2,9 +2,26 @@ import type { CreateVoiceUserResponse, DataJoinCall } from '@syrnike13/api-types
 
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
 import { apiRequest } from '#/lib/api/client'
-import type { ChannelVoiceState } from '#/features/sync/voice-types'
+import type { ChannelVoiceState, UserVoiceState } from '#/features/sync/voice-types'
 
 export type ChannelVoiceStateResponse = ChannelVoiceState
+
+export type PatchChannelVoiceState = {
+  is_receiving?: boolean
+  is_publishing?: boolean
+}
+
+export async function patchChannelVoiceState(
+  token: string,
+  channelId: string,
+  data: PatchChannelVoiceState,
+) {
+  return apiRequest<UserVoiceState>(`/channels/${channelId}/voice_state`, {
+    method: 'PATCH',
+    token,
+    body: data,
+  })
+}
 
 export async function fetchChannelVoiceState(token: string, channelId: string) {
   return apiRequest<ChannelVoiceStateResponse>(

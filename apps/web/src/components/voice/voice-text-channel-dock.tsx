@@ -11,6 +11,7 @@ import {
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useVoice } from '#/features/voice/voice-provider'
+import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { cn } from '#/lib/utils'
 
 type VoiceTextChannelDockProps = {
@@ -26,14 +27,16 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
     getChannelVoiceParticipants(s, channelId, auth.user?._id),
   )
 
+  const inThisChannel = isVoiceSessionInChannel(voice, channelId)
+
   const participants = useMergedChannelVoiceParticipants(
     channelId,
     storeParticipants,
     voice.liveChannelParticipants,
-    true,
-    auth.user?._id,
-    voice.micEnabled,
-    voice.deafened,
+    inThisChannel,
+    inThisChannel ? auth.user?._id : undefined,
+    inThisChannel ? voice.micPublishing : undefined,
+    inThisChannel ? voice.deafened : undefined,
   )
 
   if (participants.length === 0) return null

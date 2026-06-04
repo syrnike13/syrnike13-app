@@ -12,6 +12,7 @@ import {
 
 import { Button } from '#/components/ui/button'
 import { useVoice } from '#/features/voice/voice-provider'
+import { isMicVisuallyMuted, micControlTitle } from '#/features/voice/voice-mic-status'
 import { cn } from '#/lib/utils'
 
 type VoiceStageControlsProps = {
@@ -28,7 +29,11 @@ export function VoiceStageControls({
   compact = false,
 }: VoiceStageControlsProps) {
   const voice = useVoice()
-  const micMuted = !voice.micEnabled
+  const micMuted = isMicVisuallyMuted({
+    inVoiceSession: inCall || connecting,
+    micEnabled: voice.micEnabled,
+    micPublishing: voice.micPublishing,
+  })
   const soundOff = voice.deafened
   const cameraOn = voice.cameraEnabled
   const sharingScreen = voice.screenShareEnabled
@@ -62,9 +67,11 @@ export function VoiceStageControls({
         )}
       >
         <ControlButton
-          title={
-            micMuted ? 'Включить микрофон' : 'Выключить микрофон'
-          }
+          title={micControlTitle({
+            inVoice: inCall,
+            micMuted,
+            micIssue: voice.micIssue,
+          })}
           active={micMuted}
           disabled={connecting}
           compact={compact}

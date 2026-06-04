@@ -14,6 +14,8 @@ import {
   SettingsPanelContent,
   settingsSectionTitle,
 } from '#/components/settings/settings-panels'
+import { ProfileDraftProvider } from '#/components/settings/profile-draft-context'
+import { ProfileUnsavedChangesBar } from '#/components/settings/profile-unsaved-changes-bar'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import {
@@ -141,29 +143,38 @@ export function SettingsModal() {
           </ScrollArea>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col bg-background">
-          <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
-            <h2 className="text-xl font-semibold">
-              {settingsSectionTitle(section)}
-            </h2>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={() => setOpen(false)}
-            >
-              <XIcon className="size-4" />
-              <span className="sr-only">Закрыть</span>
-            </Button>
-          </header>
+        <ProfileDraftProvider>
+          <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+            <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
+              <h2 className="text-xl font-semibold">
+                {settingsSectionTitle(section)}
+              </h2>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => setOpen(false)}
+              >
+                <XIcon className="size-4" />
+                <span className="sr-only">Закрыть</span>
+              </Button>
+            </header>
 
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="px-6 py-2 pb-8">
-              <SettingsPanelContent section={section} />
-            </div>
-          </ScrollArea>
-        </div>
+            <ScrollArea className="min-h-0 flex-1">
+              <div
+                className={cn(
+                  'px-6 py-2',
+                  section === 'profile' ? 'pb-28' : 'pb-8',
+                )}
+              >
+                <SettingsPanelContent section={section} />
+              </div>
+            </ScrollArea>
+
+            {section === 'profile' ? <ProfileUnsavedChangesBar /> : null}
+          </div>
+        </ProfileDraftProvider>
       </DialogContent>
     </Dialog>
   )

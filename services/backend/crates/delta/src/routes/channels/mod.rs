@@ -52,6 +52,7 @@ pub fn routes() -> (Vec<Route>, OpenApi) {
         group_remove_member::remove_member,
         voice_join::call,
         voice_state::fetch,
+        voice_state::update,
         voice_stop_ring::stop_ring,
         permissions_set::set_role_permissions,
         permissions_set_default::set_default_channel_permissions,

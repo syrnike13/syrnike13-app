@@ -30,7 +30,7 @@ export async function editServer(
 }
 
 export async function createServer(token: string, data: DataCreateServer) {
-  return apiRequest<CreateServerResponse>('/servers', {
+  return apiRequest<CreateServerResponse>('/servers/create', {
     method: 'POST',
     token,
     body: data,
