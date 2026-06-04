@@ -30,61 +30,6 @@ function syncPackageJson(relativePath) {
   writeJson(relativePath, data)
 }
 
-function walk(directory, matcher, files = []) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === 'target' || entry.name === 'node_modules' || entry.name === '.git') {
-      continue
-    }
-
-    const absolute = path.join(directory, entry.name)
-    if (entry.isDirectory()) {
-      walk(absolute, matcher, files)
-    } else if (matcher(absolute)) {
-      files.push(absolute)
-    }
-  }
-  return files
-}
-
-function syncBackendCargoVersions() {
-  const backendRoot = path.join(root, 'services/backend')
-  if (!fs.existsSync(backendRoot)) {
-    return
-  }
-
-  const cargoFiles = [
-    path.join(backendRoot, 'Cargo.toml'),
-    ...walk(path.join(backendRoot, 'crates'), (file) => file.endsWith('Cargo.toml')),
-  ]
-
-  for (const file of cargoFiles) {
-    let content = fs.readFileSync(file, 'utf8')
-    content = content.replace(
-      /(syrnike-[\w-]+\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
-      `$1${version}$2`,
-    )
-    content = content.replace(
-      /(^version\s*=\s*")[^"]+(")/gm,
-      `$1${version}$2`,
-    )
-    fs.writeFileSync(file, content)
-  }
-}
-
-function syncBackendCargoLockVersions() {
-  const lockFile = path.join(root, 'services/backend/Cargo.lock')
-  if (!fs.existsSync(lockFile)) {
-    return
-  }
-
-  let content = fs.readFileSync(lockFile, 'utf8')
-  content = content.replace(
-    /(\[\[package\]\]\nname = "syrnike-[^"]+"\nversion = ")[^"]+(")/g,
-    `$1${version}$2`,
-  )
-  fs.writeFileSync(lockFile, content)
-}
-
 function syncGeneratedVersionFiles() {
   const files = [
     ['apps/web/src/version.gen.ts', `export const APP_VERSION = '${version}'\n`],
@@ -105,8 +50,6 @@ syncPackageJson('apps/web/package.json')
 syncPackageJson('apps/desktop/package.json')
 syncPackageJson('packages/api-types/package.json')
 syncPackageJson('packages/platform/package.json')
-syncBackendCargoVersions()
-syncBackendCargoLockVersions()
 syncGeneratedVersionFiles()
 
 console.log(`[version] synced ${version}`)
