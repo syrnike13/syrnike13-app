@@ -71,6 +71,20 @@ function syncBackendCargoVersions() {
   }
 }
 
+function syncBackendCargoLockVersions() {
+  const lockFile = path.join(root, 'services/backend/Cargo.lock')
+  if (!fs.existsSync(lockFile)) {
+    return
+  }
+
+  let content = fs.readFileSync(lockFile, 'utf8')
+  content = content.replace(
+    /(\[\[package\]\]\nname = "syrnike-[^"]+"\nversion = ")[^"]+(")/g,
+    `$1${version}$2`,
+  )
+  fs.writeFileSync(lockFile, content)
+}
+
 function syncGeneratedVersionFiles() {
   const files = [
     ['apps/web/src/version.gen.ts', `export const APP_VERSION = '${version}'\n`],
@@ -92,6 +106,7 @@ syncPackageJson('apps/desktop/package.json')
 syncPackageJson('packages/api-types/package.json')
 syncPackageJson('packages/platform/package.json')
 syncBackendCargoVersions()
+syncBackendCargoLockVersions()
 syncGeneratedVersionFiles()
 
 console.log(`[version] synced ${version}`)
