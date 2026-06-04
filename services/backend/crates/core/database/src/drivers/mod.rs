@@ -240,8 +240,8 @@ impl Database {
             database: match self {
                 Database::Reference(_) => Default::default(),
                 #[cfg(feature = "mongodb")]
-                Database::MongoDb(MongoDb(client, _)) => authifier::Database::MongoDb(
-                    authifier::database::MongoDb(client.database("syrnike")),
+                Database::MongoDb(MongoDb(client, database_name)) => authifier::Database::MongoDb(
+                    authifier::database::MongoDb(client.database(&database_name)),
                 ),
             },
             config: auth_config,
