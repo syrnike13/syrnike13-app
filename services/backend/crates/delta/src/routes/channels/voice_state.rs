@@ -1,3 +1,4 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     events::client::EventV1,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
@@ -7,7 +8,6 @@ use syrnike_database::{
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 
 /// # Fetch Voice State
 ///
@@ -104,9 +104,16 @@ pub async fn update(
 mod test {
     use crate::{rocket, util::test::TestHarness};
     use iso8601_timestamp::Timestamp;
-    use syrnike_database::{voice::create_voice_state, Channel};
-    use syrnike_models::v0;
     use rocket::http::{Header, Status};
+    use syrnike_database::{
+        voice::{
+            create_voice_state, delete_channel_voice_state_for_room,
+            delete_voice_state_for_session, get_voice_state, update_voice_state_tracks_for_session,
+            UserVoiceChannel,
+        },
+        Channel,
+    };
+    use syrnike_models::v0;
 
     #[rocket::async_test]
     async fn fetch_empty_voice_state() {
@@ -158,6 +165,8 @@ mod test {
             &syrnike_database::voice::UserVoiceChannel::from_channel(&group),
             &user.id,
             Timestamp::now_utc(),
+            None,
+            None,
         )
         .await
         .unwrap();
@@ -201,6 +210,8 @@ mod test {
             &syrnike_database::voice::UserVoiceChannel::from_channel(&group),
             &user.id,
             Timestamp::now_utc(),
+            None,
+            None,
         )
         .await
         .unwrap();
@@ -220,5 +231,117 @@ mod test {
 
         let updated: v0::UserVoiceState = response.into_json().await.expect("UserVoiceState");
         assert!(!updated.is_receiving);
+    }
+
+    #[rocket::async_test]
+    async fn stale_livekit_session_cannot_delete_current_voice_state() {
+        let channel = UserVoiceChannel {
+            id: format!("voice-session-{}", ulid::Ulid::new()),
+            server_id: None,
+        };
+        let user_id = format!("voice-user-{}", ulid::Ulid::new());
+
+        create_voice_state(
+            &channel,
+            &user_id,
+            Timestamp::UNIX_EPOCH
+                .checked_add(iso8601_timestamp::Duration::seconds(1))
+                .unwrap(),
+            Some("PA_old"),
+            Some("RM_old"),
+        )
+        .await
+        .unwrap();
+        create_voice_state(
+            &channel,
+            &user_id,
+            Timestamp::UNIX_EPOCH
+                .checked_add(iso8601_timestamp::Duration::seconds(2))
+                .unwrap(),
+            Some("PA_current"),
+            Some("RM_current"),
+        )
+        .await
+        .unwrap();
+
+        let deleted = delete_voice_state_for_session(&channel, &user_id, "PA_old")
+            .await
+            .unwrap();
+
+        assert!(!deleted);
+        assert_eq!(
+            get_voice_state(&channel, &user_id)
+                .await
+                .unwrap()
+                .expect("current state")
+                .joined_at,
+            Timestamp::UNIX_EPOCH
+                .checked_add(iso8601_timestamp::Duration::seconds(2))
+                .unwrap()
+        );
+    }
+
+    #[rocket::async_test]
+    async fn stale_livekit_session_cannot_update_current_voice_tracks() {
+        let channel = UserVoiceChannel {
+            id: format!("voice-session-{}", ulid::Ulid::new()),
+            server_id: None,
+        };
+        let user_id = format!("voice-user-{}", ulid::Ulid::new());
+
+        create_voice_state(
+            &channel,
+            &user_id,
+            Timestamp::now_utc(),
+            Some("PA_current"),
+            Some("RM_current"),
+        )
+        .await
+        .unwrap();
+        update_voice_state_tracks_for_session(&channel, &user_id, true, 2, "PA_current")
+            .await
+            .unwrap()
+            .expect("current session update");
+
+        let stale_update =
+            update_voice_state_tracks_for_session(&channel, &user_id, false, 2, "PA_old")
+                .await
+                .unwrap();
+
+        assert!(stale_update.is_none());
+        assert!(
+            get_voice_state(&channel, &user_id)
+                .await
+                .unwrap()
+                .expect("current state")
+                .is_publishing
+        );
+    }
+
+    #[rocket::async_test]
+    async fn stale_livekit_room_cannot_delete_current_channel_voice_state() {
+        let channel = UserVoiceChannel {
+            id: format!("voice-room-{}", ulid::Ulid::new()),
+            server_id: None,
+        };
+        let user_id = format!("voice-user-{}", ulid::Ulid::new());
+        let members = vec![user_id.clone()];
+
+        create_voice_state(
+            &channel,
+            &user_id,
+            Timestamp::now_utc(),
+            Some("PA_current"),
+            Some("RM_current"),
+        )
+        .await
+        .unwrap();
+
+        let deleted = delete_channel_voice_state_for_room(&channel, &members, "RM_old")
+            .await
+            .unwrap();
+
+        assert!(!deleted);
+        assert!(get_voice_state(&channel, &user_id).await.unwrap().is_some());
     }
 }

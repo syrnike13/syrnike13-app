@@ -174,12 +174,10 @@ pub async fn create_voice_state(
     channel: &UserVoiceChannel,
     user_id: &str,
     joined_at: Timestamp,
+    session_id: Option<&str>,
+    room_id: Option<&str>,
 ) -> Result<UserVoiceState> {
-    let unique_key = format!(
-        "{}:{}",
-        &user_id,
-        channel.server_id.as_ref().unwrap_or(&channel.id)
-    );
+    let unique_key = voice_state_unique_key(channel, user_id);
 
     let mut conn = get_connection().await?;
     let (existing_joined_at, is_publishing, is_receiving, screensharing, camera): (
@@ -225,7 +223,8 @@ pub async fn create_voice_state(
         },
     };
 
-    Pipeline::new()
+    let mut pipeline = Pipeline::new();
+    pipeline
         .sadd(format!("vc_members:{}", &channel.id), user_id)
         .sadd(format!("vc:{user_id}"), channel)
         .set(&unique_key, &channel.id)
@@ -247,7 +246,17 @@ pub async fn create_voice_state(
             format!("screensharing:{unique_key}"),
             voice_state.screensharing,
         )
-        .set(format!("camera:{unique_key}"), voice_state.camera)
+        .set(format!("camera:{unique_key}"), voice_state.camera);
+
+    if let Some(session_id) = session_id.filter(|session_id| !session_id.is_empty()) {
+        pipeline.set(voice_session_key(&unique_key), session_id);
+    }
+
+    if let Some(room_id) = room_id.filter(|room_id| !room_id.is_empty()) {
+        pipeline.set(voice_room_session_key(&channel.id), room_id);
+    }
+
+    pipeline
         .query_async::<_, ()>(&mut conn.into_inner())
         .await
         .to_internal_error()?;
@@ -256,11 +265,7 @@ pub async fn create_voice_state(
 }
 
 pub async fn delete_voice_state(channel: &UserVoiceChannel, user_id: &str) -> Result<()> {
-    let unique_key = format!(
-        "{}:{}",
-        &user_id,
-        channel.server_id.as_ref().unwrap_or(&channel.id)
-    );
+    let unique_key = voice_state_unique_key(channel, user_id);
 
     Pipeline::new()
         .srem(format!("vc_members:{}", &channel.id), user_id)
@@ -271,11 +276,25 @@ pub async fn delete_voice_state(channel: &UserVoiceChannel, user_id: &str) -> Re
             format!("is_receiving:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
+            voice_session_key(&unique_key),
             unique_key.clone(),
         ])
         .query_async(&mut get_connection().await?.into_inner())
         .await
         .to_internal_error()
+}
+
+pub async fn delete_voice_state_for_session(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    session_id: &str,
+) -> Result<bool> {
+    if !voice_session_matches(channel, user_id, session_id).await? {
+        return Ok(false);
+    }
+
+    delete_voice_state(channel, user_id).await?;
+    Ok(true)
 }
 
 pub async fn delete_channel_voice_state(
@@ -287,6 +306,7 @@ pub async fn delete_channel_voice_state(
     let mut pipeline = Pipeline::new();
     pipeline.del(format!("vc_members:{}", &channel.id));
     pipeline.del(format!("node:{}", &channel.id));
+    pipeline.del(voice_room_session_key(&channel.id));
 
     for user_id in user_ids {
         let unique_key = format!("{user_id}:{parent_id}");
@@ -297,6 +317,7 @@ pub async fn delete_channel_voice_state(
             format!("is_receiving:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
+            voice_session_key(&unique_key),
             unique_key.clone(),
         ]);
     }
@@ -305,6 +326,19 @@ pub async fn delete_channel_voice_state(
         .query_async(&mut get_connection().await?.into_inner())
         .await
         .to_internal_error()
+}
+
+pub async fn delete_channel_voice_state_for_room(
+    channel: &UserVoiceChannel,
+    user_ids: &[String],
+    room_id: &str,
+) -> Result<bool> {
+    if !voice_room_session_matches(channel, room_id).await? {
+        return Ok(false);
+    }
+
+    delete_channel_voice_state(channel, user_ids).await?;
+    Ok(true)
 }
 
 pub async fn update_voice_state_tracks(
@@ -318,6 +352,22 @@ pub async fn update_voice_state_tracks(
     update_voice_state(channel, user_id, &partial).await?;
 
     Ok(partial)
+}
+
+pub async fn update_voice_state_tracks_for_session(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    added: bool,
+    track: i32,
+    session_id: &str,
+) -> Result<Option<PartialUserVoiceState>> {
+    if !voice_session_matches(channel, user_id, session_id).await? {
+        return Ok(None);
+    }
+
+    update_voice_state_tracks(channel, user_id, added, track)
+        .await
+        .map(Some)
 }
 
 fn partial_voice_state_for_track(added: bool, track: i32) -> PartialUserVoiceState {
@@ -349,11 +399,7 @@ pub async fn update_voice_state(
     user_id: &str,
     partial: &PartialUserVoiceState,
 ) -> Result<()> {
-    let unique_key = format!(
-        "{}:{}",
-        &user_id,
-        channel.server_id.as_ref().unwrap_or(&channel.id)
-    );
+    let unique_key = voice_state_unique_key(channel, user_id);
 
     let mut pipeline = Pipeline::new();
 
@@ -392,11 +438,7 @@ pub async fn get_voice_state(
     channel: &UserVoiceChannel,
     user_id: &str,
 ) -> Result<Option<UserVoiceState>> {
-    let unique_key = format!(
-        "{}:{}",
-        &user_id,
-        channel.server_id.as_ref().unwrap_or(&channel.id)
-    );
+    let unique_key = voice_state_unique_key(channel, user_id);
 
     let (joined_at, is_publishing, is_receiving, screensharing, camera) = get_connection()
         .await?
@@ -435,6 +477,49 @@ pub async fn get_voice_state(
         })),
         _ => Ok(None),
     }
+}
+
+fn voice_state_unique_key(channel: &UserVoiceChannel, user_id: &str) -> String {
+    format!(
+        "{}:{}",
+        user_id,
+        channel.server_id.as_ref().unwrap_or(&channel.id)
+    )
+}
+
+fn voice_session_key(unique_key: &str) -> String {
+    format!("session:{unique_key}")
+}
+
+fn voice_room_session_key(channel_id: &str) -> String {
+    format!("room_session:{channel_id}")
+}
+
+async fn voice_session_matches(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    session_id: &str,
+) -> Result<bool> {
+    let unique_key = voice_state_unique_key(channel, user_id);
+    let current: Option<String> = get_connection()
+        .await?
+        .get(voice_session_key(&unique_key))
+        .await
+        .to_internal_error()?;
+
+    Ok(current
+        .as_deref()
+        .is_none_or(|current| current == session_id))
+}
+
+async fn voice_room_session_matches(channel: &UserVoiceChannel, room_id: &str) -> Result<bool> {
+    let current: Option<String> = get_connection()
+        .await?
+        .get(voice_room_session_key(&channel.id))
+        .await
+        .to_internal_error()?;
+
+    Ok(current.as_deref().is_none_or(|current| current == room_id))
 }
 
 pub async fn get_channel_voice_state(

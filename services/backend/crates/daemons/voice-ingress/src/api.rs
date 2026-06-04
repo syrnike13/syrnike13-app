@@ -1,19 +1,19 @@
 use livekit_api::{access_token::TokenVerifier, webhooks::WebhookReceiver};
 use livekit_protocol::TrackType;
+use rocket::{post, State};
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     events::client::EventV1,
     iso8601_timestamp::{Duration, Timestamp},
     util::reference::Reference,
     voice::{
-        create_voice_state, delete_channel_voice_state, delete_voice_state,
+        create_voice_state, delete_channel_voice_state_for_room, delete_voice_state_for_session,
         get_user_moved_from_voice, get_user_moved_to_voice, get_voice_channel_members,
-        update_voice_state_tracks, RoomMetadata, UserVoiceChannel, VoiceClient,
+        update_voice_state_tracks_for_session, RoomMetadata, UserVoiceChannel, VoiceClient,
     },
     Database, AMQP,
 };
 use syrnike_result::{Result, ToSyrnikeError};
-use rocket::{post, State};
-use rocket_empty::EmptyResponse;
 
 use crate::{guard::AuthHeader, webhook_body::WebhookBody};
 
@@ -89,7 +89,9 @@ pub async fn ingress(
         .to_internal_error()?;
 
     let channel_id = event.room.as_ref().map(|r| &r.name);
+    let room_id = event.room.as_ref().map(|r| &r.sid);
     let user_id = event.participant.as_ref().map(|r| &r.identity);
+    let participant_id = event.participant.as_ref().map(|r| &r.sid);
     let room_metadata = event.room.as_ref().map(|room| room.metadata.as_str());
 
     match event.event.as_str() {
@@ -97,13 +99,22 @@ pub async fn ingress(
         "participant_joined" => {
             let channel_id = channel_id.to_internal_error()?;
             let user_id = user_id.to_internal_error()?;
+            let participant_id = participant_id.to_internal_error()?;
+            let room_id = room_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             let joined_at = Timestamp::UNIX_EPOCH
                 .checked_add(Duration::seconds(event.created_at))
                 .unwrap();
 
-            let voice_state = create_voice_state(&channel, user_id, joined_at).await?;
+            let voice_state = create_voice_state(
+                &channel,
+                user_id,
+                joined_at,
+                Some(participant_id),
+                Some(room_id),
+            )
+            .await?;
 
             // Only publish one event when a user is moved from one channel to another.
             if let Some(moved_from) = get_user_moved_to_voice(channel_id, user_id).await? {
@@ -174,9 +185,15 @@ pub async fn ingress(
         "participant_left" => {
             let channel_id = channel_id.to_internal_error()?;
             let user_id = user_id.to_internal_error()?;
+            let participant_id = participant_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
-            delete_voice_state(&channel, user_id).await?;
+            if !delete_voice_state_for_session(&channel, user_id, participant_id).await? {
+                log::debug!(
+                    "Ignoring stale participant_left for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}."
+                );
+                return Ok(EmptyResponse);
+            }
 
             // Dont send leave event when a user is moved
             if get_user_moved_from_voice(channel_id, user_id)
@@ -239,6 +256,7 @@ pub async fn ingress(
         "track_published" | "track_unpublished" | "track_unmuted" | "track_muted" => {
             let channel_id = channel_id.to_internal_error()?;
             let user_id = user_id.to_internal_error()?;
+            let participant_id = participant_id.to_internal_error()?;
             let track = event.track.as_ref().to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
@@ -280,25 +298,34 @@ pub async fn ingress(
                     log::debug!("Removing user {user_id} from channel {channel_id} {event:?} due to forbidden track.");
 
                     let _ = voice_client.remove_user(node, user_id, channel_id).await;
-                    delete_voice_state(&channel, user_id).await?;
-                    EventV1::VoiceChannelLeave {
-                        id: channel_id.clone(),
-                        user: user_id.clone(),
+                    if delete_voice_state_for_session(&channel, user_id, participant_id).await? {
+                        EventV1::VoiceChannelLeave {
+                            id: channel_id.clone(),
+                            user: user_id.clone(),
+                        }
+                        .p(channel_id.clone())
+                        .await;
                     }
-                    .p(channel_id.clone())
-                    .await;
 
                     return Ok(EmptyResponse);
                 };
             };
 
-            let partial = update_voice_state_tracks(
+            let Some(partial) = update_voice_state_tracks_for_session(
                 &channel,
                 user_id,
                 event.event == "track_published" || event.event == "track_unmuted", // to avoid duplicating this entire case twice
                 track.source,
+                participant_id,
             )
-            .await?;
+            .await?
+            else {
+                log::debug!(
+                    "Ignoring stale {} for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}.",
+                    event.event
+                );
+                return Ok(EmptyResponse);
+            };
 
             EventV1::UserVoiceStateUpdate {
                 id: user_id.clone(),
@@ -310,12 +337,18 @@ pub async fn ingress(
         }
         "room_finished" => {
             let channel_id = channel_id.to_internal_error()?;
+            let room_id = room_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             let members = get_voice_channel_members(&channel)
                 .await?
                 .unwrap_or_default();
-            delete_channel_voice_state(&channel, &members).await?;
+            if !delete_channel_voice_state_for_room(&channel, &members, room_id).await? {
+                log::debug!(
+                    "Ignoring stale room_finished for channel {channel_id} from LiveKit room {room_id}."
+                );
+                return Ok(EmptyResponse);
+            }
 
             for user_id in members {
                 EventV1::VoiceChannelLeave {
@@ -344,8 +377,8 @@ mod tests {
 
     #[test]
     fn valid_room_metadata_is_parsed() {
-        let metadata = room_metadata_from_webhook(r#"{"server":"server-id"}"#)
-            .expect("room metadata");
+        let metadata =
+            room_metadata_from_webhook(r#"{"server":"server-id"}"#).expect("room metadata");
 
         assert_eq!(metadata.server.as_deref(), Some("server-id"));
     }
