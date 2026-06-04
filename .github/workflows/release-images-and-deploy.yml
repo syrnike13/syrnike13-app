@@ -63,6 +63,8 @@ jobs:
           platforms: linux/amd64
           build-args: |
             APP_VERSION=${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
           tags: |
             ghcr.io/${{ github.repository_owner }}/app-web:latest
             ghcr.io/${{ github.repository_owner }}/app-web:${{ needs.version.outputs.version }}
@@ -88,6 +90,8 @@ jobs:
           file: services/backend/Dockerfile
           push: true
           platforms: linux/amd64
+          cache-from: type=gha,scope=backend-base
+          cache-to: type=gha,mode=max,scope=backend-base
           tags: |
             ghcr.io/${{ github.repository_owner }}/app-base:latest
             ghcr.io/${{ github.repository_owner }}/app-base:${{ needs.version.outputs.version }}
@@ -137,6 +141,8 @@ jobs:
           platforms: linux/amd64
           build-args: |
             BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/app-base:${{ needs.version.outputs.version }}
+          cache-from: type=gha,scope=backend-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=backend-${{ matrix.image }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/app-${{ matrix.image }}:latest
             ghcr.io/${{ github.repository_owner }}/app-${{ matrix.image }}:${{ needs.version.outputs.version }}
@@ -163,6 +169,8 @@ jobs:
           file: services/livekit-server/Dockerfile
           push: true
           platforms: linux/amd64
+          cache-from: type=gha,scope=livekit
+          cache-to: type=gha,mode=max,scope=livekit
           tags: |
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:latest
             ghcr.io/${{ github.repository_owner }}/app-livekit-server:${{ needs.version.outputs.version }}
