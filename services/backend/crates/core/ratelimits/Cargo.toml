@@ -1,0 +1,34 @@
+[package]
+name = "syrnike-ratelimits"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Zomatree <me@zomatree.live>", "Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: Ratelimit Handler"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+[features]
+rocket = [
+    "dep:rocket",
+    "dep:revolt_rocket_okapi",
+    "syrnike-database/rocket-impl",
+]
+axum = ["dep:axum", "syrnike-database/axum-impl"]
+
+default = ["rocket", "axum"]
+
+[dependencies]
+syrnike-database = { workspace = true }
+syrnike-result = { workspace = true }
+syrnike-config = { workspace = true }
+
+rocket = { workspace = true, optional = true }
+revolt_rocket_okapi = { workspace = true, optional = true }
+
+axum = { workspace = true, optional = true, features = ["macros"] }
+
+serde = { workspace = true }
+authifier = { workspace = true }
+dashmap = { workspace = true }
+async-trait = { workspace = true }
+log = { workspace = true }

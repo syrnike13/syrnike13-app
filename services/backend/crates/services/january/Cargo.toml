@@ -1,0 +1,49 @@
+[package]
+name = "syrnike-january"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+# Utility
+mime = { workspace = true }
+regex = { workspace = true }
+tempfile = { workspace = true }
+lazy_static = { workspace = true }
+moka = { workspace = true, features = ["future"] }
+
+# Web scraping
+scraper = { workspace = true }
+encoding_rs = { workspace = true }
+
+# Serialisation
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async runtime
+async-recursion = { workspace = true }
+tokio = { workspace = true, features = [] }
+
+# Web requests
+reqwest = { workspace = true, features = ["json"] }
+pdk-ip-filter-lib = "1.8.0"
+url = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+# Core crates
+syrnike-config = { workspace = true }
+syrnike-models = { workspace = true }
+syrnike-result = { workspace = true, features = ["utoipa", "axum"] }
+syrnike-files = { workspace = true }
+
+# Axum / web server
+axum = { workspace = true }
+axum-extra = { workspace = true, features = ["typed-header"] }
+
+# OpenAPI & documentation generation
+utoipa-scalar = { workspace = true, features = ["axum"] }
+utoipa = { workspace = true, features = ["axum_extras", "ulid"] }

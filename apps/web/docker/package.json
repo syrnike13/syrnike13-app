@@ -1,0 +1,12 @@
+{
+  "name": "syrnike13-web-server",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=24"
+  }
+}

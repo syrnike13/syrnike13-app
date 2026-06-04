@@ -1,0 +1,64 @@
+[package]
+name = "syrnike-autumn"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+# ID generation
+ulid = { workspace = true }
+nanoid = { workspace = true }
+
+# Media processing
+webp = { workspace = true }
+sha2 = { workspace = true }
+jxl-oxide = { workspace = true }
+kamadak-exif = { workspace = true }
+# syrnike_little_exif = "0.5.1"
+image = { workspace = true }
+thumbhash = { workspace = true }
+lcms2 = { workspace = true }
+
+# File processing
+syrnike_clamav_client = { workspace = true }
+simdutf8 = { workspace = true, features = ["aarch64_neon"] }
+
+# Content type processing
+infer = { workspace = true }
+ffprobe = { workspace = true }
+imagesize = { workspace = true }
+
+# Utility
+lazy_static = { workspace = true }
+moka = { workspace = true, features = ["future"] }
+url-escape = { workspace = true }
+# Serialisation
+strum_macros = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Core crates
+syrnike-files = { workspace = true }
+syrnike-config = { workspace = true }
+syrnike-database = { workspace = true, features = ["axum-impl"] }
+syrnike-result = { workspace = true, features = ["utoipa", "axum"] }
+syrnike-ratelimits = { workspace = true, features = ["axum"] }
+
+# Axum / web server
+tempfile = { workspace = true }
+axum-macros = { workspace = true }
+axum_typed_multipart = { workspace = true }
+axum = { workspace = true, features = ["multipart"] }
+tower-http = { workspace = true, features = ["cors"] }
+
+# OpenAPI & documentation generation
+utoipa-scalar = { workspace = true, features = ["axum"] }
+utoipa = { workspace = true, features = ["axum_extras", "ulid"] }

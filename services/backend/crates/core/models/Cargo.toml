@@ -1,0 +1,46 @@
+[package]
+name = "syrnike-models"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: API Models"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+serde = ["dep:serde", "syrnike-permissions/serde", "indexmap/serde"]
+schemas = ["dep:schemars", "syrnike-permissions/schemas"]
+utoipa = ["dep:utoipa"]
+validator = ["dep:validator"]
+rocket = ["dep:rocket"]
+partials = ["dep:syrnike_optional_struct", "serde", "schemas", "utoipa"]
+
+default = ["serde", "partials", "rocket"]
+
+[dependencies]
+# Core
+syrnike-config = { workspace = true }
+syrnike-permissions = { workspace = true }
+
+# Utility
+regex = { workspace = true }
+indexmap = { workspace = true }
+once_cell = { workspace = true }
+num_enum = { workspace = true }
+
+# Rocket
+rocket = { workspace = true, optional = true }
+
+# Serialisation
+syrnike_optional_struct = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+iso8601-timestamp = { workspace = true, features = ["schema", "bson"] }
+
+# Spec Generation
+schemars = { workspace = true, features = ["indexmap2"], optional = true }
+utoipa = { workspace = true, optional = true }
+
+# Validation
+validator = { workspace = true, features = ["derive"], optional = true }

@@ -1,0 +1,40 @@
+[package]
+name = "syrnike-pushd"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[dependencies]
+syrnike-result = { workspace = true }
+syrnike-config = { workspace = true, features = ["report-macros", "anyhow"] }
+syrnike-database = { workspace = true }
+syrnike-models = { workspace = true, features = ["validator"] }
+syrnike-presence = { workspace = true, features = ["redis-is-patched"] }
+syrnike-parser = { workspace = true }
+
+anyhow = { workspace = true }
+
+lapin = { workspace = true }
+fcm_v1 = { workspace = true }
+web-push = { workspace = true }
+isahc = { workspace = true, features = ["json"], optional = true }
+syrnike_a2 = { workspace = true, features = ["ring"] }
+redis-kiss = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+ulid = { workspace = true }
+
+authifier = { workspace = true }
+
+log = { workspace = true }
+pretty_env_logger = { workspace = true }
+
+regex = { workspace = true }
+
+#serialization
+serde_json = { workspace = true }
+syrnike_optional_struct = { workspace = true }
+serde = { workspace = true }
+iso8601-timestamp = { workspace = true, features = ["serde", "bson"] }
+base64 = { workspace = true }

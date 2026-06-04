@@ -1,0 +1,37 @@
+[package]
+name = "syrnike-crond"
+version = "0.1.0"
+license = "AGPL-3.0-or-later"
+authors = ["Paul Makles <me@insrt.uk>"]
+edition = "2021"
+description = "syrnike13 Daemon Service: Timed data clean up tasks"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Utility
+log = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+
+# Redis
+redis-kiss = { workspace = true }
+
+# RabbitMQ
+lapin = { workspace = true }
+futures-lite = { workspace = true }
+
+# Processing
+serde_json = { workspace = true }
+syrnike_optional_struct = { workspace = true }
+serde = { workspace = true }
+iso8601-timestamp = { workspace = true, features = ["serde", "bson"] }
+
+# Core
+syrnike-database = { workspace = true }
+syrnike-result = { workspace = true }
+syrnike-config = { workspace = true }
+syrnike-files = { workspace = true }
+syrnike-permissions = { workspace = true }

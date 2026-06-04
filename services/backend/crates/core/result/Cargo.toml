@@ -1,0 +1,42 @@
+[package]
+name = "syrnike-result"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: Result and Error types"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+serde = ["dep:serde"]
+schemas = ["dep:schemars"]
+utoipa = ["dep:utoipa"]
+rocket = ["dep:rocket", "dep:serde_json"]
+axum = ["dep:axum", "dep:serde_json"]
+okapi = ["dep:revolt_rocket_okapi", "dep:revolt_okapi", "schemas"]
+sentry = ["dep:sentry"]
+
+default = ["serde", "sentry"]
+
+[dependencies]
+# Serialisation
+serde_json = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+
+# Spec Generation
+schemars = { workspace = true, optional = true }
+utoipa = { workspace = true, optional = true }
+
+# Rocket
+rocket = { workspace = true, optional = true }
+revolt_rocket_okapi = { workspace = true, optional = true }
+revolt_okapi = { workspace = true, optional = true }
+
+# utilities
+log = { workspace = true }
+# Axum
+axum = { workspace = true, optional = true }
+
+sentry = { workspace = true, optional = true }

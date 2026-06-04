@@ -1,0 +1,29 @@
+[package]
+name = "syrnike-presence"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: User Presence"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+redis-is-patched = []
+
+[dev-dependencies]
+# Async
+async-std = { workspace = true, features = ["attributes"] }
+
+# Config for loading Redis URI
+syrnike-config = { workspace = true }
+
+[dependencies]
+# Utility
+log = { workspace = true }
+rand = { workspace = true }
+once_cell = { workspace = true }
+
+# Redis
+redis-kiss = { workspace = true }

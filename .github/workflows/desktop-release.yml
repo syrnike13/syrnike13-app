@@ -1,0 +1,64 @@
+name: Desktop Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build desktop packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: desktop-macos
+          - os: windows-2022
+            artifact: desktop-windows
+          - os: ubuntu-24.04
+            artifact: desktop-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install Linux packaging deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm version:sync
+      - run: pnpm desktop:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: apps/desktop/release/**
+
+  github-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: release
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: desktop-artifacts
+      - id: version
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: syrnike13 v${{ steps.version.outputs.version }}
+          files: desktop-artifacts/**/*

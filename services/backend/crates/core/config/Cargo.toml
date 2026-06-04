@@ -1,0 +1,41 @@
+[package]
+name = "syrnike-config"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: Configuration"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+anyhow = ["dep:sentry-anyhow"]
+report-macros = ["syrnike-result"]
+sentry = ["dep:sentry"]
+test = ["async-std"]
+default = ["test", "sentry"]
+
+[dependencies]
+# Utility
+config = { workspace = true }
+cached = { workspace = true }
+once_cell = { workspace = true }
+
+# Serde
+serde = { workspace = true }
+
+# Async
+futures-locks = { workspace = true }
+async-std = { workspace = true, features = ["attributes"], optional = true }
+
+# Logging
+log = { workspace = true }
+pretty_env_logger = { workspace = true }
+
+# Sentry
+sentry = { workspace = true, optional = true }
+sentry-anyhow = { workspace = true, optional = true }
+
+# Core
+syrnike-result = { workspace = true, optional = true }

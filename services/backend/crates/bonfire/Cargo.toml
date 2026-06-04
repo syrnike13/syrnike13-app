@@ -1,0 +1,46 @@
+[package]
+name = "syrnike-bonfire"
+version = "0.1.0"
+license = "AGPL-3.0-or-later"
+edition = "2021"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# util
+log = { workspace = true }
+sentry = { workspace = true }
+lru = { workspace = true }
+ulid = { workspace = true }
+once_cell = { workspace = true }
+redis-kiss = { workspace = true }
+lru_time_cache = { workspace = true }
+async-channel = { workspace = true }
+
+# parsing
+querystring = { workspace = true }
+regex = { workspace = true }
+
+# serde
+bincode = { workspace = true }
+serde_json = { workspace = true }
+rmp-serde = { workspace = true }
+serde = { workspace = true }
+
+# async
+futures = { workspace = true }
+async-tungstenite = { workspace = true, features = ["async-std-runtime"] }
+async-std = { workspace = true }
+
+# core
+authifier = { workspace = true }
+syrnike-result = { workspace = true }
+syrnike-models = { workspace = true }
+syrnike-config = { workspace = true }
+syrnike-database = { workspace = true, features = ["voice"] }
+syrnike-permissions = { workspace = true }
+syrnike-presence = { workspace = true, features = ["redis-is-patched"] }
+
+# redis
+fred = { workspace = true, features = ["subscriber-client"] }

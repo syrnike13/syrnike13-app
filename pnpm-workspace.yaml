@@ -1,0 +1,16 @@
+packages:
+  - apps/web
+  - apps/desktop
+  - packages/api-types
+  - packages/platform
+
+allowBuilds:
+  "@swc/core": true
+  electron: true
+  esbuild: true
+
+nodeLinker: isolated
+strictPeerDependencies: false
+
+overrides:
+  prettier: ^3.8.1

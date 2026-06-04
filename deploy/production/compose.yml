@@ -1,0 +1,234 @@
+name: syrnike13
+
+services:
+  # MongoDB: Database
+  database:
+    image: docker.io/mongo
+    restart: always
+    volumes:
+      - ./data/db:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh localhost:27017/test --quiet --eval 'db.runCommand({ ping: 1 }).ok' >/dev/null"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Redis: Event message broker & KV store
+  redis:
+    image: docker.io/eqalpha/keydb
+    restart: always
+
+  # RabbitMQ: Internal message broker
+  rabbit:
+    image: docker.io/rabbitmq:4
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbituser
+      RABBITMQ_DEFAULT_PASS: rabbitpass
+    volumes:
+      - ./data/rabbit:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # MinIO: S3-compatible storage server
+  minio:
+    image: docker.io/minio/minio
+    command: server /data
+    volumes:
+      - ./data/minio:/data
+    environment:
+      MINIO_ROOT_USER: minioautumn
+      MINIO_ROOT_PASSWORD: minioautumn
+      MINIO_DOMAIN: minio
+    networks:
+      default:
+        aliases:
+          - syrnike-uploads.minio
+          # legacy support:
+          - attachments.minio
+          - avatars.minio
+          - backgrounds.minio
+          - icons.minio
+          - banners.minio
+          - emojis.minio
+    restart: always
+
+  # Caddy: Web server
+  caddy:
+    image: docker.io/caddy
+    restart: always
+    env_file: .env.web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./data/caddy-data:/data
+      - ./data/caddy-config:/config
+    networks:
+      default:
+        aliases:
+         - "${SYRNIKE_DOMAIN:-caddy}"
+
+  # API server
+  api:
+    image: ghcr.io/syrnike13/api:latest
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  # Events service
+  events:
+    image: ghcr.io/syrnike13/events:latest
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  # File server
+  autumn:
+    image: ghcr.io/syrnike13/file-server:latest
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      createbuckets:
+        condition: service_started
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  # Metadata and image proxy
+  january:
+    image: ghcr.io/syrnike13/proxy:latest
+    env_file: secrets.env
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  # Tenor proxy
+  gifbox:
+    image: ghcr.io/syrnike13/gifbox:latest
+    env_file: secrets.env
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  # Regular task daemon
+  crond:
+    image: ghcr.io/syrnike13/crond:latest
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  # Push notification daemon
+  pushd:
+    image: ghcr.io/syrnike13/pushd:latest
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+   # Voice ingress daemon
+  voice-ingress:
+    image: ghcr.io/syrnike13/voice-ingress:latest
+    env_file: secrets.env
+    restart: always
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+
+  livekit:
+    image: ghcr.io/syrnike13/livekit-server:latest
+    depends_on:
+      redis:
+        condition: service_started
+    command: --config /etc/livekit.yml
+    ports:
+      - "7881:7881"
+      - "3478:3478/udp"
+      - "30000-30100:30000-30100/udp"
+      - "50000-50100:50000-50100/udp"
+    restart: always
+    volumes:
+      - type: bind
+        source: ./livekit.yml
+        target: /etc/livekit.yml
+
+  # Create buckets for minio.
+  createbuckets:
+    image: docker.io/minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      while ! /usr/bin/mc ready minio; do
+        /usr/bin/mc alias set minio http://minio:9000 minioautumn minioautumn;
+        echo 'Waiting minio...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/syrnike-uploads;
+      exit 0;
+      "
+
+  # Web App
+  web:
+    image: ghcr.io/syrnike13/for-web:latest
+    restart: always
+    env_file: .env.web

@@ -1,0 +1,40 @@
+[package]
+name = "syrnike-permissions"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: Permission Logic"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+bson = ["dep:bson"]
+serde = ["dep:serde"]
+schemas = ["dep:schemars"]
+try-from-primitive = ["dep:num_enum"]
+
+
+[dev-dependencies]
+# Async
+async-std = { workspace = true, features = ["attributes"] }
+
+[dependencies]
+# Core
+syrnike-result = { workspace = true }
+
+# Utility
+auto_ops = { workspace = true }
+once_cell = { workspace = true }
+num_enum = { workspace = true, optional = true }
+
+# Async
+async-trait = { workspace = true }
+
+# Serialisation
+serde = { workspace = true, optional = true }
+bson = { workspace = true, optional = true }
+
+# Spec Generation
+schemars = { workspace = true, optional = true }

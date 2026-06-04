@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+dist/
+out/
+release/
+target/
+.turbo/
+.env
+.env.*
+!.env.example
+secrets.env
+Revolt.toml
+livekit.yml
+data/
+data*/

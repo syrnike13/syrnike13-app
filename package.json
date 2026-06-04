@@ -1,0 +1,25 @@
+{
+  "name": "syrnike13-app",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.3.0+sha512.2c403d6594527287672b1f7056343a1f7c3634036a67ffabfcc2b3d7595d843768f8787148d1b57cf7956c90606bbd192857c363af19e96d2d0ec9ec5741d215",
+  "scripts": {
+    "version:sync": "node tooling/scripts/sync-version.mjs",
+    "api-types:build": "pnpm --filter @syrnike13/api-types build",
+    "api-types:generate": "pnpm --filter @syrnike13/api-types generate",
+    "dev": "pnpm web:dev",
+    "web:dev": "pnpm --filter @syrnike13/web dev",
+    "web:build": "pnpm version:sync && pnpm --filter @syrnike13/web build",
+    "web:test": "pnpm --filter @syrnike13/web test",
+    "desktop:dev": "pnpm --filter @syrnike13/desktop dev",
+    "desktop:build": "pnpm version:sync && pnpm --filter @syrnike13/desktop build",
+    "desktop:package": "pnpm version:sync && pnpm --filter @syrnike13/desktop package",
+    "desktop:typecheck": "pnpm --filter @syrnike13/desktop typecheck",
+    "platform:build": "pnpm --filter @syrnike13/platform build",
+    "backend:check": "cargo check --manifest-path services/backend/Cargo.toml --workspace",
+    "livekit:check": "cd services/livekit-server && go test ./..."
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

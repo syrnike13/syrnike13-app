@@ -1,0 +1,93 @@
+[package]
+name = "syrnike-delta"
+version = "0.1.0"
+license = "AGPL-3.0-or-later"
+authors = ["Paul Makles <paulmakles@gmail.com>"]
+edition = "2018"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Test
+rand = { workspace = true }
+redis-kiss = { workspace = true }
+
+# Utility
+lru = { workspace = true }
+url = { workspace = true }
+log = { workspace = true }
+dashmap = { workspace = true }
+linkify = { workspace = true }
+once_cell = { workspace = true }
+
+# Lang. Utilities
+regex = { workspace = true }
+num_enum = { workspace = true }
+impl_ops = { workspace = true }
+bitfield = { workspace = true }
+
+# ID / key generation
+ulid = { workspace = true }
+nanoid = { workspace = true }
+
+# serde
+serde_json = { workspace = true }
+serde = { workspace = true }
+validator = { workspace = true, features = ["derive"] }
+iso8601-timestamp = { workspace = true }
+
+# async
+futures = { workspace = true }
+chrono = { workspace = true }
+async-channel = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+async-std = { workspace = true, features = [
+    "tokio1",
+    "tokio02",
+    "attributes",
+] }
+
+# internal util
+lettre = { workspace = true }
+
+# web
+
+rocket = { workspace = true, features = ["json"] }
+rocket_cors = { workspace = true }
+rocket_empty = { workspace = true, features = ["schema"] }
+rocket_authifier = { workspace = true }
+rocket_prometheus = { workspace = true }
+
+# spec generation
+schemars = { workspace = true }
+revolt_rocket_okapi = { workspace = true, features = ["swagger"] }
+revolt_okapi = { workspace = true }
+
+# rabbit
+lapin = { workspace = true, features = ["tokio"] }
+
+# core
+authifier = { workspace = true }
+syrnike-config = { workspace = true }
+syrnike-database = { workspace = true, features = [
+    "rocket-impl",
+    "redis-is-patched",
+    "voice",
+] }
+syrnike-models = { workspace = true, features = [
+    "schemas",
+    "validator",
+    "rocket",
+] }
+syrnike-presence = { workspace = true }
+syrnike-result = { workspace = true, features = ["rocket", "okapi"] }
+syrnike-permissions = { workspace = true, features = ["schemas"] }
+syrnike-ratelimits = { workspace = true, features = ["rocket"] }
+
+# voice
+livekit-api = { workspace = true }
+livekit-protocol = { workspace = true }
+
+[build-dependencies]
+vergen = { workspace = true }

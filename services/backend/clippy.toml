@@ -1,0 +1,28 @@
+disallowed-methods = [
+    # Shouldn't need to access these directly
+    "syrnike_database::models::bots::model::Bot::remove_field",
+    "syrnike_database::models::messages::model::Message::attach_sendable_embed",
+    "syrnike_database::models::users::model::User::set_relationship",
+    "syrnike_database::models::users::model::User::apply_relationship",
+
+    # Prefer to use Object::create()
+    "syrnike_database::models::bots::ops::AbstractBots::insert_bot",
+    "syrnike_database::models::channel_invites::ops::AbstractChannelInvites::insert_invite",
+    "syrnike_database::models::channel_unreads::ops::AbstractChannelUnreads::acknowledge_message",
+    "syrnike_database::models::channel_webhooks::ops::AbstractWebhooks::insert_webhook",
+    "syrnike_database::models::channels::ops::AbstractChannels::insert_channel",
+    "syrnike_database::models::emojis::ops::AbstractEmojis::insert_emoji",
+    "syrnike_database::models::files::ops::AbstractAttachments::insert_attachment",
+    "syrnike_database::models::messages::ops::AbstractMessages::insert_message",
+    "syrnike_database::models::ratelimit_events::ops::AbstractRatelimitEvents::insert_ratelimit_event",
+    "syrnike_database::models::server_bans::ops::AbstractServerBans::insert_ban",
+    "syrnike_database::models::server_members::ops::AbstractServerMembers::insert_member",
+    "syrnike_database::models::servers::ops::AbstractServers::insert_server",
+    "syrnike_database::models::users::ops::AbstractUsers::insert_user",
+
+    # Prefer to use Object::update(&self)
+    "syrnike_database::models::bots::ops::AbstractBots::update_bot",
+
+    # Prefer to use Object::delete(&self)
+    "syrnike_database::models::bots::ops::AbstractBots::delete_bot",
+]

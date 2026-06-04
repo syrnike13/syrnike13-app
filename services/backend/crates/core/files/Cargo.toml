@@ -1,0 +1,48 @@
+[package]
+name = "syrnike-files"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+authors = ["Paul Makles <me@insrt.uk>"]
+description = "syrnike13 Backend: S3 and encryption subroutines"
+repository = "https://github.com/syrnike13/syrnike13-app"
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+tracing = { workspace = true }
+
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+ffprobe = { workspace = true }
+imagesize = { workspace = true }
+tempfile = { workspace = true }
+
+base64 = { workspace = true }
+aes-gcm = { workspace = true }
+typenum = { workspace = true }
+
+aws-config = { workspace = true }
+aws-sdk-s3 = { workspace = true, features = ["behavior-version-latest"] }
+
+syrnike-config = { workspace = true, features = [
+    "report-macros",
+] }
+syrnike-result = { workspace = true }
+
+# image processing
+jxl-oxide = { workspace = true, features = ["image"] }
+image = { workspace = true }
+
+# svg rendering
+usvg = { workspace = true }
+resvg = { workspace = true }
+tiny-skia = { workspace = true }
+
+# encoding
+webp = { workspace = true }
+
+[dev-dependencies]
+uuid = { workspace = true, features = ["v4"] }

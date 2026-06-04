@@ -1,0 +1,70 @@
+# ⚠️ This configuration is intended for development environment.
+# If you'd like to override anything, create a Syrnike.overrides.toml
+
+[database]
+# MongoDB connection URL
+# Defaults to the container name specified in self-hosted
+mongodb = "mongodb://127.0.0.1:27017"
+# Redis connection URL
+# Defaults to the container name specified in self-hosted
+redis = "redis://127.0.0.1:6379/"
+
+[rabbit]
+host = "127.0.0.1"
+
+[hosts]
+# Web locations of various services
+# Defaults assume all services are reverse-proxied
+# See https://github.com/syrnike13/syrnike13-app
+#
+# Remember to change these to https/wss where appropriate in production!
+app = "http://localhost:14701"
+api = "http://localhost:14702"
+events = "ws://localhost:14703"
+autumn = "http://localhost:14704"
+january = "http://localhost:14705"
+voso_legacy = ""
+voso_legacy_ws = ""
+
+# Public urls for livekit nodes
+# each entry here should have a corresponding entry under `api.livekit.nodes`
+[hosts.livekit]
+worldwide = "ws://localhost:14706"
+
+[api]
+
+[api.smtp]
+# Email server configuration for verification
+# Defaults to no email verification (host field is empty)
+host = "localhost"
+username = "smtp"
+password = "smtp"
+from_address = "development@syrnike13.ru"
+reply_to = "support@syrnike13.ru"
+port = 14025
+use_tls = false
+use_starttls = false
+
+[api.livekit]
+
+# Config for livekit nodes
+# Make sure to change the secret when deploying
+# The key and secret should match the values livekit is using
+[api.livekit.nodes.worldwide]
+url = "http://livekit"
+lat = 0.0
+lon = 0.0
+key = "worldwide"
+secret = "ZjCofRlfm6GGtjlifmNpCDkcQbEIIVC0"
+
+[files.s3]
+# S3 protocol endpoint
+endpoint = "http://127.0.0.1:14009"
+# S3 region name
+region = "minio"
+# S3 protocol key ID
+access_key_id = "minioautumn"
+# S3 protocol access key
+secret_access_key = "minioautumn"
+# Bucket to upload to by default
+default_bucket = "syrnike-uploads"

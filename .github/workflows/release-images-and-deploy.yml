@@ -1,0 +1,251 @@
+name: Release Images And Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy production after publishing images.
+        required: false
+        type: boolean
+        default: true
+      services:
+        description: Space-separated compose services to deploy. Leave empty for all app services.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-syrnike13-production
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Read release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha_tag: ${{ steps.version.outputs.sha_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+  web:
+    name: Publish web image
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=${{ needs.version.outputs.version }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/for-web:latest
+            ghcr.io/${{ github.repository_owner }}/for-web:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/for-web:${{ needs.version.outputs.sha_tag }}
+
+  backend-base:
+    name: Publish backend base image
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync release version
+        run: node tooling/scripts/sync-version.mjs
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/backend
+          file: services/backend/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/base:latest
+            ghcr.io/${{ github.repository_owner }}/base:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/base:${{ needs.version.outputs.sha_tag }}
+
+  backend-services:
+    name: Publish backend service images
+    runs-on: ubuntu-latest
+    needs:
+      - version
+      - backend-base
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: crates/delta/Dockerfile
+          - image: events
+            dockerfile: crates/bonfire/Dockerfile
+          - image: file-server
+            dockerfile: crates/services/autumn/Dockerfile
+          - image: proxy
+            dockerfile: crates/services/january/Dockerfile
+          - image: gifbox
+            dockerfile: crates/services/gifbox/Dockerfile
+          - image: crond
+            dockerfile: crates/daemons/crond/Dockerfile
+          - image: pushd
+            dockerfile: crates/daemons/pushd/Dockerfile
+          - image: voice-ingress
+            dockerfile: crates/daemons/voice-ingress/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync release version
+        run: node tooling/scripts/sync-version.mjs
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/backend
+          file: services/backend/${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/base:${{ needs.version.outputs.version }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ needs.version.outputs.sha_tag }}
+
+  livekit:
+    name: Publish LiveKit image
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/livekit-server/go.mod
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/livekit-server
+          file: services/livekit-server/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/livekit-server:latest
+            ghcr.io/${{ github.repository_owner }}/livekit-server:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/livekit-server:${{ needs.version.outputs.sha_tag }}
+
+  deploy:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    needs:
+      - version
+      - web
+      - backend-services
+      - livekit
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    if: ${{ github.event_name == 'push' || inputs.deploy == true }}
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
+      SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
+      SYRNIKE_REVERSE_PROXY: ${{ vars.SYRNIKE_REVERSE_PROXY || 'false' }}
+      SYRNIKE_VIDEO_ENABLED: ${{ vars.SYRNIKE_VIDEO_ENABLED || 'true' }}
+      DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
+      APP_SERVICES: web api events autumn january gifbox crond pushd voice-ingress livekit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PATH"
+          test -n "$SYRNIKE_DOMAIN"
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Upload production files
+        run: |
+          set -euo pipefail
+          tar -C deploy/production \
+            --exclude='data*' \
+            --exclude='.env' \
+            --exclude='.env.web' \
+            --exclude='secrets.env' \
+            --exclude='secrets.env.old' \
+            --exclude='Revolt.toml' \
+            --exclude='Revolt.toml.old' \
+            --exclude='livekit.yml' \
+            --exclude='livekit.yml.old' \
+            --exclude='compose.override.yml' \
+            --exclude='compose.override.yml.old' \
+            -czf /tmp/syrnike13-production.tar.gz .
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+          scp -i ~/.ssh/deploy_key /tmp/syrnike13-production.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:/tmp/syrnike13-production.tar.gz"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "tar -xzf /tmp/syrnike13-production.tar.gz -C '$DEPLOY_PATH' && rm /tmp/syrnike13-production.tar.gz && chmod +x '$DEPLOY_PATH/scripts/deploy-on-server.sh' '$DEPLOY_PATH/generate_config.sh'"
+      - name: Select services
+        id: services
+        env:
+          REQUESTED_SERVICES: ${{ inputs.services || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$REQUESTED_SERVICES" ]; then
+            echo "services=$REQUESTED_SERVICES" >> "$GITHUB_OUTPUT"
+          else
+            echo "services=$APP_SERVICES" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run deploy
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' && ./scripts/deploy-on-server.sh"
+      - name: Verify API
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
