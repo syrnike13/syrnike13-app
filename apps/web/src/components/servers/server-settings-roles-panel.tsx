@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Member, Role, Server } from '@syrnike13/api-types'
 import {
   DndContext,
@@ -17,17 +17,28 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { PlusIcon } from 'lucide-react'
+import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ServerSettingsRoleEditor } from '#/components/servers/server-settings-role-editor'
+import {
+  useDraftRegistration,
+  type DraftController,
+} from '#/components/settings/draft-controller-context'
 import { Button } from '#/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '#/components/ui/context-menu'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { Switch } from '#/components/ui/switch'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   createServerRole,
+  deleteServerRole,
   editServerRoleRanks,
   setDefaultServerPermissions,
 } from '#/features/api/servers-api'
@@ -51,6 +62,15 @@ import { cn } from '#/lib/utils'
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
 const NEW_ROLE_NAME = 'Новая роль'
 
+const ROLE_SIDEBAR_ROW_BASE =
+  'flex h-9 w-full items-center gap-2 rounded-md border px-3 text-left text-sm font-medium transition-colors'
+
+function roleSidebarRowStateClass(selected: boolean) {
+  return selected
+    ? 'border-primary/40 bg-accent text-foreground'
+    : 'border-border text-foreground hover:bg-muted/40'
+}
+
 type ServerSettingsRolesPanelProps = {
   serverId: string
 }
@@ -71,12 +91,16 @@ function SortableRoleListItem({
   role,
   selected,
   canDrag,
+  canDelete,
   onSelect,
+  onDelete,
 }: {
   role: Role
   selected: boolean
   canDrag: boolean
+  canDelete: boolean
   onSelect: () => void
+  onDelete: () => void
 }) {
   const {
     attributes,
@@ -96,15 +120,15 @@ function SortableRoleListItem({
     zIndex: isDragging ? 1 : undefined,
   }
 
-  return (
+  const row = (
     <div
       ref={setNodeRef}
       style={style}
       role="button"
       tabIndex={0}
       className={cn(
-        'flex items-center gap-2 rounded-md border px-2 py-1.5 text-left text-sm font-medium',
-        selected ? 'border-primary/40 bg-accent' : 'border-border',
+        ROLE_SIDEBAR_ROW_BASE,
+        roleSidebarRowStateClass(selected),
         canDrag && 'cursor-grab touch-none active:cursor-grabbing',
         isDragging && 'opacity-80 shadow-md',
       )}
@@ -129,6 +153,31 @@ function SortableRoleListItem({
       </span>
     </div>
   )
+
+  if (!canDelete) {
+    return row
+  }
+
+  return (
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (open) onSelect()
+      }}
+    >
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="z-[60] w-48">
+        <ContextMenuItem
+          variant="destructive"
+          onSelect={() => {
+            onDelete()
+          }}
+        >
+          <Trash2Icon className="size-4" />
+          Удалить роль
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
 }
 
 function SortableRolesList({
@@ -141,6 +190,7 @@ function SortableRolesList({
   canReorder,
   onSelect,
   onReorder,
+  onDeleteRole,
 }: {
   roles: Role[]
   server: Server
@@ -151,6 +201,7 @@ function SortableRolesList({
   canReorder: boolean
   onSelect: (roleId: string) => void
   onReorder: (reordered: Role[]) => void
+  onDeleteRole: (role: Role) => void
 }) {
   const didDragRef = useRef(false)
 
@@ -198,6 +249,7 @@ function SortableRolesList({
               canReorder &&
               canManageRole(server, member, userId, roleRank) &&
               !reordering
+            const canDelete = canManageRole(server, member, userId, roleRank)
 
             return (
               <SortableRoleListItem
@@ -205,7 +257,9 @@ function SortableRolesList({
                 role={role}
                 selected={selectedId === role._id}
                 canDrag={canDrag}
+                canDelete={canDelete}
                 onSelect={() => selectRole(role._id)}
+                onDelete={() => onDeleteRole(role)}
               />
             )
           })}
@@ -233,21 +287,44 @@ function DefaultPermissionsEditor({
     setPermissions(server.default_permissions)
   }, [server.default_permissions])
 
-  async function save() {
+  const isDirty = canEdit && permissions !== server.default_permissions
+
+  const resetDraft = useCallback((): boolean => {
+    setPermissions(server.default_permissions)
+    return true
+  }, [server.default_permissions])
+
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!isDirty) return true
+
     setSaving(true)
     try {
       const updated = await setDefaultServerPermissions(token, serverId, {
         permissions,
       })
       syncStore.upsertServer(updated)
+      return true
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось сохранить права',
       )
+      return false
     } finally {
       setSaving(false)
     }
-  }
+  }, [isDirty, permissions, serverId, token])
+
+  const draftRegistration = useMemo(
+    (): DraftController => ({
+      isDirty,
+      isSaving: saving,
+      save,
+      reset: resetDraft,
+    }),
+    [isDirty, resetDraft, save, saving],
+  )
+
+  useDraftRegistration(draftRegistration)
 
   return (
     <div className="space-y-6">
@@ -296,12 +373,6 @@ function DefaultPermissionsEditor({
           </section>
         ))}
       </div>
-
-      {canEdit ? (
-        <Button type="button" disabled={saving} onClick={() => void save()}>
-          Сохранить права
-        </Button>
-      ) : null}
     </div>
   )
 }
@@ -385,6 +456,33 @@ export function ServerSettingsRolesPanel({
     }
   }
 
+  async function removeRole(role: Role) {
+    if (!token || !userId) return
+    if (!canManageRole(server, member, userId, role.rank ?? 0)) return
+
+    if (
+      !window.confirm(`Удалить роль «${role.name}»? Это действие необратимо.`)
+    ) {
+      return
+    }
+
+    try {
+      await deleteServerRole(token, serverId, role._id)
+      const currentServer = syncStore.getState().servers[serverId]
+      if (currentServer?.roles) {
+        const { [role._id]: _, ...remainingRoles } = currentServer.roles
+        syncStore.upsertServer({ ...currentServer, roles: remainingRoles })
+      }
+      if (effectiveSelectedId === role._id) {
+        setSelectedId(DEFAULT_PERMISSIONS_ID)
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось удалить роль',
+      )
+    }
+  }
+
   async function persistRoleOrder(reordered: Role[]) {
     if (!token || !canReorderRoles) return
 
@@ -408,71 +506,80 @@ export function ServerSettingsRolesPanel({
   }
 
   return (
-    <div className="grid min-h-[28rem] gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <div className="space-y-2">
-          {canCreateRoles ? (
-            <Button
-              type="button"
-              size="sm"
-              className="w-full"
-              disabled={creating || reordering}
-              onClick={() => void createRole()}
-            >
-              <PlusIcon className="size-4" />
-              Создать роль
-            </Button>
-          ) : null}
-          <button
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:grid lg:h-full lg:min-h-0 lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-1 lg:items-stretch">
+      <aside className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
+        {canCreateRoles ? (
+          <Button
             type="button"
-            className={cn(
-              'w-full rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors',
-              effectiveSelectedId === DEFAULT_PERMISSIONS_ID
-                ? 'border-primary/40 bg-accent'
-                : 'border-border hover:bg-muted/40',
-            )}
-            onClick={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
+            className="h-9 w-full shrink-0"
+            disabled={creating || reordering}
+            onClick={() => void createRole()}
           >
-            @everyone
-          </button>
+            <PlusIcon className="size-4" />
+            Создать роль
+          </Button>
+        ) : null}
 
-          {roles.length === 0 ? (
-            <p className="px-1 text-sm text-muted-foreground">Нет ролей</p>
-          ) : (
-            <SortableRolesList
-              roles={roles}
-              server={server}
-              member={member}
-              userId={userId}
-              selectedId={effectiveSelectedId}
-              reordering={reordering}
-              canReorder={canReorderRoles}
-              onSelect={setSelectedId}
-              onReorder={(reordered) => void persistRoleOrder(reordered)}
-            />
-          )}
-        </div>
+        <div className="scrollbar-overlay min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-24 max-lg:max-h-56">
+          <div className="space-y-2 pr-2">
+            <button
+              type="button"
+              className={cn(
+                ROLE_SIDEBAR_ROW_BASE,
+                roleSidebarRowStateClass(
+                  effectiveSelectedId === DEFAULT_PERMISSIONS_ID,
+                ),
+              )}
+              onClick={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
+            >
+              @everyone
+            </button>
 
-        <div className="min-w-0">
-          {effectiveSelectedId === DEFAULT_PERMISSIONS_ID || !selectedRole ? (
-            <DefaultPermissionsEditor
-              server={server}
-              serverId={serverId}
-              token={token}
-              canEdit={canEditDefaultPermissions}
-            />
-          ) : (
-            <ServerSettingsRoleEditor
-              key={selectedRole._id}
-              server={server}
-              serverId={serverId}
-              role={selectedRole}
-              token={token}
-              userId={userId}
-              member={member}
-              onDeleted={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
-            />
-          )}
+            {roles.length === 0 ? (
+              <p className="px-1 text-sm text-muted-foreground">Нет ролей</p>
+            ) : (
+              <SortableRolesList
+                roles={roles}
+                server={server}
+                member={member}
+                userId={userId}
+                selectedId={effectiveSelectedId}
+                reordering={reordering}
+                canReorder={canReorderRoles}
+                onSelect={setSelectedId}
+                onReorder={(reordered) => void persistRoleOrder(reordered)}
+                onDeleteRole={(role) => void removeRole(role)}
+              />
+            )}
+          </div>
         </div>
+      </aside>
+
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="scrollbar-overlay min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-24">
+          <div className="min-w-0 pr-2">
+            {effectiveSelectedId === DEFAULT_PERMISSIONS_ID || !selectedRole ? (
+              <DefaultPermissionsEditor
+                server={server}
+                serverId={serverId}
+                token={token}
+                canEdit={canEditDefaultPermissions}
+              />
+            ) : (
+              <ServerSettingsRoleEditor
+                key={selectedRole._id}
+                server={server}
+                serverId={serverId}
+                role={selectedRole}
+                token={token}
+                userId={userId}
+                member={member}
+                onDeleted={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
+              />
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
