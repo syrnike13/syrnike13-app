@@ -8,7 +8,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '#/components/ui/dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -18,9 +17,16 @@ import {
 import { deleteInvite } from '#/features/api/invites-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
+import {
+  calculateServerPermissions,
+  ChannelPermission,
+  hasChannelPermission,
+} from '#/lib/permissions'
 
 type ServerInviteDialogProps = {
   serverId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
 function inviteLink(code: string) {
@@ -28,10 +34,21 @@ function inviteLink(code: string) {
   return `${window.location.origin}/invite/${code}`
 }
 
-export function ServerInviteDialog({ serverId }: ServerInviteDialogProps) {
+export function ServerInviteDialog({
+  serverId,
+  open,
+  onOpenChange,
+}: ServerInviteDialogProps) {
   const auth = useAuth()
   const token = auth.session?.token
-  const [open, setOpen] = useState(false)
+  const server = useSyncStore((s) => s.servers[serverId])
+  const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
+  const canManageServer = server
+    ? hasChannelPermission(
+        calculateServerPermissions(server, member, auth.user?._id),
+        ChannelPermission.ManageServer,
+      )
+    : false
   const [loading, setLoading] = useState(false)
   const [codes, setCodes] = useState<string[]>([])
 
@@ -43,7 +60,7 @@ export function ServerInviteDialog({ serverId }: ServerInviteDialogProps) {
   const defaultChannelId = textChannels[0]?._id
 
   async function loadInvites() {
-    if (!token) return
+    if (!token || !canManageServer) return
     setLoading(true)
     try {
       const invites = await fetchServerInvites(token, serverId)
@@ -89,22 +106,10 @@ export function ServerInviteDialog({ serverId }: ServerInviteDialogProps) {
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        setOpen(next)
+        onOpenChange(next)
         if (next) void loadInvites()
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          title="Приглашения"
-        >
-          <Link2Icon className="size-4" />
-          <span className="sr-only">Приглашения</span>
-        </Button>
-      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Приглашения на сервер</DialogTitle>
@@ -117,7 +122,11 @@ export function ServerInviteDialog({ serverId }: ServerInviteDialogProps) {
           >
             Создать и скопировать ссылку
           </Button>
-          {codes.length === 0 ? (
+          {!canManageServer ? (
+            <p className="text-sm text-muted-foreground">
+              Список приглашений доступен только администраторам сервера.
+            </p>
+          ) : codes.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {loading ? 'Загрузка…' : 'Приглашений пока нет'}
             </p>

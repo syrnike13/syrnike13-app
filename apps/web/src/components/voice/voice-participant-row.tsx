@@ -35,8 +35,8 @@ export function VoiceParticipantRow({
   const deafened = participant.server_deafened || !participant.is_receiving
 
   const rowClassName = cn(
-    'flex min-w-0 items-center gap-2 rounded-md py-1',
-    compact ? 'text-xs' : 'px-2 text-sm',
+    'flex min-w-0 items-center gap-2 rounded-md px-2 py-1',
+    compact ? 'text-xs' : 'text-sm',
     voiceElsewhere && 'text-muted-foreground',
     speaking && !voiceElsewhere && 'bg-primary/10 text-foreground',
   )

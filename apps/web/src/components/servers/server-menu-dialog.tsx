@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LogOutIcon, Settings2Icon, Trash2Icon } from 'lucide-react'
+import { LogOutIcon, Trash2Icon } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import type { Emoji } from '@syrnike13/api-types'
 import { toast } from 'sonner'
@@ -12,7 +12,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -33,6 +32,8 @@ import { cn } from '#/lib/utils'
 type ServerMenuDialogProps = {
   serverId: string
   serverName: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
 type ServerSettingsTab = 'general' | 'emoji' | 'roles'
@@ -43,10 +44,14 @@ const TAB_LABELS: Record<ServerSettingsTab, string> = {
   roles: 'Роли',
 }
 
-export function ServerMenuDialog({ serverId, serverName }: ServerMenuDialogProps) {
+export function ServerMenuDialog({
+  serverId,
+  serverName,
+  open,
+  onOpenChange,
+}: ServerMenuDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<ServerSettingsTab>('general')
   const server = useSyncStore((s) => s.servers[serverId])
   const [name, setName] = useState(serverName)
@@ -149,7 +154,7 @@ export function ServerMenuDialog({ serverId, serverName }: ServerMenuDialogProps
       await leaveServer(token, serverId)
       syncStore.removeServer(serverId)
       syncStore.setSelectedServerId(null)
-      setOpen(false)
+      onOpenChange(false)
       toast.success('Вы покинули сервер')
       await navigate({ to: '/app', search: { tab: 'online' } })
     } catch (error) {
@@ -214,18 +219,7 @@ export function ServerMenuDialog({ serverId, serverName }: ServerMenuDialogProps
     : []
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          title="Настройки сервера"
-        >
-          <Settings2Icon className="size-4" />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{serverName}</DialogTitle>

@@ -1,13 +1,6 @@
-import { useState } from 'react'
-import { CheckCheckIcon } from 'lucide-react'
-import { toast } from 'sonner'
-
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
-import { Button } from '#/components/ui/button'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
-import { ackServer } from '#/features/api/servers-api'
-import { syncStore } from '#/features/sync/sync-store'
 import {
   EMPTY_CHANNELS,
   listDmChannels,
@@ -19,9 +12,7 @@ import {
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
-import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
-import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
-import { ServerMenuDialog } from '#/components/servers/server-menu-dialog'
+import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
 import { useSyncStore } from '#/features/sync/sync-store'
 type ChannelSidebarProps = {
   activeChannelId?: string
@@ -49,56 +40,23 @@ export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
     : 'Личные сообщения'
 
   const channels = selectedServerId ? serverChannels : dmChannels
-  const [markingRead, setMarkingRead] = useState(false)
-
-  async function markServerRead() {
-    const token = auth.session?.token
-    if (!token || !selectedServerId) return
-    setMarkingRead(true)
-    try {
-      await ackServer(token, selectedServerId)
-      syncStore.markServerChannelsRead(selectedServerId)
-      toast.success('Все каналы отмечены прочитанными')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось отметить',
-      )
-    } finally {
-      setMarkingRead(false)
-    }
-  }
 
   return (
     <aside
       className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
       style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
     >
-      <header className={cn(shellColumnHeaderClass, 'bg-background px-4')}>
-        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
-          {serverName}
-        </h2>
+      <header className={cn(shellColumnHeaderClass, 'bg-background px-3')}>
         {selectedServerId ? (
-          <div className="flex shrink-0 items-center">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              title="Отметить сервер прочитанным"
-              disabled={markingRead}
-              onClick={() => void markServerRead()}
-            >
-              <CheckCheckIcon className="size-4" />
-              <span className="sr-only">Прочитано</span>
-            </Button>
-            <CreateChannelDialog serverId={selectedServerId} />
-            <ServerInviteDialog serverId={selectedServerId} />
-            <ServerMenuDialog
-              serverId={selectedServerId}
-              serverName={serverName ?? 'Сервер'}
-            />
-          </div>
-        ) : null}
+          <ServerHeaderMenu
+            serverId={selectedServerId}
+            serverName={serverName ?? 'Сервер'}
+          />
+        ) : (
+          <h2 className="min-w-0 flex-1 truncate px-1 text-sm font-semibold">
+            {serverName}
+          </h2>
+        )}
       </header>
 
       <ScrollArea className="flex-1 p-2">

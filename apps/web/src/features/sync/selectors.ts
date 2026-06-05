@@ -32,6 +32,15 @@ export function listDmChannels(state: SyncState, currentUserId?: string) {
     )
 }
 
+export function listServerTextChannelIds(
+  state: SyncState,
+  serverId: string,
+): string[] {
+  return listServerChannels(state, serverId)
+    .filter((channel) => channel.channel_type === 'TextChannel')
+    .map((channel) => channel._id)
+}
+
 export function listServerChannels(
   state: SyncState,
   serverId: string,

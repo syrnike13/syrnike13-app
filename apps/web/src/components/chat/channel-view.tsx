@@ -7,6 +7,7 @@ import { ChannelSettingsDialog } from '#/components/channels/channel-settings-di
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
+import { ServerChannelSearchPopover } from '#/components/chat/server-channel-search-popover'
 import { MessageComposer } from '#/components/chat/message-composer'
 import { MessageList } from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
@@ -98,51 +99,72 @@ export function ChannelView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className={cn(shellColumnHeaderClass, 'bg-card px-4')}>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate font-semibold">{title}</h1>
-          {channel.channel_type === 'DirectMessage' && dmRecipient ? (
-            <p className="text-xs text-muted-foreground">
-              {presenceLabel(dmRecipient)}
-            </p>
-          ) : channelDescription ? (
-            <p className="line-clamp-2 text-xs text-muted-foreground">
-              {channelDescription}
-            </p>
+      <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate font-semibold">{title}</h1>
+            {channel.channel_type === 'DirectMessage' && dmRecipient ? (
+              <p className="text-xs text-muted-foreground">
+                {presenceLabel(dmRecipient)}
+              </p>
+            ) : channelDescription ? (
+              <p className="line-clamp-2 text-xs text-muted-foreground">
+                {channelDescription}
+              </p>
+            ) : null}
+          </div>
+          {historyQuery.isFetching ? (
+            <span className="text-xs text-muted-foreground">загрузка…</span>
           ) : null}
-        </div>
-        {historyQuery.isFetching ? (
-          <span className="text-xs text-muted-foreground">загрузка…</span>
-        ) : null}
-        {hasVoice ? (
-          <Button
-            type="button"
-            size="sm"
-            variant={inThisVoiceCall ? 'secondary' : 'outline'}
-            onClick={() =>
-              inThisVoiceCall ? voice.leave() : void voice.join(channelId)
-            }
-          >
-            <HeadphonesIcon className="size-4" />
-            {inThisVoiceCall ? 'В голосе' : 'Голос'}
-          </Button>
-        ) : null}
-        {isServerChannel ? (
-          <ChannelSettingsDialog channel={channel} />
-        ) : null}
-        {token ? (
-          <>
+          {hasVoice ? (
+            <Button
+              type="button"
+              size="sm"
+              variant={inThisVoiceCall ? 'secondary' : 'outline'}
+              onClick={() =>
+                inThisVoiceCall ? voice.leave() : void voice.join(channelId)
+              }
+            >
+              <HeadphonesIcon className="size-4" />
+              {inThisVoiceCall ? 'В голосе' : 'Голос'}
+            </Button>
+          ) : null}
+          {isServerChannel ? (
+            <ChannelSettingsDialog channel={channel} />
+          ) : null}
+          {token ? (
             <ChannelPinnedDialog
               channelId={channelId}
               token={token}
               users={users}
             />
+          ) : null}
+          {token && showMemberSidebar ? (
+            <div className="lg:hidden">
+              <ServerChannelSearchPopover
+                serverId={channel.server}
+                token={token}
+                users={users}
+                variant="icon"
+              />
+            </div>
+          ) : null}
+          {token && !showMemberSidebar ? (
             <ChannelSearchDialog
               channelId={channelId}
               token={token}
               users={users}
             />
-          </>
+          ) : null}
+        </div>
+        {token && showMemberSidebar ? (
+          <div className="hidden h-full w-52 shrink-0 items-center px-2 lg:flex">
+            <ServerChannelSearchPopover
+              serverId={channel.server}
+              token={token}
+              users={users}
+            />
+          </div>
         ) : null}
       </header>
 

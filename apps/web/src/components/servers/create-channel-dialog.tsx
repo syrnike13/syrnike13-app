@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { HashIcon, PlusIcon, Volume2Icon } from 'lucide-react'
+import { HashIcon, Volume2Icon } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
@@ -9,7 +9,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -27,12 +26,17 @@ import { normalizeServerChannel } from '#/lib/channel-voice'
 
 type CreateChannelDialogProps = {
   serverId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
-export function CreateChannelDialog({ serverId }: CreateChannelDialogProps) {
+export function CreateChannelDialog({
+  serverId,
+  open,
+  onOpenChange,
+}: CreateChannelDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [type, setType] = useState<'Text' | 'Voice'>('Text')
   const [saving, setSaving] = useState(false)
@@ -50,7 +54,7 @@ export function CreateChannelDialog({ serverId }: CreateChannelDialogProps) {
       })
       const channel = normalizeServerChannel(created, type)
       syncStore.upsertChannel(channel)
-      setOpen(false)
+      onOpenChange(false)
       setName('')
       setType('Text')
       toast.success(`Канал «${channel.name}» создан`)
@@ -68,18 +72,7 @@ export function CreateChannelDialog({ serverId }: CreateChannelDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          title="Создать канал"
-        >
-          <PlusIcon className="size-4" />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Создать канал</DialogTitle>
