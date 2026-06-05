@@ -33,6 +33,7 @@ import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   shouldShowVoiceInviteSlot,
   voiceStageContentInsetClass,
+  voiceStageControlsChromeClass,
   voiceStageGridClass,
 } from '#/components/voice/voice-stage-layout'
 import {
@@ -324,7 +325,7 @@ export function VoiceStageView({
       <div
         data-voice-stage-chrome
         className={cn(
-          'absolute inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-8 pt-2',
+          voiceStageControlsChromeClass,
           voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
       >
@@ -437,7 +438,7 @@ function FullscreenStageOverlay({
       <div
         data-voice-stage-chrome
         className={cn(
-          'absolute inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-8 pt-2',
+          voiceStageControlsChromeClass,
           voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
       >

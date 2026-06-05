@@ -16,8 +16,10 @@ export const shellDivider = 'border-shell-divider' as const
 export const shellColumnHeaderClass =
   'sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider' as const
 
-/** Плавающие панели (UserPanel, композер): высота 52px + отступ bottom-2. */
-export const FLOATING_BAR_HEIGHT_CLASS = 'min-h-[52px]' as const
+/** Плавающие панели (UserPanel, композер): высота строки + отступ bottom-2. */
+export const FLOATING_BAR_HEIGHT_PX = 56
+export const FLOATING_BAR_HEIGHT_CLASS = 'min-h-14' as const
+export const FLOATING_BAR_FIXED_HEIGHT_CLASS = 'h-14' as const
 export const FLOATING_BAR_BOTTOM_CLASS = 'bottom-2' as const
 export const FLOATING_BAR_INSET_X_CLASS = 'inset-x-2' as const
 export const FLOATING_BAR_SCROLL_PAD_CLASS = 'pb-[120px]' as const

@@ -96,7 +96,7 @@ export function UserPanel() {
 
         <div
           className={cn(
-            'flex w-full items-center gap-2 px-2',
+            'flex w-full items-center gap-2.5 px-2.5',
             FLOATING_BAR_HEIGHT_CLASS,
           )}
         >
@@ -108,8 +108,8 @@ export function UserPanel() {
               >
                 <UserAvatar
                   user={user}
-                  className="size-8 shrink-0"
-                  fallbackClassName="size-8"
+                  className="size-9 shrink-0"
+                  fallbackClassName="size-9"
                   showPresence
                 />
                 <div className="min-w-0 flex-1 overflow-hidden">
@@ -163,7 +163,7 @@ export function UserPanel() {
               variant="ghost"
               size="icon"
               className={cn(
-                'size-8 shrink-0 rounded-md bg-[#35373c] hover:bg-[#3f4147]',
+                'size-9 shrink-0 rounded-md bg-[#35373c] hover:bg-[#3f4147]',
                 micMuted && 'text-destructive',
               )}
               title={micControlTitle({
@@ -186,7 +186,7 @@ export function UserPanel() {
               variant="ghost"
               size="icon"
               className={cn(
-                'size-8 shrink-0 rounded-md bg-[#35373c] hover:bg-[#3f4147]',
+                'size-9 shrink-0 rounded-md bg-[#35373c] hover:bg-[#3f4147]',
                 soundOff && 'text-destructive',
               )}
               title={
@@ -211,7 +211,7 @@ export function UserPanel() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 shrink-0 rounded-md hover:bg-white/5"
+              className="size-9 shrink-0 rounded-md hover:bg-white/5"
               title="Настройки"
               onClick={() => openSettings('account')}
             >

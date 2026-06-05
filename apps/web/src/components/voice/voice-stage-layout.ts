@@ -1,11 +1,28 @@
+import {
+  FLOATING_BAR_BOTTOM_CLASS,
+  FLOATING_BAR_HEIGHT_CLASS,
+} from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
+
+/** Оверлей панели управления: тот же bottom-2, что у UserPanel. */
+export const voiceStageControlsChromeClass = cn(
+  'absolute inset-x-0 z-50 flex justify-center px-2',
+  FLOATING_BAR_BOTTOM_CLASS,
+) as const
+
+/** Отступ контента: bottom-2 (8px) + высота панели (56px) + зазор 8px. */
+export const voiceStageContentBottomPadClass = 'pb-[72px]' as const
 
 /**
  * Вертикальные отступы контента стейджа под оверлей шапки и панели управления.
  * На сами оверлеи не влияет.
  */
-export const voiceStageContentInsetClass =
-  'pt-12 pb-20 px-2 sm:px-3' as const
+export const voiceStageContentInsetClass = cn(
+  'pt-12 px-2 sm:px-3',
+  voiceStageContentBottomPadClass,
+) as const
+
+export { FLOATING_BAR_HEIGHT_CLASS }
 
 /** Отступы ленты: между плитками 8px, по краям 4px (2× ring-2). */
 export const voiceStageFilmstripSpacingClass = 'gap-2 p-1' as const
