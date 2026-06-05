@@ -30,11 +30,8 @@ import {
 } from '#/components/ui/tooltip'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isMicVisuallyMuted, micControlTitle } from '#/features/voice/voice-mic-status'
-import { VoiceStageMicSettingsMenuContent } from '#/components/voice/voice-stage-mic-settings-menu'
-import {
-  voiceStagePopoverMicSettingsClass,
-  voiceStagePopoverSettingsClass,
-} from '#/components/voice/voice-stage-popover-styles'
+import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
+import { voiceStagePopoverSettingsClass } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
 
 type VoiceStageControlsProps = {
@@ -331,25 +328,14 @@ function VoiceStageOverlayControlBar({
   return (
     <div className="flex items-stretch gap-2">
       <div className={stageControlGroupClass}>
-        <StageMediaControl
-          title={micControlTitle({
-            inVoice: inCall,
-            micMuted,
-            micIssue,
-          })}
-          danger={micMuted}
-          disabled={connecting}
-          onClick={onToggleMic}
-          chevron={
-            <MicInputChevronMenu connecting={connecting} danger={micMuted} />
-          }
-        >
-          {micMuted ? (
-            <MicOffIcon className="size-5" />
-          ) : (
-            <MicIcon className="size-5" />
-          )}
-        </StageMediaControl>
+        <VoiceMicSplitControl
+          surface="stage"
+          inVoice={inCall}
+          connecting={connecting}
+          micMuted={micMuted}
+          micIssue={micIssue}
+          onToggleMic={onToggleMic}
+        />
 
         <StageControlDivider />
 
@@ -406,39 +392,6 @@ function VoiceStageOverlayControlBar({
         <PhoneOffIcon className="size-5" />
       </button>
     </div>
-  )
-}
-
-function MicInputChevronMenu({
-  connecting,
-  danger,
-}: {
-  connecting: boolean
-  danger?: boolean
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          title="Параметры микрофона"
-          disabled={connecting}
-          className={stageMediaSegmentButtonClass('chevron', { danger })}
-        >
-          <ChevronDownIcon className="size-3.5" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        side="top"
-        sideOffset={8}
-        data-voice-stage-popover
-        className={voiceStagePopoverMicSettingsClass}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-      >
-        <VoiceStageMicSettingsMenuContent />
-      </PopoverContent>
-    </Popover>
   )
 }
 

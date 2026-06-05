@@ -75,13 +75,11 @@ function sliderToOutputVolume(value: number) {
   return Number(((value / 100) * VOICE_OUTPUT_VOLUME_MAX).toFixed(2))
 }
 
-export function VoiceStageMicSettingsMenuContent() {
+function useMicInputSettingsModel() {
   const prefs = useVoicePreferences()
   const voice = useVoice()
   const auth = useAuth()
-  const { openSettings } = useSettingsModal()
   const inputDevices = useMediaDevices('audioinput')
-  const outputDevices = useMediaDevices('audiooutput')
   const [meterLevels, setMeterLevels] = useState(() =>
     Array.from({ length: METER_BAR_COUNT }, () => 0),
   )
@@ -97,15 +95,6 @@ export function VoiceStageMicSettingsMenuContent() {
         prefs.preferredAudioInputDevice,
       ),
     [inputDevices, prefs.preferredAudioInputDevice],
-  )
-
-  const outputSubtitle = useMemo(
-    () =>
-      resolveSelectedDeviceLabel(
-        outputDevices,
-        prefs.preferredAudioOutputDevice,
-      ),
-    [outputDevices, prefs.preferredAudioOutputDevice],
   )
 
   const profileSubtitle =
@@ -133,13 +122,36 @@ export function VoiceStageMicSettingsMenuContent() {
     return () => cancelAnimationFrame(frame)
   }, [selfSpeaking])
 
+  return {
+    prefs,
+    voice,
+    inputDevices,
+    inputSubtitle,
+    profileSubtitle,
+    meterLevels,
+  }
+}
+
+function MicInputDeviceSettingsRows({
+  inputDevices,
+  inputSubtitle,
+  profileSubtitle,
+  preferredAudioInputDevice,
+  noiseSuppression,
+}: {
+  inputDevices: MediaDeviceInfo[]
+  inputSubtitle: string
+  profileSubtitle: string
+  preferredAudioInputDevice: string | undefined
+  noiseSuppression: NoiseSuppressionMode
+}) {
   return (
-    <div className="flex flex-col gap-2">
+    <>
       <MicSettingsDeviceRow
         title="Микрофон"
         subtitle={inputSubtitle}
         devices={inputDevices}
-        selectedId={prefs.preferredAudioInputDevice}
+        selectedId={preferredAudioInputDevice}
         onSelect={(deviceId) => {
           voicePreferenceStore.setPreferredAudioInputDevice(deviceId)
         }}
@@ -147,10 +159,92 @@ export function VoiceStageMicSettingsMenuContent() {
 
       <MicSettingsProfileRow
         subtitle={profileSubtitle}
-        selected={prefs.noiseSuppression}
+        selected={noiseSuppression}
         onSelect={(mode) => {
           voicePreferenceStore.setNoiseSuppression(mode)
         }}
+      />
+    </>
+  )
+}
+
+function MicInputMeterSection({
+  levels,
+}: {
+  levels: readonly number[]
+}) {
+  return (
+    <section className="space-y-2 px-0.5">
+      <p className={voiceStagePopoverSectionTitleClass}>Уровень микрофона</p>
+      <MicInputMeter levels={levels} />
+      <p className={voiceStagePopoverHintClass}>
+        Громкость входа задаётся в системе. Здесь — индикатор активности.
+      </p>
+    </section>
+  )
+}
+
+/** UserPanel: устройство и профиль входа. */
+export function VoicePanelMicSettingsMenuContent() {
+  const { prefs, inputDevices, inputSubtitle, profileSubtitle } =
+    useMicInputSettingsModel()
+  const { openSettings } = useSettingsModal()
+
+  return (
+    <div className="flex flex-col gap-2">
+      <MicInputDeviceSettingsRows
+        inputDevices={inputDevices}
+        inputSubtitle={inputSubtitle}
+        profileSubtitle={profileSubtitle}
+        preferredAudioInputDevice={prefs.preferredAudioInputDevice}
+        noiseSuppression={prefs.noiseSuppression}
+      />
+
+      <button
+        type="button"
+        className={cn(
+          voiceStagePopoverMenuItemClass,
+          'justify-between',
+        )}
+        onClick={() => openSettings('voice')}
+      >
+        <span>Настройки голоса</span>
+        <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
+      </button>
+    </div>
+  )
+}
+
+/** Оверлей стейджа: полное меню микрофона и звука. */
+export function VoiceStageMicSettingsMenuContent() {
+  const {
+    prefs,
+    voice,
+    inputDevices,
+    inputSubtitle,
+    profileSubtitle,
+    meterLevels,
+  } = useMicInputSettingsModel()
+  const { openSettings } = useSettingsModal()
+  const outputDevices = useMediaDevices('audiooutput')
+
+  const outputSubtitle = useMemo(
+    () =>
+      resolveSelectedDeviceLabel(
+        outputDevices,
+        prefs.preferredAudioOutputDevice,
+      ),
+    [outputDevices, prefs.preferredAudioOutputDevice],
+  )
+
+  return (
+    <div className="flex flex-col gap-2">
+      <MicInputDeviceSettingsRows
+        inputDevices={inputDevices}
+        inputSubtitle={inputSubtitle}
+        profileSubtitle={profileSubtitle}
+        preferredAudioInputDevice={prefs.preferredAudioInputDevice}
+        noiseSuppression={prefs.noiseSuppression}
       />
 
       <MicSettingsDeviceRow
@@ -165,13 +259,7 @@ export function VoiceStageMicSettingsMenuContent() {
 
       <MicSettingsSeparator />
 
-      <section className="space-y-2 px-0.5">
-        <p className={voiceStagePopoverSectionTitleClass}>Уровень микрофона</p>
-        <MicInputMeter levels={meterLevels} />
-        <p className={voiceStagePopoverHintClass}>
-          Громкость входа задаётся в системе. Здесь — индикатор активности.
-        </p>
-      </section>
+      <MicInputMeterSection levels={meterLevels} />
 
       <section className="space-y-2 px-0.5">
         <p className={voiceStagePopoverSectionTitleClass}>
@@ -200,6 +288,67 @@ export function VoiceStageMicSettingsMenuContent() {
           onChange={() => voice.toggleDeafen()}
         />
       </label>
+
+      <button
+        type="button"
+        className={cn(
+          voiceStagePopoverMenuItemClass,
+          'justify-between',
+        )}
+        onClick={() => openSettings('voice')}
+      >
+        <span>Настройки голоса</span>
+        <Settings2Icon className="size-4 shrink-0 text-muted-foreground" />
+      </button>
+    </div>
+  )
+}
+
+export function VoiceSoundSettingsMenuContent() {
+  const prefs = useVoicePreferences()
+  const { openSettings } = useSettingsModal()
+  const outputDevices = useMediaDevices('audiooutput')
+
+  useEffect(() => {
+    void ensureMediaDevicePermission('audio')
+  }, [])
+
+  const outputSubtitle = useMemo(
+    () =>
+      resolveSelectedDeviceLabel(
+        outputDevices,
+        prefs.preferredAudioOutputDevice,
+      ),
+    [outputDevices, prefs.preferredAudioOutputDevice],
+  )
+
+  return (
+    <div className="flex flex-col gap-2">
+      <MicSettingsDeviceRow
+        title="Вывод"
+        subtitle={outputSubtitle}
+        devices={outputDevices}
+        selectedId={prefs.preferredAudioOutputDevice}
+        onSelect={(deviceId) => {
+          voicePreferenceStore.setPreferredAudioOutputDevice(deviceId)
+        }}
+      />
+
+      <section className="space-y-2 px-0.5">
+        <p className={voiceStagePopoverSectionTitleClass}>
+          Громкость входящего
+        </p>
+        <Slider
+          value={[outputVolumeToSlider(prefs.outputVolume)]}
+          min={0}
+          max={100}
+          step={1}
+          onValueChange={([value]) => {
+            if (value == null) return
+            voicePreferenceStore.setOutputVolume(sliderToOutputVolume(value))
+          }}
+        />
+      </section>
 
       <button
         type="button"

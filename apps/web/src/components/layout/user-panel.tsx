@@ -1,16 +1,12 @@
 import { useState } from 'react'
-import {
-  HeadphoneOffIcon,
-  HeadphonesIcon,
-  MicIcon,
-  MicOffIcon,
-  SettingsIcon,
-} from 'lucide-react'
+import { SettingsIcon } from 'lucide-react'
 import {
   VoiceCameraStrip,
   VoiceScreenShareStrip,
 } from '#/components/voice/voice-local-broadcast-strip'
 import { VoiceConnectionStrip } from '#/components/voice/voice-connection-strip'
+import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
+import { VoiceSoundSplitControl } from '#/components/voice/voice-sound-split-control'
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
@@ -22,10 +18,7 @@ import {
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { useVoice } from '#/features/voice/voice-provider'
-import {
-  isMicVisuallyMuted,
-  micControlTitle,
-} from '#/features/voice/voice-mic-status'
+import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { userStatusSubtitle } from '#/lib/presence'
 import { USER_PANEL_SPAN_WIDTH } from '#/components/layout/left-sidebar-stack'
 import {
@@ -171,55 +164,22 @@ export function UserPanel() {
           </Popover>
 
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                userPanelControlButtonClass,
-                micMuted && 'text-destructive hover:text-destructive',
-              )}
-              title={micControlTitle({
-                inVoice,
-                micMuted,
-                micIssue: voice.micIssue,
-              })}
-              disabled={voice.status === 'connecting'}
-              onClick={voice.toggleMic}
-            >
-              {micMuted ? (
-                <MicOffIcon className="size-4" />
-              ) : (
-                <MicIcon className="size-4" />
-              )}
-            </Button>
+            <VoiceMicSplitControl
+              surface="panel"
+              inVoice={inVoice}
+              connecting={voice.status === 'connecting'}
+              micMuted={micMuted}
+              micIssue={voice.micIssue}
+              onToggleMic={voice.toggleMic}
+            />
 
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                userPanelControlButtonClass,
-                soundOff && 'text-destructive hover:text-destructive',
-              )}
-              title={
-                inVoice
-                  ? soundOff
-                    ? 'Включить звук'
-                    : 'Отключить звук'
-                  : soundOff
-                    ? 'Звук выключен (применится при входе в голос)'
-                    : 'Отключить звук до входа в голос'
-              }
-              disabled={voice.status === 'connecting'}
-              onClick={voice.toggleDeafen}
-            >
-              {soundOff ? (
-                <HeadphoneOffIcon className="size-4" />
-              ) : (
-                <HeadphonesIcon className="size-4" />
-              )}
-            </Button>
+            <VoiceSoundSplitControl
+              surface="panel"
+              inVoice={inVoice}
+              connecting={voice.status === 'connecting'}
+              soundOff={soundOff}
+              onToggleDeafen={voice.toggleDeafen}
+            />
 
             <Button
               variant="ghost"
