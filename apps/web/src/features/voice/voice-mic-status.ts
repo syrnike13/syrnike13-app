@@ -69,6 +69,16 @@ export function isMicVisuallyMuted(options: {
   return !options.micEnabled
 }
 
+export function shouldResetMicPreferenceOnIssue(options: {
+  wantsMic: boolean
+  micPublishing: boolean
+  micIssue: VoiceMicIssue | null
+}) {
+  return Boolean(
+    options.micIssue && options.wantsMic && !options.micPublishing,
+  )
+}
+
 export function micControlTitle(options: {
   inVoice: boolean
   micMuted: boolean

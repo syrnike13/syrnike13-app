@@ -1,11 +1,14 @@
-import {
-  VOICE_USER_VOLUME_MAX,
-  voiceListenerStore,
-} from '#/features/voice/voice-listener-store'
-import {
-  voicePreferenceStore,
-  VOICE_OUTPUT_VOLUME_MAX,
-} from '#/features/voice/voice-preference-store'
+import { voiceListenerStore } from '#/features/voice/voice-listener-store'
+import { voicePreferenceStore } from '#/features/voice/voice-preference-store'
+
+export function remoteAudioElementVolume(
+  userVolume: number,
+  outputVolume: number,
+  muted: boolean,
+) {
+  if (muted) return 0
+  return Math.min(1, Math.max(0, userVolume) * Math.max(0, outputVolume))
+}
 
 export function applyRemoteAudioElement(
   element: HTMLAudioElement,
@@ -19,12 +22,7 @@ export function applyRemoteAudioElement(
   element.muted = muted
   const userVolume = voiceListenerStore.getUserVolume(userId)
   const outputVolume = voicePreferenceStore.getOutputVolume()
-  const combined = Math.min(
-    1,
-    (userVolume / VOICE_USER_VOLUME_MAX) *
-      (outputVolume / VOICE_OUTPUT_VOLUME_MAX),
-  )
-  element.volume = muted ? 0 : combined
+  element.volume = remoteAudioElementVolume(userVolume, outputVolume, muted)
 }
 
 export function applyAllRemoteAudio(globallyDeafened: boolean) {

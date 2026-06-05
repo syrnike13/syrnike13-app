@@ -8,8 +8,10 @@ use syrnike_database::{
     util::reference::Reference,
     voice::{
         create_voice_state, delete_channel_voice_state_for_room, delete_voice_state_for_session,
-        get_user_moved_from_voice, get_user_moved_to_voice, get_voice_channel_members,
-        update_voice_state_tracks_for_session, RoomMetadata, UserVoiceChannel, VoiceClient,
+        get_user_moved_from_voice, get_user_moved_to_voice, get_user_voice_channels,
+        get_voice_channel_members, remove_user_from_voice_channel,
+        update_voice_state_tracks_for_session, user_voice_join_intent_matches, RoomMetadata,
+        UserVoiceChannel, VoiceClient,
     },
     Database, AMQP,
 };
@@ -102,6 +104,21 @@ pub async fn ingress(
             let participant_id = participant_id.to_internal_error()?;
             let room_id = room_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
+
+            if !user_voice_join_intent_matches(user_id, &channel).await? {
+                log::debug!(
+                    "Removing user {user_id} from stale LiveKit join in channel {channel_id}; latest join intent targets another channel."
+                );
+                let _ = voice_client.remove_user(node, user_id, channel_id).await;
+                return Ok(EmptyResponse);
+            }
+
+            for previous_channel in get_user_voice_channels(user_id).await? {
+                if previous_channel == channel {
+                    continue;
+                }
+                remove_user_from_voice_channel(voice_client, &previous_channel, user_id).await?;
+            }
 
             let joined_at = Timestamp::UNIX_EPOCH
                 .checked_add(Duration::seconds(event.created_at))

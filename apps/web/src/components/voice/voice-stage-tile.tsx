@@ -43,8 +43,8 @@ export function VoiceStageTile({
   focused = false,
   onSelect,
 }: VoiceStageTileProps) {
-  const muted = !participant.is_publishing
-  const deafened = !participant.is_receiving
+  const muted = participant.server_muted || !participant.is_publishing
+  const deafened = participant.server_deafened || !participant.is_receiving
   const avatarSize = stageAvatarSize(compact)
   const palette = useVoiceTilePalette(user, participant.id)
   const voice = useVoice()
@@ -96,6 +96,8 @@ export function VoiceStageTile({
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}
+          serverMuted={participant.server_muted}
+          serverDeafened={participant.server_deafened}
           camera={participant.camera}
           screenshare={participant.screensharing}
           className="rounded-md bg-black/40 px-1 py-0.5"

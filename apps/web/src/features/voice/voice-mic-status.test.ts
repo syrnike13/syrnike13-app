@@ -4,6 +4,7 @@ import {
   describeMicDeviceError,
   isMicVisuallyMuted,
   MIC_BLOCKED_WITHOUT_ERROR,
+  shouldResetMicPreferenceOnIssue,
 } from '#/features/voice/voice-mic-status'
 
 describe('describeMicDeviceError', () => {
@@ -47,5 +48,27 @@ describe('isMicVisuallyMuted', () => {
 describe('MIC_BLOCKED_WITHOUT_ERROR', () => {
   it('has fallback copy', () => {
     expect(MIC_BLOCKED_WITHOUT_ERROR.label.length).toBeGreaterThan(0)
+  })
+})
+
+describe('shouldResetMicPreferenceOnIssue', () => {
+  it('resets desired mic state when an enabled mic cannot publish', () => {
+    expect(
+      shouldResetMicPreferenceOnIssue({
+        wantsMic: true,
+        micPublishing: false,
+        micIssue: MIC_BLOCKED_WITHOUT_ERROR,
+      }),
+    ).toBe(true)
+  })
+
+  it('keeps preference when there is no active mic issue', () => {
+    expect(
+      shouldResetMicPreferenceOnIssue({
+        wantsMic: true,
+        micPublishing: false,
+        micIssue: null,
+      }),
+    ).toBe(false)
   })
 })

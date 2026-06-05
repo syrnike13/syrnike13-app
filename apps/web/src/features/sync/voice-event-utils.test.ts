@@ -17,6 +17,8 @@ function participant(id: string): UserVoiceState {
     joined_at: 1,
     is_publishing: true,
     is_receiving: true,
+    server_muted: false,
+    server_deafened: false,
     camera: false,
     screensharing: false,
   }
@@ -61,5 +63,13 @@ describe('normalizeUserVoiceState', () => {
       normalizeUserVoiceState({ id: USER_ID, is_publishing: 1 })?.is_publishing,
     ).toBe(true)
     expect(parseVoiceFlag('false', true)).toBe(false)
+  })
+
+  it('defaults server mute flags to false and parses explicit values', () => {
+    expect(normalizeUserVoiceState({ id: USER_ID })?.server_muted).toBe(false)
+    expect(
+      normalizeUserVoiceState({ id: USER_ID, server_deafened: 'true' })
+        ?.server_deafened,
+    ).toBe(true)
   })
 })

@@ -161,4 +161,36 @@ describe('syncLiveKitRoomParticipants', () => {
       screensharing: false,
     })
   })
+
+  it('keeps backend server mute flags when liveKit refreshes remote participants', () => {
+    syncStore.reset()
+    syncStore.setChannelVoiceParticipants(CHANNEL_ID, [
+      {
+        id: REMOTE_USER_ID,
+        joined_at: 1,
+        is_publishing: true,
+        is_receiving: true,
+        server_muted: true,
+        server_deafened: true,
+        camera: false,
+        screensharing: false,
+      },
+    ])
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: true,
+      }),
+      remoteParticipants: new Map([[REMOTE_USER_ID, participant(REMOTE_USER_ID)]]),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[REMOTE_USER_ID],
+    ).toMatchObject({
+      server_muted: true,
+      server_deafened: true,
+    })
+  })
 })

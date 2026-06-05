@@ -58,6 +58,7 @@ import { applyMicProcessing, refreshMicProcessing } from '#/features/voice/voice
 import {
   describeMicDeviceError,
   MIC_BLOCKED_WITHOUT_ERROR,
+  shouldResetMicPreferenceOnIssue,
   type VoiceMicIssue,
 } from '#/features/voice/voice-mic-status'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
@@ -223,15 +224,34 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       setMicPublishing(publishing)
 
+      if (
+        shouldResetMicPreferenceOnIssue({
+          wantsMic,
+          micPublishing: publishing,
+          micIssue: issue ?? null,
+        })
+      ) {
+        voicePreferenceStore.setMicEnabled(false)
+        setMicEnabled(false)
+      }
+
       if (issue !== undefined) {
         setCurrentMicIssue(issue, issue != null)
       } else if (publishing) {
         setCurrentMicIssue(null)
       } else if (wantsMic) {
-        setCurrentMicIssue(
-          micIssueRef.current ?? MIC_BLOCKED_WITHOUT_ERROR,
-          true,
-        )
+        const fallbackIssue = micIssueRef.current ?? MIC_BLOCKED_WITHOUT_ERROR
+        if (
+          shouldResetMicPreferenceOnIssue({
+            wantsMic,
+            micPublishing: publishing,
+            micIssue: fallbackIssue,
+          })
+        ) {
+          voicePreferenceStore.setMicEnabled(false)
+          setMicEnabled(false)
+        }
+        setCurrentMicIssue(fallbackIssue, true)
       } else {
         setCurrentMicIssue(null)
       }
@@ -369,16 +389,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const finishLocalVoiceSetup = useCallback(
     async (room: Room, targetChannelId: string) => {
       const prefs = effectiveVoiceJoinPreferences(readVoicePreferences())
+      let micSetupFailed = false
       try {
         await room.localParticipant.setMicrophoneEnabled(prefs.micEnabled)
         if (prefs.micEnabled) {
           await applyMicProcessing(room.localParticipant)
         }
       } catch (error) {
+        micSetupFailed = true
         syncMicFromRoom(room, describeMicDeviceError(error))
       }
-      setMicEnabled(prefs.micEnabled)
-      syncMicFromRoom(room)
+      setMicEnabled(voicePreferenceStore.getMicEnabled())
+      if (!micSetupFailed) {
+        syncMicFromRoom(room)
+      }
       setDeafened(prefs.deafened)
       deafenedRef.current = prefs.deafened
       applyAllRemoteAudio(prefs.deafened)
@@ -405,8 +429,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const attachAudio = useCallback(
     (room: Room) => {
+      const removeRemoteAudioElement = (element: Element) => {
+        if (element instanceof HTMLAudioElement) {
+          audioElementsRef.current = audioElementsRef.current.filter(
+            (audioElement) => audioElement !== element,
+          )
+        }
+        element.remove()
+      }
+
       const playTrack = (track: Track, participant: RemoteParticipant) => {
         if (track.kind !== Track.Kind.Audio) return
+        track.detach().forEach(removeRemoteAudioElement)
         const element = track.attach() as HTMLAudioElement
         element.dataset.livekit = 'remote'
         element.dataset.livekitUserId = participant.identity
@@ -440,7 +474,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
 
       room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach().forEach((element) => element.remove())
+        track.detach().forEach(removeRemoteAudioElement)
         onParticipantsChanged()
       })
 

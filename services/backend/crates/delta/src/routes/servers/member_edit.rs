@@ -9,17 +9,17 @@ use syrnike_database::{
     voice::{
         get_channel_node, get_user_voice_channel_in_server, remove_user_from_voice_channel,
         set_channel_node, set_user_moved_from_voice, set_user_moved_to_voice,
-        sync_user_voice_permissions, UserVoiceChannel, VoiceClient,
+        set_user_voice_join_intent, sync_user_voice_permissions, UserVoiceChannel, VoiceClient,
     },
     Database, File, PartialMember, User,
 };
 use syrnike_models::v0::{self, FieldsMember};
 
+use rocket::{form::validate::Contains, serde::json::Json, State};
 use syrnike_permissions::{
     calculate_channel_permissions, calculate_server_permissions, ChannelPermission, UserPermission,
 };
 use syrnike_result::{create_error, Result};
-use rocket::{form::validate::Contains, serde::json::Json, State};
 use validator::Validate;
 
 /// # Edit Member
@@ -241,6 +241,7 @@ pub async fn edit(
                 &target_user.id,
             )
             .await?;
+            set_user_voice_join_intent(&target_user.id, &new_user_voice_channel).await?;
 
             let mut query = perms(db, &target_user).channel(&new_voice_channel);
             let permissions = calculate_channel_permissions(&mut query).await;

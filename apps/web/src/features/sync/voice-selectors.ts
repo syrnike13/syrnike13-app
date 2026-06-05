@@ -56,6 +56,8 @@ export function mergeVoiceParticipants(
             camera: participant.camera,
             screensharing: participant.screensharing,
             is_publishing: participant.is_publishing,
+            server_muted: existing.server_muted,
+            server_deafened: existing.server_deafened,
             is_receiving:
               participant.id === localUserId
                 ? participant.is_receiving

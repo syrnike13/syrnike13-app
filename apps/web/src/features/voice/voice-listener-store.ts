@@ -52,7 +52,7 @@ function persist() {
 }
 
 export function effectiveElementVolume(userVolume: number) {
-  return Math.min(1, userVolume / VOICE_USER_VOLUME_MAX)
+  return Math.min(1, Math.max(0, userVolume))
 }
 
 export function formatUserVolumeLabel(userVolume: number) {

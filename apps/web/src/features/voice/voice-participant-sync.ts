@@ -24,6 +24,8 @@ function participantState(
     joined_at: options.joinedAt ?? Date.now(),
     is_publishing: options.isPublishing,
     is_receiving: options.isReceiving,
+    server_muted: false,
+    server_deafened: false,
     camera: options.camera ?? false,
     screensharing: options.screensharing ?? false,
   }
@@ -95,7 +97,12 @@ export function syncLiveKitRoomParticipants(
     byId.set(
       participant.id,
       existingParticipant
-        ? { ...participant, is_receiving: existingParticipant.is_receiving }
+        ? {
+            ...participant,
+            is_receiving: existingParticipant.is_receiving,
+            server_muted: existingParticipant.server_muted,
+            server_deafened: existingParticipant.server_deafened,
+          }
         : participant,
     )
   }

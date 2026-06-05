@@ -31,8 +31,8 @@ export function VoiceParticipantRow({
   serverName,
   roles,
 }: VoiceParticipantRowProps) {
-  const muted = !participant.is_publishing
-  const deafened = !participant.is_receiving
+  const muted = participant.server_muted || !participant.is_publishing
+  const deafened = participant.server_deafened || !participant.is_receiving
 
   const rowClassName = cn(
     'flex min-w-0 items-center gap-2 rounded-md py-1',
@@ -67,6 +67,8 @@ export function VoiceParticipantRow({
       <VoiceParticipantIcons
         muted={muted}
         deafened={deafened}
+        serverMuted={participant.server_muted}
+        serverDeafened={participant.server_deafened}
         camera={participant.camera}
         screenshare={participant.screensharing}
       />

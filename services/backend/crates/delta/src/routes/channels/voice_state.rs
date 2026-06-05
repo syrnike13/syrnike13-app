@@ -72,32 +72,42 @@ pub async fn update(
     }
 
     let data = data.into_inner();
-    let partial = v0::PartialUserVoiceState {
-        id: Some(user.id.clone()),
-        is_receiving: data.is_receiving,
-        is_publishing: data.is_publishing,
-        ..Default::default()
-    };
+    let requested_publishing = data.is_publishing;
+    let partial = client_voice_state_patch(&user.id, data);
 
-    if partial.is_receiving.is_none() && partial.is_publishing.is_none() {
+    if partial.is_none() && requested_publishing.is_none() {
         return Err(create_error!(InvalidOperation));
     }
 
-    update_voice_state(&user_voice_channel, &user.id, &partial).await?;
+    if let Some(partial) = partial {
+        update_voice_state(&user_voice_channel, &user.id, &partial).await?;
+
+        EventV1::UserVoiceStateUpdate {
+            id: user.id.clone(),
+            channel_id: channel.id().to_string(),
+            data: partial,
+        }
+        .p(channel.id().to_string())
+        .await;
+    }
 
     let updated = get_voice_state(&user_voice_channel, &user.id)
         .await?
         .ok_or_else(|| create_error!(InternalError))?;
 
-    EventV1::UserVoiceStateUpdate {
-        id: user.id.clone(),
-        channel_id: channel.id().to_string(),
-        data: partial,
-    }
-    .p(channel.id().to_string())
-    .await;
-
     Ok(Json(updated))
+}
+
+fn client_voice_state_patch(
+    user_id: &str,
+    data: v0::PartialUserVoiceState,
+) -> Option<v0::PartialUserVoiceState> {
+    data.is_receiving
+        .map(|is_receiving| v0::PartialUserVoiceState {
+            id: Some(user_id.to_string()),
+            is_receiving: Some(is_receiving),
+            ..Default::default()
+        })
 }
 
 #[cfg(test)]
@@ -108,7 +118,8 @@ mod test {
     use syrnike_database::{
         voice::{
             create_voice_state, delete_channel_voice_state_for_room,
-            delete_voice_state_for_session, get_voice_state, update_voice_state_tracks_for_session,
+            delete_voice_state_for_session, get_voice_state, set_user_voice_join_intent,
+            update_voice_state_tracks_for_session, user_voice_join_intent_matches,
             UserVoiceChannel,
         },
         Channel,
@@ -186,6 +197,8 @@ mod test {
         assert_eq!(state.participants[0].id, user.id);
         assert!(state.participants[0].is_receiving);
         assert!(!state.participants[0].is_publishing);
+        assert!(!state.participants[0].server_muted);
+        assert!(!state.participants[0].server_deafened);
         assert!(!state.participants[0].screensharing);
         assert!(!state.participants[0].camera);
     }
@@ -231,6 +244,107 @@ mod test {
 
         let updated: v0::UserVoiceState = response.into_json().await.expect("UserVoiceState");
         assert!(!updated.is_receiving);
+    }
+
+    #[test]
+    fn client_voice_state_patch_ignores_publishing_state() {
+        let partial = super::client_voice_state_patch(
+            "user-id",
+            v0::PartialUserVoiceState {
+                is_publishing: Some(true),
+                is_receiving: Some(false),
+                ..Default::default()
+            },
+        )
+        .expect("trusted patch");
+
+        assert_eq!(partial.id.as_deref(), Some("user-id"));
+        assert_eq!(partial.is_receiving, Some(false));
+        assert_eq!(partial.is_publishing, None);
+
+        assert!(super::client_voice_state_patch(
+            "user-id",
+            v0::PartialUserVoiceState {
+                is_publishing: Some(true),
+                ..Default::default()
+            },
+        )
+        .is_none());
+    }
+
+    #[rocket::async_test]
+    async fn latest_voice_join_intent_rejects_previous_channel() {
+        let user_id = ulid::Ulid::new().to_string();
+        let previous_channel = UserVoiceChannel {
+            id: ulid::Ulid::new().to_string(),
+            server_id: None,
+        };
+        let latest_channel = UserVoiceChannel {
+            id: ulid::Ulid::new().to_string(),
+            server_id: None,
+        };
+
+        set_user_voice_join_intent(&user_id, &latest_channel)
+            .await
+            .unwrap();
+
+        assert!(user_voice_join_intent_matches(&user_id, &latest_channel)
+            .await
+            .unwrap());
+        assert!(!user_voice_join_intent_matches(&user_id, &previous_channel)
+            .await
+            .unwrap());
+    }
+
+    #[rocket::async_test]
+    async fn missing_voice_join_intent_allows_known_voice_reconnect() {
+        let user_id = ulid::Ulid::new().to_string();
+        let channel = UserVoiceChannel {
+            id: ulid::Ulid::new().to_string(),
+            server_id: None,
+        };
+        create_voice_state(
+            &channel,
+            &user_id,
+            Timestamp::now_utc(),
+            Some("PA"),
+            Some("RM"),
+        )
+        .await
+        .unwrap();
+
+        assert!(user_voice_join_intent_matches(&user_id, &channel)
+            .await
+            .unwrap());
+    }
+
+    #[rocket::async_test]
+    async fn voice_leave_clears_join_intent_for_stale_rejoin() {
+        let user_id = ulid::Ulid::new().to_string();
+        let channel = UserVoiceChannel {
+            id: ulid::Ulid::new().to_string(),
+            server_id: None,
+        };
+
+        set_user_voice_join_intent(&user_id, &channel)
+            .await
+            .unwrap();
+        create_voice_state(
+            &channel,
+            &user_id,
+            Timestamp::now_utc(),
+            Some("PA"),
+            Some("RM"),
+        )
+        .await
+        .unwrap();
+        delete_voice_state_for_session(&channel, &user_id, "PA")
+            .await
+            .unwrap();
+
+        assert!(!user_voice_join_intent_matches(&user_id, &channel)
+            .await
+            .unwrap());
     }
 
     #[rocket::async_test]

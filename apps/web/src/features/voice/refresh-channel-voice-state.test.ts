@@ -21,6 +21,8 @@ describe('applyChannelVoiceStatePayload', () => {
         joined_at: 1,
         is_publishing: true,
         is_receiving: true,
+        server_muted: false,
+        server_deafened: false,
         camera: false,
         screensharing: false,
       },
@@ -41,6 +43,8 @@ describe('applyChannelVoiceStatePayload', () => {
           joined_at: 1,
           is_publishing: false,
           is_receiving: true,
+          server_muted: true,
+          server_deafened: false,
           camera: true,
           screensharing: true,
         },
@@ -52,6 +56,8 @@ describe('applyChannelVoiceStatePayload', () => {
     ).toMatchObject({
       is_publishing: false,
       is_receiving: true,
+      server_muted: true,
+      server_deafened: false,
       camera: true,
       screensharing: true,
     })

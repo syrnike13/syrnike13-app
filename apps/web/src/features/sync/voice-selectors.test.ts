@@ -15,6 +15,8 @@ function participant(
     joined_at: 1,
     is_publishing: true,
     is_receiving: true,
+    server_muted: false,
+    server_deafened: false,
     camera: false,
     screensharing: false,
     ...overrides,
@@ -55,6 +57,16 @@ describe('mergeVoiceParticipants', () => {
       'me',
     )
     expect(merged[0]?.screensharing).toBe(false)
+  })
+
+  it('keeps server mute flags from the backend store when liveKit merges', () => {
+    const merged = mergeVoiceParticipants(
+      [participant('remote', { server_muted: true, server_deafened: true })],
+      [participant('remote')],
+    )
+
+    expect(merged[0]?.server_muted).toBe(true)
+    expect(merged[0]?.server_deafened).toBe(true)
   })
 })
 

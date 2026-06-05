@@ -287,6 +287,8 @@ auto_derived_partial!(
         pub joined_at: Timestamp,
         pub is_receiving: bool,
         pub is_publishing: bool,
+        pub server_muted: bool,
+        pub server_deafened: bool,
         pub screensharing: bool,
         pub camera: bool,
     },

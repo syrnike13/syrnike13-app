@@ -83,6 +83,52 @@ pub async fn get_user_voice_channels(user_id: &str) -> Result<Vec<UserVoiceChann
         .to_internal_error()
 }
 
+pub async fn set_user_voice_join_intent(user_id: &str, channel: &UserVoiceChannel) -> Result<()> {
+    get_connection()
+        .await?
+        .set_ex(format!("voice_join_intent:{user_id}"), channel, 30)
+        .await
+        .to_internal_error()
+}
+
+pub async fn user_voice_join_intent_matches(
+    user_id: &str,
+    channel: &UserVoiceChannel,
+) -> Result<bool> {
+    let latest = get_connection()
+        .await?
+        .get::<_, Option<UserVoiceChannel>>(format!("voice_join_intent:{user_id}"))
+        .await
+        .to_internal_error()?;
+
+    match latest {
+        Some(latest) => Ok(latest == *channel),
+        None => is_in_voice_channel(user_id, channel).await,
+    }
+}
+
+pub async fn clear_user_voice_join_intent_if_matches(
+    user_id: &str,
+    channel: &UserVoiceChannel,
+) -> Result<()> {
+    let key = format!("voice_join_intent:{user_id}");
+    let latest = get_connection()
+        .await?
+        .get::<_, Option<UserVoiceChannel>>(&key)
+        .await
+        .to_internal_error()?;
+
+    if latest.as_ref().is_some_and(|latest| latest == channel) {
+        get_connection()
+            .await?
+            .del::<_, ()>(key)
+            .await
+            .to_internal_error()?;
+    }
+
+    Ok(())
+}
+
 pub async fn set_user_moved_from_voice(
     old_channel_id: &str,
     new_channel: &UserVoiceChannel,
@@ -180,8 +226,18 @@ pub async fn create_voice_state(
     let unique_key = voice_state_unique_key(channel, user_id);
 
     let mut conn = get_connection().await?;
-    let (existing_joined_at, is_publishing, is_receiving, screensharing, camera): (
+    let (
+        existing_joined_at,
+        is_publishing,
+        is_receiving,
+        server_muted,
+        server_deafened,
+        screensharing,
+        camera,
+    ): (
         Option<i64>,
+        Option<bool>,
+        Option<bool>,
         Option<bool>,
         Option<bool>,
         Option<bool>,
@@ -191,6 +247,8 @@ pub async fn create_voice_state(
             format!("joined_at:{unique_key}"),
             format!("is_publishing:{unique_key}"),
             format!("is_receiving:{unique_key}"),
+            format!("server_muted:{unique_key}"),
+            format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
         ])
@@ -211,6 +269,8 @@ pub async fn create_voice_state(
         } else {
             false
         },
+        server_muted: server_muted.unwrap_or(false),
+        server_deafened: server_deafened.unwrap_or(false),
         screensharing: if pending_track_state {
             screensharing.unwrap_or(false)
         } else {
@@ -241,6 +301,14 @@ pub async fn create_voice_state(
         .set(
             format!("is_receiving:{unique_key}"),
             voice_state.is_receiving,
+        )
+        .set(
+            format!("server_muted:{unique_key}"),
+            voice_state.server_muted,
+        )
+        .set(
+            format!("server_deafened:{unique_key}"),
+            voice_state.server_deafened,
         )
         .set(
             format!("screensharing:{unique_key}"),
@@ -274,14 +342,18 @@ pub async fn delete_voice_state(channel: &UserVoiceChannel, user_id: &str) -> Re
             format!("joined_at:{unique_key}"),
             format!("is_publishing:{unique_key}"),
             format!("is_receiving:{unique_key}"),
+            format!("server_muted:{unique_key}"),
+            format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
             voice_session_key(&unique_key),
             unique_key.clone(),
         ])
-        .query_async(&mut get_connection().await?.into_inner())
+        .query_async::<_, ()>(&mut get_connection().await?.into_inner())
         .await
-        .to_internal_error()
+        .to_internal_error()?;
+
+    clear_user_voice_join_intent_if_matches(user_id, channel).await
 }
 
 pub async fn delete_voice_state_for_session(
@@ -315,6 +387,8 @@ pub async fn delete_channel_voice_state(
             format!("joined_at:{unique_key}"),
             format!("is_publishing:{unique_key}"),
             format!("is_receiving:{unique_key}"),
+            format!("server_muted:{unique_key}"),
+            format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
             voice_session_key(&unique_key),
@@ -415,6 +489,14 @@ pub async fn update_voice_state(
         pipeline.set(format!("is_receiving:{unique_key}"), is_receiving);
     }
 
+    if let Some(server_muted) = &partial.server_muted {
+        pipeline.set(format!("server_muted:{unique_key}"), server_muted);
+    }
+
+    if let Some(server_deafened) = &partial.server_deafened {
+        pipeline.set(format!("server_deafened:{unique_key}"), server_deafened);
+    }
+
     if let Some(screensharing) = &partial.screensharing {
         pipeline.set(format!("screensharing:{unique_key}"), screensharing);
     }
@@ -440,12 +522,30 @@ pub async fn get_voice_state(
 ) -> Result<Option<UserVoiceState>> {
     let unique_key = voice_state_unique_key(channel, user_id);
 
-    let (joined_at, is_publishing, is_receiving, screensharing, camera) = get_connection()
+    let (
+        joined_at,
+        is_publishing,
+        is_receiving,
+        server_muted,
+        server_deafened,
+        screensharing,
+        camera,
+    ): (
+        Option<i64>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+    ) = get_connection()
         .await?
         .mget(&[
             format!("joined_at:{unique_key}"),
             format!("is_publishing:{unique_key}"),
             format!("is_receiving:{unique_key}"),
+            format!("server_muted:{unique_key}"),
+            format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
         ])
@@ -456,6 +556,8 @@ pub async fn get_voice_state(
         joined_at,
         is_publishing,
         is_receiving,
+        server_muted,
+        server_deafened,
         screensharing,
         camera,
     ) {
@@ -463,6 +565,8 @@ pub async fn get_voice_state(
             Some(joined_at),
             Some(is_publishing),
             Some(is_receiving),
+            server_muted,
+            server_deafened,
             Some(screensharing),
             Some(camera),
         ) => Ok(Some(v0::UserVoiceState {
@@ -472,6 +576,8 @@ pub async fn get_voice_state(
             id: user_id.to_string(),
             is_receiving,
             is_publishing,
+            server_muted: server_muted.unwrap_or(false),
+            server_deafened: server_deafened.unwrap_or(false),
             screensharing,
             camera,
         })),
@@ -649,6 +755,9 @@ pub async fn sync_user_voice_permissions(
         update_event.camera = voice_state.camera.then_some(can_video);
         update_event.screensharing = voice_state.screensharing.then_some(can_video);
         update_event.is_publishing = voice_state.is_publishing.then_some(can_speak);
+        update_event.server_muted = (voice_state.server_muted != !can_speak).then_some(!can_speak);
+        update_event.server_deafened =
+            (voice_state.server_deafened != !can_listen).then_some(!can_listen);
 
         update_voice_state(&user_voice_channel, &user.id, &update_event).await?;
 
@@ -849,6 +958,8 @@ mod tests {
         assert_eq!(partial.camera, None);
         assert_eq!(partial.is_publishing, None);
         assert_eq!(partial.is_receiving, None);
+        assert_eq!(partial.server_muted, None);
+        assert_eq!(partial.server_deafened, None);
     }
 
     #[test]
@@ -859,5 +970,7 @@ mod tests {
         assert_eq!(partial.camera, None);
         assert_eq!(partial.is_publishing, None);
         assert_eq!(partial.is_receiving, None);
+        assert_eq!(partial.server_muted, None);
+        assert_eq!(partial.server_deafened, None);
     }
 }

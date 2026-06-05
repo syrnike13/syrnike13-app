@@ -41,6 +41,8 @@ export function normalizeUserVoiceState(
     joined_at: parseJoinedAt(raw.joined_at),
     is_receiving: parseVoiceFlag(raw.is_receiving, true),
     is_publishing: parseVoiceFlag(raw.is_publishing, true),
+    server_muted: parseVoiceFlag(raw.server_muted, false),
+    server_deafened: parseVoiceFlag(raw.server_deafened, false),
     screensharing: Boolean(raw.screensharing ?? false),
     camera: Boolean(raw.camera ?? false),
   }

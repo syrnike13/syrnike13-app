@@ -4,6 +4,8 @@ export type UserVoiceState = {
   joined_at: number
   is_receiving: boolean
   is_publishing: boolean
+  server_muted: boolean
+  server_deafened: boolean
   screensharing: boolean
   camera: boolean
 }

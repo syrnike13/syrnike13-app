@@ -10,6 +10,8 @@ import { cn } from '#/lib/utils'
 type VoiceParticipantIconsProps = {
   muted?: boolean
   deafened?: boolean
+  serverMuted?: boolean
+  serverDeafened?: boolean
   camera?: boolean
   screenshare?: boolean
   className?: string
@@ -18,6 +20,8 @@ type VoiceParticipantIconsProps = {
 export function VoiceParticipantIcons({
   muted,
   deafened,
+  serverMuted,
+  serverDeafened,
   camera,
   screenshare,
   className,
@@ -27,11 +31,20 @@ export function VoiceParticipantIcons({
   return (
     <span className={cn('flex shrink-0 items-center gap-0.5', className)}>
       {muted ? (
-        <MicOffIcon className="size-3.5 text-destructive/90" aria-hidden />
+        <MicOffIcon
+          className={cn(
+            'size-3.5',
+            serverMuted ? 'text-[#faa61a]' : 'text-destructive/90',
+          )}
+          aria-hidden
+        />
       ) : null}
       {deafened ? (
         <HeadphoneOffIcon
-          className="size-3.5 text-muted-foreground"
+          className={cn(
+            'size-3.5',
+            serverDeafened ? 'text-[#faa61a]' : 'text-muted-foreground',
+          )}
           aria-hidden
         />
       ) : null}
