@@ -5,7 +5,27 @@ import {
 } from 'livekit-client'
 
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
-import { readVoicePreferences } from '#/features/voice/voice-preference-store'
+import {
+  readVoicePreferences,
+  type VoicePreferenceState,
+} from '#/features/voice/voice-preference-store'
+
+function browserNoiseSuppressionEnabled(prefs: VoicePreferenceState) {
+  if (prefs.noiseSuppression === 'disabled') return false
+  if (prefs.noiseSuppression === 'browser') return true
+  return prefs.voiceGateEnabled
+}
+
+export function voiceAudioProcessingConstraints(
+  prefs: VoicePreferenceState,
+): MediaTrackConstraints {
+  return {
+    channelCount: 1,
+    echoCancellation: prefs.echoCancellation,
+    noiseSuppression: browserNoiseSuppressionEnabled(prefs),
+    autoGainControl: prefs.autoGainControl,
+  }
+}
 
 export function createVoiceRoomOptions(): RoomOptions {
   const prefs = readVoicePreferences()
@@ -14,11 +34,8 @@ export function createVoiceRoomOptions(): RoomOptions {
     adaptiveStream: true,
     dynacast: true,
     audioCaptureDefaults: {
+      ...voiceAudioProcessingConstraints(prefs),
       deviceId: prefs.preferredAudioInputDevice,
-      channelCount: 1,
-      echoCancellation: prefs.echoCancellation,
-      noiseSuppression: prefs.noiseSuppression === 'browser',
-      autoGainControl: prefs.autoGainControl,
     },
     audioOutput: {
       deviceId: prefs.preferredAudioOutputDevice,

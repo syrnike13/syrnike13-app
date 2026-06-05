@@ -33,6 +33,7 @@ import {
   runVoiceRequest,
 } from '#/features/voice/voice-request-gate'
 import { applyAllRemoteAudio, applyRemoteAudioElement } from '#/features/voice/remote-audio-settings'
+import { releaseRemoteAudioGain } from '#/features/voice/remote-audio-gain'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import {
   liveKitChannelParticipants,
@@ -54,7 +55,11 @@ import {
   createVoiceRoomOptions,
   screenShareCaptureOptions,
 } from '#/features/voice/voice-capture'
-import { applyMicProcessing, refreshMicProcessing } from '#/features/voice/voice-mic-processing'
+import {
+  applyMicProcessing,
+  refreshMicProcessing,
+} from '#/features/voice/voice-mic-processing'
+import { voicePreferenceEffectFlags } from '#/features/voice/voice-preference-effects'
 import {
   describeMicDeviceError,
   MIC_BLOCKED_WITHOUT_ERROR,
@@ -139,6 +144,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   } | null>(null)
   const disconnectIntentRef = useRef<'none' | 'switch' | 'leave'>('none')
   const stageVideoTracksRef = useRef(new Map<string, VideoTrack>())
+  const lastVoicePreferencesRef = useRef(readVoicePreferences())
 
   const [channelId, setChannelId] = useState<string | null>(null)
   const [status, setStatus] = useState<VoiceStatus>('idle')
@@ -431,6 +437,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     (room: Room) => {
       const removeRemoteAudioElement = (element: Element) => {
         if (element instanceof HTMLAudioElement) {
+          releaseRemoteAudioGain(element)
           audioElementsRef.current = audioElementsRef.current.filter(
             (audioElement) => audioElement !== element,
           )
@@ -444,6 +451,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const element = track.attach() as HTMLAudioElement
         element.dataset.livekit = 'remote'
         element.dataset.livekitUserId = participant.identity
+        element.dataset.livekitAudioLevel = String(participant.audioLevel ?? 0)
         document.body.appendChild(element)
         audioElementsRef.current.push(element)
         applyRemoteAudioElement(element, deafenedRef.current)
@@ -456,6 +464,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setSpeakingUserIds(
           new Set(room.activeSpeakers.map((speaker) => speaker.identity)),
         )
+        const levels = new Map<string, number>()
+        for (const participant of room.remoteParticipants.values()) {
+          levels.set(participant.identity, participant.audioLevel ?? 0)
+        }
+        for (const element of audioElementsRef.current) {
+          const userId = element.dataset.livekitUserId
+          if (!userId) continue
+          element.dataset.livekitAudioLevel = String(levels.get(userId) ?? 0)
+          applyRemoteAudioElement(element, deafenedRef.current)
+        }
       }
 
       const onParticipantsChanged = () => {
@@ -835,11 +853,21 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return voicePreferenceStore.subscribe(() => {
+      const previous = lastVoicePreferencesRef.current
+      const next = readVoicePreferences()
+      lastVoicePreferencesRef.current = next
       if (status !== 'connected') return
       const room = roomRef.current
       if (!room) return
-      void applyVoiceDevices(room)
-      void refreshMicProcessing(room)
+      const effects = voicePreferenceEffectFlags(previous, next)
+      if (effects.devicesChanged) {
+        void applyVoiceDevices(room)
+      } else if (effects.remoteAudioChanged) {
+        applyAllRemoteAudio(deafenedRef.current)
+      }
+      if (effects.micProcessingChanged) {
+        void refreshMicProcessing(room)
+      }
     })
   }, [applyVoiceDevices, status])
 

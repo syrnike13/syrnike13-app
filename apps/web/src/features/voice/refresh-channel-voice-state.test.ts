@@ -62,4 +62,44 @@ describe('applyChannelVoiceStatePayload', () => {
       screensharing: true,
     })
   })
+
+  it('moves a user out of stale channels when a voice_state snapshot contains them', () => {
+    syncStore.reset()
+    syncStore.setChannelVoiceParticipants('01KT7DEM3B0T4B0BXGBXWDJ6AG', [
+      {
+        id: USER_ID,
+        joined_at: 1,
+        is_publishing: true,
+        is_receiving: true,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+      },
+    ])
+
+    applyChannelVoiceStatePayload(
+      payload([
+        {
+          id: USER_ID,
+          joined_at: 2,
+          is_publishing: true,
+          is_receiving: true,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: false,
+        },
+      ]),
+    )
+
+    expect(syncStore.getState().voiceParticipants).toEqual({
+      [CHANNEL_ID]: {
+        [USER_ID]: expect.objectContaining({
+          id: USER_ID,
+          joined_at: 2,
+        }),
+      },
+    })
+  })
 })

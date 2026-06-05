@@ -176,6 +176,37 @@ export function SettingsVoicePanel() {
           />
           Автоматическая регулировка усиления (AGC)
         </label>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="size-4 rounded border-input accent-primary"
+            checked={prefs.voiceGateEnabled}
+            onChange={(event) =>
+              voicePreferenceStore.setVoiceGateEnabled(event.target.checked)
+            }
+          />
+          Гейт микрофона
+        </label>
+        <div className="space-y-2">
+          <Label htmlFor="voice-gate-threshold">Порог гейта</Label>
+          <input
+            id="voice-gate-threshold"
+            type="range"
+            min={0}
+            max={0.2}
+            step={0.005}
+            value={prefs.voiceGateThreshold}
+            onChange={(event) => {
+              voicePreferenceStore.setVoiceGateThreshold(
+                Number(event.target.value),
+              )
+            }}
+            className="w-full accent-primary"
+          />
+          <p className="text-sm text-muted-foreground">
+            {formatUserVolumeLabel(prefs.voiceGateThreshold)}
+          </p>
+        </div>
       </section>
 
       <section className="space-y-4">
@@ -255,6 +286,37 @@ export function SettingsVoicePanel() {
         <p className="text-sm text-muted-foreground">
           {formatUserVolumeLabel(prefs.outputVolume)}
         </p>
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="size-4 rounded border-input accent-primary"
+            checked={prefs.autoBalanceEnabled}
+            onChange={(event) =>
+              voicePreferenceStore.setAutoBalanceEnabled(event.target.checked)
+            }
+          />
+          Авто-баланс участников
+        </label>
+        <div className="space-y-2">
+          <Label htmlFor="voice-auto-balance-strength">Сила авто-баланса</Label>
+          <input
+            id="voice-auto-balance-strength"
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={prefs.autoBalanceStrength}
+            onChange={(event) => {
+              voicePreferenceStore.setAutoBalanceStrength(
+                Number(event.target.value),
+              )
+            }}
+            className="w-full accent-primary"
+          />
+          <p className="text-sm text-muted-foreground">
+            {formatUserVolumeLabel(prefs.autoBalanceStrength)}
+          </p>
+        </div>
       </section>
     </div>
   )

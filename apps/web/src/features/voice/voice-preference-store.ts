@@ -17,6 +17,10 @@ export type VoicePreferenceState = {
   echoCancellation: boolean
   noiseSuppression: NoiseSuppressionMode
   autoGainControl: boolean
+  voiceGateEnabled: boolean
+  voiceGateThreshold: number
+  autoBalanceEnabled: boolean
+  autoBalanceStrength: number
   screenShareQuality: ScreenShareQualityName
   screenShareQualityAsk: boolean
   screenShareAudio: boolean
@@ -34,6 +38,10 @@ const DEFAULT_STATE: VoicePreferenceState = {
   echoCancellation: true,
   noiseSuppression: 'browser',
   autoGainControl: true,
+  voiceGateEnabled: false,
+  voiceGateThreshold: 0.04,
+  autoBalanceEnabled: false,
+  autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
   screenShareQualityAsk: true,
   screenShareAudio: true,
@@ -67,6 +75,11 @@ function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
     return value
   }
   return DEFAULT_STATE.screenShareQuality
+}
+
+function clampUnitInterval(value: unknown, fallback: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.min(1, Math.max(0, Number(value.toFixed(3))))
 }
 
 function loadState(): VoicePreferenceState {
@@ -115,6 +128,22 @@ function loadState(): VoicePreferenceState {
         typeof parsed.autoGainControl === 'boolean'
           ? parsed.autoGainControl
           : DEFAULT_STATE.autoGainControl,
+      voiceGateEnabled:
+        typeof parsed.voiceGateEnabled === 'boolean'
+          ? parsed.voiceGateEnabled
+          : DEFAULT_STATE.voiceGateEnabled,
+      voiceGateThreshold: clampUnitInterval(
+        parsed.voiceGateThreshold,
+        DEFAULT_STATE.voiceGateThreshold,
+      ),
+      autoBalanceEnabled:
+        typeof parsed.autoBalanceEnabled === 'boolean'
+          ? parsed.autoBalanceEnabled
+          : DEFAULT_STATE.autoBalanceEnabled,
+      autoBalanceStrength: clampUnitInterval(
+        parsed.autoBalanceStrength,
+        DEFAULT_STATE.autoBalanceStrength,
+      ),
       screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
       screenShareQualityAsk:
         typeof parsed.screenShareQualityAsk === 'boolean'
@@ -208,6 +237,30 @@ export const voicePreferenceStore = {
   setAutoGainControl: (autoGainControl: boolean) => {
     if (state.autoGainControl === autoGainControl) return
     patch({ autoGainControl })
+  },
+  setVoiceGateEnabled: (voiceGateEnabled: boolean) => {
+    if (state.voiceGateEnabled === voiceGateEnabled) return
+    patch({ voiceGateEnabled })
+  },
+  setVoiceGateThreshold: (voiceGateThreshold: number) => {
+    const next = clampUnitInterval(
+      voiceGateThreshold,
+      DEFAULT_STATE.voiceGateThreshold,
+    )
+    if (state.voiceGateThreshold === next) return
+    patch({ voiceGateThreshold: next })
+  },
+  setAutoBalanceEnabled: (autoBalanceEnabled: boolean) => {
+    if (state.autoBalanceEnabled === autoBalanceEnabled) return
+    patch({ autoBalanceEnabled })
+  },
+  setAutoBalanceStrength: (autoBalanceStrength: number) => {
+    const next = clampUnitInterval(
+      autoBalanceStrength,
+      DEFAULT_STATE.autoBalanceStrength,
+    )
+    if (state.autoBalanceStrength === next) return
+    patch({ autoBalanceStrength: next })
   },
   setScreenShareQuality: (screenShareQuality: ScreenShareQualityName) => {
     if (state.screenShareQuality === screenShareQuality) return

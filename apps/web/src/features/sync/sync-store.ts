@@ -10,7 +10,7 @@ import type {
 } from '@syrnike13/api-types'
 
 import type { GatewayServerEvent, ReadyPayload, SyncState } from './types'
-import type { UserVoiceState } from './voice-types'
+import type { UserVoiceState, VoiceParticipantsByChannel } from './voice-types'
 import {
   mergeVoiceStatesFromReady,
   normalizeUserVoiceState,
@@ -82,6 +82,28 @@ function cloneReactions(reactions: Message['reactions']) {
   )
 }
 
+function userCanAppearInMultipleVoiceChannels(userId: string) {
+  return Boolean(state.users[userId]?.bot)
+}
+
+function removeVoiceParticipantFromOtherChannels(
+  voiceParticipants: VoiceParticipantsByChannel,
+  userId: string,
+  targetChannelId: string,
+) {
+  for (const channelId of Object.keys(voiceParticipants)) {
+    if (channelId === targetChannelId) continue
+    if (!voiceParticipants[channelId]?.[userId]) continue
+
+    const { [userId]: _, ...channelMap } = voiceParticipants[channelId]
+    if (Object.keys(channelMap).length === 0) {
+      delete voiceParticipants[channelId]
+    } else {
+      voiceParticipants[channelId] = channelMap
+    }
+  }
+}
+
 export const syncStore = {
   getState: () => state,
 
@@ -143,11 +165,18 @@ export const syncStore = {
     participants: UserVoiceState[],
   ) {
     const channelMap: Record<string, UserVoiceState> = {}
+    const voiceParticipants = { ...state.voiceParticipants }
     for (const participant of participants) {
       if (!isValidVoiceUserId(participant.id)) continue
+      if (!userCanAppearInMultipleVoiceChannels(participant.id)) {
+        removeVoiceParticipantFromOtherChannels(
+          voiceParticipants,
+          participant.id,
+          channelId,
+        )
+      }
       channelMap[participant.id] = participant
     }
-    const voiceParticipants = { ...state.voiceParticipants }
     if (Object.keys(channelMap).length === 0) {
       delete voiceParticipants[channelId]
     } else {
@@ -160,13 +189,21 @@ export const syncStore = {
 
   addVoiceParticipant(channelId: string, participant: UserVoiceState) {
     if (!isValidVoiceUserId(participant.id)) return
+    const voiceParticipants = { ...state.voiceParticipants }
+    if (!userCanAppearInMultipleVoiceChannels(participant.id)) {
+      removeVoiceParticipantFromOtherChannels(
+        voiceParticipants,
+        participant.id,
+        channelId,
+      )
+    }
     const channelMap = {
-      ...(state.voiceParticipants[channelId] ?? {}),
+      ...(voiceParticipants[channelId] ?? {}),
       [participant.id]: participant,
     }
     setState({
       voiceParticipants: {
-        ...state.voiceParticipants,
+        ...voiceParticipants,
         [channelId]: channelMap,
       },
     })
@@ -247,6 +284,13 @@ export const syncStore = {
     participant: UserVoiceState,
   ) {
     const voiceParticipants = { ...state.voiceParticipants }
+    if (!userCanAppearInMultipleVoiceChannels(userId)) {
+      removeVoiceParticipantFromOtherChannels(
+        voiceParticipants,
+        userId,
+        toChannelId,
+      )
+    }
     const fromMap = { ...(voiceParticipants[fromChannelId] ?? {}) }
     delete fromMap[userId]
     if (Object.keys(fromMap).length === 0) {

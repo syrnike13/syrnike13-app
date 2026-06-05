@@ -1,6 +1,16 @@
-import { Track, type LocalParticipant, type Room } from 'livekit-client'
+import {
+  Track,
+  type LocalAudioTrack,
+  type LocalParticipant,
+  type Room,
+} from 'livekit-client'
 
-import { readVoicePreferences } from '#/features/voice/voice-preference-store'
+import { voiceAudioProcessingConstraints } from '#/features/voice/voice-capture'
+import { applyVoiceGateProcessor } from '#/features/voice/voice-gate-runtime'
+import {
+  readVoicePreferences,
+  type VoicePreferenceState,
+} from '#/features/voice/voice-preference-store'
 
 type DenoiseProcessor = Awaited<
   ReturnType<typeof createDenoiseProcessor>
@@ -29,30 +39,53 @@ async function loadDenoiseProcessor() {
   return processorLoad
 }
 
+async function applyMicCaptureConstraints(
+  audioTrack: LocalAudioTrack,
+  prefs: VoicePreferenceState,
+) {
+  try {
+    await audioTrack.mediaStreamTrack.applyConstraints(
+      voiceAudioProcessingConstraints(prefs),
+    )
+  } catch {
+    // Some browsers reject live constraint changes; keep the existing capture.
+  }
+}
+
 export async function applyMicProcessing(participant: LocalParticipant) {
   const prefs = readVoicePreferences()
   const audioTrack = participant.getTrackPublication(
     Track.Source.Microphone,
   )?.audioTrack
 
-  if (!audioTrack) return
+  if (!audioTrack) {
+    return
+  }
+
+  await applyMicCaptureConstraints(audioTrack, prefs)
+
+  const gateApplied = await applyVoiceGateProcessor(
+    audioTrack,
+    prefs.voiceGateEnabled,
+    prefs.voiceGateThreshold,
+  )
+  if (gateApplied) return
 
   if (prefs.noiseSuppression === 'enhanced') {
     const denoise = await loadDenoiseProcessor()
     if (denoise) {
       try {
         await audioTrack.setProcessor(denoise)
-        return
       } catch {
         // fallback: leave browser constraints only
       }
     }
-  }
-
-  try {
-    await audioTrack.stopProcessor()
-  } catch {
-    // no processor attached
+  } else {
+    try {
+      await audioTrack.stopProcessor()
+    } catch {
+      // no processor attached
+    }
   }
 }
 

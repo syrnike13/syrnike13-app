@@ -6,6 +6,102 @@ const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 
 describe('syncStore voice events', () => {
+  it('moves a user out of stale channels when a join event arrives', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'VoiceChannelJoin',
+      id: '01KT7DEM3B0T4B0BXGBXWDJ6AG',
+      state: {
+        id: USER_ID,
+        joined_at: 1,
+        is_publishing: true,
+        is_receiving: true,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+      },
+    })
+    syncStore.handleGatewayEvent({
+      type: 'VoiceChannelJoin',
+      id: CHANNEL_ID,
+      state: {
+        id: USER_ID,
+        joined_at: 2,
+        is_publishing: true,
+        is_receiving: true,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+      },
+    })
+
+    expect(syncStore.getState().voiceParticipants).toEqual({
+      [CHANNEL_ID]: {
+        [USER_ID]: expect.objectContaining({
+          id: USER_ID,
+          joined_at: 2,
+        }),
+      },
+    })
+  })
+
+  it('removes stale channel copies when a move event arrives', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'VoiceChannelJoin',
+      id: '01KT7DEM3B0T4B0BXGBXWDJ6AG',
+      state: {
+        id: USER_ID,
+        joined_at: 1,
+        is_publishing: true,
+        is_receiving: true,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+      },
+    })
+    syncStore.addVoiceParticipant('01KT7DEM3B0T4B0BXGBXWDJ6AH', {
+      id: USER_ID,
+      joined_at: 2,
+      is_publishing: true,
+      is_receiving: true,
+      server_muted: false,
+      server_deafened: false,
+      camera: false,
+      screensharing: false,
+    })
+    syncStore.handleGatewayEvent({
+      type: 'VoiceChannelMove',
+      user: USER_ID,
+      from: '01KT7DEM3B0T4B0BXGBXWDJ6AG',
+      to: CHANNEL_ID,
+      state: {
+        id: USER_ID,
+        joined_at: 3,
+        is_publishing: true,
+        is_receiving: true,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+      },
+    })
+
+    expect(syncStore.getState().voiceParticipants).toEqual({
+      [CHANNEL_ID]: {
+        [USER_ID]: expect.objectContaining({
+          id: USER_ID,
+          joined_at: 3,
+        }),
+      },
+    })
+  })
+
   it('applies UserVoiceStateUpdate even when the join snapshot was missed', () => {
     syncStore.reset()
 

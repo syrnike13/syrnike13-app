@@ -1,13 +1,41 @@
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
+import { applyRemoteAudioGain } from '#/features/voice/remote-audio-gain'
 import { voicePreferenceStore } from '#/features/voice/voice-preference-store'
 
 export function remoteAudioElementVolume(
   userVolume: number,
   outputVolume: number,
   muted: boolean,
+  autoBalanceGain = 1,
 ) {
   if (muted) return 0
-  return Math.min(1, Math.max(0, userVolume) * Math.max(0, outputVolume))
+  return Math.min(
+    1,
+    Math.max(0, userVolume) *
+      Math.max(0, outputVolume) *
+      Math.max(0, autoBalanceGain),
+  )
+}
+
+export function normalizeAutoBalanceStrength(value: unknown) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.5
+  return Math.min(1, Math.max(0, Number(value.toFixed(3))))
+}
+
+export function remoteAutoBalanceGain(
+  inputLevel: number,
+  strength: number,
+  enabled: boolean,
+) {
+  if (!enabled) return 1
+  if (!Number.isFinite(inputLevel) || inputLevel <= 0) return 1
+
+  const normalizedStrength = normalizeAutoBalanceStrength(strength)
+  if (normalizedStrength === 0) return 1
+
+  const targetLevel = 0.35
+  const gain = Math.pow(targetLevel / Math.max(0.03, inputLevel), normalizedStrength)
+  return Math.min(2.5, Math.max(0.6, Number(gain.toFixed(3))))
 }
 
 export function applyRemoteAudioElement(
@@ -21,8 +49,22 @@ export function applyRemoteAudioElement(
   const muted = globallyDeafened || userMuted
   element.muted = muted
   const userVolume = voiceListenerStore.getUserVolume(userId)
-  const outputVolume = voicePreferenceStore.getOutputVolume()
-  element.volume = remoteAudioElementVolume(userVolume, outputVolume, muted)
+  const prefs = voicePreferenceStore.getState()
+  const autoBalanceGain = remoteAutoBalanceGain(
+    Number(element.dataset.livekitAudioLevel ?? 0),
+    prefs.autoBalanceStrength,
+    prefs.autoBalanceEnabled,
+  )
+  const gainApplied = applyRemoteAudioGain(
+    element,
+    muted ? 0 : autoBalanceGain,
+  )
+  element.volume = remoteAudioElementVolume(
+    userVolume,
+    prefs.outputVolume,
+    muted,
+    gainApplied ? 1 : autoBalanceGain,
+  )
 }
 
 export function applyAllRemoteAudio(globallyDeafened: boolean) {
