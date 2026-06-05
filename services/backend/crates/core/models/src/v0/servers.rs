@@ -247,6 +247,8 @@ auto_derived!(
         /// Category structure for server
         #[cfg_attr(feature = "validator", validate)]
         pub categories: Option<Vec<Category>>,
+        /// Channel order for server
+        pub channels: Option<Vec<String>>,
         /// System message configuration
         pub system_messages: Option<SystemMessageChannels>,
 

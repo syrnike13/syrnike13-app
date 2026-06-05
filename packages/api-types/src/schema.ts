@@ -2225,6 +2225,8 @@ export interface components {
       banner?: string | null;
       /** @description Category structure for server */
       categories?: components["schemas"]["Category"][] | null;
+      /** @description Channel order for server */
+      channels?: string[] | null;
       /** @description System message configuration */
       system_messages?: components["schemas"]["SystemMessageChannels"] | null;
       /**

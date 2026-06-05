@@ -336,6 +336,70 @@ export function sectionsToCategories(
     }))
 }
 
+export function sectionsToServerChannelIds(
+  sections: ChannelSidebarSection[],
+  existingChannelIds: string[],
+): string[] {
+  const ordered: string[] = []
+  const seen = new Set<string>()
+
+  const appendSectionChannels = (section: ChannelSidebarSection) => {
+    for (const channel of sortSectionChannelsTextBeforeVoice(section.channels)) {
+      if (seen.has(channel._id)) continue
+      ordered.push(channel._id)
+      seen.add(channel._id)
+    }
+  }
+
+  const uncategorized = sections.find(
+    (section) => section.id === UNCATEGORIZED_SECTION_ID,
+  )
+  if (uncategorized) {
+    appendSectionChannels(uncategorized)
+  }
+
+  for (const section of sections) {
+    if (section.id === UNCATEGORIZED_SECTION_ID || section.title === null) {
+      continue
+    }
+    appendSectionChannels(section)
+  }
+
+  for (const id of existingChannelIds) {
+    if (!seen.has(id)) {
+      ordered.push(id)
+      seen.add(id)
+    }
+  }
+
+  return ordered
+}
+
+export type ServerChannelLayout = {
+  categories: Category[]
+  channels: string[]
+}
+
+export function serializeServerLayout(
+  sections: ChannelSidebarSection[],
+  existingChannelIds: string[],
+): ServerChannelLayout {
+  return {
+    categories: sectionsToCategories(sections),
+    channels: sectionsToServerChannelIds(sections, existingChannelIds),
+  }
+}
+
+export function serverLayoutEquals(
+  left: ServerChannelLayout,
+  right: ServerChannelLayout,
+): boolean {
+  return (
+    JSON.stringify(left.categories) === JSON.stringify(right.categories) &&
+    JSON.stringify(left.channels) === JSON.stringify(right.channels)
+  )
+}
+
 function cloneSections(sections: ChannelSidebarSection[]) {
   return sections.map((section) => ({
     ...section,

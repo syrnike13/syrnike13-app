@@ -37,7 +37,8 @@ import {
   buildChannelSidebarSections,
   ensureUncategorizedSection,
   resolveChannelDragDestination,
-  sectionsToCategories,
+  serializeServerLayout,
+  serverLayoutEquals,
   UNCATEGORIZED_SECTION_ID,
   type ChannelSidebarSection,
   type ServerChannel,
@@ -526,8 +527,11 @@ export function ServerChannelList({
 
     setReordering(true)
     try {
-      const categories = sectionsToCategories(nextSections)
-      const updated = await editServer(token, serverId, { categories })
+      const layout = serializeServerLayout(
+        nextSections,
+        server.channels ?? [],
+      )
+      const updated = await editServer(token, serverId, layout)
       syncStore.upsertServer(updated)
       setOptimisticSections(null)
     } catch (error) {
@@ -589,11 +593,13 @@ export function ServerChannelList({
     )
     if (nextSections === dragBaseline) return
 
-    const previousCategories = JSON.stringify(
-      sectionsToCategories(persistBaseline),
+    const existingChannelIds = server.channels ?? channels.map((channel) => channel._id)
+    const previousLayout = serializeServerLayout(
+      ensureUncategorizedSection(persistBaseline),
+      existingChannelIds,
     )
-    const nextCategories = JSON.stringify(sectionsToCategories(nextSections))
-    if (previousCategories === nextCategories) {
+    const nextLayout = serializeServerLayout(nextSections, existingChannelIds)
+    if (serverLayoutEquals(previousLayout, nextLayout)) {
       return
     }
 

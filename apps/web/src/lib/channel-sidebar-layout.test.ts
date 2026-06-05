@@ -5,7 +5,10 @@ import {
   appendChannelToCategory,
   beforeCategoryDroppableId,
   resolveChannelDragDestination,
+  serializeServerLayout,
+  serverLayoutEquals,
   sortSectionChannelsTextBeforeVoice,
+  UNCATEGORIZED_SECTION_ID,
   type ChannelSidebarSection,
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
@@ -170,5 +173,90 @@ describe('appendChannelToCategory', () => {
     )
 
     expect(categories[0]?.channels).toEqual(['text-old', 'text-new', 'voice-1'])
+  })
+})
+
+describe('serializeServerLayout', () => {
+  it('flattens uncategorized channels before categorized channels', () => {
+    const layout = sections([
+      {
+        id: UNCATEGORIZED_SECTION_ID,
+        title: null,
+        channels: [channel('unc-2'), channel('unc-1')],
+      },
+      {
+        id: 'cat-a',
+        title: 'A',
+        channels: [channel('cat-a-1'), voiceChannel('cat-a-v')],
+      },
+    ])
+
+    expect(
+      serializeServerLayout(layout, [
+        'unc-2',
+        'unc-1',
+        'cat-a-1',
+        'cat-a-v',
+      ]).channels,
+    ).toEqual(['unc-2', 'unc-1', 'cat-a-1', 'cat-a-v'])
+  })
+
+  it('appends missing existing channel ids at the end', () => {
+    const layout = sections([
+      { id: 'cat-a', title: 'A', channels: [channel('cat-a-1')] },
+    ])
+
+    expect(
+      serializeServerLayout(layout, ['legacy-1', 'cat-a-1']).channels,
+    ).toEqual(['cat-a-1', 'legacy-1'])
+  })
+
+  it('detects uncategorized reorder without category changes', () => {
+    const baseline = sections([
+      {
+        id: UNCATEGORIZED_SECTION_ID,
+        title: null,
+        channels: [channel('unc-1'), channel('unc-2')],
+      },
+    ])
+    const reordered = sections([
+      {
+        id: UNCATEGORIZED_SECTION_ID,
+        title: null,
+        channels: [channel('unc-2'), channel('unc-1')],
+      },
+    ])
+    const existing = ['unc-1', 'unc-2']
+
+    const previous = serializeServerLayout(baseline, existing)
+    const next = serializeServerLayout(reordered, existing)
+
+    expect(previous.categories).toEqual(next.categories)
+    expect(serverLayoutEquals(previous, next)).toBe(false)
+    expect(next.channels).toEqual(['unc-2', 'unc-1'])
+  })
+
+  it('updates both categories and channels when moving into a category', () => {
+    const baseline = sections([
+      {
+        id: UNCATEGORIZED_SECTION_ID,
+        title: null,
+        channels: [channel('unc-1'), channel('unc-2')],
+      },
+      { id: 'cat-a', title: 'A', channels: [channel('cat-a-1')] },
+    ])
+    const nextSections = applyChannelDragResult(
+      baseline,
+      { droppableId: UNCATEGORIZED_SECTION_ID, index: 0 },
+      { droppableId: 'cat-a', index: 0 },
+    )
+    const existing = ['unc-1', 'unc-2', 'cat-a-1']
+
+    const previous = serializeServerLayout(baseline, existing)
+    const next = serializeServerLayout(nextSections, existing)
+
+    expect(serverLayoutEquals(previous, next)).toBe(false)
+    expect(next.categories[0]?.channels).toEqual(['unc-1', 'cat-a-1'])
+    expect(next.channels).toEqual(['unc-2', 'unc-1', 'cat-a-1'])
   })
 })
