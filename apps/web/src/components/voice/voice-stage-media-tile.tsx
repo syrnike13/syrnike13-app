@@ -160,7 +160,7 @@ export function StageMediaTile({
               <div
                 className={cn(
                   'absolute inset-0 flex items-center justify-center',
-                  variant === 'strip' ? 'px-2 pb-8 pt-2' : 'flex-col gap-3',
+                  variant === 'strip' ? 'px-2' : 'flex-col gap-3',
                 )}
               >
               <UserAvatar
@@ -202,7 +202,10 @@ export function StageMediaTile({
             </>
           )}
 
-          {participant?.screensharing && item.kind === 'screen' ? (
+          {participant?.screensharing &&
+          item.kind === 'screen' &&
+          variant !== 'focus' &&
+          variant !== 'fullscreen' ? (
             <div
               className={cn(
                 'absolute z-10',
@@ -213,25 +216,29 @@ export function StageMediaTile({
             </div>
           ) : null}
 
-          <div
-            className={cn(
-              'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-black/60 font-medium text-white',
-              variant === 'strip'
-                ? 'bottom-1.5 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-[10px] leading-tight'
-                : 'bottom-2 left-2 max-w-[calc(100%-3.5rem)] px-2 py-1 text-xs',
-            )}
-          >
-            {participant ? (
-              <VoiceParticipantIcons
-                muted={participant.server_muted || !participant.is_publishing}
-                deafened={participant.server_deafened || !participant.is_receiving}
-                serverMuted={participant.server_muted}
-                serverDeafened={participant.server_deafened}
-                camera={participant.camera && item.kind === 'camera'}
-              />
-            ) : null}
-            <span className="min-w-0 truncate">{mediaLabel}</span>
-          </div>
+          {variant !== 'focus' && variant !== 'fullscreen' ? (
+            <div
+              className={cn(
+                'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-black/60 font-medium text-white',
+                variant === 'strip'
+                  ? 'bottom-1.5 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-xs leading-tight'
+                  : 'bottom-2 left-2 max-w-[calc(100%-3.5rem)] px-2 py-1 text-xs',
+              )}
+            >
+              {participant ? (
+                <VoiceParticipantIcons
+                  muted={participant.server_muted || !participant.is_publishing}
+                  deafened={
+                    participant.server_deafened || !participant.is_receiving
+                  }
+                  serverMuted={participant.server_muted}
+                  serverDeafened={participant.server_deafened}
+                  camera={participant.camera && item.kind === 'camera'}
+                />
+              ) : null}
+              <span className="min-w-0 truncate">{mediaLabel}</span>
+            </div>
+          ) : null}
         </article>
       </ContextMenuTrigger>
       <ContextMenuContent className="z-[420] min-w-64 border-white/10 bg-[#2b2d31] text-white">

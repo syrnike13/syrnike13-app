@@ -4,6 +4,7 @@ import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting
 import {
   buildStageMediaItems,
   sortStageMediaItemsForGrid,
+  stageMediaKindLabel,
   type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
 
@@ -237,6 +238,14 @@ describe('withConnectingLocalAvatarItem', () => {
     })
 
     expect(items.filter((item) => item.userId === LOCAL_USER_ID)).toHaveLength(1)
+  })
+})
+
+describe('stageMediaKindLabel', () => {
+  it('maps stream kinds to Russian labels', () => {
+    expect(stageMediaKindLabel('screen')).toBe('Экран')
+    expect(stageMediaKindLabel('camera')).toBe('Камера')
+    expect(stageMediaKindLabel('avatar')).toBeNull()
   })
 })
 

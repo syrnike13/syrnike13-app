@@ -11,6 +11,8 @@ import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
+import { UserAvatar } from '#/components/user/user-avatar'
+import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
 import {
@@ -35,7 +37,10 @@ import {
 } from '#/features/voice/voice-stage-mode'
 import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-provider'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
-import { sortStageMediaItemsForGrid } from '#/features/voice/voice-stage-media'
+import {
+  sortStageMediaItemsForGrid,
+  stageMediaKindLabel,
+} from '#/features/voice/voice-stage-media'
 import {
   shouldShowVoiceInviteSlot,
   voiceStageContentInsetClass,
@@ -141,6 +146,28 @@ export function VoiceStageView({
     layoutMode === 'focus'
       ? mediaItems.find((item) => item.id === voice.focusedMediaId) ?? null
       : null
+  const focusedMediaHeader = useMemo(() => {
+    if (!focusedItem) return null
+    const kindLabel = stageMediaKindLabel(focusedItem.kind)
+    if (!kindLabel) return null
+
+    const isLocal = isVoiceLocalUserId(focusedItem.userId, auth.user?._id)
+    const user =
+      users[focusedItem.userId] ?? (isLocal ? auth.user ?? undefined : undefined)
+    const participant = participantsById.get(focusedItem.userId)
+
+    return {
+      user,
+      kindLabel,
+      displayName: voiceParticipantDisplayName(
+        focusedItem.userId,
+        users,
+        auth.user,
+      ),
+      showOnAir:
+        focusedItem.kind === 'screen' && Boolean(participant?.screensharing),
+    }
+  }, [auth.user, focusedItem, participantsById, users])
   const canToggleStageFullscreen =
     participants.length > 0 || mediaItems.length > 0
   const canInvite =
@@ -335,7 +362,40 @@ export function VoiceStageView({
         )}
       >
         <Volume2Icon className="size-5 shrink-0 text-muted-foreground" />
-        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h1>
+        <h1
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
+          title={
+            focusedMediaHeader
+              ? `${title} · ${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`
+              : title
+          }
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+            <span className="truncate">{title}</span>
+            {focusedMediaHeader ? (
+              <>
+                <span className="shrink-0 text-white/45" aria-hidden>
+                  •
+                </span>
+                <UserAvatar
+                  user={focusedMediaHeader.user}
+                  className="size-5"
+                  fallbackClassName="size-5 text-[10px]"
+                  showPresence={false}
+                />
+                <span className="shrink-0 text-white/70">
+                  {focusedMediaHeader.kindLabel}
+                </span>
+                <span className="min-w-0 truncate">
+                  {focusedMediaHeader.displayName}
+                </span>
+              </>
+            ) : null}
+          </span>
+          {focusedMediaHeader?.showOnAir ? (
+            <VoiceOnAirBadge className="ml-1 shrink-0" />
+          ) : null}
+        </h1>
         {presentation === 'embedded' ? (
           <Button
             type="button"

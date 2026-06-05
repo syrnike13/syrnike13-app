@@ -66,6 +66,44 @@ describe('StageMediaTile', () => {
     expect(tile.style.aspectRatio).toBe('')
   })
 
+  it('hides the media label overlay in focus mode', () => {
+    render(
+      <StageMediaTile
+        item={screenItem}
+        displayName="Remote User"
+        variant="focus"
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Экран Remote User')).toBeNull()
+  })
+
+  it('hides the on-air badge on the tile in focus mode', () => {
+    render(
+      <StageMediaTile
+        item={screenItem}
+        displayName="Remote User"
+        variant="focus"
+        participant={{
+          id: 'remote-user',
+          joined_at: 1,
+          is_publishing: true,
+          is_receiving: true,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: true,
+        }}
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByLabelText('В эфире')).toBeNull()
+  })
+
   it('focuses the tile when the user clicks directly on video', () => {
     const onFocus = vi.fn()
 

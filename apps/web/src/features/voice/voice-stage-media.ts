@@ -1,5 +1,11 @@
 export type StageMediaKind = 'screen' | 'camera' | 'avatar'
 
+export function stageMediaKindLabel(kind: StageMediaKind) {
+  if (kind === 'screen') return 'Экран'
+  if (kind === 'camera') return 'Камера'
+  return null
+}
+
 const STAGE_MEDIA_GRID_KIND_ORDER: Record<StageMediaKind, number> = {
   screen: 0,
   camera: 1,
