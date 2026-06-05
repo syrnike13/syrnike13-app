@@ -14,7 +14,11 @@ import {
   listServerChannels,
 } from '#/features/sync/selectors'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
-import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
+import {
+  shellColumnHeaderClass,
+  shellNavSurface,
+} from '#/components/layout/shell-chrome'
+import { cn } from '#/lib/utils'
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { ServerMenuDialog } from '#/components/servers/server-menu-dialog'
@@ -69,40 +73,38 @@ export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
       className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
       style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
     >
-      <div className={`space-y-2 border-b p-2 ${shellDivider}`}>
-        <div className="flex min-w-0 items-center gap-1 px-1">
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5">
-            {serverName}
-          </h2>
-          {selectedServerId ? (
-            <div className="flex shrink-0 items-center">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8 shrink-0"
-                title="Отметить сервер прочитанным"
-                disabled={markingRead}
-                onClick={() => void markServerRead()}
-              >
-                <CheckCheckIcon className="size-4" />
-                <span className="sr-only">Прочитано</span>
-              </Button>
-              <CreateChannelDialog serverId={selectedServerId} />
-              <ServerInviteDialog serverId={selectedServerId} />
-              <ServerMenuDialog
-                serverId={selectedServerId}
-                serverName={serverName ?? 'Сервер'}
-              />
-            </div>
-          ) : null}
-        </div>
-        <p className="mt-0.5 truncate px-1 text-xs text-muted-foreground">
-          {ready ? `${channels.length} каналов` : 'Синхронизация…'}
-        </p>
-      </div>
+      <header className={cn(shellColumnHeaderClass, 'bg-background px-4')}>
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+          {serverName}
+        </h2>
+        {selectedServerId ? (
+          <div className="flex shrink-0 items-center">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              title="Отметить сервер прочитанным"
+              disabled={markingRead}
+              onClick={() => void markServerRead()}
+            >
+              <CheckCheckIcon className="size-4" />
+              <span className="sr-only">Прочитано</span>
+            </Button>
+            <CreateChannelDialog serverId={selectedServerId} />
+            <ServerInviteDialog serverId={selectedServerId} />
+            <ServerMenuDialog
+              serverId={selectedServerId}
+              serverName={serverName ?? 'Сервер'}
+            />
+          </div>
+        ) : null}
+      </header>
 
       <ScrollArea className="flex-1 p-2">
+        <p className="mb-1 truncate px-1 text-xs text-muted-foreground">
+          {ready ? `${channels.length} каналов` : 'Синхронизация…'}
+        </p>
         {channels.length === 0 ? (
           <p className="px-2 py-4 text-xs text-muted-foreground">
             Нет доступных каналов

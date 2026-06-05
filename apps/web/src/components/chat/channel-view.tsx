@@ -19,6 +19,7 @@ import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,
   FLOATING_BAR_SCROLL_PAD_CLASS,
+  shellColumnHeaderClass,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 import { VoiceTextChannelDock } from '#/components/voice/voice-text-channel-dock'
@@ -92,58 +93,61 @@ export function ChannelView({
   const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
 
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider px-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate font-semibold">{title}</h1>
-            {channel.channel_type === 'DirectMessage' && dmRecipient ? (
-              <p className="text-xs text-muted-foreground">
-                {presenceLabel(dmRecipient)}
-              </p>
-            ) : channelDescription ? (
-              <p className="line-clamp-2 text-xs text-muted-foreground">
-                {channelDescription}
-              </p>
-            ) : null}
-          </div>
-          {historyQuery.isFetching ? (
-            <span className="text-xs text-muted-foreground">загрузка…</span>
-          ) : null}
-          {hasVoice ? (
-            <Button
-              type="button"
-              size="sm"
-              variant={inThisVoiceCall ? 'secondary' : 'outline'}
-              onClick={() =>
-                inThisVoiceCall ? voice.leave() : void voice.join(channelId)
-              }
-            >
-              <HeadphonesIcon className="size-4" />
-              {inThisVoiceCall ? 'В голосе' : 'Голос'}
-            </Button>
-          ) : null}
-          {isServerChannel ? (
-            <ChannelSettingsDialog channel={channel} />
-          ) : null}
-          {token ? (
-            <>
-              <ChannelPinnedDialog
-                channelId={channelId}
-                token={token}
-                users={users}
-              />
-              <ChannelSearchDialog
-                channelId={channelId}
-                token={token}
-                users={users}
-              />
-            </>
-          ) : null}
-        </header>
+  const showMemberSidebar =
+    isServerChannel && channel.channel_type === 'TextChannel'
 
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className={cn(shellColumnHeaderClass, 'bg-card px-4')}>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-semibold">{title}</h1>
+          {channel.channel_type === 'DirectMessage' && dmRecipient ? (
+            <p className="text-xs text-muted-foreground">
+              {presenceLabel(dmRecipient)}
+            </p>
+          ) : channelDescription ? (
+            <p className="line-clamp-2 text-xs text-muted-foreground">
+              {channelDescription}
+            </p>
+          ) : null}
+        </div>
+        {historyQuery.isFetching ? (
+          <span className="text-xs text-muted-foreground">загрузка…</span>
+        ) : null}
+        {hasVoice ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={inThisVoiceCall ? 'secondary' : 'outline'}
+            onClick={() =>
+              inThisVoiceCall ? voice.leave() : void voice.join(channelId)
+            }
+          >
+            <HeadphonesIcon className="size-4" />
+            {inThisVoiceCall ? 'В голосе' : 'Голос'}
+          </Button>
+        ) : null}
+        {isServerChannel ? (
+          <ChannelSettingsDialog channel={channel} />
+        ) : null}
+        {token ? (
+          <>
+            <ChannelPinnedDialog
+              channelId={channelId}
+              token={token}
+              users={users}
+            />
+            <ChannelSearchDialog
+              channelId={channelId}
+              token={token}
+              users={users}
+            />
+          </>
+        ) : null}
+      </header>
+
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {hasVoice && inThisVoiceCall && channel.channel_type === 'TextChannel' ? (
             <VoiceTextChannelDock channelId={channelId} />
           ) : null}
@@ -244,10 +248,8 @@ export function ChannelView({
             />
           </div>
         </div>
+        {showMemberSidebar ? <ChannelMemberSidebar channel={channel} /> : null}
       </div>
-      {isServerChannel && channel.channel_type === 'TextChannel' ? (
-        <ChannelMemberSidebar channel={channel} />
-      ) : null}
     </div>
   )
 }

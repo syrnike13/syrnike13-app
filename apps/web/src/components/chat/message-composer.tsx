@@ -272,6 +272,7 @@ export function MessageComposer({
         )
       } finally {
         setSending(false)
+        requestAnimationFrame(() => textareaRef.current?.focus())
       }
       return
     }
@@ -304,6 +305,7 @@ export function MessageComposer({
       )
     } finally {
       setSending(false)
+      requestAnimationFrame(() => textareaRef.current?.focus())
     }
   }
 
@@ -506,7 +508,7 @@ export function MessageComposer({
         <Textarea
           ref={textareaRef}
           value={value}
-          disabled={disabled || sending}
+          disabled={disabled}
           placeholder={placeholder}
           rows={1}
           className={cn(
