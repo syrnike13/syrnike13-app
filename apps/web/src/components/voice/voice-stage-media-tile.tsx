@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  ExternalLinkIcon,
-  Maximize2Icon,
-  MonitorXIcon,
-  VolumeXIcon,
-} from 'lucide-react'
+import { Maximize2Icon, MonitorXIcon, VolumeXIcon } from 'lucide-react'
 import type { User } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'
@@ -46,7 +41,6 @@ type StageMediaTileProps = {
   speaking?: boolean
   variant: StageMediaTileVariant
   onFocus: (mediaId: string) => void
-  onOpenPopout: (mediaId: string) => void
   onSetSubscribed: (mediaId: string, subscribed: boolean) => void
   onStreamAspectRatioChange?: (aspectRatio: number) => void
 }
@@ -61,7 +55,6 @@ export function StageMediaTile({
   speaking = false,
   variant,
   onFocus,
-  onOpenPopout,
   onSetSubscribed,
   onStreamAspectRatioChange,
 }: StageMediaTileProps) {
@@ -71,7 +64,6 @@ export function StageMediaTile({
   const palette = useVoiceTilePalette(user, item.userId)
   const hasVideo = Boolean(item.track && item.subscribed !== false)
   const isScreen = item.kind === 'screen'
-  const canOpenPopout = isScreen && Boolean(item.track)
   const fit =
     variant === 'focus'
       ? 'cover'
@@ -139,6 +131,7 @@ export function StageMediaTile({
             variant === 'strip' ? (
               <div className={stripMediaClipClass}>
                 <VoiceStageVideo
+                  mediaId={item.id}
                   track={item.track}
                   fit={fit}
                   onVideoSizeChange={updateVideoSize}
@@ -146,6 +139,7 @@ export function StageMediaTile({
               </div>
             ) : (
               <VoiceStageVideo
+                mediaId={item.id}
                 track={item.track}
                 fit={fit}
                 onVideoSizeChange={updateVideoSize}
@@ -234,31 +228,6 @@ export function StageMediaTile({
             ) : null}
             <span className="min-w-0 truncate">{mediaLabel}</span>
           </div>
-          {item.track && canOpenPopout ? (
-            <div
-              className={cn(
-                'absolute right-2 bottom-2 flex items-center gap-1 transition-opacity',
-                variant === 'grid' || variant === 'strip'
-                  ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
-                  : 'opacity-100',
-              )}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="size-8 rounded bg-black/60 text-white hover:bg-black/80 hover:text-white"
-                title="В отдельном окне"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onOpenPopout(item.id)
-                }}
-              >
-                <ExternalLinkIcon className="size-4" />
-              </Button>
-            </div>
-          ) : null}
         </article>
       </ContextMenuTrigger>
       <ContextMenuContent className="z-[420] min-w-64 border-white/10 bg-[#2b2d31] text-white">
@@ -266,12 +235,6 @@ export function StageMediaTile({
           <Maximize2Icon />
           Сфокусировать
         </ContextMenuItem>
-        {canOpenPopout ? (
-          <ContextMenuItem onSelect={() => onOpenPopout(item.id)}>
-            <ExternalLinkIcon />
-            Стрим в отдельном окне
-          </ContextMenuItem>
-        ) : null}
         {item.kind === 'screen' ? (
           <ContextMenuItem
             onSelect={() =>

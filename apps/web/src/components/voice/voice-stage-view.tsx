@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from 'react'
 import { MessageSquareIcon, Volume2Icon } from 'lucide-react'
 import type { Channel, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
@@ -9,10 +16,11 @@ import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
 import {
   VoiceStageControls,
   VoiceStageFullscreenButton,
+  VoiceStagePopoutButton,
 } from '#/components/voice/voice-stage-controls'
 import { VoiceStageInviteTile } from '#/components/voice/voice-stage-tile'
 import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
-import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
+import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popout-placeholder'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   getChannelVoiceParticipants,
@@ -52,10 +60,7 @@ type VoiceStageViewProps = {
   onToggleChat: () => void
 }
 
-type PopoutState = {
-  mediaId: string
-  childWindow: Window
-}
+const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
 
 function participantDisplayName(
   userId: string,
@@ -96,19 +101,22 @@ export function VoiceStageView({
   const connecting = voice.status === 'connecting' && inVoiceSession
   const [requestedMode, setRequestedMode] =
     useState<VoiceStageLayoutMode>('grid')
-  const [popout, setPopout] = useState<PopoutState | null>(null)
-  const popoutRef = useRef<PopoutState | null>(null)
-  const { stageRef, chromeVisible } = useVoiceStageChromeVisible()
+  const [popoutWindow, setPopoutWindow] = useState<Window | null>(null)
+  const popoutWindowRef = useRef<Window | null>(null)
+  const popoutOpen = popoutWindow != null && !popoutWindow.closed
+  const { stageRef, chromeVisible } = useVoiceStageChromeVisible(
+    popoutOpen ? 'popout' : 'embedded',
+  )
 
   useEffect(() => {
-    popoutRef.current = popout
-  }, [popout])
+    popoutWindowRef.current = popoutWindow
+  }, [popoutWindow])
 
   useEffect(() => {
     return () => {
-      const current = popoutRef.current
-      if (current && !current.childWindow.closed) {
-        current.childWindow.close()
+      const current = popoutWindowRef.current
+      if (current && !current.closed) {
+        current.close()
       }
     }
   }, [])
@@ -143,9 +151,6 @@ export function VoiceStageView({
       : null
   const canToggleStageFullscreen =
     participants.length > 0 || mediaItems.length > 0
-  const popoutItem =
-    mediaItems.find((item) => item.id === popout?.mediaId) ?? null
-
   const canInvite =
     server && channel.channel_type === 'TextChannel'
       ? canInviteToChannel(server, channel, member, auth.user?._id)
@@ -184,33 +189,53 @@ export function VoiceStageView({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [voice.stageFullscreen, voice])
 
-  const openPopout = useCallback((mediaId: string) => {
+  const closePopout = useCallback(() => {
+    const win = popoutWindowRef.current
+    setPopoutWindow(null)
+    if (win && !win.closed) {
+      try {
+        win.close()
+      } catch {
+        // окно уже закрыто
+      }
+    }
+  }, [])
+
+  const toggleStagePopout = useCallback(() => {
+    if (popoutOpen && popoutWindow) {
+      closePopout()
+      return
+    }
+    if (!canToggleStageFullscreen) return
+
+    if (voice.stageFullscreen) {
+      voice.toggleStageFullscreen()
+    }
+
     const childWindow = window.open(
       '',
-      `syrnike13-stage-popout-${mediaId}`,
+      STAGE_POPOUT_WINDOW_NAME,
       'popup=yes,width=1280,height=720',
     )
     if (!childWindow) {
-      toast.error('Браузер заблокировал отдельное окно стрима')
+      toast.error('Браузер заблокировал отдельное окно стейджа')
       return
     }
-    setPopout((current) => {
-      if (current && current.childWindow !== childWindow && !current.childWindow.closed) {
-        current.childWindow.close()
+
+    setPopoutWindow((current) => {
+      if (current && current !== childWindow && !current.closed) {
+        current.close()
       }
-      return { mediaId, childWindow }
+      return childWindow
     })
     childWindow.focus()
-  }, [])
-
-  const closePopout = useCallback(() => {
-    setPopout((current) => {
-      if (current && !current.childWindow.closed) {
-        current.childWindow.close()
-      }
-      return null
-    })
-  }, [])
+  }, [
+    canToggleStageFullscreen,
+    closePopout,
+    popoutOpen,
+    popoutWindow,
+    voice,
+  ])
 
   const renderTile = useCallback(
     (
@@ -223,11 +248,14 @@ export function VoiceStageView({
         item={item}
         user={users[item.userId]}
         participant={participantsById.get(item.userId)}
-        displayName={participantDisplayName(item.userId, users, auth.user?._id)}
+        displayName={participantDisplayName(
+          item.userId,
+          users,
+          auth.user?._id,
+        )}
         speaking={inThisVoiceCall && voice.speakingUserIds.has(item.userId)}
         variant={variant}
         onFocus={focusMedia}
-        onOpenPopout={openPopout}
         onSetSubscribed={voice.setStageMediaSubscribed}
         onStreamAspectRatioChange={onStreamAspectRatioChange}
       />
@@ -236,7 +264,6 @@ export function VoiceStageView({
       auth.user?._id,
       focusMedia,
       inThisVoiceCall,
-      openPopout,
       participantsById,
       users,
       voice.setStageMediaSubscribed,
@@ -244,12 +271,23 @@ export function VoiceStageView({
     ],
   )
 
-  return (
+  const renderStageSurface = (
+    surfaceRef: Ref<HTMLDivElement> | undefined,
+    presentation: 'embedded' | 'popout',
+  ) => (
     <div
-      ref={stageRef}
+      ref={surfaceRef}
       className={cn(
-        'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black text-foreground',
-        voice.stageFullscreen && 'fixed inset-0 z-[300]',
+        'relative flex min-w-0 flex-col overflow-hidden bg-black text-foreground',
+        presentation === 'popout' && 'h-[100dvh] w-full min-h-0',
+        presentation === 'embedded' && 'min-h-0 flex-1',
+        presentation === 'popout' &&
+          voice.stageFullscreen &&
+          'fixed inset-0 z-[50]',
+        presentation === 'embedded' &&
+          voice.stageFullscreen &&
+          !popoutOpen &&
+          'fixed inset-0 z-[300]',
       )}
     >
       <div
@@ -301,17 +339,19 @@ export function VoiceStageView({
       >
         <Volume2Icon className="size-5 shrink-0 text-muted-foreground" />
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h1>
-        <Button
-          type="button"
-          variant={chatOpen ? 'secondary' : 'ghost'}
-          size="icon"
-          className="size-9 shrink-0"
-          title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
-          aria-pressed={chatOpen}
-          onClick={onToggleChat}
-        >
-          <MessageSquareIcon className="size-5" />
-        </Button>
+        {presentation === 'embedded' ? (
+          <Button
+            type="button"
+            variant={chatOpen ? 'secondary' : 'ghost'}
+            size="icon"
+            className="size-9 shrink-0"
+            title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            aria-pressed={chatOpen}
+            onClick={onToggleChat}
+          >
+            <MessageSquareIcon className="size-5" />
+          </Button>
+        ) : null}
       </header>
 
       <div
@@ -331,42 +371,52 @@ export function VoiceStageView({
           />
         </div>
         <div className={voiceStageControlsChromeTrailingClass}>
-          <VoiceStageFullscreenButton
-            active={voice.stageFullscreen}
-            disabled={!canToggleStageFullscreen}
-            onClick={voice.toggleStageFullscreen}
-          />
+          <div className="flex items-center gap-0.5">
+            <VoiceStagePopoutButton
+              active={popoutOpen}
+              disabled={!canToggleStageFullscreen}
+              onClick={toggleStagePopout}
+            />
+            <VoiceStageFullscreenButton
+              active={voice.stageFullscreen}
+              disabled={!canToggleStageFullscreen}
+              onClick={voice.toggleStageFullscreen}
+            />
+          </div>
         </div>
       </div>
 
-      {popout && popoutItem ? (
+    </div>
+  )
+
+  return (
+    <>
+      {popoutOpen ? (
+        <VoiceStagePopoutPlaceholder
+          title={title}
+          onReturn={closePopout}
+          onFocusPopout={() => {
+            if (popoutWindow && !popoutWindow.closed) {
+              popoutWindow.focus()
+            }
+          }}
+        />
+      ) : null}
+      {!popoutOpen ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {renderStageSurface(stageRef, 'embedded')}
+        </div>
+      ) : null}
+      {popoutOpen && popoutWindow ? (
         <VoiceStagePopout
-          childWindow={popout.childWindow}
-          title={`${participantDisplayName(
-            popoutItem.userId,
-            users,
-            auth.user?._id,
-          )} · ${popoutItem.kind === 'screen' ? 'Демонстрация' : 'Камера'}`}
+          childWindow={popoutWindow}
+          title={title}
           onClose={closePopout}
         >
-          <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-            {popoutItem.track ? (
-              <VoiceStageVideo
-                track={popoutItem.track}
-                fit={popoutItem.kind === 'screen' ? 'contain' : 'cover'}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: popoutItem.kind === 'screen' ? 'contain' : 'cover',
-                }}
-              />
-            ) : null}
-          </div>
+          {renderStageSurface(stageRef, 'popout')}
         </VoiceStagePopout>
       ) : null}
-    </div>
+    </>
   )
 }
 

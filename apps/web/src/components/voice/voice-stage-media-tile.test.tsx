@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
 import type { VoiceStageMediaItem } from '#/features/voice/voice-provider'
@@ -23,17 +23,30 @@ const screenItem: VoiceStageMediaItem = {
 const screenItemWithTrack: VoiceStageMediaItem = {
   ...screenItem,
   track: {
-    attach: vi.fn(),
-    detach: vi.fn(),
-  } as unknown as VoiceStageMediaItem['track'],
+    mediaStreamTrack: {},
+  } as VoiceStageMediaItem['track'],
 }
 
 describe('StageMediaTile', () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      'MediaStream',
+      vi.fn(function MediaStreamStub(this: { tracks: unknown[] }, tracks) {
+        this.tracks = tracks
+      }),
+    )
     Object.defineProperty(HTMLMediaElement.prototype, 'play', {
       configurable: true,
       value: vi.fn(() => Promise.resolve()),
     })
+    Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
+      configurable: true,
+      value: vi.fn(),
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('lets fullscreen media fill the overlay after aspect ratio is disabled', () => {
@@ -43,7 +56,6 @@ describe('StageMediaTile', () => {
         displayName="Remote User"
         variant="fullscreen"
         onFocus={vi.fn()}
-        onOpenPopout={vi.fn()}
         onSetSubscribed={vi.fn()}
       />,
     )
@@ -54,22 +66,21 @@ describe('StageMediaTile', () => {
     expect(tile.style.aspectRatio).toBe('')
   })
 
-  it('keeps popout tile action button clickable', () => {
-    const onOpenPopout = vi.fn()
+  it('focuses the tile when the user clicks directly on video', () => {
+    const onFocus = vi.fn()
 
     render(
       <StageMediaTile
         item={screenItemWithTrack}
         displayName="Remote User"
-        variant="fullscreen"
-        onFocus={vi.fn()}
-        onOpenPopout={onOpenPopout}
+        variant="grid"
+        onFocus={onFocus}
         onSetSubscribed={vi.fn()}
       />,
     )
 
-    fireEvent.click(screen.getByTitle('В отдельном окне'))
+    fireEvent.click(document.querySelector('video')!)
 
-    expect(onOpenPopout).toHaveBeenCalledWith(screenItem.id)
+    expect(onFocus).toHaveBeenCalledWith(screenItem.id)
   })
 })

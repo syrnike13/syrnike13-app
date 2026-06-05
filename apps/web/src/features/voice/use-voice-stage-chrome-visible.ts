@@ -25,8 +25,11 @@ export function voiceStageChromeMotion(
   )
 }
 
-export function useVoiceStageChromeVisible() {
-  const stageRef = useRef<HTMLDivElement>(null)
+export function useVoiceStageChromeVisible(attachKey: string | boolean = true) {
+  const [stageElement, setStageElement] = useState<HTMLDivElement | null>(null)
+  const stageRef = useCallback((node: HTMLDivElement | null) => {
+    setStageElement(node)
+  }, [])
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pointerRef = useRef({ x: 0, y: 0 })
   const [chromeVisible, setChromeVisible] = useState(true)
@@ -39,15 +42,16 @@ export function useVoiceStageChromeVisible() {
   }, [])
 
   const isPointerOverChrome = useCallback(() => {
+    const doc = stageElement?.ownerDocument ?? document
     const { x, y } = pointerRef.current
-    const target = document.elementFromPoint(x, y)
+    const target = doc.elementFromPoint(x, y)
     if (!target) return false
 
     return Boolean(
       target.closest('[data-voice-stage-chrome]') ??
         target.closest('[data-voice-stage-popover]'),
     )
-  }, [])
+  }, [stageElement])
 
   const scheduleHide = useCallback(() => {
     clearHideTimer()
@@ -66,8 +70,7 @@ export function useVoiceStageChromeVisible() {
   }, [scheduleHide])
 
   useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
+    if (!stageElement) return
 
     const onPointerActivity = (event: PointerEvent) => {
       pointerRef.current = { x: event.clientX, y: event.clientY }
@@ -78,21 +81,21 @@ export function useVoiceStageChromeVisible() {
       revealChrome()
     }
 
-    stage.addEventListener('pointermove', onPointerActivity)
-    stage.addEventListener('pointerdown', onPointerActivity)
-    stage.addEventListener('pointerenter', onPointerActivity)
-    stage.addEventListener('focusin', onFocusIn)
+    stageElement.addEventListener('pointermove', onPointerActivity)
+    stageElement.addEventListener('pointerdown', onPointerActivity)
+    stageElement.addEventListener('pointerenter', onPointerActivity)
+    stageElement.addEventListener('focusin', onFocusIn)
 
     revealChrome()
 
     return () => {
-      stage.removeEventListener('pointermove', onPointerActivity)
-      stage.removeEventListener('pointerdown', onPointerActivity)
-      stage.removeEventListener('pointerenter', onPointerActivity)
-      stage.removeEventListener('focusin', onFocusIn)
+      stageElement.removeEventListener('pointermove', onPointerActivity)
+      stageElement.removeEventListener('pointerdown', onPointerActivity)
+      stageElement.removeEventListener('pointerenter', onPointerActivity)
+      stageElement.removeEventListener('focusin', onFocusIn)
       clearHideTimer()
     }
-  }, [clearHideTimer, revealChrome])
+  }, [attachKey, clearHideTimer, revealChrome, stageElement])
 
   return { stageRef, chromeVisible, revealChrome }
 }

@@ -16,6 +16,7 @@ export function sortStageMediaItemsForGrid<T extends { kind: StageMediaKind }>(
       STAGE_MEDIA_GRID_KIND_ORDER[right.kind],
   )
 }
+
 export type StageMediaTrackSource = 'screen' | 'camera'
 
 export type StageMediaParticipant = {

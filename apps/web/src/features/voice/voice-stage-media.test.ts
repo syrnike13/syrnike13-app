@@ -193,7 +193,6 @@ describe('buildStageMediaItems', () => {
     ).toEqual([`${LOCAL_USER_ID}:camera`, `${REMOTE_USER_ID}:screen`])
   })
 })
-
 describe('sortStageMediaItemsForGrid', () => {
   it('places screen shares and cameras before avatar tiles', () => {
     const items = [

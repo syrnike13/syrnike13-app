@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   ChevronDownIcon,
+  ExternalLinkIcon,
   HeadphoneOffIcon,
   HeadphonesIcon,
   Maximize2Icon,
@@ -126,6 +127,46 @@ function stageMediaSegmentButtonClass(
         ? stageControlNeutralChevronGroupHoverClass
         : stageControlNeutralMainGroupHoverClass),
     isChevron && chevronDisabled && !danger && !success && 'opacity-40',
+  )
+}
+
+export function VoiceStagePopoutButton({
+  active,
+  disabled,
+  onClick,
+}: {
+  active?: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={cn(
+              'inline-flex self-center',
+              disabled && 'cursor-not-allowed',
+            )}
+          >
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onClick}
+              className={cn(
+                'flex size-9 shrink-0 items-center justify-center transition-colors disabled:pointer-events-none disabled:opacity-40',
+                active ? 'text-white' : 'text-white/60 hover:text-white',
+              )}
+            >
+              <ExternalLinkIcon className="size-5" />
+            </button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8} className="z-[430]">
+          Стейдж в отдельном окне
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 

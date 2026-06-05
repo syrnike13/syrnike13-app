@@ -17,8 +17,10 @@ describe('voice debug instrumentation', () => {
         'utf8',
       )
 
+      expect(source).not.toContain('127.0.0.1:')
       expect(source).not.toContain('127.0.0.1:37887')
       expect(source).not.toContain('#region debug log')
+      expect(source).not.toContain('#region agent log')
     }
   })
 })
