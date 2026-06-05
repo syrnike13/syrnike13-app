@@ -301,6 +301,8 @@ function RtpStreamCard({
     direction === 'outbound'
       ? sample.rates?.outbound[stream.id]
       : sample.rates?.inbound[stream.id]
+  const lastSample = history[history.length - 1]
+  const currentRate = lastSample ? rate(lastSample) : undefined
 
   return (
     <MetricGroup title={`${stream.pcRole} / ${stream.kind} / ${stream.mid ?? stream.ssrc ?? stream.id}`}>
@@ -309,7 +311,7 @@ function RtpStreamCard({
       <MetricRow label="Codec" value={stream.codec ?? '—'} />
       <MetricRow
         label="Bitrate"
-        value={formatRtcBitrate(rate(history[history.length - 1] ?? ({} as RtcDebugSnapshot)))}
+        value={formatRtcBitrate(currentRate)}
         chart={<RtcDebugMetricChart history={history} value={rate} />}
       />
       <MetricRow label="Bitrate (Target)" value={formatRtcBitrate(stream.targetBitrate)} />
@@ -378,21 +380,53 @@ function ScreenShareSection({
               <MetricRow label="Hybrid GDI PrintWindow Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
               <MetricRow label="Hybrid Graphics Capture Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
               <MetricRow label="Hybrid Videohook Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
-              <MetricRow
-                label="Live Sent Bitrate"
-                value={formatRtcBitrate(snapshot.rates?.transport.outboundBitrate)}
-                chart={<RtcDebugMetricChart history={history} value={(sample) => sample.rates?.transport.outboundBitrate} />}
-              />
-              <MetricRow
-                label="Live Received Bitrate"
-                value={formatRtcBitrate(snapshot.rates?.transport.inboundBitrate)}
-                chart={<RtcDebugMetricChart history={history} value={(sample) => sample.rates?.transport.inboundBitrate} />}
+              <ScreenShareBitrateRows
+                shareId={share.id}
+                sentBitrate={share.sentBitrate}
+                receivedBitrate={share.receivedBitrate}
+                history={history}
               />
             </MetricGroup>
           ))}
         </div>
       )}
     </div>
+  )
+}
+
+function ScreenShareBitrateRows({
+  shareId,
+  sentBitrate,
+  receivedBitrate,
+  history,
+}: {
+  shareId: string
+  sentBitrate?: number
+  receivedBitrate?: number
+  history: readonly RtcDebugSnapshot[]
+}) {
+  const sentHistoryValue = (sample: RtcDebugSnapshot) =>
+    sample.screenShares.find((share) => share.id === shareId)?.sentBitrate
+  const receivedHistoryValue = (sample: RtcDebugSnapshot) =>
+    sample.screenShares.find((share) => share.id === shareId)?.receivedBitrate
+
+  return (
+    <>
+      {sentBitrate != null ? (
+        <MetricRow
+          label="Live Sent Bitrate"
+          value={formatRtcBitrate(sentBitrate)}
+          chart={<RtcDebugMetricChart history={history} value={sentHistoryValue} />}
+        />
+      ) : null}
+      {receivedBitrate != null ? (
+        <MetricRow
+          label="Live Received Bitrate"
+          value={formatRtcBitrate(receivedBitrate)}
+          chart={<RtcDebugMetricChart history={history} value={receivedHistoryValue} />}
+        />
+      ) : null}
+    </>
   )
 }
 

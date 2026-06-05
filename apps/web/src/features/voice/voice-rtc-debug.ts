@@ -327,10 +327,19 @@ function mergeTransport(
   transport.availableIncomingBitrate ??= numberValue(
     pair.availableIncomingBitrate,
   )
-  transport.bytesSent ??= numberValue(pair.bytesSent)
-  transport.bytesReceived ??= numberValue(pair.bytesReceived)
-  transport.packetsSent ??= numberValue(pair.packetsSent)
-  transport.packetsReceived ??= numberValue(pair.packetsReceived)
+  transport.bytesSent = addOptional(transport.bytesSent, numberValue(pair.bytesSent))
+  transport.bytesReceived = addOptional(
+    transport.bytesReceived,
+    numberValue(pair.bytesReceived),
+  )
+  transport.packetsSent = addOptional(
+    transport.packetsSent,
+    numberValue(pair.packetsSent),
+  )
+  transport.packetsReceived = addOptional(
+    transport.packetsReceived,
+    numberValue(pair.packetsReceived),
+  )
 
   const rtt = numberValue(pair.currentRoundTripTime)
   if (transport.pingMs == null && rtt != null) {
@@ -369,9 +378,7 @@ function rtpStreamSnapshot(
     frameWidth: numberValue(stat.frameWidth),
     frameHeight: numberValue(stat.frameHeight),
     qualityLimitationReason: stringValue(stat.qualityLimitationReason),
-    qualityLimitationDurations: stat.qualityLimitationDurations as
-      | Record<string, number>
-      | undefined,
+    qualityLimitationDurations: numberRecord(stat.qualityLimitationDurations),
     audioLevel: numberValue(stat.audioLevel),
     totalAudioEnergy: numberValue(stat.totalAudioEnergy),
     jitter: numberValue(stat.jitter),
@@ -461,6 +468,22 @@ function formatCandidateAddress(candidate?: RtcStatsLike) {
   return `${address}${port == null ? '' : `:${port}`}${
     protocol ? `/${protocol}` : ''
   }`
+}
+
+function addOptional(current: number | undefined, next: number | undefined) {
+  if (next == null) return current
+  return (current ?? 0) + next
+}
+
+function numberRecord(value: unknown): Record<string, number> | undefined {
+  if (typeof value !== 'object' || value == null) return undefined
+
+  const result: Record<string, number> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== 'number' || !Number.isFinite(entry)) return undefined
+    result[key] = entry
+  }
+  return result
 }
 
 type RtcDebugRateSnapshotInput = {

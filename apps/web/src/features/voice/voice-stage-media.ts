@@ -83,7 +83,15 @@ export function buildStageMediaItems<TTrack = unknown, TPublication = unknown>({
 
   for (const track of tracks) {
     const userTracks = tracksByUser.get(track.userId) ?? {}
-    userTracks[track.source] = track
+    const existing = userTracks[track.source]
+    userTracks[track.source] = existing
+      ? selectStageMediaTrack(existing, track)
+      : track
+    if (existing && import.meta.env.DEV) {
+      console.warn(
+        `Duplicate stage media track for user ${track.userId} and source ${track.source}; keeping the most live entry.`,
+      )
+    }
     tracksByUser.set(track.userId, userTracks)
   }
 
@@ -120,6 +128,25 @@ export function buildStageMediaItems<TTrack = unknown, TPublication = unknown>({
   }
 
   return items
+}
+
+function selectStageMediaTrack<TTrack, TPublication>(
+  current: StageMediaTrackEntry<TTrack, TPublication>,
+  next: StageMediaTrackEntry<TTrack, TPublication>,
+) {
+  return stageMediaTrackScore(next) > stageMediaTrackScore(current)
+    ? next
+    : current
+}
+
+function stageMediaTrackScore<TTrack, TPublication>(
+  entry: StageMediaTrackEntry<TTrack, TPublication>,
+) {
+  return (
+    (entry.track != null ? 4 : 0) +
+    (entry.live === true ? 2 : 0) +
+    (entry.subscribed === true ? 1 : 0)
+  )
 }
 
 function mediaItem<TTrack, TPublication>(

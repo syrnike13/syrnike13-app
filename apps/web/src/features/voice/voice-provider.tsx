@@ -177,7 +177,10 @@ function readStageMediaFilters(): StageMediaFilters {
       ...DEFAULT_STAGE_MEDIA_FILTERS,
       ...(JSON.parse(raw) as Partial<StageMediaFilters>),
     }
-  } catch {
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('Failed to read stage media filters from localStorage', error)
+    }
     return DEFAULT_STAGE_MEDIA_FILTERS
   }
 }
@@ -189,7 +192,10 @@ function writeStageMediaFilters(filters: StageMediaFilters) {
       STAGE_MEDIA_FILTERS_STORAGE_KEY,
       JSON.stringify(filters),
     )
-  } catch {
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('Failed to write stage media filters to localStorage', error)
+    }
     // localStorage may be unavailable in private/browser-restricted contexts.
   }
 }

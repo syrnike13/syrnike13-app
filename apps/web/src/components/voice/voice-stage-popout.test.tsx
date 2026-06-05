@@ -26,7 +26,6 @@ function childWindowStub() {
 
 describe('VoiceStagePopout', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response())))
     vi.useFakeTimers()
   })
 

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
+import { PortalContainerProvider } from '#/components/ui/portal-container'
+
 type VoiceStagePopoutProps = {
   childWindow: Window
   title: string
@@ -133,5 +135,12 @@ export function VoiceStagePopout({
     }
   }, [childWindow])
 
-  return container ? createPortal(children, container) : null
+  return container
+    ? createPortal(
+        <PortalContainerProvider container={childWindow.document.body}>
+          {children}
+        </PortalContainerProvider>,
+        container,
+      )
+    : null
 }

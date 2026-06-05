@@ -28,6 +28,31 @@ function roomWithStats(records: Array<Record<string, unknown>>) {
   }
 }
 
+function roomWithPublisherAndSubscriberStats({
+  publisher,
+  subscriber,
+}: {
+  publisher: Array<Record<string, unknown>>
+  subscriber: Array<Record<string, unknown>>
+}) {
+  return {
+    engine: {
+      pcManager: {
+        publisher: {
+          pc: {
+            getStats: () => Promise.resolve(statsReport(publisher)),
+          },
+        },
+        subscriber: {
+          pc: {
+            getStats: () => Promise.resolve(statsReport(subscriber)),
+          },
+        },
+      },
+    },
+  }
+}
+
 describe('voice rtc debug', () => {
   it('collects transport, outbound, inbound, and screen share diagnostics from RTC stats', async () => {
     const snapshot = await collectVoiceRtcDebugSnapshot(
@@ -82,6 +107,10 @@ describe('voice rtc debug', () => {
           frameHeight: 1080,
           targetBitrate: 5_500_000,
           qualityLimitationReason: 'none',
+          qualityLimitationDurations: {
+            none: 12,
+            cpu: 0,
+          },
         },
         {
           id: 'in-video',
@@ -148,6 +177,10 @@ describe('voice rtc debug', () => {
       bytesSent: 500_000,
       frameWidth: 1920,
       frameHeight: 1080,
+      qualityLimitationDurations: {
+        none: 12,
+        cpu: 0,
+      },
     })
     expect(snapshot.inbound[0]).toMatchObject({
       id: 'publisher:in-video',
@@ -165,6 +198,64 @@ describe('voice rtc debug', () => {
       captureHeight: 1080,
       hybridDxgiFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
     })
+  })
+
+  it('sums transport counters from publisher and subscriber peer connections', async () => {
+    const snapshot = await collectVoiceRtcDebugSnapshot(
+      roomWithPublisherAndSubscriberStats({
+        publisher: [
+          {
+            id: 'publisher-pair',
+            type: 'candidate-pair',
+            state: 'succeeded',
+            nominated: true,
+            bytesSent: 1_000,
+            bytesReceived: 2_000,
+            packetsSent: 10,
+            packetsReceived: 20,
+          },
+        ],
+        subscriber: [
+          {
+            id: 'subscriber-pair',
+            type: 'candidate-pair',
+            state: 'succeeded',
+            nominated: true,
+            bytesSent: 3_000,
+            bytesReceived: 4_000,
+            packetsSent: 30,
+            packetsReceived: 40,
+          },
+        ],
+      }),
+      [],
+      1_000,
+    )
+
+    expect(snapshot.transport.bytesSent).toBe(4_000)
+    expect(snapshot.transport.bytesReceived).toBe(6_000)
+    expect(snapshot.transport.packetsSent).toBe(40)
+    expect(snapshot.transport.packetsReceived).toBe(60)
+  })
+
+  it('drops invalid quality limitation durations from RTC stats', async () => {
+    const snapshot = await collectVoiceRtcDebugSnapshot(
+      roomWithStats([
+        {
+          id: 'out-video',
+          type: 'outbound-rtp',
+          kind: 'video',
+          qualityLimitationDurations: {
+            none: 12,
+            cpu: 'bad',
+          },
+        },
+      ]),
+      [],
+      1_000,
+    )
+
+    expect(snapshot.outbound[0]?.qualityLimitationDurations).toBeUndefined()
   })
 
   it('derives bitrates from byte deltas', () => {

@@ -35,7 +35,7 @@ function BroadcastStrip({
   onStop: () => void
 }) {
   return (
-    <div className={cn(`border-b px-2 py-2 ${shellDivider}`)}>
+    <div className={cn('border-b px-2 py-2', shellDivider)}>
       <div className="flex items-center gap-2">
         <div
           className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted"

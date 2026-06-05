@@ -110,6 +110,22 @@ export function VoiceStageView({
   }, [popoutWindow])
 
   useEffect(() => {
+    if (!popoutWindow) return
+
+    const handlePopoutClosed = () => {
+      setPopoutWindow((current) => (current === popoutWindow ? null : current))
+    }
+
+    popoutWindow.addEventListener('beforeunload', handlePopoutClosed)
+    popoutWindow.addEventListener('unload', handlePopoutClosed)
+
+    return () => {
+      popoutWindow.removeEventListener('beforeunload', handlePopoutClosed)
+      popoutWindow.removeEventListener('unload', handlePopoutClosed)
+    }
+  }, [popoutWindow])
+
+  useEffect(() => {
     return () => {
       const current = popoutWindowRef.current
       if (current && !current.closed) {
