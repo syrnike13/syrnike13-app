@@ -20,20 +20,23 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { useAuth } from '#/features/auth/auth-context'
-import { createServerChannel } from '#/features/api/servers-api'
+import { createServerChannel, editServer } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
-import { normalizeServerChannel } from '#/lib/channel-voice'
+import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
+import { isServerVoiceChannel, normalizeServerChannel } from '#/lib/channel-voice'
 
 type CreateChannelDialogProps = {
   serverId: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  categoryId?: string
 }
 
 export function CreateChannelDialog({
   serverId,
   open,
   onOpenChange,
+  categoryId,
 }: CreateChannelDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
@@ -54,6 +57,27 @@ export function CreateChannelDialog({
       })
       const channel = normalizeServerChannel(created, type)
       syncStore.upsertChannel(channel)
+
+      if (categoryId) {
+        const server = syncStore.getState().servers[serverId]
+        if (server) {
+          const isVoice = type === 'Voice'
+          const isVoiceId = (id: string) => {
+            const existing = syncStore.getState().channels[id]
+            if (existing) return isServerVoiceChannel(existing)
+            return id === channel._id && isVoice
+          }
+          const categories = appendChannelToCategory(
+            server.categories,
+            categoryId,
+            channel._id,
+            { isVoice, isVoiceId },
+          )
+          const updated = await editServer(token, serverId, { categories })
+          syncStore.upsertServer(updated)
+        }
+      }
+
       onOpenChange(false)
       setName('')
       setType('Text')

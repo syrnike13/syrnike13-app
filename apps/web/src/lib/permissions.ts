@@ -218,3 +218,18 @@ export function getServerMenuPermissions(
     copyId: Boolean(member),
   }
 }
+
+export function canManageServerChannels(
+  server: Server,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!userId) return false
+  if (server.owner === userId) return true
+
+  const serverPermissions = calculateServerPermissions(server, member, userId)
+  return hasChannelPermission(
+    serverPermissions,
+    ChannelPermission.ManageChannel,
+  )
+}

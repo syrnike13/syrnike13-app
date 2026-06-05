@@ -9,6 +9,7 @@ import type {
 } from '@syrnike13/api-types'
 
 import { getChannelLabel, isDmChannel, isTextChannel } from './channel-label'
+import { isServerVoiceChannel } from '#/lib/channel-voice'
 import type { SyncState } from './types'
 
 export const EMPTY_CHANNELS: Channel[] = []
@@ -45,19 +46,34 @@ export function listServerChannels(
   state: SyncState,
   serverId: string,
 ): Channel[] {
-  return Object.values(state.channels)
-    .filter(
-      (
-        channel,
-      ): channel is Extract<
-        Channel,
-        { channel_type: 'TextChannel' | 'VoiceChannel' }
-      > =>
-        (channel.channel_type === 'TextChannel' ||
-          channel.channel_type === 'VoiceChannel') &&
-        channel.server === serverId,
-    )
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const server = state.servers[serverId]
+  const channels = Object.values(state.channels).filter(
+    (
+      channel,
+    ): channel is Extract<Channel, { channel_type: 'TextChannel' }> =>
+      channel.channel_type === 'TextChannel' &&
+      channel.server === serverId,
+  )
+
+  if (!server?.channels?.length) {
+    return channels.sort((a, b) => {
+      const aVoice = isServerVoiceChannel(a)
+      const bVoice = isServerVoiceChannel(b)
+      if (aVoice !== bVoice) return aVoice ? 1 : -1
+      return a.name.localeCompare(b.name)
+    })
+  }
+
+  const order = new Map(server.channels.map((id, index) => [id, index]))
+  return channels.sort((a, b) => {
+    const aVoice = isServerVoiceChannel(a)
+    const bVoice = isServerVoiceChannel(b)
+    if (aVoice !== bVoice) return aVoice ? 1 : -1
+    const aIndex = order.get(a._id) ?? Number.MAX_SAFE_INTEGER
+    const bIndex = order.get(b._id) ?? Number.MAX_SAFE_INTEGER
+    if (aIndex !== bIndex) return aIndex - bIndex
+    return a.name.localeCompare(b.name)
+  })
 }
 
 const channelMessagesListCache = new Map<
