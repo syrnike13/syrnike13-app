@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { Track } from 'livekit-client'
 
 import { syncStore } from '#/features/sync/sync-store'
-import { syncLiveKitRoomParticipants } from '#/features/voice/voice-participant-sync'
+import {
+  liveKitChannelParticipants,
+  syncLiveKitRoomParticipants,
+} from '#/features/voice/voice-participant-sync'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const LOCAL_USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
@@ -62,6 +65,17 @@ function participant(
 
   return value
 }
+
+describe('liveKitChannelParticipants', () => {
+  it('ignores local and remote participants until LiveKit identity is valid', () => {
+    const room = {
+      localParticipant: participant(''),
+      remoteParticipants: new Map([['', participant('')]]),
+    }
+
+    expect(liveKitChannelParticipants(room as never, true)).toEqual([])
+  })
+})
 
 describe('syncLiveKitRoomParticipants', () => {
   it('syncs remote participants without reading existing voice state before initialization', () => {

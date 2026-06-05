@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '#/components/ui/button'
 import {
@@ -39,6 +39,12 @@ export function ScreenShareQualityDialog({
 }: ScreenShareQualityDialogProps) {
   const [quality, setQuality] = useState<ScreenShareQualityName>(defaultQuality)
   const [withAudio, setWithAudio] = useState(defaultAudio)
+
+  useEffect(() => {
+    if (!open) return
+    setQuality(defaultQuality)
+    setWithAudio(defaultAudio)
+  }, [defaultAudio, defaultQuality, open])
 
   return (
     <Dialog

@@ -6,9 +6,10 @@ import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { createChannelInvite } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
-import { VoiceParticipantIcons } from '#/components/voice/voice-participant-icons'
-import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
-import { useVoice } from '#/features/voice/voice-provider'
+import {
+  VoiceOnAirBadge,
+  VoiceParticipantIcons,
+} from '#/components/voice/voice-participant-icons'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
@@ -28,6 +29,7 @@ type VoiceStageTileProps = {
   participant: UserVoiceState
   user?: User
   displayName: string
+  dimmed?: boolean
   speaking?: boolean
   compact?: boolean
   focused?: boolean
@@ -38,6 +40,7 @@ export function VoiceStageTile({
   participant,
   user,
   displayName,
+  dimmed = false,
   speaking = false,
   compact = false,
   focused = false,
@@ -47,9 +50,6 @@ export function VoiceStageTile({
   const deafened = participant.server_deafened || !participant.is_receiving
   const avatarSize = stageAvatarSize(compact)
   const palette = useVoiceTilePalette(user, participant.id)
-  const voice = useVoice()
-  const stageVideo = voice.getStageVideoTrack(participant.id)
-  const showVideo = Boolean(stageVideo)
 
   const canFocus = Boolean(onSelect)
 
@@ -59,7 +59,8 @@ export function VoiceStageTile({
       tabIndex={canFocus ? 0 : undefined}
       className={cn(
         TILE_SURFACE,
-        speaking && 'ring-2 ring-primary ring-offset-2 ring-offset-[#1e1f22]',
+        dimmed && 'opacity-50',
+        speaking && 'ring-2 ring-[#23a559] ring-offset-2 ring-offset-black',
         canFocus && 'cursor-pointer hover:brightness-110',
         focused && 'min-h-[min(50vh,24rem)]',
       )}
@@ -76,36 +77,33 @@ export function VoiceStageTile({
           : undefined
       }
     >
-      {showVideo && stageVideo ? (
-        <VoiceStageVideo track={stageVideo} />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <UserAvatar
-            user={user}
-            className={avatarSize}
-            fallbackClassName={cn(
-              avatarSize,
-              compact ? 'text-base' : 'text-xl sm:text-2xl',
-            )}
-            showPresence={false}
-          />
-        </div>
-      )}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <UserAvatar
+          user={user}
+          className={avatarSize}
+          fallbackClassName={cn(
+            avatarSize,
+            compact ? 'text-base' : 'text-xl sm:text-2xl',
+          )}
+          showPresence={false}
+        />
+      </div>
 
-      <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2">
+      {participant.screensharing ? (
+        <div className="absolute top-1.5 right-1.5 z-10 sm:top-2 sm:right-2">
+          <VoiceOnAirBadge />
+        </div>
+      ) : null}
+
+      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-[calc(100%-0.75rem)] min-w-0 items-center gap-1.5 rounded bg-black/55 px-1.5 py-0.5 text-xs font-medium text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}
           serverMuted={participant.server_muted}
           serverDeafened={participant.server_deafened}
           camera={participant.camera}
-          screenshare={participant.screensharing}
-          className="rounded-md bg-black/40 px-1 py-0.5"
         />
-      </div>
-
-      <div className="absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] rounded bg-black/55 px-1.5 py-0.5 text-xs font-medium text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
-        <span className="truncate">{displayName}</span>
+        <span className="min-w-0 truncate">{displayName}</span>
       </div>
     </article>
   )

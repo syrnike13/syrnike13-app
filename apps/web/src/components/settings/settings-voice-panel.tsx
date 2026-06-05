@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect } from 'react'
 
 import { Label } from '#/components/ui/label'
 import {
@@ -13,10 +13,13 @@ import {
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import {
+  SCREEN_SHARE_CODEC_LABELS,
   SCREEN_SHARE_QUALITY_LABELS,
   type NoiseSuppressionMode,
+  type ScreenShareCodec,
   type ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
+import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,
@@ -62,14 +65,6 @@ function DeviceSelect({
         </SelectContent>
       </Select>
     </div>
-  )
-}
-
-function useVoicePreferences() {
-  return useSyncExternalStore(
-    voicePreferenceStore.subscribe,
-    () => voicePreferenceStore.getState(),
-    () => voicePreferenceStore.getState(),
   )
 }
 
@@ -241,6 +236,28 @@ export function SettingsVoicePanel() {
                 (name) => (
                   <SelectItem key={name} value={name}>
                     {SCREEN_SHARE_QUALITY_LABELS[name]}
+                  </SelectItem>
+                ),
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Кодек демонстрации</Label>
+          <Select
+            value={prefs.screenShareCodec}
+            onValueChange={(value) =>
+              voicePreferenceStore.setScreenShareCodec(value as ScreenShareCodec)
+            }
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(SCREEN_SHARE_CODEC_LABELS) as ScreenShareCodec[]).map(
+                (codec) => (
+                  <SelectItem key={codec} value={codec}>
+                    {SCREEN_SHARE_CODEC_LABELS[codec]}
                   </SelectItem>
                 ),
               )}

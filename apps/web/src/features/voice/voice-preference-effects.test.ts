@@ -15,6 +15,7 @@ const base: VoicePreferenceState = {
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
+  screenShareCodec: 'vp8',
   screenShareQualityAsk: true,
   screenShareAudio: true,
 }

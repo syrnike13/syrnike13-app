@@ -1,6 +1,8 @@
 import {
   ScreenSharePresets,
+  type AudioCaptureOptions,
   type RoomOptions,
+  type TrackPublishOptions,
   type VideoEncoding,
 } from 'livekit-client'
 
@@ -18,7 +20,7 @@ function browserNoiseSuppressionEnabled(prefs: VoicePreferenceState) {
 
 export function voiceAudioProcessingConstraints(
   prefs: VoicePreferenceState,
-): MediaTrackConstraints {
+): AudioCaptureOptions {
   return {
     channelCount: 1,
     echoCancellation: prefs.echoCancellation,
@@ -47,57 +49,73 @@ export function createVoiceRoomOptions(): RoomOptions {
 }
 
 export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
+  const codec = readVoicePreferences().screenShareCodec
+  const publish = (screenShareEncoding: VideoEncoding): TrackPublishOptions => ({
+    screenShareEncoding,
+    simulcast: false,
+    videoCodec: codec,
+    degradationPreference: 'maintain-resolution',
+  })
+
   switch (quality) {
     case 'high':
       return {
-        resolution: ScreenSharePresets.h1080fps30.resolution,
-        encoding: {
+        capture: {
+          resolution: ScreenSharePresets.h1080fps30.resolution,
+          audio: readVoicePreferences().screenShareAudio,
+          contentHint: 'motion' as const,
+        },
+        publish: publish({
           maxBitrate: 4_000_000,
           maxFramerate: 30,
           priority: 'high',
-        } satisfies VideoEncoding,
-        audio: readVoicePreferences().screenShareAudio,
-        contentHint: 'motion' as const,
+        }),
       }
     case 'high60':
       return {
-        resolution: {
-          ...ScreenSharePresets.h1080fps30.resolution,
-          frameRate: 60,
+        capture: {
+          resolution: {
+            ...ScreenSharePresets.h1080fps30.resolution,
+            frameRate: 60,
+          },
+          audio: readVoicePreferences().screenShareAudio,
+          contentHint: 'motion' as const,
         },
-        encoding: {
+        publish: publish({
           maxBitrate: 8_000_000,
           maxFramerate: 60,
           priority: 'high',
-        } satisfies VideoEncoding,
-        audio: readVoicePreferences().screenShareAudio,
-        contentHint: 'motion' as const,
+        }),
       }
     case 'text':
       return {
-        resolution: {
-          ...ScreenSharePresets.h1080fps30.resolution,
-          frameRate: 5,
+        capture: {
+          resolution: {
+            ...ScreenSharePresets.h1080fps30.resolution,
+            frameRate: 5,
+          },
+          audio: readVoicePreferences().screenShareAudio,
+          contentHint: 'text' as const,
         },
-        encoding: {
+        publish: publish({
           maxBitrate: 2_000_000,
           maxFramerate: 5,
           priority: 'high',
-        } satisfies VideoEncoding,
-        audio: readVoicePreferences().screenShareAudio,
-        contentHint: 'detail' as const,
+        }),
       }
     case 'low':
     default:
       return {
-        resolution: ScreenSharePresets.h720fps30.resolution,
-        encoding: {
+        capture: {
+          resolution: ScreenSharePresets.h720fps30.resolution,
+          audio: readVoicePreferences().screenShareAudio,
+          contentHint: 'motion' as const,
+        },
+        publish: publish({
           maxBitrate: 2_500_000,
           maxFramerate: 30,
           priority: 'high',
-        } satisfies VideoEncoding,
-        audio: readVoicePreferences().screenShareAudio,
-        contentHint: 'motion' as const,
+        }),
       }
   }
 }

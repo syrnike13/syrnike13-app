@@ -1,17 +1,28 @@
 import {
-  Maximize2Icon,
-  MessageSquareIcon,
-  Minimize2Icon,
-  Volume2Icon,
-} from 'lucide-react'
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from 'react'
+import { MessageSquareIcon, Volume2Icon } from 'lucide-react'
 import type { Channel } from '@syrnike13/api-types'
+import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
+import { UserAvatar } from '#/components/user/user-avatar'
+import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
+import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'
+import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
 import {
-  VoiceStageInviteTile,
-  VoiceStageTile,
-} from '#/components/voice/voice-stage-tile'
-import { VoiceStageControls } from '#/components/voice/voice-stage-controls'
+  VoiceStageControls,
+  VoiceStageFullscreenButton,
+  VoiceStagePopoutButton,
+} from '#/components/voice/voice-stage-controls'
+import { VoiceStageInviteTile } from '#/components/voice/voice-stage-tile'
+import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
+import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popout-placeholder'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   getChannelVoiceParticipants,
@@ -19,12 +30,33 @@ import {
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useChannelVoiceState } from '#/features/voice/use-channel-voice-state'
-import { useVoice } from '#/features/voice/voice-provider'
+import {
+  nextStageLayoutModeForMediaClick,
+  resolveStageLayoutMode,
+  type VoiceStageLayoutMode,
+} from '#/features/voice/voice-stage-mode'
+import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-provider'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
+  sortStageMediaItemsForGrid,
+  stageMediaKindLabel,
+} from '#/features/voice/voice-stage-media'
+import {
   shouldShowVoiceInviteSlot,
-  voiceStageGridClass,
+  voiceStageContentInsetClass,
+  voiceStageControlsChromeCenterClass,
+  voiceStageControlsChromeClass,
+  voiceStageControlsChromeTrailingClass,
+  voiceStageGridContainerClass,
+  voiceStageGridOuterClass,
+  voiceStageGridSlotClass,
 } from '#/components/voice/voice-stage-layout'
+import {
+  useVoiceStageChromeVisible,
+  voiceStageChromeMotion,
+} from '#/features/voice/use-voice-stage-chrome-visible'
+import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
+import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { canInviteToChannel } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
@@ -35,15 +67,7 @@ type VoiceStageViewProps = {
   onToggleChat: () => void
 }
 
-function participantDisplayName(
-  userId: string,
-  users: Record<string, import('@syrnike13/api-types').User>,
-  currentUserId?: string,
-) {
-  if (userId === currentUserId) return 'Вы'
-  const user = users[userId]
-  return user?.display_name ?? user?.username ?? 'Участник'
-}
+const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
 
 export function VoiceStageView({
   channel,
@@ -72,6 +96,43 @@ export function VoiceStageView({
   const inVoiceSession = isVoiceSessionInChannel(voice, channelId)
   const inThisVoiceCall = voice.status === 'connected' && inVoiceSession
   const connecting = voice.status === 'connecting' && inVoiceSession
+  const [requestedMode, setRequestedMode] =
+    useState<VoiceStageLayoutMode>('grid')
+  const [popoutWindow, setPopoutWindow] = useState<Window | null>(null)
+  const popoutWindowRef = useRef<Window | null>(null)
+  const popoutOpen = popoutWindow != null && !popoutWindow.closed
+  const { stageRef, chromeVisible } = useVoiceStageChromeVisible(
+    popoutOpen ? 'popout' : 'embedded',
+  )
+
+  useEffect(() => {
+    popoutWindowRef.current = popoutWindow
+  }, [popoutWindow])
+
+  useEffect(() => {
+    if (!popoutWindow) return
+
+    const handlePopoutClosed = () => {
+      setPopoutWindow((current) => (current === popoutWindow ? null : current))
+    }
+
+    popoutWindow.addEventListener('beforeunload', handlePopoutClosed)
+    popoutWindow.addEventListener('unload', handlePopoutClosed)
+
+    return () => {
+      popoutWindow.removeEventListener('beforeunload', handlePopoutClosed)
+      popoutWindow.removeEventListener('unload', handlePopoutClosed)
+    }
+  }, [popoutWindow])
+
+  useEffect(() => {
+    return () => {
+      const current = popoutWindowRef.current
+      if (current && !current.closed) {
+        current.close()
+      }
+    }
+  }, [])
 
   const participants = useMergedChannelVoiceParticipants(
     channelId,
@@ -82,160 +143,367 @@ export function VoiceStageView({
     inVoiceSession ? voice.micPublishing : undefined,
     inVoiceSession ? voice.deafened : undefined,
   )
+  const participantsById = useMemo(
+    () => new Map(participants.map((participant) => [participant.id, participant])),
+    [participants],
+  )
+  const mediaItems = voice.stageMediaItems
+  const gridMediaItems = useMemo(
+    () => sortStageMediaItemsForGrid(mediaItems),
+    [mediaItems],
+  )
+  const mediaIds = useMemo(() => mediaItems.map((item) => item.id), [mediaItems])
+  const layoutMode = resolveStageLayoutMode({
+    requestedMode,
+    focusedMediaId: voice.focusedMediaId,
+    visibleMediaIds: mediaIds,
+  })
+  const focusedItem =
+    layoutMode === 'focus'
+      ? mediaItems.find((item) => item.id === voice.focusedMediaId) ?? null
+      : null
+  const focusedMediaHeader = useMemo(() => {
+    if (!focusedItem) return null
+    const kindLabel = stageMediaKindLabel(focusedItem.kind)
+    if (!kindLabel) return null
 
+    const isLocal = isVoiceLocalUserId(focusedItem.userId, auth.user?._id)
+    const user =
+      users[focusedItem.userId] ?? (isLocal ? auth.user ?? undefined : undefined)
+    const participant = participantsById.get(focusedItem.userId)
+
+    return {
+      user,
+      kindLabel,
+      displayName: voiceParticipantDisplayName(
+        focusedItem.userId,
+        users,
+        auth.user,
+      ),
+      showOnAir:
+        focusedItem.kind === 'screen' && Boolean(participant?.screensharing),
+    }
+  }, [auth.user, focusedItem, participantsById, users])
+  const canToggleStageFullscreen =
+    participants.length > 0 || mediaItems.length > 0
   const canInvite =
     server && channel.channel_type === 'TextChannel'
       ? canInviteToChannel(server, channel, member, auth.user?._id)
       : false
   const showInviteSlot =
-    canInvite && shouldShowVoiceInviteSlot(participants.length)
-  const focusUserId = voice.focusUserId
-  const showInviteInGrid = showInviteSlot && !focusUserId
-  const slotCount = participants.length + (showInviteInGrid ? 1 : 0)
-  const gridCompact = slotCount > 6
-  const focusParticipant = focusUserId
-    ? participants.find((participant) => participant.id === focusUserId)
-    : undefined
-  const filmstrip = focusUserId
-    ? participants.filter((participant) => participant.id !== focusUserId)
-    : participants
+    canInvite &&
+    layoutMode === 'grid' &&
+    !voice.stageFullscreen &&
+    shouldShowVoiceInviteSlot(participants.length)
 
-  return (
+  const gridSlotCount = gridMediaItems.length + (showInviteSlot ? 1 : 0)
+
+  const focusMedia = useCallback(
+    (mediaId: string) => {
+      const next = nextStageLayoutModeForMediaClick({
+        clickedMediaId: mediaId,
+        currentMode: layoutMode,
+        focusedMediaId: voice.focusedMediaId,
+      })
+      voice.setFocusedMediaId(next.focusedMediaId)
+      setRequestedMode(next.mode)
+    },
+    [layoutMode, voice],
+  )
+
+  useEffect(() => {
+    if (!voice.stageFullscreen) return
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        voice.toggleStageFullscreen()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [voice.stageFullscreen, voice])
+
+  const closePopout = useCallback(() => {
+    const win = popoutWindowRef.current
+    setPopoutWindow(null)
+    if (win && !win.closed) {
+      try {
+        win.close()
+      } catch {
+        // окно уже закрыто
+      }
+    }
+  }, [])
+
+  const toggleStagePopout = useCallback(() => {
+    if (popoutOpen && popoutWindow) {
+      closePopout()
+      return
+    }
+    if (!canToggleStageFullscreen) return
+
+    if (voice.stageFullscreen) {
+      voice.toggleStageFullscreen()
+    }
+
+    const childWindow = window.open(
+      '',
+      STAGE_POPOUT_WINDOW_NAME,
+      'popup=yes,width=1280,height=720',
+    )
+    if (!childWindow) {
+      toast.error('Браузер заблокировал отдельное окно стейджа')
+      return
+    }
+
+    setPopoutWindow((current) => {
+      if (current && current !== childWindow && !current.closed) {
+        current.close()
+      }
+      return childWindow
+    })
+    childWindow.focus()
+  }, [
+    canToggleStageFullscreen,
+    closePopout,
+    popoutOpen,
+    popoutWindow,
+    voice,
+  ])
+
+  const renderTile = useCallback(
+    (
+      item: VoiceStageMediaItem,
+      variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
+      onStreamAspectRatioChange?: (aspectRatio: number) => void,
+    ) => {
+      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id)
+      return (
+        <StageMediaTile
+          key={item.id}
+          item={item}
+          user={users[item.userId] ?? (isLocal ? auth.user ?? undefined : undefined)}
+          participant={participantsById.get(item.userId)}
+          displayName={voiceParticipantDisplayName(
+            item.userId,
+            users,
+            auth.user,
+          )}
+          dimmed={connecting && isLocal}
+          speaking={inThisVoiceCall && voice.speakingUserIds.has(item.userId)}
+          variant={variant}
+          onFocus={focusMedia}
+          onSetSubscribed={voice.setStageMediaSubscribed}
+          onStreamAspectRatioChange={onStreamAspectRatioChange}
+        />
+      )
+    },
+    [
+      auth.user,
+      connecting,
+      focusMedia,
+      inThisVoiceCall,
+      participantsById,
+      users,
+      voice.setStageMediaSubscribed,
+      voice.speakingUserIds,
+    ],
+  )
+
+  const renderStageSurface = (
+    surfaceRef: Ref<HTMLDivElement> | undefined,
+    presentation: 'embedded' | 'popout',
+  ) => (
     <div
+      ref={surfaceRef}
       className={cn(
-        'flex min-h-0 min-w-0 flex-1 flex-col bg-[#1e1f22] text-foreground',
-        voice.stageFullscreen && 'fixed inset-0 z-50',
+        'relative flex min-w-0 flex-col overflow-hidden bg-black text-white',
+        presentation === 'popout' && 'h-[100dvh] w-full min-h-0',
+        presentation === 'embedded' && 'min-h-0 flex-1',
+        presentation === 'popout' &&
+          voice.stageFullscreen &&
+          'fixed inset-0 z-[50]',
+        presentation === 'embedded' &&
+          voice.stageFullscreen &&
+          !popoutOpen &&
+          'fixed inset-0 z-[300]',
       )}
     >
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-4">
-        <Volume2Icon className="size-5 shrink-0 text-muted-foreground" />
-        <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h1>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-9 shrink-0"
-          title={voice.stageFullscreen ? 'Выйти из полноэкранного' : 'На весь экран'}
-          onClick={voice.toggleStageFullscreen}
-        >
-          {voice.stageFullscreen ? (
-            <Minimize2Icon className="size-5" />
-          ) : (
-            <Maximize2Icon className="size-5" />
-          )}
-        </Button>
-        <Button
-          type="button"
-          variant={chatOpen ? 'secondary' : 'ghost'}
-          size="icon"
-          className="size-9 shrink-0"
-          title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
-          aria-pressed={chatOpen}
-          onClick={onToggleChat}
-        >
-          <MessageSquareIcon className="size-5" />
-        </Button>
-      </header>
-
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-          {participants.length === 0 ? (
-            <div className="flex h-full min-h-[min(50vh,20rem)] flex-col items-center justify-center gap-3 text-center">
-              <p className="text-lg font-semibold">Никого нет в канале</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Подключитесь к голосу или пригласите участников на сервер.
-              </p>
-            </div>
-          ) : focusParticipant ? (
-            <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-3">
-              <VoiceStageTile
-                participant={focusParticipant}
-                user={users[focusParticipant.id]}
-                displayName={participantDisplayName(
-                  focusParticipant.id,
-                  users,
-                  auth.user?._id,
-                )}
-                speaking={
-                  inThisVoiceCall &&
-                  voice.speakingUserIds.has(focusParticipant.id)
-                }
-                focused
-                onSelect={() => voice.setFocusUserId(null)}
-              />
-              {filmstrip.length > 0 ? (
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col overflow-hidden',
+          voiceStageContentInsetClass,
+        )}
+      >
+        {participants.length === 0 && mediaItems.length === 0 ? (
+          <EmptyVoiceStage />
+        ) : focusedItem ? (
+          <VoiceStageFocusStage
+            focusedItem={focusedItem}
+            mediaItems={gridMediaItems}
+            chromeVisible={chromeVisible}
+            renderTile={renderTile}
+          />
+        ) : (
+          <div className={voiceStageGridOuterClass}>
+            <div className={voiceStageGridContainerClass(gridSlotCount)}>
+              {gridMediaItems.map((item, index) => (
                 <div
-                  className={cn(
-                    'grid auto-rows-fr items-start gap-2 sm:gap-3',
-                    voiceStageGridClass(filmstrip.length),
+                  key={item.id}
+                  className={voiceStageGridSlotClass(gridSlotCount, index)}
+                >
+                  {renderTile(item, 'grid')}
+                </div>
+              ))}
+              {showInviteSlot ? (
+                <div
+                  className={voiceStageGridSlotClass(
+                    gridSlotCount,
+                    gridMediaItems.length,
                   )}
                 >
-                  {filmstrip.map((participant) => (
-                    <VoiceStageTile
-                      key={participant.id}
-                      participant={participant}
-                      user={users[participant.id]}
-                      displayName={participantDisplayName(
-                        participant.id,
-                        users,
-                        auth.user?._id,
-                      )}
-                      speaking={
-                        inThisVoiceCall &&
-                        voice.speakingUserIds.has(participant.id)
-                      }
-                      compact
-                      onSelect={() => voice.setFocusUserId(participant.id)}
-                    />
-                  ))}
+                  <VoiceStageInviteTile channelId={channelId} />
                 </div>
               ) : null}
             </div>
-          ) : (
-            <div
-              className={cn(
-                'mx-auto grid w-full auto-rows-fr items-start gap-2 sm:gap-3',
-                voiceStageGridClass(slotCount),
-              )}
-            >
-              {participants.map((participant) => {
-                const user = users[participant.id]
-                return (
-                  <VoiceStageTile
-                    key={participant.id}
-                    participant={participant}
-                    user={user}
-                    displayName={participantDisplayName(
-                      participant.id,
-                      users,
-                      auth.user?._id,
-                    )}
-                    speaking={
-                      inThisVoiceCall &&
-                      voice.speakingUserIds.has(participant.id)
-                    }
-                    compact={gridCompact}
-                    onSelect={() => voice.setFocusUserId(participant.id)}
-                  />
-                )
-              })}
-              {showInviteInGrid ? (
-                <VoiceStageInviteTile
-                  channelId={channelId}
-                  compact={gridCompact}
-                />
-              ) : null}
-            </div>
-          )}
-        </div>
-
-        <VoiceStageControls
-          channelId={channelId}
-          inCall={inThisVoiceCall}
-          connecting={connecting}
-        />
+          </div>
+        )}
       </div>
 
+      <header
+        data-voice-stage-chrome
+        className={cn(
+          'absolute inset-x-0 top-0 z-50 flex min-h-12 items-center gap-2 bg-gradient-to-b from-black via-black/80 to-transparent px-4 pt-1 pb-5',
+          voiceStageChromeMotion(chromeVisible, 'top'),
+        )}
+      >
+        <Volume2Icon className="size-5 shrink-0 text-white/60" />
+        <h1
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
+          title={
+            focusedMediaHeader
+              ? `${title} · ${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`
+              : title
+          }
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+            <span className="truncate">{title}</span>
+            {focusedMediaHeader ? (
+              <>
+                <span className="shrink-0 text-white/45" aria-hidden>
+                  •
+                </span>
+                <UserAvatar
+                  user={focusedMediaHeader.user}
+                  className="size-5"
+                  fallbackClassName="size-5 text-[10px]"
+                  showPresence={false}
+                />
+                <span className="shrink-0 text-white/70">
+                  {focusedMediaHeader.kindLabel}
+                </span>
+                <span className="min-w-0 truncate">
+                  {focusedMediaHeader.displayName}
+                </span>
+              </>
+            ) : null}
+          </span>
+          {focusedMediaHeader?.showOnAir ? (
+            <VoiceOnAirBadge className="ml-1 shrink-0" />
+          ) : null}
+        </h1>
+        {presentation === 'embedded' ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'size-9 shrink-0 text-white/70 hover:bg-white/10 hover:text-white',
+              chatOpen && 'bg-white/15 text-white',
+            )}
+            title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            aria-pressed={chatOpen}
+            onClick={onToggleChat}
+          >
+            <MessageSquareIcon className="size-5" />
+          </Button>
+        ) : null}
+      </header>
+
+      <div
+        data-voice-stage-chrome
+        className={cn(
+          voiceStageControlsChromeClass,
+          voiceStageChromeMotion(chromeVisible, 'bottom'),
+        )}
+      >
+        <div aria-hidden />
+        <div className={voiceStageControlsChromeCenterClass}>
+          <VoiceStageControls
+            channelId={channelId}
+            inCall={inThisVoiceCall}
+            connecting={connecting}
+            overlay
+          />
+        </div>
+        <div className={voiceStageControlsChromeTrailingClass}>
+          <div className="flex items-center gap-0.5">
+            <VoiceStagePopoutButton
+              active={popoutOpen}
+              disabled={!canToggleStageFullscreen}
+              onClick={toggleStagePopout}
+            />
+            <VoiceStageFullscreenButton
+              active={voice.stageFullscreen}
+              disabled={!canToggleStageFullscreen}
+              onClick={voice.toggleStageFullscreen}
+            />
+          </div>
+        </div>
+      </div>
+
+    </div>
+  )
+
+  return (
+    <>
+      {popoutOpen ? (
+        <VoiceStagePopoutPlaceholder
+          title={title}
+          onReturn={closePopout}
+          onFocusPopout={() => {
+            if (popoutWindow && !popoutWindow.closed) {
+              popoutWindow.focus()
+            }
+          }}
+        />
+      ) : null}
+      {!popoutOpen ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {renderStageSurface(stageRef, 'embedded')}
+        </div>
+      ) : null}
+      {popoutOpen && popoutWindow ? (
+        <VoiceStagePopout
+          childWindow={popoutWindow}
+          title={title}
+          onClose={closePopout}
+        >
+          {renderStageSurface(stageRef, 'popout')}
+        </VoiceStagePopout>
+      ) : null}
+    </>
+  )
+}
+
+function EmptyVoiceStage() {
+  return (
+    <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 text-center">
+      <p className="text-lg font-semibold">Никого нет в канале</p>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        Подключитесь к голосу или пригласите участников на сервер.
+      </p>
     </div>
   )
 }

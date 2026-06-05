@@ -2,7 +2,10 @@ import { useMemo } from 'react'
 
 import type { SyncState } from './types'
 import type { UserVoiceState } from './voice-types'
-import { isResolvableVoiceParticipant } from './voice-participant-resolve'
+import {
+  isResolvableVoiceParticipant,
+  isValidVoiceUserId,
+} from './voice-participant-resolve'
 
 export function getChannelVoiceParticipants(
   state: SyncState,
@@ -41,10 +44,12 @@ export function mergeVoiceParticipants(
   const map = new Map<string, UserVoiceState>()
 
   for (const participant of storeParticipants) {
+    if (!isValidVoiceUserId(participant.id)) continue
     map.set(participant.id, participant)
   }
 
   for (const participant of liveParticipants) {
+    if (!isValidVoiceUserId(participant.id)) continue
     const existing = map.get(participant.id)
     map.set(
       participant.id,
