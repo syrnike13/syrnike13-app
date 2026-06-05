@@ -2,7 +2,7 @@ export type NoiseSuppressionMode = 'disabled' | 'browser' | 'enhanced'
 
 export type ScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
 
-export type ScreenShareCodec = 'vp8' | 'h264' | 'vp9' | 'av1'
+export type ScreenShareCodec = 'auto' | 'vp8' | 'h264' | 'vp9' | 'av1'
 
 export const SCREEN_SHARE_QUALITY_LABELS: Record<
   ScreenShareQualityName,
@@ -15,6 +15,7 @@ export const SCREEN_SHARE_QUALITY_LABELS: Record<
 }
 
 export const SCREEN_SHARE_CODEC_LABELS: Record<ScreenShareCodec, string> = {
+  auto: 'Авто - лучший рабочий',
   vp8: 'VP8 - совместимый',
   h264: 'H264 - резче в движении',
   vp9: 'VP9 - эффективнее, если поддерживается',

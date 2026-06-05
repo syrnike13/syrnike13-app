@@ -45,7 +45,7 @@ const DEFAULT_STATE: VoicePreferenceState = {
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
-  screenShareCodec: 'vp8',
+  screenShareCodec: 'auto',
   screenShareQualityAsk: true,
   screenShareAudio: true,
 }
@@ -81,7 +81,13 @@ function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
 }
 
 function parseScreenShareCodec(value: unknown): ScreenShareCodec {
-  if (value === 'vp8' || value === 'h264' || value === 'vp9' || value === 'av1') {
+  if (
+    value === 'auto' ||
+    value === 'vp8' ||
+    value === 'h264' ||
+    value === 'vp9' ||
+    value === 'av1'
+  ) {
     return value
   }
   return DEFAULT_STATE.screenShareCodec

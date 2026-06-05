@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createVoiceRoomOptions, screenShareCaptureOptions } from './voice-capture'
 import { voicePreferenceStore } from './voice-preference-store'
@@ -35,6 +35,11 @@ describe('createVoiceRoomOptions', () => {
 })
 
 describe('screenShareCaptureOptions', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+    voicePreferenceStore.setScreenShareCodec('vp8')
+  })
+
   it('publishes screen share as one high-quality browser stream', () => {
     voicePreferenceStore.setScreenShareCodec('vp8')
     const options = screenShareCaptureOptions('high')
@@ -56,6 +61,45 @@ describe('screenShareCaptureOptions', () => {
     const options = screenShareCaptureOptions('high60')
 
     expect(options.publish.videoCodec).toBe('h264')
+  })
+
+  it('uses vp9 automatically for high quality screen share when supported', () => {
+    voicePreferenceStore.setScreenShareCodec('auto')
+    vi.stubGlobal('RTCRtpSender', {
+      getCapabilities: () => ({
+        codecs: [
+          { mimeType: 'video/VP8' },
+          { mimeType: 'video/H264' },
+          { mimeType: 'video/VP9' },
+        ],
+      }),
+    })
+
+    const options = screenShareCaptureOptions('high')
+
+    expect(options.publish.videoCodec).toBe('vp9')
+  })
+
+  it('uses h264 automatically for 60 fps screen share when supported', () => {
+    voicePreferenceStore.setScreenShareCodec('auto')
+    vi.stubGlobal('RTCRtpSender', {
+      getCapabilities: () => ({
+        codecs: [{ mimeType: 'video/VP8' }, { mimeType: 'video/H264' }],
+      }),
+    })
+
+    const options = screenShareCaptureOptions('high60')
+
+    expect(options.publish.videoCodec).toBe('h264')
+  })
+
+  it('falls back to vp8 when automatic codec capabilities are unavailable', () => {
+    voicePreferenceStore.setScreenShareCodec('auto')
+    vi.stubGlobal('RTCRtpSender', undefined)
+
+    const options = screenShareCaptureOptions('text')
+
+    expect(options.publish.videoCodec).toBe('vp8')
   })
 
   it('uses text capture hint before publishing text-focused screen share', () => {
