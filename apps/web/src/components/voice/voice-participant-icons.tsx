@@ -1,9 +1,4 @@
-import {
-  HeadphoneOffIcon,
-  MicOffIcon,
-  MonitorUpIcon,
-  VideoIcon,
-} from 'lucide-react'
+import { HeadphoneOffIcon, MicOffIcon, VideoIcon } from 'lucide-react'
 
 import { cn } from '#/lib/utils'
 
@@ -52,10 +47,12 @@ export function VoiceParticipantIcons({
         <VideoIcon className="size-3.5 text-muted-foreground" aria-hidden />
       ) : null}
       {screenshare ? (
-        <MonitorUpIcon
-          className="size-3.5 text-muted-foreground"
-          aria-hidden
-        />
+        <span
+          className="inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-[#ed4245] px-1.5 text-[9px] font-bold leading-none tracking-wide text-white"
+          aria-label="В эфире"
+        >
+          В ЭФИРЕ
+        </span>
       ) : null}
     </span>
   )
