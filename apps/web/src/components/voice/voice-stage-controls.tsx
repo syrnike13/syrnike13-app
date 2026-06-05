@@ -21,6 +21,11 @@ import {
 } from '#/components/ui/popover'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isMicVisuallyMuted, micControlTitle } from '#/features/voice/voice-mic-status'
+import { VoiceStageMicSettingsMenuContent } from '#/components/voice/voice-stage-mic-settings-menu'
+import {
+  voiceStagePopoverMicSettingsClass,
+  voiceStagePopoverSettingsClass,
+} from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
 
 type VoiceStageControlsProps = {
@@ -244,12 +249,7 @@ function VoiceStageOverlayControlBar({
           disabled={connecting}
           onClick={onToggleMic}
           chevron={
-            <MicInputChevronMenu
-              connecting={connecting}
-              danger={micMuted}
-              soundOff={soundOff}
-              onToggleDeafen={onToggleDeafen}
-            />
+            <MicInputChevronMenu connecting={connecting} danger={micMuted} />
           }
         >
           {micMuted ? (
@@ -320,13 +320,9 @@ function VoiceStageOverlayControlBar({
 function MicInputChevronMenu({
   connecting,
   danger,
-  soundOff,
-  onToggleDeafen,
 }: {
   connecting: boolean
   danger?: boolean
-  soundOff: boolean
-  onToggleDeafen: () => void
 }) {
   return (
     <Popover>
@@ -345,21 +341,10 @@ function MicInputChevronMenu({
         side="top"
         sideOffset={8}
         data-voice-stage-popover
-        className="z-[420] w-56 border-white/10 bg-[#2b2d31] p-1 text-sm text-white"
+        className={voiceStagePopoverMicSettingsClass}
+        onOpenAutoFocus={(event) => event.preventDefault()}
       >
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 rounded px-2 py-2 text-left hover:bg-white/10"
-          disabled={connecting}
-          onClick={onToggleDeafen}
-        >
-          {soundOff ? (
-            <HeadphoneOffIcon className="size-4 text-[#f04747]" />
-          ) : (
-            <HeadphonesIcon className="size-4" />
-          )}
-          <span>{soundOff ? 'Включить звук' : 'Отключить звук'}</span>
-        </button>
+        <VoiceStageMicSettingsMenuContent />
       </PopoverContent>
     </Popover>
   )
@@ -587,7 +572,7 @@ function StageViewSettings({
       <PopoverContent
         align="center"
         data-voice-stage-popover
-        className="z-[420] w-72 border-white/10 bg-[#2b2d31] p-2 text-sm text-white"
+        className={voiceStagePopoverSettingsClass}
       >
         <StageFilterToggle
           checked={filters.showOwnStream}
@@ -634,10 +619,10 @@ function StageFilterToggle({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-3 rounded px-2 py-2 hover:bg-white/10">
+    <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/70">
       <input
         type="checkbox"
-        className="size-4 accent-primary"
+        className="size-4 rounded border-input accent-primary"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
       />

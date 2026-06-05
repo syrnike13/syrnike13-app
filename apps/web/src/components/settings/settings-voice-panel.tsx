@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect } from 'react'
 
 import { Label } from '#/components/ui/label'
 import {
@@ -19,6 +19,7 @@ import {
   type ScreenShareCodec,
   type ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
+import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,
@@ -64,14 +65,6 @@ function DeviceSelect({
         </SelectContent>
       </Select>
     </div>
-  )
-}
-
-function useVoicePreferences() {
-  return useSyncExternalStore(
-    voicePreferenceStore.subscribe,
-    () => voicePreferenceStore.getState(),
-    () => voicePreferenceStore.getState(),
   )
 }
 
