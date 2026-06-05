@@ -14,6 +14,7 @@ export type SettingsSection =
   | 'sessions'
   | 'notifications'
   | 'appearance'
+  | 'hotkeys'
   | 'desktop'
 
 type SettingsModalContextValue = {

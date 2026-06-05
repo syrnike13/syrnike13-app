@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "build:shell": "pnpm --filter @syrnike13/platform build && tsup",
+    "build:hotkey-helper": "node scripts/build-hotkey-helper-win.mjs",
+    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",
@@ -42,6 +43,13 @@
       {
         "from": "../web/dist",
         "to": "web-dist",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "out/native",
+        "to": "native",
         "filter": [
           "**/*"
         ]

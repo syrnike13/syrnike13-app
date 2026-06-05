@@ -1,6 +1,7 @@
 import {
   BellIcon,
   AppWindowIcon,
+  KeyboardIcon,
   MonitorIcon,
   PaletteIcon,
   PencilIcon,
@@ -61,12 +62,21 @@ const DESKTOP_NAV_ITEM = {
   icon: AppWindowIcon,
 }
 
+const DESKTOP_ONLY_NAV_ITEMS = [
+  {
+    id: 'hotkeys' as const,
+    label: 'Горячие клавиши',
+    icon: KeyboardIcon,
+  },
+  DESKTOP_NAV_ITEM,
+]
+
 export function SettingsModal() {
   const auth = useAuth()
   const { open, setOpen, section, setSection } = useSettingsModal()
   const user = auth.user
   const { isDesktop } = usePlatform()
-  const navItems = isDesktop ? [...NAV, DESKTOP_NAV_ITEM] : NAV
+  const navItems = isDesktop ? [...NAV, ...DESKTOP_ONLY_NAV_ITEMS] : NAV
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

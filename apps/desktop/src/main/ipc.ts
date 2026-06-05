@@ -1,9 +1,25 @@
 import { app, ipcMain, type BrowserWindow } from 'electron'
-import { IPC, type ActivityDetails } from '@syrnike13/platform'
+import {
+  IPC,
+  type ActivityDetails,
+  type HotkeyBinding,
+} from '@syrnike13/platform'
+
+import {
+  getHotkeyBindings,
+  getHotkeyRuntimeStatus,
+  initializeHotkeys,
+  setHotkeyBindings,
+  setHotkeysSuspended,
+  startHotkeyRecording,
+  stopHotkeyRecording,
+} from './hotkeys'
 
 let lastActivity: ActivityDetails | null = null
 
 export function registerDesktopIpc(getWindow: () => BrowserWindow | null) {
+  initializeHotkeys(getWindow)
+
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),
     electron: process.versions.electron,
@@ -42,6 +58,26 @@ export function registerDesktopIpc(getWindow: () => BrowserWindow | null) {
     lastActivity = null
     console.info('[desktop] activity cleared')
   })
+
+  ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
+
+  ipcMain.handle(IPC.hotkeysSetBindings, (_event, bindings: HotkeyBinding[]) =>
+    setHotkeyBindings(bindings),
+  )
+
+  ipcMain.handle(IPC.hotkeysSetSuspended, (_event, suspended: boolean) => {
+    setHotkeysSuspended(Boolean(suspended))
+  })
+
+  ipcMain.handle(IPC.hotkeysStartRecording, () => {
+    startHotkeyRecording()
+  })
+
+  ipcMain.handle(IPC.hotkeysStopRecording, () => {
+    stopHotkeyRecording()
+  })
+
+  ipcMain.handle(IPC.hotkeysGetRuntimeStatus, () => getHotkeyRuntimeStatus())
 
   return () => {
     lastActivity = null

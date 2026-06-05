@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { SettingsDesktopPanel } from '#/components/settings/settings-desktop-panel'
+import { SettingsHotkeysPanel } from '#/components/settings/settings-hotkeys-panel'
 import { NotificationSettings } from '#/components/notifications/notification-settings'
 import { SettingsProfilePanel } from '#/components/settings/settings-profile-panel'
 import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
@@ -24,6 +25,7 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
   sessions: 'Устройства',
   notifications: 'Уведомления',
   appearance: 'Оформление',
+  hotkeys: 'Горячие клавиши',
   desktop: 'Приложение',
 }
 
@@ -232,6 +234,8 @@ export function SettingsPanelContent({ section }: { section: SettingsSection }) 
       return <SettingsNotificationsPanel />
     case 'appearance':
       return <SettingsAppearancePanel />
+    case 'hotkeys':
+      return <SettingsHotkeysPanel />
     case 'desktop':
       return <SettingsDesktopPanel />
     default:

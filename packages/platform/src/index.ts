@@ -1,6 +1,17 @@
 export type {
   ActivityDetails,
   DesktopVersions,
+  HotkeyAction,
+  HotkeyActivationEvent,
+  HotkeyBinding,
+  HotkeyCombo,
+  HotkeyModifier,
+  HotkeyModifiers,
+  HotkeyRegistrationResult,
+  HotkeyRegistrationStatus,
+  HotkeyRuntimeStatus,
+  HotkeyTrigger,
+  NativeInputEvent,
   SyrnikeDesktopApi,
   SyrnikeRuntime,
 } from './api'

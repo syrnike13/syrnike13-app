@@ -15,6 +15,87 @@ export interface ActivityDetails {
   state?: string
 }
 
+export type HotkeyAction =
+  | 'toggle-mic'
+  | 'toggle-deafen'
+  | 'toggle-camera'
+  | 'toggle-screen-share'
+  | 'return-to-voice'
+  | 'disconnect-voice'
+  | 'navigate-back'
+  | 'navigate-forward'
+  | 'push-to-talk'
+  | 'push-to-mute'
+  | 'priority-push-to-talk'
+  | 'toggle-vad'
+
+export type HotkeyModifier = 'ctrl' | 'alt' | 'shift' | 'meta'
+
+export type HotkeyModifiers = Record<HotkeyModifier, boolean>
+
+export type HotkeyTrigger =
+  | {
+      type: 'keyboard'
+      code: string
+      key: string
+    }
+  | {
+      type: 'mouse'
+      button: 'Mouse4' | 'Mouse5'
+    }
+  | {
+      type: 'modifier'
+      modifier: HotkeyModifier
+    }
+
+export type HotkeyCombo = {
+  trigger: HotkeyTrigger
+  modifiers: HotkeyModifiers
+}
+
+export type HotkeyBinding = {
+  id: string
+  action: HotkeyAction
+  combo: HotkeyCombo | null
+  enabled: boolean
+}
+
+export type HotkeyRegistrationStatus =
+  | 'registered'
+  | 'disabled'
+  | 'invalid'
+  | 'taken'
+  | 'unsupported'
+
+export type NativeInputEvent =
+  | {
+      type: 'keyDown' | 'keyUp'
+      code: string
+      key: string
+      modifiers: HotkeyModifiers
+    }
+  | {
+      type: 'mouseDown' | 'mouseUp'
+      button: 'Mouse4' | 'Mouse5'
+      modifiers: HotkeyModifiers
+    }
+
+export type HotkeyRuntimeStatus =
+  | 'running'
+  | 'not-running'
+  | 'unsupported-platform'
+  | 'permission-required'
+
+export type HotkeyRegistrationResult = {
+  id: string
+  status: HotkeyRegistrationStatus
+}
+
+export type HotkeyActivationEvent = {
+  action: HotkeyAction
+  phase: 'pressed' | 'released'
+}
+
 /**
  * API, который preload пробрасывает в `window.syrnikeDesktop`.
  * Расширяйте по мере появления нативных возможностей (presence, screen share, …).
@@ -31,5 +112,17 @@ export interface SyrnikeDesktopApi {
   activity: {
     set(details: ActivityDetails | null): Promise<void>
     clear(): Promise<void>
+  }
+  hotkeys: {
+    getBindings(): Promise<HotkeyBinding[]>
+    setBindings(
+      bindings: HotkeyBinding[],
+    ): Promise<HotkeyRegistrationResult[]>
+    setSuspended(suspended: boolean): Promise<void>
+    startRecording(): Promise<void>
+    stopRecording(): Promise<void>
+    getRuntimeStatus(): Promise<HotkeyRuntimeStatus>
+    onRecordedInput(handler: (event: NativeInputEvent) => void): () => void
+    onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
   }
 }

@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 
 import { registerDesktopIpc } from './ipc'
+import { disposeHotkeys } from './hotkeys'
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
 import { startEmbeddedWebServer, type EmbeddedWebServer } from './web-server'
@@ -69,6 +70,7 @@ if (setupSingleInstance()) {
   })
 
   app.on('before-quit', () => {
+    disposeHotkeys()
     void embeddedServer?.close()
   })
 }
