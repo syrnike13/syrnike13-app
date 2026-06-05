@@ -244,6 +244,18 @@ export function getServerMenuPermissions(
   }
 }
 
+export function canInviteToChannel(
+  server: Server,
+  channel: ServerTextChannel,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  return hasChannelPermission(
+    calculateChannelPermissions(server, channel, member, userId),
+    ChannelPermission.InviteOthers,
+  )
+}
+
 export function canManageServerChannels(
   server: Server,
   member: Member | undefined,

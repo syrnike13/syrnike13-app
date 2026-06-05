@@ -43,7 +43,7 @@ import {
   type ChannelSidebarSection,
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
-import { canManageServerChannels } from '#/lib/permissions'
+import { canInviteToChannel, canManageServerChannels } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
 type ServerChannelListProps = {
@@ -197,6 +197,7 @@ function ChannelDroppableList({
   currentUserId,
   unreads,
   canManage,
+  canInvite,
   canDrag,
   onFirstChannelElement,
 }: {
@@ -207,6 +208,7 @@ function ChannelDroppableList({
   currentUserId?: string
   unreads: Record<string, string | null | undefined>
   canManage: boolean
+  canInvite: (channel: ServerChannel) => boolean
   canDrag: boolean
   onFirstChannelElement?: (element: HTMLElement | null) => void
 }) {
@@ -222,6 +224,7 @@ function ChannelDroppableList({
             currentUserId={currentUserId}
             unreads={unreads}
             canManage={canManage}
+            canInvite={canInvite(channel)}
           />
         ))}
       </div>
@@ -265,6 +268,7 @@ function ChannelDroppableList({
                     currentUserId={currentUserId}
                     unreads={unreads}
                     canManage={canManage}
+                    canInvite={canInvite(channel)}
                   />
                 </div>
               )}
@@ -285,6 +289,7 @@ function ChannelSectionList({
   currentUserId,
   unreads,
   canManage,
+  canInvite,
   canDrag,
   collapsed,
   onToggleCollapsed,
@@ -298,6 +303,7 @@ function ChannelSectionList({
   currentUserId?: string
   unreads: Record<string, string | null | undefined>
   canManage: boolean
+  canInvite: (channel: ServerChannel) => boolean
   canDrag: boolean
   collapsed: boolean
   onToggleCollapsed?: () => void
@@ -320,6 +326,7 @@ function ChannelSectionList({
         currentUserId={currentUserId}
         unreads={unreads}
         canManage={canManage}
+        canInvite={canInvite}
         canDrag={canDrag}
       />
     )
@@ -395,6 +402,7 @@ function ChannelSectionList({
             currentUserId={currentUserId}
             unreads={unreads}
             canManage={canManage}
+            canInvite={canInvite}
             canDrag={canDrag}
             onFirstChannelElement={onFirstChannelElement}
           />
@@ -426,6 +434,13 @@ export function ServerChannelList({
   const canManage = server
     ? canManageServerChannels(server, member, auth.user?._id)
     : false
+  const canInvite = useCallback(
+    (channel: ServerChannel) =>
+      server
+        ? canInviteToChannel(server, channel, member, auth.user?._id)
+        : false,
+    [auth.user?._id, member, server],
+  )
 
   const computedSections = useMemo(
     () => (server ? buildChannelSidebarSections(server, channels) : []),
@@ -627,6 +642,7 @@ export function ServerChannelList({
       currentUserId={currentUserId}
       unreads={unreads}
       canManage={canManage}
+      canInvite={canInvite}
       canDrag={canManage && !reordering}
       collapsed={section.title !== null ? getCollapsed(section.id) : false}
       onToggleCollapsed={

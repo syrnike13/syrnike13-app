@@ -96,19 +96,21 @@ export function ChannelCategoryHeader({
         header
       )}
 
-      <CategorySettingsDialog
-        serverId={serverId}
-        category={{ id: categoryId, title, channels: [] }}
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      />
       {canManage ? (
-        <CreateChannelDialog
-          serverId={serverId}
-          categoryId={categoryId}
-          open={createChannelOpen}
-          onOpenChange={setCreateChannelOpen}
-        />
+        <>
+          <CategorySettingsDialog
+            serverId={serverId}
+            category={{ id: categoryId, title, channels: [] }}
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
+          />
+          <CreateChannelDialog
+            serverId={serverId}
+            categoryId={categoryId}
+            open={createChannelOpen}
+            onOpenChange={setCreateChannelOpen}
+          />
+        </>
       ) : null}
     </>
   )

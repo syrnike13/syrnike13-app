@@ -50,6 +50,7 @@ type ChannelSidebarItemProps = {
   currentUserId?: string
   unreads: Record<string, string | null | undefined>
   canManage?: boolean
+  canInvite?: boolean
   dragHandleProps?: Record<string, unknown>
   dragging?: boolean
 }
@@ -61,6 +62,7 @@ export function ChannelSidebarItem({
   currentUserId,
   unreads,
   canManage = false,
+  canInvite = false,
   dragHandleProps,
   dragging = false,
 }: ChannelSidebarItemProps) {
@@ -220,7 +222,7 @@ export function ChannelSidebarItem({
         <LinkIcon className="size-3.5" />
         Копировать ссылку
       </ContextMenuItem>
-      {channel.channel_type === 'TextChannel' ? (
+      {channel.channel_type === 'TextChannel' && canInvite ? (
         <ContextMenuItem onSelect={() => void createInvite()}>
           <LinkIcon className="size-3.5" />
           Приглашение

@@ -5,6 +5,7 @@ import {
   calculateChannelPermissions,
   calculateServerPermissions,
   canEditMember,
+  canInviteToChannel,
   getMemberRank,
   getServerMenuPermissions,
   hasChannelPermission,
@@ -131,6 +132,34 @@ describe('calculateChannelPermissions', () => {
     expect(hasChannelPermission(permissions, ChannelPermission.Listen)).toBe(
       false,
     )
+  })
+})
+
+describe('canInviteToChannel', () => {
+  it('allows invites only when the channel grants InviteOthers', () => {
+    const server = makeServer()
+    const member = makeMember()
+
+    expect(
+      canInviteToChannel(
+        server,
+        makeTextChannel({
+          default_permissions: {
+            a: permissionOr(
+              ChannelPermission.ViewChannel,
+              ChannelPermission.InviteOthers,
+            ),
+            d: 0,
+          },
+        }),
+        member,
+        'user-1',
+      ),
+    ).toBe(true)
+
+    expect(
+      canInviteToChannel(server, makeTextChannel(), member, 'user-1'),
+    ).toBe(false)
   })
 })
 
