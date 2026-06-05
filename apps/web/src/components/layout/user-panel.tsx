@@ -6,6 +6,10 @@ import {
   MicOffIcon,
   SettingsIcon,
 } from 'lucide-react'
+import {
+  VoiceCameraStrip,
+  VoiceScreenShareStrip,
+} from '#/components/voice/voice-local-broadcast-strip'
 import { VoiceConnectionStrip } from '#/components/voice/voice-connection-strip'
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -92,7 +96,13 @@ export function UserPanel() {
           'bg-secondary text-secondary-foreground',
         )}
       >
-        {inVoiceSession ? <VoiceConnectionStrip /> : null}
+        {inVoiceSession ? (
+          <>
+            <VoiceScreenShareStrip />
+            <VoiceCameraStrip />
+            <VoiceConnectionStrip />
+          </>
+        ) : null}
 
         <div
           className={cn(
