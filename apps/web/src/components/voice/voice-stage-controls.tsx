@@ -38,7 +38,7 @@ type VoiceStageControlsProps = {
 }
 
 const stageControlGroupClass =
-  'flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#1e1f22] p-2.5'
+  'flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#1e1f22] p-1.5'
 
 const stageControlIconClass =
   'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50'
@@ -237,7 +237,7 @@ function VoiceStageOverlayControlBar({
   onLeave,
 }: Omit<ControlBarStateProps, 'channelId'>) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-stretch gap-2">
       <div className={stageControlGroupClass}>
         <StageMediaControl
           title={micControlTitle({
@@ -309,7 +309,7 @@ function VoiceStageOverlayControlBar({
         title="Отключиться"
         disabled={connecting}
         onClick={onLeave}
-        className="flex h-14 min-w-[3.75rem] shrink-0 items-center justify-center rounded-lg bg-[#ed4245] px-3 text-white transition-colors hover:bg-[#d84040] disabled:opacity-50"
+        className="flex min-w-[3.75rem] shrink-0 items-center justify-center rounded-lg bg-[#ed4245] px-3 text-white transition-colors hover:bg-[#d84040] disabled:opacity-50"
       >
         <PhoneOffIcon className="size-5" />
       </button>
