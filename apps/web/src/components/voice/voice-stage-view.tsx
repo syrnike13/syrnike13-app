@@ -10,6 +10,7 @@ import type { Channel, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
+import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
 import { VoiceStageControls } from '#/components/voice/voice-stage-controls'
 import { VoiceStageInviteTile } from '#/components/voice/voice-stage-tile'
@@ -31,8 +32,13 @@ import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-provi
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   shouldShowVoiceInviteSlot,
+  voiceStageContentInsetClass,
   voiceStageGridClass,
 } from '#/components/voice/voice-stage-layout'
+import {
+  useVoiceStageChromeVisible,
+  voiceStageChromeMotion,
+} from '#/features/voice/use-voice-stage-chrome-visible'
 import { canInviteToChannel } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
@@ -98,6 +104,7 @@ export function VoiceStageView({
     useState<VoiceStageLayoutMode>('grid')
   const [popout, setPopout] = useState<PopoutState | null>(null)
   const popoutRef = useRef<PopoutState | null>(null)
+  const { stageRef, chromeVisible } = useVoiceStageChromeVisible()
 
   useEffect(() => {
     popoutRef.current = popout
@@ -211,7 +218,11 @@ export function VoiceStageView({
   }, [])
 
   const renderTile = useCallback(
-    (item: VoiceStageMediaItem, variant: 'grid' | 'focus' | 'strip' | 'fullscreen') => (
+    (
+      item: VoiceStageMediaItem,
+      variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
+      onStreamAspectRatioChange?: (aspectRatio: number) => void,
+    ) => (
       <StageMediaTile
         key={item.id}
         item={item}
@@ -225,6 +236,7 @@ export function VoiceStageView({
         onExitFullscreen={voice.toggleStageFullscreen}
         onOpenPopout={openPopout}
         onSetSubscribed={voice.setStageMediaSubscribed}
+        onStreamAspectRatioChange={onStreamAspectRatioChange}
       />
     ),
     [
@@ -241,8 +253,44 @@ export function VoiceStageView({
   )
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#1e1f22] text-foreground">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-4">
+    <div
+      ref={stageRef}
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black text-foreground"
+    >
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col overflow-hidden',
+          voiceStageContentInsetClass,
+        )}
+      >
+        {participants.length === 0 && mediaItems.length === 0 ? (
+          <EmptyVoiceStage />
+        ) : focusedItem ? (
+          <VoiceStageFocusStage
+            focusedItem={focusedItem}
+            mediaItems={mediaItems}
+            renderTile={renderTile}
+          />
+        ) : (
+          <div
+            className={cn(
+              'mx-auto grid min-h-0 w-full max-w-[96rem] flex-1 auto-rows-min content-center items-center justify-center gap-2 overflow-y-auto sm:gap-3',
+              voiceStageGridClass(mediaItems.length + (showInviteSlot ? 1 : 0)),
+            )}
+          >
+            {mediaItems.map((item) => renderTile(item, 'grid'))}
+            {showInviteSlot ? <VoiceStageInviteTile channelId={channelId} /> : null}
+          </div>
+        )}
+      </div>
+
+      <header
+        data-voice-stage-chrome
+        className={cn(
+          'absolute inset-x-0 top-0 z-50 flex min-h-12 items-center gap-2 bg-gradient-to-b from-black via-black/80 to-transparent px-4 pt-1 pb-5',
+          voiceStageChromeMotion(chromeVisible, 'top'),
+        )}
+      >
         <Volume2Icon className="size-5 shrink-0 text-muted-foreground" />
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h1>
         <Button
@@ -273,38 +321,18 @@ export function VoiceStageView({
         </Button>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {participants.length === 0 && mediaItems.length === 0 ? (
-          <EmptyVoiceStage />
-        ) : focusedItem ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-              {renderTile(focusedItem, 'focus')}
-            </div>
-            {mediaItems.length > 1 ? (
-              <div className="flex h-28 shrink-0 items-center justify-center gap-2 overflow-x-auto pb-1 sm:h-32">
-                {mediaItems
-                  .filter((item) => item.id !== focusedItem.id)
-                  .map((item) => renderTile(item, 'strip'))}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div
-            className={cn(
-              'mx-auto grid min-h-0 w-full max-w-[96rem] flex-1 auto-rows-min content-center items-center justify-center gap-2 overflow-y-auto p-2 sm:gap-3 sm:p-3',
-              voiceStageGridClass(mediaItems.length + (showInviteSlot ? 1 : 0)),
-            )}
-          >
-            {mediaItems.map((item) => renderTile(item, 'grid'))}
-            {showInviteSlot ? <VoiceStageInviteTile channelId={channelId} /> : null}
-          </div>
+      <div
+        data-voice-stage-chrome
+        className={cn(
+          'absolute inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-8 pt-2',
+          voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
-
+      >
         <VoiceStageControls
           channelId={channelId}
           inCall={inThisVoiceCall}
           connecting={connecting}
+          overlay
         />
       </div>
 
@@ -371,30 +399,53 @@ function FullscreenStageOverlay({
   ) => ReactNode
   onExit: () => void
 }) {
+  const { stageRef, chromeVisible } = useVoiceStageChromeVisible()
+
   return (
-    <div className="fixed inset-0 z-[300] flex flex-col bg-black text-white">
-      <div className="pointer-events-none absolute top-3 right-3 z-10">
+    <div
+      ref={stageRef}
+      className="fixed inset-0 z-[300] overflow-hidden bg-black text-white"
+    >
+      <div
+        className={cn(
+          'flex size-full items-center justify-center overflow-hidden',
+          voiceStageContentInsetClass,
+        )}
+      >
+        {renderTile(item, 'fullscreen')}
+      </div>
+
+      <div
+        data-voice-stage-chrome
+        className={cn(
+          'absolute top-3 right-3 z-50',
+          voiceStageChromeMotion(chromeVisible, 'top'),
+        )}
+      >
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="pointer-events-auto size-9 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white"
+          className="size-9 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white"
           title="Выйти из fullscreen"
           onClick={onExit}
         >
           <Minimize2Icon className="size-5" />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden p-0">
-        <div className="flex size-full items-center justify-center overflow-hidden">
-          {renderTile(item, 'fullscreen')}
-        </div>
-      </div>
-      <div className="shrink-0">
+
+      <div
+        data-voice-stage-chrome
+        className={cn(
+          'absolute inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-8 pt-2',
+          voiceStageChromeMotion(chromeVisible, 'bottom'),
+        )}
+      >
         <VoiceStageControls
           channelId={channelId}
           inCall={inCall}
           connecting={connecting}
+          overlay
         />
       </div>
     </div>

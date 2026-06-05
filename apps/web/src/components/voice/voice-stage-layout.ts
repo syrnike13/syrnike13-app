@@ -1,5 +1,21 @@
 import { cn } from '#/lib/utils'
 
+/**
+ * Вертикальные отступы контента стейджа под оверлей шапки и панели управления.
+ * На сами оверлеи не влияет.
+ */
+export const voiceStageContentInsetClass =
+  'pt-12 pb-20 px-2 sm:px-3' as const
+
+/** Отступы ленты: между плитками 8px, по краям 4px (2× ring-2). */
+export const voiceStageFilmstripSpacingClass = 'gap-2 p-1' as const
+
+/** Без верхнего padding — стык с основным тайлом через focusStackGap. */
+export const voiceStageFilmstripTightTopClass = 'gap-2 px-1 pb-1 pt-0' as const
+
+/** Зазор основной плитки и ленты: 8px (место под ring-2 сверху превью). */
+export const voiceStageFocusStackGapClass = 'gap-2' as const
+
 /** Сетка плиток 16:9 под число слотов (участники + опционально invite). */
 export function voiceStageGridClass(slotCount: number) {
   if (slotCount <= 0) return 'grid-cols-1'
@@ -32,5 +48,5 @@ export function voiceStageGridClass(slotCount: number) {
 }
 
 export function shouldShowVoiceInviteSlot(participantCount: number) {
-  return participantCount > 0 && participantCount <= 4
+  return participantCount === 1
 }

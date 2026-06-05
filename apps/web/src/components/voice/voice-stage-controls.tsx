@@ -26,6 +26,8 @@ type VoiceStageControlsProps = {
   inCall: boolean
   connecting: boolean
   compact?: boolean
+  /** Без внешней обёртки — позиционирование задаёт родитель (оверлей стейджа). */
+  overlay?: boolean
 }
 
 export function VoiceStageControls({
@@ -33,6 +35,7 @@ export function VoiceStageControls({
   inCall,
   connecting,
   compact = false,
+  overlay = false,
 }: VoiceStageControlsProps) {
   const voice = useVoice()
   const micMuted = isMicVisuallyMuted({
@@ -44,34 +47,13 @@ export function VoiceStageControls({
   const cameraOn = voice.cameraEnabled
   const sharingScreen = voice.screenShareEnabled
 
-  if (!inCall && !connecting) {
-    return (
-      <div className="flex justify-center px-4 pb-8 pt-2">
-        <Button
-          type="button"
-          size="lg"
-          className="rounded-full px-8"
-          onClick={() => void voice.join(channelId)}
-        >
-          Подключиться к голосу
-        </Button>
-      </div>
-    )
-  }
-
-  return (
+  const controlBar = (
     <div
       className={cn(
-        'flex justify-center',
-        compact ? 'px-1 py-0' : 'px-4 pb-8 pt-2',
+        'flex items-center gap-1 rounded-full bg-[#232428] shadow-lg ring-1 ring-white/10',
+        compact ? 'p-0.5' : 'p-1.5',
       )}
     >
-      <div
-        className={cn(
-          'flex items-center gap-1 rounded-full bg-[#232428] shadow-lg ring-1 ring-white/10',
-          compact ? 'p-0.5' : 'p-1.5',
-        )}
-      >
         <ControlButton
           title={micControlTitle({
             inVoice: inCall,
@@ -146,7 +128,38 @@ export function VoiceStageControls({
         >
           <PhoneOffIcon className="size-5" />
         </Button>
-      </div>
+    </div>
+  )
+
+  if (!inCall && !connecting) {
+    const joinButton = (
+      <Button
+        type="button"
+        size="lg"
+        className="rounded-full px-8"
+        onClick={() => void voice.join(channelId)}
+      >
+        Подключиться к голосу
+      </Button>
+    )
+
+    if (overlay) return joinButton
+
+    return (
+      <div className="flex justify-center px-4 pb-8 pt-2">{joinButton}</div>
+    )
+  }
+
+  if (overlay) return controlBar
+
+  return (
+    <div
+      className={cn(
+        'flex justify-center',
+        compact ? 'px-1 py-0' : 'px-4 pb-8 pt-2',
+      )}
+    >
+      {controlBar}
     </div>
   )
 }
@@ -173,6 +186,7 @@ function StageViewSettings({ compact }: { compact: boolean }) {
       </PopoverTrigger>
       <PopoverContent
         align="center"
+        data-voice-stage-popover
         className="z-[420] w-72 border-white/10 bg-[#2b2d31] p-2 text-sm text-white"
       >
         <StageFilterToggle

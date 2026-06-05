@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ExternalLinkIcon,
   Maximize2Icon,
@@ -48,6 +48,7 @@ type StageMediaTileProps = {
   onExitFullscreen: () => void
   onOpenPopout: (mediaId: string) => void
   onSetSubscribed: (mediaId: string, subscribed: boolean) => void
+  onStreamAspectRatioChange?: (aspectRatio: number) => void
 }
 
 const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
@@ -64,6 +65,7 @@ export function StageMediaTile({
   onExitFullscreen,
   onOpenPopout,
   onSetSubscribed,
+  onStreamAspectRatioChange,
 }: StageMediaTileProps) {
   const [aspectRatio, setAspectRatio] = useState(DEFAULT_SCREEN_ASPECT_RATIO)
   const muted = useVoiceListenerStore((s) => s.getUserMuted(item.userId))
@@ -72,14 +74,21 @@ export function StageMediaTile({
   const hasVideo = Boolean(item.track && item.subscribed !== false)
   const isScreen = item.kind === 'screen'
   const canOpenPopout = isScreen && Boolean(item.track)
-  const fit = isScreen ? 'contain' : 'cover'
+  const fit =
+    variant === 'focus'
+      ? 'cover'
+      : isScreen
+        ? 'contain'
+        : 'cover'
   const mediaLabel = isScreen ? `Экран ${displayName}` : displayName
   const panelAspectRatio =
     isScreen && hasVideo ? aspectRatio : DEFAULT_SCREEN_ASPECT_RATIO
   const tileStyle = useMemo(
     () => ({
       ...(!hasVideo ? tilePaletteStyle(palette) : {}),
-      aspectRatio: variant === 'fullscreen' ? undefined : panelAspectRatio,
+      ...(variant === 'focus' || variant === 'grid'
+        ? { aspectRatio: panelAspectRatio }
+        : {}),
     }),
     [hasVideo, palette, panelAspectRatio, variant],
   )
@@ -91,6 +100,16 @@ export function StageMediaTile({
     [isScreen],
   )
 
+  useEffect(() => {
+    if (variant !== 'focus' || !onStreamAspectRatioChange) return
+    onStreamAspectRatioChange(panelAspectRatio)
+  }, [onStreamAspectRatioChange, panelAspectRatio, variant])
+
+  const stripMediaClipClass = cn(
+    'absolute inset-0 box-border overflow-hidden rounded-md bg-[#111214]',
+    speaking && 'border-2 border-primary',
+  )
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -98,15 +117,18 @@ export function StageMediaTile({
           role="button"
           tabIndex={0}
           className={cn(
-            'group relative min-h-0 overflow-hidden rounded-md bg-[#111214] outline-none ring-offset-2 ring-offset-black transition-[filter,box-shadow]',
+            'group relative min-h-0 rounded-md outline-none ring-offset-2 ring-offset-black transition-[filter,box-shadow]',
+            'overflow-hidden',
+            variant === 'strip'
+              ? '@container aspect-video size-full shrink-0'
+              : 'bg-[#111214]',
             variant === 'grid' && 'w-full',
-            variant === 'strip' && 'h-full min-w-40 shrink-0',
-            variant === 'focus' && 'h-full max-h-full max-w-full',
+            variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
-            speaking && 'ring-2 ring-primary',
+            speaking && variant !== 'strip' && 'ring-2 ring-primary',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
           )}
-          style={tileStyle}
+          style={variant === 'strip' ? undefined : tileStyle}
           onClick={() => onFocus(item.id)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -116,47 +138,94 @@ export function StageMediaTile({
           }}
         >
           {hasVideo && item.track ? (
-            <VoiceStageVideo
-              track={item.track}
-              fit={fit}
-              onVideoSizeChange={updateVideoSize}
-            />
+            variant === 'strip' ? (
+              <div className={stripMediaClipClass}>
+                <VoiceStageVideo
+                  track={item.track}
+                  fit={fit}
+                  onVideoSizeChange={updateVideoSize}
+                />
+              </div>
+            ) : (
+              <VoiceStageVideo
+                track={item.track}
+                fit={fit}
+                onVideoSizeChange={updateVideoSize}
+              />
+            )
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <>
+              {variant === 'strip' ? (
+                <div
+                  className={stripMediaClipClass}
+                  style={tilePaletteStyle(palette)}
+                />
+              ) : null}
+              <div
+                className={cn(
+                  'absolute inset-0 flex items-center justify-center',
+                  variant === 'strip' ? 'px-2 pb-2 pt-7' : 'flex-col gap-3',
+                )}
+              >
               <UserAvatar
                 user={user}
                 className={cn(
-                  variant === 'grid' ? 'size-16 sm:size-20' : 'size-24 sm:size-32',
+                  variant === 'strip' &&
+                    'aspect-square size-[min(58cqh,36cqw,4.75rem)]',
+                  variant === 'grid' && 'size-16 sm:size-20',
+                  variant !== 'strip' &&
+                    variant !== 'grid' &&
+                    'size-24 sm:size-32',
                 )}
                 fallbackClassName={cn(
-                  variant === 'grid'
-                    ? 'size-16 text-base sm:size-20'
-                    : 'size-24 text-2xl sm:size-32',
+                  variant === 'strip' && 'size-full text-[min(1.125rem,26cqh)]',
+                  variant === 'grid' &&
+                    'size-16 text-base sm:size-20',
+                  variant !== 'strip' &&
+                    variant !== 'grid' &&
+                    'size-24 text-2xl sm:size-32',
                 )}
                 showPresence={false}
               />
               {item.kind === 'screen' && item.subscribed === false ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onSetSubscribed(item.id, true)
-                  }}
-                >
-                  Подключиться к стриму
-                </Button>
+                variant === 'strip' ? null : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onSetSubscribed(item.id, true)
+                    }}
+                  >
+                    Подключиться к стриму
+                  </Button>
+                )
               ) : null}
-            </div>
+              </div>
+            </>
           )}
 
-          <div className="absolute top-2 left-2 max-w-[calc(100%-5rem)] rounded bg-black/60 px-2 py-1 text-xs font-medium text-white">
+          <div
+            className={cn(
+              'absolute left-1 z-10 max-w-[calc(100%-0.5rem)] rounded bg-black/60 font-medium text-white',
+              variant === 'strip'
+                ? 'top-2 px-2 py-0.5 text-xs leading-tight'
+                : 'top-2 left-2 max-w-[calc(100%-5rem)] px-2 py-1 text-xs',
+            )}
+          >
             <span className="block truncate">{mediaLabel}</span>
           </div>
 
           {participant ? (
-            <div className="absolute top-2 right-2">
+            <div
+              className={cn(
+                'absolute right-1 z-10',
+                variant === 'strip'
+                  ? 'top-1.5 origin-top-right'
+                  : 'top-2 right-2',
+              )}
+            >
               <VoiceParticipantIcons
                 muted={participant.server_muted || !participant.is_publishing}
                 deafened={participant.server_deafened || !participant.is_receiving}
@@ -182,7 +251,10 @@ export function StageMediaTile({
                 type="button"
                 size="icon"
                 variant="ghost"
-                className="size-8 rounded bg-black/60 text-white hover:bg-black/80 hover:text-white"
+                className={cn(
+                  'rounded bg-black/60 text-white hover:bg-black/80 hover:text-white',
+                  variant === 'strip' ? 'size-8' : 'size-8',
+                )}
                 title="В отдельном окне"
                 style={{ display: canOpenPopout ? undefined : 'none' }}
                 onClick={(event) => {
@@ -196,7 +268,10 @@ export function StageMediaTile({
                 type="button"
                 size="icon"
                 variant="ghost"
-                className="size-8 rounded bg-black/60 text-white hover:bg-black/80 hover:text-white"
+                className={cn(
+                  'rounded bg-black/60 text-white hover:bg-black/80 hover:text-white',
+                  variant === 'strip' ? 'size-8' : 'size-8',
+                )}
                 title="На весь экран"
                 onClick={(event) => {
                   event.stopPropagation()

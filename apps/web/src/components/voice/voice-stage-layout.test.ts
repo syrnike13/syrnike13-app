@@ -19,8 +19,9 @@ describe('voiceStageGridClass', () => {
 })
 
 describe('shouldShowVoiceInviteSlot', () => {
-  it('hides invite tile in large calls', () => {
-    expect(shouldShowVoiceInviteSlot(3)).toBe(true)
-    expect(shouldShowVoiceInviteSlot(5)).toBe(false)
+  it('shows invite tile only when alone in voice', () => {
+    expect(shouldShowVoiceInviteSlot(1)).toBe(true)
+    expect(shouldShowVoiceInviteSlot(2)).toBe(false)
+    expect(shouldShowVoiceInviteSlot(0)).toBe(false)
   })
 })
