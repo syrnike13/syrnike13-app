@@ -12,20 +12,33 @@ import {
 } from '#/components/user/user-profile-card'
 import { cn } from '#/lib/utils'
 
-function shouldKeepProfilePopoverOpen(event: {
-  relatedTarget: EventTarget | null
-}): boolean {
-  if (event.relatedTarget == null) {
+function focusOutsideRelatedTarget(event: unknown): EventTarget | null {
+  if (!event || typeof event !== 'object') return null
+
+  const detail = (event as { detail?: { originalEvent?: FocusEvent } }).detail
+  const fromOriginal = detail?.originalEvent?.relatedTarget
+  if (fromOriginal != null) return fromOriginal
+
+  if ('relatedTarget' in event) {
+    return (event as { relatedTarget: EventTarget | null }).relatedTarget
+  }
+
+  return null
+}
+
+function shouldKeepProfilePopoverOpen(event: unknown): boolean {
+  const relatedTarget = focusOutsideRelatedTarget(event)
+  if (relatedTarget == null) {
     return true
   }
 
-  if (!(event.relatedTarget instanceof Element)) {
+  if (!(relatedTarget instanceof Element)) {
     return false
   }
 
   return Boolean(
-    event.relatedTarget.closest('[data-slot="dialog-content"]') ||
-      event.relatedTarget.closest('[data-slot="dialog-overlay"]'),
+    relatedTarget.closest('[data-slot="dialog-content"]') ||
+      relatedTarget.closest('[data-slot="dialog-overlay"]'),
   )
 }
 

@@ -9,6 +9,17 @@ import {
 } from '#/lib/server-permissions'
 
 describe('server permission overrides', () => {
+  it('handles permission bits above 31', () => {
+    const initial = { a: 0, d: 0 }
+    const allowed = setPermissionTriState(
+      initial,
+      ServerPermission.Video,
+      'allow',
+    )
+    expect(getPermissionTriState(allowed, ServerPermission.Video)).toBe('allow')
+    expect(overrideFieldToApi(allowed).allow).toBe(ServerPermission.Video)
+  })
+
   it('cycles allow and deny bits', () => {
     const initial = { a: 0, d: 0 }
     const allowed = setPermissionTriState(

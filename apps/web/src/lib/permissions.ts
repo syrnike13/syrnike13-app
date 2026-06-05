@@ -1,37 +1,43 @@
 import type { Channel, Member, Server } from '@syrnike13/api-types'
 
+import {
+  hasPermissionBit,
+  maskPermissionBits,
+  permissionAnd,
+  permissionAndNot,
+  permissionNot,
+  permissionOr,
+} from '#/lib/permission-bits'
 import { ServerPermission } from '#/lib/server-permissions'
 
 export const ChannelPermission = ServerPermission
 
 export const GRANT_ALL_SAFE = 0x000f_ffff_ffff_ffff
 
-const ALLOW_IN_TIMEOUT =
-  ChannelPermission.ViewChannel | ChannelPermission.ReadMessageHistory
+const ALLOW_IN_TIMEOUT = permissionOr(
+  ChannelPermission.ViewChannel,
+  ChannelPermission.ReadMessageHistory,
+)
 
 type OverrideField = { a: number; d: number }
 
 type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
 
-function toUnsigned(value: number): number {
-  return value >>> 0
-}
-
 export function applyOverride(
   permissions: number,
   override: OverrideField | null | undefined,
 ): number {
-  if (!override) return toUnsigned(permissions)
-  const allow = toUnsigned(override.a)
-  const deny = toUnsigned(override.d)
-  return toUnsigned((permissions | allow) & ~deny)
+  if (!override) return maskPermissionBits(permissions)
+  const allow = maskPermissionBits(override.a)
+  const deny = maskPermissionBits(override.d)
+  return permissionAnd(permissionOr(permissions, allow), permissionNot(deny))
 }
 
 export function hasChannelPermission(
   permissions: number,
   permission: number,
 ): boolean {
-  return (toUnsigned(permissions) & permission) === permission
+  return hasPermissionBit(permissions, permission)
 }
 
 export function calculateServerPermissions(
@@ -43,7 +49,7 @@ export function calculateServerPermissions(
   if (server.owner === userId) return GRANT_ALL_SAFE
   if (!member) return 0
 
-  let permissions = toUnsigned(server.default_permissions)
+  let permissions = maskPermissionBits(server.default_permissions)
 
   const roles = (member.roles ?? [])
     .map((roleId) => server.roles?.[roleId])
@@ -55,15 +61,18 @@ export function calculateServerPermissions(
   }
 
   if (member.timeout && new Date(member.timeout) > new Date()) {
-    permissions = permissions & ALLOW_IN_TIMEOUT
+    permissions = permissionAnd(permissions, ALLOW_IN_TIMEOUT)
   }
 
   if (member.can_publish === false) {
-    permissions &= ~(ChannelPermission.Speak | ChannelPermission.Video)
+    permissions = permissionAndNot(
+      permissions,
+      permissionOr(ChannelPermission.Speak, ChannelPermission.Video),
+    )
   }
 
   if (member.can_receive === false) {
-    permissions &= ~ChannelPermission.Listen
+    permissions = permissionAndNot(permissions, ChannelPermission.Listen)
   }
 
   return permissions
@@ -97,7 +106,7 @@ export function calculateChannelPermissions(
   }
 
   if (member.timeout && new Date(member.timeout) > new Date()) {
-    permissions = permissions & ALLOW_IN_TIMEOUT
+    permissions = permissionAnd(permissions, ALLOW_IN_TIMEOUT)
   }
 
   if (!hasChannelPermission(permissions, ChannelPermission.ViewChannel)) {

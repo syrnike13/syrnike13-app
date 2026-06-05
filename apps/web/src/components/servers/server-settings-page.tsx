@@ -123,10 +123,17 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        closeSettings()
+      if (event.key !== 'Escape') return
+      if (event.defaultPrevented) return
+      const target = event.target as HTMLElement | null
+      if (
+        target?.closest(
+          'input, textarea, select, [contenteditable="true"], [role="dialog"]',
+        )
+      ) {
+        return
       }
+      closeSettings()
     }
 
     window.addEventListener('keydown', onKeyDown)

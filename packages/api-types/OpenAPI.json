@@ -10791,7 +10791,8 @@
         "required": [
           "_id",
           "name",
-          "permissions"
+          "permissions",
+          "mentionable"
         ],
         "properties": {
           "_id": {
@@ -10821,7 +10822,6 @@
           },
           "mentionable": {
             "description": "Whether anyone can mention this role without the Mention Roles permission",
-            "default": true,
             "type": "boolean"
           },
           "rank": {

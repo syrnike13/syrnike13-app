@@ -73,8 +73,16 @@ export function CreateChannelDialog({
             channel._id,
             { isVoice, isVoiceId },
           )
-          const updated = await editServer(token, serverId, { categories })
-          syncStore.upsertServer(updated)
+          try {
+            const updated = await editServer(token, serverId, { categories })
+            syncStore.upsertServer(updated)
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? `Канал создан, но не удалось добавить в категорию: ${error.message}`
+                : 'Канал создан, но не удалось добавить в категорию',
+            )
+          }
         }
       }
 

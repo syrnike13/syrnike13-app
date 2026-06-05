@@ -46,6 +46,7 @@ export function EditMemberRolesDialog({
             <Input
               value={query}
               placeholder="Поиск ролей"
+              aria-label="Поиск ролей"
               className="h-8 border-0 bg-muted/50 pl-8 text-sm shadow-none focus-visible:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring/40"
               onChange={(event) => setQuery(event.target.value)}
             />

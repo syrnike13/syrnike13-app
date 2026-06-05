@@ -2150,11 +2150,8 @@ export interface components {
       colour?: string | null;
       /** @description Whether this role should be shown separately on the member sidebar */
       hoist?: boolean;
-      /**
-       * @description Whether anyone can mention this role without the Mention Roles permission
-       * @default true
-       */
-      mentionable?: boolean;
+      /** @description Whether anyone can mention this role without the Mention Roles permission */
+      mentionable: boolean;
       /**
        * Format: int64
        * @description Ranking of this role

@@ -139,7 +139,7 @@ export function AddRoleMembersDialog({
 
     setSaving(true)
     try {
-      const updates = await Promise.all(
+      const results = await Promise.allSettled(
         Array.from(selectedIds).map(async (userId) => {
           const targetMember = serverMembers.find(
             (member) => member._id.user === userId,
@@ -155,11 +155,20 @@ export function AddRoleMembersDialog({
         }),
       )
 
-      const applied = updates.filter(
-        (member): member is Member => member !== null,
+      const applied = results.flatMap((result) =>
+        result.status === 'fulfilled' && result.value ? [result.value] : [],
       )
+      const hasFailures = results.some(
+        (result) => result.status === 'rejected',
+      )
+
       if (applied.length > 0) {
         syncStore.upsertMembers(applied)
+      }
+
+      if (hasFailures) {
+        toast.error('Не удалось добавить некоторых участников')
+        return
       }
 
       onOpenChange(false)

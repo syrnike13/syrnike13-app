@@ -136,11 +136,11 @@ export function ServerSettingsRoleEditor({
 
   const headerRoleName = (name.trim() || role.name).toUpperCase()
 
-  const previewIconUrl = iconFile
-    ? URL.createObjectURL(iconFile)
-    : removeIcon
-      ? null
-      : roleIconUrl(role.icon)
+  const previewIconUrl = useMemo(() => {
+    if (iconFile) return URL.createObjectURL(iconFile)
+    if (removeIcon) return null
+    return roleIconUrl(role.icon)
+  }, [iconFile, removeIcon, role.icon])
 
   useEffect(() => {
     setName(role.name)
@@ -154,10 +154,10 @@ export function ServerSettingsRoleEditor({
   }, [role])
 
   useEffect(() => {
-    if (!iconFile) return
-    const url = URL.createObjectURL(iconFile)
+    const url = previewIconUrl
+    if (!url?.startsWith('blob:')) return
     return () => URL.revokeObjectURL(url)
-  }, [iconFile])
+  }, [previewIconUrl])
 
   const isRoleMetaDirty = useMemo(() => {
     if (!canEditRole) return false

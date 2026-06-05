@@ -200,6 +200,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     const trimmedName = emojiName.trim()
     if (!token || !trimmedName) {
       toast.error('Укажите имя emoji')
+      if (emojiFileRef.current) emojiFileRef.current.value = ''
       return
     }
 
@@ -220,6 +221,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось создать emoji',
       )
+      if (emojiFileRef.current) emojiFileRef.current.value = ''
     } finally {
       setEmojiUploading(false)
     }

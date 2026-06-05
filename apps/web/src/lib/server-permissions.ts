@@ -1,37 +1,48 @@
+import {
+  hasPermissionBit,
+  maskPermissionBits,
+  permissionAnd,
+  permissionAndNot,
+  permissionBit,
+  permissionOr,
+} from '#/lib/permission-bits'
+
+const p = permissionBit
+
 export const ServerPermission = {
-  ManageChannel: 1 << 0,
-  ManageServer: 1 << 1,
-  ManagePermissions: 1 << 2,
-  ManageRole: 1 << 3,
-  ManageCustomisation: 1 << 4,
-  KickMembers: 1 << 6,
-  BanMembers: 1 << 7,
-  TimeoutMembers: 1 << 8,
-  AssignRoles: 1 << 9,
-  ChangeNickname: 1 << 10,
-  ManageNicknames: 1 << 11,
-  ChangeAvatar: 1 << 12,
-  RemoveAvatars: 1 << 13,
-  ViewChannel: 1 << 20,
-  ReadMessageHistory: 1 << 21,
-  SendMessage: 1 << 22,
-  ManageMessages: 1 << 23,
-  ManageWebhooks: 1 << 24,
-  InviteOthers: 1 << 25,
-  SendEmbeds: 1 << 26,
-  UploadFiles: 1 << 27,
-  Masquerade: 1 << 28,
-  React: 1 << 29,
-  Connect: 1 << 30,
-  Speak: 1 << 31,
-  Video: 1 << 32,
-  MuteMembers: 1 << 33,
-  DeafenMembers: 1 << 34,
-  MoveMembers: 1 << 35,
-  Listen: 1 << 36,
-  MentionEveryone: 1 << 37,
-  MentionRoles: 1 << 38,
-  BypassSlowmode: 1 << 39,
+  ManageChannel: p(0),
+  ManageServer: p(1),
+  ManagePermissions: p(2),
+  ManageRole: p(3),
+  ManageCustomisation: p(4),
+  KickMembers: p(6),
+  BanMembers: p(7),
+  TimeoutMembers: p(8),
+  AssignRoles: p(9),
+  ChangeNickname: p(10),
+  ManageNicknames: p(11),
+  ChangeAvatar: p(12),
+  RemoveAvatars: p(13),
+  ViewChannel: p(20),
+  ReadMessageHistory: p(21),
+  SendMessage: p(22),
+  ManageMessages: p(23),
+  ManageWebhooks: p(24),
+  InviteOthers: p(25),
+  SendEmbeds: p(26),
+  UploadFiles: p(27),
+  Masquerade: p(28),
+  React: p(29),
+  Connect: p(30),
+  Speak: p(31),
+  Video: p(32),
+  MuteMembers: p(33),
+  DeafenMembers: p(34),
+  MoveMembers: p(35),
+  Listen: p(36),
+  MentionEveryone: p(37),
+  MentionRoles: p(38),
+  BypassSlowmode: p(39),
 } as const
 
 export type ServerPermissionName = keyof typeof ServerPermission
@@ -118,19 +129,14 @@ export const ALL_SERVER_PERMISSION_FLAGS = SERVER_PERMISSION_GROUPS.flatMap(
   (group) => group.permissions.map((permission) => permission.flag),
 )
 
-function toUnsigned(value: number): number {
-  return value >>> 0
-}
-
 export function getPermissionTriState(
   override: PermissionOverrideField | null | undefined,
   flag: number,
 ): PermissionTriState {
-  const allow = toUnsigned(override?.a ?? 0)
-  const deny = toUnsigned(override?.d ?? 0)
-  const bit = toUnsigned(flag)
-  if ((deny & bit) === bit) return 'deny'
-  if ((allow & bit) === bit) return 'allow'
+  const allow = maskPermissionBits(override?.a ?? 0)
+  const deny = maskPermissionBits(override?.d ?? 0)
+  if (hasPermissionBit(deny, flag)) return 'deny'
+  if (hasPermissionBit(allow, flag)) return 'allow'
   return 'neutral'
 }
 
@@ -139,28 +145,31 @@ export function setPermissionTriState(
   flag: number,
   state: PermissionTriState,
 ): PermissionOverrideField {
-  const bit = toUnsigned(flag)
-  let allow = toUnsigned(override.a)
-  let deny = toUnsigned(override.d)
-  allow &= ~bit
-  deny &= ~bit
-  if (state === 'allow') allow |= bit
-  if (state === 'deny') deny |= bit
+  const bit = maskPermissionBits(flag)
+  let allow = maskPermissionBits(override.a)
+  let deny = maskPermissionBits(override.d)
+  allow = permissionAndNot(allow, bit)
+  deny = permissionAndNot(deny, bit)
+  if (state === 'allow') allow = permissionOr(allow, bit)
+  if (state === 'deny') deny = permissionOr(deny, bit)
   return { a: allow, d: deny }
 }
 
 export function overrideFieldToApi(
   override: PermissionOverrideField,
 ): PermissionOverride {
-  return { allow: toUnsigned(override.a), deny: toUnsigned(override.d) }
+  return {
+    allow: maskPermissionBits(override.a),
+    deny: maskPermissionBits(override.d),
+  }
 }
 
 export function overrideFieldFromRole(
   override: PermissionOverrideField | null | undefined,
 ): PermissionOverrideField {
   return {
-    a: toUnsigned(override?.a ?? 0),
-    d: toUnsigned(override?.d ?? 0),
+    a: maskPermissionBits(override?.a ?? 0),
+    d: maskPermissionBits(override?.d ?? 0),
   }
 }
 
@@ -168,7 +177,7 @@ export function hasServerPermission(
   permissions: number,
   flag: number,
 ): boolean {
-  return (toUnsigned(permissions) & toUnsigned(flag)) === toUnsigned(flag)
+  return hasPermissionBit(permissions, flag)
 }
 
 export function toggleServerPermission(
@@ -176,10 +185,10 @@ export function toggleServerPermission(
   flag: number,
   enabled: boolean,
 ): number {
-  const bit = toUnsigned(flag)
+  const bit = maskPermissionBits(flag)
   return enabled
-    ? toUnsigned(permissions | bit)
-    : toUnsigned(permissions & ~bit)
+    ? permissionOr(permissions, bit)
+    : permissionAndNot(permissions, bit)
 }
 
 export function normalizeRoleColour(colour: string | null | undefined): string {

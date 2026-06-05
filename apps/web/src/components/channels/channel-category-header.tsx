@@ -57,6 +57,7 @@ export function ChannelCategoryHeader({
             type="button"
             className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
             title="Создать канал"
+            aria-label="Создать канал"
             onClick={() => setCreateChannelOpen(true)}
           >
             <PlusIcon className="size-3.5" />
@@ -65,6 +66,7 @@ export function ChannelCategoryHeader({
             type="button"
             className="flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
             title="Настройки категории"
+            aria-label="Настройки категории"
             onClick={() => setSettingsOpen(true)}
           >
             <SettingsIcon className="size-3.5" />
