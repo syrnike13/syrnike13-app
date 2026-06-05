@@ -61,21 +61,9 @@ export function UserPanel() {
   })
   const soundOff = voice.deafened
 
-  const statusLabel = inVoice
-    ? voice.micIssue
-      ? voice.micIssue.label
-      : micMuted
-        ? soundOff
-          ? 'Глухой режим'
-          : 'Микрофон выключен'
-        : 'В голосовом канале'
-    : soundOff
-      ? 'Звук выключен'
-      : micMuted
-        ? 'Микрофон выключен'
-        : gatewayConnected
-          ? userStatusSubtitle(user)
-          : gatewayLabels[auth.gatewayState]
+  const statusLabel = gatewayConnected
+    ? userStatusSubtitle(user)
+    : gatewayLabels[auth.gatewayState]
 
   return (
     <div
@@ -127,7 +115,7 @@ export function UserPanel() {
                       className={cn(
                         'truncate text-xs leading-4 transition-[transform,opacity] duration-200 ease-out',
                         'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
-                        gatewayConnected || inVoice
+                        gatewayConnected
                           ? 'text-muted-foreground'
                           : 'text-destructive/80',
                       )}

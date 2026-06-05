@@ -15,6 +15,12 @@ type SegmentState = {
   danger?: boolean
 }
 
+const splitControlDangerMainClass =
+  'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/30 group-hover/media:text-[#ff6b6b]'
+
+const splitControlDangerChevronClass =
+  'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/12 group-hover/media:text-[#ff6b6b]'
+
 export function splitControlMainButtonClass(
   surface: VoiceSplitControlSurface,
   { danger }: SegmentState,
@@ -22,16 +28,14 @@ export function splitControlMainButtonClass(
   if (surface === 'stage') {
     return cn(
       'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50',
-      danger
-        ? 'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/30 group-hover/media:text-[#ff6b6b]'
-        : 'group-hover/media:bg-white/10 group-hover/media:text-white',
+      danger ? splitControlDangerMainClass : 'group-hover/media:bg-white/10 group-hover/media:text-white',
     )
   }
 
   return cn(
     'flex size-9 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors disabled:pointer-events-none disabled:opacity-50',
     danger
-      ? 'bg-destructive/15 text-destructive group-hover/media:bg-destructive/25 group-hover/media:text-destructive'
+      ? splitControlDangerMainClass
       : 'bg-card text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
   )
 }
@@ -44,7 +48,7 @@ export function splitControlChevronButtonClass(
     return cn(
       'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50',
       danger
-        ? 'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/12 group-hover/media:text-[#ff6b6b]'
+        ? splitControlDangerChevronClass
         : 'group-hover/media:bg-white/[0.06] group-hover/media:text-white',
     )
   }
@@ -52,7 +56,7 @@ export function splitControlChevronButtonClass(
   return cn(
     'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors disabled:pointer-events-none disabled:opacity-50',
     danger
-      ? 'bg-destructive/15 text-destructive group-hover/media:bg-destructive/20 group-hover/media:text-destructive'
+      ? splitControlDangerChevronClass
       : 'bg-card text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
   )
 }
