@@ -925,6 +925,7 @@ impl From<crate::Role> for Role {
             permissions: value.permissions,
             colour: value.colour,
             hoist: value.hoist,
+            mentionable: value.mentionable,
             rank: value.rank,
             icon: value.icon.map(|f| f.into()),
         }
@@ -939,6 +940,7 @@ impl From<Role> for crate::Role {
             permissions: value.permissions,
             colour: value.colour,
             hoist: value.hoist,
+            mentionable: value.mentionable,
             rank: value.rank,
             icon: value.icon.map(|f| f.into()),
         }
@@ -953,6 +955,7 @@ impl From<crate::PartialRole> for PartialRole {
             permissions: value.permissions,
             colour: value.colour,
             hoist: value.hoist,
+            mentionable: value.mentionable,
             rank: value.rank,
             icon: value.icon.map(|f| f.into()),
         }
@@ -967,6 +970,7 @@ impl From<PartialRole> for crate::PartialRole {
             permissions: value.permissions,
             colour: value.colour,
             hoist: value.hoist,
+            mentionable: value.mentionable,
             rank: value.rank,
             icon: value.icon.map(|f| f.into()),
         }

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PencilIcon } from 'lucide-react'
 import type { User } from '@syrnike13/api-types'
 
+import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
 import {
   profileMenuNestClass,
@@ -53,12 +54,15 @@ export function CurrentUserProfileMenu({
         >
           {bannerUrl ? (
             <>
-              <img
+              <FxImage
                 src={bannerUrl}
-                alt=""
-                className="size-full object-cover"
+                wrapperClassName="block h-full w-full"
+                className="h-full w-full"
               />
-              <div className="absolute inset-0 bg-background/40" aria-hidden />
+              <div
+                className="pointer-events-none absolute inset-0 z-[1] bg-background/40"
+                aria-hidden
+              />
             </>
           ) : null}
         </div>

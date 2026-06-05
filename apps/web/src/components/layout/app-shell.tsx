@@ -24,6 +24,10 @@ export function AppShell() {
     from: '/app/discover',
     shouldThrow: false,
   })
+  const serverSettingsMatch = useMatch({
+    from: '/app/servers/$serverId/settings',
+    shouldThrow: false,
+  })
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const activeChannelId = channelMatch?.params.channelId
   const pathname = useRouterState({ select: (state) => state.location.pathname })
@@ -60,6 +64,14 @@ export function AppShell() {
 
   const showHomeSidebar = onHomeRoute || dmContext
 
+  if (serverSettingsMatch) {
+    return (
+      <div className="fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
+        <Outlet />
+      </div>
+    )
+  }
+
   const showChannelSidebar = !showHomeSidebar && !discoverMatch
 
   const sidebar = showHomeSidebar ? (
@@ -76,11 +88,7 @@ export function AppShell() {
         <ServerRail />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 pt-2 pl-2">
-          <AppMainFrame
-            sidebar={
-              <LeftSidebarStack>{sidebar}</LeftSidebarStack>
-            }
-          >
+          <AppMainFrame sidebar={<LeftSidebarStack>{sidebar}</LeftSidebarStack>}>
             <Outlet />
           </AppMainFrame>
         </div>

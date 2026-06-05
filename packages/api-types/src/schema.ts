@@ -2150,6 +2150,8 @@ export interface components {
       colour?: string | null;
       /** @description Whether this role should be shown separately on the member sidebar */
       hoist?: boolean;
+      /** @description Whether anyone can mention this role without the Mention Roles permission */
+      mentionable: boolean;
       /**
        * Format: int64
        * @description Ranking of this role
@@ -2220,6 +2222,8 @@ export interface components {
       banner?: string | null;
       /** @description Category structure for server */
       categories?: components["schemas"]["Category"][] | null;
+      /** @description Channel order for server */
+      channels?: string[] | null;
       /** @description System message configuration */
       system_messages?: components["schemas"]["SystemMessageChannels"] | null;
       /**
@@ -2390,6 +2394,8 @@ export interface components {
       colour?: string | null;
       /** @description Whether this role should be displayed separately */
       hoist?: boolean | null;
+      /** @description Whether anyone can mention this role without the Mention Roles permission */
+      mentionable?: boolean | null;
       /**
        * Format: int64
        * @description Ranking position

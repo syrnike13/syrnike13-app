@@ -3,9 +3,11 @@ import type { File } from '@syrnike13/api-types'
 import { FileIcon } from 'lucide-react'
 
 import { ImageLightbox } from '#/components/media/image-lightbox'
+import { FxImage } from '#/components/ui/fx-image'
 import {
   attachmentOriginalUrl,
   attachmentPreviewUrl,
+  imageFileAspectRatio,
   isImageFile,
 } from '#/lib/media'
 
@@ -24,20 +26,22 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
         {attachments.map((file) => {
           const preview = attachmentPreviewUrl(file)
           const original = attachmentOriginalUrl(file)
+          const aspectRatio = imageFileAspectRatio(file)
 
           if (isImageFile(file)) {
             return (
               <button
                 key={file._id}
                 type="button"
-                className="block overflow-hidden rounded-md border text-left"
+                className="block w-fit max-w-full overflow-hidden rounded-md border text-left"
                 onClick={() => setLightboxFile(file)}
               >
-                <img
+                <FxImage
                   src={preview}
                   alt={file.filename ?? 'Изображение'}
-                  className="max-h-80 max-w-full cursor-zoom-in object-contain"
-                  loading="lazy"
+                  aspectRatio={aspectRatio ?? undefined}
+                  objectFit="contain"
+                  wrapperClassName="max-h-80 cursor-zoom-in"
                 />
               </button>
             )

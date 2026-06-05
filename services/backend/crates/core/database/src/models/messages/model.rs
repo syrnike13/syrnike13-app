@@ -391,12 +391,19 @@ impl Message {
             ..
         } = message_mentions;
 
-        if allow_mass_mentions && server_id.is_some() && !role_mentions.is_empty() {
-            let server_data = db
-                .fetch_server(server_id.unwrap().as_str())
-                .await
-                .expect("Failed to fetch server");
+        let server_for_mentions = if allow_mass_mentions
+            && server_id.is_some()
+            && !role_mentions.is_empty()
+        {
+            Some(
+                db.fetch_server(server_id.as_ref().unwrap().as_str())
+                    .await?,
+            )
+        } else {
+            None
+        };
 
+        if let Some(server_data) = &server_for_mentions {
             role_mentions.retain(|role_id| server_data.roles.contains_key(role_id));
         }
 
@@ -433,12 +440,29 @@ impl Message {
                     }));
                 }
 
-                if !role_mentions.is_empty()
-                    && !perms.has_channel_permission(ChannelPermission::MentionRoles)
-                {
-                    return Err(create_error!(MissingPermission {
-                        permission: ChannelPermission::MentionRoles.to_string()
-                    }));
+                if !role_mentions.is_empty() {
+                    let has_mention_roles =
+                        perms.has_channel_permission(ChannelPermission::MentionRoles);
+
+                    if let Some(server_data) = &server_for_mentions {
+                        for role_id in &role_mentions {
+                            let requires_permission = server_data
+                                .roles
+                                .get(role_id)
+                                .map(|role| !role.mentionable)
+                                .unwrap_or(true);
+
+                            if requires_permission && !has_mention_roles {
+                                return Err(create_error!(MissingPermission {
+                                    permission: ChannelPermission::MentionRoles.to_string()
+                                }));
+                            }
+                        }
+                    } else if !has_mention_roles {
+                        return Err(create_error!(MissingPermission {
+                            permission: ChannelPermission::MentionRoles.to_string()
+                        }));
+                    }
                 }
             }
         }

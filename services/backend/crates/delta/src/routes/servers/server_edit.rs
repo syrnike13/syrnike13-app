@@ -11,6 +11,24 @@ use syrnike_result::{create_error, Result};
 use rocket::{serde::json::Json, Request, State};
 use validator::Validate;
 
+pub(crate) fn validate_server_channel_order(
+    current: &[String],
+    next: &[String],
+) -> Result<()> {
+    if next.len() != current.len() {
+        return Err(create_error!(InvalidOperation));
+    }
+
+    let mut seen = HashSet::new();
+    for channel in next {
+        if !current.contains(channel) || !seen.insert(channel.clone()) {
+            return Err(create_error!(InvalidOperation));
+        }
+    }
+
+    Ok(())
+}
+
 /// # Edit Server
 ///
 /// Edit a server by its id.
@@ -42,6 +60,7 @@ pub async fn edit(
         && data.banner.is_none()
         && data.system_messages.is_none()
         && data.categories.is_none()
+        && data.channels.is_none()
         // && data.nsfw.is_none()
         && data.flags.is_none()
         && data.analytics.is_none()
@@ -79,8 +98,8 @@ pub async fn edit(
         return Err(create_error!(NotPrivileged));
     }
 
-    // Changing categories requires manage channel
-    if data.categories.is_some() {
+    // Changing categories or channel order requires manage channel
+    if data.categories.is_some() || data.channels.is_some() {
         permissions.throw_if_lacking_channel_permission(ChannelPermission::ManageChannel)?;
     }
 
@@ -90,6 +109,7 @@ pub async fn edit(
         icon,
         banner,
         categories,
+        channels,
         system_messages,
         flags,
         // nsfw,
@@ -103,6 +123,7 @@ pub async fn edit(
         name,
         description,
         categories: categories.map(|v| v.into_iter().map(Into::into).collect()),
+        channels,
         system_messages: system_messages.map(Into::into),
         flags,
         // nsfw,
@@ -151,6 +172,10 @@ pub async fn edit(
         }
     }
 
+    if let Some(channels) = &partial.channels {
+        validate_server_channel_order(&server.channels, channels)?;
+    }
+
     // 3. Apply new icon
     if let Some(icon) = icon {
         partial.icon = Some(File::use_server_icon(db, &icon, &server.id, &user.id).await?);
@@ -183,4 +208,30 @@ pub async fn edit(
         .await?;
 
     Ok(Json(server.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_server_channel_order;
+
+    #[test]
+    fn accepts_channel_reorder() {
+        let current = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let next = vec!["c".to_string(), "a".to_string(), "b".to_string()];
+        validate_server_channel_order(&current, &next).unwrap();
+    }
+
+    #[test]
+    fn rejects_unknown_or_missing_channel_ids() {
+        let current = vec!["a".to_string(), "b".to_string()];
+        let next = vec!["a".to_string(), "c".to_string()];
+        assert!(validate_server_channel_order(&current, &next).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_channel_ids() {
+        let current = vec!["a".to_string(), "b".to_string()];
+        let next = vec!["a".to_string(), "a".to_string()];
+        assert!(validate_server_channel_order(&current, &next).is_err());
+    }
 }

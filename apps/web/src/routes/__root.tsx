@@ -5,6 +5,7 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/react-router'
 
+import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
 import { ThemeProvider } from '#/components/theme-provider'
 import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
@@ -86,6 +87,7 @@ function RootComponent() {
     <ThemeProvider>
       <AuthProvider>
         <SyncProvider>
+          <NativeScrollbarEnhancer />
           <Outlet />
           <Toaster richColors closeButton />
         </SyncProvider>

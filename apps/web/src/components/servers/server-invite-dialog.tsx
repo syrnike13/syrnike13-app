@@ -18,8 +18,9 @@ import { deleteInvite } from '#/features/api/invites-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import {
-  calculateServerPermissions,
+  canInviteToChannel,
   ChannelPermission,
+  calculateServerPermissions,
   hasChannelPermission,
 } from '#/lib/permissions'
 
@@ -57,7 +58,11 @@ export function ServerInviteDialog({
       (channel) => channel.channel_type === 'TextChannel',
     ),
   )
-  const defaultChannelId = textChannels[0]?._id
+  const defaultChannelId = server
+    ? textChannels.find((channel) =>
+        canInviteToChannel(server, channel, member, auth.user?._id),
+      )?._id
+    : undefined
 
   async function loadInvites() {
     if (!token || !canManageServer) return

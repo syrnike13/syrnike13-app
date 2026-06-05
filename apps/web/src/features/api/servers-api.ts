@@ -1,11 +1,20 @@
 import type {
   Channel,
+  DataCreateRole,
   DataCreateServer,
   DataCreateServerChannel,
+  DataEditRole,
+  DataEditRoleRanks,
   DataEditServer,
+  DataMemberEdit,
+  DataPermissionsValue,
+  DataSetServerRolePermission,
+  MemberResponse,
   Emoji,
   Invite,
   Member,
+  NewRoleResponse,
+  Role,
   Server,
   User,
 } from '@syrnike13/api-types'
@@ -102,6 +111,32 @@ export async function deleteServerEmoji(token: string, emojiId: string) {
   })
 }
 
+export async function fetchServerMember(
+  token: string,
+  serverId: string,
+  userId: string,
+  options: { roles?: boolean } = {},
+) {
+  const query = options.roles ? '?roles=true' : ''
+  return apiRequest<MemberResponse>(
+    `/servers/${serverId}/members/${userId}${query}`,
+    { token },
+  )
+}
+
+export async function editServerMember(
+  token: string,
+  serverId: string,
+  userId: string,
+  data: DataMemberEdit,
+) {
+  return apiRequest<Member>(`/servers/${serverId}/members/${userId}`, {
+    method: 'PATCH',
+    token,
+    body: data,
+  })
+}
+
 export async function kickServerMember(
   token: string,
   serverId: string,
@@ -128,5 +163,78 @@ export async function createChannelInvite(token: string, channelId: string) {
   return apiRequest<Invite>(`/channels/${channelId}/invites`, {
     method: 'POST',
     token,
+  })
+}
+
+export async function createServerRole(
+  token: string,
+  serverId: string,
+  data: DataCreateRole,
+) {
+  return apiRequest<NewRoleResponse>(`/servers/${serverId}/roles`, {
+    method: 'POST',
+    token,
+    body: data,
+  })
+}
+
+export async function editServerRole(
+  token: string,
+  serverId: string,
+  roleId: string,
+  data: DataEditRole,
+) {
+  return apiRequest<Role>(`/servers/${serverId}/roles/${roleId}`, {
+    method: 'PATCH',
+    token,
+    body: data,
+  })
+}
+
+export async function deleteServerRole(
+  token: string,
+  serverId: string,
+  roleId: string,
+) {
+  return apiRequest<void>(`/servers/${serverId}/roles/${roleId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+export async function setServerRolePermissions(
+  token: string,
+  serverId: string,
+  roleId: string,
+  data: DataSetServerRolePermission,
+) {
+  return apiRequest<Server>(`/servers/${serverId}/permissions/${roleId}`, {
+    method: 'PUT',
+    token,
+    body: data,
+  })
+}
+
+export async function setDefaultServerPermissions(
+  token: string,
+  serverId: string,
+  data: DataPermissionsValue,
+) {
+  return apiRequest<Server>(`/servers/${serverId}/permissions/default`, {
+    method: 'PUT',
+    token,
+    body: data,
+  })
+}
+
+export async function editServerRoleRanks(
+  token: string,
+  serverId: string,
+  data: DataEditRoleRanks,
+) {
+  return apiRequest<Server>(`/servers/${serverId}/roles/ranks`, {
+    method: 'PATCH',
+    token,
+    body: data,
   })
 }
