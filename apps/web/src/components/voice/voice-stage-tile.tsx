@@ -29,6 +29,7 @@ type VoiceStageTileProps = {
   participant: UserVoiceState
   user?: User
   displayName: string
+  dimmed?: boolean
   speaking?: boolean
   compact?: boolean
   focused?: boolean
@@ -39,6 +40,7 @@ export function VoiceStageTile({
   participant,
   user,
   displayName,
+  dimmed = false,
   speaking = false,
   compact = false,
   focused = false,
@@ -57,6 +59,7 @@ export function VoiceStageTile({
       tabIndex={canFocus ? 0 : undefined}
       className={cn(
         TILE_SURFACE,
+        dimmed && 'opacity-50',
         speaking && 'ring-2 ring-primary ring-offset-2 ring-offset-black',
         canFocus && 'cursor-pointer hover:brightness-110',
         focused && 'min-h-[min(50vh,24rem)]',

@@ -7,7 +7,7 @@ import {
   type Ref,
 } from 'react'
 import { MessageSquareIcon, Volume2Icon } from 'lucide-react'
-import type { Channel, User } from '@syrnike13/api-types'
+import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -50,6 +50,8 @@ import {
   useVoiceStageChromeVisible,
   voiceStageChromeMotion,
 } from '#/features/voice/use-voice-stage-chrome-visible'
+import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
+import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { canInviteToChannel } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
@@ -61,16 +63,6 @@ type VoiceStageViewProps = {
 }
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
-
-function participantDisplayName(
-  userId: string,
-  users: Record<string, User>,
-  currentUserId?: string,
-) {
-  if (userId === currentUserId) return 'Вы'
-  const user = users[userId]
-  return user?.display_name ?? user?.username ?? 'Участник'
-}
 
 export function VoiceStageView({
   channel,
@@ -242,26 +234,31 @@ export function VoiceStageView({
       item: VoiceStageMediaItem,
       variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
       onStreamAspectRatioChange?: (aspectRatio: number) => void,
-    ) => (
-      <StageMediaTile
-        key={item.id}
-        item={item}
-        user={users[item.userId]}
-        participant={participantsById.get(item.userId)}
-        displayName={participantDisplayName(
-          item.userId,
-          users,
-          auth.user?._id,
-        )}
-        speaking={inThisVoiceCall && voice.speakingUserIds.has(item.userId)}
-        variant={variant}
-        onFocus={focusMedia}
-        onSetSubscribed={voice.setStageMediaSubscribed}
-        onStreamAspectRatioChange={onStreamAspectRatioChange}
-      />
-    ),
+    ) => {
+      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id)
+      return (
+        <StageMediaTile
+          key={item.id}
+          item={item}
+          user={users[item.userId] ?? (isLocal ? auth.user ?? undefined : undefined)}
+          participant={participantsById.get(item.userId)}
+          displayName={voiceParticipantDisplayName(
+            item.userId,
+            users,
+            auth.user,
+          )}
+          dimmed={connecting && isLocal}
+          speaking={inThisVoiceCall && voice.speakingUserIds.has(item.userId)}
+          variant={variant}
+          onFocus={focusMedia}
+          onSetSubscribed={voice.setStageMediaSubscribed}
+          onStreamAspectRatioChange={onStreamAspectRatioChange}
+        />
+      )
+    },
     [
-      auth.user?._id,
+      auth.user,
+      connecting,
       focusMedia,
       inThisVoiceCall,
       participantsById,

@@ -24,6 +24,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { joinChannelCall, patchChannelVoiceState } from '#/features/api/voice-api'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
 import { ApiError } from '#/lib/api/client'
+import { isValidVoiceUserId } from '#/features/sync/voice-participant-resolve'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
   canUseVoiceRestApi,
@@ -81,6 +82,11 @@ import {
   readVoicePreferences,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
+import {
+  createConnectingLocalVoiceState,
+  isVoiceLocalUserId,
+  withConnectingLocalAvatarItem,
+} from '#/features/voice/voice-connecting-preview'
 import {
   buildStageMediaItems,
   type StageMediaFilters,
@@ -339,12 +345,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      const authUserId = auth.user?._id
+      const liveKitIdentity = room.localParticipant.identity
       const items = buildStageMediaItems({
         participants,
-        currentUserId: auth.user?._id ?? room.localParticipant.identity,
+        currentUserId: authUserId ?? liveKitIdentity,
         tracks,
         filters: stageMediaFilters,
-      })
+      }).map((item) => ({
+        ...item,
+        isLocal: isVoiceLocalUserId(item.userId, authUserId, liveKitIdentity),
+      }))
 
       setStageMediaItems(items)
     },
@@ -357,6 +368,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!room || !activeChannelId) return
     const receiving = !deafenedRef.current
     const participants = liveKitChannelParticipants(room, receiving)
+    const liveKitIdentity = room.localParticipant.identity
+    if (
+      participants.length === 0 &&
+      !isValidVoiceUserId(liveKitIdentity)
+    ) {
+      return
+    }
     setLiveChannelParticipants(participants)
     syncLiveKitRoomParticipants(activeChannelId, room, receiving)
     const localMedia = localParticipantVoiceFlags(room.localParticipant)
@@ -708,6 +726,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setStatus('connecting')
         setChannelId(targetChannelId)
         restoreVoicePreferences()
+
+        const localUserId = auth.user?._id
+        if (localUserId) {
+          const prefs = readVoicePreferences()
+          setLiveChannelParticipants([
+            createConnectingLocalVoiceState(localUserId, {
+              micEnabled: prefs.micEnabled,
+              deafened: prefs.deafened,
+            }),
+          ])
+        } else {
+          setLiveChannelParticipants([])
+        }
 
         try {
           const credentials = await runVoiceRequest(
@@ -1143,6 +1174,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [rtcDebugEnabled, status])
 
+  const stageMediaItemsForUi = useMemo(
+    () =>
+      withConnectingLocalAvatarItem(stageMediaItems, {
+        connecting: status === 'connecting' && channelId != null,
+        localUserId: auth.user?._id,
+        filters: stageMediaFilters,
+      }),
+    [
+      auth.user?._id,
+      channelId,
+      stageMediaFilters,
+      stageMediaItems,
+      status,
+    ],
+  )
+
   const value = useMemo<VoiceContextValue>(
     () => ({
       channelId,
@@ -1162,7 +1209,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       rtcDebugHistory,
       cameraEnabled,
       screenShareEnabled,
-      stageMediaItems,
+      stageMediaItems: stageMediaItemsForUi,
       focusedMediaId,
       join,
       leave,
@@ -1192,7 +1239,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       screenShareEnabled,
       speakingUserIds,
       stageMediaFilters,
-      stageMediaItems,
+      stageMediaItemsForUi,
       stageFullscreen,
       status,
       rtcDebugEnabled,

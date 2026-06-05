@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
 import {
   buildStageMediaItems,
   sortStageMediaItemsForGrid,
@@ -193,6 +194,52 @@ describe('buildStageMediaItems', () => {
     ).toEqual([`${LOCAL_USER_ID}:camera`, `${REMOTE_USER_ID}:screen`])
   })
 })
+describe('withConnectingLocalAvatarItem', () => {
+  it('adds a pending local avatar tile while connecting', () => {
+    const items = withConnectingLocalAvatarItem(
+      buildStageMediaItems({
+        participants: [{ id: REMOTE_USER_ID }],
+        currentUserId: LOCAL_USER_ID,
+        tracks: [],
+        filters: defaultFilters,
+      }),
+      {
+        connecting: true,
+        localUserId: LOCAL_USER_ID,
+        filters: defaultFilters,
+      },
+    )
+
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        id: `${LOCAL_USER_ID}:avatar`,
+        userId: LOCAL_USER_ID,
+        kind: 'avatar',
+        isLocal: true,
+        live: false,
+        pending: true,
+      }),
+    )
+  })
+
+  it('does not duplicate the local tile when it already exists', () => {
+    const base = buildStageMediaItems({
+      participants: [{ id: LOCAL_USER_ID }],
+      currentUserId: LOCAL_USER_ID,
+      tracks: [],
+      filters: defaultFilters,
+    })
+
+    const items = withConnectingLocalAvatarItem(base, {
+      connecting: true,
+      localUserId: LOCAL_USER_ID,
+      filters: defaultFilters,
+    })
+
+    expect(items.filter((item) => item.userId === LOCAL_USER_ID)).toHaveLength(1)
+  })
+})
+
 describe('sortStageMediaItemsForGrid', () => {
   it('places screen shares and cameras before avatar tiles', () => {
     const items = [

@@ -48,6 +48,8 @@ export type StageMediaItem<TTrack = unknown, TPublication = unknown> = {
   isLocal: boolean
   subscribed?: boolean
   live: boolean
+  /** Ожидание LiveKit: полупрозрачная плитка до connected. */
+  pending?: boolean
 }
 
 export type BuildStageMediaItemsInput<TTrack = unknown, TPublication = unknown> = {
@@ -133,6 +135,6 @@ function mediaItem<TTrack, TPublication>(
   }
 }
 
-function stageMediaItemId(userId: string, kind: StageMediaKind) {
+export function stageMediaItemId(userId: string, kind: StageMediaKind) {
   return `${userId}:${kind}`
 }

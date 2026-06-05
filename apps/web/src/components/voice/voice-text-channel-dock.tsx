@@ -11,6 +11,8 @@ import {
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useVoice } from '#/features/voice/voice-provider'
+import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
+import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { cn } from '#/lib/utils'
 
@@ -28,6 +30,8 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   )
 
   const inThisChannel = isVoiceSessionInChannel(voice, channelId)
+  const connecting =
+    voice.status === 'connecting' && inThisChannel
 
   const participants = useMergedChannelVoiceParticipants(
     channelId,
@@ -83,17 +87,20 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           )}
         >
           {participants.slice(0, 4).map((participant) => {
-            const user = users[participant.id]
-            const name =
-              participant.id === auth.user?._id
-                ? 'Вы'
-                : (user?.display_name ?? user?.username ?? 'Участник')
+            const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id)
+            const user =
+              users[participant.id] ?? (isSelf ? auth.user ?? undefined : undefined)
             return (
               <VoiceStageTile
                 key={participant.id}
                 participant={participant}
                 user={user}
-                displayName={name}
+                displayName={voiceParticipantDisplayName(
+                  participant.id,
+                  users,
+                  auth.user,
+                )}
+                dimmed={connecting && isSelf}
                 speaking={voice.speakingUserIds.has(participant.id)}
                 compact
               />

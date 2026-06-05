@@ -15,6 +15,8 @@ type VoiceParticipantRowProps = {
   user?: User
   displayName: string
   speaking?: boolean
+  /** Полупрозрачно на время подключения к LiveKit. */
+  dimmed?: boolean
   /** Войс активен с другого клиента — приглушённый вид в сайдбаре. */
   voiceElsewhere?: boolean
   compact?: boolean
@@ -28,6 +30,7 @@ export function VoiceParticipantRow({
   user,
   displayName,
   speaking = false,
+  dimmed = false,
   voiceElsewhere = false,
   compact = false,
   serverId,
@@ -40,6 +43,7 @@ export function VoiceParticipantRow({
   const rowClassName = cn(
     'flex min-w-0 items-center gap-2 rounded-md px-2 py-1',
     compact ? 'text-xs' : 'text-sm',
+    dimmed && 'opacity-50',
     voiceElsewhere && 'text-muted-foreground',
     speaking && !voiceElsewhere && 'bg-primary/10 text-foreground',
   )

@@ -38,6 +38,8 @@ type StageMediaTileProps = {
   user?: User
   participant?: UserVoiceState
   displayName: string
+  /** Полупрозрачная плитка на время подключения к LiveKit. */
+  dimmed?: boolean
   speaking?: boolean
   variant: StageMediaTileVariant
   onFocus: (mediaId: string) => void
@@ -52,6 +54,7 @@ export function StageMediaTile({
   user,
   participant,
   displayName,
+  dimmed = false,
   speaking = false,
   variant,
   onFocus,
@@ -107,8 +110,9 @@ export function StageMediaTile({
           role="button"
           tabIndex={0}
           className={cn(
-            'group relative min-h-0 rounded-md outline-none ring-offset-2 ring-offset-black transition-[filter,box-shadow]',
+            'group relative min-h-0 rounded-md outline-none ring-offset-2 ring-offset-black transition-[filter,box-shadow,opacity]',
             'overflow-hidden',
+            dimmed && 'opacity-50',
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
               : 'bg-[#111214]',

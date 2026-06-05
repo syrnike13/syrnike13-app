@@ -9,22 +9,13 @@ import { useChannelVoiceState } from '#/features/voice/use-channel-voice-state'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
-
+import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
+import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 /** Совпадает с началом названия канала: px-3 + icon 16px + gap-2 */
 const VOICE_PREVIEW_TEXT_INSET = 'pl-9' as const
 
 type VoiceChannelPreviewProps = {
   channelId: string
-}
-
-function participantDisplayName(
-  userId: string,
-  users: Record<string, import('@syrnike13/api-types').User>,
-  currentUserId?: string,
-) {
-  if (userId === currentUserId) return 'Вы'
-  const user = users[userId]
-  return user?.display_name ?? user?.username ?? 'Участник'
 }
 
 export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
@@ -46,6 +37,8 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
     getChannelVoiceParticipants(s, channelId, auth.user?._id),
   )
   const inThisChannel = isVoiceSessionInChannel(voice, channelId)
+  const connecting =
+    voice.status === 'connecting' && inThisChannel
   const participants = useMergedChannelVoiceParticipants(
     channelId,
     storeParticipants,
@@ -63,8 +56,8 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
       className={`mb-1 flex flex-col gap-0.5 ${VOICE_PREVIEW_TEXT_INSET}`}
     >
       {participants.map((participant) => {
-        const user = users[participant.id]
-        const isSelf = participant.id === auth.user?._id
+        const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id)
+        const user = users[participant.id] ?? (isSelf ? auth.user ?? undefined : undefined)
         const voiceElsewhere = isSelf && !inThisChannel
         const member =
           serverId && user
@@ -76,11 +69,12 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
             key={participant.id}
             participant={participant}
             user={user}
-            displayName={participantDisplayName(
+            displayName={voiceParticipantDisplayName(
               participant.id,
               users,
-              auth.user?._id,
+              auth.user,
             )}
+            dimmed={connecting && isSelf}
             voiceElsewhere={voiceElsewhere}
             speaking={
               inThisChannel && voice.speakingUserIds.has(participant.id)

@@ -1,7 +1,10 @@
 import type { LocalParticipant, RemoteParticipant, Room } from 'livekit-client'
 
 import { syncStore } from '#/features/sync/sync-store'
-import { isResolvableVoiceParticipant } from '#/features/sync/voice-participant-resolve'
+import {
+  isResolvableVoiceParticipant,
+  isValidVoiceUserId,
+} from '#/features/sync/voice-participant-resolve'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
   localParticipantVoiceFlags,
@@ -63,10 +66,14 @@ export function liveKitChannelParticipants(
 ): UserVoiceState[] {
   const merged = new Map<string, UserVoiceState>()
 
-  const local = localVoiceState(room.localParticipant, isReceiving)
-  merged.set(local.id, local)
+  const localIdentity = room.localParticipant.identity
+  if (isValidVoiceUserId(localIdentity)) {
+    const local = localVoiceState(room.localParticipant, isReceiving)
+    merged.set(local.id, local)
+  }
 
   for (const remote of room.remoteParticipants.values()) {
+    if (!isValidVoiceUserId(remote.identity)) continue
     const state = remoteVoiceState(remote)
     merged.set(state.id, state)
   }
@@ -82,7 +89,9 @@ export function syncLiveKitRoomParticipants(
 ) {
   const fromRoom = liveKitChannelParticipants(room, isReceiving)
   const syncState = syncStore.getState()
-  const localUserId = room.localParticipant.identity
+  const localUserId = isValidVoiceUserId(room.localParticipant.identity)
+    ? room.localParticipant.identity
+    : undefined
   const liveIds = new Set(fromRoom.map((participant) => participant.id))
   const existing = syncState.voiceParticipants[channelId] ?? {}
 
