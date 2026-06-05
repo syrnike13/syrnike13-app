@@ -19,7 +19,10 @@ import {
 } from '#/components/ui/context-menu'
 import { Slider } from '#/components/ui/slider'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { VoiceParticipantIcons } from '#/components/voice/voice-participant-icons'
+import {
+  VoiceOnAirBadge,
+  VoiceParticipantIcons,
+} from '#/components/voice/voice-participant-icons'
 import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
@@ -159,7 +162,7 @@ export function StageMediaTile({
               <div
                 className={cn(
                   'absolute inset-0 flex items-center justify-center',
-                  variant === 'strip' ? 'px-2 pb-2 pt-7' : 'flex-col gap-3',
+                  variant === 'strip' ? 'px-2 pb-8 pt-2' : 'flex-col gap-3',
                 )}
               >
               <UserAvatar
@@ -201,37 +204,36 @@ export function StageMediaTile({
             </>
           )}
 
-          <div
-            className={cn(
-              'absolute left-1 z-10 max-w-[calc(100%-0.5rem)] rounded bg-black/60 font-medium text-white',
-              variant === 'strip'
-                ? 'top-2 px-2 py-0.5 text-xs leading-tight'
-                : 'top-2 left-2 max-w-[calc(100%-5rem)] px-2 py-1 text-xs',
-            )}
-          >
-            <span className="block truncate">{mediaLabel}</span>
-          </div>
-
-          {participant ? (
+          {participant?.screensharing && item.kind === 'screen' ? (
             <div
               className={cn(
-                'absolute right-1 z-10',
-                variant === 'strip'
-                  ? 'top-1.5 origin-top-right'
-                  : 'top-2 right-2',
+                'absolute z-10',
+                variant === 'strip' ? 'top-1.5 right-1.5' : 'top-2 right-2',
               )}
             >
+              <VoiceOnAirBadge />
+            </div>
+          ) : null}
+
+          <div
+            className={cn(
+              'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-black/60 font-medium text-white',
+              variant === 'strip'
+                ? 'bottom-1.5 left-1 max-w-[calc(100%-0.5rem)] px-1.5 py-0.5 text-[10px] leading-tight'
+                : 'bottom-2 left-2 max-w-[calc(100%-3.5rem)] px-2 py-1 text-xs',
+            )}
+          >
+            {participant ? (
               <VoiceParticipantIcons
                 muted={participant.server_muted || !participant.is_publishing}
                 deafened={participant.server_deafened || !participant.is_receiving}
                 serverMuted={participant.server_muted}
                 serverDeafened={participant.server_deafened}
-                camera={participant.camera}
-                screenshare={participant.screensharing}
-                className="rounded-md bg-black/45 px-1 py-0.5"
+                camera={participant.camera && item.kind === 'camera'}
               />
-            </div>
-          ) : null}
+            ) : null}
+            <span className="min-w-0 truncate">{mediaLabel}</span>
+          </div>
           {item.track && canOpenPopout ? (
             <div
               className={cn(

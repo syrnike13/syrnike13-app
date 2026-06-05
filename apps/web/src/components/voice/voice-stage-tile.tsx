@@ -6,7 +6,10 @@ import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { createChannelInvite } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
-import { VoiceParticipantIcons } from '#/components/voice/voice-participant-icons'
+import {
+  VoiceOnAirBadge,
+  VoiceParticipantIcons,
+} from '#/components/voice/voice-participant-icons'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
@@ -83,20 +86,21 @@ export function VoiceStageTile({
         />
       </div>
 
-      <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2">
+      {participant.screensharing ? (
+        <div className="absolute top-1.5 right-1.5 z-10 sm:top-2 sm:right-2">
+          <VoiceOnAirBadge />
+        </div>
+      ) : null}
+
+      <div className="absolute bottom-1.5 left-1.5 z-10 flex max-w-[calc(100%-0.75rem)] min-w-0 items-center gap-1.5 rounded bg-black/55 px-1.5 py-0.5 text-xs font-medium text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}
           serverMuted={participant.server_muted}
           serverDeafened={participant.server_deafened}
           camera={participant.camera}
-          screenshare={participant.screensharing}
-          className="rounded-md bg-black/40 px-1 py-0.5"
         />
-      </div>
-
-      <div className="absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] rounded bg-black/55 px-1.5 py-0.5 text-xs font-medium text-white sm:bottom-2 sm:left-2 sm:px-2 sm:text-sm">
-        <span className="truncate">{displayName}</span>
+        <span className="min-w-0 truncate">{displayName}</span>
       </div>
     </article>
   )

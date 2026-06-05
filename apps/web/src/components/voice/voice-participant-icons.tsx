@@ -2,13 +2,26 @@ import { HeadphoneOffIcon, MicOffIcon, VideoIcon } from 'lucide-react'
 
 import { cn } from '#/lib/utils'
 
+export function VoiceOnAirBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-[#ed4245] px-1.5 text-[9px] font-bold leading-none tracking-wide text-white',
+        className,
+      )}
+      aria-label="В эфире"
+    >
+      В ЭФИРЕ
+    </span>
+  )
+}
+
 type VoiceParticipantIconsProps = {
   muted?: boolean
   deafened?: boolean
   serverMuted?: boolean
   serverDeafened?: boolean
   camera?: boolean
-  screenshare?: boolean
   className?: string
 }
 
@@ -18,10 +31,9 @@ export function VoiceParticipantIcons({
   serverMuted,
   serverDeafened,
   camera,
-  screenshare,
   className,
 }: VoiceParticipantIconsProps) {
-  if (!muted && !deafened && !camera && !screenshare) return null
+  if (!muted && !deafened && !camera) return null
 
   return (
     <span className={cn('flex shrink-0 items-center gap-0.5', className)}>
@@ -29,7 +41,7 @@ export function VoiceParticipantIcons({
         <MicOffIcon
           className={cn(
             'size-3.5',
-            serverMuted ? 'text-[#faa61a]' : 'text-destructive/90',
+            serverMuted ? 'text-[#faa61a]' : 'text-white',
           )}
           aria-hidden
         />
@@ -45,14 +57,6 @@ export function VoiceParticipantIcons({
       ) : null}
       {camera ? (
         <VideoIcon className="size-3.5 text-muted-foreground" aria-hidden />
-      ) : null}
-      {screenshare ? (
-        <span
-          className="inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-[#ed4245] px-1.5 text-[9px] font-bold leading-none tracking-wide text-white"
-          aria-label="В эфире"
-        >
-          В ЭФИРЕ
-        </span>
       ) : null}
     </span>
   )

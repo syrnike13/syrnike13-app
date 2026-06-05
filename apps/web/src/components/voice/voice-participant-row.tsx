@@ -2,7 +2,10 @@ import type { User } from '@syrnike13/api-types'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
-import { VoiceParticipantIcons } from '#/components/voice/voice-participant-icons'
+import {
+  VoiceOnAirBadge,
+  VoiceParticipantIcons,
+} from '#/components/voice/voice-participant-icons'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { cn } from '#/lib/utils'
@@ -64,14 +67,16 @@ export function VoiceParticipantRow({
       >
         {displayName}
       </span>
-      <VoiceParticipantIcons
-        muted={muted}
-        deafened={deafened}
-        serverMuted={participant.server_muted}
-        serverDeafened={participant.server_deafened}
-        camera={participant.camera}
-        screenshare={participant.screensharing}
-      />
+      <span className="flex shrink-0 items-center gap-0.5">
+        {participant.screensharing ? <VoiceOnAirBadge /> : null}
+        <VoiceParticipantIcons
+          muted={muted}
+          deafened={deafened}
+          serverMuted={participant.server_muted}
+          serverDeafened={participant.server_deafened}
+          camera={participant.camera}
+        />
+      </span>
     </>
   )
 
