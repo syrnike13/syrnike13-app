@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Member, Server, User } from '@syrnike13/api-types'
 
 import {
+  flattenMemberListSections,
   groupServerMembersForSidebar,
   memberDisplayColour,
   memberHoistRole,
@@ -127,7 +128,7 @@ describe('groupServerMembersForSidebar', () => {
     expect(sections.map((section) => section.type)).toEqual([
       'role',
       'role',
-      'ungrouped',
+      'online',
       'offline',
     ])
     expect(sections[0]).toMatchObject({
@@ -141,7 +142,7 @@ describe('groupServerMembersForSidebar', () => {
       members: [{ user: { _id: 'bob' } }],
     })
     expect(sections[2]).toMatchObject({
-      type: 'ungrouped',
+      type: 'online',
       members: [{ user: { _id: 'carol' } }],
     })
     expect(sections[3]).toMatchObject({
@@ -171,12 +172,37 @@ describe('groupServerMembersForSidebar', () => {
 
     expect(sections.map((section) => section.type)).toEqual([
       'role',
-      'ungrouped',
+      'online',
       'offline',
     ])
     expect(sections[1]).toMatchObject({
-      type: 'ungrouped',
+      type: 'online',
       members: [{ user: { _id: 'bob' } }],
     })
+  })
+
+  it('flattens sections with stable member keys', () => {
+    const server = makeServer({
+      admin: {
+        _id: 'admin',
+        name: 'Admin',
+        permissions: { a: 0, d: 0 },
+        hoist: true,
+        rank: 1,
+      },
+    })
+
+    const members = [
+      makeEntry('alice', { roles: ['admin'] }),
+      makeEntry('bob'),
+    ]
+
+    const flat = flattenMemberListSections(
+      groupServerMembersForSidebar(server, members),
+    )
+
+    expect(flat.filter((item) => item.kind === 'member').map((item) => item.key)).toEqual(
+      ['alice', 'bob'],
+    )
   })
 })

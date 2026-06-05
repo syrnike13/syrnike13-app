@@ -12,6 +12,31 @@ import {
 } from '#/components/user/user-profile-card'
 import { cn } from '#/lib/utils'
 
+function shouldKeepProfilePopoverOpen(event: {
+  relatedTarget: EventTarget | null
+}): boolean {
+  if (event.relatedTarget == null) {
+    return true
+  }
+
+  if (!(event.relatedTarget instanceof Element)) {
+    return false
+  }
+
+  return Boolean(
+    event.relatedTarget.closest('[data-slot="dialog-content"]') ||
+      event.relatedTarget.closest('[data-slot="dialog-overlay"]'),
+  )
+}
+
+function isRoleDialogTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return Boolean(
+    target.closest('[data-slot="dialog-content"]') ||
+      target.closest('[data-slot="dialog-overlay"]'),
+  )
+}
+
 type UserProfilePopoverProps = Omit<UserProfileCardProps, 'user' | 'onClose'> & {
   user: User
   children: ReactElement
@@ -49,6 +74,22 @@ export function UserProfilePopover({
           className,
         )}
         onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onFocusOutside={(event) => {
+          if (shouldKeepProfilePopoverOpen(event)) {
+            event.preventDefault()
+          }
+        }}
+        onInteractOutside={(event) => {
+          if (isRoleDialogTarget(event.target)) {
+            event.preventDefault()
+          }
+        }}
+        onPointerDownOutside={(event) => {
+          if (isRoleDialogTarget(event.target)) {
+            event.preventDefault()
+          }
+        }}
       >
         <UserProfileCard
           user={user}

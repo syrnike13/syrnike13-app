@@ -5,9 +5,9 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import {
+  flattenMemberListSections,
   groupServerMembersForSidebar,
   memberDisplayColour,
-  type MemberListSection,
 } from '#/features/sync/member-list-groups'
 import {
   listServerMembers,
@@ -98,52 +98,6 @@ function MemberSidebarRow({
   )
 }
 
-function MemberListSectionBlock({
-  section,
-  serverId,
-  serverName,
-  server,
-  userIdsInVoice,
-}: {
-  section: MemberListSection
-  serverId: string
-  serverName?: string
-  server: Server | undefined
-  userIdsInVoice: Set<string>
-}) {
-  const isOffline = section.type === 'offline'
-
-  return (
-    <>
-      {section.type === 'role' ? (
-        <MemberListSectionHeader
-          title={section.role.name}
-          count={section.members.length}
-        />
-      ) : null}
-      {section.type === 'offline' ? (
-        <MemberListSectionHeader
-          title="Не в сети"
-          count={section.members.length}
-        />
-      ) : null}
-      {section.members.map((entry) => (
-        <MemberSidebarRow
-          key={entry.user._id}
-          entry={entry}
-          server={server}
-          serverId={serverId}
-          serverName={serverName}
-          nameColour={memberDisplayColour(server, entry.member)}
-          dimmed={isOffline}
-          showStatus={!isOffline}
-          inVoice={userIdsInVoice.has(entry.user._id)}
-        />
-      ))}
-    </>
-  )
-}
-
 export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
   const server = useSyncStore((s) => s.servers[channel.server])
   const members = useSyncStore((s) => listServerMembers(s, channel.server))
@@ -157,29 +111,36 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
     return ids
   })
 
-  const sections = useMemo(
-    () => groupServerMembersForSidebar(server, members),
-    [members, server],
-  )
+  const sidebarItems = useMemo(() => {
+    const sections = groupServerMembersForSidebar(server, members)
+    return flattenMemberListSections(sections)
+  }, [members, server])
 
   return (
     <aside className="hidden min-h-0 w-52 shrink-0 flex-col border-l border-shell-divider bg-card text-card-foreground lg:flex">
       <ScrollArea className="min-h-0 flex-1">
         <ul className="flex flex-col gap-0.5 p-2">
-          {sections.map((section, index) => (
-            <MemberListSectionBlock
-              key={
-                section.type === 'role'
-                  ? section.role.id
-                  : `${section.type}-${index}`
-              }
-              section={section}
-              serverId={channel.server}
-              serverName={server?.name}
-              server={server}
-              userIdsInVoice={userIdsInVoice}
-            />
-          ))}
+          {sidebarItems.map((item) =>
+            item.kind === 'header' ? (
+              <MemberListSectionHeader
+                key={item.key}
+                title={item.title}
+                count={item.count}
+              />
+            ) : (
+              <MemberSidebarRow
+                key={item.key}
+                entry={item.entry}
+                server={server}
+                serverId={channel.server}
+                serverName={server?.name}
+                nameColour={memberDisplayColour(server, item.entry.member)}
+                dimmed={item.sectionType === 'offline'}
+                showStatus={item.sectionType !== 'offline'}
+                inVoice={userIdsInVoice.has(item.entry.user._id)}
+              />
+            ),
+          )}
           {members.length === 0 ? (
             <li className="px-2 py-4 text-center text-xs text-muted-foreground">
               Нет участников

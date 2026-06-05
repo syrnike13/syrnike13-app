@@ -23,3 +23,8 @@ export function userBannerUrl(background: File | null | undefined) {
   if (!background) return null
   return attachmentPreviewUrl(background)
 }
+
+export function roleIconUrl(icon: File | null | undefined) {
+  if (!icon) return null
+  return attachmentPreviewUrl(icon)
+}

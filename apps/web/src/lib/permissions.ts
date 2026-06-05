@@ -1,15 +1,8 @@
 import type { Channel, Member, Server } from '@syrnike13/api-types'
 
-export const ChannelPermission = {
-  ManageChannel: 1 << 0,
-  ManageServer: 1 << 1,
-  InviteOthers: 1 << 25,
-  ViewChannel: 1 << 20,
-  ReadMessageHistory: 1 << 21,
-  Speak: 1 << 31,
-  Video: 1 << 32,
-  Listen: 1 << 36,
-} as const
+import { ServerPermission } from '#/lib/server-permissions'
+
+export const ChannelPermission = ServerPermission
 
 export const GRANT_ALL_SAFE = 0x000f_ffff_ffff_ffff
 
@@ -120,6 +113,76 @@ export type ServerMenuPermissions = {
   createChannel: boolean
   leave: boolean
   copyId: boolean
+}
+
+export function getMemberRank(
+  server: Server,
+  member: Member | undefined,
+): number {
+  if (!member?.roles?.length || !server.roles) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  let value = Number.MAX_SAFE_INTEGER
+  for (const roleId of member.roles) {
+    const rank = server.roles[roleId]?.rank ?? Number.MAX_SAFE_INTEGER
+    if (rank < value) value = rank
+  }
+  return value
+}
+
+export function canAssignRole(
+  server: Server,
+  member: Member | undefined,
+  userId: string | undefined,
+  roleRank: number,
+): boolean {
+  if (!userId) return false
+  if (server.owner === userId) return true
+
+  const serverPermissions = calculateServerPermissions(server, member, userId)
+  if (!hasChannelPermission(serverPermissions, ChannelPermission.AssignRoles)) {
+    return false
+  }
+
+  return roleRank > getMemberRank(server, member)
+}
+
+export function canEditMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member,
+): boolean {
+  if (!actorUserId) return false
+  if (actorUserId === targetMember._id.user) return true
+  if (server.owner === actorUserId) return true
+
+  return (
+    getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
+  )
+}
+
+export function canManageRole(
+  server: Server,
+  member: Member | undefined,
+  userId: string | undefined,
+  roleRank: number,
+  options: { permissions?: boolean } = {},
+): boolean {
+  if (!userId) return false
+  if (server.owner === userId) return true
+
+  const serverPermissions = calculateServerPermissions(server, member, userId)
+  const requiredPermission = options.permissions
+    ? ChannelPermission.ManagePermissions
+    : ChannelPermission.ManageRole
+
+  if (!hasChannelPermission(serverPermissions, requiredPermission)) {
+    return false
+  }
+
+  return roleRank > getMemberRank(server, member)
 }
 
 export function getServerMenuPermissions(

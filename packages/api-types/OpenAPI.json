@@ -10819,6 +10819,11 @@
             "description": "Whether this role should be shown separately on the member sidebar",
             "type": "boolean"
           },
+          "mentionable": {
+            "description": "Whether anyone can mention this role without the Mention Roles permission",
+            "default": true,
+            "type": "boolean"
+          },
           "rank": {
             "description": "Ranking of this role",
             "default": 0,
@@ -11433,6 +11438,11 @@
           },
           "hoist": {
             "description": "Whether this role should be displayed separately",
+            "type": "boolean",
+            "nullable": true
+          },
+          "mentionable": {
+            "description": "Whether anyone can mention this role without the Mention Roles permission",
             "type": "boolean",
             "nullable": true
           },

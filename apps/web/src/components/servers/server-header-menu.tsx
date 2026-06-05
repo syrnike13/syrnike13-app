@@ -12,7 +12,6 @@ import { toast } from 'sonner'
 
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
-import { ServerMenuDialog } from '#/components/servers/server-menu-dialog'
 import {
   Popover,
   PopoverContent,
@@ -75,7 +74,6 @@ export function ServerHeaderMenu({
     : null
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
   const [leaving, setLeaving] = useState(false)
 
@@ -167,7 +165,14 @@ export function ServerHeaderMenu({
           {menuPermissions?.settings ? (
             <ServerHeaderMenuItem
               icon={<SettingsIcon className="size-4" />}
-              onClick={() => openDialog(() => setSettingsOpen(true))}
+              onClick={() => {
+                setMenuOpen(false)
+                void navigate({
+                  to: '/app/servers/$serverId/settings',
+                  params: { serverId },
+                  search: { tab: 'general' },
+                })
+              }}
             >
               Настройки сервера
             </ServerHeaderMenuItem>
@@ -213,14 +218,6 @@ export function ServerHeaderMenu({
           serverId={serverId}
           open={inviteOpen}
           onOpenChange={setInviteOpen}
-        />
-      ) : null}
-      {menuPermissions?.settings ? (
-        <ServerMenuDialog
-          serverId={serverId}
-          serverName={serverName}
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
         />
       ) : null}
       {menuPermissions?.createChannel ? (

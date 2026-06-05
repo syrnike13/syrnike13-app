@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ChannelPermission,
   calculateServerPermissions,
+  getMemberRank,
   getServerMenuPermissions,
   hasChannelPermission,
 } from '#/lib/permissions'
@@ -64,6 +65,30 @@ describe('calculateServerPermissions', () => {
     expect(
       hasChannelPermission(permissions, ChannelPermission.ManageServer),
     ).toBe(false)
+  })
+})
+
+describe('getMemberRank', () => {
+  it('uses the highest role position (minimum rank value)', () => {
+    const server = makeServer({
+      roles: {
+        admin: {
+          _id: 'admin',
+          name: 'Admin',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        },
+        mod: {
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: 0, d: 0 },
+          rank: 4,
+        },
+      },
+    })
+    const member = makeMember({ roles: ['admin', 'mod'] })
+
+    expect(getMemberRank(server, member)).toBe(1)
   })
 })
 

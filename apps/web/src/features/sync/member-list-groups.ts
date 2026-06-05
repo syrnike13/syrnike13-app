@@ -54,7 +54,8 @@ export function memberHoistRole(
 
 export type MemberListSection =
   | { type: 'role'; role: MemberRoleEntry; members: ServerMemberEntry[] }
-  | { type: 'ungrouped'; members: ServerMemberEntry[] }
+  /** Онлайн-участники без отдельной hoist-роли. */
+  | { type: 'online'; members: ServerMemberEntry[] }
   | { type: 'offline'; members: ServerMemberEntry[] }
 
 function memberDisplayName(entry: ServerMemberEntry): string {
@@ -86,7 +87,7 @@ export function groupServerMembersForSidebar(
     string,
     { role: MemberRoleEntry; members: ServerMemberEntry[] }
   >()
-  const ungrouped: ServerMemberEntry[] = []
+  const onlineWithoutHoist: ServerMemberEntry[] = []
 
   for (const entry of online) {
     const hoistRole = memberHoistRole(server, entry.member)
@@ -98,7 +99,7 @@ export function groupServerMembersForSidebar(
         roleBuckets.set(hoistRole.id, { role: hoistRole, members: [entry] })
       }
     } else {
-      ungrouped.push(entry)
+      onlineWithoutHoist.push(entry)
     }
   }
 
@@ -118,10 +119,10 @@ export function groupServerMembersForSidebar(
     })
   }
 
-  if (ungrouped.length > 0) {
+  if (onlineWithoutHoist.length > 0) {
     sections.push({
-      type: 'ungrouped',
-      members: sortMembers(ungrouped),
+      type: 'online',
+      members: sortMembers(onlineWithoutHoist),
     })
   }
 
@@ -133,4 +134,59 @@ export function groupServerMembersForSidebar(
   }
 
   return sections
+}
+
+export type MemberSidebarListItem =
+  | { kind: 'header'; key: string; title: string; count: number }
+  | {
+      kind: 'member'
+      key: string
+      entry: ServerMemberEntry
+      sectionType: 'role' | 'online' | 'offline'
+    }
+
+/** Плоский список для сайдбара: участники не размонтируются при смене секции. */
+export function flattenMemberListSections(
+  sections: MemberListSection[],
+): MemberSidebarListItem[] {
+  const items: MemberSidebarListItem[] = []
+
+  for (const section of sections) {
+    if (section.type === 'role') {
+      items.push({
+        kind: 'header',
+        key: `header-role-${section.role.id}`,
+        title: section.role.name,
+        count: section.members.length,
+      })
+    } else if (section.type === 'online') {
+      items.push({
+        kind: 'header',
+        key: 'header-online',
+        title: 'В сети',
+        count: section.members.length,
+      })
+    } else {
+      items.push({
+        kind: 'header',
+        key: 'header-offline',
+        title: 'Не в сети',
+        count: section.members.length,
+      })
+    }
+
+    const sectionType =
+      section.type === 'role' ? 'role' : section.type
+
+    for (const entry of section.members) {
+      items.push({
+        kind: 'member',
+        key: entry.user._id,
+        entry,
+        sectionType,
+      })
+    }
+  }
+
+  return items
 }

@@ -7,6 +7,10 @@ use ulid::Ulid;
 
 use crate::{events::client::EventV1, Channel, Database, File, User};
 
+fn default_role_mentionable() -> bool {
+    true
+}
+
 auto_derived_partial!(
     /// Server
     pub struct Server {
@@ -83,6 +87,9 @@ auto_derived_partial!(
         /// Whether this role should be shown separately on the member sidebar
         #[serde(skip_serializing_if = "crate::if_false", default)]
         pub hoist: bool,
+        /// Whether anyone can mention this role without the Mention Roles permission
+        #[serde(default = "default_role_mentionable")]
+        pub mentionable: bool,
         /// Ranking of this role
         #[serde(default)]
         pub rank: i64,
@@ -308,6 +315,7 @@ impl Role {
             permissions: Some(self.permissions),
             colour: self.colour,
             hoist: Some(self.hoist),
+            mentionable: Some(self.mentionable),
             rank: Some(self.rank),
             icon: self.icon,
         }
@@ -322,6 +330,7 @@ impl Role {
             rank: server.roles.len() as i64,
             colour: None,
             hoist: false,
+            mentionable: true,
             permissions: Default::default(),
             icon: None,
         };

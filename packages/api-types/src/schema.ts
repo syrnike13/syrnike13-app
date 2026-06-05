@@ -2151,6 +2151,11 @@ export interface components {
       /** @description Whether this role should be shown separately on the member sidebar */
       hoist?: boolean;
       /**
+       * @description Whether anyone can mention this role without the Mention Roles permission
+       * @default true
+       */
+      mentionable?: boolean;
+      /**
        * Format: int64
        * @description Ranking of this role
        * @default 0
@@ -2390,6 +2395,8 @@ export interface components {
       colour?: string | null;
       /** @description Whether this role should be displayed separately */
       hoist?: boolean | null;
+      /** @description Whether anyone can mention this role without the Mention Roles permission */
+      mentionable?: boolean | null;
       /**
        * Format: int64
        * @description Ranking position
