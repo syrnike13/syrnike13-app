@@ -71,11 +71,11 @@ export function UserProfileCardHeader({
   const profileBio = profileQuery.data?.content?.trim()
 
   return (
-    <div className={className}>
+    <div className={cn('overflow-hidden', className)}>
       <div className="relative">
         <div
           className={cn(
-            'relative w-full overflow-hidden',
+            'relative w-full overflow-hidden rounded-t-md',
             bannerUrl
               ? compact
                 ? 'h-[72px]'
@@ -106,8 +106,8 @@ export function UserProfileCardHeader({
         ) : null}
         <div
           className={cn(
-            'absolute',
-            compact ? 'left-3 -bottom-6' : 'left-4 -bottom-8',
+            'absolute z-10',
+            compact ? 'left-3 -bottom-5' : 'left-4 -bottom-7',
           )}
         >
           <UserAvatar
@@ -115,7 +115,7 @@ export function UserProfileCardHeader({
             className={compact ? 'size-14' : 'size-20'}
             fallbackClassName={cn(
               compact ? 'size-14 text-base ring-4' : 'size-20 text-xl ring-[6px]',
-              'ring-muted',
+              'ring-muted bg-muted',
             )}
             showPresence
             presenceRingClassName="border-muted"
