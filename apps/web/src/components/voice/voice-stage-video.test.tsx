@@ -9,7 +9,7 @@ function videoTrackStub(trackSid = 'TR_screen') {
   const track = {
     sid: trackSid,
     mediaStreamTrack: {},
-    attach: vi.fn(),
+    attach: vi.fn((element: HTMLVideoElement) => element),
     detach: vi.fn(),
   }
 
@@ -18,12 +18,6 @@ function videoTrackStub(trackSid = 'TR_screen') {
 
 describe('VoiceStageVideo', () => {
   beforeEach(() => {
-    vi.stubGlobal(
-      'MediaStream',
-      vi.fn(function MediaStreamStub(this: { tracks: unknown[] }, tracks) {
-        this.tracks = tracks
-      }),
-    )
     Object.defineProperty(HTMLMediaElement.prototype, 'play', {
       configurable: true,
       value: vi.fn(() => Promise.resolve()),
@@ -41,7 +35,7 @@ describe('VoiceStageVideo', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders the media stream track without LiveKit attach/detach churn', () => {
+  it('attaches the video element through LiveKit for adaptive stream tracking', () => {
     const { track } = videoTrackStub()
 
     const first = render(
@@ -52,13 +46,12 @@ describe('VoiceStageVideo', () => {
     )
 
     const element = document.querySelector('video')!
-    expect(track.attach).not.toHaveBeenCalled()
+    expect(track.attach).toHaveBeenCalledWith(element)
     expect(element.isConnected).toBe(true)
-    expect(element.srcObject).toBeInstanceOf(MediaStream)
 
     first.unmount()
 
-    expect(track.detach).not.toHaveBeenCalled()
+    expect(track.detach).toHaveBeenCalledWith(element)
     expect(element.srcObject).toBe(null)
   })
 
@@ -68,7 +61,7 @@ describe('VoiceStageVideo', () => {
     const host = popoutDocument.createElement('div')
     popoutDocument.body.appendChild(host)
 
-    render(
+    const view = render(
       <VoiceStageVideo
         mediaId="remote-user:screen"
         track={track as unknown as Parameters<typeof VoiceStageVideo>[0]['track']}
@@ -80,7 +73,10 @@ describe('VoiceStageVideo', () => {
 
     expect(element.ownerDocument).toBe(popoutDocument)
     expect(element.isConnected).toBe(true)
-    expect(track.attach).not.toHaveBeenCalled()
-    expect(track.detach).not.toHaveBeenCalled()
+    expect(track.attach).toHaveBeenCalledWith(element)
+
+    view.unmount()
+
+    expect(track.detach).toHaveBeenCalledWith(element)
   })
 })

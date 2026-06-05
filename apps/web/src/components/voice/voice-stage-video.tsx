@@ -22,17 +22,6 @@ function applyVideoElementPresentation(
   }
 }
 
-function createVideoStream(
-  doc: Document,
-  mediaStreamTrack: MediaStreamTrack,
-) {
-  const MediaStreamConstructor =
-    typeof doc.defaultView?.MediaStream === 'function'
-      ? doc.defaultView.MediaStream
-      : window.MediaStream
-  return new MediaStreamConstructor([mediaStreamTrack])
-}
-
 export function VoiceStageVideo({
   track,
   mediaId,
@@ -60,20 +49,20 @@ export function VoiceStageVideo({
 
     const doc = host.ownerDocument
     const element = doc.createElement('video')
-    elementRef.current = element
     element.setAttribute(VOICE_STAGE_MEDIA_ID_ATTR, mediaId)
     element.playsInline = true
     element.autoplay = true
     element.muted = true
-    element.srcObject = createVideoStream(doc, track.mediaStreamTrack)
     applyVideoElementPresentation(element, className, fit, style)
-    host.replaceChildren(element)
+    const attachedElement = track.attach(element) as HTMLVideoElement
+    elementRef.current = attachedElement
+    host.replaceChildren(attachedElement)
 
     const emitSize = () => {
-      if (element.videoWidth > 0 && element.videoHeight > 0) {
+      if (attachedElement.videoWidth > 0 && attachedElement.videoHeight > 0) {
         onVideoSizeChangeRef.current?.({
-          width: element.videoWidth,
-          height: element.videoHeight,
+          width: attachedElement.videoWidth,
+          height: attachedElement.videoHeight,
         })
       }
     }
@@ -82,22 +71,23 @@ export function VoiceStageVideo({
       emitSize()
     }
 
-    element.addEventListener('loadedmetadata', onLoadedMetadata)
-    element.addEventListener('resize', emitSize)
-    void element.play().catch(() => {})
+    attachedElement.addEventListener('loadedmetadata', onLoadedMetadata)
+    attachedElement.addEventListener('resize', emitSize)
+    void attachedElement.play().catch(() => {})
     onLoadedMetadata()
 
     return () => {
-      element.removeEventListener('loadedmetadata', onLoadedMetadata)
-      element.removeEventListener('resize', emitSize)
-      if (element.parentElement === host) {
+      attachedElement.removeEventListener('loadedmetadata', onLoadedMetadata)
+      attachedElement.removeEventListener('resize', emitSize)
+      track.detach(attachedElement)
+      if (attachedElement.parentElement === host) {
         host.replaceChildren()
       }
-      element.pause()
-      element.srcObject = null
+      attachedElement.pause()
+      attachedElement.srcObject = null
       elementRef.current = null
     }
-  }, [className, fit, mediaId, style, track.mediaStreamTrack, trackSid])
+  }, [mediaId, track, trackSid])
 
   useEffect(() => {
     const element = elementRef.current

@@ -24,17 +24,13 @@ const screenItemWithTrack: VoiceStageMediaItem = {
   ...screenItem,
   track: {
     mediaStreamTrack: {},
+    attach: vi.fn((element: HTMLVideoElement) => element),
+    detach: vi.fn(),
   } as VoiceStageMediaItem['track'],
 }
 
 describe('StageMediaTile', () => {
   beforeEach(() => {
-    vi.stubGlobal(
-      'MediaStream',
-      vi.fn(function MediaStreamStub(this: { tracks: unknown[] }, tracks) {
-        this.tracks = tracks
-      }),
-    )
     Object.defineProperty(HTMLMediaElement.prototype, 'play', {
       configurable: true,
       value: vi.fn(() => Promise.resolve()),
