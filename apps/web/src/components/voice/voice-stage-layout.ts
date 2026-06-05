@@ -5,33 +5,30 @@ export function voiceStageGridClass(slotCount: number) {
   if (slotCount <= 0) return 'grid-cols-1'
 
   if (slotCount === 1) {
-    return cn('grid-cols-1 max-w-3xl')
+    return cn('grid-cols-1')
   }
 
   if (slotCount === 2) {
-    return cn('grid-cols-1 sm:grid-cols-2 max-w-5xl')
+    return cn('grid-cols-1 sm:grid-cols-2')
   }
 
   if (slotCount <= 4) {
-    return cn('grid-cols-1 sm:grid-cols-2 max-w-6xl')
+    return cn('grid-cols-1 sm:grid-cols-2')
   }
 
   if (slotCount <= 6) {
-    return cn('grid-cols-2 md:grid-cols-3 max-w-7xl')
+    return cn('grid-cols-2 md:grid-cols-3')
   }
 
   if (slotCount <= 9) {
-    return cn('grid-cols-2 md:grid-cols-3 lg:grid-cols-3 max-w-[90rem]')
+    return cn('grid-cols-2 md:grid-cols-3 lg:grid-cols-3')
   }
 
   if (slotCount <= 12) {
-    return cn('grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 max-w-[100rem]')
+    return cn('grid-cols-2 sm:grid-cols-3 lg:grid-cols-4')
   }
 
-  return cn(
-    'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5',
-    'max-w-[120rem]',
-  )
+  return cn('grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5')
 }
 
 export function shouldShowVoiceInviteSlot(participantCount: number) {

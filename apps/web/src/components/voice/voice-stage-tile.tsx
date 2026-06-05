@@ -7,8 +7,6 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { createChannelInvite } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { VoiceParticipantIcons } from '#/components/voice/voice-participant-icons'
-import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
-import { useVoice } from '#/features/voice/voice-provider'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
@@ -47,9 +45,6 @@ export function VoiceStageTile({
   const deafened = participant.server_deafened || !participant.is_receiving
   const avatarSize = stageAvatarSize(compact)
   const palette = useVoiceTilePalette(user, participant.id)
-  const voice = useVoice()
-  const stageVideo = voice.getStageVideoTrack(participant.id)
-  const showVideo = Boolean(stageVideo)
 
   const canFocus = Boolean(onSelect)
 
@@ -76,21 +71,17 @@ export function VoiceStageTile({
           : undefined
       }
     >
-      {showVideo && stageVideo ? (
-        <VoiceStageVideo track={stageVideo} />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <UserAvatar
-            user={user}
-            className={avatarSize}
-            fallbackClassName={cn(
-              avatarSize,
-              compact ? 'text-base' : 'text-xl sm:text-2xl',
-            )}
-            showPresence={false}
-          />
-        </div>
-      )}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <UserAvatar
+          user={user}
+          className={avatarSize}
+          fallbackClassName={cn(
+            avatarSize,
+            compact ? 'text-base' : 'text-xl sm:text-2xl',
+          )}
+          showPresence={false}
+        />
+      </div>
 
       <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2">
         <VoiceParticipantIcons

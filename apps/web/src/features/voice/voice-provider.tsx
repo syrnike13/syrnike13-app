@@ -6,7 +6,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from 'react'
 import {
   Room,
@@ -52,6 +54,13 @@ import {
 } from '#/features/voice/voice-ping-history'
 import { measureVoicePingMs } from '#/features/voice/voice-ping'
 import {
+  appendRtcDebugSample,
+  collectVoiceRtcDebugSnapshot,
+  deriveRtcRates,
+  type RtcDebugSnapshot,
+  type RtcDebugStageMediaItem,
+} from '#/features/voice/voice-rtc-debug'
+import {
   createVoiceRoomOptions,
   screenShareCaptureOptions,
 } from '#/features/voice/voice-capture'
@@ -73,12 +82,35 @@ import {
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 import {
-  isStageVideoSource,
-  pickStageVideoTrack,
-  stageVideoTrackKey,
-} from '#/features/voice/voice-stage-tracks'
+  buildStageMediaItems,
+  type StageMediaFilters,
+  type StageMediaItem,
+  type StageMediaTrackEntry,
+  type StageMediaTrackSource,
+} from '#/features/voice/voice-stage-media'
+import { setStageScreenSubscription } from '#/features/voice/voice-stage-subscription'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected'
+type StageMediaPublication = {
+  source: Track.Source
+  track?: Track | null
+  isMuted?: boolean
+  isSubscribed?: boolean
+  setSubscribed?: (subscribed: boolean) => void
+  options?: {
+    videoCodec?: string
+    simulcast?: boolean
+    degradationPreference?: string
+    screenShareEncoding?: {
+      maxBitrate?: number
+      maxFramerate?: number
+    }
+  }
+}
+export type VoiceStageMediaItem = StageMediaItem<
+  VideoTrack,
+  StageMediaPublication
+>
 
 type VoiceContextValue = {
   channelId: string | null
@@ -98,11 +130,18 @@ type VoiceContextValue = {
   voicePingMs: number | null
   /** История замеров для графика в поповере подключения. */
   voicePingHistory: readonly VoicePingSample[]
+  rtcDebugEnabled: boolean
+  setRtcDebugEnabled: (enabled: boolean) => void
+  rtcDebugSnapshot: RtcDebugSnapshot | null
+  rtcDebugHistory: readonly RtcDebugSnapshot[]
   cameraEnabled: boolean
   screenShareEnabled: boolean
-  getStageVideoTrack: (userId: string) => VideoTrack | null
-  focusUserId: string | null
-  setFocusUserId: (userId: string | null) => void
+  stageMediaItems: readonly VoiceStageMediaItem[]
+  focusedMediaId: string | null
+  setFocusedMediaId: (mediaId: string | null) => void
+  stageMediaFilters: StageMediaFilters
+  setStageMediaFilters: Dispatch<SetStateAction<StageMediaFilters>>
+  setStageMediaSubscribed: (mediaId: string, subscribed: boolean) => void
   stageFullscreen: boolean
   toggleStageFullscreen: () => void
   join: (channelId: string) => Promise<void>
@@ -116,6 +155,46 @@ type VoiceContextValue = {
 const VoiceContext = createContext<VoiceContextValue | null>(null)
 
 const DEVICE_SWITCH_TIMEOUT_MS = 5_000
+const STAGE_MEDIA_FILTERS_STORAGE_KEY = 'syrnike13.voice.stageMediaFilters'
+const DEFAULT_STAGE_MEDIA_FILTERS: StageMediaFilters = {
+  showOwnStream: true,
+  showRemoteStreams: true,
+  showParticipantsWithoutMedia: true,
+}
+
+function readStageMediaFilters(): StageMediaFilters {
+  if (typeof window === 'undefined') return DEFAULT_STAGE_MEDIA_FILTERS
+  try {
+    const raw = window.localStorage.getItem(STAGE_MEDIA_FILTERS_STORAGE_KEY)
+    if (!raw) return DEFAULT_STAGE_MEDIA_FILTERS
+    return {
+      ...DEFAULT_STAGE_MEDIA_FILTERS,
+      ...(JSON.parse(raw) as Partial<StageMediaFilters>),
+    }
+  } catch {
+    return DEFAULT_STAGE_MEDIA_FILTERS
+  }
+}
+
+function writeStageMediaFilters(filters: StageMediaFilters) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      STAGE_MEDIA_FILTERS_STORAGE_KEY,
+      JSON.stringify(filters),
+    )
+  } catch {
+    // localStorage may be unavailable in private/browser-restricted contexts.
+  }
+}
+
+function stageMediaTrackSource(
+  source: Track.Source,
+): StageMediaTrackSource | null {
+  if (source === Track.Source.ScreenShare) return 'screen'
+  if (source === Track.Source.Camera) return 'camera'
+  return null
+}
 
 async function switchDeviceWithTimeout(
   room: Room,
@@ -143,7 +222,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     promise: Promise<void>
   } | null>(null)
   const disconnectIntentRef = useRef<'none' | 'switch' | 'leave'>('none')
-  const stageVideoTracksRef = useRef(new Map<string, VideoTrack>())
+  const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
+  const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const lastVoicePreferencesRef = useRef(readVoicePreferences())
 
   const [channelId, setChannelId] = useState<string | null>(null)
@@ -169,10 +249,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [voicePingHistory, setVoicePingHistory] = useState<VoicePingSample[]>(
     [],
   )
-  const [stageVideoRevision, setStageVideoRevision] = useState(0)
+  const [rtcDebugEnabled, setRtcDebugEnabled] = useState(false)
+  const [rtcDebugSnapshot, setRtcDebugSnapshot] =
+    useState<RtcDebugSnapshot | null>(null)
+  const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
+  const [stageMediaItems, setStageMediaItemsState] = useState<
+    VoiceStageMediaItem[]
+  >([])
+  const [stageMediaFilters, setStageMediaFiltersState] = useState(
+    readStageMediaFilters,
+  )
   const [cameraEnabled, setCameraEnabled] = useState(false)
   const [screenShareEnabled, setScreenShareEnabled] = useState(false)
-  const [focusUserId, setFocusUserId] = useState<string | null>(null)
+  const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null)
   const [stageFullscreen, setStageFullscreen] = useState(false)
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false)
 
@@ -192,6 +281,76 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const setStageMediaItems = useCallback((items: VoiceStageMediaItem[]) => {
+    stageMediaItemsRef.current = items
+    setStageMediaItemsState(items)
+  }, [])
+
+  const setStageMediaFilters: Dispatch<
+    SetStateAction<StageMediaFilters>
+  > = useCallback((next) => {
+    setStageMediaFiltersState((previous) => {
+      const value = typeof next === 'function' ? next(previous) : next
+      writeStageMediaFilters(value)
+      return value
+    })
+  }, [])
+
+  const syncStageMediaItems = useCallback(
+    (room: Room) => {
+      const participants = liveKitChannelParticipants(
+        room,
+        !deafenedRef.current,
+      )
+      const tracks: StageMediaTrackEntry<
+        VideoTrack,
+        StageMediaPublication
+      >[] = []
+      const ingest = (
+        userId: string,
+        publication: StageMediaPublication | null | undefined,
+      ) => {
+        if (!publication) return
+        const source = stageMediaTrackSource(publication.source)
+        if (!source) return
+        const track =
+          publication.track?.kind === Track.Kind.Video
+            ? (publication.track as VideoTrack)
+            : null
+        const subscribed = publication.isSubscribed !== false
+        if (source === 'camera' && (!track || !subscribed)) return
+        tracks.push({
+          userId,
+          source,
+          track,
+          publication,
+          subscribed,
+          live: publication.isMuted !== true,
+        })
+      }
+
+      for (const publication of room.localParticipant.trackPublications.values()) {
+        ingest(room.localParticipant.identity, publication)
+      }
+
+      for (const participant of room.remoteParticipants.values()) {
+        for (const publication of participant.trackPublications.values()) {
+          ingest(participant.identity, publication)
+        }
+      }
+
+      const items = buildStageMediaItems({
+        participants,
+        currentUserId: auth.user?._id ?? room.localParticipant.identity,
+        tracks,
+        filters: stageMediaFilters,
+      })
+
+      setStageMediaItems(items)
+    },
+    [auth.user?._id, setStageMediaItems, stageMediaFilters],
+  )
+
   const syncRoomParticipants = useCallback(() => {
     const room = roomRef.current
     const activeChannelId = channelIdRef.current
@@ -203,7 +362,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const localMedia = localParticipantVoiceFlags(room.localParticipant)
     setCameraEnabled(localMedia.camera)
     setScreenShareEnabled(localMedia.screensharing)
-  }, [])
+    syncStageMediaItems(room)
+  }, [syncStageMediaItems])
 
   const cleanupAudio = useCallback(() => {
     for (const element of audioElementsRef.current) {
@@ -297,14 +457,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setSpeakingUserIds(new Set())
     setVoicePingMs(null)
     setVoicePingHistory([])
-    stageVideoTracksRef.current.clear()
-    setStageVideoRevision((value) => value + 1)
+    rtcDebugSnapshotRef.current = null
+    setRtcDebugSnapshot(null)
+    setRtcDebugHistory([])
+    setStageMediaItems([])
     setCameraEnabled(false)
     setScreenShareEnabled(false)
-    setFocusUserId(null)
+    setFocusedMediaId(null)
     setStageFullscreen(false)
     setScreenShareDialogOpen(false)
-  }, [restoreVoicePreferences, setCurrentMicIssue])
+  }, [restoreVoicePreferences, setCurrentMicIssue, setStageMediaItems])
 
   const abortJoinAttempt = useCallback(() => {
     cleanupAudio()
@@ -341,37 +503,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const leave = useCallback(() => {
     void leaveVoiceSession('leave')
   }, [leaveVoiceSession])
-
-  const syncStageVideoTracks = useCallback((room: Room) => {
-    const next = new Map<string, VideoTrack>()
-    const ingest = (
-      userId: string,
-      source: Track.Source,
-      track: Track | null | undefined,
-    ) => {
-      if (!track || track.kind !== Track.Kind.Video || !isStageVideoSource(source)) {
-        return
-      }
-      next.set(stageVideoTrackKey(userId, source), track as VideoTrack)
-    }
-
-    for (const publication of room.localParticipant.trackPublications.values()) {
-      ingest(
-        room.localParticipant.identity,
-        publication.source,
-        publication.track ?? null,
-      )
-    }
-
-    for (const participant of room.remoteParticipants.values()) {
-      for (const publication of participant.trackPublications.values()) {
-        ingest(participant.identity, publication.source, publication.track ?? null)
-      }
-    }
-
-    stageVideoTracksRef.current = next
-    setStageVideoRevision((value) => value + 1)
-  }, [])
 
   const applyVoiceDevices = useCallback(async (room: Room) => {
     const prefs = readVoicePreferences()
@@ -479,7 +610,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const onParticipantsChanged = () => {
         setParticipantCount(room.numParticipants)
         syncRoomParticipants()
-        syncStageVideoTracks(room)
       }
 
       room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
@@ -500,6 +630,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
       room.on(RoomEvent.LocalTrackPublished, onParticipantsChanged)
       room.on(RoomEvent.LocalTrackUnpublished, onParticipantsChanged)
+      room.on(RoomEvent.TrackPublished, onParticipantsChanged)
+      room.on(RoomEvent.TrackUnpublished, onParticipantsChanged)
       room.on(RoomEvent.TrackMuted, onParticipantsChanged)
       room.on(RoomEvent.TrackUnmuted, onParticipantsChanged)
       room.on(RoomEvent.ActiveSpeakersChanged, syncSpeakers)
@@ -527,7 +659,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       onParticipantsChanged()
       syncSpeakers()
     },
-    [abortJoinAttempt, syncMicFromRoom, syncRoomParticipants, syncStageVideoTracks],
+    [abortJoinAttempt, syncMicFromRoom, syncRoomParticipants],
   )
 
   const join = useCallback(
@@ -640,12 +772,50 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  const getStageVideoTrack = useCallback(
-    (userId: string) => {
-      void stageVideoRevision
-      return pickStageVideoTrack(stageVideoTracksRef.current, userId)
+  useEffect(() => {
+    const room = roomRef.current
+    if (room) syncStageMediaItems(room)
+  }, [stageMediaFilters, syncStageMediaItems])
+
+  useEffect(() => {
+    setFocusedMediaId((current) =>
+      current && stageMediaItems.some((item) => item.id === current && item.live)
+        ? current
+        : null,
+    )
+  }, [stageMediaItems])
+
+  const setStageMediaSubscribed = useCallback(
+    (mediaId: string, subscribed: boolean) => {
+      const room = roomRef.current
+      if (!room) return
+      const item = stageMediaItemsRef.current.find(
+        (stageItem) => stageItem.id === mediaId,
+      )
+      const action = setStageScreenSubscription(item, subscribed)
+
+      if (action === 'stop-local-screen') {
+        void room.localParticipant
+          .setScreenShareEnabled(false)
+          .then(() => {
+            setScreenShareEnabled(false)
+            syncRoomParticipants()
+          })
+          .catch((error) => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось остановить демонстрацию',
+            )
+          })
+        return
+      }
+
+      if (action === 'none') {
+        syncStageMediaItems(room)
+      }
     },
-    [stageVideoRevision],
+    [syncRoomParticipants, syncStageMediaItems],
   )
 
   const toggleCamera = useCallback(() => {
@@ -680,17 +850,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const publication = await room.localParticipant.setScreenShareEnabled(
           true,
           {
-            resolution: capture.resolution,
+            ...capture.capture,
             audio: withAudio,
           },
-          {
-            screenShareEncoding: capture.encoding,
-          },
+          capture.publish,
         )
+        if (publication) {
+          ;(publication as StageMediaPublication).options = {
+            videoCodec: capture.publish.videoCodec,
+            simulcast: capture.publish.simulcast,
+            degradationPreference: capture.publish.degradationPreference,
+            screenShareEncoding: capture.publish.screenShareEncoding,
+          }
+        }
 
         const videoTrack = publication?.videoTrack
-        if (videoTrack?.mediaStreamTrack && capture.contentHint) {
-          videoTrack.mediaStreamTrack.contentHint = capture.contentHint
+        if (videoTrack?.mediaStreamTrack) {
+          videoTrack.mediaStreamTrack.contentHint = capture.capture.contentHint
         }
 
         videoTrack?.on('ended', () => {
@@ -916,6 +1092,57 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [status])
 
+  useEffect(() => {
+    if (status !== 'connected') {
+      rtcDebugSnapshotRef.current = null
+      setRtcDebugSnapshot(null)
+      setRtcDebugHistory([])
+      return
+    }
+    if (!rtcDebugEnabled) return
+
+    const room = roomRef.current
+    if (!room) return
+
+    let active = true
+
+    async function sampleRtcDebug() {
+      try {
+        const current = await collectVoiceRtcDebugSnapshot(
+          room!,
+          stageMediaItemsRef.current as RtcDebugStageMediaItem[],
+        )
+        if (!active) return
+
+        const previous = rtcDebugSnapshotRef.current
+        const snapshot: RtcDebugSnapshot = previous
+          ? {
+              ...current,
+              rates: deriveRtcRates(previous, current),
+            }
+          : current
+
+        rtcDebugSnapshotRef.current = snapshot
+        setRtcDebugSnapshot(snapshot)
+        setRtcDebugHistory((history) =>
+          appendRtcDebugSample(history, snapshot),
+        )
+      } catch {
+        if (!active) return
+        rtcDebugSnapshotRef.current = null
+        setRtcDebugSnapshot(null)
+      }
+    }
+
+    void sampleRtcDebug()
+    const interval = window.setInterval(() => void sampleRtcDebug(), 1000)
+
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [rtcDebugEnabled, status])
+
   const value = useMemo<VoiceContextValue>(
     () => ({
       channelId,
@@ -929,13 +1156,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       speakingUserIds,
       voicePingMs,
       voicePingHistory,
+      rtcDebugEnabled,
+      setRtcDebugEnabled,
+      rtcDebugSnapshot,
+      rtcDebugHistory,
       cameraEnabled,
       screenShareEnabled,
-      focusUserId,
-      getStageVideoTrack,
+      stageMediaItems,
+      focusedMediaId,
       join,
       leave,
-      setFocusUserId,
+      setFocusedMediaId,
+      stageMediaFilters,
+      setStageMediaFilters,
+      setStageMediaSubscribed,
       stageFullscreen,
       toggleMic,
       toggleStageFullscreen,
@@ -947,8 +1181,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       cameraEnabled,
       channelId,
       deafened,
-      focusUserId,
-      getStageVideoTrack,
+      focusedMediaId,
       join,
       leave,
       liveChannelParticipants,
@@ -958,8 +1191,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       participantCount,
       screenShareEnabled,
       speakingUserIds,
+      stageMediaFilters,
+      stageMediaItems,
       stageFullscreen,
       status,
+      rtcDebugEnabled,
+      rtcDebugHistory,
+      rtcDebugSnapshot,
       voicePingMs,
       voicePingHistory,
       toggleCamera,
@@ -967,6 +1205,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       toggleMic,
       toggleScreenShare,
       toggleStageFullscreen,
+      setStageMediaFilters,
+      setStageMediaSubscribed,
     ],
   )
 

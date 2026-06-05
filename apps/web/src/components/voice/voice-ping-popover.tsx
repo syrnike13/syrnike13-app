@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 
+import { Button } from '#/components/ui/button'
 import { VoicePingChart } from '#/components/voice/voice-ping-chart'
 import {
   PopoverContent,
@@ -75,6 +77,10 @@ export function VoicePingPopoverContent({
         <p className="text-xs leading-relaxed text-muted-foreground">
           Задержка звука может быть заметна при пинге от 250 мс и выше.
         </p>
+
+        <Button asChild variant="secondary" size="sm" className="w-full">
+          <Link to="/app/voice-debug">Отладка RTC</Link>
+        </Button>
       </div>
     </PopoverContent>
   )

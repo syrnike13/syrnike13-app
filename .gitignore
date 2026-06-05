@@ -1,15 +1,79 @@
+# OS junk
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor and local tooling state
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.codex-run-logs/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencies
 node_modules/
+.pnp/
+.pnp.*
+.pnpm-store/
+
+# JavaScript / TypeScript build output and caches
 dist/
+dist-ssr/
+build/
 out/
 release/
-target/
+coverage/
 .turbo/
+.vite/
+.tanstack/
+.nitro/
+.output/
+.vinxi/
+.wrangler/
+.vercel/
+__unconfig*
+*.tsbuildinfo
+
+# Rust
+target/
+
+# Go
+*.test
+coverage.out
+
+# Python and helper scripts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local environment and secrets
 .env
 .env.*
 !.env.example
+!.env.*.example
 secrets.env
-Revolt.toml
-livekit.yml
+*.pem
+*.key
+
+# Local runtime config
+/Syrnike.toml
+/Revolt.toml
+/Revolt.*.toml
+/Rocket.toml
+/livekit.yml
+/compose.override.yml
+
+# Local app data
 /data/
 /data*/
+/.data/

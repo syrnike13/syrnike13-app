@@ -10,19 +10,32 @@ type PCTransportManagerLike = {
   subscriber?: PCTransportLike
 }
 
+export type VoicePeerConnectionEntry = {
+  role: 'publisher' | 'subscriber'
+  pc: RTCPeerConnection
+}
+
 function peerConnectionFromTransport(transport?: PCTransportLike) {
   return transport?.pc ?? transport?._pc ?? null
 }
 
-function getRoomPeerConnections(room: Room) {
+export function getVoicePeerConnectionEntries(room: Room) {
   const manager = (room.engine as { pcManager?: PCTransportManagerLike })
     .pcManager
   if (!manager) return []
 
   return [
-    peerConnectionFromTransport(manager.publisher),
-    peerConnectionFromTransport(manager.subscriber),
-  ].filter((pc): pc is RTCPeerConnection => pc != null)
+    {
+      role: 'publisher' as const,
+      pc: peerConnectionFromTransport(manager.publisher),
+    },
+    {
+      role: 'subscriber' as const,
+      pc: peerConnectionFromTransport(manager.subscriber),
+    },
+  ].filter(
+    (entry): entry is VoicePeerConnectionEntry => entry.pc != null,
+  )
 }
 
 async function rttFromPeerConnection(pc: RTCPeerConnection) {
@@ -59,11 +72,11 @@ async function rttFromPeerConnection(pc: RTCPeerConnection) {
 
 /** RTT до LiveKit (мс), как в Discord — с клиента через WebRTC stats. */
 export async function measureVoicePingMs(room: Room) {
-  const connections = getRoomPeerConnections(room)
+  const connections = getVoicePeerConnectionEntries(room)
   if (connections.length === 0) return null
 
   const samples = await Promise.all(
-    connections.map((pc) => rttFromPeerConnection(pc)),
+    connections.map(({ pc }) => rttFromPeerConnection(pc)),
   )
   const valid = samples.filter((value) => value != null) as number[]
   if (valid.length === 0) return null

@@ -6,11 +6,17 @@ import {
   MicOffIcon,
   MonitorUpIcon,
   PhoneOffIcon,
+  Settings2Icon,
   VideoIcon,
   VideoOffIcon,
 } from 'lucide-react'
 
 import { Button } from '#/components/ui/button'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '#/components/ui/popover'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isMicVisuallyMuted, micControlTitle } from '#/features/voice/voice-mic-status'
 import { cn } from '#/lib/utils'
@@ -124,6 +130,8 @@ export function VoiceStageControls({
           <MonitorUpIcon className="size-5" />
         </ControlButton>
 
+        <StageViewSettings compact={compact} />
+
         <Button
           type="button"
           size="icon"
@@ -140,6 +148,87 @@ export function VoiceStageControls({
         </Button>
       </div>
     </div>
+  )
+}
+
+function StageViewSettings({ compact }: { compact: boolean }) {
+  const voice = useVoice()
+  const filters = voice.stageMediaFilters
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          title="Настройки сцены"
+          className={cn(
+            'rounded-full text-foreground hover:bg-white/10',
+            compact ? 'size-8' : 'size-11',
+          )}
+        >
+          <Settings2Icon className="size-5" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="center"
+        className="z-[420] w-72 border-white/10 bg-[#2b2d31] p-2 text-sm text-white"
+      >
+        <StageFilterToggle
+          checked={filters.showOwnStream}
+          label="Показывать мой стрим"
+          onChange={(checked) =>
+            voice.setStageMediaFilters((current) => ({
+              ...current,
+              showOwnStream: checked,
+            }))
+          }
+        />
+        <StageFilterToggle
+          checked={filters.showRemoteStreams}
+          label="Показывать чужие стримы"
+          onChange={(checked) =>
+            voice.setStageMediaFilters((current) => ({
+              ...current,
+              showRemoteStreams: checked,
+            }))
+          }
+        />
+        <StageFilterToggle
+          checked={filters.showParticipantsWithoutMedia}
+          label="Показывать участников без видео"
+          onChange={(checked) =>
+            voice.setStageMediaFilters((current) => ({
+              ...current,
+              showParticipantsWithoutMedia: checked,
+            }))
+          }
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function StageFilterToggle({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-3 rounded px-2 py-2 hover:bg-white/10">
+      <input
+        type="checkbox"
+        className="size-4 accent-primary"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>{label}</span>
+    </label>
   )
 }
 

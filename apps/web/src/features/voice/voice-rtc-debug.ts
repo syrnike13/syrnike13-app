@@ -1,0 +1,497 @@
+import type { Room } from 'livekit-client'
+
+import { getVoicePeerConnectionEntries } from '#/features/voice/voice-ping'
+
+export const RTC_DEBUG_BROWSER_UNAVAILABLE = 'N/A'
+export const RTC_DEBUG_HISTORY_LIMIT = 180
+
+type RtcStatsLike = Record<string, unknown> & {
+  id: string
+  type: string
+}
+
+type RtcDebugRoomLike = {
+  engine?: unknown
+}
+
+type RtcDebugMediaTrack = {
+  mediaStreamTrack?: {
+    contentHint?: string
+    getSettings?: () => MediaTrackSettings
+  } | null
+}
+
+type RtcDebugPublication = {
+  trackSid?: string
+  sid?: string
+  source?: string
+  options?: RtcDebugPublishOptions
+}
+
+type RtcDebugPublishOptions = {
+  videoCodec?: string
+  codec?: string
+  simulcast?: boolean
+  degradationPreference?: string
+  screenShareEncoding?: {
+    maxBitrate?: number
+    maxFramerate?: number
+  }
+  videoEncoding?: {
+    maxBitrate?: number
+    maxFramerate?: number
+  }
+}
+
+export type RtcDebugStageMediaItem = {
+  id: string
+  userId: string
+  kind: string
+  isLocal: boolean
+  subscribed?: boolean
+  live: boolean
+  track?: RtcDebugMediaTrack | null
+  publication?: RtcDebugPublication | null
+}
+
+export type RtcDebugTransportSnapshot = {
+  availableOutgoingBitrate?: number
+  availableIncomingBitrate?: number
+  pingMs?: number
+  localAddress?: string
+  remoteAddress?: string
+  bytesSent?: number
+  bytesReceived?: number
+  packetsSent?: number
+  packetsReceived?: number
+  outboundBitrate?: number
+  inboundBitrate?: number
+  hostname?: string
+  selectedCandidatePairId?: string
+}
+
+export type RtcDebugRtpStreamSnapshot = {
+  id: string
+  pcRole: 'publisher' | 'subscriber'
+  kind: 'audio' | 'video'
+  ssrc?: number
+  mid?: string
+  codec?: string
+  bitrate?: number
+  targetBitrate?: number
+  bytesSent?: number
+  bytesReceived?: number
+  packetsSent?: number
+  packetsReceived?: number
+  packetsLost?: number
+  retransmittedBytesSent?: number
+  nackCount?: number
+  pliCount?: number
+  framesEncoded?: number
+  framesDecoded?: number
+  framesDropped?: number
+  framesPerSecond?: number
+  frameWidth?: number
+  frameHeight?: number
+  qualityLimitationReason?: string
+  qualityLimitationDurations?: Record<string, number>
+  audioLevel?: number
+  totalAudioEnergy?: number
+  jitter?: number
+  freezeCount?: number
+  totalFreezesDuration?: number
+}
+
+export type RtcDebugScreenShareSnapshot = {
+  id: string
+  ownerUserId: string
+  isLocal: boolean
+  subscribed?: boolean
+  live: boolean
+  publicationId?: string
+  codec?: string
+  maxBitrate?: number
+  maxFramerate?: number
+  simulcast?: boolean
+  degradationPreference?: string
+  captureWidth?: number
+  captureHeight?: number
+  captureFrameRate?: number
+  displaySurface?: string
+  cursor?: string
+  logicalSurface?: boolean
+  resizeMode?: string
+  contentHint?: string
+  sentBitrate?: number
+  receivedBitrate?: number
+  fps?: number
+  frameWidth?: number
+  frameHeight?: number
+  packetsLost?: number
+  qualityLimitationReason?: string
+  hybridDxgiFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  hybridGdiBitBltFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  hybridGdiPrintWindowFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  hybridGraphicsCaptureFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  hybridVideohookFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+}
+
+export type RtcDebugRates = {
+  transport: {
+    outboundBitrate?: number
+    inboundBitrate?: number
+  }
+  outbound: Record<string, number>
+  inbound: Record<string, number>
+}
+
+export type RtcDebugSnapshot = {
+  timestamp: number
+  transport: RtcDebugTransportSnapshot
+  outbound: RtcDebugRtpStreamSnapshot[]
+  inbound: RtcDebugRtpStreamSnapshot[]
+  screenShares: RtcDebugScreenShareSnapshot[]
+  rates?: RtcDebugRates
+}
+
+export async function collectVoiceRtcDebugSnapshot(
+  room: RtcDebugRoomLike,
+  stageMediaItems: readonly RtcDebugStageMediaItem[],
+  timestamp = Date.now(),
+): Promise<RtcDebugSnapshot> {
+  const snapshot: RtcDebugSnapshot = {
+    timestamp,
+    transport: {},
+    outbound: [],
+    inbound: [],
+    screenShares: [],
+  }
+
+  const entries = getVoicePeerConnectionEntries(room as Room)
+
+  for (const entry of entries) {
+    const report = await entry.pc.getStats()
+    const stats = rtcStatsMap(report)
+    const codecs = new Map<string, RtcStatsLike>()
+    const candidates = new Map<string, RtcStatsLike>()
+
+    for (const stat of stats.values()) {
+      if (stat.type === 'codec') codecs.set(stat.id, stat)
+      if (stat.type === 'local-candidate' || stat.type === 'remote-candidate') {
+        candidates.set(stat.id, stat)
+      }
+    }
+
+    const pair = selectedCandidatePair(stats)
+    if (pair) {
+      mergeTransport(snapshot.transport, pair, candidates)
+    }
+
+    for (const stat of stats.values()) {
+      if (stat.type === 'outbound-rtp') {
+        snapshot.outbound.push(
+          rtpStreamSnapshot(entry.role, stat, codecs, 'outbound'),
+        )
+      }
+      if (stat.type === 'inbound-rtp') {
+        snapshot.inbound.push(
+          rtpStreamSnapshot(entry.role, stat, codecs, 'inbound'),
+        )
+      }
+    }
+  }
+
+  snapshot.screenShares = stageMediaItems
+    .filter((item) => item.kind === 'screen')
+    .map((item) => screenShareSnapshot(item))
+
+  return snapshot
+}
+
+export function deriveRtcRates(
+  previous: RtcDebugRateSnapshotInput,
+  current: RtcDebugRateSnapshotInput,
+): RtcDebugRates {
+  const seconds = (current.timestamp - previous.timestamp) / 1000
+  const rates: RtcDebugRates = {
+    transport: {},
+    outbound: {},
+    inbound: {},
+  }
+  if (seconds <= 0) return rates
+
+  rates.transport.outboundBitrate = bitrateDelta(
+    previous.transport.bytesSent,
+    current.transport.bytesSent,
+    seconds,
+  )
+  rates.transport.inboundBitrate = bitrateDelta(
+    previous.transport.bytesReceived,
+    current.transport.bytesReceived,
+    seconds,
+  )
+
+  const previousOutbound = byId(previous.outbound)
+  for (const stream of current.outbound) {
+    const rate = bitrateDelta(
+      previousOutbound.get(stream.id)?.bytesSent,
+      stream.bytesSent,
+      seconds,
+    )
+    if (rate != null) rates.outbound[stream.id] = rate
+  }
+
+  const previousInbound = byId(previous.inbound)
+  for (const stream of current.inbound) {
+    const rate = bitrateDelta(
+      previousInbound.get(stream.id)?.bytesReceived,
+      stream.bytesReceived,
+      seconds,
+    )
+    if (rate != null) rates.inbound[stream.id] = rate
+  }
+
+  return rates
+}
+
+export function appendRtcDebugSample<T extends { timestamp: number }>(
+  history: readonly T[],
+  sample: T,
+) {
+  return [...history, sample].slice(-RTC_DEBUG_HISTORY_LIMIT)
+}
+
+export function formatRtcBitrate(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} Mbps`
+  return `${(value / 1000).toFixed(2)} Kbps`
+}
+
+export function formatRtcBytes(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)} MB`
+  if (value >= 1024) return `${(value / 1024).toFixed(2)} KB`
+  return `${value} bytes`
+}
+
+export function formatRtcMs(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${Math.round(value)} ms`
+}
+
+export function formatRtcFps(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${Number(value).toFixed(2)}`
+}
+
+export function formatRtcInteger(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return String(Math.round(value))
+}
+
+export function formatRtcValue(value: unknown) {
+  if (value == null || value === '') return '—'
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '—'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  return String(value)
+}
+
+function rtcStatsMap(report: RTCStatsReport) {
+  const map = new Map<string, RtcStatsLike>()
+  report.forEach((stat) => {
+    const value = stat as unknown as RtcStatsLike
+    if (value.id && value.type) map.set(value.id, value)
+  })
+  return map
+}
+
+function selectedCandidatePair(stats: Map<string, RtcStatsLike>) {
+  let succeeded: RtcStatsLike | null = null
+  for (const stat of stats.values()) {
+    if (stat.type !== 'candidate-pair') continue
+    if (stat.nominated === true) return stat
+    if (!succeeded && stat.state === 'succeeded') succeeded = stat
+  }
+  return succeeded
+}
+
+function mergeTransport(
+  transport: RtcDebugTransportSnapshot,
+  pair: RtcStatsLike,
+  candidates: Map<string, RtcStatsLike>,
+) {
+  transport.selectedCandidatePairId ??= pair.id
+  transport.availableOutgoingBitrate ??= numberValue(
+    pair.availableOutgoingBitrate,
+  )
+  transport.availableIncomingBitrate ??= numberValue(
+    pair.availableIncomingBitrate,
+  )
+  transport.bytesSent ??= numberValue(pair.bytesSent)
+  transport.bytesReceived ??= numberValue(pair.bytesReceived)
+  transport.packetsSent ??= numberValue(pair.packetsSent)
+  transport.packetsReceived ??= numberValue(pair.packetsReceived)
+
+  const rtt = numberValue(pair.currentRoundTripTime)
+  if (transport.pingMs == null && rtt != null) {
+    transport.pingMs = Math.round(rtt * 1000)
+  }
+
+  const local = candidates.get(String(pair.localCandidateId))
+  const remote = candidates.get(String(pair.remoteCandidateId))
+  transport.localAddress ??= formatCandidateAddress(local)
+  transport.remoteAddress ??= formatCandidateAddress(remote)
+}
+
+function rtpStreamSnapshot(
+  role: 'publisher' | 'subscriber',
+  stat: RtcStatsLike,
+  codecs: Map<string, RtcStatsLike>,
+  direction: 'outbound' | 'inbound',
+): RtcDebugRtpStreamSnapshot {
+  const codec = codecs.get(String(stat.codecId))
+  const kind = mediaKind(stat)
+  const stream: RtcDebugRtpStreamSnapshot = {
+    id: `${role}:${stat.id}`,
+    pcRole: role,
+    kind,
+    ssrc: numberValue(stat.ssrc),
+    mid: stringValue(stat.mid),
+    codec: formatCodec(codec),
+    targetBitrate: numberValue(stat.targetBitrate),
+    packetsLost: numberValue(stat.packetsLost),
+    nackCount: numberValue(stat.nackCount),
+    pliCount: numberValue(stat.pliCount),
+    framesEncoded: numberValue(stat.framesEncoded),
+    framesDecoded: numberValue(stat.framesDecoded),
+    framesDropped: numberValue(stat.framesDropped),
+    framesPerSecond: numberValue(stat.framesPerSecond),
+    frameWidth: numberValue(stat.frameWidth),
+    frameHeight: numberValue(stat.frameHeight),
+    qualityLimitationReason: stringValue(stat.qualityLimitationReason),
+    qualityLimitationDurations: stat.qualityLimitationDurations as
+      | Record<string, number>
+      | undefined,
+    audioLevel: numberValue(stat.audioLevel),
+    totalAudioEnergy: numberValue(stat.totalAudioEnergy),
+    jitter: numberValue(stat.jitter),
+    freezeCount: numberValue(stat.freezeCount),
+    totalFreezesDuration: numberValue(stat.totalFreezesDuration),
+  }
+
+  if (direction === 'outbound') {
+    stream.bytesSent = numberValue(stat.bytesSent)
+    stream.packetsSent = numberValue(stat.packetsSent)
+    stream.retransmittedBytesSent = numberValue(stat.retransmittedBytesSent)
+  } else {
+    stream.bytesReceived = numberValue(stat.bytesReceived)
+    stream.packetsReceived = numberValue(stat.packetsReceived)
+  }
+
+  return stream
+}
+
+function screenShareSnapshot(
+  item: RtcDebugStageMediaItem,
+): RtcDebugScreenShareSnapshot {
+  const publication = item.publication
+  const track = item.track?.mediaStreamTrack
+  const settings = track?.getSettings?.()
+  const browserSettings = settings as
+    | (MediaTrackSettings & {
+        cursor?: string
+        logicalSurface?: boolean
+        resizeMode?: string
+      })
+    | undefined
+  const options = publication?.options
+  const encoding = options?.screenShareEncoding ?? options?.videoEncoding
+
+  return {
+    id: item.id,
+    ownerUserId: item.userId,
+    isLocal: item.isLocal,
+    subscribed: item.subscribed,
+    live: item.live,
+    publicationId: publication?.trackSid ?? publication?.sid,
+    codec: options?.videoCodec ?? options?.codec,
+    maxBitrate: encoding?.maxBitrate,
+    maxFramerate: encoding?.maxFramerate,
+    simulcast: options?.simulcast,
+    degradationPreference: options?.degradationPreference,
+    captureWidth: browserSettings?.width,
+    captureHeight: browserSettings?.height,
+    captureFrameRate: browserSettings?.frameRate,
+    displaySurface: stringValue(browserSettings?.displaySurface),
+    cursor: stringValue(browserSettings?.cursor),
+    logicalSurface: browserSettings?.logicalSurface,
+    resizeMode: stringValue(browserSettings?.resizeMode),
+    contentHint: track?.contentHint,
+    hybridDxgiFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+    hybridGdiBitBltFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+    hybridGdiPrintWindowFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+    hybridGraphicsCaptureFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+    hybridVideohookFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+  }
+}
+
+function mediaKind(stat: RtcStatsLike): 'audio' | 'video' {
+  const value = stat.kind ?? stat.mediaType
+  return value === 'audio' ? 'audio' : 'video'
+}
+
+function formatCodec(codec?: RtcStatsLike) {
+  if (!codec) return undefined
+  const mimeType = stringValue(codec.mimeType)
+  const payloadType = numberValue(codec.payloadType)
+  const name = mimeType?.split('/').pop() ?? mimeType
+  if (!name) return undefined
+  return payloadType == null ? name : `${name} (${payloadType})`
+}
+
+function formatCandidateAddress(candidate?: RtcStatsLike) {
+  if (!candidate) return undefined
+  const address =
+    stringValue(candidate.address) ??
+    stringValue(candidate.ip) ??
+    stringValue(candidate.hostname)
+  if (!address) return undefined
+  const port = numberValue(candidate.port)
+  const protocol = stringValue(candidate.protocol)
+  return `${address}${port == null ? '' : `:${port}`}${
+    protocol ? `/${protocol}` : ''
+  }`
+}
+
+type RtcDebugRateSnapshotInput = {
+  timestamp: number
+  transport: {
+    bytesSent?: number
+    bytesReceived?: number
+  }
+  outbound: ReadonlyArray<{ id: string; bytesSent?: number }>
+  inbound: ReadonlyArray<{ id: string; bytesReceived?: number }>
+}
+
+function byId<T extends { id: string }>(streams: readonly T[]) {
+  return new Map(streams.map((stream) => [stream.id, stream]))
+}
+
+function bitrateDelta(
+  previous: number | undefined,
+  current: number | undefined,
+  seconds: number,
+) {
+  if (previous == null || current == null) return undefined
+  const delta = current - previous
+  if (delta < 0) return undefined
+  return Math.round((delta * 8) / seconds)
+}
+
+function numberValue(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}

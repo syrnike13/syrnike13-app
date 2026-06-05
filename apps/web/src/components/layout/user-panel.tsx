@@ -45,6 +45,7 @@ export function UserPanel() {
   const [menuOpen, setMenuOpen] = useState(false)
   const user = auth.user
   if (!user) return null
+  if (voice.stageFullscreen) return null
 
   const displayName = user.display_name ?? user.username
   const usernameLabel = `@${user.username}`

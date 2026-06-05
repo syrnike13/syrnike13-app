@@ -20,6 +20,7 @@ import { Route as LoginRegisterRouteImport } from './routes/login/register'
 import { Route as LoginOnboardRouteImport } from './routes/login/onboard'
 import { Route as LoginCheckRouteImport } from './routes/login/check'
 import { Route as InviteCodeRouteImport } from './routes/invite/$code'
+import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
 import { Route as AppDiscoverRouteImport } from './routes/app/discover'
@@ -81,6 +82,11 @@ const InviteCodeRoute = InviteCodeRouteImport.update({
   path: '/invite/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppVoiceDebugRoute = AppVoiceDebugRouteImport.update({
+  id: '/voice-debug',
+  path: '/voice-debug',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/app/discover': typeof AppDiscoverRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/voice-debug': typeof AppVoiceDebugRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -130,6 +137,7 @@ export interface FileRoutesByTo {
   '/app/discover': typeof AppDiscoverRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/voice-debug': typeof AppVoiceDebugRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/app/discover': typeof AppDiscoverRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/voice-debug': typeof AppVoiceDebugRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/app/discover'
     | '/app/friends'
     | '/app/settings'
+    | '/app/voice-debug'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -186,6 +196,7 @@ export interface FileRouteTypes {
     | '/app/discover'
     | '/app/friends'
     | '/app/settings'
+    | '/app/voice-debug'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -204,6 +215,7 @@ export interface FileRouteTypes {
     | '/app/discover'
     | '/app/friends'
     | '/app/settings'
+    | '/app/voice-debug'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -309,6 +321,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/voice-debug': {
+      id: '/app/voice-debug'
+      path: '/voice-debug'
+      fullPath: '/app/voice-debug'
+      preLoaderRoute: typeof AppVoiceDebugRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/app/settings': {
       id: '/app/settings'
       path: '/settings'
@@ -351,6 +370,7 @@ interface AppRouteRouteChildren {
   AppDiscoverRoute: typeof AppDiscoverRoute
   AppFriendsRoute: typeof AppFriendsRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppVoiceDebugRoute: typeof AppVoiceDebugRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCChannelIdRoute: typeof AppCChannelIdRoute
 }
@@ -359,6 +379,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppDiscoverRoute: AppDiscoverRoute,
   AppFriendsRoute: AppFriendsRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppVoiceDebugRoute: AppVoiceDebugRoute,
   AppIndexRoute: AppIndexRoute,
   AppCChannelIdRoute: AppCChannelIdRoute,
 }

@@ -1,5 +1,6 @@
 import type {
   NoiseSuppressionMode,
+  ScreenShareCodec,
   ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
 
@@ -22,6 +23,7 @@ export type VoicePreferenceState = {
   autoBalanceEnabled: boolean
   autoBalanceStrength: number
   screenShareQuality: ScreenShareQualityName
+  screenShareCodec: ScreenShareCodec
   screenShareQualityAsk: boolean
   screenShareAudio: boolean
 }
@@ -43,6 +45,7 @@ const DEFAULT_STATE: VoicePreferenceState = {
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
+  screenShareCodec: 'vp8',
   screenShareQualityAsk: true,
   screenShareAudio: true,
 }
@@ -75,6 +78,13 @@ function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
     return value
   }
   return DEFAULT_STATE.screenShareQuality
+}
+
+function parseScreenShareCodec(value: unknown): ScreenShareCodec {
+  if (value === 'vp8' || value === 'h264' || value === 'vp9' || value === 'av1') {
+    return value
+  }
+  return DEFAULT_STATE.screenShareCodec
 }
 
 function clampUnitInterval(value: unknown, fallback: number) {
@@ -145,6 +155,7 @@ function loadState(): VoicePreferenceState {
         DEFAULT_STATE.autoBalanceStrength,
       ),
       screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
+      screenShareCodec: parseScreenShareCodec(parsed.screenShareCodec),
       screenShareQualityAsk:
         typeof parsed.screenShareQualityAsk === 'boolean'
           ? parsed.screenShareQualityAsk
@@ -265,6 +276,10 @@ export const voicePreferenceStore = {
   setScreenShareQuality: (screenShareQuality: ScreenShareQualityName) => {
     if (state.screenShareQuality === screenShareQuality) return
     patch({ screenShareQuality })
+  },
+  setScreenShareCodec: (screenShareCodec: ScreenShareCodec) => {
+    if (state.screenShareCodec === screenShareCodec) return
+    patch({ screenShareCodec })
   },
   setScreenShareQualityAsk: (screenShareQualityAsk: boolean) => {
     if (state.screenShareQualityAsk === screenShareQualityAsk) return
