@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - VERSION
+      - .github/workflows/release-images-and-deploy.yml
   workflow_dispatch:
     inputs:
       deploy:
@@ -100,10 +101,35 @@ jobs:
             exit 0
           fi
 
+          publish_all=false
+          changed_files=""
+
           if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
-            changed_files="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
-          else
+            if ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$BEFORE_SHA" || true
+            fi
+
+            if git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+              changed_files="$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")"
+            else
+              echo "::warning::Previous push commit $BEFORE_SHA is unavailable; publishing all images."
+              publish_all=true
+            fi
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
             changed_files="$(git diff --name-only HEAD^ HEAD)"
+          else
+            echo "::warning::No previous commit is available; publishing all images."
+            publish_all=true
+          fi
+
+          if [ "$publish_all" = true ]; then
+            {
+              echo "web=true"
+              echo "backend=true"
+              echo "livekit=true"
+              echo "services=$all_services"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           backend=false
