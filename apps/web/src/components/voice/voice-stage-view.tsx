@@ -302,7 +302,7 @@ export function VoiceStageView({
     <div
       ref={surfaceRef}
       className={cn(
-        'relative flex min-w-0 flex-col overflow-hidden bg-black text-foreground',
+        'relative flex min-w-0 flex-col overflow-hidden bg-black text-white',
         presentation === 'popout' && 'h-[100dvh] w-full min-h-0',
         presentation === 'embedded' && 'min-h-0 flex-1',
         presentation === 'popout' &&
@@ -361,7 +361,7 @@ export function VoiceStageView({
           voiceStageChromeMotion(chromeVisible, 'top'),
         )}
       >
-        <Volume2Icon className="size-5 shrink-0 text-muted-foreground" />
+        <Volume2Icon className="size-5 shrink-0 text-white/60" />
         <h1
           className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
           title={
@@ -399,9 +399,12 @@ export function VoiceStageView({
         {presentation === 'embedded' ? (
           <Button
             type="button"
-            variant={chatOpen ? 'secondary' : 'ghost'}
+            variant="ghost"
             size="icon"
-            className="size-9 shrink-0"
+            className={cn(
+              'size-9 shrink-0 text-white/70 hover:bg-white/10 hover:text-white',
+              chatOpen && 'bg-white/15 text-white',
+            )}
             title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
             aria-pressed={chatOpen}
             onClick={onToggleChat}

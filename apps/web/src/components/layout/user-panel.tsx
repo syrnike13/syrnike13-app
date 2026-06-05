@@ -42,6 +42,9 @@ const gatewayLabels = {
   disconnected: 'Отключён',
 } as const
 
+const userPanelControlButtonClass =
+  'size-9 shrink-0 rounded-md bg-card text-muted-foreground hover:bg-accent hover:text-foreground'
+
 export function UserPanel() {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
@@ -173,8 +176,8 @@ export function UserPanel() {
               variant="ghost"
               size="icon"
               className={cn(
-                'size-9 shrink-0 rounded-md bg-[#35373c] hover:bg-[#3f4147]',
-                micMuted && 'text-destructive',
+                userPanelControlButtonClass,
+                micMuted && 'text-destructive hover:text-destructive',
               )}
               title={micControlTitle({
                 inVoice,
@@ -196,8 +199,8 @@ export function UserPanel() {
               variant="ghost"
               size="icon"
               className={cn(
-                'size-9 shrink-0 rounded-md bg-[#35373c] hover:bg-[#3f4147]',
-                soundOff && 'text-destructive',
+                userPanelControlButtonClass,
+                soundOff && 'text-destructive hover:text-destructive',
               )}
               title={
                 inVoice
@@ -221,7 +224,7 @@ export function UserPanel() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-9 shrink-0 rounded-md hover:bg-white/5"
+              className={userPanelControlButtonClass}
               title="Настройки"
               onClick={() => openSettings('account')}
             >

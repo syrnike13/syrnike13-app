@@ -50,13 +50,13 @@ const stageControlGroupClass =
   'flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#1e1f22] p-1.5'
 
 const stageControlIconClass =
-  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50'
+  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50'
 
 const stageControlNeutralMainGroupHoverClass =
-  'group-hover/media:bg-white/10 group-hover/media:text-foreground'
+  'group-hover/media:bg-white/10 group-hover/media:text-white'
 
 const stageControlNeutralChevronGroupHoverClass =
-  'group-hover/media:bg-white/[0.06] group-hover/media:text-foreground'
+  'group-hover/media:bg-white/[0.06] group-hover/media:text-white'
 
 /** Мьют: яркая красная иконка, полупрозрачный красный фон. */
 const stageControlDangerMainClass =
@@ -91,14 +91,14 @@ function stageIconButtonClass({
     'rounded-md',
     danger && stageControlDangerStandaloneClass,
     highlight && !danger && stageControlHighlightClass,
-    !danger && !highlight && 'hover:bg-white/10',
+    !danger && !highlight && 'text-white/80 hover:bg-white/10 hover:text-white',
   )
 }
 
 const stageControlMediaMainClass = 'rounded-l-md rounded-r-none'
 
 const stageControlChevronClass =
-  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50'
+  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50'
 
 function stageMediaSegmentButtonClass(
   segment: 'main' | 'chevron',
