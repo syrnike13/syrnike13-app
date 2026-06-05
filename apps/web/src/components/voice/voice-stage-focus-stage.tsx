@@ -1,7 +1,12 @@
-import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronUpIcon, UsersIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { Button } from '#/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '#/components/ui/tooltip'
 import { VoiceStageFilmstrip } from '#/components/voice/voice-stage-filmstrip'
 import { voiceStageFocusStackGapClass } from '#/components/voice/voice-stage-layout'
 import type { VoiceStageMediaItem } from '#/features/voice/voice-provider'
@@ -15,7 +20,7 @@ const focusStageFadeSlideClass =
   'transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none'
 
 const voiceStageStripToggleButtonClass =
-  'size-7 rounded-full border border-white/10 bg-[#1e1f22]/95 text-white/70 shadow-sm hover:bg-white/10 hover:text-white'
+  'inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#1e1f22] px-2 text-sm font-medium text-white/80 shadow-sm transition-colors hover:bg-[#2b2d31] hover:text-white focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
 
 const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
@@ -131,25 +136,32 @@ export function VoiceStageFocusStage({
                   voiceStageChromeMotion(chromeVisible, 'bottom'),
                 )}
               >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={voiceStageStripToggleButtonClass}
-                  title={stripCollapsed ? 'Показать превью' : 'Скрыть превью'}
-                  aria-label={
-                    stripCollapsed
-                      ? 'Показать превью других трансляций'
-                      : 'Скрыть превью других трансляций'
-                  }
-                  onClick={() => setStripCollapsed((value) => !value)}
-                >
-                  {stripCollapsed ? (
-                    <ChevronUpIcon className="size-4" />
-                  ) : (
-                    <ChevronDownIcon className="size-4" />
-                  )}
-                </Button>
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={voiceStageStripToggleButtonClass}
+                        aria-label={
+                          stripCollapsed
+                            ? 'Показать участников'
+                            : 'Убрать участников'
+                        }
+                        onClick={() => setStripCollapsed((value) => !value)}
+                      >
+                        {stripCollapsed ? (
+                          <ChevronUpIcon className="size-3.5 shrink-0" />
+                        ) : (
+                          <ChevronDownIcon className="size-3.5 shrink-0" />
+                        )}
+                        <UsersIcon className="size-3.5 shrink-0" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" sideOffset={8} className="z-[430]">
+                      {stripCollapsed ? 'Показать участников' : 'Убрать участников'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </div>
           ) : null}
