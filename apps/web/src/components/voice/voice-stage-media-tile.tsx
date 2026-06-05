@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ExternalLinkIcon,
   Maximize2Icon,
-  Minimize2Icon,
   MonitorXIcon,
   VolumeXIcon,
 } from 'lucide-react'
@@ -44,8 +43,6 @@ type StageMediaTileProps = {
   speaking?: boolean
   variant: StageMediaTileVariant
   onFocus: (mediaId: string) => void
-  onFullscreen: (mediaId: string) => void
-  onExitFullscreen: () => void
   onOpenPopout: (mediaId: string) => void
   onSetSubscribed: (mediaId: string, subscribed: boolean) => void
   onStreamAspectRatioChange?: (aspectRatio: number) => void
@@ -61,8 +58,6 @@ export function StageMediaTile({
   speaking = false,
   variant,
   onFocus,
-  onFullscreen,
-  onExitFullscreen,
   onOpenPopout,
   onSetSubscribed,
   onStreamAspectRatioChange,
@@ -237,7 +232,7 @@ export function StageMediaTile({
               />
             </div>
           ) : null}
-          {item.track ? (
+          {item.track && canOpenPopout ? (
             <div
               className={cn(
                 'absolute right-2 bottom-2 flex items-center gap-1 transition-opacity',
@@ -251,42 +246,14 @@ export function StageMediaTile({
                 type="button"
                 size="icon"
                 variant="ghost"
-                className={cn(
-                  'rounded bg-black/60 text-white hover:bg-black/80 hover:text-white',
-                  variant === 'strip' ? 'size-8' : 'size-8',
-                )}
+                className="size-8 rounded bg-black/60 text-white hover:bg-black/80 hover:text-white"
                 title="В отдельном окне"
-                style={{ display: canOpenPopout ? undefined : 'none' }}
                 onClick={(event) => {
                   event.stopPropagation()
                   onOpenPopout(item.id)
                 }}
               >
                 <ExternalLinkIcon className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className={cn(
-                  'rounded bg-black/60 text-white hover:bg-black/80 hover:text-white',
-                  variant === 'strip' ? 'size-8' : 'size-8',
-                )}
-                title="На весь экран"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  if (variant === 'fullscreen') {
-                    onExitFullscreen()
-                  } else {
-                    onFullscreen(item.id)
-                  }
-                }}
-              >
-                {variant === 'fullscreen' ? (
-                  <Minimize2Icon className="size-4" />
-                ) : (
-                  <Maximize2Icon className="size-4" />
-                )}
               </Button>
             </div>
           ) : null}
@@ -296,14 +263,6 @@ export function StageMediaTile({
         <ContextMenuItem onSelect={() => onFocus(item.id)}>
           <Maximize2Icon />
           Сфокусировать
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() =>
-            variant === 'fullscreen' ? onExitFullscreen() : onFullscreen(item.id)
-          }
-        >
-          {variant === 'fullscreen' ? <Minimize2Icon /> : <Maximize2Icon />}
-          На весь экран
         </ContextMenuItem>
         {canOpenPopout ? (
           <ContextMenuItem onSelect={() => onOpenPopout(item.id)}>

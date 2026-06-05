@@ -3,8 +3,10 @@ import {
   ChevronDownIcon,
   HeadphoneOffIcon,
   HeadphonesIcon,
+  Maximize2Icon,
   MicIcon,
   MicOffIcon,
+  Minimize2Icon,
   MonitorUpIcon,
   MoreHorizontalIcon,
   PhoneOffIcon,
@@ -19,6 +21,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '#/components/ui/popover'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '#/components/ui/tooltip'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isMicVisuallyMuted, micControlTitle } from '#/features/voice/voice-mic-status'
 import { VoiceStageMicSettingsMenuContent } from '#/components/voice/voice-stage-mic-settings-menu'
@@ -118,6 +126,49 @@ function stageMediaSegmentButtonClass(
         ? stageControlNeutralChevronGroupHoverClass
         : stageControlNeutralMainGroupHoverClass),
     isChevron && chevronDisabled && !danger && !success && 'opacity-40',
+  )
+}
+
+export function VoiceStageFullscreenButton({
+  active,
+  disabled,
+  onClick,
+}: {
+  active: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  const label = active ? 'Выйти из fullscreen' : 'На весь экран'
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={cn(
+              'inline-flex self-center',
+              disabled && 'cursor-not-allowed',
+            )}
+          >
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onClick}
+              className="flex size-9 shrink-0 items-center justify-center text-white/60 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-40"
+            >
+              {active ? (
+                <Minimize2Icon className="size-5" />
+              ) : (
+                <Maximize2Icon className="size-5" />
+              )}
+            </button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8} className="z-[430]">
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 

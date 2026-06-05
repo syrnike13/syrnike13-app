@@ -43,8 +43,6 @@ describe('StageMediaTile', () => {
         displayName="Remote User"
         variant="fullscreen"
         onFocus={vi.fn()}
-        onFullscreen={vi.fn()}
-        onExitFullscreen={vi.fn()}
         onOpenPopout={vi.fn()}
         onSetSubscribed={vi.fn()}
       />,
@@ -56,9 +54,7 @@ describe('StageMediaTile', () => {
     expect(tile.style.aspectRatio).toBe('')
   })
 
-  it('keeps fullscreen tile action buttons clickable', () => {
-    const onFullscreen = vi.fn()
-    const onExitFullscreen = vi.fn()
+  it('keeps popout tile action button clickable', () => {
     const onOpenPopout = vi.fn()
 
     render(
@@ -67,20 +63,13 @@ describe('StageMediaTile', () => {
         displayName="Remote User"
         variant="fullscreen"
         onFocus={vi.fn()}
-        onFullscreen={onFullscreen}
-        onExitFullscreen={onExitFullscreen}
         onOpenPopout={onOpenPopout}
         onSetSubscribed={vi.fn()}
       />,
     )
 
-    const buttons = Array.from(document.querySelectorAll('button'))
-
-    fireEvent.click(buttons[0])
-    fireEvent.click(buttons[1])
+    fireEvent.click(screen.getByTitle('В отдельном окне'))
 
     expect(onOpenPopout).toHaveBeenCalledWith(screenItem.id)
-    expect(onFullscreen).not.toHaveBeenCalled()
-    expect(onExitFullscreen).toHaveBeenCalledOnce()
   })
 })

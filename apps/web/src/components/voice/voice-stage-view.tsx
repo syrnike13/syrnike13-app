@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import {
-  Maximize2Icon,
-  MessageSquareIcon,
-  Minimize2Icon,
-  Volume2Icon,
-} from 'lucide-react'
+import { MessageSquareIcon, Volume2Icon } from 'lucide-react'
 import type { Channel, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
-import { VoiceStageControls } from '#/components/voice/voice-stage-controls'
+import {
+  VoiceStageControls,
+  VoiceStageFullscreenButton,
+} from '#/components/voice/voice-stage-controls'
 import { VoiceStageInviteTile } from '#/components/voice/voice-stage-tile'
 import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
 import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
@@ -33,7 +30,9 @@ import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   shouldShowVoiceInviteSlot,
   voiceStageContentInsetClass,
+  voiceStageControlsChromeCenterClass,
   voiceStageControlsChromeClass,
+  voiceStageControlsChromeTrailingClass,
   voiceStageGridClass,
 } from '#/components/voice/voice-stage-layout'
 import {
@@ -63,15 +62,6 @@ function participantDisplayName(
   if (userId === currentUserId) return 'Вы'
   const user = users[userId]
   return user?.display_name ?? user?.username ?? 'Участник'
-}
-
-function defaultFullscreenItem(items: readonly VoiceStageMediaItem[]) {
-  return (
-    items.find((item) => item.kind === 'screen' && item.live) ??
-    items.find((item) => item.kind === 'camera' && item.live) ??
-    items[0] ??
-    null
-  )
 }
 
 export function VoiceStageView({
@@ -144,9 +134,8 @@ export function VoiceStageView({
     layoutMode === 'focus'
       ? mediaItems.find((item) => item.id === voice.focusedMediaId) ?? null
       : null
-  const fullscreenItem =
-    mediaItems.find((item) => item.id === voice.focusedMediaId) ??
-    defaultFullscreenItem(mediaItems)
+  const canToggleStageFullscreen =
+    participants.length > 0 || mediaItems.length > 0
   const popoutItem =
     mediaItems.find((item) => item.id === popout?.mediaId) ?? null
 
@@ -173,22 +162,18 @@ export function VoiceStageView({
     [layoutMode, voice],
   )
 
-  const openFullscreen = useCallback(
-    (mediaId: string) => {
-      voice.setFocusedMediaId(mediaId)
-      if (!voice.stageFullscreen) {
+  useEffect(() => {
+    if (!voice.stageFullscreen) return
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
         voice.toggleStageFullscreen()
       }
-    },
-    [voice],
-  )
-
-  const toggleFullscreenFromHeader = useCallback(() => {
-    if (!voice.stageFullscreen && fullscreenItem) {
-      voice.setFocusedMediaId(fullscreenItem.id)
     }
-    voice.toggleStageFullscreen()
-  }, [fullscreenItem, voice])
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [voice.stageFullscreen, voice])
 
   const openPopout = useCallback((mediaId: string) => {
     const childWindow = window.open(
@@ -233,8 +218,6 @@ export function VoiceStageView({
         speaking={inThisVoiceCall && voice.speakingUserIds.has(item.userId)}
         variant={variant}
         onFocus={focusMedia}
-        onFullscreen={openFullscreen}
-        onExitFullscreen={voice.toggleStageFullscreen}
         onOpenPopout={openPopout}
         onSetSubscribed={voice.setStageMediaSubscribed}
         onStreamAspectRatioChange={onStreamAspectRatioChange}
@@ -244,7 +227,6 @@ export function VoiceStageView({
       auth.user?._id,
       focusMedia,
       inThisVoiceCall,
-      openFullscreen,
       openPopout,
       participantsById,
       users,
@@ -256,7 +238,10 @@ export function VoiceStageView({
   return (
     <div
       ref={stageRef}
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black text-foreground"
+      className={cn(
+        'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-black text-foreground',
+        voice.stageFullscreen && 'fixed inset-0 z-[300]',
+      )}
     >
       <div
         className={cn(
@@ -296,21 +281,6 @@ export function VoiceStageView({
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h1>
         <Button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="size-9 shrink-0"
-          title={voice.stageFullscreen ? 'Выйти из fullscreen' : 'На весь экран'}
-          disabled={!fullscreenItem}
-          onClick={toggleFullscreenFromHeader}
-        >
-          {voice.stageFullscreen ? (
-            <Minimize2Icon className="size-5" />
-          ) : (
-            <Maximize2Icon className="size-5" />
-          )}
-        </Button>
-        <Button
-          type="button"
           variant={chatOpen ? 'secondary' : 'ghost'}
           size="icon"
           className="size-9 shrink-0"
@@ -329,27 +299,23 @@ export function VoiceStageView({
           voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
       >
-        <VoiceStageControls
-          channelId={channelId}
-          inCall={inThisVoiceCall}
-          connecting={connecting}
-          overlay
-        />
+        <div aria-hidden />
+        <div className={voiceStageControlsChromeCenterClass}>
+          <VoiceStageControls
+            channelId={channelId}
+            inCall={inThisVoiceCall}
+            connecting={connecting}
+            overlay
+          />
+        </div>
+        <div className={voiceStageControlsChromeTrailingClass}>
+          <VoiceStageFullscreenButton
+            active={voice.stageFullscreen}
+            disabled={!canToggleStageFullscreen}
+            onClick={voice.toggleStageFullscreen}
+          />
+        </div>
       </div>
-
-      {voice.stageFullscreen && fullscreenItem
-        ? createPortal(
-            <FullscreenStageOverlay
-              channelId={channelId}
-              connecting={connecting}
-              inCall={inThisVoiceCall}
-              item={fullscreenItem}
-              renderTile={renderTile}
-              onExit={voice.toggleStageFullscreen}
-            />,
-            document.body,
-          )
-        : null}
 
       {popout && popoutItem ? (
         <VoiceStagePopout
@@ -378,77 +344,6 @@ export function VoiceStageView({
           </div>
         </VoiceStagePopout>
       ) : null}
-    </div>
-  )
-}
-
-function FullscreenStageOverlay({
-  channelId,
-  connecting,
-  inCall,
-  item,
-  renderTile,
-  onExit,
-}: {
-  channelId: string
-  connecting: boolean
-  inCall: boolean
-  item: VoiceStageMediaItem
-  renderTile: (
-    item: VoiceStageMediaItem,
-    variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
-  ) => ReactNode
-  onExit: () => void
-}) {
-  const { stageRef, chromeVisible } = useVoiceStageChromeVisible()
-
-  return (
-    <div
-      ref={stageRef}
-      className="fixed inset-0 z-[300] overflow-hidden bg-black text-white"
-    >
-      <div
-        className={cn(
-          'flex size-full items-center justify-center overflow-hidden',
-          voiceStageContentInsetClass,
-        )}
-      >
-        {renderTile(item, 'fullscreen')}
-      </div>
-
-      <div
-        data-voice-stage-chrome
-        className={cn(
-          'absolute top-3 right-3 z-50',
-          voiceStageChromeMotion(chromeVisible, 'top'),
-        )}
-      >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-9 rounded-full bg-black/60 text-white hover:bg-black/80 hover:text-white"
-          title="Выйти из fullscreen"
-          onClick={onExit}
-        >
-          <Minimize2Icon className="size-5" />
-        </Button>
-      </div>
-
-      <div
-        data-voice-stage-chrome
-        className={cn(
-          voiceStageControlsChromeClass,
-          voiceStageChromeMotion(chromeVisible, 'bottom'),
-        )}
-      >
-        <VoiceStageControls
-          channelId={channelId}
-          inCall={inCall}
-          connecting={connecting}
-          overlay
-        />
-      </div>
     </div>
   )
 }
