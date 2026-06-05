@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildStageMediaItems,
+  sortStageMediaItemsForGrid,
   type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
 
@@ -190,5 +191,23 @@ describe('buildStageMediaItems', () => {
         },
       }).map((item) => item.id),
     ).toEqual([`${LOCAL_USER_ID}:camera`, `${REMOTE_USER_ID}:screen`])
+  })
+})
+
+describe('sortStageMediaItemsForGrid', () => {
+  it('places screen shares and cameras before avatar tiles', () => {
+    const items = [
+      { id: 'a:avatar', kind: 'avatar' as const },
+      { id: 'b:screen', kind: 'screen' as const },
+      { id: 'c:camera', kind: 'camera' as const },
+      { id: 'd:avatar', kind: 'avatar' as const },
+    ]
+
+    expect(sortStageMediaItemsForGrid(items).map((item) => item.id)).toEqual([
+      'b:screen',
+      'c:camera',
+      'a:avatar',
+      'd:avatar',
+    ])
   })
 })

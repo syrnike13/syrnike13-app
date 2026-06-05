@@ -1,4 +1,21 @@
 export type StageMediaKind = 'screen' | 'camera' | 'avatar'
+
+const STAGE_MEDIA_GRID_KIND_ORDER: Record<StageMediaKind, number> = {
+  screen: 0,
+  camera: 1,
+  avatar: 2,
+}
+
+/** Демонстрации и камеры — в начале сетки стейджа, аватары без видео — в конце. */
+export function sortStageMediaItemsForGrid<T extends { kind: StageMediaKind }>(
+  items: readonly T[],
+): T[] {
+  return [...items].sort(
+    (left, right) =>
+      STAGE_MEDIA_GRID_KIND_ORDER[left.kind] -
+      STAGE_MEDIA_GRID_KIND_ORDER[right.kind],
+  )
+}
 export type StageMediaTrackSource = 'screen' | 'camera'
 
 export type StageMediaParticipant = {

@@ -27,13 +27,16 @@ import {
 } from '#/features/voice/voice-stage-mode'
 import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-provider'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
+import { sortStageMediaItemsForGrid } from '#/features/voice/voice-stage-media'
 import {
   shouldShowVoiceInviteSlot,
   voiceStageContentInsetClass,
   voiceStageControlsChromeCenterClass,
   voiceStageControlsChromeClass,
   voiceStageControlsChromeTrailingClass,
-  voiceStageGridClass,
+  voiceStageGridContainerClass,
+  voiceStageGridOuterClass,
+  voiceStageGridSlotClass,
 } from '#/components/voice/voice-stage-layout'
 import {
   useVoiceStageChromeVisible,
@@ -124,6 +127,10 @@ export function VoiceStageView({
     [participants],
   )
   const mediaItems = voice.stageMediaItems
+  const gridMediaItems = useMemo(
+    () => sortStageMediaItemsForGrid(mediaItems),
+    [mediaItems],
+  )
   const mediaIds = useMemo(() => mediaItems.map((item) => item.id), [mediaItems])
   const layoutMode = resolveStageLayoutMode({
     requestedMode,
@@ -148,6 +155,8 @@ export function VoiceStageView({
     layoutMode === 'grid' &&
     !voice.stageFullscreen &&
     shouldShowVoiceInviteSlot(participants.length)
+
+  const gridSlotCount = gridMediaItems.length + (showInviteSlot ? 1 : 0)
 
   const focusMedia = useCallback(
     (mediaId: string) => {
@@ -254,18 +263,31 @@ export function VoiceStageView({
         ) : focusedItem ? (
           <VoiceStageFocusStage
             focusedItem={focusedItem}
-            mediaItems={mediaItems}
+            mediaItems={gridMediaItems}
             renderTile={renderTile}
           />
         ) : (
-          <div
-            className={cn(
-              'mx-auto grid min-h-0 w-full max-w-[96rem] flex-1 auto-rows-min content-center items-center justify-center gap-2 overflow-y-auto sm:gap-3',
-              voiceStageGridClass(mediaItems.length + (showInviteSlot ? 1 : 0)),
-            )}
-          >
-            {mediaItems.map((item) => renderTile(item, 'grid'))}
-            {showInviteSlot ? <VoiceStageInviteTile channelId={channelId} /> : null}
+          <div className={voiceStageGridOuterClass}>
+            <div className={voiceStageGridContainerClass(gridSlotCount)}>
+              {gridMediaItems.map((item, index) => (
+                <div
+                  key={item.id}
+                  className={voiceStageGridSlotClass(gridSlotCount, index)}
+                >
+                  {renderTile(item, 'grid')}
+                </div>
+              ))}
+              {showInviteSlot ? (
+                <div
+                  className={voiceStageGridSlotClass(
+                    gridSlotCount,
+                    gridMediaItems.length,
+                  )}
+                >
+                  <VoiceStageInviteTile channelId={channelId} />
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </div>

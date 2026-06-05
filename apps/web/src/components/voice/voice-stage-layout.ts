@@ -41,35 +41,75 @@ export const voiceStageFilmstripTightTopClass = 'gap-2 px-1 pb-1 pt-0' as const
 /** Зазор основной плитки и ленты: 8px (место под ring-2 сверху превью). */
 export const voiceStageFocusStackGapClass = 'gap-2' as const
 
-/** Сетка плиток 16:9 под число слотов (участники + опционально invite). */
-export function voiceStageGridClass(slotCount: number) {
-  if (slotCount <= 0) return 'grid-cols-1'
+/** Обёртка: центрирует сетку по вертикали и горизонтали в области стейджа. */
+export const voiceStageGridOuterClass =
+  'mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 items-center justify-center overflow-y-auto' as const
 
-  if (slotCount === 1) {
-    return cn('grid-cols-1')
-  }
-
-  if (slotCount === 2) {
-    return cn('grid-cols-1 sm:grid-cols-2')
+/** Сетка плиток: на sm+ — 2/3/4 колонки, неполный ряд — «пирамида». */
+export function voiceStageGridContainerClass(slotCount: number) {
+  if (slotCount <= 1) {
+    return 'grid w-full max-w-5xl auto-rows-min grid-cols-1'
   }
 
   if (slotCount <= 4) {
-    return cn('grid-cols-1 sm:grid-cols-2')
+    return 'grid w-full auto-rows-min grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3'
   }
 
   if (slotCount <= 6) {
-    return cn('grid-cols-2 md:grid-cols-3')
+    return cn(
+      'grid w-full auto-rows-min grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3',
+      'md:grid-cols-3',
+    )
   }
 
   if (slotCount <= 9) {
-    return cn('grid-cols-2 md:grid-cols-3 lg:grid-cols-3')
+    return cn(
+      'grid w-full auto-rows-min grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3',
+      'md:grid-cols-3',
+    )
   }
 
   if (slotCount <= 12) {
-    return cn('grid-cols-2 sm:grid-cols-3 lg:grid-cols-4')
+    return cn(
+      'grid w-full auto-rows-min grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3',
+      'md:grid-cols-3 lg:grid-cols-4',
+    )
   }
 
-  return cn('grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5')
+  return cn(
+    'grid w-full auto-rows-min grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3',
+    'md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
+  )
+}
+
+/** Позиция слота: центрирование одиночной плитки в неполном ряду. */
+export function voiceStageGridSlotClass(slotCount: number, index: number) {
+  if (slotCount <= 1) {
+    return 'w-full min-w-0 max-w-5xl'
+  }
+
+  const classes = ['min-w-0 w-full']
+
+  const isLast = index === slotCount - 1
+
+  if (slotCount % 2 === 1 && isLast) {
+    classes.push(
+      'sm:col-span-2 sm:justify-self-center sm:w-[calc(50%-0.25rem)] sm:max-w-[calc(50%-0.25rem)]',
+    )
+  }
+
+  if (slotCount > 4) {
+    const remainder = slotCount % 3
+    if (remainder === 1 && isLast) {
+      classes.push(
+        'md:col-span-3 md:justify-self-center md:w-[calc(33.333%-0.34rem)] md:max-w-[calc(33.333%-0.34rem)]',
+      )
+    } else if (remainder === 2 && index === slotCount - 2) {
+      classes.push('md:col-start-2')
+    }
+  }
+
+  return cn(...classes)
 }
 
 export function shouldShowVoiceInviteSlot(participantCount: number) {
