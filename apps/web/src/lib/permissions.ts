@@ -23,6 +23,22 @@ type OverrideField = { a: number; d: number }
 
 type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
 
+function clampMemberVoicePermissions(permissions: number, member: Member) {
+  let next = permissions
+  if (member.can_publish === false) {
+    next = permissionAndNot(
+      next,
+      permissionOr(ChannelPermission.Speak, ChannelPermission.Video),
+    )
+  }
+
+  if (member.can_receive === false) {
+    next = permissionAndNot(next, ChannelPermission.Listen)
+  }
+
+  return next
+}
+
 export function applyOverride(
   permissions: number,
   override: OverrideField | null | undefined,
@@ -64,18 +80,7 @@ export function calculateServerPermissions(
     permissions = permissionAnd(permissions, ALLOW_IN_TIMEOUT)
   }
 
-  if (member.can_publish === false) {
-    permissions = permissionAndNot(
-      permissions,
-      permissionOr(ChannelPermission.Speak, ChannelPermission.Video),
-    )
-  }
-
-  if (member.can_receive === false) {
-    permissions = permissionAndNot(permissions, ChannelPermission.Listen)
-  }
-
-  return permissions
+  return clampMemberVoicePermissions(permissions, member)
 }
 
 export function calculateChannelPermissions(
@@ -108,6 +113,8 @@ export function calculateChannelPermissions(
   if (member.timeout && new Date(member.timeout) > new Date()) {
     permissions = permissionAnd(permissions, ALLOW_IN_TIMEOUT)
   }
+
+  permissions = clampMemberVoicePermissions(permissions, member)
 
   if (!hasChannelPermission(permissions, ChannelPermission.ViewChannel)) {
     return 0
@@ -166,6 +173,15 @@ export function canEditMember(
   if (!actorUserId) return false
   if (actorUserId === targetMember._id.user) return true
   if (server.owner === actorUserId) return true
+
+  const serverPermissions = calculateServerPermissions(
+    server,
+    actorMember,
+    actorUserId,
+  )
+  if (!hasChannelPermission(serverPermissions, ChannelPermission.AssignRoles)) {
+    return false
+  }
 
   return (
     getMemberRank(server, targetMember) > getMemberRank(server, actorMember)

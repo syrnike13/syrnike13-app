@@ -3,7 +3,6 @@ import type { Member, Role, Server } from '@syrnike13/api-types'
 import {
   canAssignRole,
   canEditMember,
-  getMemberRank,
 } from '#/lib/permissions'
 import { sortRolesByRankDesc } from '#/lib/server-permissions'
 
@@ -81,9 +80,5 @@ export function canToggleMemberRole(
   }
 
   if (server.owner === actorUserId) return true
-  if (actorUserId === targetMember._id.user) {
-    return (role.rank ?? 0) > getMemberRank(server, actorMember)
-  }
-
   return canAssignRole(server, actorMember, actorUserId, role.rank ?? 0)
 }
