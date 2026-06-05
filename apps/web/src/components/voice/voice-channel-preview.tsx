@@ -11,8 +11,8 @@ import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
-/** Совпадает с началом названия канала: px-3 + icon 16px + gap-2 */
-const VOICE_PREVIEW_TEXT_INSET = 'pl-9' as const
+/** Начало аватарки = начало названия канала: px-2 + icon 16px + gap-2 − px-2 строки */
+const VOICE_PREVIEW_TEXT_INSET = 'pl-6' as const
 
 type VoiceChannelPreviewProps = {
   channelId: string

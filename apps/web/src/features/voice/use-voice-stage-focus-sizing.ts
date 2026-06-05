@@ -1,21 +1,14 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useState, type RefObject } from 'react'
 
-import {
-  computeVoiceStageFocusLayout,
-  type VoiceStageFocusLayout,
-} from '#/features/voice/voice-stage-focus-sizing'
-
-const EMPTY_LAYOUT: VoiceStageFocusLayout = {
-  focus: { width: 0, height: 0 },
-  stripTile: { width: 0, height: 0 },
-}
+import { computeVoiceStageFocusLayout } from '#/features/voice/voice-stage-focus-sizing'
 
 export function useVoiceStageFocusSizing(
   containerRef: RefObject<HTMLElement | null>,
   aspectRatio: number,
   stripCount: number,
+  collapsedStripChrome = false,
 ) {
-  const [layout, setLayout] = useState<VoiceStageFocusLayout>(EMPTY_LAYOUT)
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
     const element = containerRef.current
@@ -23,21 +16,33 @@ export function useVoiceStageFocusSizing(
 
     const update = () => {
       const rect = element.getBoundingClientRect()
-      setLayout(
-        computeVoiceStageFocusLayout(
-          rect.width,
-          rect.height,
-          aspectRatio,
-          stripCount,
-        ),
-      )
+      setContainerSize({
+        width: Math.floor(rect.width),
+        height: Math.floor(rect.height),
+      })
     }
 
     update()
     const observer = new ResizeObserver(update)
     observer.observe(element)
     return () => observer.disconnect()
-  }, [aspectRatio, containerRef, stripCount])
+  }, [containerRef])
 
-  return layout
+  return useMemo(
+    () =>
+      computeVoiceStageFocusLayout(
+        containerSize.width,
+        containerSize.height,
+        aspectRatio,
+        stripCount,
+        collapsedStripChrome,
+      ),
+    [
+      aspectRatio,
+      collapsedStripChrome,
+      containerSize.height,
+      containerSize.width,
+      stripCount,
+    ],
+  )
 }

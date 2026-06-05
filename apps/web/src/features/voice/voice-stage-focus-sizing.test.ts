@@ -35,4 +35,29 @@ describe('computeVoiceStageFocusLayout', () => {
       2,
     )
   })
+
+  it('grows focus to fill height when the strip is collapsed', () => {
+    const withStrip = computeVoiceStageFocusLayout(1200, 500, 16 / 9, 2)
+    const collapsed = computeVoiceStageFocusLayout(1200, 500, 16 / 9, 0, true)
+
+    expect(collapsed.focus.height).toBeGreaterThan(withStrip.focus.height)
+    expect(collapsed.focus.width).toBeGreaterThan(withStrip.focus.width)
+    expect(collapsed.focus.height / collapsed.focus.width).toBeCloseTo(9 / 16, 2)
+  })
+
+  it('uses full container width when the strip is collapsed on ultra-wide stages', () => {
+    const capped = computeVoiceStageFocusLayout(1600, 700, 16 / 9, 0)
+    const collapsed = computeVoiceStageFocusLayout(1600, 1000, 16 / 9, 0, true)
+
+    expect(capped.focus.width).toBe(VOICE_STAGE_FOCUS_MAX_WIDTH_PX)
+    expect(collapsed.focus.width).toBe(1600)
+  })
+
+  it('does not reserve strip tiles when there is no strip', () => {
+    const layout = computeVoiceStageFocusLayout(800, 600, 16 / 9, 0)
+
+    expect(layout.stripTile.width).toBe(0)
+    expect(layout.stripTile.height).toBe(0)
+    expect(layout.focus.height / layout.focus.width).toBeCloseTo(9 / 16, 2)
+  })
 })

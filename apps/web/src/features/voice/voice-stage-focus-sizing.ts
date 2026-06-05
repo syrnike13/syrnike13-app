@@ -6,6 +6,8 @@ export const VOICE_STAGE_STRIP_TILE_ASPECT = 16 / 9
 
 const FOCUS_STACK_GAP_PX = 8
 const FOCUS_MIN_HEIGHT_PX = 120
+/** Кнопка «Показать превью» (28px) + зазор под фокусом (8px). */
+const COLLAPSED_STRIP_CHROME_PX = 36
 const STRIP_ROW_PADDING_PX = 8
 const STRIP_TILE_GAP_PX = 8
 const STRIP_TILE_MAX_WIDTH_PX = 224
@@ -37,6 +39,22 @@ function stripRowHeight(stripTileWidth: number): number {
   return stripTileWidth / VOICE_STAGE_STRIP_TILE_ASPECT + STRIP_ROW_PADDING_PX
 }
 
+function fitAspectRatioInBox(
+  boxWidth: number,
+  boxHeight: number,
+  aspectRatio: number,
+): { width: number; height: number } {
+  let width = boxWidth
+  let height = width / aspectRatio
+
+  if (height > boxHeight) {
+    height = boxHeight
+    width = height * aspectRatio
+  }
+
+  return { width, height }
+}
+
 /** @deprecated use computeVoiceStageFocusLayout */
 export function computeVoiceStageFocusSize(
   containerWidth: number,
@@ -57,6 +75,7 @@ export function computeVoiceStageFocusLayout(
   containerHeight: number,
   streamAspectRatio: number,
   stripCount: number,
+  collapsedStripChrome = false,
 ): VoiceStageFocusLayout {
   if (containerWidth <= 0 || containerHeight <= 0 || streamAspectRatio <= 0) {
     return {
@@ -65,7 +84,27 @@ export function computeVoiceStageFocusLayout(
     }
   }
 
-  const widthCap = Math.min(containerWidth, VOICE_STAGE_FOCUS_MAX_WIDTH_PX)
+  const widthCap =
+    collapsedStripChrome && stripCount <= 0
+      ? containerWidth
+      : Math.min(containerWidth, VOICE_STAGE_FOCUS_MAX_WIDTH_PX)
+
+  if (stripCount <= 0) {
+    const chromeHeight = collapsedStripChrome ? COLLAPSED_STRIP_CHROME_PX : 0
+    const focusBoxHeight = Math.max(
+      FOCUS_MIN_HEIGHT_PX,
+      containerHeight - FOCUS_STACK_GAP_PX - chromeHeight,
+    )
+    const focus = fitAspectRatioInBox(widthCap, focusBoxHeight, streamAspectRatio)
+
+    return {
+      focus: {
+        width: Math.max(0, Math.floor(focus.width)),
+        height: Math.max(0, Math.floor(focus.height)),
+      },
+      stripTile: { width: 0, height: 0 },
+    }
+  }
   let stripTileWidth = stripTileWidthForContainer(containerWidth, stripCount)
   let stripHeight = stripRowHeight(stripTileWidth)
 
