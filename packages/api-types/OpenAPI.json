@@ -10791,7 +10791,8 @@
         "required": [
           "_id",
           "name",
-          "permissions"
+          "permissions",
+          "mentionable"
         ],
         "properties": {
           "_id": {
@@ -10817,6 +10818,10 @@
           },
           "hoist": {
             "description": "Whether this role should be shown separately on the member sidebar",
+            "type": "boolean"
+          },
+          "mentionable": {
+            "description": "Whether anyone can mention this role without the Mention Roles permission",
             "type": "boolean"
           },
           "rank": {
@@ -11006,6 +11011,14 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Category"
+            },
+            "nullable": true
+          },
+          "channels": {
+            "description": "Channel order for server",
+            "type": "array",
+            "items": {
+              "type": "string"
             },
             "nullable": true
           },
@@ -11433,6 +11446,11 @@
           },
           "hoist": {
             "description": "Whether this role should be displayed separately",
+            "type": "boolean",
+            "nullable": true
+          },
+          "mentionable": {
+            "description": "Whether anyone can mention this role without the Mention Roles permission",
             "type": "boolean",
             "nullable": true
           },

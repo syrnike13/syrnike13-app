@@ -47,6 +47,7 @@ pub async fn edit(
             name,
             colour,
             hoist,
+            mentionable,
             icon,
             remove,
             ..
@@ -67,6 +68,7 @@ pub async fn edit(
             name,
             colour,
             hoist,
+            mentionable,
             icon: final_icon,
             ..Default::default()
         };

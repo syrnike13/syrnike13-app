@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 
 import { ComposerEmojiPicker } from '#/components/chat/composer-emoji-picker'
 import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
+import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '#/components/ui/button'
 import { Textarea } from '#/components/ui/textarea'
 import type { SendMessageInput } from '#/features/api/messages-api'
@@ -350,10 +351,11 @@ export function MessageComposer({
               className="relative flex items-center gap-2 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground"
             >
               {pending.previewUrl ? (
-                <img
+                <FxImage
                   src={pending.previewUrl}
-                  alt=""
-                  className="size-10 rounded object-cover"
+                  rounded="md"
+                  wrapperClassName="size-10 shrink-0"
+                  className="size-10"
                 />
               ) : (
                 <span className="max-w-32 truncate">{pending.file.name}</span>

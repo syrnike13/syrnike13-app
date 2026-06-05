@@ -12,6 +12,44 @@ import {
 } from '#/components/user/user-profile-card'
 import { cn } from '#/lib/utils'
 
+function focusOutsideRelatedTarget(event: unknown): EventTarget | null {
+  if (!event || typeof event !== 'object') return null
+
+  const detail = (event as { detail?: { originalEvent?: FocusEvent } }).detail
+  const fromOriginal = detail?.originalEvent?.relatedTarget
+  if (fromOriginal != null) return fromOriginal
+
+  if ('relatedTarget' in event) {
+    return (event as { relatedTarget: EventTarget | null }).relatedTarget
+  }
+
+  return null
+}
+
+function shouldKeepProfilePopoverOpen(event: unknown): boolean {
+  const relatedTarget = focusOutsideRelatedTarget(event)
+  if (relatedTarget == null) {
+    return true
+  }
+
+  if (!(relatedTarget instanceof Element)) {
+    return false
+  }
+
+  return Boolean(
+    relatedTarget.closest('[data-slot="dialog-content"]') ||
+      relatedTarget.closest('[data-slot="dialog-overlay"]'),
+  )
+}
+
+function isRoleDialogTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return Boolean(
+    target.closest('[data-slot="dialog-content"]') ||
+      target.closest('[data-slot="dialog-overlay"]'),
+  )
+}
+
 type UserProfilePopoverProps = Omit<UserProfileCardProps, 'user' | 'onClose'> & {
   user: User
   children: ReactElement
@@ -49,6 +87,22 @@ export function UserProfilePopover({
           className,
         )}
         onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onFocusOutside={(event) => {
+          if (shouldKeepProfilePopoverOpen(event)) {
+            event.preventDefault()
+          }
+        }}
+        onInteractOutside={(event) => {
+          if (isRoleDialogTarget(event.target)) {
+            event.preventDefault()
+          }
+        }}
+        onPointerDownOutside={(event) => {
+          if (isRoleDialogTarget(event.target)) {
+            event.preventDefault()
+          }
+        }}
       >
         <UserProfileCard
           user={user}

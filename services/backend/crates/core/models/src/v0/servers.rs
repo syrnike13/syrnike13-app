@@ -9,6 +9,10 @@ use validator::Validate;
 #[cfg(feature = "rocket")]
 use rocket::FromForm;
 
+fn default_role_mentionable() -> bool {
+    true
+}
+
 auto_derived_partial!(
     /// Server
     pub struct Server {
@@ -103,6 +107,9 @@ auto_derived_partial!(
             serde(skip_serializing_if = "crate::if_false", default)
         )]
         pub hoist: bool,
+        /// Whether anyone can mention this role without the Mention Roles permission
+        #[cfg_attr(feature = "serde", serde(default = "default_role_mentionable"))]
+        pub mentionable: bool,
         /// Ranking of this role
         #[cfg_attr(feature = "serde", serde(default))]
         pub rank: i64,
@@ -240,6 +247,8 @@ auto_derived!(
         /// Category structure for server
         #[cfg_attr(feature = "validator", validate)]
         pub categories: Option<Vec<Category>>,
+        /// Channel order for server
+        pub channels: Option<Vec<String>>,
         /// System message configuration
         pub system_messages: Option<SystemMessageChannels>,
 
@@ -278,6 +287,8 @@ auto_derived!(
         pub colour: Option<String>,
         /// Whether this role should be displayed separately
         pub hoist: Option<bool>,
+        /// Whether anyone can mention this role without the Mention Roles permission
+        pub mentionable: Option<bool>,
         /// Ranking position
         ///
         /// **Removed** - no effect, use the edit server role positions route

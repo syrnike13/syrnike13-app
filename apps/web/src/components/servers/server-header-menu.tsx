@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import {
   ChevronDownIcon,
   CopyIcon,
+  FolderPlusIcon,
   LogOutIcon,
   PlusCircleIcon,
   SettingsIcon,
@@ -11,8 +12,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
+import { CreateCategoryDialog } from '#/components/channels/create-category-dialog'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
-import { ServerMenuDialog } from '#/components/servers/server-menu-dialog'
 import {
   Popover,
   PopoverContent,
@@ -75,8 +76,8 @@ export function ServerHeaderMenu({
     : null
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
   const [leaving, setLeaving] = useState(false)
 
   function openDialog(action: () => void) {
@@ -167,7 +168,14 @@ export function ServerHeaderMenu({
           {menuPermissions?.settings ? (
             <ServerHeaderMenuItem
               icon={<SettingsIcon className="size-4" />}
-              onClick={() => openDialog(() => setSettingsOpen(true))}
+              onClick={() => {
+                setMenuOpen(false)
+                void navigate({
+                  to: '/app/servers/$serverId/settings',
+                  params: { serverId },
+                  search: { tab: 'general' },
+                })
+              }}
             >
               Настройки сервера
             </ServerHeaderMenuItem>
@@ -178,6 +186,14 @@ export function ServerHeaderMenu({
               onClick={() => openDialog(() => setCreateChannelOpen(true))}
             >
               Создать канал
+            </ServerHeaderMenuItem>
+          ) : null}
+          {menuPermissions?.createChannel ? (
+            <ServerHeaderMenuItem
+              icon={<FolderPlusIcon className="size-4" />}
+              onClick={() => openDialog(() => setCreateCategoryOpen(true))}
+            >
+              Создать категорию
             </ServerHeaderMenuItem>
           ) : null}
           {showAdminSection &&
@@ -215,20 +231,19 @@ export function ServerHeaderMenu({
           onOpenChange={setInviteOpen}
         />
       ) : null}
-      {menuPermissions?.settings ? (
-        <ServerMenuDialog
-          serverId={serverId}
-          serverName={serverName}
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-        />
-      ) : null}
       {menuPermissions?.createChannel ? (
-        <CreateChannelDialog
-          serverId={serverId}
-          open={createChannelOpen}
-          onOpenChange={setCreateChannelOpen}
-        />
+        <>
+          <CreateChannelDialog
+            serverId={serverId}
+            open={createChannelOpen}
+            onOpenChange={setCreateChannelOpen}
+          />
+          <CreateCategoryDialog
+            serverId={serverId}
+            open={createCategoryOpen}
+            onOpenChange={setCreateCategoryOpen}
+          />
+        </>
       ) : null}
     </>
   )

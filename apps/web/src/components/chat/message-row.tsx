@@ -1,5 +1,6 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
 import { PinIcon } from 'lucide-react'
+import type { ReactElement } from 'react'
 
 import {
   MESSAGE_AVATAR_COLUMN,
@@ -13,7 +14,10 @@ import { MessageAttachments } from '#/components/chat/message-attachments'
 import { MessageReactions } from '#/components/chat/message-reactions'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
-import { memberRoleEntries } from '#/features/sync/selectors'
+import {
+  memberRoleEntries,
+  type MemberRoleEntry,
+} from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import {
@@ -71,6 +75,36 @@ function memberDisplayColor(
   return undefined
 }
 
+function MessageAuthorProfileTrigger({
+  user,
+  serverId,
+  serverName,
+  roles,
+  hideMessage,
+  children,
+}: {
+  user: User
+  serverId?: string
+  serverName?: string
+  roles?: MemberRoleEntry[]
+  hideMessage?: boolean
+  children: ReactElement
+}) {
+  return (
+    <UserProfilePopover
+      user={user}
+      serverId={serverId}
+      serverName={serverName}
+      roles={roles}
+      side="right"
+      align="start"
+      hideMessage={hideMessage}
+    >
+      {children}
+    </UserProfilePopover>
+  )
+}
+
 export function MessageRow({
   message,
   channelId,
@@ -110,6 +144,9 @@ export function MessageRow({
   const createdAt = messageCreatedAt(message)
   const timestamp = formatMessageTimestamp(createdAt)
   const nameColor = memberDisplayColor(server, member)
+  const authorRoles =
+    server && member ? memberRoleEntries(server, member) : undefined
+  const hideAuthorMessage = authorUser?._id === currentUserId
 
   return (
     <article
@@ -139,27 +176,25 @@ export function MessageRow({
         )}
       >
         {authorUser ? (
-          <div>
-            <UserProfilePopover
-              user={authorUser}
-              serverId={serverId}
-              side="right"
-              align="start"
-              hideMessage={authorUser._id === currentUserId}
+          <MessageAuthorProfileTrigger
+            user={authorUser}
+            serverId={serverId}
+            serverName={server?.name}
+            roles={authorRoles}
+            hideMessage={hideAuthorMessage}
+          >
+            <button
+              type="button"
+              className="rounded-full transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <button
-                type="button"
-                className="rounded-full focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <UserAvatar
-                  user={authorUser}
-                  className="size-10"
-                  fallbackClassName="size-10"
-                  showPresence={false}
-                />
-              </button>
-            </UserProfilePopover>
-          </div>
+              <UserAvatar
+                user={authorUser}
+                className="size-10"
+                fallbackClassName="size-10"
+                showPresence={false}
+              />
+            </button>
+          </MessageAuthorProfileTrigger>
         ) : (
           <UserAvatar
             user={authorUser}
@@ -184,12 +219,33 @@ export function MessageRow({
 
         {!compact ? (
           <header className="mb-0.5 flex min-h-5 items-baseline gap-2 leading-snug">
-            <span
-              className="truncate font-semibold"
-              style={nameColor ? { color: nameColor } : undefined}
-            >
-              {name}
-            </span>
+            {authorUser ? (
+              <MessageAuthorProfileTrigger
+                user={authorUser}
+                serverId={serverId}
+                serverName={server?.name}
+                roles={authorRoles}
+                hideMessage={hideAuthorMessage}
+              >
+                <button
+                  type="button"
+                  className={cn(
+                    'max-w-full truncate rounded-sm font-semibold text-left',
+                    'hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                  )}
+                  style={nameColor ? { color: nameColor } : undefined}
+                >
+                  {name}
+                </button>
+              </MessageAuthorProfileTrigger>
+            ) : (
+              <span
+                className="truncate font-semibold"
+                style={nameColor ? { color: nameColor } : undefined}
+              >
+                {name}
+              </span>
+            )}
             <time
               className="shrink-0 text-[11px] font-medium text-muted-foreground"
               dateTime={timestamp}

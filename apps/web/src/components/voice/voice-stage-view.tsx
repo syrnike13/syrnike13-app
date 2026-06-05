@@ -25,6 +25,7 @@ import {
   shouldShowVoiceInviteSlot,
   voiceStageGridClass,
 } from '#/components/voice/voice-stage-layout'
+import { canInviteToChannel } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
 type VoiceStageViewProps = {
@@ -55,6 +56,16 @@ export function VoiceStageView({
   const channelId = channel._id
   useChannelVoiceState(channelId)
   const users = useSyncStore((s) => s.users)
+  const server = useSyncStore((s) =>
+    channel.channel_type === 'TextChannel'
+      ? s.servers[channel.server]
+      : undefined,
+  )
+  const member = useSyncStore((s) =>
+    channel.channel_type === 'TextChannel' && auth.user?._id
+      ? s.members[`${channel.server}:${auth.user._id}`]
+      : undefined,
+  )
   const storeParticipants = useSyncStore((s) =>
     getChannelVoiceParticipants(s, channelId, auth.user?._id),
   )
@@ -72,7 +83,12 @@ export function VoiceStageView({
     inVoiceSession ? voice.deafened : undefined,
   )
 
-  const showInviteSlot = shouldShowVoiceInviteSlot(participants.length)
+  const canInvite =
+    server && channel.channel_type === 'TextChannel'
+      ? canInviteToChannel(server, channel, member, auth.user?._id)
+      : false
+  const showInviteSlot =
+    canInvite && shouldShowVoiceInviteSlot(participants.length)
   const focusUserId = voice.focusUserId
   const showInviteInGrid = showInviteSlot && !focusUserId
   const slotCount = participants.length + (showInviteInGrid ? 1 : 0)
