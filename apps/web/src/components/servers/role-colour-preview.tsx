@@ -1,3 +1,4 @@
+import { FxImage } from '#/components/ui/fx-image'
 import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
 import { cn } from '#/lib/utils'
 
@@ -60,10 +61,11 @@ export function RoleColourPreview({
             >
               <div className="flex items-center gap-2">
                 {iconUrl ? (
-                  <img
+                  <FxImage
                     src={iconUrl}
-                    alt=""
-                    className="size-6 rounded-full object-cover"
+                    rounded="full"
+                    wrapperClassName="size-6 shrink-0"
+                    className="size-6"
                   />
                 ) : (
                   <span

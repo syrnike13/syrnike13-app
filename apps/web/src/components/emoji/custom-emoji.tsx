@@ -1,3 +1,4 @@
+import { FxImage } from '#/components/ui/fx-image'
 import { customEmojiImageUrl } from '#/lib/emoji'
 import { cn } from '#/lib/utils'
 
@@ -17,12 +18,13 @@ export function CustomEmoji({
   const px = size === 'sm' ? 'size-4' : 'size-5'
 
   return (
-    <img
+    <FxImage
       src={customEmojiImageUrl(emojiId)}
       alt={name ? `:${name}:` : 'emoji'}
       title={name ? `:${name}:` : undefined}
-      className={cn('inline-block align-text-bottom object-contain', px, className)}
-      loading="lazy"
+      wrapperClassName={cn('inline-block align-text-bottom', px, className)}
+      className={px}
+      strength={0.85}
       draggable={false}
     />
   )

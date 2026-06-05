@@ -20,6 +20,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { FxImage } from '#/components/ui/fx-image'
 import { ServerSettingsRoleEditor } from '#/components/servers/server-settings-role-editor'
 import {
   useDraftRegistration,
@@ -142,10 +143,11 @@ function SortableRoleListItem({
       {...(canDrag ? { ...attributes, ...listeners } : {})}
     >
       {roleIconUrl(role.icon) ? (
-        <img
+        <FxImage
           src={roleIconUrl(role.icon)!}
-          alt=""
-          className="size-5 shrink-0 rounded-full object-cover"
+          rounded="full"
+          wrapperClassName="size-5 shrink-0"
+          className="size-5"
         />
       ) : null}
       <span className="truncate" style={roleColourStyle(role.colour)}>

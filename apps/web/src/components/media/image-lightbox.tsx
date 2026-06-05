@@ -5,7 +5,8 @@ import {
   DialogContent,
   DialogTitle,
 } from '#/components/ui/dialog'
-import { attachmentOriginalUrl } from '#/lib/media'
+import { FxImage } from '#/components/ui/fx-image'
+import { attachmentOriginalUrl, imageFileAspectRatio } from '#/lib/media'
 
 type ImageLightboxProps = {
   file: File | null
@@ -17,6 +18,7 @@ export function ImageLightbox({ file, open, onOpenChange }: ImageLightboxProps) 
   if (!file) return null
 
   const src = attachmentOriginalUrl(file)
+  const aspectRatio = imageFileAspectRatio(file)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -24,10 +26,12 @@ export function ImageLightbox({ file, open, onOpenChange }: ImageLightboxProps) 
         <DialogTitle className="sr-only">
           {file.filename ?? 'Изображение'}
         </DialogTitle>
-        <img
+        <FxImage
           src={src}
           alt={file.filename ?? 'Изображение'}
-          className="max-h-[85vh] w-full object-contain"
+          aspectRatio={aspectRatio ?? undefined}
+          objectFit="contain"
+          wrapperClassName="mx-auto max-h-[85vh] max-w-full"
         />
       </DialogContent>
     </Dialog>

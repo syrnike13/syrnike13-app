@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { RoleColourPicker } from '#/components/servers/role-colour-picker'
 import { RoleColourPreview } from '#/components/servers/role-colour-preview'
 import { RoleMembersPanel } from '#/components/servers/role-members-panel'
+import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -432,10 +433,11 @@ export function ServerSettingsRoleEditor({
             </div>
             <div className="flex items-center gap-3">
               {previewIconUrl ? (
-                <img
+                <FxImage
                   src={previewIconUrl}
-                  alt=""
-                  className="size-12 rounded-full object-cover"
+                  rounded="full"
+                  wrapperClassName="size-12 shrink-0"
+                  className="size-12"
                 />
               ) : (
                 <div className="flex size-12 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground">

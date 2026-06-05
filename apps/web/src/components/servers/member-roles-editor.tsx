@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Member, Server } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
+import { FxImage } from '#/components/ui/fx-image'
 import { Switch } from '#/components/ui/switch'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
@@ -175,10 +176,11 @@ export function MemberRolesEditor({
             >
               <div className="flex min-w-0 items-center gap-2">
                 {iconUrl ? (
-                  <img
+                  <FxImage
                     src={iconUrl}
-                    alt=""
-                    className="size-5 shrink-0 rounded-full object-cover"
+                    rounded="full"
+                    wrapperClassName="size-5 shrink-0"
+                    className="size-5"
                   />
                 ) : (
                   <span

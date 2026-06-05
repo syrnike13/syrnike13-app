@@ -26,6 +26,7 @@ import {
   type MemberRoleEntry,
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
+import { FxImage } from '#/components/ui/fx-image'
 import { cn } from '#/lib/utils'
 
 function roleDotStyle(colour: string | null) {
@@ -153,13 +154,13 @@ export function UserProfileCardHeader({
         >
           {bannerUrl ? (
             <>
-              <img
+              <FxImage
                 src={bannerUrl}
-                alt=""
-                className="size-full object-cover"
+                wrapperClassName="block h-full w-full"
+                className="h-full w-full"
               />
               <div
-                className="absolute inset-0 bg-background/30"
+                className="pointer-events-none absolute inset-0 z-[1] bg-background/30"
                 aria-hidden
               />
             </>

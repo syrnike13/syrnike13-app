@@ -14,6 +14,13 @@ export function isImageFile(file: File) {
   return file.metadata.type === 'Image'
 }
 
+export function imageFileAspectRatio(file: File): number | null {
+  if (file.metadata.type !== 'Image') return null
+  const { width, height } = file.metadata
+  if (!width || !height) return null
+  return width / height
+}
+
 export function userAvatarUrl(avatar: User['avatar']) {
   if (!avatar) return null
   return attachmentPreviewUrl(avatar)
