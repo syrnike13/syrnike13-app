@@ -5,6 +5,7 @@ import type {
   Emoji,
   Member,
   Message,
+  Role,
   Server,
   User,
 } from '@syrnike13/api-types'
@@ -800,10 +801,26 @@ export const syncStore = {
           data: Record<string, unknown>
         }
         const server = state.servers[id]
-        if (!server?.roles?.[role_id]) break
+        if (!server) break
+        const existing = server.roles?.[role_id]
         const roles = {
           ...server.roles,
-          [role_id]: { ...server.roles[role_id], ...data },
+          [role_id]: existing
+            ? { ...existing, ...data }
+            : ({ _id: role_id, ...data } as Role),
+        }
+        this.upsertServer({ ...server, roles })
+        break
+      }
+      case 'ServerRoleRanksUpdate': {
+        const { id, ranks } = event as { id: string; ranks: string[] }
+        const server = state.servers[id]
+        if (!server?.roles) break
+        const roles = { ...server.roles }
+        for (const [rank, roleId] of ranks.entries()) {
+          const role = roles[roleId]
+          if (!role) continue
+          roles[roleId] = { ...role, rank }
         }
         this.upsertServer({ ...server, roles })
         break
@@ -843,6 +860,50 @@ export const syncStore = {
       case 'EmojiDelete': {
         const { id } = event as { id: string }
         this.removeEmoji(id)
+        break
+      }
+      case 'ServerMemberUpdate': {
+        const { id, data, clear } = event as {
+          id: { server: string; user: string }
+          data: Partial<Member>
+          clear?: string[]
+        }
+        const key = `${id.server}:${id.user}`
+        const existing = state.members[key]
+        if (!existing) break
+
+        let member: Member = {
+          ...existing,
+          ...data,
+          _id: existing._id,
+        }
+
+        for (const field of clear ?? []) {
+          switch (field) {
+            case 'Roles':
+              member = { ...member, roles: [] }
+              break
+            case 'Nickname':
+              member = { ...member, nickname: undefined }
+              break
+            case 'Avatar':
+              member = { ...member, avatar: undefined }
+              break
+            case 'Timeout':
+              member = { ...member, timeout: undefined }
+              break
+            case 'CanReceive':
+              member = { ...member, can_receive: true }
+              break
+            case 'CanPublish':
+              member = { ...member, can_publish: true }
+              break
+            default:
+              break
+          }
+        }
+
+        this.upsertMembers([member])
         break
       }
       case 'ServerMemberJoin': {

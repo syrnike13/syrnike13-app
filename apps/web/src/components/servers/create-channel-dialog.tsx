@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { HashIcon, PlusIcon, Volume2Icon } from 'lucide-react'
+import { HashIcon, Volume2Icon } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
@@ -9,7 +9,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -21,18 +20,26 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { useAuth } from '#/features/auth/auth-context'
-import { createServerChannel } from '#/features/api/servers-api'
+import { createServerChannel, editServer } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
-import { normalizeServerChannel } from '#/lib/channel-voice'
+import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
+import { isServerVoiceChannel, normalizeServerChannel } from '#/lib/channel-voice'
 
 type CreateChannelDialogProps = {
   serverId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  categoryId?: string
 }
 
-export function CreateChannelDialog({ serverId }: CreateChannelDialogProps) {
+export function CreateChannelDialog({
+  serverId,
+  open,
+  onOpenChange,
+  categoryId,
+}: CreateChannelDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
-  const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [type, setType] = useState<'Text' | 'Voice'>('Text')
   const [saving, setSaving] = useState(false)
@@ -50,7 +57,36 @@ export function CreateChannelDialog({ serverId }: CreateChannelDialogProps) {
       })
       const channel = normalizeServerChannel(created, type)
       syncStore.upsertChannel(channel)
-      setOpen(false)
+
+      if (categoryId) {
+        const server = syncStore.getState().servers[serverId]
+        if (server) {
+          const isVoice = type === 'Voice'
+          const isVoiceId = (id: string) => {
+            const existing = syncStore.getState().channels[id]
+            if (existing) return isServerVoiceChannel(existing)
+            return id === channel._id && isVoice
+          }
+          const categories = appendChannelToCategory(
+            server.categories,
+            categoryId,
+            channel._id,
+            { isVoice, isVoiceId },
+          )
+          try {
+            const updated = await editServer(token, serverId, { categories })
+            syncStore.upsertServer(updated)
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? `Канал создан, но не удалось добавить в категорию: ${error.message}`
+                : 'Канал создан, но не удалось добавить в категорию',
+            )
+          }
+        }
+      }
+
+      onOpenChange(false)
       setName('')
       setType('Text')
       toast.success(`Канал «${channel.name}» создан`)
@@ -68,18 +104,7 @@ export function CreateChannelDialog({ serverId }: CreateChannelDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8 shrink-0"
-          title="Создать канал"
-        >
-          <PlusIcon className="size-4" />
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Создать канал</DialogTitle>

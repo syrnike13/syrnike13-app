@@ -26,6 +26,7 @@ import { Route as AppFriendsRouteImport } from './routes/app/friends'
 import { Route as AppDiscoverRouteImport } from './routes/app/discover'
 import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
 import { Route as AppCChannelIdRouteImport } from './routes/app/c/$channelId'
+import { Route as AppServersServerIdSettingsRouteImport } from './routes/app/servers/$serverId/settings'
 
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/app',
@@ -112,6 +113,12 @@ const AppCChannelIdRoute = AppCChannelIdRouteImport.update({
   path: '/c/$channelId',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppServersServerIdSettingsRoute =
+  AppServersServerIdSettingsRouteImport.update({
+    id: '/servers/$serverId/settings',
+    path: '/servers/$serverId/settings',
+    getParentRoute: () => AppRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -131,6 +138,7 @@ export interface FileRoutesByFullPath {
   '/login/': typeof LoginIndexRoute
   '/app/c/$channelId': typeof AppCChannelIdRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
+  '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -149,6 +157,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginIndexRoute
   '/app/c/$channelId': typeof AppCChannelIdRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
+  '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -169,6 +178,7 @@ export interface FileRoutesById {
   '/login/': typeof LoginIndexRoute
   '/app/c/$channelId': typeof AppCChannelIdRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
+  '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -190,6 +200,7 @@ export interface FileRouteTypes {
     | '/login/'
     | '/app/c/$channelId'
     | '/login/reset/$token'
+    | '/app/servers/$serverId/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -208,6 +219,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/app/c/$channelId'
     | '/login/reset/$token'
+    | '/app/servers/$serverId/settings'
   id:
     | '__root__'
     | '/'
@@ -227,6 +239,7 @@ export interface FileRouteTypes {
     | '/login/'
     | '/app/c/$channelId'
     | '/login/reset/$token'
+    | '/app/servers/$serverId/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -363,6 +376,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCChannelIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/app/servers/$serverId/settings': {
+      id: '/app/servers/$serverId/settings'
+      path: '/servers/$serverId/settings'
+      fullPath: '/app/servers/$serverId/settings'
+      preLoaderRoute: typeof AppServersServerIdSettingsRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
   }
 }
 
@@ -373,6 +393,7 @@ interface AppRouteRouteChildren {
   AppVoiceDebugRoute: typeof AppVoiceDebugRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCChannelIdRoute: typeof AppCChannelIdRoute
+  AppServersServerIdSettingsRoute: typeof AppServersServerIdSettingsRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
@@ -382,6 +403,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppVoiceDebugRoute: AppVoiceDebugRoute,
   AppIndexRoute: AppIndexRoute,
   AppCChannelIdRoute: AppCChannelIdRoute,
+  AppServersServerIdSettingsRoute: AppServersServerIdSettingsRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(

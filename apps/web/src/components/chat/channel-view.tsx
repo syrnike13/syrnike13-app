@@ -7,6 +7,7 @@ import { ChannelSettingsDialog } from '#/components/channels/channel-settings-di
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
+import { ServerChannelSearchPopover } from '#/components/chat/server-channel-search-popover'
 import { MessageComposer } from '#/components/chat/message-composer'
 import { MessageList } from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
@@ -19,6 +20,7 @@ import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,
   FLOATING_BAR_SCROLL_PAD_CLASS,
+  shellColumnHeaderClass,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 import { VoiceTextChannelDock } from '#/components/voice/voice-text-channel-dock'
@@ -92,10 +94,13 @@ export function ChannelView({
   const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
 
+  const showMemberSidebar =
+    isServerChannel && channel.channel_type === 'TextChannel'
+
   return (
-    <div className="flex min-h-0 min-w-0 flex-1">
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-shell-divider px-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-semibold">{title}</h1>
             {channel.channel_type === 'DirectMessage' && dmRecipient ? (
@@ -128,22 +133,43 @@ export function ChannelView({
             <ChannelSettingsDialog channel={channel} />
           ) : null}
           {token ? (
-            <>
-              <ChannelPinnedDialog
-                channelId={channelId}
-                token={token}
-                users={users}
-              />
-              <ChannelSearchDialog
-                channelId={channelId}
-                token={token}
-                users={users}
-              />
-            </>
+            <ChannelPinnedDialog
+              channelId={channelId}
+              token={token}
+              users={users}
+            />
           ) : null}
-        </header>
+          {token && showMemberSidebar ? (
+            <div className="lg:hidden">
+              <ServerChannelSearchPopover
+                serverId={channel.server}
+                token={token}
+                users={users}
+                variant="icon"
+              />
+            </div>
+          ) : null}
+          {token && !showMemberSidebar ? (
+            <ChannelSearchDialog
+              channelId={channelId}
+              token={token}
+              users={users}
+            />
+          ) : null}
+        </div>
+        {token && showMemberSidebar ? (
+          <div className="hidden h-full w-52 shrink-0 items-center px-2 lg:flex">
+            <ServerChannelSearchPopover
+              serverId={channel.server}
+              token={token}
+              users={users}
+            />
+          </div>
+        ) : null}
+      </header>
 
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {hasVoice && inThisVoiceCall && channel.channel_type === 'TextChannel' ? (
             <VoiceTextChannelDock channelId={channelId} />
           ) : null}
@@ -244,10 +270,8 @@ export function ChannelView({
             />
           </div>
         </div>
+        {showMemberSidebar ? <ChannelMemberSidebar channel={channel} /> : null}
       </div>
-      {isServerChannel && channel.channel_type === 'TextChannel' ? (
-        <ChannelMemberSidebar channel={channel} />
-      ) : null}
     </div>
   )
 }

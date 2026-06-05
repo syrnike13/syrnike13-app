@@ -38,17 +38,25 @@ function DeviceSelect({
   devices: MediaDeviceInfo[]
   onChange: (deviceId: string) => void
 }) {
+  const selectableDevices = devices.filter((device) => device.deviceId.length > 0)
+  const selectValue =
+    value.length > 0 &&
+    (value === 'default' ||
+      selectableDevices.some((device) => device.deviceId === value))
+      ? value
+      : 'default'
+
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-      <Select value={value} onValueChange={onChange}>
+      <Select value={selectValue} onValueChange={onChange}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="По умолчанию" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="default">По умолчанию</SelectItem>
-          {devices.map((device) => (
+          {selectableDevices.map((device) => (
             <SelectItem key={device.deviceId} value={device.deviceId}>
               {device.label || 'Устройство'}
             </SelectItem>

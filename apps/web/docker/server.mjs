@@ -48,6 +48,13 @@ async function serveAsset(req, res, pathname) {
 
     if (pathname.startsWith("/assets/")) {
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    } else if (
+      pathname === "/sw.js" ||
+      pathname === "/serviceWorker.js" ||
+      pathname === "/manifest.json" ||
+      pathname === "/manifest.webmanifest"
+    ) {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
     } else {
       res.setHeader("Cache-Control", "public, max-age=300");
     }
@@ -87,6 +94,10 @@ function writeFetchResponse(res, response) {
   response.headers.forEach((value, key) => {
     res.setHeader(key, value);
   });
+
+  if (!res.hasHeader("Cache-Control")) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  }
 
   if (response.body && response.status !== 204 && response.status !== 304) {
     Readable.fromWeb(response.body).pipe(res);

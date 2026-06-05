@@ -17,6 +17,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from '#/components/ui/context-menu'
+import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -523,11 +524,10 @@ function ProfilePreviewCard({
           )}
         >
           {bannerUrl ? (
-            <img
+            <FxImage
               src={bannerUrl}
-              alt=""
-              className="size-full object-cover"
-              aria-hidden
+              wrapperClassName="block h-full w-full"
+              className="h-full w-full"
             />
           ) : null}
           <ProfileMediaEditOverlay
@@ -549,10 +549,11 @@ function ProfilePreviewCard({
           >
             <div className="group/avatar relative size-16">
               {avatarUrl ? (
-                <img
+                <FxImage
                   src={avatarUrl}
-                  alt=""
-                  className="size-16 rounded-full border-4 border-card object-cover"
+                  rounded="full"
+                  wrapperClassName="size-16 border-4 border-card"
+                  className="size-16"
                 />
               ) : (
                 <UserAvatar
