@@ -60,7 +60,7 @@ export function VoiceStageTile({
       className={cn(
         TILE_SURFACE,
         dimmed && 'opacity-50',
-        speaking && 'ring-2 ring-primary ring-offset-2 ring-offset-black',
+        speaking && 'ring-2 ring-[#23a559] ring-offset-2 ring-offset-black',
         canFocus && 'cursor-pointer hover:brightness-110',
         focused && 'min-h-[min(50vh,24rem)]',
       )}

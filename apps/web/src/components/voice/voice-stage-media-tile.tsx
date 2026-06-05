@@ -100,7 +100,7 @@ export function StageMediaTile({
 
   const stripMediaClipClass = cn(
     'absolute inset-0 box-border overflow-hidden rounded-md bg-[#111214]',
-    speaking && 'border-2 border-primary',
+    speaking && 'border-2 border-[#23a559]',
   )
 
   return (
@@ -119,7 +119,7 @@ export function StageMediaTile({
             variant === 'grid' && 'w-full',
             variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
-            speaking && variant !== 'strip' && 'ring-2 ring-primary',
+            speaking && variant !== 'strip' && 'ring-2 ring-[#23a559]',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
           )}
           style={variant === 'strip' ? undefined : tileStyle}

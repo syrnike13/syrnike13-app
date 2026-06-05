@@ -40,33 +40,41 @@ export function VoiceParticipantRow({
   const muted = participant.server_muted || !participant.is_publishing
   const deafened = participant.server_deafened || !participant.is_receiving
 
+  const isSpeaking = speaking && !voiceElsewhere
+
   const rowClassName = cn(
     'flex min-w-0 items-center gap-2 rounded-md px-2 py-1',
     compact ? 'text-xs' : 'text-sm',
     dimmed && 'opacity-50',
     voiceElsewhere && 'text-muted-foreground',
-    speaking && !voiceElsewhere && 'bg-primary/10 text-foreground',
+    isSpeaking &&
+      'bg-gradient-to-r from-[#23a559]/25 via-[#23a559]/10 to-transparent',
   )
 
   const content = (
     <>
-      <UserAvatar
-        user={user}
+      <div
         className={cn(
-          'shrink-0',
-          compact ? 'size-6' : 'size-8',
-          voiceElsewhere && 'opacity-60',
-          speaking &&
-            !voiceElsewhere &&
-            'ring-2 ring-primary ring-offset-1 ring-offset-background',
+          'relative shrink-0 rounded-full',
+          isSpeaking &&
+            'ring-2 ring-[#23a559] ring-offset-1 ring-offset-background',
         )}
-        fallbackClassName={compact ? 'size-6 text-[10px]' : 'size-8 text-xs'}
-        showPresence={Boolean(user)}
-      />
+      >
+        <UserAvatar
+          user={user}
+          className={cn(
+            compact ? 'size-6' : 'size-8',
+            voiceElsewhere && 'opacity-60',
+          )}
+          fallbackClassName={compact ? 'size-6 text-[10px]' : 'size-8 text-xs'}
+          showPresence={false}
+        />
+      </div>
       <span
         className={cn(
           'min-w-0 flex-1 truncate',
           voiceElsewhere ? 'font-normal' : 'font-medium',
+          isSpeaking ? 'text-white' : 'text-muted-foreground',
         )}
       >
         {displayName}
@@ -107,7 +115,10 @@ export function VoiceParticipantRow({
         }
         className={cn(
           rowClassName,
-          'w-full cursor-pointer text-left transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
+          'w-full cursor-pointer text-left transition-colors focus-visible:outline-none',
+          isSpeaking
+            ? 'hover:brightness-105 data-[state=open]:brightness-105'
+            : 'hover:bg-accent focus-visible:bg-accent data-[state=open]:bg-accent',
         )}
       >
         {content}
