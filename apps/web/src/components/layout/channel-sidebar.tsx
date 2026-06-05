@@ -15,7 +15,6 @@ import {
 } from '#/features/sync/selectors'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
-import { CommandPaletteTrigger } from '#/components/command-palette/command-palette-trigger'
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { ServerMenuDialog } from '#/components/servers/server-menu-dialog'
@@ -71,7 +70,6 @@ export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
       style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
     >
       <div className={`space-y-2 border-b p-2 ${shellDivider}`}>
-        <CommandPaletteTrigger />
         <div className="flex min-w-0 items-center gap-1 px-1">
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold leading-5">
             {serverName}
