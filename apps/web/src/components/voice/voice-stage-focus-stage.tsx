@@ -1,4 +1,4 @@
-import { ChevronUpIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { Button } from '#/components/ui/button'
@@ -6,13 +6,35 @@ import { VoiceStageFilmstrip } from '#/components/voice/voice-stage-filmstrip'
 import { voiceStageFocusStackGapClass } from '#/components/voice/voice-stage-layout'
 import type { VoiceStageMediaItem } from '#/features/voice/voice-provider'
 import { useVoiceStageFocusSizing } from '#/features/voice/use-voice-stage-focus-sizing'
+import { voiceStageChromeMotion } from '#/features/voice/use-voice-stage-chrome-visible'
 import { cn } from '#/lib/utils'
 
 const DEFAULT_STREAM_ASPECT_RATIO = 16 / 9
 
+const focusStageFadeSlideClass =
+  'transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none'
+
+const voiceStageStripToggleButtonClass =
+  'size-7 rounded-full border border-white/10 bg-[#1e1f22]/95 text-white/70 shadow-sm hover:bg-white/10 hover:text-white'
+
+const FOCUS_STRIP_GAP_PX = 8
+const STRIP_TOGGLE_SIZE_PX = 28
+const STRIP_TOGGLE_INSET_PX = 8
+
+function stripToggleTopPx(focusHeight: number, stripCollapsed: boolean) {
+  if (focusHeight <= 0) return undefined
+
+  if (stripCollapsed) {
+    return focusHeight - STRIP_TOGGLE_INSET_PX - STRIP_TOGGLE_SIZE_PX
+  }
+
+  return focusHeight + FOCUS_STRIP_GAP_PX - STRIP_TOGGLE_SIZE_PX / 2
+}
+
 type VoiceStageFocusStageProps = {
   focusedItem: VoiceStageMediaItem
   mediaItems: readonly VoiceStageMediaItem[]
+  chromeVisible: boolean
   renderTile: (
     item: VoiceStageMediaItem,
     variant: 'focus' | 'strip',
@@ -23,6 +45,7 @@ type VoiceStageFocusStageProps = {
 export function VoiceStageFocusStage({
   focusedItem,
   mediaItems,
+  chromeVisible,
   renderTile,
 }: VoiceStageFocusStageProps) {
   const layoutRef = useRef<HTMLDivElement>(null)
@@ -31,10 +54,10 @@ export function VoiceStageFocusStage({
   )
   const stripItems = mediaItems.filter((item) => item.id !== focusedItem.id)
   const [stripCollapsed, setStripCollapsed] = useState(false)
-  const layout = useVoiceStageFocusSizing(
+  const { layout, stripMetrics } = useVoiceStageFocusSizing(
     layoutRef,
     streamAspectRatio,
-    stripCollapsed ? 0 : stripItems.length,
+    stripItems.length,
     stripCollapsed,
   )
 
@@ -43,54 +66,93 @@ export function VoiceStageFocusStage({
     setStripCollapsed(false)
   }, [focusedItem.id])
 
+  const stripToggleTop = stripToggleTopPx(layout.focus.height, stripCollapsed)
+
   return (
     <div className="relative flex min-h-0 min-w-0 w-full flex-1">
       <div ref={layoutRef} className="pointer-events-none absolute inset-0" aria-hidden />
       <div className="relative flex min-h-0 min-w-0 w-full flex-1 items-center justify-center overflow-x-hidden">
         <div
           className={cn(
-            'flex w-full max-w-full shrink-0 flex-col items-center',
+            'relative flex w-full max-w-full shrink-0 flex-col items-center',
             voiceStageFocusStackGapClass,
           )}
         >
           <div
-            className="max-w-full shrink-0 overflow-hidden rounded-md"
+            className="max-w-full shrink-0 transition-[width,height] duration-200 ease-out motion-reduce:transition-none"
             style={
               layout.focus.width > 0 && layout.focus.height > 0
                 ? { width: layout.focus.width, height: layout.focus.height }
                 : { width: '100%', aspectRatio: streamAspectRatio }
             }
           >
-            {renderTile(focusedItem, 'focus', setStreamAspectRatio)}
+            <div className="size-full overflow-hidden rounded-md">
+              {renderTile(focusedItem, 'focus', setStreamAspectRatio)}
+            </div>
           </div>
 
-        {stripItems.length > 0 && stripCollapsed ? (
-          <div className="flex shrink-0 justify-center">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 rounded-full border border-white/10 bg-[#1e1f22]/95 text-white/70 shadow-sm hover:bg-white/10 hover:text-white"
-              title="Показать превью"
-              aria-label="Показать превью других трансляций"
-              onClick={() => setStripCollapsed(false)}
+          {stripItems.length > 0 ? (
+            <div
+              className="grid w-full transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
+              style={{ gridTemplateRows: stripCollapsed ? '0fr' : '1fr' }}
             >
-              <ChevronUpIcon className="size-4" />
-            </Button>
-          </div>
-        ) : null}
+              <div className="overflow-hidden">
+                <div
+                  className={cn(
+                    focusStageFadeSlideClass,
+                    stripCollapsed
+                      ? 'pointer-events-none opacity-0 translate-y-2'
+                      : 'opacity-100 translate-y-0',
+                  )}
+                  aria-hidden={stripCollapsed}
+                >
+                  <VoiceStageFilmstrip
+                    items={mediaItems}
+                    focusedMediaId={focusedItem.id}
+                    tightTop
+                    tileWidth={stripMetrics.width}
+                    tileHeight={stripMetrics.height}
+                    renderTile={renderTile}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
 
-        {stripItems.length > 0 && !stripCollapsed ? (
-          <VoiceStageFilmstrip
-            items={mediaItems}
-            focusedMediaId={focusedItem.id}
-            tightTop
-            tileWidth={layout.stripTile.width}
-            tileHeight={layout.stripTile.height}
-            renderTile={renderTile}
-            onCollapse={() => setStripCollapsed(true)}
-          />
-        ) : null}
+          {stripItems.length > 0 && stripToggleTop != null ? (
+            <div
+              data-voice-stage-chrome
+              className="pointer-events-none absolute left-1/2 z-30 -translate-x-1/2 transition-[top] duration-200 ease-out motion-reduce:transition-none"
+              style={{ top: stripToggleTop }}
+            >
+              <div
+                className={cn(
+                  'pointer-events-auto',
+                  voiceStageChromeMotion(chromeVisible, 'bottom'),
+                )}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={voiceStageStripToggleButtonClass}
+                  title={stripCollapsed ? 'Показать превью' : 'Скрыть превью'}
+                  aria-label={
+                    stripCollapsed
+                      ? 'Показать превью других трансляций'
+                      : 'Скрыть превью других трансляций'
+                  }
+                  onClick={() => setStripCollapsed((value) => !value)}
+                >
+                  {stripCollapsed ? (
+                    <ChevronUpIcon className="size-4" />
+                  ) : (
+                    <ChevronDownIcon className="size-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

@@ -326,6 +326,7 @@ export function VoiceStageView({
           <VoiceStageFocusStage
             focusedItem={focusedItem}
             mediaItems={gridMediaItems}
+            chromeVisible={chromeVisible}
             renderTile={renderTile}
           />
         ) : (
