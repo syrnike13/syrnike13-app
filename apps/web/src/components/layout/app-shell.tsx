@@ -6,6 +6,7 @@ import { AppMainFrame } from '#/components/layout/app-main-frame'
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
 import { LeftSidebarStack } from '#/components/layout/left-sidebar-stack'
 import { ServerRail } from '#/components/layout/server-rail'
+import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { UserPanel } from '#/components/layout/user-panel'
 import { SecondarySidebar } from '#/components/layout/secondary-sidebar'
 import { isDmChannel } from '#/features/sync/channel-label'
@@ -84,6 +85,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-svh flex-col bg-background text-foreground">
+      <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
         <ServerRail />
 

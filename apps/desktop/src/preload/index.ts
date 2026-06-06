@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@syrnike13/platform'
 
 import type {
+  DesktopOs,
+  DesktopPlatformInfo,
   DesktopUpdateState,
   HotkeyActivationEvent,
   HotkeyAction,
@@ -10,8 +12,24 @@ import type {
   SyrnikeDesktopApi,
 } from '@syrnike13/platform'
 
+function resolveDesktopOs(): DesktopOs {
+  switch (process.platform) {
+    case 'darwin':
+      return 'darwin'
+    case 'win32':
+      return 'win32'
+    default:
+      return 'linux'
+  }
+}
+
+const platform: DesktopPlatformInfo = {
+  os: resolveDesktopOs(),
+}
+
 const syrnikeDesktop: SyrnikeDesktopApi = {
   runtime: 'desktop',
+  platform,
   getVersions() {
     return ipcRenderer.invoke(IPC.versions)
   },

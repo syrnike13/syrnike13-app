@@ -1,6 +1,13 @@
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
 
+/** ОС настольной оболочки (совпадает с Node `process.platform`). */
+export type DesktopOs = 'darwin' | 'win32' | 'linux'
+
+export interface DesktopPlatformInfo {
+  os: DesktopOs
+}
+
 export interface DesktopVersions {
   app: string
   electron: string
@@ -114,6 +121,7 @@ export type HotkeyActivationEvent = {
  */
 export interface SyrnikeDesktopApi {
   readonly runtime: 'desktop'
+  readonly platform: DesktopPlatformInfo
   getVersions(): Promise<DesktopVersions>
   window: {
     minimize(): void

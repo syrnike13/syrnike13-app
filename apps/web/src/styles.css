@@ -433,3 +433,13 @@ body,
 .profile-unsaved-reset-btn:active:not(:disabled) {
   animation: profile-unsaved-reset-btn-flash 0.22s ease-out;
 }
+
+.shell-title-bar-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.shell-title-bar-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

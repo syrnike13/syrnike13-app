@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 
 import { Button } from '#/components/ui/button'
+import { useShellTitleBarHeightPx } from '#/components/layout/shell-title-bar'
 import { usePlatform } from '#/platform/use-platform'
 import type { DesktopUpdateState } from '@syrnike13/platform'
 
 export function DesktopUpdateBanner() {
   const { desktop } = usePlatform()
+  const titleBarHeightPx = useShellTitleBarHeightPx()
   const [state, setState] = useState<DesktopUpdateState | null>(null)
   const [dismissed, setDismissed] = useState(false)
 
@@ -28,7 +30,10 @@ export function DesktopUpdateBanner() {
 
   if (state.status === 'downloading') {
     return (
-      <div className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/95 px-4 py-2 text-sm text-muted-foreground backdrop-blur">
+      <div
+        className="fixed inset-x-0 z-50 border-b border-border/60 bg-background/95 px-4 py-2 text-sm text-muted-foreground backdrop-blur"
+        style={{ top: titleBarHeightPx }}
+      >
         Загрузка обновления… {Math.round(state.percent)}%
       </div>
     )
@@ -37,7 +42,10 @@ export function DesktopUpdateBanner() {
   if (state.status !== 'ready') return null
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b border-primary/30 bg-background/95 px-4 py-2.5 text-sm backdrop-blur">
+    <div
+      className="fixed inset-x-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b border-primary/30 bg-background/95 px-4 py-2.5 text-sm backdrop-blur"
+      style={{ top: titleBarHeightPx }}
+    >
       <span>
         Доступно обновление{' '}
         <span className="font-medium text-foreground">v{state.version}</span>.

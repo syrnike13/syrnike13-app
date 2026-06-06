@@ -1,6 +1,54 @@
+import type { DesktopOs } from '@syrnike13/platform'
+
 /** Фон колонки серверов / каналов — совпадает с рельсом. */
 export const shellNavSurface =
   'bg-background text-foreground' as const
+
+/** Высота кастомной шапки окна под каждую ОС (px). */
+export const SHELL_TITLEBAR_HEIGHT_PX: Record<DesktopOs, number> = {
+  darwin: 28,
+  win32: 32,
+  linux: 32,
+}
+
+export function getShellTitleBarHeightPx(os: DesktopOs | null): number {
+  if (!os) return 0
+  return SHELL_TITLEBAR_HEIGHT_PX[os]
+}
+
+/** Отступ слева под системные traffic lights на macOS. */
+export const SHELL_TITLEBAR_MACOS_INSET_PX = 72
+
+/** Совпадает с `trafficLightPosition` в Electron (`window.ts`). */
+export const SHELL_TITLEBAR_MACOS_TRAFFIC_LIGHT_Y_PX = 12
+export const SHELL_TITLEBAR_MACOS_TRAFFIC_LIGHT_SIZE_PX = 12
+
+/** Размер кликабельной зоны стрелок на macOS. */
+export const SHELL_TITLEBAR_MACOS_NAV_BUTTON_PX = 28
+
+function getShellTitleBarMacosTrafficLightCenterPx(): number {
+  return (
+    SHELL_TITLEBAR_MACOS_TRAFFIC_LIGHT_Y_PX +
+    SHELL_TITLEBAR_MACOS_TRAFFIC_LIGHT_SIZE_PX / 2
+  )
+}
+
+/** Тонкая подстройка по вертикали относительно traffic lights. */
+export const SHELL_TITLEBAR_MACOS_NAV_OPTICAL_OFFSET_PX = 1
+
+/** top для блока навигации: центр совпадает с traffic lights. */
+export function getShellTitleBarMacosNavTopPx(
+  hitAreaHeightPx = SHELL_TITLEBAR_MACOS_NAV_BUTTON_PX,
+): number {
+  return (
+    getShellTitleBarMacosTrafficLightCenterPx() -
+    hitAreaHeightPx / 2 +
+    SHELL_TITLEBAR_MACOS_NAV_OPTICAL_OFFSET_PX
+  )
+}
+
+export const shellTitleBarDragClass = 'shell-title-bar-drag' as const
+export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 
 /** Кнопки рельса: квадрат с сильным скруглением (не круг). */
 export const railIconButtonClass = 'size-10 rounded-xl' as const

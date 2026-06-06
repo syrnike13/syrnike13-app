@@ -36,6 +36,7 @@ export function usePlatform() {
     () => ({
       runtime: desktop ? ('desktop' as const) : getSyrnikeRuntime(),
       desktop,
+      os: desktop?.platform.os ?? null,
       capabilities: getPlatformCapabilities(),
       isDesktop: Boolean(desktop),
     }),
