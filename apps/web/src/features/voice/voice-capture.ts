@@ -74,14 +74,20 @@ function supportedVideoCodecs() {
   )
 }
 
+export function isAv1ScreenShareSupported() {
+  return supportedVideoCodecs().has('av1')
+}
+
 function selectScreenShareCodec(
   quality: ScreenShareQualityName,
   preference: ScreenShareCodec,
 ): RtpVideoCodec {
-  if (preference === 'av1') return 'av1'
-
   const supported = supportedVideoCodecs()
   if (supported.size === 0) return 'vp8'
+
+  if (preference === 'av1' && supported.has('av1')) {
+    return 'av1'
+  }
 
   return (
     AUTO_CODEC_PRIORITY[quality].find((codec) => supported.has(codec)) ?? 'vp8'

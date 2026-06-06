@@ -18,6 +18,7 @@ export function SettingsDesktopPanel() {
     useState<DesktopWindowPreferences | null>(null)
   const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null)
   const [checkingUpdates, setCheckingUpdates] = useState(false)
+  const [savingCloseToTray, setSavingCloseToTray] = useState(false)
 
   useEffect(() => {
     if (!desktop) return
@@ -105,14 +106,15 @@ export function SettingsDesktopPanel() {
         <SettingsRow label="Закрывать в трей">
           <Switch
             checked={windowPreferences?.closeToTray ?? true}
-            disabled={!windowPreferences}
+            disabled={!windowPreferences || savingCloseToTray}
             onCheckedChange={(checked) => {
-              if (!desktop) return
+              if (!desktop || savingCloseToTray) return
               const previous = windowPreferences
               setWindowPreferences((current) => ({
                 ...(current ?? { closeToTray: true }),
                 closeToTray: checked,
               }))
+              setSavingCloseToTray(true)
               void desktop.window
                 .setCloseToTray(checked)
                 .then(setWindowPreferences)
@@ -123,6 +125,9 @@ export function SettingsDesktopPanel() {
                       ? error.message
                       : 'Не удалось сохранить настройку окна',
                   )
+                })
+                .finally(() => {
+                  setSavingCloseToTray(false)
                 })
             }}
           />

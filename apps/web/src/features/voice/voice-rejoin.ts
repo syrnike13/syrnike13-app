@@ -1,7 +1,5 @@
 import { toast } from 'sonner'
 
-import { eventsGateway } from '#/features/events/gateway'
-
 export const VOICE_REJOIN_DELAYS_MS = [2_000, 5_000, 10_000] as const
 
 export type VoiceRejoinAttempt = (channelId: string) => Promise<boolean>
@@ -9,7 +7,7 @@ export type VoiceRejoinAttempt = (channelId: string) => Promise<boolean>
 export type VoiceRejoinControllerOptions = {
   attemptRejoin: VoiceRejoinAttempt
   onGiveUp: () => void
-  isGatewayConnected?: () => boolean
+  isGatewayConnected: () => boolean
   now?: () => number
   scheduleTimeout?: typeof setTimeout
   clearTimeoutFn?: typeof clearTimeout
@@ -30,8 +28,7 @@ export function createVoiceRejoinController(
   const now = options.now ?? (() => Date.now())
   const scheduleTimeout = options.scheduleTimeout ?? setTimeout
   const clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout
-  const isGatewayConnected =
-    options.isGatewayConnected ?? (() => eventsGateway.state === 'connected')
+  const isGatewayConnected = options.isGatewayConnected
 
   let attempt = 0
   let timer: ReturnType<typeof setTimeout> | undefined

@@ -269,12 +269,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const voiceRejoinDepsRef = useRef({
     attemptRejoin: async (_channelId: string) => false,
     onGiveUp: () => {},
+    isGatewayConnected: () => false,
   })
   const voiceRejoinRef = useRef(
     createVoiceRejoinController({
       attemptRejoin: (channelId) =>
         voiceRejoinDepsRef.current.attemptRejoin(channelId),
       onGiveUp: () => voiceRejoinDepsRef.current.onGiveUp(),
+      isGatewayConnected: () => voiceRejoinDepsRef.current.isGatewayConnected(),
     }),
   )
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
@@ -792,8 +794,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       attemptRejoin: (channelId) =>
         performVoiceJoinRef.current(channelId, { rejoin: true }),
       onGiveUp: abortJoinAttempt,
+      isGatewayConnected: () => auth.gatewayState === 'connected',
     }
-  }, [abortJoinAttempt])
+  }, [abortJoinAttempt, auth.gatewayState])
 
   useEffect(() => {
     return eventsGateway.subscribeState((state) => {

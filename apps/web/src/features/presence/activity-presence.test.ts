@@ -7,14 +7,14 @@ import {
   IDLE_AFTER_MS,
 } from './activity-presence'
 
-function makeUser(presence: Presence): User {
+function makeUser(presence: Presence) {
   return {
     _id: 'user-1',
     username: 'tester',
     discriminator: '0001',
     online: true,
     status: { presence, text: null },
-  } as User
+  } satisfies User
 }
 
 describe('createActivityPresenceController', () => {

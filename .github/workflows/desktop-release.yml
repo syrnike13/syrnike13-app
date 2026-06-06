@@ -73,7 +73,7 @@ jobs:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630cea61b688101839b41f98 # v4.2.2
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: desktop-artifacts
@@ -116,9 +116,11 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
-          FEED="$(curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/latest.yml")"
-          FEED_VERSION="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "version" { print $2; exit }')"
-          if [ "$FEED_VERSION" != "$VERSION" ]; then
-            echo "Desktop update feed version mismatch: expected $VERSION, got ${FEED_VERSION:-<missing>}"
-            exit 1
-          fi
+          for FEED_FILE in latest.yml latest-mac.yml latest-linux.yml; do
+            FEED="$(curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/${FEED_FILE}")"
+            FEED_VERSION="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "version" { print $2; exit }')"
+            if [ "$FEED_VERSION" != "$VERSION" ]; then
+              echo "Desktop update feed ${FEED_FILE} version mismatch: expected $VERSION, got ${FEED_VERSION:-<missing>}"
+              exit 1
+            fi
+          done

@@ -25,6 +25,7 @@ import {
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 import { formatUserVolumeLabel } from '#/features/voice/voice-listener-store'
+import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
 import { cn } from '#/lib/utils'
 
 const METER_BAR_COUNT = 32
@@ -138,7 +139,14 @@ function useMicTestMeter(
   )
   const streamRef = useRef<MediaStream | null>(null)
   const contextRef = useRef<AudioContext | null>(null)
+  const gainRef = useRef<GainNode | null>(null)
   const frameRef = useRef(0)
+
+  useEffect(() => {
+    if (gainRef.current) {
+      gainRef.current.gain.value = inputVolume
+    }
+  }, [inputVolume])
 
   useEffect(() => {
     if (!active) {
@@ -175,6 +183,7 @@ function useMicTestMeter(
 
         streamRef.current = stream
         contextRef.current = context
+        gainRef.current = gain
 
         const tick = () => {
           if (cancelled) return
@@ -185,7 +194,7 @@ function useMicTestMeter(
             sum += centered * centered
           }
           const rms = Math.sqrt(sum / samples.length)
-          const level = Math.min(1, rms * 6 * inputVolume)
+          const level = Math.min(1, rms * 6)
 
           setLevels((current) =>
             current.map((previous, index) => {
@@ -208,12 +217,13 @@ function useMicTestMeter(
     return () => {
       cancelled = true
       cancelAnimationFrame(frameRef.current)
+      gainRef.current = null
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
       void contextRef.current?.close()
       contextRef.current = null
     }
-  }, [active, deviceId, inputVolume])
+  }, [active, deviceId])
 
   return levels
 }
@@ -224,11 +234,18 @@ export function SettingsVoicePanel() {
   const outputDevices = useMediaDevices('audiooutput')
   const videoDevices = useMediaDevices('videoinput')
   const [micTestActive, setMicTestActive] = useState(false)
+  const av1Supported = isAv1ScreenShareSupported()
 
   useEffect(() => {
     void ensureMediaDevicePermission('audio')
     void ensureMediaDevicePermission('video')
   }, [])
+
+  useEffect(() => {
+    if (!av1Supported && prefs.screenShareCodec === 'av1') {
+      voicePreferenceStore.setScreenShareCodec('auto')
+    }
+  }, [av1Supported, prefs.screenShareCodec])
 
   const inputValue = prefs.preferredAudioInputDevice ?? 'default'
   const outputValue = prefs.preferredAudioOutputDevice ?? 'default'
@@ -424,10 +441,16 @@ export function SettingsVoicePanel() {
             </SelectContent>
           </Select>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <label
+          className={cn(
+            'flex items-center gap-2 text-sm',
+            av1Supported ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+          )}
+        >
           <input
             type="checkbox"
             className="size-4 rounded border-input accent-primary"
+            disabled={!av1Supported}
             checked={prefs.screenShareCodec === 'av1'}
             onChange={(event) =>
               voicePreferenceStore.setScreenShareCodec(
@@ -436,6 +459,9 @@ export function SettingsVoicePanel() {
             }
           />
           AV1 (экспериментально)
+          {!av1Supported ? (
+            <span className="text-muted-foreground">— не поддерживается</span>
+          ) : null}
         </label>
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input

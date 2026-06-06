@@ -123,7 +123,9 @@ export function createActivityPresenceController(options: {
 
       const current = getUserPresenceValue(user)
       if (!PRESENCE_AUTO_IDLE_FROM.has(current)) {
-        autoIdle = false
+        if (current !== 'Idle') {
+          autoIdle = false
+        }
         return
       }
 

@@ -56,12 +56,30 @@ describe('screenShareCaptureOptions', () => {
     expect(options.publish.degradationPreference).toBe('maintain-resolution')
   })
 
-  it('uses av1 when the experimental toggle is enabled', () => {
+  it('uses av1 when the experimental toggle is enabled and av1 is advertised', () => {
+    vi.stubGlobal('RTCRtpSender', {
+      getCapabilities: () => ({
+        codecs: [{ mimeType: 'video/AV1' }],
+      }),
+    })
     voicePreferenceStore.setScreenShareCodec('av1')
 
     const options = screenShareCaptureOptions('high60')
 
     expect(options.publish.videoCodec).toBe('av1')
+  })
+
+  it('falls back from av1 preference when av1 is not advertised', () => {
+    vi.stubGlobal('RTCRtpSender', {
+      getCapabilities: () => ({
+        codecs: [{ mimeType: 'video/VP8' }],
+      }),
+    })
+    voicePreferenceStore.setScreenShareCodec('av1')
+
+    const options = screenShareCaptureOptions('high')
+
+    expect(options.publish.videoCodec).toBe('vp8')
   })
 
   it('uses vp9 automatically for high quality screen share when supported', () => {
