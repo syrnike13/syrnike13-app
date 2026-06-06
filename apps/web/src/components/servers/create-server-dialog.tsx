@@ -28,23 +28,11 @@ type CreateServerDialogProps = {
   trigger?: ReactNode
 }
 
-type DialogMode = 'create' | 'join'
-
-function resetDialogState(setters: {
-  setName: (value: string) => void
-  setInviteInput: (value: string) => void
-  setMode: (value: DialogMode) => void
-}) {
-  setters.setName('')
-  setters.setInviteInput('')
-  setters.setMode('create')
-}
-
 export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<DialogMode>('create')
+  const [mode, setMode] = useState<'create' | 'join'>('create')
   const [name, setName] = useState('')
   const [inviteInput, setInviteInput] = useState('')
   const [saving, setSaving] = useState(false)
@@ -53,7 +41,9 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
   function handleOpenChange(next: boolean) {
     setOpen(next)
     if (!next) {
-      resetDialogState({ setName, setInviteInput, setMode })
+      setName('')
+      setInviteInput('')
+      setMode('create')
     }
   }
 

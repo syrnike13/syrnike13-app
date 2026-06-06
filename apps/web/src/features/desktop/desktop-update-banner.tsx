@@ -19,11 +19,16 @@ export function DesktopUpdateBanner() {
       if (!cancelled) setState(value)
     })
 
-    return desktop.updates.onStateChange((nextState) => {
+    const unsubscribe = desktop.updates.onStateChange((nextState) => {
       if (cancelled) return
       setState(nextState)
       if (nextState.status === 'ready') setDismissed(false)
     })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [desktop])
 
   if (!desktop || !state || dismissed) return null

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouterState } from '@tanstack/react-router'
+import { useRouter, useRouterState } from '@tanstack/react-router'
 
 type HistoryEntry = {
   pathname: string
@@ -10,12 +10,22 @@ function entryKey(entry: HistoryEntry) {
   return `${entry.pathname}${entry.search}`
 }
 
+function browserHistoryIndex() {
+  if (typeof window === 'undefined') return null
+  const state: unknown = window.history.state
+  if (!state || typeof state !== 'object') return null
+  const index = 'idx' in state ? state.idx : undefined
+  return typeof index === 'number' ? index : null
+}
+
 export function useShellHistoryNav() {
+  const router = useRouter()
   const location = useRouterState({ select: (state) => state.location })
   const locationKey = `${location.pathname}${location.searchStr}`
 
   const entriesRef = useRef<HistoryEntry[]>([])
   const indexRef = useRef(0)
+  const browserIndexRef = useRef<number | null>(null)
   const [navState, setNavState] = useState({
     canGoBack: false,
     canGoForward: false,
@@ -42,12 +52,26 @@ export function useShellHistoryNav() {
     if (entries.length === 0) {
       entriesRef.current = [next]
       indexRef.current = 0
+      browserIndexRef.current = browserHistoryIndex()
       syncNavState()
       return
     }
 
     const current = entries[index]
     if (current && entryKey(current) === nextKey) return
+
+    const nextBrowserIndex = browserHistoryIndex()
+    if (
+      nextBrowserIndex !== null &&
+      browserIndexRef.current !== null &&
+      nextBrowserIndex === browserIndexRef.current
+    ) {
+      entriesRef.current[index] = next
+      syncNavState()
+      return
+    }
+
+    browserIndexRef.current = nextBrowserIndex
 
     const previous = entries[index - 1]
     if (previous && entryKey(previous) === nextKey) {
@@ -70,13 +94,13 @@ export function useShellHistoryNav() {
 
   const goBack = useCallback(() => {
     if (indexRef.current <= 0) return
-    window.history.back()
-  }, [])
+    router.history.go(-1)
+  }, [router])
 
   const goForward = useCallback(() => {
     if (indexRef.current >= entriesRef.current.length - 1) return
-    window.history.forward()
-  }, [])
+    router.history.go(1)
+  }, [router])
 
   return {
     canGoBack: navState.canGoBack,

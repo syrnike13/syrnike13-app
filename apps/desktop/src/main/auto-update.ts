@@ -12,6 +12,7 @@ let currentState: DesktopUpdateState = { status: 'idle' }
 let getWindowRef: (() => BrowserWindow | null) | null = null
 let checkTimer: ReturnType<typeof setInterval> | null = null
 let started = false
+let inFlightUpdateCheck: Promise<DesktopUpdateState> | null = null
 
 function broadcastState() {
   const win = getWindowRef?.()
@@ -30,21 +31,30 @@ export function getDesktopUpdateState() {
 
 export async function checkForDesktopUpdates() {
   if (!app.isPackaged) return currentState
+  if (inFlightUpdateCheck) return inFlightUpdateCheck
 
-  setState({ status: 'checking' })
+  inFlightUpdateCheck = (async () => {
+    setState({ status: 'checking' })
+    try {
+      await autoUpdater.checkForUpdates()
+    } catch (error) {
+      setState({
+        status: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Не удалось проверить обновления',
+      })
+    }
+
+    return currentState
+  })()
+
   try {
-    await autoUpdater.checkForUpdates()
-  } catch (error) {
-    setState({
-      status: 'error',
-      message:
-        error instanceof Error
-          ? error.message
-          : 'Не удалось проверить обновления',
-    })
+    return await inFlightUpdateCheck
+  } finally {
+    inFlightUpdateCheck = null
   }
-
-  return currentState
 }
 
 export function quitAndInstallDesktopUpdate() {

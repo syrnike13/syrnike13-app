@@ -19,7 +19,6 @@ import {
 } from 'livekit-client'
 import { toast } from 'sonner'
 
-import { ScreenShareQualityDialog } from '#/components/voice/screen-share-quality-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { joinChannelCall, patchChannelVoiceState } from '#/features/api/voice-api'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
@@ -275,7 +274,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [screenShareEnabled, setScreenShareEnabled] = useState(false)
   const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null)
   const [stageFullscreen, setStageFullscreen] = useState(false)
-  const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false)
 
   channelIdRef.current = channelId
   deafenedRef.current = deafened
@@ -952,11 +950,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
 
     const prefs = readVoicePreferences()
-    if (prefs.screenShareQualityAsk) {
-      setScreenShareDialogOpen(true)
-      return
-    }
-
     void startScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
   }, [startScreenShare])
 
@@ -1263,22 +1256,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  const prefs = readVoicePreferences()
-
   return (
-    <>
-      <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
-      <ScreenShareQualityDialog
-        open={screenShareDialogOpen}
-        defaultQuality={prefs.screenShareQuality}
-        defaultAudio={prefs.screenShareAudio}
-        onConfirm={(quality, withAudio) => {
-          setScreenShareDialogOpen(false)
-          void startScreenShare(quality, withAudio)
-        }}
-        onCancel={() => setScreenShareDialogOpen(false)}
-      />
-    </>
+    <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
   )
 }
 

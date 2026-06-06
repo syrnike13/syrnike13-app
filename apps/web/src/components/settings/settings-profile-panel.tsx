@@ -417,9 +417,6 @@ export function SettingsProfilePanel() {
               disabled
               className="text-muted-foreground"
             />
-            <p className="text-xs text-muted-foreground">
-              Смена @username — в разделе «Аккаунт» (скоро).
-            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="profile-status">Статус</Label>

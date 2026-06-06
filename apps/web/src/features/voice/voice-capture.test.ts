@@ -37,11 +37,12 @@ describe('createVoiceRoomOptions', () => {
 describe('screenShareCaptureOptions', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
-    voicePreferenceStore.setScreenShareCodec('vp8')
+    voicePreferenceStore.setScreenShareCodec('auto')
   })
 
   it('publishes screen share as one high-quality browser stream', () => {
-    voicePreferenceStore.setScreenShareCodec('vp8')
+    vi.stubGlobal('RTCRtpSender', undefined)
+
     const options = screenShareCaptureOptions('high')
 
     expect(options.capture.contentHint).toBe('motion')
@@ -55,12 +56,12 @@ describe('screenShareCaptureOptions', () => {
     expect(options.publish.degradationPreference).toBe('maintain-resolution')
   })
 
-  it('uses the selected screen share codec for publishing', () => {
-    voicePreferenceStore.setScreenShareCodec('h264')
+  it('uses av1 when the experimental toggle is enabled', () => {
+    voicePreferenceStore.setScreenShareCodec('av1')
 
     const options = screenShareCaptureOptions('high60')
 
-    expect(options.publish.videoCodec).toBe('h264')
+    expect(options.publish.videoCodec).toBe('av1')
   })
 
   it('uses vp9 automatically for high quality screen share when supported', () => {

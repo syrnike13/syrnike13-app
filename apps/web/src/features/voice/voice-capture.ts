@@ -51,15 +51,14 @@ export function createVoiceRoomOptions(): RoomOptions {
   }
 }
 
-const AUTO_CODEC_PRIORITY: Record<
-  ScreenShareQualityName,
-  Exclude<ScreenShareCodec, 'auto' | 'av1'>[]
-> = {
+type RtpVideoCodec = 'vp8' | 'h264' | 'vp9' | 'av1'
+
+const AUTO_CODEC_PRIORITY = {
   low: ['vp9', 'h264', 'vp8'],
   high: ['vp9', 'h264', 'vp8'],
   high60: ['h264', 'vp9', 'vp8'],
   text: ['vp9', 'h264', 'vp8'],
-}
+} as const satisfies Record<ScreenShareQualityName, readonly RtpVideoCodec[]>
 
 function supportedVideoCodecs() {
   const capabilities = globalThis.RTCRtpSender?.getCapabilities?.('video')
@@ -69,7 +68,7 @@ function supportedVideoCodecs() {
     codecs
       .map((codec) => codec.mimeType.toLowerCase())
       .map((mimeType) => mimeType.match(/^video\/([^;]+)/)?.[1])
-      .filter((codec): codec is Exclude<ScreenShareCodec, 'auto'> =>
+      .filter((codec): codec is RtpVideoCodec =>
         codec === 'vp8' || codec === 'h264' || codec === 'vp9' || codec === 'av1',
       ),
   )
@@ -78,8 +77,8 @@ function supportedVideoCodecs() {
 function selectScreenShareCodec(
   quality: ScreenShareQualityName,
   preference: ScreenShareCodec,
-): Exclude<ScreenShareCodec, 'auto'> {
-  if (preference !== 'auto') return preference
+): RtpVideoCodec {
+  if (preference === 'av1') return 'av1'
 
   const supported = supportedVideoCodecs()
   if (supported.size === 0) return 'vp8'

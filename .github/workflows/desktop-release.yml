@@ -50,7 +50,7 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: desktop-artifacts
       - id: version
@@ -73,7 +73,8 @@ jobs:
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: desktop-artifacts
       - name: Validate configuration
@@ -108,10 +109,16 @@ jobs:
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/data/desktop'"
           rsync -av \
             --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            -e "ssh -i ~/.ssh/deploy_key" \
             "$STAGING/" \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/data/desktop/"
       - name: Verify desktop update feed
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/latest.yml" >/dev/null
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          FEED="$(curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/latest.yml")"
+          FEED_VERSION="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "version" { print $2; exit }')"
+          if [ "$FEED_VERSION" != "$VERSION" ]; then
+            echo "Desktop update feed version mismatch: expected $VERSION, got ${FEED_VERSION:-<missing>}"
+            exit 1
+          fi

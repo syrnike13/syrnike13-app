@@ -83,8 +83,7 @@ export function SettingsModal() {
       <DialogContent
         showCloseButton={false}
         className={cn(
-          'flex h-[min(85vh,640px)] max-h-[min(90vh,640px)] w-[min(960px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0',
-          'sm:max-w-[min(960px,calc(100vw-2rem))]',
+          'flex h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-6xl gap-0 overflow-hidden p-0 sm:max-w-6xl',
         )}
       >
         <DialogTitle className="sr-only">Настройки пользователя</DialogTitle>
@@ -92,7 +91,7 @@ export function SettingsModal() {
           Параметры аккаунта, уведомлений и оформления
         </DialogDescription>
 
-        <aside className="flex w-[218px] shrink-0 flex-col border-r border-border bg-muted">
+        <aside className="flex min-h-0 w-[218px] shrink-0 flex-col border-r border-border bg-muted">
           <div className="border-b border-border/60 p-3">
             <button
               type="button"
@@ -129,7 +128,7 @@ export function SettingsModal() {
             </div>
           </div>
 
-          <ScrollArea className="min-h-0 flex-1">
+          <ScrollArea className="h-0 min-h-0 flex-1">
             <nav className="flex flex-col gap-0.5 p-2">
               <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                 Настройки пользователя
@@ -154,7 +153,7 @@ export function SettingsModal() {
         </aside>
 
         <ProfileDraftProvider>
-          <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
             <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
               <h2 className="text-xl font-semibold">
                 {settingsSectionTitle(section)}
@@ -171,10 +170,10 @@ export function SettingsModal() {
               </Button>
             </header>
 
-            <ScrollArea className="min-h-0 flex-1">
+            <ScrollArea className="h-0 min-h-0 flex-1">
               <div
                 className={cn(
-                  'px-6 py-2',
+                  'mx-auto w-full max-w-3xl px-6 py-2',
                   section === 'profile' ? 'pb-28' : 'pb-8',
                 )}
               >

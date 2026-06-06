@@ -31,6 +31,7 @@ let tray: Tray | null = null
 let quitting = false
 let desktopIpcRegistered = false
 let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
+let creatingApp: Promise<void> | null = null
 
 const isDev = !app.isPackaged
 const trayIconDataUrl =
@@ -61,15 +62,36 @@ function getDesktopPreferences() {
 }
 
 async function setCloseToTray(closeToTray: boolean) {
-  desktopPreferences = { ...desktopPreferences, closeToTray }
-  await saveDesktopPreferences(desktopPreferencesPath(), desktopPreferences)
+  const nextPreferences = { ...desktopPreferences, closeToTray }
+  await saveDesktopPreferences(desktopPreferencesPath(), nextPreferences)
+  desktopPreferences = nextPreferences
   updateTrayMenu()
   return desktopPreferences
 }
 
+async function ensureAppCreated() {
+  if (mainWindow && !mainWindow.isDestroyed()) return
+  if (creatingApp) {
+    await creatingApp
+    return
+  }
+
+  creatingApp = createApp()
+  try {
+    await creatingApp
+  } finally {
+    creatingApp = null
+  }
+}
+
 function showMainWindow() {
   if (!mainWindow) {
-    void createApp()
+    void ensureAppCreated().then(() => {
+      if (!mainWindow) return
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    })
     return
   }
   if (mainWindow.isMinimized()) mainWindow.restore()
@@ -107,7 +129,10 @@ function updateTrayMenu() {
       type: 'checkbox',
       checked: desktopPreferences.closeToTray,
       click: (item) => {
-        void setCloseToTray(item.checked)
+        void setCloseToTray(item.checked).catch((error) => {
+          console.error('[desktop] failed to save tray preference', error)
+          updateTrayMenu()
+        })
       },
     },
     { type: 'separator' },
@@ -178,7 +203,7 @@ configureChromium()
 if (setupSingleInstance()) {
   app.whenReady().then(async () => {
     desktopPreferences = await loadDesktopPreferences(desktopPreferencesPath())
-    void createApp()
+    void ensureAppCreated()
   })
 
   app.on('window-all-closed', () => {
@@ -190,7 +215,7 @@ if (setupSingleInstance()) {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void createApp()
+      void ensureAppCreated()
     }
   })
 

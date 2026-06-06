@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 import { SettingsBlock, SettingsRow } from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
@@ -44,6 +45,13 @@ export function SettingsDesktopPanel() {
     setCheckingUpdates(true)
     try {
       setUpdateState(await desktop.updates.check())
+    } catch (error) {
+      setUpdateState(null)
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось проверить обновления',
+      )
     } finally {
       setCheckingUpdates(false)
     }
@@ -51,10 +59,7 @@ export function SettingsDesktopPanel() {
 
   return (
     <div className="space-y-2">
-      <SettingsBlock
-        title="Приложение"
-        description="Настольная оболочка Electron поверх того же интерфейса, что и в браузере."
-      >
+      <SettingsBlock title="Приложение">
         <SettingsRow
           label="Версия"
           value={
@@ -71,14 +76,10 @@ export function SettingsDesktopPanel() {
         />
       </SettingsBlock>
 
-      <SettingsBlock
-        title="Обновления"
-        description="Фоновая проверка релизов на GitHub и установка при перезапуске."
-      >
+      <SettingsBlock title="Обновления">
         <SettingsRow
           label="Статус"
           value={formatUpdateStatus(updateState)}
-          hint="Обновления скачиваются автоматически, как в Discord."
         >
           <div className="flex items-center gap-2">
             {updateState?.status === 'ready' ? (
@@ -100,19 +101,14 @@ export function SettingsDesktopPanel() {
         </SettingsRow>
       </SettingsBlock>
 
-      <SettingsBlock
-        title="Окно"
-        description="Поведение настольного окна и системного трея."
-      >
-        <SettingsRow
-          label="Закрывать в трей"
-          hint="Кнопка закрытия скрывает окно, а приложение продолжает работать в фоне."
-        >
+      <SettingsBlock title="Окно">
+        <SettingsRow label="Закрывать в трей">
           <Switch
             checked={windowPreferences?.closeToTray ?? true}
             disabled={!windowPreferences}
             onCheckedChange={(checked) => {
               if (!desktop) return
+              const previous = windowPreferences
               setWindowPreferences((current) => ({
                 ...(current ?? { closeToTray: true }),
                 closeToTray: checked,
@@ -120,19 +116,23 @@ export function SettingsDesktopPanel() {
               void desktop.window
                 .setCloseToTray(checked)
                 .then(setWindowPreferences)
+                .catch((error) => {
+                  setWindowPreferences(previous)
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : 'Не удалось сохранить настройку окна',
+                  )
+                })
             }}
           />
         </SettingsRow>
       </SettingsBlock>
 
-      <SettingsBlock
-        title="Активность"
-        description="Заглушка для Rich Presence — IPC уже есть, нативный модуль подключим позже."
-      >
+      <SettingsBlock title="Активность">
         <SettingsRow
           label="Статус"
           value="Скоро: игра / просмотр / прослушивание"
-          hint="Сейчас события только логируются в main process."
         />
       </SettingsBlock>
     </div>

@@ -14,6 +14,7 @@ export type VoicePreferenceState = {
   preferredAudioInputDevice?: string
   preferredAudioOutputDevice?: string
   preferredVideoDevice?: string
+  inputVolume: number
   outputVolume: number
   echoCancellation: boolean
   noiseSuppression: NoiseSuppressionMode
@@ -24,7 +25,6 @@ export type VoicePreferenceState = {
   autoBalanceStrength: number
   screenShareQuality: ScreenShareQualityName
   screenShareCodec: ScreenShareCodec
-  screenShareQualityAsk: boolean
   screenShareAudio: boolean
 }
 
@@ -36,6 +36,7 @@ export type VoiceJoinPreferences = Pick<
 const DEFAULT_STATE: VoicePreferenceState = {
   micEnabled: true,
   deafened: false,
+  inputVolume: 1,
   outputVolume: 1,
   echoCancellation: true,
   noiseSuppression: 'browser',
@@ -46,7 +47,6 @@ const DEFAULT_STATE: VoicePreferenceState = {
   autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
   screenShareCodec: 'auto',
-  screenShareQualityAsk: true,
   screenShareAudio: true,
 }
 
@@ -81,15 +81,7 @@ function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
 }
 
 function parseScreenShareCodec(value: unknown): ScreenShareCodec {
-  if (
-    value === 'auto' ||
-    value === 'vp8' ||
-    value === 'h264' ||
-    value === 'vp9' ||
-    value === 'av1'
-  ) {
-    return value
-  }
+  if (value === 'av1') return 'av1'
   return DEFAULT_STATE.screenShareCodec
 }
 
@@ -127,6 +119,12 @@ function loadState(): VoicePreferenceState {
         typeof parsed.preferredVideoDevice === 'string'
           ? parsed.preferredVideoDevice
           : undefined,
+      inputVolume:
+        typeof parsed.inputVolume === 'number' &&
+        parsed.inputVolume >= 0 &&
+        parsed.inputVolume <= VOICE_OUTPUT_VOLUME_MAX
+          ? parsed.inputVolume
+          : DEFAULT_STATE.inputVolume,
       outputVolume:
         typeof parsed.outputVolume === 'number' &&
         parsed.outputVolume >= 0 &&
@@ -162,10 +160,6 @@ function loadState(): VoicePreferenceState {
       ),
       screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
       screenShareCodec: parseScreenShareCodec(parsed.screenShareCodec),
-      screenShareQualityAsk:
-        typeof parsed.screenShareQualityAsk === 'boolean'
-          ? parsed.screenShareQualityAsk
-          : DEFAULT_STATE.screenShareQualityAsk,
       screenShareAudio:
         typeof parsed.screenShareAudio === 'boolean'
           ? parsed.screenShareAudio
@@ -210,6 +204,7 @@ export const voicePreferenceStore = {
 
   getMicEnabled: () => state.micEnabled,
   getDeafened: () => state.deafened,
+  getInputVolume: () => state.inputVolume,
   getOutputVolume: () => state.outputVolume,
   getPreferredAudioInputDevice: () => state.preferredAudioInputDevice,
   getPreferredAudioOutputDevice: () => state.preferredAudioOutputDevice,
@@ -222,6 +217,14 @@ export const voicePreferenceStore = {
   setDeafened: (deafened: boolean) => {
     if (state.deafened === deafened) return
     patch({ deafened })
+  },
+  setInputVolume: (inputVolume: number) => {
+    const next = Math.min(
+      VOICE_OUTPUT_VOLUME_MAX,
+      Math.max(0, Number(inputVolume.toFixed(2))),
+    )
+    if (state.inputVolume === next) return
+    patch({ inputVolume: next })
   },
   setOutputVolume: (outputVolume: number) => {
     const next = Math.min(
@@ -286,10 +289,6 @@ export const voicePreferenceStore = {
   setScreenShareCodec: (screenShareCodec: ScreenShareCodec) => {
     if (state.screenShareCodec === screenShareCodec) return
     patch({ screenShareCodec })
-  },
-  setScreenShareQualityAsk: (screenShareQualityAsk: boolean) => {
-    if (state.screenShareQualityAsk === screenShareQualityAsk) return
-    patch({ screenShareQualityAsk })
   },
   setScreenShareAudio: (screenShareAudio: boolean) => {
     if (state.screenShareAudio === screenShareAudio) return

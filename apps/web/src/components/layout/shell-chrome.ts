@@ -5,11 +5,11 @@ export const shellNavSurface =
   'bg-background text-foreground' as const
 
 /** Высота кастомной шапки окна под каждую ОС (px). */
-export const SHELL_TITLEBAR_HEIGHT_PX: Record<DesktopOs, number> = {
+export const SHELL_TITLEBAR_HEIGHT_PX = {
   darwin: 36,
   win32: 32,
   linux: 32,
-}
+} as const satisfies Record<DesktopOs, number>
 
 export function getShellTitleBarHeightPx(os: DesktopOs | null): number {
   if (!os) return 0
