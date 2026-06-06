@@ -37,7 +37,7 @@ const gatewayLabels = {
 } as const
 
 const userPanelControlButtonClass =
-  'size-9 shrink-0 rounded-md bg-card text-muted-foreground hover:bg-accent hover:text-foreground'
+  'size-9 shrink-0 rounded-md bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
 
 export function UserPanel() {
   const auth = useAuth()

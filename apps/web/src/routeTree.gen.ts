@@ -23,7 +23,6 @@ import { Route as InviteCodeRouteImport } from './routes/invite/$code'
 import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
-import { Route as AppDiscoverRouteImport } from './routes/app/discover'
 import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
 import { Route as AppCChannelIdRouteImport } from './routes/app/c/$channelId'
 import { Route as AppServersServerIdSettingsRouteImport } from './routes/app/servers/$serverId/settings'
@@ -98,11 +97,6 @@ const AppFriendsRoute = AppFriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppDiscoverRoute = AppDiscoverRouteImport.update({
-  id: '/discover',
-  path: '/discover',
-  getParentRoute: () => AppRouteRoute,
-} as any)
 const LoginResetTokenRoute = LoginResetTokenRouteImport.update({
   id: '/$token',
   path: '/$token',
@@ -123,7 +117,6 @@ const AppServersServerIdSettingsRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
-  '/app/discover': typeof AppDiscoverRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -142,7 +135,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/app/discover': typeof AppDiscoverRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -163,7 +155,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
-  '/app/discover': typeof AppDiscoverRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -185,7 +176,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
-    | '/app/discover'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -204,7 +194,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/app/discover'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -224,7 +213,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/app'
-    | '/app/discover'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -355,13 +343,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFriendsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/app/discover': {
-      id: '/app/discover'
-      path: '/discover'
-      fullPath: '/app/discover'
-      preLoaderRoute: typeof AppDiscoverRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
     '/login/reset/$token': {
       id: '/login/reset/$token'
       path: '/$token'
@@ -387,7 +368,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteRouteChildren {
-  AppDiscoverRoute: typeof AppDiscoverRoute
   AppFriendsRoute: typeof AppFriendsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppVoiceDebugRoute: typeof AppVoiceDebugRoute
@@ -397,7 +377,6 @@ interface AppRouteRouteChildren {
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
-  AppDiscoverRoute: AppDiscoverRoute,
   AppFriendsRoute: AppFriendsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppVoiceDebugRoute: AppVoiceDebugRoute,

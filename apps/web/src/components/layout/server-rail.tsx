@@ -1,5 +1,5 @@
 import { Link, useMatch } from '@tanstack/react-router'
-import { CompassIcon, HashIcon, HomeIcon } from 'lucide-react'
+import { HashIcon, HomeIcon } from 'lucide-react'
 import type { Server } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'
@@ -32,17 +32,12 @@ function ServerRailButton({ server }: { server: Server }) {
     from: '/app/',
     shouldThrow: false,
   })
-  const discoverMatch = useMatch({
-    from: '/app/discover',
-    shouldThrow: false,
-  })
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,
   })
   const active =
     Boolean(channelMatch) &&
-    !discoverMatch &&
     !homeMatch &&
     selectedServerId === server._id
 
@@ -103,17 +98,12 @@ export function ServerRail() {
     from: '/app/',
     shouldThrow: false,
   })
-  const discoverMatch = useMatch({
-    from: '/app/discover',
-    shouldThrow: false,
-  })
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,
   })
 
-  const homeActive =
-    Boolean(homeMatch) && !discoverMatch && !channelMatch
+  const homeActive = Boolean(homeMatch) && !channelMatch
 
   const railPaddingClass = capabilities.customWindowChrome ? 'pb-3' : 'py-3'
 
@@ -176,18 +166,6 @@ export function ServerRail() {
           ) : null}
 
           <CreateServerDialog />
-
-          <Button
-            size="icon"
-            variant={discoverMatch ? 'default' : 'ghost'}
-            className={railButtonClass(Boolean(discoverMatch))}
-            title="Поиск серверов"
-            asChild
-          >
-            <Link to="/app/discover">
-              <CompassIcon />
-            </Link>
-          </Button>
         </div>
       </ScrollArea>
     </div>

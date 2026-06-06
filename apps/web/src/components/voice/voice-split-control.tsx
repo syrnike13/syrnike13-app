@@ -36,7 +36,7 @@ export function splitControlMainButtonClass(
     'flex size-9 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors disabled:pointer-events-none disabled:opacity-50',
     danger
       ? splitControlDangerMainClass
-      : 'bg-card text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+      : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
   )
 }
 
@@ -57,7 +57,7 @@ export function splitControlChevronButtonClass(
     'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors disabled:pointer-events-none disabled:opacity-50',
     danger
       ? splitControlDangerChevronClass
-      : 'bg-card text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
+      : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
   )
 }
 

@@ -54,7 +54,6 @@ export function buildCommandItems({
   const navEntries = [
     { id: 'nav-home', label: 'Главная', to: '/app', search: { tab: 'online' } },
     { id: 'nav-friends', label: 'Друзья', to: '/app', search: { tab: 'all' } },
-    { id: 'nav-discover', label: 'Discover', to: '/app/discover' },
     { id: 'nav-settings', label: 'Настройки' },
   ] as const
 

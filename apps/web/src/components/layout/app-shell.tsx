@@ -8,7 +8,6 @@ import { LeftSidebarStack } from '#/components/layout/left-sidebar-stack'
 import { ServerRail } from '#/components/layout/server-rail'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { UserPanel } from '#/components/layout/user-panel'
-import { SecondarySidebar } from '#/components/layout/secondary-sidebar'
 import { isDmChannel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { usePlatform } from '#/platform/use-platform'
@@ -24,10 +23,6 @@ export function AppShell() {
     from: '/app/',
     shouldThrow: false,
   })
-  const discoverMatch = useMatch({
-    from: '/app/discover',
-    shouldThrow: false,
-  })
   const serverSettingsMatch = useMatch({
     from: '/app/servers/$serverId/settings',
     shouldThrow: false,
@@ -38,7 +33,7 @@ export function AppShell() {
   const isHomePath = pathname === '/app' || pathname === '/app/'
 
   useEffect(() => {
-    if (isHomePath && !activeChannelId && !discoverMatch) {
+    if (isHomePath && !activeChannelId) {
       syncStore.setSelectedServerId(null)
       return
     }
@@ -52,15 +47,13 @@ export function AppShell() {
         ? channel.server
         : null
     syncStore.setSelectedServerId(nextServerId)
-  }, [activeChannelId, isHomePath, discoverMatch])
+  }, [activeChannelId, isHomePath])
 
   const activeChannel = useSyncStore((s) =>
     activeChannelId ? s.channels[activeChannelId] : undefined,
   )
   const onHomeRoute =
-    !discoverMatch &&
-    !activeChannelId &&
-    (Boolean(homeMatch) || isHomePath)
+    !activeChannelId && (Boolean(homeMatch) || isHomePath)
 
   const dmContext =
     selectedServerId === null &&
@@ -76,14 +69,10 @@ export function AppShell() {
     )
   }
 
-  const showChannelSidebar = !showHomeSidebar && !discoverMatch
-
   const sidebar = showHomeSidebar ? (
     <HomeSidebar activeChannelId={activeChannelId} />
-  ) : showChannelSidebar ? (
-    <ChannelSidebar activeChannelId={activeChannelId} />
   ) : (
-    <SecondarySidebar />
+    <ChannelSidebar activeChannelId={activeChannelId} />
   )
 
   return (
