@@ -37,6 +37,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
+      - name: Build Windows capture helper
+        if: runner.os == 'Windows'
+        run: pnpm --filter @syrnike13/desktop run build:capture-helper
       - run: pnpm desktop:package
       - uses: actions/upload-artifact@v4
         with:

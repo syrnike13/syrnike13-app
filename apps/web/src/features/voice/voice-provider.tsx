@@ -61,6 +61,19 @@ import {
 import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
+import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
+import { shouldUseNativeScreenShare } from '#/features/voice/native-screen-share-mode'
+import {
+  publishNativeScreenShare,
+  type NativeScreenShareSession,
+} from '#/features/voice/native-screen-share-publish'
+import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
+import {
+  clearNativePickerSelection,
+  rejectNativePickerSelection,
+  waitForNativePickerSelection,
+} from '#/features/voice/native-screen-share-session'
+import { getSyrnikeDesktop } from '#/platform/runtime'
 import {
   applyMicProcessing,
   refreshMicProcessing,
@@ -252,6 +265,7 @@ async function switchDeviceWithTimeout(
 export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const roomRef = useRef<Room | null>(null)
+  const nativeScreenShareRef = useRef<NativeScreenShareSession | null>(null)
   const audioElementsRef = useRef<HTMLAudioElement[]>([])
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
@@ -552,6 +566,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const resetVoiceState = useCallback(() => {
+    if (nativeScreenShareRef.current) {
+      nativeScreenShareRef.current.stop()
+      nativeScreenShareRef.current = null
+      nativeCaptureStatsStore.reset()
+    }
     setChannelId(null)
     setStatus('idle')
     restoreVoicePreferences()
@@ -957,6 +976,62 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
   }, [syncRoomParticipants])
 
+  const stopNativeScreenShare = useCallback(() => {
+    const active = nativeScreenShareRef.current
+    if (!active) return
+    active.stop()
+    nativeScreenShareRef.current = null
+    nativeCaptureStatsStore.reset()
+  }, [])
+
+  const startBrowserScreenShare = useCallback(
+    async (
+      room: Room,
+      quality: ScreenShareQualityName,
+      withAudio: boolean,
+    ) => {
+      const capture = screenShareCaptureOptions(quality)
+      const publication = await room.localParticipant.setScreenShareEnabled(
+        true,
+        {
+          ...capture.capture,
+          audio: withAudio,
+        },
+        capture.publish,
+      )
+      if (publication) {
+        ;(publication as StageMediaPublication).options = {
+          videoCodec: capture.publish.videoCodec,
+          simulcast: capture.publish.simulcast,
+          degradationPreference: capture.publish.degradationPreference,
+          screenShareEncoding: capture.publish.screenShareEncoding,
+        }
+      }
+
+      nativeCaptureStatsStore.setChromium()
+
+      const videoTrack = publication?.videoTrack
+      if (videoTrack?.mediaStreamTrack) {
+        videoTrack.mediaStreamTrack.contentHint = capture.capture.contentHint
+        await tuneScreenShareAfterPublish(
+          room,
+          videoTrack.mediaStreamTrack,
+          quality,
+        )
+      }
+
+      videoTrack?.on('ended', () => {
+        void room.localParticipant.setScreenShareEnabled(false).then(() => {
+          setScreenShareEnabled(
+            localParticipantVoiceFlags(room.localParticipant).screensharing,
+          )
+          syncRoomParticipants()
+        })
+      })
+    },
+    [syncRoomParticipants],
+  )
+
   const startScreenShare = useCallback(
     async (quality: ScreenShareQualityName, withAudio: boolean) => {
       const room = roomRef.current
@@ -965,49 +1040,72 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       voicePreferenceStore.setScreenShareQuality(quality)
       voicePreferenceStore.setScreenShareAudio(withAudio)
 
+      const prefs = readVoicePreferences()
+      const desktop = getSyrnikeDesktop()
+      const useNative = shouldUseNativeScreenShare(prefs.screenShareCaptureMode)
+
       try {
-        const capture = screenShareCaptureOptions(quality)
-        const publication = await room.localParticipant.setScreenShareEnabled(
-          true,
-          {
-            ...capture.capture,
-            audio: withAudio,
-          },
-          capture.publish,
-        )
-        if (publication) {
-          ;(publication as StageMediaPublication).options = {
-            videoCodec: capture.publish.videoCodec,
-            simulcast: capture.publish.simulcast,
-            degradationPreference: capture.publish.degradationPreference,
-            screenShareEncoding: capture.publish.screenShareEncoding,
+        if (useNative && desktop) {
+          try {
+            const pickerPromise = waitForNativePickerSelection()
+            await desktop.screenShare.openNativePicker(withAudio)
+            const sourceId = await pickerPromise
+            let sidecarFallbackStarted = false
+            const session = await publishNativeScreenShare(
+              room,
+              room.localParticipant,
+              sourceId,
+              quality,
+              withAudio,
+              async (message) => {
+                if (sidecarFallbackStarted) return
+                sidecarFallbackStarted = true
+                console.warn('[voice] native sidecar lost, falling back', message)
+                toast.warning(
+                  'Нативный захват прерван, используется браузерный режим',
+                )
+                stopNativeScreenShare()
+                try {
+                  await startBrowserScreenShare(room, quality, withAudio)
+                  setScreenShareEnabled(
+                    localParticipantVoiceFlags(room.localParticipant)
+                      .screensharing,
+                  )
+                  syncRoomParticipants()
+                } catch (fallbackError) {
+                  toast.error(
+                    fallbackError instanceof Error
+                      ? fallbackError.message
+                      : 'Не удалось восстановить демонстрацию экрана',
+                  )
+                }
+              },
+            )
+            nativeScreenShareRef.current = session
+            setScreenShareEnabled(true)
+            syncRoomParticipants()
+            return
+          } catch (nativeError) {
+            console.warn('[voice] native screen share failed, falling back', nativeError)
+            toast.warning(
+              'Нативный захват недоступен, используется браузерный режим',
+            )
+            stopNativeScreenShare()
+            clearNativePickerSelection()
           }
         }
 
-        const videoTrack = publication?.videoTrack
-        if (videoTrack?.mediaStreamTrack) {
-          videoTrack.mediaStreamTrack.contentHint = capture.capture.contentHint
-          await tuneScreenShareAfterPublish(
-            room,
-            videoTrack.mediaStreamTrack,
-            quality,
-          )
-        }
-
-        videoTrack?.on('ended', () => {
-          void room.localParticipant.setScreenShareEnabled(false).then(() => {
-            setScreenShareEnabled(
-              localParticipantVoiceFlags(room.localParticipant).screensharing,
-            )
-            syncRoomParticipants()
-          })
-        })
-
+        await startBrowserScreenShare(room, quality, withAudio)
         setScreenShareEnabled(
           localParticipantVoiceFlags(room.localParticipant).screensharing,
         )
         syncRoomParticipants()
       } catch (error) {
+        rejectNativePickerSelection(
+          error instanceof Error
+            ? error
+            : new Error('Не удалось начать демонстрацию экрана'),
+        )
         toast.error(
           error instanceof Error
             ? error.message
@@ -1015,14 +1113,21 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
       }
     },
-    [syncRoomParticipants],
+    [startBrowserScreenShare, stopNativeScreenShare, syncRoomParticipants],
   )
 
   const toggleScreenShare = useCallback(() => {
     const room = roomRef.current
     if (!room) return
 
-    if (room.localParticipant.isScreenShareEnabled) {
+    if (room.localParticipant.isScreenShareEnabled || nativeScreenShareRef.current) {
+      if (nativeScreenShareRef.current) {
+        stopNativeScreenShare()
+        setScreenShareEnabled(false)
+        syncRoomParticipants()
+        return
+      }
+
       void room.localParticipant
         .setScreenShareEnabled(false)
         .then(() => {
@@ -1041,7 +1146,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     const prefs = readVoicePreferences()
     void startScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
-  }, [startScreenShare])
+  }, [startScreenShare, stopNativeScreenShare, syncRoomParticipants])
 
   const toggleStageFullscreen = useCallback(() => {
     setStageFullscreen((value) => !value)
@@ -1349,6 +1454,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   return (
     <VoiceContext.Provider value={value}>
       {children}
+      <NativeScreenShareCoordinator />
       <DesktopScreenSharePicker />
     </VoiceContext.Provider>
   )

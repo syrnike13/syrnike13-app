@@ -26,6 +26,7 @@ import {
   loadDesktopSession,
   saveDesktopSession,
 } from './desktop-session'
+import { registerNativeCaptureIpc } from './native-capture'
 import { registerDisplayMediaIpc } from './media-permissions'
 
 let lastActivity: ActivityDetails | null = null
@@ -42,6 +43,7 @@ export function registerDesktopIpc(
 ) {
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
+  registerNativeCaptureIpc(getWindow)
 
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),

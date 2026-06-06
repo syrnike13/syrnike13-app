@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import {
   displayMediaSourceTypeFromId,
   isAllowedMediaOrigin,
-  pickDisplayMediaSource,
   shouldGrantDesktopMediaPermission,
 } from './media-permissions'
 
@@ -38,15 +37,6 @@ describe('desktop media permissions', () => {
     expect(isAllowedMediaOrigin('http://127.0.0.1:3000', 'not a url')).toBe(
       false,
     )
-  })
-
-  it('prefers a screen source for display media fallback', () => {
-    expect(
-      pickDisplayMediaSource([
-        { id: 'window:1:0' },
-        { id: 'screen:0:0' },
-      ]),
-    ).toEqual({ id: 'screen:0:0' })
   })
 
   it('maps desktop capturer ids to picker source types', () => {

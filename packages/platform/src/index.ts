@@ -1,4 +1,18 @@
 export type {
+  NativeCaptureAudioMode,
+  NativeCaptureEncoderBackend,
+  NativeCaptureFrameMethod,
+  NativeCaptureFrameStats,
+  NativeCaptureSession,
+  NativeCaptureSidecarLostEvent,
+  NativeCaptureStartOptions,
+  NativeCaptureState,
+  NativeCaptureStateEvent,
+  NativeCaptureStatsEvent,
+  NativeCaptureStreamMode,
+  NativeCaptureTarget,
+} from './capture'
+export type {
   ActivityDetails,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSource,

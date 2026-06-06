@@ -1,3 +1,11 @@
+import type {
+  NativeCaptureSession,
+  NativeCaptureStartOptions,
+  NativeCaptureState,
+  NativeCaptureStateEvent,
+  NativeCaptureStatsEvent,
+} from './capture'
+
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
 
@@ -135,7 +143,23 @@ export type DesktopDisplayMediaSource = {
 export type DesktopDisplayMediaRequest = {
   id: string
   audioRequested: boolean
+  /** Видео идёт через нативный sidecar, не через desktopCapturer. */
+  nativeVideo?: boolean
 }
+
+export type {
+  NativeCaptureEncoderBackend,
+  NativeCaptureFrameMethod,
+  NativeCaptureFrameStats,
+  NativeCaptureSession,
+  NativeCaptureSidecarLostEvent,
+  NativeCaptureStartOptions,
+  NativeCaptureState,
+  NativeCaptureStateEvent,
+  NativeCaptureStatsEvent,
+  NativeCaptureStreamMode,
+  NativeCaptureTarget,
+} from './capture'
 
 /**
  * API, который preload пробрасывает в `window.syrnikeDesktop`.
@@ -186,6 +210,33 @@ export interface SyrnikeDesktopApi {
     getSources(requestId: string): Promise<DesktopDisplayMediaSource[]>
     selectSource(requestId: string, sourceId: string): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
+    openNativePicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
+    onNativePickerResolved(
+      handler: (payload: { requestId: string; sourceId: string }) => void,
+    ): () => void
+  }
+  capture: {
+    start(options: NativeCaptureStartOptions): Promise<NativeCaptureSession>
+    stop(sessionId?: string): Promise<void>
+    getState(): Promise<NativeCaptureState>
+    onStats(handler: (event: NativeCaptureStatsEvent) => void): () => void
+    onStateChange(handler: (event: NativeCaptureStateEvent) => void): () => void
+    readSharedFrame(sessionId: string): Promise<ArrayBuffer | null>
+    prepareSystemAudio(sourceId: string): Promise<void>
+    clearSystemAudio(): Promise<void>
+    onStreamChunk(
+      handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
+    ): () => void
+    onStreamAudioChunk(
+      handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
+    ): () => void
+    onStreamEnded(handler: (sessionId: string) => void): () => void
+    onStreamError(
+      handler: (event: { sessionId: string; message: string }) => void,
+    ): () => void
+    onSidecarLost(
+      handler: (event: import('./capture').NativeCaptureSidecarLostEvent) => void,
+    ): () => void
   }
 }

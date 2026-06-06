@@ -30,6 +30,21 @@ export const IPC = {
   screenShareGetSources: 'syrnike-desktop:screen-share:get-sources',
   screenShareSelectSource: 'syrnike-desktop:screen-share:select-source',
   screenShareCancelRequest: 'syrnike-desktop:screen-share:cancel-request',
+  screenShareOpenNativePicker: 'syrnike-desktop:screen-share:open-native-picker',
+  captureStart: 'syrnike-desktop:capture:start',
+  captureStop: 'syrnike-desktop:capture:stop',
+  captureGetState: 'syrnike-desktop:capture:get-state',
+  captureStats: 'syrnike-desktop:capture:stats',
+  captureStateChanged: 'syrnike-desktop:capture:state-changed',
+  captureNativePickerResolved: 'syrnike-desktop:capture:native-picker-resolved',
+  captureStreamChunk: 'syrnike-desktop:capture:stream-chunk',
+  captureReadSharedFrame: 'syrnike-desktop:capture:read-shared-frame',
+  capturePrepareSystemAudio: 'syrnike-desktop:capture:prepare-system-audio',
+  captureClearSystemAudio: 'syrnike-desktop:capture:clear-system-audio',
+  captureStreamAudioChunk: 'syrnike-desktop:capture:stream-audio-chunk',
+  captureStreamEnded: 'syrnike-desktop:capture:stream-ended',
+  captureStreamError: 'syrnike-desktop:capture:stream-error',
+  captureSidecarLost: 'syrnike-desktop:capture:sidecar-lost',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

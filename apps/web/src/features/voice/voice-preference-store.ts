@@ -1,5 +1,6 @@
 import type {
   NoiseSuppressionMode,
+  ScreenShareCaptureMode,
   ScreenShareCodec,
   ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
@@ -26,12 +27,23 @@ export type VoicePreferenceState = {
   screenShareQuality: ScreenShareQualityName
   screenShareCodec: ScreenShareCodec
   screenShareAudio: boolean
+  screenShareCaptureMode: ScreenShareCaptureMode
 }
 
 export type VoiceJoinPreferences = Pick<
   VoicePreferenceState,
   'micEnabled' | 'deafened'
 >
+
+function defaultScreenShareQuality(): ScreenShareQualityName {
+  if (
+    typeof window !== 'undefined' &&
+    window.syrnikeDesktop?.platform.os === 'win32'
+  ) {
+    return 'high'
+  }
+  return 'low'
+}
 
 const DEFAULT_STATE: VoicePreferenceState = {
   micEnabled: true,
@@ -45,9 +57,10 @@ const DEFAULT_STATE: VoicePreferenceState = {
   voiceGateThreshold: 0.04,
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
-  screenShareQuality: 'low',
+  screenShareQuality: defaultScreenShareQuality(),
   screenShareCodec: 'auto',
   screenShareAudio: true,
+  screenShareCaptureMode: 'auto',
 }
 
 export function effectiveVoiceJoinPreferences(
@@ -77,12 +90,19 @@ function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
   ) {
     return value
   }
-  return DEFAULT_STATE.screenShareQuality
+  return defaultScreenShareQuality()
 }
 
 function parseScreenShareCodec(value: unknown): ScreenShareCodec {
   if (value === 'av1') return 'av1'
   return DEFAULT_STATE.screenShareCodec
+}
+
+function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureMode {
+  if (value === 'native' || value === 'browser' || value === 'auto') {
+    return value
+  }
+  return DEFAULT_STATE.screenShareCaptureMode
 }
 
 function clampUnitInterval(value: unknown, fallback: number) {
@@ -94,7 +114,12 @@ function loadState(): VoicePreferenceState {
   if (typeof window === 'undefined') return DEFAULT_STATE
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return DEFAULT_STATE
+    if (!raw) {
+      return {
+        ...DEFAULT_STATE,
+        screenShareQuality: defaultScreenShareQuality(),
+      }
+    }
     const parsed = JSON.parse(raw) as Partial<VoicePreferenceState> & {
       noiseSupression?: unknown
     }
@@ -164,6 +189,9 @@ function loadState(): VoicePreferenceState {
         typeof parsed.screenShareAudio === 'boolean'
           ? parsed.screenShareAudio
           : DEFAULT_STATE.screenShareAudio,
+      screenShareCaptureMode: parseScreenShareCaptureMode(
+        parsed.screenShareCaptureMode,
+      ),
     }
   } catch {
     return DEFAULT_STATE
@@ -293,6 +321,10 @@ export const voicePreferenceStore = {
   setScreenShareAudio: (screenShareAudio: boolean) => {
     if (state.screenShareAudio === screenShareAudio) return
     patch({ screenShareAudio })
+  },
+  setScreenShareCaptureMode: (screenShareCaptureMode: ScreenShareCaptureMode) => {
+    if (state.screenShareCaptureMode === screenShareCaptureMode) return
+    patch({ screenShareCaptureMode })
   },
 }
 

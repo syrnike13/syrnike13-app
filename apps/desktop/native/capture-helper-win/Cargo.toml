@@ -1,0 +1,22 @@
+[package]
+name = "syrnike-capture-helper-win"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+openh264 = "0.6"
+scrap = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+memmap2 = "0.9"
+wasapi = "0.19"
+windows-capture = "2.0"
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Media_MediaFoundation",
+  "Win32_Storage_Xps",
+  "Win32_System_Com",
+  "Win32_System_Variant",
+  "Win32_UI_WindowsAndMessaging",
+] }

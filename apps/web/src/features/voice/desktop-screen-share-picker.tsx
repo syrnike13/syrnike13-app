@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
+import { rejectNativePickerSelection } from '#/features/voice/native-screen-share-session'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
 
@@ -102,6 +103,9 @@ export function DesktopScreenSharePicker() {
     setSelectedSourceId(null)
     setSubmitting(false)
     if (desktop && activeRequest) {
+      if (activeRequest.nativeVideo) {
+        rejectNativePickerSelection(new Error('Screen share picker cancelled'))
+      }
       void desktop.screenShare.cancelRequest(activeRequest.id)
     }
   }, [desktop, request])

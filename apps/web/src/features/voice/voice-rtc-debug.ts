@@ -1,5 +1,6 @@
 import type { Room } from 'livekit-client'
 
+import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
 import { getVoicePeerConnectionEntries } from '#/features/voice/voice-ping'
 
 export const RTC_DEBUG_BROWSER_UNAVAILABLE = 'N/A'
@@ -129,10 +130,12 @@ export type RtcDebugScreenShareSnapshot = {
   frameHeight?: number
   packetsLost?: number
   qualityLimitationReason?: string
-  hybridDxgiFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
-  hybridGdiBitBltFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
-  hybridGdiPrintWindowFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
-  hybridGraphicsCaptureFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  captureBackend?: 'native' | 'chromium'
+  captureMethod?: string
+  hybridDxgiFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  hybridGdiBitBltFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  hybridGdiPrintWindowFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
+  hybridGraphicsCaptureFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
   hybridVideohookFrames: typeof RTC_DEBUG_BROWSER_UNAVAILABLE
 }
 
@@ -414,6 +417,9 @@ function screenShareSnapshot(
   const options = publication?.options
   const encoding = options?.screenShareEncoding ?? options?.videoEncoding
 
+  const nativeStats = item.isLocal ? nativeCaptureStatsStore.getState() : null
+  const hybridUnavailable = RTC_DEBUG_BROWSER_UNAVAILABLE
+
   return {
     id: item.id,
     ownerUserId: item.userId,
@@ -434,11 +440,24 @@ function screenShareSnapshot(
     logicalSurface: browserSettings?.logicalSurface,
     resizeMode: stringValue(browserSettings?.resizeMode),
     contentHint: track?.contentHint,
-    hybridDxgiFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
-    hybridGdiBitBltFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
-    hybridGdiPrintWindowFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
-    hybridGraphicsCaptureFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
-    hybridVideohookFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+    captureBackend: nativeStats?.backend,
+    captureMethod:
+      nativeStats?.backend === 'native'
+        ? nativeStats.activeMethod
+        : undefined,
+    hybridDxgiFrames:
+      nativeStats?.backend === 'native' ? nativeStats.methods.dxgi : hybridUnavailable,
+    hybridGdiBitBltFrames:
+      nativeStats?.backend === 'native'
+        ? nativeStats.methods.gdi_blt
+        : hybridUnavailable,
+    hybridGdiPrintWindowFrames:
+      nativeStats?.backend === 'native'
+        ? nativeStats.methods.gdi_print
+        : hybridUnavailable,
+    hybridGraphicsCaptureFrames:
+      nativeStats?.backend === 'native' ? nativeStats.methods.wgc : hybridUnavailable,
+    hybridVideohookFrames: hybridUnavailable,
   }
 }
 

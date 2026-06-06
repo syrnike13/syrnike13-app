@@ -15,10 +15,13 @@ import {
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import {
+  SCREEN_SHARE_CAPTURE_MODE_LABELS,
   SCREEN_SHARE_QUALITY_LABELS,
   type NoiseSuppressionMode,
+  type ScreenShareCaptureMode,
   type ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
+import { usePlatform } from '#/platform/use-platform'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import {
   VOICE_OUTPUT_VOLUME_MAX,
@@ -230,6 +233,7 @@ function useMicTestMeter(
 
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
+  const { capabilities } = usePlatform()
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
   const videoDevices = useMediaDevices('videoinput')
@@ -441,6 +445,34 @@ export function SettingsVoicePanel() {
             </SelectContent>
           </Select>
         </div>
+        {capabilities.nativeScreenShare ? (
+          <div className="space-y-2">
+            <Label>Захват экрана</Label>
+            <Select
+              value={prefs.screenShareCaptureMode}
+              onValueChange={(value) =>
+                voicePreferenceStore.setScreenShareCaptureMode(
+                  value as ScreenShareCaptureMode,
+                )
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(
+                  Object.keys(
+                    SCREEN_SHARE_CAPTURE_MODE_LABELS,
+                  ) as ScreenShareCaptureMode[]
+                ).map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {SCREEN_SHARE_CAPTURE_MODE_LABELS[name]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <label
           className={cn(
             'flex items-center gap-2 text-sm',

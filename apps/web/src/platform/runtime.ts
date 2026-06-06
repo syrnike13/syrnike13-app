@@ -15,7 +15,7 @@ export function getSyrnikeRuntime(): SyrnikeRuntime {
 }
 
 export function getPlatformCapabilities(): PlatformCapabilities {
-  return getCapabilities(getSyrnikeRuntime())
+  return getCapabilities(getSyrnikeRuntime(), getSyrnikeDesktop()?.platform.os ?? null)
 }
 
 export function isDesktopRuntime() {

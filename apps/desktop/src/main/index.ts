@@ -38,6 +38,14 @@ let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
 let creatingApp: Promise<void> | null = null
 
 const isDev = !app.isPackaged
+
+if (isDev) {
+  app.setPath(
+    'userData',
+    path.join(app.getPath('appData'), 'syrnike13-desktop-dev'),
+  )
+}
+
 const trayIconDataUrl =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAANklEQVR4nGP4//8/AyUYlwQuQJQBhABeA4gFWA0gFaAYQC4YNYCaBlAcjVRJSFRJylTJTCRhAJIsmJKjYcDEAAAAAElFTkSuQmCC'
 
@@ -233,6 +241,10 @@ async function createApp() {
 }
 
 function setupSingleInstance() {
+  // Dev Electron shares the packaged app's single-instance mutex on Windows
+  // when the installed syrnike13 client is running in the tray.
+  if (isDev) return true
+
   const gotLock = app.requestSingleInstanceLock()
   if (!gotLock) {
     app.quit()

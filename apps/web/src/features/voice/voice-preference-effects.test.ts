@@ -18,6 +18,7 @@ const base: VoicePreferenceState = {
   screenShareQuality: 'low',
   screenShareCodec: 'auto',
   screenShareAudio: true,
+  screenShareCaptureMode: 'auto',
 }
 
 describe('voicePreferenceEffectFlags', () => {
