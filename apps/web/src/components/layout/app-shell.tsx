@@ -11,8 +11,11 @@ import { UserPanel } from '#/components/layout/user-panel'
 import { SecondarySidebar } from '#/components/layout/secondary-sidebar'
 import { isDmChannel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { usePlatform } from '#/platform/use-platform'
+import { cn } from '#/lib/utils'
 
 export function AppShell() {
+  const { capabilities } = usePlatform()
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,
@@ -89,7 +92,12 @@ export function AppShell() {
       <div className="relative flex min-h-0 flex-1">
         <ServerRail />
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 pt-2 pl-2">
+        <div
+          className={cn(
+            'flex min-h-0 min-w-0 flex-1 flex-col gap-2 pl-2',
+            !capabilities.customWindowChrome && 'pt-2',
+          )}
+        >
           <AppMainFrame sidebar={<LeftSidebarStack>{sidebar}</LeftSidebarStack>}>
             <Outlet />
           </AppMainFrame>

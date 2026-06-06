@@ -1,6 +1,34 @@
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
+
+function shouldCopyHelper(source, dest) {
+  if (!existsSync(dest)) return true
+
+  const sourceStat = statSync(source)
+  const destStat = statSync(dest)
+
+  return (
+    sourceStat.mtimeMs > destStat.mtimeMs ||
+    sourceStat.size !== destStat.size
+  )
+}
+
+function copyHelperOrWarn(source, dest) {
+  try {
+    copyFileSync(source, dest)
+    return true
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'EBUSY' && existsSync(dest)) {
+      console.warn(
+        `[desktop] hotkey helper is locked by a running app; keeping ${dest}`,
+      )
+      return false
+    }
+
+    throw error
+  }
+}
 
 const desktopRoot = resolve(import.meta.dirname, '..')
 const helperRoot = resolve(desktopRoot, 'native/hotkey-helper-win')
@@ -37,5 +65,12 @@ if (!existsSync(releaseExe)) {
 }
 
 mkdirSync(dirname(outExe), { recursive: true })
-copyFileSync(releaseExe, outExe)
-console.info(`[desktop] copied hotkey helper to ${outExe}`)
+
+if (!shouldCopyHelper(releaseExe, outExe)) {
+  console.info(`[desktop] hotkey helper is up to date at ${outExe}`)
+  process.exit(0)
+}
+
+if (copyHelperOrWarn(releaseExe, outExe)) {
+  console.info(`[desktop] copied hotkey helper to ${outExe}`)
+}

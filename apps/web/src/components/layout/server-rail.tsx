@@ -13,6 +13,7 @@ import {
   railIconIdleClass,
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
+import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
 
 function railButtonClass(active: boolean) {
@@ -93,6 +94,7 @@ function ServerInitial({ name }: { name: string }) {
 }
 
 export function ServerRail() {
+  const { capabilities } = usePlatform()
   const ready = useSyncStore((s) => s.ready)
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const servers = useSyncStore(listServers)
@@ -113,10 +115,16 @@ export function ServerRail() {
   const homeActive =
     Boolean(homeMatch) && !discoverMatch && !channelMatch
 
+  const railPaddingClass = capabilities.customWindowChrome ? 'pb-3' : 'py-3'
+
   if (!ready) {
     return (
       <div
-        className={`flex h-full w-14 shrink-0 flex-col items-center py-3 ${shellNavSurface}`}
+        className={cn(
+          'flex h-full w-14 shrink-0 flex-col items-center',
+          railPaddingClass,
+          shellNavSurface,
+        )}
         style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
       >
         <div className={cn(railIconButtonClass, 'animate-pulse bg-muted')} />
@@ -126,7 +134,11 @@ export function ServerRail() {
 
   return (
     <div
-      className={`flex h-full w-14 shrink-0 flex-col items-center gap-2 py-3 ${shellNavSurface}`}
+      className={cn(
+        'flex h-full w-14 shrink-0 flex-col items-center gap-2',
+        railPaddingClass,
+        shellNavSurface,
+      )}
       style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
     >
       <Button

@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
 import type { DesktopOs } from '@syrnike13/platform'
 
 import {
@@ -6,6 +6,7 @@ import {
   getShellTitleBarMacosNavTopPx,
   SHELL_TITLEBAR_MACOS_INSET_PX,
   SHELL_TITLEBAR_MACOS_NAV_BUTTON_PX,
+  SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
   shellTitleBarDragClass,
 } from '#/components/layout/shell-chrome'
 import {
@@ -43,13 +44,23 @@ function MacShellTitleBar({ heightPx }: { heightPx: number }) {
 }
 
 function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
+  const headerStyle = {
+    height: heightPx,
+    maxHeight: heightPx,
+    minHeight: heightPx,
+    '--shell-titlebar-height': `${heightPx}px`,
+    '--shell-titlebar-button-width': `${SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX}px`,
+  } as CSSProperties
+
   return (
     <header
-      className="flex shrink-0 items-stretch bg-background text-foreground"
-      style={{ height: heightPx }}
+      className="shell-title-bar-windows relative shrink-0 overflow-hidden bg-background text-foreground"
+      style={headerStyle}
     >
-      <ShellTitleBarDragRegion />
-      <ShellWindowControls />
+      <ShellTitleBarDragRegion className="absolute inset-0" />
+      <div className="absolute inset-y-0 right-0 z-10">
+        <ShellWindowControls heightPx={heightPx} />
+      </div>
     </header>
   )
 }
@@ -57,11 +68,13 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
 function LinuxShellTitleBar({ heightPx }: { heightPx: number }) {
   return (
     <header
-      className="flex shrink-0 items-stretch bg-background text-foreground"
+      className="relative shrink-0 overflow-hidden bg-background text-foreground"
       style={{ height: heightPx }}
     >
-      <ShellTitleBarDragRegion />
-      <ShellWindowControls />
+      <ShellTitleBarDragRegion className="absolute inset-0" />
+      <div className="absolute inset-y-0 right-0 z-10">
+        <ShellWindowControls heightPx={heightPx} />
+      </div>
     </header>
   )
 }

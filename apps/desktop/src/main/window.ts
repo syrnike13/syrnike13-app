@@ -21,8 +21,6 @@ const desktopContentSecurityPolicy = [
   "worker-src 'self' blob:",
 ].join('; ')
 
-const openDevTools = process.env.SYRNIKE_OPEN_DEVTOOLS === '1'
-
 let contentSecurityPolicyInstalled = false
 
 function installContentSecurityPolicy() {
@@ -82,7 +80,7 @@ export function createMainWindow(loadUrl: string) {
 
   void win.loadURL(loadUrl)
 
-  if (!app.isPackaged && openDevTools) {
+  if (!app.isPackaged) {
     win.webContents.openDevTools({ mode: 'detach' })
   }
 

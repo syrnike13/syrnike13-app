@@ -1,6 +1,7 @@
 import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, SquareIcon, XIcon } from 'lucide-react'
 
 import {
+  SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
   shellTitleBarNoDragClass,
 } from '#/components/layout/shell-chrome'
 import { useShellHistoryNav } from '#/features/navigation/use-shell-history-nav'
@@ -15,6 +16,9 @@ const titleBarIconButtonMacClass = cn(
   'h-full w-7 shrink-0',
 )
 const titleBarIconButtonDefaultClass = cn(titleBarIconButtonClass, 'size-7')
+
+const titleBarWindowButtonClass =
+  'shell-title-bar-window-button inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground'
 
 type ShellHistoryNavButtonsProps = {
   layout?: 'default' | 'macos'
@@ -56,17 +60,31 @@ export function ShellHistoryNavButtons({
   )
 }
 
-export function ShellWindowControls() {
+type ShellWindowControlsProps = {
+  heightPx: number
+}
+
+export function ShellWindowControls({ heightPx }: ShellWindowControlsProps) {
   const { desktop } = usePlatform()
   if (!desktop) return null
 
+  const buttonStyle = {
+    height: heightPx,
+    width: SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
+  }
+
   return (
     <div
-      className={cn('flex h-full shrink-0 items-stretch', shellTitleBarNoDragClass)}
+      className={cn(
+        'shell-title-bar-window-controls flex shrink-0',
+        shellTitleBarNoDragClass,
+      )}
+      style={{ height: heightPx }}
     >
       <button
         type="button"
-        className="inline-flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+        className={titleBarWindowButtonClass}
+        style={buttonStyle}
         aria-label="Свернуть"
         onClick={() => desktop.window.minimize()}
       >
@@ -74,7 +92,8 @@ export function ShellWindowControls() {
       </button>
       <button
         type="button"
-        className="inline-flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+        className={titleBarWindowButtonClass}
+        style={buttonStyle}
         aria-label="Развернуть"
         onClick={() => desktop.window.maximize()}
       >
@@ -82,7 +101,11 @@ export function ShellWindowControls() {
       </button>
       <button
         type="button"
-        className="inline-flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground"
+        className={cn(
+          titleBarWindowButtonClass,
+          'hover:bg-destructive hover:text-destructive-foreground',
+        )}
+        style={buttonStyle}
         aria-label="Закрыть"
         onClick={() => desktop.window.close()}
       >

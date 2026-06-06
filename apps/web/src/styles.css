@@ -443,3 +443,17 @@ body,
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
+.shell-title-bar-windows {
+  box-sizing: border-box;
+  line-height: 0;
+}
+
+.shell-title-bar-window-button {
+  margin: 0;
+  min-height: 0;
+  border-radius: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+}
