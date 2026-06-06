@@ -6,11 +6,18 @@ import {
   getSyrnikeRuntime,
 } from '#/platform/runtime'
 
-function subscribeDesktopBridge(onStoreChange: () => void) {
+export function subscribeDesktopBridge(onStoreChange: () => void) {
   if (typeof window === 'undefined') return () => {}
 
+  if (window.syrnikeDesktop) {
+    queueMicrotask(onStoreChange)
+    return () => {}
+  }
+
   const interval = window.setInterval(() => {
-    if (window.syrnikeDesktop) onStoreChange()
+    if (!window.syrnikeDesktop) return
+    window.clearInterval(interval)
+    onStoreChange()
   }, 50)
 
   return () => window.clearInterval(interval)

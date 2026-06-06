@@ -6,6 +6,94 @@ const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 
 describe('syncStore voice events', () => {
+  it('emits once for one bulk message delete event', () => {
+    syncStore.reset()
+    syncStore.setChannelMessages(CHANNEL_ID, [
+      { _id: '01KT7DEM3B0T4B0BXGBXWDJ6C0', channel: CHANNEL_ID },
+      { _id: '01KT7DEM3B0T4B0BXGBXWDJ6C1', channel: CHANNEL_ID },
+    ] as never)
+    let emits = 0
+    const unsubscribe = syncStore.subscribe(() => {
+      emits += 1
+    })
+
+    syncStore.handleGatewayEvent({
+      type: 'BulkMessageDelete',
+      channel: CHANNEL_ID,
+      ids: [
+        '01KT7DEM3B0T4B0BXGBXWDJ6C0',
+        '01KT7DEM3B0T4B0BXGBXWDJ6C1',
+      ],
+    })
+    unsubscribe()
+
+    expect(emits).toBe(1)
+  })
+
+  it('emits once when a server create event includes channels', () => {
+    syncStore.reset()
+    let emits = 0
+    const unsubscribe = syncStore.subscribe(() => {
+      emits += 1
+    })
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerCreate',
+      server: {
+        _id: '01KT7DEM3B0T4B0BXGBXWDJ6D0',
+        name: 'server',
+      },
+      channels: [
+        {
+          _id: '01KT7DEM3B0T4B0BXGBXWDJ6D1',
+          name: 'general',
+          channel_type: 'TextChannel',
+          server: '01KT7DEM3B0T4B0BXGBXWDJ6D0',
+        },
+        {
+          _id: '01KT7DEM3B0T4B0BXGBXWDJ6D2',
+          name: 'voice',
+          channel_type: 'VoiceChannel',
+          server: '01KT7DEM3B0T4B0BXGBXWDJ6D0',
+        },
+      ],
+    })
+    unsubscribe()
+
+    expect(emits).toBe(1)
+  })
+
+  it('emits once for a bulk gateway event', () => {
+    syncStore.reset()
+    let emits = 0
+    const unsubscribe = syncStore.subscribe(() => {
+      emits += 1
+    })
+
+    syncStore.handleGatewayEvent({
+      type: 'Bulk',
+      v: [
+        {
+          type: 'ChannelCreate',
+          _id: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+          name: 'general',
+          channel_type: 'TextChannel',
+          server: '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+        },
+        {
+          type: 'ChannelCreate',
+          _id: '01KT7DEM3B0T4B0BXGBXWDJ6B2',
+          name: 'voice',
+          channel_type: 'VoiceChannel',
+          server: '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+        },
+      ],
+    })
+    unsubscribe()
+
+    expect(emits).toBe(1)
+  })
+
   it('moves a user out of stale channels when a join event arrives', () => {
     syncStore.reset()
 

@@ -79,6 +79,16 @@ describe('EventsGateway', () => {
     expect(gateway.state).toBe('connected')
   })
 
+  it('does not notify state subscribers when state does not change', () => {
+    const states: string[] = []
+    gateway.subscribeState((state) => states.push(state))
+
+    gateway.connect('wss://example.test/ws', 'token-1')
+    gateway.connect('wss://example.test/ws', 'token-1')
+
+    expect(states).toEqual(['idle', 'connecting'])
+  })
+
   it('schedules reconnect after unexpected close when auto-reconnect is enabled', () => {
     gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
     gateway.connect('wss://example.test/ws', 'token-1')

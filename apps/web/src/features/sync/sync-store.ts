@@ -36,9 +36,28 @@ function emptyState(): SyncState {
 
 let state = emptyState()
 const listeners = new Set<() => void>()
+let batchDepth = 0
+let batchHasChanges = false
 
 function emit() {
+  if (batchDepth > 0) {
+    batchHasChanges = true
+    return
+  }
   listeners.forEach((listener) => listener())
+}
+
+function batchUpdates(run: () => void) {
+  batchDepth += 1
+  try {
+    run()
+  } finally {
+    batchDepth -= 1
+    if (batchDepth === 0 && batchHasChanges) {
+      batchHasChanges = false
+      listeners.forEach((listener) => listener())
+    }
+  }
 }
 
 function setState(patch: Partial<SyncState>) {
@@ -597,7 +616,11 @@ export const syncStore = {
     switch (event.type) {
       case 'Bulk': {
         const items = event.v as GatewayServerEvent[] | undefined
-        items?.forEach((item) => this.handleGatewayEvent(item))
+        if (items?.length) {
+          batchUpdates(() => {
+            items.forEach((item) => this.handleGatewayEvent(item))
+          })
+        }
         break
       }
       case 'Ready': {
@@ -751,7 +774,9 @@ export const syncStore = {
       }
       case 'BulkMessageDelete': {
         const { channel, ids } = event as { channel: string; ids: string[] }
-        for (const id of ids) this.removeMessage(channel, id)
+        batchUpdates(() => {
+          for (const id of ids) this.removeMessage(channel, id)
+        })
         break
       }
       case 'ChannelCreate':
@@ -773,12 +798,14 @@ export const syncStore = {
           channels?: Channel[]
           id?: string
         }
-        if (payload.server) {
-          this.upsertServer(payload.server)
-        }
-        if (payload.channels) {
-          for (const channel of payload.channels) this.upsertChannel(channel)
-        }
+        batchUpdates(() => {
+          if (payload.server) {
+            this.upsertServer(payload.server)
+          }
+          for (const channel of payload.channels ?? []) {
+            this.upsertChannel(channel)
+          }
+        })
         break
       }
       case 'ServerUpdate': {

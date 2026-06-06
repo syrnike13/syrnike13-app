@@ -314,6 +314,7 @@ export class EventsGateway {
   }
 
   #setState(state: GatewayState) {
+    if (this.#state === state) return
     this.#state = state
     this.#stateListeners.forEach((listener) => listener(state))
   }
