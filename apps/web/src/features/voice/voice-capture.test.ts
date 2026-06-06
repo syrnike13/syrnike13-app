@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getSyrnikeDesktop } from '#/platform/runtime'
+
 import { createVoiceRoomOptions, screenShareCaptureOptions } from './voice-capture'
 import { voicePreferenceStore } from './voice-preference-store'
+
+vi.mock('#/platform/runtime', () => ({
+  getSyrnikeDesktop: vi.fn(() => null),
+}))
 
 describe('createVoiceRoomOptions', () => {
   beforeEach(() => {
@@ -37,6 +43,7 @@ describe('createVoiceRoomOptions', () => {
 describe('screenShareCaptureOptions', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
+    vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
     voicePreferenceStore.setScreenShareCodec('auto')
   })
 
@@ -97,6 +104,27 @@ describe('screenShareCaptureOptions', () => {
     const options = screenShareCaptureOptions('high')
 
     expect(options.publish.videoCodec).toBe('vp9')
+  })
+
+  it('prefers h264 on windows desktop for 1080p screen share when supported', () => {
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      runtime: 'desktop',
+      platform: { os: 'win32' },
+    } as ReturnType<typeof getSyrnikeDesktop>)
+    voicePreferenceStore.setScreenShareCodec('auto')
+    vi.stubGlobal('RTCRtpSender', {
+      getCapabilities: () => ({
+        codecs: [
+          { mimeType: 'video/VP8' },
+          { mimeType: 'video/H264' },
+          { mimeType: 'video/VP9' },
+        ],
+      }),
+    })
+
+    const options = screenShareCaptureOptions('high')
+
+    expect(options.publish.videoCodec).toBe('h264')
   })
 
   it('uses h264 automatically for 60 fps screen share when supported', () => {

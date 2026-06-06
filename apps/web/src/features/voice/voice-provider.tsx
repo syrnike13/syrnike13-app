@@ -59,6 +59,7 @@ import {
   type RtcDebugStageMediaItem,
 } from '#/features/voice/voice-rtc-debug'
 import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
+import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
 import {
   applyMicProcessing,
@@ -986,6 +987,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const videoTrack = publication?.videoTrack
         if (videoTrack?.mediaStreamTrack) {
           videoTrack.mediaStreamTrack.contentHint = capture.capture.contentHint
+          await tuneScreenShareAfterPublish(
+            room,
+            videoTrack.mediaStreamTrack,
+            quality,
+          )
         }
 
         videoTrack?.on('ended', () => {

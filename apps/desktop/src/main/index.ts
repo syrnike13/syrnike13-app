@@ -42,7 +42,18 @@ const trayIconDataUrl =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAANklEQVR4nGP4//8/AyUYlwQuQJQBhABeA4gFWA0gFaAYQC4YNYCaBlAcjVRJSFRJylTJTCRhAJIsmJKjYcDEAAAAAElFTkSuQmCC'
 
 function configureChromium() {
-  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+  if (process.platform === 'linux') {
+    app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+    return
+  }
+
+  if (process.platform === 'win32') {
+    app.commandLine.appendSwitch('ignore-gpu-blocklist')
+    app.commandLine.appendSwitch(
+      'enable-features',
+      'MediaFoundationH264CbpEncoding,MediaFoundationVP9Encoding',
+    )
+  }
 }
 
 async function resolveAppUrl() {

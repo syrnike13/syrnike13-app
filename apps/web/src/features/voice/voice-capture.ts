@@ -14,6 +14,7 @@ import {
   readVoicePreferences,
   type VoicePreferenceState,
 } from '#/features/voice/voice-preference-store'
+import { getSyrnikeDesktop } from '#/platform/runtime'
 
 function browserNoiseSuppressionEnabled(prefs: VoicePreferenceState) {
   if (prefs.noiseSuppression === 'disabled') return false
@@ -78,6 +79,10 @@ export function isAv1ScreenShareSupported() {
   return supportedVideoCodecs().has('av1')
 }
 
+function isWindowsDesktopRuntime() {
+  return getSyrnikeDesktop()?.platform.os === 'win32'
+}
+
 function selectScreenShareCodec(
   quality: ScreenShareQualityName,
   preference: ScreenShareCodec,
@@ -87,6 +92,14 @@ function selectScreenShareCodec(
 
   if (preference === 'av1' && supported.has('av1')) {
     return 'av1'
+  }
+
+  if (
+    isWindowsDesktopRuntime() &&
+    (quality === 'high' || quality === 'high60') &&
+    supported.has('h264')
+  ) {
+    return 'h264'
   }
 
   return (
