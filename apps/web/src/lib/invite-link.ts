@@ -1,6 +1,7 @@
+import { publicAppUrl } from './public-origin'
+
 export function inviteUrl(code: string) {
-  if (typeof window === 'undefined') return code
-  return `${window.location.origin}/invite/${code}`
+  return publicAppUrl(`/invite/${code}`)
 }
 
 const INVITE_CODE_REGEX = /^[\w-]+$/i
@@ -16,6 +17,11 @@ export function parseInviteCode(input: string): string | null {
         trimmed,
         typeof window !== 'undefined' ? window.location.origin : 'https://localhost',
       )
+      if (url.protocol === 'syrnike13:' && url.hostname === 'invite') {
+        const code = url.pathname.replace(/^\/+/, '')
+        return INVITE_CODE_REGEX.test(code) ? code : null
+      }
+
       const match = url.pathname.match(/\/invite\/([^/?#]+)/)
       if (match?.[1]) {
         const decoded = decodeURIComponent(match[1])

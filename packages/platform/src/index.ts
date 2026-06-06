@@ -2,6 +2,7 @@ export type {
   ActivityDetails,
   DesktopOs,
   DesktopPlatformInfo,
+  DesktopStoredSession,
   DesktopVersions,
   DesktopUpdateState,
   DesktopWindowPreferences,

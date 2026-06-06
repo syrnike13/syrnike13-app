@@ -15,11 +15,13 @@ import { ActivityPresenceManager } from '#/features/presence/activity-presence-m
 import { VoiceProvider } from '#/features/voice/voice-provider'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { loadSession } from '#/lib/session'
+import { isDesktopRuntime } from '#/platform/runtime'
 
 export const Route = createFileRoute('/app')({
   beforeLoad: () => {
     // localStorage недоступен при SSR — проверку сессии делаем на клиенте
     if (typeof window === 'undefined') return
+    if (isDesktopRuntime()) return
     if (!loadSession()) {
       throw redirect({ to: '/login' })
     }

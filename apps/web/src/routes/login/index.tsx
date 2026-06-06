@@ -6,6 +6,7 @@ import { LoginForm } from '#/features/auth/login-form'
 import { useAuth } from '#/features/auth/auth-context'
 import { postLoginPath } from '#/lib/auth-post-login-path'
 import { loadSession } from '#/lib/session'
+import { isDesktopRuntime } from '#/platform/runtime'
 
 export const Route = createFileRoute('/login/')({
   component: LoginPage,
@@ -19,7 +20,7 @@ function LoginPage() {
   useEffect(() => {
     if (!auth.hydrated) return
 
-    const stored = loadSession()
+    const stored = isDesktopRuntime() ? auth.session : loadSession()
     if (stored || (auth.session && !auth.mfaChallenge)) {
       if (!auth.onboardingChecked) return
       void navigate({
@@ -41,7 +42,8 @@ function LoginPage() {
 
   const redirectingToApp =
     auth.hydrated &&
-    (Boolean(loadSession()) || (Boolean(auth.session) && !auth.mfaChallenge)) &&
+    ((isDesktopRuntime() ? Boolean(auth.session) : Boolean(loadSession())) ||
+      (Boolean(auth.session) && !auth.mfaChallenge)) &&
     auth.onboardingChecked
 
   if (!auth.hydrated || !authChecked || redirectingToApp) {

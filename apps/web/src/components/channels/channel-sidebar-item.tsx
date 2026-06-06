@@ -39,6 +39,7 @@ import { canUseVoiceRestApi } from '#/features/voice/voice-api-capability'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { inviteUrl } from '#/lib/invite-link'
+import { publicAppUrl } from '#/lib/public-origin'
 import { cn } from '#/lib/utils'
 
 type ServerChannel = Extract<Channel, { channel_type: 'TextChannel' }>
@@ -93,7 +94,7 @@ export function ChannelSidebarItem({
   }
 
   async function copyLink() {
-    const url = `${window.location.origin}/app/c/${channel._id}`
+    const url = publicAppUrl(`/app/c/${channel._id}`)
     try {
       await navigator.clipboard.writeText(url)
       toast.success('Ссылка скопирована')

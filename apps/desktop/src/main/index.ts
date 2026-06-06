@@ -25,6 +25,8 @@ import {
   saveDesktopPreferences,
   type DesktopPreferences,
 } from './desktop-preferences'
+import { desktopSessionPath } from './desktop-session'
+import { routeFromDeepLink } from './deep-links'
 import { applyLoginItemSettings } from './login-item'
 
 let mainWindow: BrowserWindow | null = null
@@ -57,6 +59,10 @@ async function resolveAppUrl() {
 
 function desktopPreferencesPath() {
   return path.join(app.getPath('userData'), 'desktop-preferences.json')
+}
+
+function currentDesktopSessionPath() {
+  return desktopSessionPath(app.getPath('userData'))
 }
 
 function getDesktopPreferences() {
@@ -118,6 +124,14 @@ function showMainWindow() {
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
+}
+
+async function navigateToDeepLink(route: string) {
+  await ensureAppCreated()
+  showMainWindow()
+  if (!mainWindow) return
+  const appUrl = await resolveAppUrl()
+  await mainWindow.loadURL(new URL(route, appUrl).toString())
 }
 
 function quitApp() {
@@ -183,6 +197,7 @@ async function createApp() {
       setCloseToTray,
       setOpenAtLogin,
       showWindow: showMainWindow,
+      sessionPath: currentDesktopSessionPath(),
     })
   }
   mainWindow = createMainWindow(loadUrl)
@@ -213,8 +228,10 @@ function setupSingleInstance() {
     return false
   }
 
-  app.on('second-instance', () => {
-    showMainWindow()
+  app.on('second-instance', (_event, argv) => {
+    const route = argv.map(routeFromDeepLink).find((value) => value !== null)
+    if (route) void navigateToDeepLink(route).catch(reportStartupFailure)
+    else showMainWindow()
   })
 
   return true
@@ -223,10 +240,29 @@ function setupSingleInstance() {
 configureChromium()
 
 if (setupSingleInstance()) {
+  const initialDeepLinkRoute = process.argv
+    .map(routeFromDeepLink)
+    .find((value) => value !== null)
+
+  if (app.isPackaged) {
+    app.setAsDefaultProtocolClient('syrnike13')
+  }
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    const route = routeFromDeepLink(url)
+    if (!route) return
+    void navigateToDeepLink(route).catch(reportStartupFailure)
+  })
+
   app.whenReady().then(async () => {
     desktopPreferences = await loadDesktopPreferences(desktopPreferencesPath())
     applyLoginItemSettings(desktopPreferences.openAtLogin)
-    void ensureAppCreated().catch(reportStartupFailure)
+    if (initialDeepLinkRoute) {
+      void navigateToDeepLink(initialDeepLinkRoute).catch(reportStartupFailure)
+    } else {
+      void ensureAppCreated().catch(reportStartupFailure)
+    }
   })
 
   app.on('window-all-closed', () => {

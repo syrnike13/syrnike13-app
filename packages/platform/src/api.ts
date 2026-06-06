@@ -27,6 +27,12 @@ export interface DesktopWindowPreferences {
   openAtLogin: boolean
 }
 
+export interface DesktopStoredSession {
+  _id: string
+  token: string
+  user_id: string
+}
+
 export type DesktopUpdateState =
   | { status: 'idle' }
   | { status: 'checking' }
@@ -137,6 +143,11 @@ export interface SyrnikeDesktopApi {
   activity: {
     set(details: ActivityDetails | null): Promise<void>
     clear(): Promise<void>
+  }
+  auth: {
+    loadSession(): Promise<DesktopStoredSession | null>
+    saveSession(session: DesktopStoredSession): Promise<void>
+    clearSession(): Promise<void>
   }
   updates: {
     getState(): Promise<DesktopUpdateState>

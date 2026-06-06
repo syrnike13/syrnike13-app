@@ -4,6 +4,7 @@ import { IPC } from '@syrnike13/platform'
 import type {
   DesktopOs,
   DesktopPlatformInfo,
+  DesktopStoredSession,
   DesktopUpdateState,
   HotkeyActivationEvent,
   HotkeyAction,
@@ -65,6 +66,17 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
     clear() {
       return ipcRenderer.invoke(IPC.activityClear)
+    },
+  },
+  auth: {
+    loadSession() {
+      return ipcRenderer.invoke(IPC.authLoadSession)
+    },
+    saveSession(session: DesktopStoredSession) {
+      return ipcRenderer.invoke(IPC.authSaveSession, session)
+    },
+    clearSession() {
+      return ipcRenderer.invoke(IPC.authClearSession)
     },
   },
   updates: {

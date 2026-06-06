@@ -15,6 +15,7 @@ import { config } from '#/lib/config'
 import { queryKeys } from '#/lib/api/query-keys'
 import {
   clearSession,
+  loadPersistedSession,
   loadSession,
   saveSession,
   type StoredSession,
@@ -82,8 +83,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
-    setSession(loadSession())
-    setHydrated(true)
+    let cancelled = false
+    void loadPersistedSession()
+      .then((storedSession) => {
+        if (cancelled) return
+        setSession(storedSession)
+      })
+      .finally(() => {
+        if (!cancelled) setHydrated(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -127,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const invalidateSession = useCallback(
     (message?: string) => {
-      clearSession()
+      void clearSession()
       setSession(null)
       setMfaChallenge(null)
       eventsGateway.disableAutoReconnect()
@@ -202,13 +213,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const applySuccessSession = useCallback(
-    (data: LoginSuccess) => {
+    async (data: LoginSuccess) => {
       const next: StoredSession = {
         _id: data._id,
         token: data.token,
         user_id: data.user_id,
       }
-      saveSession(next)
+      await saveSession(next)
       setSession(next)
       setMfaChallenge(null)
       void queryClient.invalidateQueries({ queryKey: queryKeys.auth.session })
@@ -222,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await loginWithCredentials(credentials)
 
       if (isLoginSuccess(response)) {
-        const token = applySuccessSession(response)
+        const token = await applySuccessSession(response)
         const needsOnboard = await syncOnboardingStatus(token)
         toast.success('Вы вошли в аккаунт')
         return { needsOnboarding: needsOnboard }
@@ -254,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await loginWithMfa(payload)
 
       if (isLoginSuccess(response)) {
-        const token = applySuccessSession(response)
+        const token = await applySuccessSession(response)
         const needsOnboard = await syncOnboardingStatus(token)
         toast.success('Вы вошли в аккаунт')
         return { needsOnboarding: needsOnboard }
@@ -304,7 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await loginWithVerificationTicket(mfaTicket)
 
       if (isLoginSuccess(response)) {
-        const token = applySuccessSession(response)
+        const token = await applySuccessSession(response)
         const needsOnboard = await syncOnboardingStatus(token)
         toast.success('Email подтверждён, вы вошли в аккаунт')
         return { needsOnboarding: needsOnboard }

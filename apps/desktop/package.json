@@ -30,9 +30,17 @@
     "typescript": "^5.8.3",
     "wait-on": "^8.0.3"
   },
-  "build": {
+    "build": {
     "appId": "ru.syrnike13.desktop",
     "productName": "syrnike13",
+    "protocols": [
+      {
+        "name": "syrnike13",
+        "schemes": [
+          "syrnike13"
+        ]
+      }
+    ],
     "directories": {
       "output": "release"
     },

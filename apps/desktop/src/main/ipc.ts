@@ -2,6 +2,7 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
+  type DesktopStoredSession,
   type DesktopWindowPreferences,
   type HotkeyBinding,
 } from '@syrnike13/platform'
@@ -20,6 +21,11 @@ import {
   startHotkeyRecording,
   stopHotkeyRecording,
 } from './hotkeys'
+import {
+  clearDesktopSession,
+  loadDesktopSession,
+  saveDesktopSession,
+} from './desktop-session'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -30,6 +36,7 @@ export function registerDesktopIpc(
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
     showWindow: () => void
+    sessionPath: string
   },
 ) {
   initializeHotkeys(getWindow)
@@ -94,6 +101,18 @@ export function registerDesktopIpc(
     lastActivity = null
     console.info('[desktop] activity cleared')
   })
+
+  ipcMain.handle(IPC.authLoadSession, () =>
+    loadDesktopSession(options.sessionPath),
+  )
+
+  ipcMain.handle(IPC.authSaveSession, (_event, session: DesktopStoredSession) =>
+    saveDesktopSession(options.sessionPath, session),
+  )
+
+  ipcMain.handle(IPC.authClearSession, () =>
+    clearDesktopSession(options.sessionPath),
+  )
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
 

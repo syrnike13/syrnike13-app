@@ -23,16 +23,12 @@ import {
   calculateServerPermissions,
   hasChannelPermission,
 } from '#/lib/permissions'
+import { inviteUrl } from '#/lib/invite-link'
 
 type ServerInviteDialogProps = {
   serverId: string
   open: boolean
   onOpenChange: (open: boolean) => void
-}
-
-function inviteLink(code: string) {
-  if (typeof window === 'undefined') return code
-  return `${window.location.origin}/invite/${code}`
 }
 
 export function ServerInviteDialog({
@@ -95,7 +91,7 @@ export function ServerInviteDialog({
       const code = '_id' in invite ? invite._id : ''
       if (code) {
         setCodes((current) => [code, ...current])
-        await navigator.clipboard.writeText(inviteLink(code))
+        await navigator.clipboard.writeText(inviteUrl(code))
         toast.success('Ссылка скопирована в буфер')
       }
     } catch (error) {
@@ -143,7 +139,7 @@ export function ServerInviteDialog({
                   className="flex items-center gap-2 rounded-md border px-2 py-1.5"
                 >
                   <code className="min-w-0 flex-1 truncate text-xs">
-                    {inviteLink(code)}
+                    {inviteUrl(code)}
                   </code>
                   <Button
                     type="button"
@@ -151,7 +147,7 @@ export function ServerInviteDialog({
                     variant="ghost"
                     className="size-7"
                     onClick={() => {
-                      void navigator.clipboard.writeText(inviteLink(code))
+                      void navigator.clipboard.writeText(inviteUrl(code))
                       toast.success('Скопировано')
                     }}
                   >

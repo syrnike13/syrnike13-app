@@ -1,4 +1,4 @@
-const DESKTOP_ROUTE_PREFIXES = ['/app', '/login'] as const
+const DESKTOP_ROUTE_PREFIXES = ['/app', '/invite', '/login'] as const
 
 export const DESKTOP_ENTRY_PATH = '/app'
 

@@ -17,10 +17,37 @@ export function loadSession(): StoredSession | null {
   }
 }
 
-export function saveSession(session: StoredSession) {
+export async function loadPersistedSession(): Promise<StoredSession | null> {
+  if (
+    typeof window !== 'undefined' &&
+    window.syrnikeDesktop?.runtime === 'desktop'
+  ) {
+    return window.syrnikeDesktop.auth.loadSession()
+  }
+
+  return loadSession()
+}
+
+export async function saveSession(session: StoredSession) {
+  if (
+    typeof window !== 'undefined' &&
+    window.syrnikeDesktop?.runtime === 'desktop'
+  ) {
+    await window.syrnikeDesktop.auth.saveSession(session)
+    return
+  }
+
   localStorage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
-export function clearSession() {
+export async function clearSession() {
+  if (
+    typeof window !== 'undefined' &&
+    window.syrnikeDesktop?.runtime === 'desktop'
+  ) {
+    await window.syrnikeDesktop.auth.clearSession()
+    return
+  }
+
   localStorage.removeItem(SESSION_KEY)
 }
