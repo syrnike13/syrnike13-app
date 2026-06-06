@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
@@ -41,6 +41,7 @@
   --shell-divider: oklch(0.8850 0.0040 286.3200);
   --sidebar-ring: oklch(0.7151 0.1523 235.2888);
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
+  --font-display: 'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
@@ -100,6 +101,7 @@
   --shell-divider: oklch(0.4350 0.0110 278.3000);
   --sidebar-ring: oklch(0.7151 0.1523 235.2888);
   --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
+  --font-display: 'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
   --font-serif: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
@@ -158,6 +160,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 

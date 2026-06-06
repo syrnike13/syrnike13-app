@@ -11,3 +11,29 @@ export const config = {
   gifboxUrl: env.VITE_GIFBOX_URL,
   hcaptchaSiteKey: env.VITE_HCAPTCHA_SITEKEY,
 } as const
+
+/** Базовый адрес десктоп-установщиков. */
+const downloadsBaseUrl = 'https://syrnike13.ru/downloads'
+
+export type DesktopPlatform = 'windows' | 'macos' | 'linux'
+
+export const desktopDownloads: Record<
+  DesktopPlatform,
+  { label: string; file: string; url: string }
+> = {
+  windows: {
+    label: 'Windows',
+    file: 'syrnike13-setup.exe',
+    url: `${downloadsBaseUrl}/syrnike13-setup.exe`,
+  },
+  macos: {
+    label: 'macOS',
+    file: 'syrnike13.dmg',
+    url: `${downloadsBaseUrl}/syrnike13.dmg`,
+  },
+  linux: {
+    label: 'Linux',
+    file: 'syrnike13.AppImage',
+    url: `${downloadsBaseUrl}/syrnike13.AppImage`,
+  },
+}
