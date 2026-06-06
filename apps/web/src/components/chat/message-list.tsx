@@ -23,6 +23,26 @@ import {
 import { cn } from '#/lib/utils'
 
 const VIRTUAL_THRESHOLD = 60
+/** Порог (px): считаем, что пользователь «внизу» ленты. */
+const STICKY_BOTTOM_THRESHOLD_PX = 96
+
+function isNearBottom(element: HTMLDivElement, threshold = STICKY_BOTTOM_THRESHOLD_PX) {
+  return (
+    element.scrollHeight - element.scrollTop - element.clientHeight <= threshold
+  )
+}
+
+function scrollContainerToBottom(
+  element: HTMLDivElement,
+  behavior: ScrollBehavior = 'auto',
+) {
+  const top = element.scrollHeight - element.clientHeight
+  if (behavior === 'auto') {
+    element.scrollTop = top
+    return
+  }
+  element.scrollTo({ top, behavior })
+}
 
 type MessageListProps = {
   channelId: string
@@ -115,10 +135,11 @@ export function MessageList({
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
   const onLoadOlderRef = useRef(onLoadOlder)
   onLoadOlderRef.current = onLoadOlder
   const canLoadOlderRef = useRef(false)
+  const stickToBottomRef = useRef(true)
+  const prevLastMessageIdRef = useRef<string | undefined>(undefined)
   const lastMessageId = messages.at(-1)?._id
   const wasLoadingOlder = useRef(false)
   const scrollHeightBeforeLoad = useRef(0)
@@ -141,9 +162,42 @@ export function MessageList({
   const feedItemsForScrollRef = useRef(feedItems)
   feedItemsForScrollRef.current = feedItems
 
+  const scrollToTail = (behavior: ScrollBehavior = 'auto') => {
+    const root = scrollRef.current
+    if (!root) return
+
+    if (useVirtual && lastMessageId) {
+      const index = feedIndexForMessage(
+        feedItemsForScrollRef.current,
+        lastMessageId,
+      )
+      if (index >= 0) {
+        scrollToIndexRef.current(index, { align: 'end', behavior })
+        return
+      }
+    }
+
+    scrollContainerToBottom(root, behavior)
+  }
+
   useEffect(() => {
     canLoadOlderRef.current = false
+    stickToBottomRef.current = true
+    prevLastMessageIdRef.current = undefined
   }, [channelId])
+
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root) return
+
+    const onScroll = () => {
+      stickToBottomRef.current = isNearBottom(root)
+    }
+
+    onScroll()
+    root.addEventListener('scroll', onScroll, { passive: true })
+    return () => root.removeEventListener('scroll', onScroll)
+  }, [channelId, messages.length])
 
   const rowProps: MessageRowSharedProps = {
     channelId,
@@ -167,23 +221,45 @@ export function MessageList({
   }
 
   useEffect(() => {
-    if (useVirtual) {
-      if (!lastMessageId) return
-      const index = feedIndexForMessage(
-        feedItemsForScrollRef.current,
-        lastMessageId,
-      )
-      if (index >= 0) {
-        scrollToIndexRef.current(index, { align: 'end', behavior: 'auto' })
-      }
-    } else {
-      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
-    }
+    if (!lastMessageId) return
+
+    const prevLastMessageId = prevLastMessageIdRef.current
+    prevLastMessageIdRef.current = lastMessageId
+
+    const isInitialTail = prevLastMessageId === undefined
+    const isNewTailMessage = prevLastMessageId !== lastMessageId
+
+    if (!isInitialTail && !isNewTailMessage) return
+    if (!stickToBottomRef.current && !isInitialTail) return
+    if (wasLoadingOlder.current) return
+
+    const run = () => scrollToTail('auto')
+    run()
+    const raf = requestAnimationFrame(run)
+
     const timer = window.setTimeout(() => {
       canLoadOlderRef.current = true
     }, 0)
-    return () => window.clearTimeout(timer)
-  }, [channelId, lastMessageId, useVirtual, feedItems.length])
+
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timer)
+    }
+  }, [channelId, lastMessageId, useVirtual])
+
+  useEffect(() => {
+    const root = scrollRef.current
+    const content = root?.firstElementChild
+    if (!root || !(content instanceof HTMLElement)) return
+
+    const observer = new ResizeObserver(() => {
+      if (!stickToBottomRef.current) return
+      scrollToTail('auto')
+    })
+
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [channelId, lastMessageId, useVirtual])
 
   useEffect(() => {
     if (loadingOlder) {
@@ -288,7 +364,7 @@ export function MessageList({
                 highlightMessageId={highlightMessageId}
               />
             ))}
-            <div ref={bottomRef} className="h-px shrink-0" aria-hidden />
+            <div className="h-px shrink-0" aria-hidden />
           </>
         )}
       </div>
