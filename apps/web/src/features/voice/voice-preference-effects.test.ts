@@ -6,6 +6,7 @@ import type { VoicePreferenceState } from './voice-preference-store'
 const base: VoicePreferenceState = {
   micEnabled: true,
   deafened: false,
+  inputVolume: 1,
   outputVolume: 1,
   echoCancellation: true,
   noiseSuppression: 'browser',
@@ -15,8 +16,7 @@ const base: VoicePreferenceState = {
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
-  screenShareCodec: 'vp8',
-  screenShareQualityAsk: true,
+  screenShareCodec: 'auto',
   screenShareAudio: true,
 }
 

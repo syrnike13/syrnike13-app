@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { Button } from '#/components/ui/button'
 import { Label } from '#/components/ui/label'
 import {
   Select,
@@ -8,15 +9,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '#/components/ui/select'
+import { Slider } from '#/components/ui/slider'
 import {
   ensureMediaDevicePermission,
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import {
-  SCREEN_SHARE_CODEC_LABELS,
   SCREEN_SHARE_QUALITY_LABELS,
   type NoiseSuppressionMode,
-  type ScreenShareCodec,
   type ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
@@ -25,16 +25,26 @@ import {
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 import { formatUserVolumeLabel } from '#/features/voice/voice-listener-store'
+import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
+import { cn } from '#/lib/utils'
+
+const METER_BAR_COUNT = 32
+
+function volumeToSlider(volume: number) {
+  return Math.round((volume / VOICE_OUTPUT_VOLUME_MAX) * 100)
+}
+
+function sliderToVolume(value: number) {
+  return Number(((value / 100) * VOICE_OUTPUT_VOLUME_MAX).toFixed(2))
+}
 
 function DeviceSelect({
   label,
-  hint,
   value,
   devices,
   onChange,
 }: {
   label: string
-  hint?: string
   value: string
   devices: MediaDeviceInfo[]
   onChange: (deviceId: string) => void
@@ -50,7 +60,6 @@ function DeviceSelect({
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
       <Select value={selectValue} onValueChange={onChange}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="По умолчанию" />
@@ -68,53 +77,238 @@ function DeviceSelect({
   )
 }
 
+function VolumeSlider({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Slider
+        id={id}
+        value={[volumeToSlider(value)]}
+        min={0}
+        max={100}
+        step={1}
+        onValueChange={([next]) => {
+          if (next == null) return
+          onChange(sliderToVolume(next))
+        }}
+      />
+    </div>
+  )
+}
+
+function MicInputMeter({ levels }: { levels: readonly number[] }) {
+  return (
+    <div
+      className="flex h-8 min-w-0 flex-1 items-end gap-px"
+      aria-hidden
+    >
+      {levels.map((level, index) => (
+        <span
+          key={index}
+          className={cn(
+            'min-h-1 flex-1 rounded-sm bg-muted transition-[height,background-color] duration-75',
+            level > 0.35 && 'bg-primary',
+            level > 0.12 && level <= 0.35 && 'bg-muted-foreground/50',
+          )}
+          style={{
+            height: `${Math.max(12, Math.round(level * 100))}%`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function useMicTestMeter(
+  active: boolean,
+  deviceId: string | undefined,
+  inputVolume: number,
+) {
+  const [levels, setLevels] = useState(() =>
+    Array.from({ length: METER_BAR_COUNT }, () => 0),
+  )
+  const streamRef = useRef<MediaStream | null>(null)
+  const contextRef = useRef<AudioContext | null>(null)
+  const gainRef = useRef<GainNode | null>(null)
+  const frameRef = useRef(0)
+
+  useEffect(() => {
+    if (gainRef.current) {
+      gainRef.current.gain.value = inputVolume
+    }
+  }, [inputVolume])
+
+  useEffect(() => {
+    if (!active) {
+      setLevels(Array.from({ length: METER_BAR_COUNT }, () => 0))
+      return
+    }
+
+    let cancelled = false
+    const samples = new Uint8Array(512)
+
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        })
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+
+        const context = new AudioContext()
+        const source = context.createMediaStreamSource(stream)
+        const gain = context.createGain()
+        const analyser = context.createAnalyser()
+        analyser.fftSize = 512
+        gain.gain.value = inputVolume
+        source.connect(gain)
+        gain.connect(analyser)
+
+        streamRef.current = stream
+        contextRef.current = context
+        gainRef.current = gain
+
+        const tick = () => {
+          if (cancelled) return
+          analyser.getByteTimeDomainData(samples)
+          let sum = 0
+          for (const sample of samples) {
+            const centered = (sample - 128) / 128
+            sum += centered * centered
+          }
+          const rms = Math.sqrt(sum / samples.length)
+          const level = Math.min(1, rms * 6)
+
+          setLevels((current) =>
+            current.map((previous, index) => {
+              const wave = 0.65 + ((index % 7) + 1) / 14
+              const target = level * wave
+              return previous * 0.45 + target * 0.55
+            }),
+          )
+          frameRef.current = requestAnimationFrame(tick)
+        }
+
+        frameRef.current = requestAnimationFrame(tick)
+      } catch {
+        if (!cancelled) {
+          setLevels(Array.from({ length: METER_BAR_COUNT }, () => 0))
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frameRef.current)
+      gainRef.current = null
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+      void contextRef.current?.close()
+      contextRef.current = null
+    }
+  }, [active, deviceId])
+
+  return levels
+}
+
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
   const videoDevices = useMediaDevices('videoinput')
+  const [micTestActive, setMicTestActive] = useState(false)
+  const av1Supported = isAv1ScreenShareSupported()
 
   useEffect(() => {
     void ensureMediaDevicePermission('audio')
     void ensureMediaDevicePermission('video')
   }, [])
 
+  useEffect(() => {
+    if (!av1Supported && prefs.screenShareCodec === 'av1') {
+      voicePreferenceStore.setScreenShareCodec('auto')
+    }
+  }, [av1Supported, prefs.screenShareCodec])
+
   const inputValue = prefs.preferredAudioInputDevice ?? 'default'
   const outputValue = prefs.preferredAudioOutputDevice ?? 'default'
   const videoValue = prefs.preferredVideoDevice ?? 'default'
+  const micTestDeviceId =
+    inputValue === 'default' ? undefined : inputValue
+  const meterLevels = useMicTestMeter(
+    micTestActive,
+    micTestDeviceId,
+    prefs.inputVolume,
+  )
 
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <div>
-          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Устройства
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Применяются при следующем подключении к голосу или сразу, если вы
-            уже в канале.
-          </p>
+        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Устройства
+        </h3>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-4">
+            <DeviceSelect
+              label="Микрофон"
+              devices={inputDevices}
+              value={inputValue}
+              onChange={(deviceId) => {
+                voicePreferenceStore.setPreferredAudioInputDevice(
+                  deviceId === 'default' ? undefined : deviceId,
+                )
+              }}
+            />
+            <VolumeSlider
+              id="voice-input-volume"
+              label="Громкость микрофона"
+              value={prefs.inputVolume}
+              onChange={(value) => {
+                voicePreferenceStore.setInputVolume(value)
+              }}
+            />
+          </div>
+
+          <div className="space-y-4">
+            <DeviceSelect
+              label="Динамики / наушники"
+              devices={outputDevices}
+              value={outputValue}
+              onChange={(deviceId) => {
+                voicePreferenceStore.setPreferredAudioOutputDevice(
+                  deviceId === 'default' ? undefined : deviceId,
+                )
+              }}
+            />
+            <VolumeSlider
+              id="voice-output-volume"
+              label="Громкость"
+              value={prefs.outputVolume}
+              onChange={(value) => {
+                voicePreferenceStore.setOutputVolume(value)
+              }}
+            />
+          </div>
         </div>
-        <DeviceSelect
-          label="Микрофон"
-          devices={inputDevices}
-          value={inputValue}
-          onChange={(deviceId) => {
-            voicePreferenceStore.setPreferredAudioInputDevice(
-              deviceId === 'default' ? undefined : deviceId,
-            )
-          }}
-        />
-        <DeviceSelect
-          label="Динамики / наушники"
-          devices={outputDevices}
-          value={outputValue}
-          onChange={(deviceId) => {
-            voicePreferenceStore.setPreferredAudioOutputDevice(
-              deviceId === 'default' ? undefined : deviceId,
-            )
-          }}
-        />
+
         <DeviceSelect
           label="Камера"
           devices={videoDevices}
@@ -125,18 +319,25 @@ export function SettingsVoicePanel() {
             )
           }}
         />
+
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            size="sm"
+            variant={micTestActive ? 'secondary' : 'default'}
+            className="shrink-0"
+            onClick={() => setMicTestActive((value) => !value)}
+          >
+            {micTestActive ? 'Остановить' : 'Проверка микрофона'}
+          </Button>
+          <MicInputMeter levels={meterLevels} />
+        </div>
       </section>
 
       <section className="space-y-4">
-        <div>
-          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Обработка звука
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Эхоподавление и шумоподавление микрофона. Для смены режима RNNoise
-            переподключитесь к голосу.
-          </p>
-        </div>
+        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Обработка звука
+        </h3>
         <div className="space-y-2">
           <Label>Шумоподавление</Label>
           <Select
@@ -213,11 +414,9 @@ export function SettingsVoicePanel() {
       </section>
 
       <section className="space-y-4">
-        <div>
-          <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Демонстрация экрана
-          </h3>
-        </div>
+        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          Демонстрация экрана
+        </h3>
         <div className="space-y-2">
           <Label>Качество по умолчанию</Label>
           <Select
@@ -242,38 +441,27 @@ export function SettingsVoicePanel() {
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label>Кодек демонстрации</Label>
-          <Select
-            value={prefs.screenShareCodec}
-            onValueChange={(value) =>
-              voicePreferenceStore.setScreenShareCodec(value as ScreenShareCodec)
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(SCREEN_SHARE_CODEC_LABELS) as ScreenShareCodec[]).map(
-                (codec) => (
-                  <SelectItem key={codec} value={codec}>
-                    {SCREEN_SHARE_CODEC_LABELS[codec]}
-                  </SelectItem>
-                ),
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <label
+          className={cn(
+            'flex items-center gap-2 text-sm',
+            av1Supported ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+          )}
+        >
           <input
             type="checkbox"
             className="size-4 rounded border-input accent-primary"
-            checked={prefs.screenShareQualityAsk}
+            disabled={!av1Supported}
+            checked={prefs.screenShareCodec === 'av1'}
             onChange={(event) =>
-              voicePreferenceStore.setScreenShareQualityAsk(event.target.checked)
+              voicePreferenceStore.setScreenShareCodec(
+                event.target.checked ? 'av1' : 'auto',
+              )
             }
           />
-          Спрашивать качество перед каждой демонстрацией
+          AV1 (экспериментально)
+          {!av1Supported ? (
+            <span className="text-muted-foreground">— не поддерживается</span>
+          ) : null}
         </label>
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
@@ -289,28 +477,6 @@ export function SettingsVoicePanel() {
       </section>
 
       <section className="space-y-3">
-        <div>
-          <Label htmlFor="voice-output-volume">Громкость входящего голоса</Label>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Общий множитель для всех участников (не глушит отдельных
-            пользователей в меню профиля).
-          </p>
-        </div>
-        <input
-          id="voice-output-volume"
-          type="range"
-          min={0}
-          max={VOICE_OUTPUT_VOLUME_MAX}
-          step={0.05}
-          value={prefs.outputVolume}
-          onChange={(event) => {
-            voicePreferenceStore.setOutputVolume(Number(event.target.value))
-          }}
-          className="w-full accent-primary"
-        />
-        <p className="text-sm text-muted-foreground">
-          {formatUserVolumeLabel(prefs.outputVolume)}
-        </p>
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="checkbox"

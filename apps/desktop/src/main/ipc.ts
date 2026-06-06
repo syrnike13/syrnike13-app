@@ -2,9 +2,15 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
+  type DesktopWindowPreferences,
   type HotkeyBinding,
 } from '@syrnike13/platform'
 
+import {
+  checkForDesktopUpdates,
+  getDesktopUpdateState,
+  quitAndInstallDesktopUpdate,
+} from './auto-update'
 import {
   getHotkeyBindings,
   getHotkeyRuntimeStatus,
@@ -17,7 +23,14 @@ import {
 
 let lastActivity: ActivityDetails | null = null
 
-export function registerDesktopIpc(getWindow: () => BrowserWindow | null) {
+export function registerDesktopIpc(
+  getWindow: () => BrowserWindow | null,
+  options: {
+    getWindowPreferences: () => DesktopWindowPreferences
+    setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
+    showWindow: () => void
+  },
+) {
   initializeHotkeys(getWindow)
 
   ipcMain.handle(IPC.versions, () => ({
@@ -42,7 +55,25 @@ export function registerDesktopIpc(getWindow: () => BrowserWindow | null) {
     getWindow()?.close()
   })
 
+  ipcMain.on(IPC.windowShow, () => {
+    options.showWindow()
+  })
+
   ipcMain.handle(IPC.windowIsMaximized, () => getWindow()?.isMaximized() ?? false)
+
+  ipcMain.handle(IPC.windowGetPreferences, () => options.getWindowPreferences())
+
+  ipcMain.handle(IPC.windowSetCloseToTray, (_event, closeToTray: boolean) =>
+    options.setCloseToTray(Boolean(closeToTray)),
+  )
+
+  ipcMain.handle(IPC.updatesGetState, () => getDesktopUpdateState())
+
+  ipcMain.handle(IPC.updatesCheck, () => checkForDesktopUpdates())
+
+  ipcMain.on(IPC.updatesInstall, () => {
+    quitAndInstallDesktopUpdate()
+  })
 
   ipcMain.handle(IPC.activitySet, (_event, details: ActivityDetails | null) => {
     lastActivity = details

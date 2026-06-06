@@ -1,5 +1,5 @@
 import { Link, useMatch } from '@tanstack/react-router'
-import { CompassIcon, HashIcon, HomeIcon } from 'lucide-react'
+import { HashIcon, HomeIcon } from 'lucide-react'
 import type { Server } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'
@@ -13,6 +13,7 @@ import {
   railIconIdleClass,
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
+import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
 
 function railButtonClass(active: boolean) {
@@ -31,17 +32,12 @@ function ServerRailButton({ server }: { server: Server }) {
     from: '/app/',
     shouldThrow: false,
   })
-  const discoverMatch = useMatch({
-    from: '/app/discover',
-    shouldThrow: false,
-  })
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,
   })
   const active =
     Boolean(channelMatch) &&
-    !discoverMatch &&
     !homeMatch &&
     selectedServerId === server._id
 
@@ -93,6 +89,7 @@ function ServerInitial({ name }: { name: string }) {
 }
 
 export function ServerRail() {
+  const { capabilities } = usePlatform()
   const ready = useSyncStore((s) => s.ready)
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const servers = useSyncStore(listServers)
@@ -101,22 +98,23 @@ export function ServerRail() {
     from: '/app/',
     shouldThrow: false,
   })
-  const discoverMatch = useMatch({
-    from: '/app/discover',
-    shouldThrow: false,
-  })
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,
   })
 
-  const homeActive =
-    Boolean(homeMatch) && !discoverMatch && !channelMatch
+  const homeActive = Boolean(homeMatch) && !channelMatch
+
+  const railPaddingClass = capabilities.customWindowChrome ? 'pb-3' : 'py-3'
 
   if (!ready) {
     return (
       <div
-        className={`flex h-full w-14 shrink-0 flex-col items-center py-3 ${shellNavSurface}`}
+        className={cn(
+          'flex h-full w-14 shrink-0 flex-col items-center',
+          railPaddingClass,
+          shellNavSurface,
+        )}
         style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
       >
         <div className={cn(railIconButtonClass, 'animate-pulse bg-muted')} />
@@ -126,7 +124,11 @@ export function ServerRail() {
 
   return (
     <div
-      className={`flex h-full w-14 shrink-0 flex-col items-center gap-2 py-3 ${shellNavSurface}`}
+      className={cn(
+        'flex h-full w-14 shrink-0 flex-col items-center gap-2',
+        railPaddingClass,
+        shellNavSurface,
+      )}
       style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
     >
       <Button
@@ -164,18 +166,6 @@ export function ServerRail() {
           ) : null}
 
           <CreateServerDialog />
-
-          <Button
-            size="icon"
-            variant={discoverMatch ? 'default' : 'ghost'}
-            className={railButtonClass(Boolean(discoverMatch))}
-            title="Поиск серверов"
-            asChild
-          >
-            <Link to="/app/discover">
-              <CompassIcon />
-            </Link>
-          </Button>
         </div>
       </ScrollArea>
     </div>

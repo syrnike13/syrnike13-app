@@ -1,6 +1,10 @@
 export type {
   ActivityDetails,
+  DesktopOs,
+  DesktopPlatformInfo,
   DesktopVersions,
+  DesktopUpdateState,
+  DesktopWindowPreferences,
   HotkeyAction,
   HotkeyActivationEvent,
   HotkeyBinding,

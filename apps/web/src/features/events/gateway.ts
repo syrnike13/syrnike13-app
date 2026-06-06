@@ -1,4 +1,9 @@
-export type GatewayState = 'idle' | 'connecting' | 'connected' | 'disconnected'
+export type GatewayState =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'reconnecting'
 
 type GatewayEvent = {
   type: string
@@ -8,15 +13,40 @@ type GatewayEvent = {
 type StateListener = (state: GatewayState) => void
 type EventListener = (event: GatewayEvent) => void
 
+const READY_FIELDS = [
+  'users',
+  'servers',
+  'channels',
+  'members',
+  'emojis',
+  'voice_states',
+  'channel_unreads',
+] as const
+
+const HEARTBEAT_INTERVAL_MS = 30_000
+const HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS * 2
+const RECONNECT_BASE_MS = 1_000
+const RECONNECT_MAX_MS = 30_000
+
 /**
- * Минимальный WebSocket-клиент syrnike13 (протокол v1, JSON).
- * Полноценный state sync — следующий этап.
+ * WebSocket-клиент syrnike13 (протокол v1, JSON) с auto-reconnect и heartbeat.
  */
 export class EventsGateway {
   #ws: WebSocket | undefined
   #state: GatewayState = 'idle'
   #stateListeners = new Set<StateListener>()
   #eventListeners = new Set<EventListener>()
+  #wsUrl: string | undefined
+  #token: string | undefined
+  #autoReconnectEnabled = false
+  #manualClose = false
+  #reconnectAttempt = 0
+  #reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  #heartbeatTimer: ReturnType<typeof setInterval> | undefined
+  #heartbeatTimeoutTimer: ReturnType<typeof setTimeout> | undefined
+  #lastMessageAt = 0
+  #onVisibilityChange: (() => void) | undefined
+  #onNetworkOnline: (() => void) | undefined
 
   get state() {
     return this.#state
@@ -33,23 +63,67 @@ export class EventsGateway {
     return () => this.#eventListeners.delete(listener)
   }
 
+  enableAutoReconnect(wsUrl: string, token: string) {
+    this.#autoReconnectEnabled = true
+    this.#manualClose = false
+    this.#wsUrl = wsUrl
+    this.#token = token
+    this.#installLifecycleListeners()
+  }
+
+  disableAutoReconnect() {
+    this.#autoReconnectEnabled = false
+    this.#manualClose = true
+    this.#clearReconnectTimer()
+    this.#removeLifecycleListeners()
+    this.#closeSocket()
+    this.#setState('idle')
+  }
+
   connect(wsUrl: string, token: string) {
-    this.disconnect()
-    this.#setState('connecting')
+    this.#wsUrl = wsUrl
+    this.#token = token
+    this.#openSocket(false)
+  }
+
+  reconnect() {
+    if (!this.#wsUrl || !this.#token) return
+    this.#reconnectAttempt = 0
+    this.#clearReconnectTimer()
+    this.#openSocket(true)
+  }
+
+  disconnect() {
+    this.disableAutoReconnect()
+  }
+
+  send(event: Record<string, unknown>) {
+    if (!this.#ws || this.#ws.readyState !== WebSocket.OPEN) return
+    this.#ws.send(JSON.stringify(event))
+  }
+
+  beginTyping(channelId: string) {
+    this.send({ type: 'BeginTyping', channel: channelId })
+  }
+
+  endTyping(channelId: string) {
+    this.send({ type: 'EndTyping', channel: channelId })
+  }
+
+  #openSocket(isReconnect: boolean) {
+    const wsUrl = this.#wsUrl
+    const token = this.#token
+    if (!wsUrl || !token) return
+
+    this.#closeSocket()
+    this.#manualClose = false
+    this.#setState(isReconnect ? 'reconnecting' : 'connecting')
 
     const url = new URL(wsUrl)
     url.searchParams.set('version', '1')
     url.searchParams.set('format', 'json')
     url.searchParams.set('token', token)
-    for (const field of [
-      'users',
-      'servers',
-      'channels',
-      'members',
-      'emojis',
-      'voice_states',
-      'channel_unreads',
-    ] as const) {
+    for (const field of READY_FIELDS) {
       url.searchParams.append('ready', field)
     }
 
@@ -57,11 +131,14 @@ export class EventsGateway {
     this.#ws = ws
 
     ws.onopen = () => {
+      this.#touchActivity()
+      this.#startHeartbeat()
       ws.send(JSON.stringify({ type: 'Ping', data: Date.now() }))
     }
 
     ws.onmessage = (message) => {
       if (typeof message.data !== 'string') return
+      this.#touchActivity()
 
       try {
         const event = JSON.parse(message.data) as GatewayEvent
@@ -78,11 +155,17 @@ export class EventsGateway {
         this.#eventListeners.forEach((listener) => listener(event))
 
         if (event.type === 'Error') {
-          this.#setState('disconnected')
+          if (this.#ws && this.#ws.readyState === WebSocket.OPEN) {
+            this.#ws.close()
+          } else {
+            this.#handleUnexpectedClose()
+          }
           return
         }
 
         if (event.type === 'Ready') {
+          this.#reconnectAttempt = 0
+          this.#clearReconnectTimer()
           this.#setState('connected')
         }
       } catch {
@@ -91,34 +174,143 @@ export class EventsGateway {
     }
 
     ws.onerror = () => {
-      this.#setState('disconnected')
+      if (this.#state !== 'connected') {
+        this.#setState('disconnected')
+      }
     }
 
     ws.onclose = () => {
       this.#ws = undefined
-      this.#setState('disconnected')
+      this.#stopHeartbeat()
+      this.#handleUnexpectedClose()
     }
   }
 
-  send(event: Record<string, unknown>) {
-    if (!this.#ws || this.#ws.readyState !== WebSocket.OPEN) return
-    this.#ws.send(JSON.stringify(event))
+  #handleUnexpectedClose() {
+    if (this.#manualClose || !this.#autoReconnectEnabled) {
+      if (!this.#manualClose && this.#state !== 'idle') {
+        this.#setState('disconnected')
+      }
+      return
+    }
+    this.#scheduleReconnect()
   }
 
-  beginTyping(channelId: string) {
-    this.send({ type: 'BeginTyping', channel: channelId })
+  #scheduleReconnect() {
+    if (!this.#autoReconnectEnabled || !this.#wsUrl || !this.#token) return
+    if (this.#reconnectTimer !== undefined) return
+
+    this.#setState('reconnecting')
+
+    const delay = Math.min(
+      RECONNECT_BASE_MS * 2 ** this.#reconnectAttempt,
+      RECONNECT_MAX_MS,
+    )
+    this.#reconnectAttempt += 1
+
+    this.#reconnectTimer = setTimeout(() => {
+      this.#reconnectTimer = undefined
+      if (!this.#autoReconnectEnabled) return
+      this.#openSocket(true)
+    }, delay)
   }
 
-  endTyping(channelId: string) {
-    this.send({ type: 'EndTyping', channel: channelId })
+  #forceReconnect() {
+    if (!this.#autoReconnectEnabled || !this.#wsUrl || !this.#token) return
+    if (this.#state === 'connected' || this.#state === 'connecting') return
+
+    this.#reconnectAttempt = 0
+    this.#clearReconnectTimer()
+    this.#openSocket(true)
   }
 
-  disconnect() {
+  #closeSocket() {
+    this.#stopHeartbeat()
     if (this.#ws) {
+      this.#ws.onopen = null
+      this.#ws.onmessage = null
+      this.#ws.onerror = null
+      this.#ws.onclose = null
       this.#ws.close()
       this.#ws = undefined
     }
-    this.#setState('idle')
+  }
+
+  #clearReconnectTimer() {
+    if (this.#reconnectTimer !== undefined) {
+      clearTimeout(this.#reconnectTimer)
+      this.#reconnectTimer = undefined
+    }
+  }
+
+  #touchActivity() {
+    this.#lastMessageAt = Date.now()
+    this.#resetHeartbeatTimeout()
+  }
+
+  #startHeartbeat() {
+    this.#stopHeartbeat()
+    this.#heartbeatTimer = setInterval(() => {
+      if (!this.#ws || this.#ws.readyState !== WebSocket.OPEN) return
+      this.send({ type: 'Ping', data: Date.now() })
+      this.#resetHeartbeatTimeout()
+    }, HEARTBEAT_INTERVAL_MS)
+    this.#resetHeartbeatTimeout()
+  }
+
+  #resetHeartbeatTimeout() {
+    if (this.#heartbeatTimeoutTimer !== undefined) {
+      clearTimeout(this.#heartbeatTimeoutTimer)
+    }
+    this.#heartbeatTimeoutTimer = setTimeout(() => {
+      const elapsed = Date.now() - this.#lastMessageAt
+      if (elapsed < HEARTBEAT_TIMEOUT_MS) {
+        this.#resetHeartbeatTimeout()
+        return
+      }
+      if (this.#ws && this.#ws.readyState === WebSocket.OPEN) {
+        this.#ws.close()
+      }
+    }, HEARTBEAT_TIMEOUT_MS)
+  }
+
+  #stopHeartbeat() {
+    if (this.#heartbeatTimer !== undefined) {
+      clearInterval(this.#heartbeatTimer)
+      this.#heartbeatTimer = undefined
+    }
+    if (this.#heartbeatTimeoutTimer !== undefined) {
+      clearTimeout(this.#heartbeatTimeoutTimer)
+      this.#heartbeatTimeoutTimer = undefined
+    }
+  }
+
+  #installLifecycleListeners() {
+    if (typeof window === 'undefined') return
+    if (this.#onVisibilityChange) return
+
+    this.#onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      this.#forceReconnect()
+    }
+    this.#onNetworkOnline = () => {
+      this.#forceReconnect()
+    }
+
+    document.addEventListener('visibilitychange', this.#onVisibilityChange)
+    window.addEventListener('online', this.#onNetworkOnline)
+  }
+
+  #removeLifecycleListeners() {
+    if (typeof window === 'undefined') return
+    if (this.#onVisibilityChange) {
+      document.removeEventListener('visibilitychange', this.#onVisibilityChange)
+      this.#onVisibilityChange = undefined
+    }
+    if (this.#onNetworkOnline) {
+      window.removeEventListener('online', this.#onNetworkOnline)
+      this.#onNetworkOnline = undefined
+    }
   }
 
   #setState(state: GatewayState) {

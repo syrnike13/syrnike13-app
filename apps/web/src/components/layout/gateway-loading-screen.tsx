@@ -16,6 +16,7 @@ const STATUS_BY_STATE: Record<GatewayState, string> = {
   connecting: 'Подключение',
   connected: 'Синхронизация',
   disconnected: 'Переподключение',
+  reconnecting: 'Переподключение',
 }
 
 type GatewayLoadingScreenProps = {

@@ -113,12 +113,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session?.token || needsOnboarding || !onboardingChecked || !hasUser) {
-      eventsGateway.disconnect()
+      eventsGateway.disableAutoReconnect()
       return
     }
 
+    eventsGateway.enableAutoReconnect(config.wsUrl, session.token)
     eventsGateway.connect(config.wsUrl, session.token)
-    return () => eventsGateway.disconnect()
+
+    return () => {
+      eventsGateway.disableAutoReconnect()
+    }
   }, [hasUser, needsOnboarding, onboardingChecked, session?.token])
 
   const invalidateSession = useCallback(
@@ -126,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearSession()
       setSession(null)
       setMfaChallenge(null)
-      eventsGateway.disconnect()
+      eventsGateway.disableAutoReconnect()
       syncStore.reset()
       queryClient.removeQueries({ queryKey: queryKeys.auth.session })
       queryClient.removeQueries({

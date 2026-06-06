@@ -1,6 +1,6 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { MessageCircleIcon, UserPlusIcon, UsersIcon } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
@@ -21,13 +21,12 @@ import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
-export type HomeTab = 'online' | 'all' | 'pending' | 'blocked'
+export type HomeTab = 'online' | 'all' | 'pending'
 
 const TABS: { id: HomeTab; label: string }[] = [
   { id: 'online', label: 'В сети' },
   { id: 'all', label: 'Все' },
   { id: 'pending', label: 'Заявки' },
-  { id: 'blocked', label: 'Блок' },
 ]
 
 function userLabel(user: { username: string; display_name?: string | null }) {
@@ -73,7 +72,7 @@ function HomeFriendRow({
 
 function usersForTab(
   tab: HomeTab,
-  lists: Record<'Friend' | 'Incoming' | 'Outgoing' | 'Blocked', User[]>,
+  lists: Record<'Friend' | 'Incoming' | 'Outgoing', User[]>,
 ): User[] {
   switch (tab) {
     case 'online':
@@ -82,8 +81,6 @@ function usersForTab(
       return lists.Friend
     case 'pending':
       return [...lists.Incoming, ...lists.Outgoing]
-    case 'blocked':
-      return lists.Blocked
     default:
       return lists.Friend
   }
@@ -111,16 +108,27 @@ export function HomeView({ tab }: HomeViewProps) {
   const outgoing = useSyncStore((s) =>
     listUsersByRelationship(s, 'Outgoing', auth.user?._id),
   )
-  const blocked = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Blocked', auth.user?._id),
-  )
 
   const lists = {
     Friend: friends,
     Incoming: incoming,
     Outgoing: outgoing,
-    Blocked: blocked,
   }
+  const hasPending = incoming.length > 0 || outgoing.length > 0
+  const visibleTabs = TABS.filter(
+    (item) => item.id !== 'pending' || hasPending,
+  )
+
+  useEffect(() => {
+    if (tab === 'pending' && !hasPending) {
+      void navigate({
+        to: '/app',
+        search: { tab: 'online' },
+        replace: true,
+      })
+    }
+  }, [tab, hasPending, navigate])
+
   const visibleUsers = usersForTab(tab, lists).filter((user) => {
     const q = friendSearch.trim().toLowerCase()
     if (!q) return true
@@ -171,17 +179,18 @@ export function HomeView({ tab }: HomeViewProps) {
       ? `В сети — ${visibleUsers.length}`
       : tab === 'all'
         ? `Все друзья — ${visibleUsers.length}`
-        : tab === 'pending'
-          ? `Заявки — ${visibleUsers.length}`
-          : `Заблокированные — ${visibleUsers.length}`
+        : `Заявки — ${visibleUsers.length}`
 
   return (
     <div className="flex min-w-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center gap-2 border-b border-shell-divider px-4 py-3">
-          <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
+          <div className="flex shrink-0 items-center gap-2">
+            <UsersIcon className="size-5 shrink-0 text-muted-foreground" />
+            <span className="text-sm font-semibold">Друзья</span>
+          </div>
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {TABS.map((item) => (
+            {visibleTabs.map((item) => (
               <Button
                 key={item.id}
                 variant={tab === item.id ? 'secondary' : 'ghost'}
@@ -251,9 +260,7 @@ export function HomeView({ tab }: HomeViewProps) {
                 ? 'Нет друзей в сети'
                 : tab === 'pending'
                   ? 'Нет заявок'
-                  : tab === 'blocked'
-                    ? 'Никого не блокируете'
-                    : 'Пока нет друзей'}
+                  : 'Пока нет друзей'}
             </p>
           ) : (
             <div>
@@ -266,9 +273,7 @@ export function HomeView({ tab }: HomeViewProps) {
                     key={user._id}
                     user={user}
                     onMessage={
-                      tab === 'blocked' || isOutgoing
-                        ? undefined
-                        : () => void openDm(user._id)
+                      isOutgoing ? undefined : () => void openDm(user._id)
                     }
                     actions={
                       tab === 'pending' && token ? (

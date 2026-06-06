@@ -155,23 +155,12 @@ export function NotificationSettings({
             Отключить push
           </Button>
         </>
-      ) : (
-        <p className="text-xs text-muted-foreground">
-          Push требует service worker (`public/sw.js`) и VAPID с сервера.
-        </p>
-      )}
+      ) : null}
     </div>
   )
 
   if (layout === 'settings') {
-    return (
-      <div>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Статус: {permission}. Сообщения приходят, когда вкладка не в фокусе.
-        </p>
-        {actions}
-      </div>
-    )
+    return <div>{actions}</div>
   }
 
   return (

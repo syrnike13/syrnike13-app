@@ -50,7 +50,7 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: desktop-artifacts
       - id: version
@@ -59,4 +59,75 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: syrnike13 v${{ steps.version.outputs.version }}
+          # Installers plus latest*.yml and *.blockmap — required for electron-updater.
           files: desktop-artifacts/**/*
+
+  upload-production:
+    name: Upload desktop artifacts to production
+    runs-on: ubuntu-latest
+    needs: release
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
+      SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: desktop-artifacts
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PATH"
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Upload desktop update feed
+        run: |
+          set -euo pipefail
+          STAGING="$(mktemp -d)"
+          find desktop-artifacts -type f \( \
+            -name '*.yml' -o -name '*.exe' -o -name '*.blockmap' -o \
+            -name '*.zip' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.7z' \
+          \) -exec cp {} "$STAGING/" \;
+          if [ -z "$(ls -A "$STAGING")" ]; then
+            echo "No desktop release artifacts found to upload."
+            exit 1
+          fi
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH/data/desktop'"
+          rsync -av \
+            --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            "$STAGING/" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/data/desktop/"
+      - name: Verify desktop update feed
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          mapfile -t FEED_FILES < <(find desktop-artifacts -type f -name 'latest*.yml' -printf '%f\n' | sort -u)
+          if [ "${#FEED_FILES[@]}" -eq 0 ]; then
+            echo "No desktop update manifests found to verify."
+            exit 1
+          fi
+          for FEED_FILE in "${FEED_FILES[@]}"; do
+            FEED="$(curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/downloads/desktop/${FEED_FILE}")"
+            FEED_VERSION="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "version" { print $2; exit }')"
+            if [ "$FEED_VERSION" != "$VERSION" ]; then
+              echo "Desktop update feed ${FEED_FILE} version mismatch: expected $VERSION, got ${FEED_VERSION:-<missing>}"
+              exit 1
+            fi
+          done

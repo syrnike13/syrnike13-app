@@ -2,6 +2,11 @@ import { app, BrowserWindow, session, shell } from 'electron'
 
 import { resolvePreloadScript } from './paths'
 
+const isMac = process.platform === 'darwin'
+
+/** Совпадает с dark `--background` в web UI. */
+const DESKTOP_WINDOW_BACKGROUND = '#3d3a48'
+
 const desktopContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -15,8 +20,6 @@ const desktopContentSecurityPolicy = [
   "frame-src 'self' https://*.hcaptcha.com",
   "worker-src 'self' blob:",
 ].join('; ')
-
-const openDevTools = process.env.SYRNIKE_OPEN_DEVTOOLS === '1'
 
 let contentSecurityPolicyInstalled = false
 
@@ -45,8 +48,15 @@ export function createMainWindow(loadUrl: string) {
     minWidth: 960,
     minHeight: 600,
     show: false,
-    backgroundColor: '#1a1625',
+    backgroundColor: DESKTOP_WINDOW_BACKGROUND,
     title: 'syrnike13',
+    ...(isMac
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+          // Должно совпадать с SHELL_TITLEBAR_* в shell-chrome.ts
+          trafficLightPosition: { x: 12, y: 12 },
+        }
+      : { frame: false }),
     webPreferences: {
       preload: resolvePreloadScript(),
       contextIsolation: true,
@@ -70,7 +80,7 @@ export function createMainWindow(loadUrl: string) {
 
   void win.loadURL(loadUrl)
 
-  if (!app.isPackaged && openDevTools) {
+  if (!app.isPackaged) {
     win.webContents.openDevTools({ mode: 'detach' })
   }
 

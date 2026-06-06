@@ -1,6 +1,13 @@
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
 
+/** ОС настольной оболочки (совпадает с Node `process.platform`). */
+export type DesktopOs = 'darwin' | 'win32' | 'linux'
+
+export interface DesktopPlatformInfo {
+  os: DesktopOs
+}
+
 export interface DesktopVersions {
   app: string
   electron: string
@@ -14,6 +21,18 @@ export interface ActivityDetails {
   details?: string
   state?: string
 }
+
+export interface DesktopWindowPreferences {
+  closeToTray: boolean
+}
+
+export type DesktopUpdateState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'available'; version: string }
+  | { status: 'downloading'; percent: number }
+  | { status: 'ready'; version: string }
+  | { status: 'error'; message: string }
 
 export type HotkeyAction =
   | 'toggle-mic'
@@ -102,16 +121,26 @@ export type HotkeyActivationEvent = {
  */
 export interface SyrnikeDesktopApi {
   readonly runtime: 'desktop'
+  readonly platform: DesktopPlatformInfo
   getVersions(): Promise<DesktopVersions>
   window: {
     minimize(): void
     maximize(): void
     close(): void
+    show(): void
     isMaximized(): Promise<boolean>
+    getPreferences(): Promise<DesktopWindowPreferences>
+    setCloseToTray(closeToTray: boolean): Promise<DesktopWindowPreferences>
   }
   activity: {
     set(details: ActivityDetails | null): Promise<void>
     clear(): Promise<void>
+  }
+  updates: {
+    getState(): Promise<DesktopUpdateState>
+    check(): Promise<DesktopUpdateState>
+    install(): void
+    onStateChange(handler: (state: DesktopUpdateState) => void): () => void
   }
   hotkeys: {
     getBindings(): Promise<HotkeyBinding[]>

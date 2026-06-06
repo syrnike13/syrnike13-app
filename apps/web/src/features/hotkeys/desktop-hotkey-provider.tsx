@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouter } from '@tanstack/react-router'
 import type { HotkeyActivationEvent } from '@syrnike13/platform'
 
 import { usePlatform } from '#/platform/use-platform'
@@ -9,6 +9,7 @@ export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
   const { desktop } = usePlatform()
   const voice = useVoice()
   const navigate = useNavigate()
+  const router = useRouter()
   const pushToTalkChangedMicRef = useRef(false)
   const pushToMuteChangedMicRef = useRef(false)
 
@@ -20,8 +21,8 @@ export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
         voice,
         pushToTalkChangedMicRef,
         pushToMuteChangedMicRef,
-        navigateBack: () => window.history.back(),
-        navigateForward: () => window.history.forward(),
+        navigateBack: () => router.history.go(-1),
+        navigateForward: () => router.history.go(1),
         navigateToVoice: () => {
           if (!voice.channelId) return
           void navigate({
@@ -32,7 +33,7 @@ export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
         },
       })
     })
-  }, [desktop, navigate, voice])
+  }, [desktop, navigate, router, voice])
 
   return children
 }

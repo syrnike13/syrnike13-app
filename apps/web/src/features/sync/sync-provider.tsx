@@ -1,8 +1,7 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { User } from '@syrnike13/api-types'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
-import { fetchUnreads } from '#/features/api/sync-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
 import { config } from '#/lib/config'
@@ -11,6 +10,7 @@ import { queryKeys } from '#/lib/api/query-keys'
 import { useMessageNotifications } from '#/features/notifications/use-message-notifications'
 
 import { ensureVoiceUsersLoaded } from './ensure-voice-users'
+import { refreshSyncAfterReconnect } from './refresh-sync-after-reconnect'
 import { syncStore, useSyncReady } from './sync-store'
 import type { GatewayServerEvent } from './types'
 import { normalizeUserVoiceState } from './voice-event-utils'
@@ -47,6 +47,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const ready = useSyncReady()
   const queryClient = useQueryClient()
+  const prevGatewayStateRef = useRef(eventsGateway.state)
 
   useEffect(() => {
     const token = auth.session?.token
@@ -148,12 +149,29 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     const token = auth.session?.token
     if (!token || !ready) return
 
-    void fetchUnreads(token)
-      .then((unreads) => syncStore.setUnreads(unreads))
-      .catch(() => {
-        // unreads optional if endpoint fails
-      })
-  }, [auth.session?.token, ready])
+    void refreshSyncAfterReconnect(token, auth.user?._id)
+  }, [auth.session?.token, auth.user?._id, ready])
+
+  useEffect(() => {
+    const token = auth.session?.token
+    const currentUserId = auth.user?._id
+
+    return eventsGateway.subscribeState((state) => {
+      const prev = prevGatewayStateRef.current
+      prevGatewayStateRef.current = state
+
+      if (
+        state !== 'connected' ||
+        (prev !== 'disconnected' && prev !== 'reconnecting') ||
+        !ready ||
+        !token
+      ) {
+        return
+      }
+
+      void refreshSyncAfterReconnect(token, currentUserId)
+    })
+  }, [auth.session?.token, auth.user?._id, ready])
 
   return children
 }

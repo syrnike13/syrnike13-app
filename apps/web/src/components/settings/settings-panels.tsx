@@ -114,14 +114,10 @@ export function SettingsAccountPanel() {
         <SettingsRow
           label="Отображаемое имя"
           value={user?.display_name?.trim() || '—'}
-          hint="Редактируется в разделе «Профиль»"
         />
       </SettingsBlock>
 
-      <SettingsBlock
-        title="Пароль"
-        description="Смена пароля для входа по email"
-      >
+      <SettingsBlock title="Пароль">
         <form
           className="space-y-3"
           onSubmit={(event) => {
@@ -204,10 +200,7 @@ export function SettingsAccountPanel() {
 
 export function SettingsAppearancePanel() {
   return (
-    <SettingsBlock
-      title="Тема"
-      description="Светлая или тёмная тема интерфейса"
-    >
+    <SettingsBlock title="Тема">
       <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/30 px-4 py-3">
         <Label>Режим отображения</Label>
         <ThemeToggle />

@@ -4,7 +4,6 @@ import type {
   HotkeyBinding,
   HotkeyRegistrationResult,
   HotkeyRegistrationStatus,
-  HotkeyRuntimeStatus,
 } from '@syrnike13/platform'
 
 import {
@@ -38,8 +37,6 @@ export function SettingsHotkeysPanel() {
   const { desktop } = usePlatform()
   const [bindings, setBindings] = useState<HotkeyBinding[]>([])
   const [results, setResults] = useState<HotkeyRegistrationResult[]>([])
-  const [runtimeStatus, setRuntimeStatus] =
-    useState<HotkeyRuntimeStatus>('not-running')
   const [recordingId, setRecordingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const bindingsRef = useRef<HotkeyBinding[]>([])
@@ -53,9 +50,6 @@ export function SettingsHotkeysPanel() {
     let cancelled = false
 
     void desktop.hotkeys.setSuspended(true)
-    void desktop.hotkeys.getRuntimeStatus().then((status) => {
-      if (!cancelled) setRuntimeStatus(status)
-    })
     void desktop.hotkeys.getBindings().then((loadedBindings) => {
       if (cancelled) return
       setBindings(loadedBindings)
@@ -140,24 +134,12 @@ export function SettingsHotkeysPanel() {
   async function startRecording(id: string) {
     setRecordingId(id)
     await desktop.hotkeys.startRecording()
-    const status = await desktop.hotkeys.getRuntimeStatus()
-    setRuntimeStatus(status)
   }
 
   return (
     <div className="space-y-2">
-      <SettingsBlock
-        title="Горячие клавиши"
-        description="Глобальные сочетания работают только в настольном приложении и хранятся на этом устройстве."
-      >
-        <div className="mb-4 flex items-start justify-between gap-3 rounded-md border border-border bg-muted/30 px-3 py-2.5">
-          <div className="flex min-w-0 gap-2 text-sm text-muted-foreground">
-            <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
-            <p>
-              Пока эта панель открыта, горячие клавиши временно отключены.
-              Статус native hook: {runtimeStatusLabel(runtimeStatus)}.
-            </p>
-          </div>
+      <SettingsBlock title="Горячие клавиши">
+        <div className="mb-4 flex justify-end">
           <Button type="button" size="sm" onClick={addBinding}>
             Добавить горячую клавишу
           </Button>
@@ -177,12 +159,7 @@ export function SettingsHotkeysPanel() {
               const recording = recordingId === binding.id
 
               return (
-                <SettingsRow
-                  key={binding.id}
-                  label={action.label}
-                  hint={action.description}
-                  stacked
-                >
+                <SettingsRow key={binding.id} label={action.label} stacked>
                   <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(180px,1fr)_minmax(220px,1fr)_auto_auto] md:items-start">
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-muted-foreground">
@@ -305,19 +282,6 @@ function statusMessage(status: HotkeyRegistrationStatus) {
       return 'Эта комбинация уже используется.'
     case 'unsupported':
       return 'Это действие появится позже.'
-  }
-}
-
-function runtimeStatusLabel(status: HotkeyRuntimeStatus) {
-  switch (status) {
-    case 'running':
-      return 'работает'
-    case 'not-running':
-      return 'не запущен'
-    case 'unsupported-platform':
-      return 'не поддерживается на этой платформе'
-    case 'permission-required':
-      return 'нужно разрешение системы'
   }
 }
 

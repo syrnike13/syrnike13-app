@@ -72,6 +72,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - ./data/caddy-data:/data
       - ./data/caddy-config:/config
+      - ./data/desktop:/srv/desktop:ro
     networks:
       default:
         aliases:

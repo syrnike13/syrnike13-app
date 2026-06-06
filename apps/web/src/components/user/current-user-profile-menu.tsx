@@ -47,7 +47,7 @@ export function CurrentUserProfileMenu({
       <div className="relative">
         <div
           className={cn(
-            'relative h-14 w-full overflow-hidden',
+            'relative h-24 w-full overflow-hidden',
             !bannerUrl &&
               'bg-gradient-to-br from-primary/80 via-chart-4/70 to-sidebar-primary/80',
           )}
@@ -66,19 +66,19 @@ export function CurrentUserProfileMenu({
             </>
           ) : null}
         </div>
-        <div className="absolute -bottom-5 left-3">
+        <div className="absolute -bottom-7 left-3 z-10">
           <UserAvatar
             user={user}
-            className="size-12"
-            fallbackClassName="size-12 text-sm ring-4 ring-card"
+            className="size-20"
+            fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-card"
             showPresence
             presenceRingClassName="border-card"
-            presenceClassName="size-4 translate-x-[16%] translate-y-[16%] border-2"
+            presenceClassName="size-7 translate-x-[16%] translate-y-[16%] border-4"
           />
         </div>
       </div>
 
-      <div className="px-3 pt-7 pb-3">
+      <div className="px-3 pt-10 pb-3">
         <h2 className="truncate text-lg font-semibold leading-snug text-foreground">
           {displayName}
         </h2>

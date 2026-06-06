@@ -19,11 +19,12 @@ import {
 } from 'livekit-client'
 import { toast } from 'sonner'
 
-import { ScreenShareQualityDialog } from '#/components/voice/screen-share-quality-dialog'
 import { useAuth } from '#/features/auth/auth-context'
-import { joinChannelCall, patchChannelVoiceState } from '#/features/api/voice-api'
+import { eventsGateway } from '#/features/events/gateway'
+import { createVoiceJoinRunner } from '#/features/voice/voice-join'
+import { createVoiceRejoinController } from '#/features/voice/voice-rejoin'
+import { patchChannelVoiceState } from '#/features/api/voice-api'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
-import { ApiError } from '#/lib/api/client'
 import { isValidVoiceUserId } from '#/features/sync/voice-participant-resolve'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
@@ -31,10 +32,6 @@ import {
   handleVoiceApiError,
 } from '#/features/voice/voice-api-capability'
 import { syncStore } from '#/features/sync/sync-store'
-import {
-  isRateLimitedError,
-  runVoiceRequest,
-} from '#/features/voice/voice-request-gate'
 import { applyAllRemoteAudio, applyRemoteAudioElement } from '#/features/voice/remote-audio-settings'
 import { releaseRemoteAudioGain } from '#/features/voice/remote-audio-gain'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
@@ -61,10 +58,7 @@ import {
   type RtcDebugSnapshot,
   type RtcDebugStageMediaItem,
 } from '#/features/voice/voice-rtc-debug'
-import {
-  createVoiceRoomOptions,
-  screenShareCaptureOptions,
-} from '#/features/voice/voice-capture'
+import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
 import {
   applyMicProcessing,
   refreshMicProcessing,
@@ -234,6 +228,57 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     promise: Promise<void>
   } | null>(null)
   const disconnectIntentRef = useRef<'none' | 'switch' | 'leave'>('none')
+  const voiceJoinDepsRef = useRef({
+    getToken: () => undefined as string | undefined,
+    getLocalUserId: () => undefined as string | undefined,
+    isJoinBlocked: () => false,
+    setJoinBlockedUntil: (_timestamp: number) => {},
+    shouldLeaveBeforeJoin: () => false,
+    leaveBeforeJoin: async () => {},
+    beginConnecting: (
+      _channelId: string,
+      _preview: ReturnType<typeof createConnectingLocalVoiceState>[],
+    ) => {},
+    setActiveRoom: (_room: Room) => {},
+    attachRoomHandlers: (_room: Room) => {},
+    onRoomConnected: (_room: Room, _channelId: string) => {},
+    onJoinSuccess: () => {},
+    abortJoin: () => {},
+  })
+  const performVoiceJoinRef = useRef(
+    createVoiceJoinRunner({
+      getToken: () => voiceJoinDepsRef.current.getToken(),
+      getLocalUserId: () => voiceJoinDepsRef.current.getLocalUserId(),
+      isJoinBlocked: () => voiceJoinDepsRef.current.isJoinBlocked(),
+      setJoinBlockedUntil: (timestamp) =>
+        voiceJoinDepsRef.current.setJoinBlockedUntil(timestamp),
+      shouldLeaveBeforeJoin: () =>
+        voiceJoinDepsRef.current.shouldLeaveBeforeJoin(),
+      leaveBeforeJoin: () => voiceJoinDepsRef.current.leaveBeforeJoin(),
+      beginConnecting: (channelId, preview) =>
+        voiceJoinDepsRef.current.beginConnecting(channelId, preview),
+      setActiveRoom: (room) => voiceJoinDepsRef.current.setActiveRoom(room),
+      attachRoomHandlers: (room) =>
+        voiceJoinDepsRef.current.attachRoomHandlers(room),
+      onRoomConnected: (room, channelId) =>
+        voiceJoinDepsRef.current.onRoomConnected(room, channelId),
+      onJoinSuccess: () => voiceJoinDepsRef.current.onJoinSuccess(),
+      abortJoin: () => voiceJoinDepsRef.current.abortJoin(),
+    }),
+  )
+  const voiceRejoinDepsRef = useRef({
+    attemptRejoin: async (_channelId: string) => false,
+    onGiveUp: () => {},
+    isGatewayConnected: () => false,
+  })
+  const voiceRejoinRef = useRef(
+    createVoiceRejoinController({
+      attemptRejoin: (channelId) =>
+        voiceRejoinDepsRef.current.attemptRejoin(channelId),
+      onGiveUp: () => voiceRejoinDepsRef.current.onGiveUp(),
+      isGatewayConnected: () => voiceRejoinDepsRef.current.isGatewayConnected(),
+    }),
+  )
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const lastVoicePreferencesRef = useRef(readVoicePreferences())
@@ -275,7 +320,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [screenShareEnabled, setScreenShareEnabled] = useState(false)
   const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null)
   const [stageFullscreen, setStageFullscreen] = useState(false)
-  const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false)
 
   channelIdRef.current = channelId
   deafenedRef.current = deafened
@@ -493,12 +537,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [restoreVoicePreferences, setCurrentMicIssue, setStageMediaItems])
 
   const abortJoinAttempt = useCallback(() => {
+    voiceRejoinRef.current.cancel()
     cleanupAudio()
     resetVoiceState()
   }, [cleanupAudio, resetVoiceState])
 
   const leaveVoiceSession = useCallback(
     async (intent: 'switch' | 'leave' = 'switch') => {
+      voiceRejoinRef.current.cancel()
       const room = roomRef.current
       const leftChannelId = channelIdRef.current
       const userId = room?.localParticipant.identity ?? auth.user?._id
@@ -677,14 +723,87 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           disconnectIntentRef.current = 'none'
           return
         }
-        abortJoinAttempt()
+
+        const targetChannelId = channelIdRef.current
+        if (!targetChannelId) {
+          abortJoinAttempt()
+          return
+        }
+
+        const activeRoom = roomRef.current
+        if (activeRoom) {
+          activeRoom.removeAllListeners()
+          roomRef.current = null
+        }
+        cleanupAudio()
+        setStatus('connecting')
+        voiceRejoinRef.current.onUnexpectedDisconnect(targetChannelId)
       })
 
       onParticipantsChanged()
       syncSpeakers()
     },
-    [abortJoinAttempt, syncMicFromRoom, syncRoomParticipants],
+    [abortJoinAttempt, cleanupAudio, syncMicFromRoom, syncRoomParticipants],
   )
+
+  useEffect(() => {
+    voiceJoinDepsRef.current = {
+      getToken: () => auth.session?.token,
+      getLocalUserId: () => auth.user?._id,
+      isJoinBlocked: () => Date.now() < joinBlockedUntilRef.current,
+      setJoinBlockedUntil: (timestamp) => {
+        joinBlockedUntilRef.current = timestamp
+      },
+      shouldLeaveBeforeJoin: () =>
+        roomRef.current != null ||
+        channelIdRef.current != null ||
+        status !== 'idle',
+      leaveBeforeJoin: () => leaveVoiceSession('switch'),
+      beginConnecting: (targetChannelId, preview) => {
+        setStatus('connecting')
+        setChannelId(targetChannelId)
+        restoreVoicePreferences()
+        setLiveChannelParticipants(preview)
+      },
+      setActiveRoom: (room) => {
+        roomRef.current = room
+      },
+      attachRoomHandlers: (room) => attachAudio(room),
+      onRoomConnected: (room, targetChannelId) => {
+        setStatus('connected')
+        syncRoomParticipants()
+        void finishLocalVoiceSetup(room, targetChannelId)
+      },
+      onJoinSuccess: () => voiceRejoinRef.current.cancel(),
+      abortJoin: abortJoinAttempt,
+    }
+  }, [
+    abortJoinAttempt,
+    attachAudio,
+    auth.session?.token,
+    auth.user?._id,
+    finishLocalVoiceSetup,
+    leaveVoiceSession,
+    restoreVoicePreferences,
+    status,
+    syncRoomParticipants,
+  ])
+
+  useEffect(() => {
+    voiceRejoinDepsRef.current = {
+      attemptRejoin: (channelId) =>
+        performVoiceJoinRef.current(channelId, { rejoin: true }),
+      onGiveUp: abortJoinAttempt,
+      isGatewayConnected: () => auth.gatewayState === 'connected',
+    }
+  }, [abortJoinAttempt, auth.gatewayState])
+
+  useEffect(() => {
+    return eventsGateway.subscribeState((state) => {
+      if (state !== 'connected') return
+      voiceRejoinRef.current.onGatewayConnected()
+    })
+  }, [])
 
   const join = useCallback(
     async (targetChannelId: string) => {
@@ -700,7 +819,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       if (
         channelId === targetChannelId &&
-        (status === 'connected' || status === 'connecting')
+        status === 'connected' &&
+        roomRef.current != null
       ) {
         return
       }
@@ -719,73 +839,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      const runJoin = async () => {
-        const switching =
-          roomRef.current != null ||
-          channelIdRef.current != null ||
-          status !== 'idle'
-
-        if (switching) {
-          await leaveVoiceSession('switch')
-        }
-
-        setStatus('connecting')
-        setChannelId(targetChannelId)
-        restoreVoicePreferences()
-
-        const localUserId = auth.user?._id
-        if (localUserId) {
-          const prefs = readVoicePreferences()
-          setLiveChannelParticipants([
-            createConnectingLocalVoiceState(localUserId, {
-              micEnabled: prefs.micEnabled,
-              deafened: prefs.deafened,
-            }),
-          ])
-        } else {
-          setLiveChannelParticipants([])
-        }
-
-        try {
-          const credentials = await runVoiceRequest(
-            `join_call:${targetChannelId}`,
-            () => joinChannelCall(token, targetChannelId),
-            10_000,
-          )
-          if (!credentials) {
-            abortJoinAttempt()
-            return
-          }
-
-          const { url, token: livekitToken } = credentials
-
-          const room = new Room(createVoiceRoomOptions())
-          roomRef.current = room
-          attachAudio(room)
-
-          await room.connect(url, livekitToken)
-
-          setStatus('connected')
-          syncRoomParticipants()
-          void finishLocalVoiceSetup(room, targetChannelId)
-        } catch (error) {
-          abortJoinAttempt()
-          handleVoiceApiError(targetChannelId, error)
-          joinBlockedUntilRef.current =
-            Date.now() + (isRateLimitedError(error) ? 60_000 : 15_000)
-          toast.error(
-            error instanceof ApiError && error.status === 429
-              ? 'Слишком много запросов. Подождите минуту и попробуйте снова.'
-              : error instanceof ApiError && error.status === 400
-                ? 'Голос недоступен в этом канале'
-                : error instanceof Error
-                  ? error.message
-                  : 'Не удалось подключиться к голосу',
-          )
-        }
-      }
-
-      const promise = runJoin()
+      const promise = performVoiceJoinRef.current(targetChannelId)
       joinInFlightRef.current = { channelId: targetChannelId, promise }
       try {
         await promise
@@ -795,18 +849,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [
-      abortJoinAttempt,
-      attachAudio,
-      auth.session?.token,
-      channelId,
-      leaveVoiceSession,
-      status,
-      restoreVoicePreferences,
-      syncRoomParticipants,
-      finishLocalVoiceSetup,
-      auth.user?._id,
-    ],
+    [auth.session?.token, channelId, status],
   )
 
   useEffect(() => {
@@ -952,11 +995,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
 
     const prefs = readVoicePreferences()
-    if (prefs.screenShareQualityAsk) {
-      setScreenShareDialogOpen(true)
-      return
-    }
-
     void startScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
   }, [startScreenShare])
 
@@ -1263,22 +1301,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  const prefs = readVoicePreferences()
-
   return (
-    <>
-      <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
-      <ScreenShareQualityDialog
-        open={screenShareDialogOpen}
-        defaultQuality={prefs.screenShareQuality}
-        defaultAudio={prefs.screenShareAudio}
-        onConfirm={(quality, withAudio) => {
-          setScreenShareDialogOpen(false)
-          void startScreenShare(quality, withAudio)
-        }}
-        onCancel={() => setScreenShareDialogOpen(false)}
-      />
-    </>
+    <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
   )
 }
 
