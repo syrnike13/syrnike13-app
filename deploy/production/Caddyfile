@@ -64,6 +64,14 @@
 		}
 	}
 
+	@stable_download path /downloads/syrnike13.dmg /downloads/syrnike13-setup.exe /downloads/syrnike13.AppImage
+	handle @stable_download {
+		root * /srv/desktop
+		uri strip_prefix /downloads
+		header Cache-Control "no-cache"
+		file_server
+	}
+
 	handle_path /downloads/desktop/* {
 		root * /srv/desktop
 

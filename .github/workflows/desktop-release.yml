@@ -135,6 +135,12 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key" \
             "$STAGING/" \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/data/desktop/"
+      - name: Update stable download aliases
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash -s '$DEPLOY_PATH/data/desktop'" \
+            < tooling/scripts/update-download-aliases.sh
       - name: Verify desktop update feed
         run: |
           set -euo pipefail
@@ -151,4 +157,11 @@ jobs:
               echo "Desktop update feed ${FEED_FILE} version mismatch: expected $VERSION, got ${FEED_VERSION:-<missing>}"
               exit 1
             fi
+          done
+      - name: Verify stable download aliases
+        run: |
+          set -euo pipefail
+          for ALIAS in syrnike13.dmg syrnike13-setup.exe syrnike13.AppImage; do
+            curl --fail --silent --head "https://${SYRNIKE_DOMAIN}/downloads/${ALIAS}" >/dev/null
+            echo "OK /downloads/${ALIAS}"
           done

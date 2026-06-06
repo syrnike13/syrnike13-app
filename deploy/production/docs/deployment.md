@@ -142,6 +142,22 @@ curl -fsS "https://syrnike13.ru/downloads/desktop/latest.yml"
 
 GitHub Releases remain available for manual downloads. Auto-update uses the production static feed.
 
+## Stable Landing Download Aliases
+
+The landing page links to stable URLs that always point at the latest desktop release:
+
+- `https://<domain>/downloads/syrnike13.dmg`
+- `https://<domain>/downloads/syrnike13-setup.exe`
+- `https://<domain>/downloads/syrnike13.AppImage`
+
+Caddy serves these from symlinks in `data/desktop/`. The desktop release workflow updates the symlinks from `latest*.yml` after each upload via `tooling/scripts/update-download-aliases.sh`.
+
+Health check:
+
+```bash
+curl -fsSI "https://syrnike13.ru/downloads/syrnike13.dmg" | head -5
+```
+
 ## Fork Cleanup
 
 The upstream issue-triage workflow was removed because it referenced an old organization and a `PAT` secret.
