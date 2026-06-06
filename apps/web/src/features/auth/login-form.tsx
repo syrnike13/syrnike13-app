@@ -24,10 +24,12 @@ import {
 } from './use-syrnike-config'
 import { config as appConfig } from '#/lib/config'
 import { postLoginPath } from '#/lib/auth-post-login-path'
+import { usePlatform } from '#/platform/use-platform'
 
 export function LoginForm() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const { isDesktop } = usePlatform()
   const configQuery = useSyrnikeConfig()
   const emailVerification = isEmailVerificationEnabled(
     configQuery.data?.features,
@@ -213,9 +215,11 @@ export function LoginForm() {
               </Link>
             ) : null}
           </div>
-          <Button variant="ghost" className="w-full" asChild>
-            <Link to="/">На главную</Link>
-          </Button>
+          {!isDesktop ? (
+            <Button variant="ghost" className="w-full" asChild>
+              <Link to="/">На главную</Link>
+            </Button>
+          ) : null}
         </CardFooter>
       </form>
     </Card>

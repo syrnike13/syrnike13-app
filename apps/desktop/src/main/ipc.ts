@@ -28,6 +28,7 @@ export function registerDesktopIpc(
   options: {
     getWindowPreferences: () => DesktopWindowPreferences
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
+    setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
     showWindow: () => void
   },
 ) {
@@ -65,6 +66,10 @@ export function registerDesktopIpc(
 
   ipcMain.handle(IPC.windowSetCloseToTray, (_event, closeToTray: boolean) =>
     options.setCloseToTray(Boolean(closeToTray)),
+  )
+
+  ipcMain.handle(IPC.windowSetOpenAtLogin, (_event, openAtLogin: boolean) =>
+    options.setOpenAtLogin(Boolean(openAtLogin)),
   )
 
   ipcMain.handle(IPC.updatesGetState, () => getDesktopUpdateState())

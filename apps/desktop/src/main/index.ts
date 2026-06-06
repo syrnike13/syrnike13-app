@@ -25,6 +25,7 @@ import {
   saveDesktopPreferences,
   type DesktopPreferences,
 } from './desktop-preferences'
+import { applyLoginItemSettings } from './login-item'
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null
@@ -67,6 +68,14 @@ async function setCloseToTray(closeToTray: boolean) {
   await saveDesktopPreferences(desktopPreferencesPath(), nextPreferences)
   desktopPreferences = nextPreferences
   updateTrayMenu()
+  return desktopPreferences
+}
+
+async function setOpenAtLogin(openAtLogin: boolean) {
+  const nextPreferences = { ...desktopPreferences, openAtLogin }
+  await saveDesktopPreferences(desktopPreferencesPath(), nextPreferences)
+  desktopPreferences = nextPreferences
+  applyLoginItemSettings(openAtLogin)
   return desktopPreferences
 }
 
@@ -172,6 +181,7 @@ async function createApp() {
     registerDesktopIpc(() => mainWindow, {
       getWindowPreferences: getDesktopPreferences,
       setCloseToTray,
+      setOpenAtLogin,
       showWindow: showMainWindow,
     })
   }
@@ -215,6 +225,7 @@ configureChromium()
 if (setupSingleInstance()) {
   app.whenReady().then(async () => {
     desktopPreferences = await loadDesktopPreferences(desktopPreferencesPath())
+    applyLoginItemSettings(desktopPreferences.openAtLogin)
     void ensureAppCreated().catch(reportStartupFailure)
   })
 

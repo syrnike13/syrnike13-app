@@ -78,7 +78,7 @@ export function createMainWindow(loadUrl: string) {
     return { action: 'allow' }
   })
 
-  void win.loadURL(loadUrl)
+  void win.loadURL(new URL('/app', loadUrl).toString())
 
   if (!app.isPackaged) {
     win.webContents.openDevTools({ mode: 'detach' })

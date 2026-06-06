@@ -24,6 +24,7 @@ export interface ActivityDetails {
 
 export interface DesktopWindowPreferences {
   closeToTray: boolean
+  openAtLogin: boolean
 }
 
 export type DesktopUpdateState =
@@ -131,6 +132,7 @@ export interface SyrnikeDesktopApi {
     isMaximized(): Promise<boolean>
     getPreferences(): Promise<DesktopWindowPreferences>
     setCloseToTray(closeToTray: boolean): Promise<DesktopWindowPreferences>
+    setOpenAtLogin(openAtLogin: boolean): Promise<DesktopWindowPreferences>
   }
   activity: {
     set(details: ActivityDetails | null): Promise<void>

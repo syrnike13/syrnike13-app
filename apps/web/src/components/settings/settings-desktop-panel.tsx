@@ -19,6 +19,7 @@ export function SettingsDesktopPanel() {
   const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null)
   const [checkingUpdates, setCheckingUpdates] = useState(false)
   const [savingCloseToTray, setSavingCloseToTray] = useState(false)
+  const [savingOpenAtLogin, setSavingOpenAtLogin] = useState(false)
 
   useEffect(() => {
     if (!desktop) return
@@ -102,6 +103,41 @@ export function SettingsDesktopPanel() {
         </SettingsRow>
       </SettingsBlock>
 
+      <SettingsBlock title="Запуск">
+        <SettingsRow
+          label="Запускать при входе в систему"
+          value="syrnike13 откроется после включения компьютера"
+        >
+          <Switch
+            checked={windowPreferences?.openAtLogin ?? true}
+            disabled={!windowPreferences || savingOpenAtLogin}
+            onCheckedChange={(checked) => {
+              if (!desktop || savingOpenAtLogin) return
+              const previous = windowPreferences
+              setWindowPreferences((current) => ({
+                ...(current ?? { closeToTray: true, openAtLogin: true }),
+                openAtLogin: checked,
+              }))
+              setSavingOpenAtLogin(true)
+              void desktop.window
+                .setOpenAtLogin(checked)
+                .then(setWindowPreferences)
+                .catch((error) => {
+                  setWindowPreferences(previous)
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : 'Не удалось сохранить настройку автозапуска',
+                  )
+                })
+                .finally(() => {
+                  setSavingOpenAtLogin(false)
+                })
+            }}
+          />
+        </SettingsRow>
+      </SettingsBlock>
+
       <SettingsBlock title="Окно">
         <SettingsRow label="Закрывать в трей">
           <Switch
@@ -111,7 +147,7 @@ export function SettingsDesktopPanel() {
               if (!desktop || savingCloseToTray) return
               const previous = windowPreferences
               setWindowPreferences((current) => ({
-                ...(current ?? { closeToTray: true }),
+                ...(current ?? { closeToTray: true, openAtLogin: true }),
                 closeToTray: checked,
               }))
               setSavingCloseToTray(true)

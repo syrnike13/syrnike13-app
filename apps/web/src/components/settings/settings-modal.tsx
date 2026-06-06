@@ -1,7 +1,10 @@
+import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import {
   BellIcon,
   AppWindowIcon,
   KeyboardIcon,
+  LogOutIcon,
   MonitorIcon,
   PaletteIcon,
   PencilIcon,
@@ -73,10 +76,24 @@ const DESKTOP_ONLY_NAV_ITEMS = [
 
 export function SettingsModal() {
   const auth = useAuth()
+  const navigate = useNavigate()
   const { open, setOpen, section, setSection } = useSettingsModal()
   const user = auth.user
   const { isDesktop } = usePlatform()
   const navItems = isDesktop ? [...NAV, ...DESKTOP_ONLY_NAV_ITEMS] : NAV
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  async function handleLogout() {
+    if (loggingOut) return
+    setLoggingOut(true)
+    setOpen(false)
+    try {
+      await auth.logout()
+      await navigate({ to: '/login', replace: true })
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -148,6 +165,20 @@ export function SettingsModal() {
                   </button>
                 )
               })}
+              <div className="mt-2 border-t border-border/60 pt-2">
+                <button
+                  type="button"
+                  className={cn(
+                    settingsNavItemClass(false),
+                    'h-9 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive',
+                  )}
+                  disabled={loggingOut}
+                  onClick={() => void handleLogout()}
+                >
+                  <LogOutIcon className="size-4 shrink-0" />
+                  {loggingOut ? 'Выход…' : 'Выйти'}
+                </button>
+              </div>
             </nav>
           </ScrollArea>
         </aside>

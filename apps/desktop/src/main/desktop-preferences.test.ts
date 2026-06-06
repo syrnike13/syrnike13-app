@@ -18,9 +18,19 @@ describe('desktop preferences', () => {
     )
   })
 
-  it('keeps a valid close-to-tray value from persisted data', () => {
+  it('keeps valid preference values from persisted data', () => {
+    expect(
+      normalizeDesktopPreferences({ closeToTray: false, openAtLogin: false }),
+    ).toEqual({
+      closeToTray: false,
+      openAtLogin: false,
+    })
+  })
+
+  it('defaults open-at-login to enabled when missing', () => {
     expect(normalizeDesktopPreferences({ closeToTray: false })).toEqual({
       closeToTray: false,
+      openAtLogin: true,
     })
   })
 
@@ -35,13 +45,18 @@ describe('desktop preferences', () => {
     const filePath = path.join(dir, 'desktop-preferences.json')
 
     try {
-      await saveDesktopPreferences(filePath, { closeToTray: false })
+      await saveDesktopPreferences(filePath, {
+        closeToTray: false,
+        openAtLogin: false,
+      })
 
       expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual({
         closeToTray: false,
+        openAtLogin: false,
       })
       expect(await loadDesktopPreferences(filePath)).toEqual({
         closeToTray: false,
+        openAtLogin: false,
       })
     } finally {
       await rm(dir, { recursive: true, force: true })

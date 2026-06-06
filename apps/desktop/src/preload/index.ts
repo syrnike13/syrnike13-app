@@ -55,6 +55,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     setCloseToTray(closeToTray: boolean) {
       return ipcRenderer.invoke(IPC.windowSetCloseToTray, closeToTray)
     },
+    setOpenAtLogin(openAtLogin: boolean) {
+      return ipcRenderer.invoke(IPC.windowSetOpenAtLogin, openAtLogin)
+    },
   },
   activity: {
     set(details) {

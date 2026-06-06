@@ -3,6 +3,7 @@ import {
   Outlet,
   Scripts,
   createRootRouteWithContext,
+  redirect,
 } from '@tanstack/react-router'
 
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
@@ -13,6 +14,9 @@ import { SyncProvider } from '#/features/sync/sync-provider'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 
 import appCss from '../styles.css?url'
+
+import { DESKTOP_ENTRY_PATH, isDesktopAllowedPath } from '#/lib/desktop-routes'
+import { isDesktopRuntime } from '#/platform/runtime'
 
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -36,6 +40,12 @@ const contentSecurityPolicy = [
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
   ssr: false,
+  beforeLoad: ({ location }) => {
+    if (typeof window === 'undefined') return
+    if (!isDesktopRuntime()) return
+    if (isDesktopAllowedPath(location.pathname)) return
+    throw redirect({ to: DESKTOP_ENTRY_PATH, replace: true })
+  },
   head: () => ({
     meta: [
       {

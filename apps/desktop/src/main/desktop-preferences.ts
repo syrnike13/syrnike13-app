@@ -3,10 +3,12 @@ import path from 'node:path'
 
 export type DesktopPreferences = {
   closeToTray: boolean
+  openAtLogin: boolean
 }
 
 export const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   closeToTray: true,
+  openAtLogin: true,
 }
 
 export function normalizeDesktopPreferences(value: unknown): DesktopPreferences {
@@ -20,6 +22,10 @@ export function normalizeDesktopPreferences(value: unknown): DesktopPreferences 
       typeof preferences.closeToTray === 'boolean'
         ? preferences.closeToTray
         : DEFAULT_DESKTOP_PREFERENCES.closeToTray,
+    openAtLogin:
+      typeof preferences.openAtLogin === 'boolean'
+        ? preferences.openAtLogin
+        : DEFAULT_DESKTOP_PREFERENCES.openAtLogin,
   }
 }
 

@@ -185,14 +185,6 @@ export function SettingsAccountPanel() {
             {user?._id}
           </code>
         </SettingsRow>
-        <SettingsRow
-          label="WebSocket"
-          value={
-            auth.gatewayState === 'connected'
-              ? 'Подключён'
-              : auth.gatewayState
-          }
-        />
       </SettingsBlock>
     </div>
   )

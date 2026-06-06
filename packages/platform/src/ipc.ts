@@ -8,6 +8,7 @@ export const IPC = {
   windowShow: 'syrnike-desktop:window:show',
   windowGetPreferences: 'syrnike-desktop:window:get-preferences',
   windowSetCloseToTray: 'syrnike-desktop:window:set-close-to-tray',
+  windowSetOpenAtLogin: 'syrnike-desktop:window:set-open-at-login',
   updatesGetState: 'syrnike-desktop:updates:get-state',
   updatesCheck: 'syrnike-desktop:updates:check',
   updatesInstall: 'syrnike-desktop:updates:install',
