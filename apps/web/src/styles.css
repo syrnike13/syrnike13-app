@@ -460,3 +460,16 @@ body,
   appearance: none;
   box-sizing: border-box;
 }
+
+[data-homage-anchor].homage-active {
+  transition:
+    box-shadow 0.45s ease,
+    transform 0.45s ease;
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--primary) 22%, transparent),
+    0 0 28px color-mix(in oklch, var(--primary) 14%, transparent);
+}
+
+[data-homage-anchor='logo'].homage-active {
+  transform: scale(1.02);
+}

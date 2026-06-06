@@ -16,10 +16,14 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
   const others = PLATFORM_ORDER.filter((p) => p !== platform)
 
   return (
-    <section className="flex w-full max-w-[20rem] flex-col items-center">
+    <section
+      data-homage-anchor="hero"
+      className="flex w-full max-w-[20rem] flex-col items-center"
+    >
       {/* Визуальный центр — бренд, не текст */}
       <div className="flex flex-col items-center gap-5">
         <img
+          data-homage-anchor="logo"
           src={APP_LOGO_SRC}
           alt=""
           className="size-[7.5rem]"
@@ -41,14 +45,17 @@ export function HeroSection({ platform, onSwitchPlatform }: HeroSectionProps) {
           asChild
           className="h-14 w-full gap-2.5 text-[15px] font-semibold"
         >
-          <a href={current.url}>
+          <a data-homage-anchor="download" href={current.url}>
             <PlatformIcon platform={platform} className="size-4" />
             Скачать для {current.label}
           </a>
         </Button>
 
         {others.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div
+            data-homage-anchor="platforms"
+            className="flex items-center gap-2"
+          >
             {others.map((p) => (
               <button
                 key={p}
