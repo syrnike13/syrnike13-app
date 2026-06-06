@@ -1,10 +1,4 @@
-export type HomageKind =
-  | 'sideShooter'
-  | 'snake'
-  | 'fallingBlock'
-  | 'aliens'
-  | 'paddleBall'
-  | 'chomper'
+export type HomageKind = 'sideShooter' | 'snake' | 'paddleBall'
 
 export type HomageAnchorId = 'logo' | 'download' | 'platforms' | 'header-cta' | 'hero'
 
@@ -31,8 +25,10 @@ export interface PlayRegion {
   y: number
   w: number
   h: number
-  /** Препятствия в локальных координатах региона (для snake). */
+  /** Препятствия в локальных координатах региона. */
   obstacles?: ObstacleRect[]
+  /** Якоря UI в локальных координатах региона. */
+  anchors?: AnchorRect[]
   /** Не подсвечивать якорный DOM-элемент во время сцены. */
   suppressHighlight?: boolean
 }

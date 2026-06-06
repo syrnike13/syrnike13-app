@@ -8,22 +8,12 @@ import type { HomageAnchorId, HomageKind } from './types'
 
 export type { HomageKind } from './types'
 
-const HOMAGES: HomageKind[] = [
-  'sideShooter',
-  'snake',
-  'fallingBlock',
-  'aliens',
-  'paddleBall',
-  'chomper',
-]
+const HOMAGES: HomageKind[] = ['sideShooter', 'snake', 'paddleBall']
 
 const HOMAGE_DEBUG_LABELS: Record<HomageKind, string> = {
   sideShooter: 'Gradius',
   snake: 'Snake',
-  fallingBlock: 'Tetris',
-  aliens: 'Invaders',
   paddleBall: 'Pong',
-  chomper: 'Pac-Man',
 }
 
 const PLAY_MS = 7_000
@@ -102,8 +92,7 @@ export function LandingGameHomages() {
       }
 
       lastKind = kind
-      const anchor = anchors.get(region.anchorId)
-      scene = createScene(kind, region, anchor)
+      scene = createScene(kind, region)
       playing = true
       playStart = performance.now()
       lastFrame = playStart
