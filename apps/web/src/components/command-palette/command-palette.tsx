@@ -17,7 +17,6 @@ import {
   DialogDescription,
   DialogTitle,
 } from '#/components/ui/dialog'
-import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import {
   buildCommandItems,
@@ -224,14 +223,15 @@ export function CommandPalette() {
         <DialogDescription className="sr-only">
           Поиск по каналам, друзьям и сообщениям. Ctrl+K
         </DialogDescription>
-        <div className="flex items-center gap-2 border-b px-3">
-          <Input
+        <div className="flex items-center gap-3 border-b px-4">
+          <input
             ref={inputRef}
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Куда перейти? Кого найти?"
-            className="h-12 border-0 bg-transparent shadow-none focus-visible:ring-0"
+            className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground md:text-sm [&::-webkit-search-cancel-button]:hidden"
           />
           <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
             Esc
