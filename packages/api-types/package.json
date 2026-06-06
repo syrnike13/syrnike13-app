@@ -1,6 +1,6 @@
 {
   "name": "@syrnike13/api-types",
-  "version": "0.1.5",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
