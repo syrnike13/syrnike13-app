@@ -6,7 +6,7 @@ export const shellNavSurface =
 
 /** Высота кастомной шапки окна под каждую ОС (px). */
 export const SHELL_TITLEBAR_HEIGHT_PX: Record<DesktopOs, number> = {
-  darwin: 28,
+  darwin: 36,
   win32: 32,
   linux: 32,
 }
