@@ -1,6 +1,6 @@
 {
   "name": "@syrnike13/desktop",
-  "version": "0.2.1",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
@@ -30,7 +30,7 @@
     "typescript": "^5.8.3",
     "wait-on": "^8.0.3"
   },
-    "build": {
+  "build": {
     "appId": "ru.syrnike13.desktop",
     "productName": "syrnike13",
     "protocols": [

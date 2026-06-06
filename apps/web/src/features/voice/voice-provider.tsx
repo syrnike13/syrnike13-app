@@ -568,7 +568,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setScreenShareEnabled(false)
     setFocusedMediaId(null)
     setStageFullscreen(false)
-    setScreenShareDialogOpen(false)
   }, [restoreVoicePreferences, setCurrentMicIssue, setStageMediaItems])
 
   const abortJoinAttempt = useCallback(() => {

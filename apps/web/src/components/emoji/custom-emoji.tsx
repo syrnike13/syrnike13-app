@@ -24,7 +24,6 @@ export function CustomEmoji({
       title={name ? `:${name}:` : undefined}
       wrapperClassName={cn('inline-block align-text-bottom', px, className)}
       className={px}
-      strength={0.85}
       draggable={false}
     />
   )

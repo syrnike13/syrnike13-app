@@ -1,7 +1,6 @@
 import * as React from "react"
 import { Avatar as AvatarPrimitive } from "radix-ui"
 
-import { FxImage } from "#/components/ui/fx-image.tsx"
 import { cn } from "#/lib/utils.ts"
 
 function Avatar({
@@ -33,22 +32,15 @@ function AvatarImage({
   if (!src) return null
 
   return (
-    <>
-      <AvatarPrimitive.Image
-        data-slot="avatar-image"
-        src={src}
-        alt={alt}
-        className="pointer-events-none absolute size-0 opacity-0"
-        {...props}
-      />
-      <FxImage
-        src={src}
-        alt={alt ?? ""}
-        fill
-        rounded="full"
-        wrapperClassName={cn("aspect-square size-full", className)}
-      />
-    </>
+    <AvatarPrimitive.Image
+      data-slot="avatar-image"
+      src={src}
+      alt={alt}
+      className={cn("aspect-square size-full object-cover", className)}
+      loading="lazy"
+      decoding="async"
+      {...props}
+    />
   )
 }
 
