@@ -15,6 +15,7 @@ import {
   RoomEvent,
   Track,
   type RemoteParticipant,
+  type RemoteTrackPublication,
   type VideoTrack,
 } from 'livekit-client'
 import { toast } from 'sonner'
@@ -700,12 +701,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         element.remove()
       }
 
-      const playTrack = (track: Track, participant: RemoteParticipant) => {
+      const playTrack = (
+        track: Track,
+        publication: RemoteTrackPublication,
+        participant: RemoteParticipant,
+      ) => {
         if (track.kind !== Track.Kind.Audio) return
         track.detach().forEach(removeRemoteAudioElement)
         const element = track.attach() as HTMLAudioElement
+        const audioSource =
+          publication.source === Track.Source.ScreenShareAudio ? 'stream' : 'mic'
         element.dataset.livekit = 'remote'
         element.dataset.livekitUserId = participant.identity
+        element.dataset.livekitAudioSource = audioSource
         element.dataset.livekitAudioLevel = String(participant.audioLevel ?? 0)
         document.body.appendChild(element)
         audioElementsRef.current.push(element)
@@ -729,7 +737,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         for (const element of audioElementsRef.current) {
           const userId = element.dataset.livekitUserId
           if (!userId) continue
-          element.dataset.livekitAudioLevel = String(levels.get(userId) ?? 0)
+          if (element.dataset.livekitAudioSource !== 'stream') {
+            element.dataset.livekitAudioLevel = String(levels.get(userId) ?? 0)
+          }
           applyRemoteAudioElement(element, deafenedRef.current)
         }
       }
@@ -739,10 +749,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         syncRoomParticipants()
       }
 
-      room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (participant.isLocal) return
         if (track.kind === Track.Kind.Audio) {
-          playTrack(track, participant)
+          playTrack(track, publication, participant)
           return
         }
         onParticipantsChanged()

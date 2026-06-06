@@ -62,11 +62,15 @@ export function StageMediaTile({
   onStreamAspectRatioChange,
 }: StageMediaTileProps) {
   const [aspectRatio, setAspectRatio] = useState(DEFAULT_SCREEN_ASPECT_RATIO)
-  const muted = useVoiceListenerStore((s) => s.getUserMuted(item.userId))
-  const volume = useVoiceListenerStore((s) => s.getUserVolume(item.userId))
+  const isScreen = item.kind === 'screen'
+  const muted = useVoiceListenerStore((s) =>
+    isScreen ? s.getStreamMuted(item.userId) : s.getUserMuted(item.userId),
+  )
+  const volume = useVoiceListenerStore((s) =>
+    isScreen ? s.getStreamVolume(item.userId) : s.getUserVolume(item.userId),
+  )
   const palette = useVoiceTilePalette(user, item.userId)
   const hasVideo = Boolean(item.track && item.subscribed !== false)
-  const isScreen = item.kind === 'screen'
   const fit =
     variant === 'focus'
       ? 'cover'
@@ -265,11 +269,15 @@ export function StageMediaTile({
           checked={muted}
           onSelect={(event) => event.preventDefault()}
           onCheckedChange={(checked) => {
-            voiceListenerStore.setUserMuted(item.userId, checked === true)
+            if (isScreen) {
+              voiceListenerStore.setStreamMuted(item.userId, checked === true)
+            } else {
+              voiceListenerStore.setUserMuted(item.userId, checked === true)
+            }
           }}
         >
           <VolumeXIcon />
-          Заглушить
+          {isScreen ? 'Заглушить стрим' : 'Заглушить голос'}
         </ContextMenuCheckboxItem>
         <div
           className="px-2 py-2"
@@ -277,7 +285,7 @@ export function StageMediaTile({
           onClick={(event) => event.stopPropagation()}
         >
           <ContextMenuLabel className="px-0 pb-2 text-xs text-white/70">
-            Громкость стрима
+            {isScreen ? 'Громкость стрима' : 'Громкость голоса'}
           </ContextMenuLabel>
           <div className="flex items-center gap-2">
             <Slider
@@ -287,7 +295,11 @@ export function StageMediaTile({
               step={0.1}
               value={[volume]}
               onValueChange={([next]) => {
-                voiceListenerStore.setUserVolume(item.userId, next)
+                if (isScreen) {
+                  voiceListenerStore.setStreamVolume(item.userId, next)
+                } else {
+                  voiceListenerStore.setUserVolume(item.userId, next)
+                }
               }}
             />
             <span className="w-10 shrink-0 text-right text-xs tabular-nums text-white/70">

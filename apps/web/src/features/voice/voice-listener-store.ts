@@ -8,10 +8,12 @@ export const VOICE_USER_VOLUME_MAX = 3
 type VoiceListenerState = {
   userVolumes: Record<string, number>
   userMutes: Record<string, boolean>
+  streamVolumes: Record<string, number>
+  streamMutes: Record<string, boolean>
 }
 
 function emptyState(): VoiceListenerState {
-  return { userVolumes: {}, userMutes: {} }
+  return { userVolumes: {}, userMutes: {}, streamVolumes: {}, streamMutes: {} }
 }
 
 function loadState(): VoiceListenerState {
@@ -28,6 +30,14 @@ function loadState(): VoiceListenerState {
       userMutes:
         parsed.userMutes && typeof parsed.userMutes === 'object'
           ? parsed.userMutes
+          : {},
+      streamVolumes:
+        parsed.streamVolumes && typeof parsed.streamVolumes === 'object'
+          ? parsed.streamVolumes
+          : {},
+      streamMutes:
+        parsed.streamMutes && typeof parsed.streamMutes === 'object'
+          ? parsed.streamMutes
           : {},
     }
   } catch {
@@ -100,6 +110,41 @@ export const voiceListenerStore = {
       delete userMutes[userId]
     }
     state = { ...state, userMutes }
+    persist()
+    emit()
+  },
+
+  getStreamVolume(userId: string) {
+    return state.streamVolumes[userId] ?? DEFAULT_USER_VOLUME
+  },
+
+  setStreamVolume(userId: string, volume: number) {
+    const next = Math.min(
+      VOICE_USER_VOLUME_MAX,
+      Math.max(0, Number(volume.toFixed(2))),
+    )
+    if (state.streamVolumes[userId] === next) return
+    state = {
+      ...state,
+      streamVolumes: { ...state.streamVolumes, [userId]: next },
+    }
+    persist()
+    emit()
+  },
+
+  getStreamMuted(userId: string) {
+    return state.streamMutes[userId] ?? false
+  },
+
+  setStreamMuted(userId: string, muted: boolean) {
+    if (state.streamMutes[userId] === muted) return
+    const streamMutes = { ...state.streamMutes }
+    if (muted) {
+      streamMutes[userId] = true
+    } else {
+      delete streamMutes[userId]
+    }
+    state = { ...state, streamMutes }
     persist()
     emit()
   },

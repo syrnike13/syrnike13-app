@@ -45,22 +45,29 @@ export function applyRemoteAudioElement(
   const userId = element.dataset.livekitUserId
   if (!userId) return
 
-  const userMuted = voiceListenerStore.getUserMuted(userId)
-  const muted = globallyDeafened || userMuted
+  const isStreamAudio = element.dataset.livekitAudioSource === 'stream'
+  const channelMuted = isStreamAudio
+    ? voiceListenerStore.getStreamMuted(userId)
+    : voiceListenerStore.getUserMuted(userId)
+  const muted = globallyDeafened || channelMuted
   element.muted = muted
-  const userVolume = voiceListenerStore.getUserVolume(userId)
+  const channelVolume = isStreamAudio
+    ? voiceListenerStore.getStreamVolume(userId)
+    : voiceListenerStore.getUserVolume(userId)
   const prefs = voicePreferenceStore.getState()
-  const autoBalanceGain = remoteAutoBalanceGain(
-    Number(element.dataset.livekitAudioLevel ?? 0),
-    prefs.autoBalanceStrength,
-    prefs.autoBalanceEnabled,
-  )
+  const autoBalanceGain = isStreamAudio
+    ? 1
+    : remoteAutoBalanceGain(
+        Number(element.dataset.livekitAudioLevel ?? 0),
+        prefs.autoBalanceStrength,
+        prefs.autoBalanceEnabled,
+      )
   const gainApplied = applyRemoteAudioGain(
     element,
     muted ? 0 : autoBalanceGain,
   )
   element.volume = remoteAudioElementVolume(
-    userVolume,
+    channelVolume,
     prefs.outputVolume,
     muted,
     gainApplied ? 1 : autoBalanceGain,

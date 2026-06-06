@@ -1,10 +1,28 @@
-import { describe, expect, it } from 'vitest'
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { voiceListenerStore } from '#/features/voice/voice-listener-store'
+import { voicePreferenceStore } from '#/features/voice/voice-preference-store'
 
 import {
+  applyRemoteAudioElement,
   normalizeAutoBalanceStrength,
   remoteAudioElementVolume,
   remoteAutoBalanceGain,
 } from './remote-audio-settings'
+
+function createRemoteAudioElement(
+  userId: string,
+  audioSource: 'mic' | 'stream',
+) {
+  const element = document.createElement('audio')
+  element.dataset.livekit = 'remote'
+  element.dataset.livekitUserId = userId
+  element.dataset.livekitAudioSource = audioSource
+  element.dataset.livekitAudioLevel = '0.2'
+  return element
+}
 
 describe('remoteAudioElementVolume', () => {
   it('keeps 100% user and output volume at full browser volume', () => {
@@ -43,5 +61,60 @@ describe('normalizeAutoBalanceStrength', () => {
   it('clamps strength into the unit interval', () => {
     expect(normalizeAutoBalanceStrength(2)).toBe(1)
     expect(normalizeAutoBalanceStrength(-1)).toBe(0)
+  })
+})
+
+describe('applyRemoteAudioElement', () => {
+  beforeEach(() => {
+    voiceListenerStore.setUserVolume('remote-user', 1)
+    voiceListenerStore.setUserMuted('remote-user', false)
+    voiceListenerStore.setStreamVolume('remote-user', 1)
+    voiceListenerStore.setStreamMuted('remote-user', false)
+    vi.spyOn(voicePreferenceStore, 'getState').mockReturnValue({
+      ...voicePreferenceStore.getState(),
+      outputVolume: 1,
+      autoBalanceEnabled: false,
+      autoBalanceStrength: 0.5,
+    })
+  })
+
+  it('mutes only mic element when user voice is muted', () => {
+    voiceListenerStore.setUserMuted('remote-user', true)
+
+    const mic = createRemoteAudioElement('remote-user', 'mic')
+    const stream = createRemoteAudioElement('remote-user', 'stream')
+
+    applyRemoteAudioElement(mic, false)
+    applyRemoteAudioElement(stream, false)
+
+    expect(mic.muted).toBe(true)
+    expect(stream.muted).toBe(false)
+  })
+
+  it('mutes only stream element when stream audio is muted', () => {
+    voiceListenerStore.setStreamMuted('remote-user', true)
+
+    const mic = createRemoteAudioElement('remote-user', 'mic')
+    const stream = createRemoteAudioElement('remote-user', 'stream')
+
+    applyRemoteAudioElement(mic, false)
+    applyRemoteAudioElement(stream, false)
+
+    expect(mic.muted).toBe(false)
+    expect(stream.muted).toBe(true)
+  })
+
+  it('applies independent channel volumes', () => {
+    voiceListenerStore.setUserVolume('remote-user', 0.4)
+    voiceListenerStore.setStreamVolume('remote-user', 0.8)
+
+    const mic = createRemoteAudioElement('remote-user', 'mic')
+    const stream = createRemoteAudioElement('remote-user', 'stream')
+
+    applyRemoteAudioElement(mic, false)
+    applyRemoteAudioElement(stream, false)
+
+    expect(mic.volume).toBe(0.4)
+    expect(stream.volume).toBe(0.8)
   })
 })
