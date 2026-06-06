@@ -3,6 +3,8 @@ import { IPC } from '@syrnike13/platform'
 
 import type {
   DesktopOs,
+  DesktopDisplayMediaRequest,
+  DesktopDisplayMediaSource,
   DesktopPlatformInfo,
   DesktopStoredSession,
   DesktopUpdateState,
@@ -137,6 +139,33 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       }
     },
   },
+  screenShare: {
+    getSources(requestId: string) {
+      return ipcRenderer.invoke(
+        IPC.screenShareGetSources,
+        requestId,
+      ) as Promise<DesktopDisplayMediaSource[]>
+    },
+    selectSource(requestId: string, sourceId: string) {
+      return ipcRenderer.invoke(
+        IPC.screenShareSelectSource,
+        requestId,
+        sourceId,
+      ) as Promise<boolean>
+    },
+    cancelRequest(requestId: string) {
+      return ipcRenderer.invoke(IPC.screenShareCancelRequest, requestId)
+    },
+    onRequest(handler: (request: DesktopDisplayMediaRequest) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
+        if (isDesktopDisplayMediaRequest(request)) handler(request)
+      }
+      ipcRenderer.on(IPC.screenShareRequest, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.screenShareRequest, listener)
+      }
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('syrnikeDesktop', syrnikeDesktop)
@@ -166,5 +195,16 @@ function isHotkeyActivationEvent(value: unknown): value is HotkeyActivationEvent
   return (
     typeof event.action === 'string' &&
     (event.phase === 'pressed' || event.phase === 'released')
+  )
+}
+
+function isDesktopDisplayMediaRequest(
+  value: unknown,
+): value is DesktopDisplayMediaRequest {
+  if (!value || typeof value !== 'object') return false
+  const request = value as DesktopDisplayMediaRequest
+  return (
+    typeof request.id === 'string' &&
+    typeof request.audioRequested === 'boolean'
   )
 }

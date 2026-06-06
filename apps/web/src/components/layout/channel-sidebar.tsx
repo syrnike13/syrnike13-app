@@ -12,6 +12,7 @@ import {
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
+import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import { useSyncStore } from '#/features/sync/sync-store'
 
 type ChannelSidebarProps = {
@@ -28,6 +29,8 @@ export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
   const dmChannels = useSyncStore((s) =>
     listDmChannels(s, auth.user?._id),
   )
+
+  useServerMembersSync(selectedServerId, auth.session?.token)
 
   const serverName = selectedServerId
     ? servers[selectedServerId]?.name

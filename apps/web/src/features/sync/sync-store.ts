@@ -111,10 +111,12 @@ function removeVoiceParticipantFromOtherChannels(
   userId: string,
   targetChannelId: string,
 ) {
+  let changed = false
   for (const channelId of Object.keys(voiceParticipants)) {
     if (channelId === targetChannelId) continue
     if (!voiceParticipants[channelId]?.[userId]) continue
 
+    changed = true
     const { [userId]: _, ...channelMap } = voiceParticipants[channelId]
     if (Object.keys(channelMap).length === 0) {
       delete voiceParticipants[channelId]
@@ -122,6 +124,38 @@ function removeVoiceParticipantFromOtherChannels(
       voiceParticipants[channelId] = channelMap
     }
   }
+  return changed
+}
+
+function voiceStateEquals(
+  left: UserVoiceState | undefined,
+  right: UserVoiceState | undefined,
+) {
+  if (left === right) return true
+  if (!left || !right) return false
+  return (
+    left.id === right.id &&
+    left.joined_at === right.joined_at &&
+    left.is_publishing === right.is_publishing &&
+    left.is_receiving === right.is_receiving &&
+    left.server_muted === right.server_muted &&
+    left.server_deafened === right.server_deafened &&
+    left.camera === right.camera &&
+    left.screensharing === right.screensharing
+  )
+}
+
+function voiceChannelMapEquals(
+  left: Record<string, UserVoiceState> | undefined,
+  right: Record<string, UserVoiceState>,
+) {
+  const leftKeys = Object.keys(left ?? {})
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) return false
+  for (const key of rightKeys) {
+    if (!voiceStateEquals(left?.[key], right[key])) return false
+  }
+  return true
 }
 
 export const syncStore = {
@@ -186,16 +220,24 @@ export const syncStore = {
   ) {
     const channelMap: Record<string, UserVoiceState> = {}
     const voiceParticipants = { ...state.voiceParticipants }
+    let removedFromOtherChannel = false
     for (const participant of participants) {
       if (!isValidVoiceUserId(participant.id)) continue
       if (!userCanAppearInMultipleVoiceChannels(participant.id)) {
-        removeVoiceParticipantFromOtherChannels(
-          voiceParticipants,
-          participant.id,
-          channelId,
-        )
+        removedFromOtherChannel =
+          removeVoiceParticipantFromOtherChannels(
+            voiceParticipants,
+            participant.id,
+            channelId,
+          ) || removedFromOtherChannel
       }
       channelMap[participant.id] = participant
+    }
+    if (
+      !removedFromOtherChannel &&
+      voiceChannelMapEquals(state.voiceParticipants[channelId], channelMap)
+    ) {
+      return
     }
     if (Object.keys(channelMap).length === 0) {
       delete voiceParticipants[channelId]
@@ -209,6 +251,8 @@ export const syncStore = {
 
   addVoiceParticipant(channelId: string, participant: UserVoiceState) {
     if (!isValidVoiceUserId(participant.id)) return
+    const existing = state.voiceParticipants[channelId]?.[participant.id]
+    if (voiceStateEquals(existing, participant)) return
     const voiceParticipants = { ...state.voiceParticipants }
     if (!userCanAppearInMultipleVoiceChannels(participant.id)) {
       removeVoiceParticipantFromOtherChannels(
@@ -423,6 +467,32 @@ export const syncStore = {
       next[key] = member
     }
     if (next) setState({ members: next })
+  },
+
+  upsertMembersAndUsers(members: Member[], users: User[]) {
+    if (!members.length && !users.length) return
+
+    let nextMembers: Record<string, Member> | null = null
+    for (const member of members) {
+      const key = memberKey(member)
+      if (state.members[key] === member) continue
+      if (!nextMembers) nextMembers = { ...state.members }
+      nextMembers[key] = member
+    }
+
+    let nextUsers: Record<string, User> | null = null
+    for (const user of users) {
+      const existing = state.users[user._id]
+      if (existing === user) continue
+      if (!nextUsers) nextUsers = { ...state.users }
+      nextUsers[user._id] = user
+    }
+
+    if (!nextMembers && !nextUsers) return
+    setState({
+      members: nextMembers ?? state.members,
+      users: nextUsers ?? state.users,
+    })
   },
 
   removeServerMember(serverId: string, userId: string) {

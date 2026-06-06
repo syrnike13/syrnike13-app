@@ -1,5 +1,8 @@
 export type {
   ActivityDetails,
+  DesktopDisplayMediaRequest,
+  DesktopDisplayMediaSource,
+  DesktopDisplayMediaSourceType,
   DesktopOs,
   DesktopPlatformInfo,
   DesktopStoredSession,

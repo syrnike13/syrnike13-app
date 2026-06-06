@@ -1,5 +1,11 @@
-import { app, BrowserWindow, session, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  session,
+  shell,
+} from 'electron'
 
+import { installMediaPermissions } from './media-permissions'
 import { resolvePreloadScript } from './paths'
 
 const isMac = process.platform === 'darwin'
@@ -65,6 +71,8 @@ export function createMainWindow(loadUrl: string) {
       spellcheck: true,
     },
   })
+
+  installMediaPermissions(loadUrl, () => win)
 
   win.on('ready-to-show', () => {
     win.show()

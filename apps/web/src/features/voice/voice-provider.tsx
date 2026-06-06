@@ -59,6 +59,7 @@ import {
   type RtcDebugStageMediaItem,
 } from '#/features/voice/voice-rtc-debug'
 import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
+import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
 import {
   applyMicProcessing,
   refreshMicProcessing,
@@ -192,6 +193,38 @@ function writeStageMediaFilters(filters: StageMediaFilters) {
     }
     // localStorage may be unavailable in private/browser-restricted contexts.
   }
+}
+
+function voiceStateEquals(left: UserVoiceState, right: UserVoiceState) {
+  return (
+    left.id === right.id &&
+    left.joined_at === right.joined_at &&
+    left.is_publishing === right.is_publishing &&
+    left.is_receiving === right.is_receiving &&
+    left.server_muted === right.server_muted &&
+    left.server_deafened === right.server_deafened &&
+    left.camera === right.camera &&
+    left.screensharing === right.screensharing
+  )
+}
+
+function voiceStateListEquals(
+  left: readonly UserVoiceState[],
+  right: readonly UserVoiceState[],
+) {
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) {
+    if (!voiceStateEquals(left[index], right[index])) return false
+  }
+  return true
+}
+
+function stringSetEquals(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  if (left.size !== right.size) return false
+  for (const value of right) {
+    if (!left.has(value)) return false
+  }
+  return true
 }
 
 function stageMediaTrackSource(
@@ -425,7 +458,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ) {
       return
     }
-    setLiveChannelParticipants(participants)
+    setLiveChannelParticipants((current) =>
+      voiceStateListEquals(current, participants) ? current : participants,
+    )
     syncLiveKitRoomParticipants(activeChannelId, room, receiving)
     const localMedia = localParticipantVoiceFlags(room.localParticipant)
     setCameraEnabled(localMedia.camera)
@@ -662,8 +697,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
 
       const syncSpeakers = () => {
-        setSpeakingUserIds(
-          new Set(room.activeSpeakers.map((speaker) => speaker.identity)),
+        const nextSpeakers = new Set(
+          room.activeSpeakers.map((speaker) => speaker.identity),
+        )
+        setSpeakingUserIds((current) =>
+          stringSetEquals(current, nextSpeakers) ? current : nextSpeakers,
         )
         const levels = new Map<string, number>()
         for (const participant of room.remoteParticipants.values()) {
@@ -763,7 +801,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setStatus('connecting')
         setChannelId(targetChannelId)
         restoreVoicePreferences()
-        setLiveChannelParticipants(preview)
+        setLiveChannelParticipants((current) =>
+          voiceStateListEquals(current, preview) ? current : preview,
+        )
       },
       setActiveRoom: (room) => {
         roomRef.current = room
@@ -1302,7 +1342,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   return (
-    <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
+    <VoiceContext.Provider value={value}>
+      {children}
+      <DesktopScreenSharePicker />
+    </VoiceContext.Provider>
   )
 }
 

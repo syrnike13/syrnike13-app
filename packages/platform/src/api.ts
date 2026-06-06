@@ -122,6 +122,21 @@ export type HotkeyActivationEvent = {
   phase: 'pressed' | 'released'
 }
 
+export type DesktopDisplayMediaSourceType = 'screen' | 'window'
+
+export type DesktopDisplayMediaSource = {
+  id: string
+  name: string
+  type: DesktopDisplayMediaSourceType
+  thumbnailDataUrl: string | null
+  appIconDataUrl: string | null
+}
+
+export type DesktopDisplayMediaRequest = {
+  id: string
+  audioRequested: boolean
+}
+
 /**
  * API, который preload пробрасывает в `window.syrnikeDesktop`.
  * Расширяйте по мере появления нативных возможностей (presence, screen share, …).
@@ -166,5 +181,11 @@ export interface SyrnikeDesktopApi {
     getRuntimeStatus(): Promise<HotkeyRuntimeStatus>
     onRecordedInput(handler: (event: NativeInputEvent) => void): () => void
     onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
+  }
+  screenShare: {
+    getSources(requestId: string): Promise<DesktopDisplayMediaSource[]>
+    selectSource(requestId: string, sourceId: string): Promise<boolean>
+    cancelRequest(requestId: string): Promise<void>
+    onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
   }
 }

@@ -26,6 +26,10 @@ export const IPC = {
   hotkeysGetRuntimeStatus: 'syrnike-desktop:hotkeys:get-runtime-status',
   hotkeysRecordedInput: 'syrnike-desktop:hotkeys:recorded-input',
   hotkeysPressed: 'syrnike-desktop:hotkeys:pressed',
+  screenShareRequest: 'syrnike-desktop:screen-share:request',
+  screenShareGetSources: 'syrnike-desktop:screen-share:get-sources',
+  screenShareSelectSource: 'syrnike-desktop:screen-share:select-source',
+  screenShareCancelRequest: 'syrnike-desktop:screen-share:cancel-request',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

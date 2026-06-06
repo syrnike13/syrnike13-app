@@ -6,6 +6,64 @@ const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 
 describe('syncStore voice events', () => {
+  it('does not emit when applying the same voice participant snapshot', () => {
+    syncStore.reset()
+    const participants = [
+      {
+        id: USER_ID,
+        joined_at: 1,
+        is_publishing: true,
+        is_receiving: true,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+      },
+    ]
+    syncStore.setChannelVoiceParticipants(CHANNEL_ID, participants)
+
+    let emits = 0
+    const unsubscribe = syncStore.subscribe(() => {
+      emits += 1
+    })
+
+    syncStore.setChannelVoiceParticipants(CHANNEL_ID, [
+      { ...participants[0] },
+    ])
+    unsubscribe()
+
+    expect(emits).toBe(0)
+  })
+
+  it('emits once when applying server members with users', () => {
+    syncStore.reset()
+    let emits = 0
+    const unsubscribe = syncStore.subscribe(() => {
+      emits += 1
+    })
+
+    syncStore.upsertMembersAndUsers(
+      [
+        {
+          _id: {
+            server: '01KT7DEM3B0T4B0BXGBXWDJ6E0',
+            user: '01KT7DEM3B0T4B0BXGBXWDJ6E1',
+          },
+        },
+      ] as never,
+      [
+        {
+          _id: '01KT7DEM3B0T4B0BXGBXWDJ6E1',
+          username: 'alice',
+          online: true,
+        },
+      ] as never,
+    )
+    unsubscribe()
+
+    expect(emits).toBe(1)
+  })
+
   it('emits once for one bulk message delete event', () => {
     syncStore.reset()
     syncStore.setChannelMessages(CHANNEL_ID, [

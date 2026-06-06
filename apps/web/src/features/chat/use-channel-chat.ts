@@ -17,7 +17,6 @@ import {
   unreactFromMessage,
 } from '#/features/api/messages-api'
 import { blockUser } from '#/features/api/users-api'
-import { fetchServerMembers } from '#/features/api/servers-api'
 import { ackChannel } from '#/features/api/sync-api'
 import { useJumpToMessage } from '#/features/chat/use-jump-to-message'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
@@ -104,17 +103,6 @@ export function useChannelChat({
         ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     })
   }, [replyTargetId])
-
-  useEffect(() => {
-    if (!enabled || !token || !serverIdForSelection) return
-
-    void fetchServerMembers(token, serverIdForSelection)
-      .then(({ members, users: memberUsers }) => {
-        syncStore.upsertMembers(members)
-        syncStore.upsertUsers(memberUsers)
-      })
-      .catch(() => {})
-  }, [enabled, serverIdForSelection, token])
 
   useEffect(() => {
     if (!enabled || !token || !lastMessageId || !channel) return

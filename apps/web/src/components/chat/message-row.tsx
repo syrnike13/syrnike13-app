@@ -1,6 +1,6 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
 import { PinIcon } from 'lucide-react'
-import type { ReactElement } from 'react'
+import { useMemo, type ReactElement } from 'react'
 
 import {
   MESSAGE_AVATAR_COLUMN,
@@ -147,6 +147,13 @@ export function MessageRow({
   const authorRoles =
     server && member ? memberRoleEntries(server, member) : undefined
   const hideAuthorMessage = authorUser?._id === currentUserId
+  const renderedContent = useMemo(
+    () =>
+      hasContent
+        ? renderMessageContent(message.content!, users, emojis)
+        : null,
+    [emojis, hasContent, message.content, users],
+  )
 
   return (
     <article
@@ -292,7 +299,7 @@ export function MessageRow({
         <div className="flex flex-col gap-1 text-[15px] leading-snug text-foreground">
           {hasContent ? (
             <div className="whitespace-pre-wrap break-words">
-              {renderMessageContent(message.content!, users, emojis)}
+              {renderedContent}
             </div>
           ) : null}
           {hasAttachments ? (
