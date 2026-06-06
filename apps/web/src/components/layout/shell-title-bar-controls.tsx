@@ -2,6 +2,7 @@ import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, SquareIcon, XIcon } from 
 
 import {
   SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
+  SHELL_TITLEBAR_WIN32_NAV_INSET_PX,
   shellTitleBarNoDragClass,
 } from '#/components/layout/shell-chrome'
 import { useShellHistoryNav } from '#/features/navigation/use-shell-history-nav'
@@ -11,36 +12,49 @@ import { cn } from '#/lib/utils'
 const titleBarIconButtonClass =
   'inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-35'
 
-const titleBarIconButtonMacClass = cn(
-  titleBarIconButtonClass,
-  'h-full w-7 shrink-0',
-)
 const titleBarIconButtonDefaultClass = cn(titleBarIconButtonClass, 'size-7')
 
 const titleBarWindowButtonClass =
   'shell-title-bar-window-button inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground'
 
 type ShellHistoryNavButtonsProps = {
-  layout?: 'default' | 'macos'
+  layout?: 'default' | 'macos' | 'windows'
+  heightPx?: number
 }
 
 export function ShellHistoryNavButtons({
   layout = 'default',
+  heightPx,
 }: ShellHistoryNavButtonsProps) {
   const { canGoBack, canGoForward, goBack, goForward } = useShellHistoryNav()
   const isMac = layout === 'macos'
+  const isWindows = layout === 'windows'
+  const isFullHeight = isMac || isWindows
+
+  const fullHeightButtonClass = cn(
+    titleBarIconButtonClass,
+    'h-full w-7 shrink-0',
+  )
 
   return (
     <div
       className={cn(
-        'flex h-full shrink-0 items-center',
-        isMac ? 'gap-1 pr-1' : 'h-full gap-0.5 px-1',
+        'flex shrink-0 items-center',
+        isFullHeight && 'h-full',
+        isMac && 'gap-1 pr-1',
+        isWindows && 'gap-0.5',
+        !isFullHeight && 'h-full gap-0.5 px-1',
         shellTitleBarNoDragClass,
       )}
+      style={
+        isWindows && heightPx != null
+          ? { height: heightPx, paddingLeft: SHELL_TITLEBAR_WIN32_NAV_INSET_PX }
+          : undefined
+      }
     >
       <button
         type="button"
-        className={isMac ? titleBarIconButtonMacClass : titleBarIconButtonDefaultClass}
+        className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
         aria-label="Назад"
         disabled={!canGoBack}
         onClick={goBack}
@@ -49,7 +63,7 @@ export function ShellHistoryNavButtons({
       </button>
       <button
         type="button"
-        className={isMac ? titleBarIconButtonMacClass : titleBarIconButtonDefaultClass}
+        className={isFullHeight ? fullHeightButtonClass : titleBarIconButtonDefaultClass}
         aria-label="Вперёд"
         disabled={!canGoForward}
         onClick={goForward}

@@ -19,6 +19,9 @@ export function getShellTitleBarHeightPx(os: DesktopOs | null): number {
 /** Ширина кнопок caption на Windows (px). */
 export const SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX = 46
 
+/** Левый отступ стрелок навигации на Windows (px). */
+export const SHELL_TITLEBAR_WIN32_NAV_INSET_PX = 8
+
 /** Отступ слева под системные traffic lights на macOS. */
 export const SHELL_TITLEBAR_MACOS_INSET_PX = 72
 
