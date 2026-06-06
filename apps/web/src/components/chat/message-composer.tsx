@@ -50,7 +50,9 @@ function composerPlaceholder(
   users: Record<string, User>,
   currentUserId: string | undefined,
   isEditing: boolean,
+  waitingForConnection: boolean,
 ) {
+  if (waitingForConnection) return 'Ожидание соединения…'
   if (isEditing) return 'Новый текст сообщения…'
   if (!channel) return 'Написать сообщение…'
   if (channel.channel_type === 'TextChannel') {
@@ -310,11 +312,15 @@ export function MessageComposer({
     }
   }
 
+  const waitingForConnection =
+    Boolean(token) && auth.gatewayState !== 'connected'
+
   const placeholder = composerPlaceholder(
     channel,
     users,
     auth.user?._id,
     isEditing,
+    waitingForConnection,
   )
 
   const hasComposerHeader = showReplyBanner || isEditing

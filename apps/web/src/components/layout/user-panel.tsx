@@ -33,7 +33,8 @@ const gatewayLabels = {
   idle: 'Не подключён',
   connecting: 'Подключение…',
   connected: 'в сети',
-  disconnected: 'Отключён',
+  disconnected: 'Нет связи',
+  reconnecting: 'Переподключение…',
 } as const
 
 const userPanelControlButtonClass =
@@ -55,6 +56,7 @@ export function UserPanel() {
     (voice.status === 'connected' || voice.status === 'connecting')
   const inVoice = voice.status === 'connected'
   const gatewayConnected = auth.gatewayState === 'connected'
+  const gatewayReconnecting = auth.gatewayState === 'reconnecting'
   const micMuted = isMicVisuallyMuted({
     inVoiceSession,
     micEnabled: voice.micEnabled,
@@ -119,7 +121,9 @@ export function UserPanel() {
                           'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
                           gatewayConnected
                             ? 'text-muted-foreground'
-                            : 'text-destructive/80',
+                            : gatewayReconnecting
+                              ? 'text-amber-400/90'
+                              : 'text-destructive/80',
                         )}
                       >
                         {statusLabel}

@@ -1,6 +1,7 @@
 import { Outlet, useMatch, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
+import { ConnectionStatusBanner } from '#/components/layout/connection-status-banner'
 import { HomeSidebar } from '#/components/home/home-sidebar'
 import { AppMainFrame } from '#/components/layout/app-main-frame'
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
@@ -77,6 +78,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-svh flex-col bg-background text-foreground">
+      <ConnectionStatusBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
         <ServerRail />
