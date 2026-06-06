@@ -41,7 +41,15 @@ const config = defineConfig({
   optimizeDeps: {
     include: ['@syrnike13/api-types', '@syrnike13/platform'],
   },
-  plugins: [tailwindcss(), tanstackStart(), viteReact()],
+  plugins: [
+    tailwindcss(),
+    tanstackStart({
+      spa: {
+        enabled: true,
+      },
+    }),
+    viteReact(),
+  ],
 })
 
 export default config

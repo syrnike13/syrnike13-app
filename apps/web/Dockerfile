@@ -31,22 +31,13 @@ RUN pnpm version:sync && \
 
 FROM node:24-alpine
 
-RUN corepack enable && corepack prepare pnpm@11.3.0 --activate
-
-WORKDIR /app
+WORKDIR /app/apps/web
 
 ENV NODE_ENV=production
 ENV PORT=5000
 
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml VERSION ./
-COPY apps/web/package.json apps/web/
-COPY packages/api-types/package.json packages/api-types/
-COPY packages/platform/package.json packages/platform/
-RUN pnpm install --frozen-lockfile --prod --filter @syrnike13/web...
-
-WORKDIR /app/apps/web
-
 COPY apps/web/docker/server.mjs ./server.mjs
+COPY apps/web/docker/spa-server.mjs ./spa-server.mjs
 COPY --from=builder /build/apps/web/dist ./dist
 
 EXPOSE 5000

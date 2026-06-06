@@ -27,7 +27,6 @@
     "@tanstack/react-query-devtools": "latest",
     "@tanstack/react-router": "latest",
     "@tanstack/react-router-devtools": "latest",
-    "@tanstack/react-router-ssr-query": "latest",
     "@tanstack/react-start": "latest",
     "@tanstack/react-virtual": "^3.14.2",
     "@tanstack/router-plugin": "^1.132.0",

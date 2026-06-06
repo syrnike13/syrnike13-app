@@ -3,6 +3,7 @@ import path from 'node:path'
 import {
   app,
   BrowserWindow,
+  dialog,
   Menu,
   nativeImage,
   Tray,
@@ -84,14 +85,25 @@ async function ensureAppCreated() {
   }
 }
 
+function reportStartupFailure(error: unknown) {
+  console.error('[desktop] failed to start', error)
+  const message =
+    error instanceof Error ? error.message : 'Не удалось запустить syrnike13.'
+  dialog.showErrorBox('syrnike13', message)
+  quitting = true
+  app.quit()
+}
+
 function showMainWindow() {
   if (!mainWindow) {
-    void ensureAppCreated().then(() => {
-      if (!mainWindow) return
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
-    })
+    void ensureAppCreated()
+      .then(() => {
+        if (!mainWindow) return
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.show()
+        mainWindow.focus()
+      })
+      .catch(reportStartupFailure)
     return
   }
   if (mainWindow.isMinimized()) mainWindow.restore()
@@ -203,7 +215,7 @@ configureChromium()
 if (setupSingleInstance()) {
   app.whenReady().then(async () => {
     desktopPreferences = await loadDesktopPreferences(desktopPreferencesPath())
-    void ensureAppCreated()
+    void ensureAppCreated().catch(reportStartupFailure)
   })
 
   app.on('window-all-closed', () => {
@@ -215,7 +227,7 @@ if (setupSingleInstance()) {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void ensureAppCreated()
+      void ensureAppCreated().catch(reportStartupFailure)
     }
   })
 

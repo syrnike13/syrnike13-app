@@ -10,6 +10,7 @@ import { ThemeProvider } from '#/components/theme-provider'
 import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
+import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 
 import appCss from '../styles.css?url'
 
@@ -34,6 +35,7 @@ const contentSecurityPolicy = [
 ].join('; ')
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
+  ssr: false,
   head: () => ({
     meta: [
       {
@@ -83,16 +85,20 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 })
 
 function RootComponent() {
+  const { queryClient } = Route.useRouteContext()
+
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <SyncProvider>
-          <NativeScrollbarEnhancer />
-          <Outlet />
-          <Toaster richColors closeButton />
-        </SyncProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <TanstackQueryProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <SyncProvider>
+            <NativeScrollbarEnhancer />
+            <Outlet />
+            <Toaster richColors closeButton />
+          </SyncProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </TanstackQueryProvider>
   )
 }
 
