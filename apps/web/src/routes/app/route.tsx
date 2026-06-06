@@ -6,6 +6,7 @@ import { SettingsModal } from '#/components/settings/settings-modal'
 import { AppShell } from '#/components/layout/app-shell'
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
 import { CommandPaletteProvider } from '#/features/command-palette/command-palette-context'
+import { DesktopUpdateBanner } from '#/features/desktop/desktop-update-banner'
 import { DesktopHotkeyProvider } from '#/features/hotkeys/desktop-hotkey-provider'
 import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
@@ -84,6 +85,7 @@ function AppLayoutGate() {
     <CommandPaletteProvider>
       <SettingsModalProvider>
         <DesktopHotkeyProvider>
+          <DesktopUpdateBanner />
           <AppShell />
           <CommandPalette />
           <SettingsModal />

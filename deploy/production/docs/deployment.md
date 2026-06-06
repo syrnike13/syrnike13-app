@@ -112,6 +112,36 @@ docker compose ps
 
 Backend, web, desktop, and LiveKit release jobs are published from this monorepo.
 
+## Desktop Auto-Updates
+
+Desktop installers and `electron-updater` manifests are served as static files from:
+
+- URL: `https://<domain>/downloads/desktop/`
+- Server path: `<DEPLOY_PATH>/data/desktop/`
+
+Caddy serves that directory read-only from `data/desktop`. The directory is server-local state and is not overwritten by production deploy tar uploads.
+
+Publishing flow:
+
+1. Push a `VERSION` change on `main` to run `.github/workflows/desktop-release.yml`.
+2. GitHub Actions builds Windows, macOS, and Linux packages.
+3. The workflow uploads installers, `latest*.yml`, and `*.blockmap` files to `data/desktop/` on the production server.
+4. Packaged desktop clients check `https://syrnike13.ru/downloads/desktop/` for updates.
+
+Before the first desktop release upload, deploy production once so Caddy picks up the `/downloads/desktop/*` route and the `data/desktop` volume mount:
+
+```bash
+docker compose up -d --no-deps caddy
+```
+
+Health check:
+
+```bash
+curl -fsS "https://syrnike13.ru/downloads/desktop/latest.yml"
+```
+
+GitHub Releases remain available for manual downloads. Auto-update uses the production static feed.
+
 ## Fork Cleanup
 
 The upstream issue-triage workflow was removed because it referenced an old organization and a `PAT` secret.

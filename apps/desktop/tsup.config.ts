@@ -12,7 +12,7 @@ export default defineConfig([
     sourcemap: true,
     clean: true,
     splitting: false,
-    external: ['electron'],
+    external: ['electron', 'electron-updater'],
     noExternal: ['@syrnike13/platform'],
     define: {
       __WEB_DEV_URL__: JSON.stringify(WEB_DEV_URL),
@@ -26,7 +26,7 @@ export default defineConfig([
     target: 'node20',
     sourcemap: true,
     splitting: false,
-    external: ['electron'],
+    external: ['electron', 'electron-updater'],
     noExternal: ['@syrnike13/platform'],
   },
 ])

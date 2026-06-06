@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@syrnike13/platform'
 
 import type {
+  DesktopUpdateState,
   HotkeyActivationEvent,
   HotkeyAction,
   HotkeyBinding,
@@ -24,8 +25,17 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     close() {
       ipcRenderer.send(IPC.windowClose)
     },
+    show() {
+      ipcRenderer.send(IPC.windowShow)
+    },
     isMaximized() {
       return ipcRenderer.invoke(IPC.windowIsMaximized)
+    },
+    getPreferences() {
+      return ipcRenderer.invoke(IPC.windowGetPreferences)
+    },
+    setCloseToTray(closeToTray: boolean) {
+      return ipcRenderer.invoke(IPC.windowSetCloseToTray, closeToTray)
     },
   },
   activity: {
@@ -34,6 +44,26 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
     clear() {
       return ipcRenderer.invoke(IPC.activityClear)
+    },
+  },
+  updates: {
+    getState() {
+      return ipcRenderer.invoke(IPC.updatesGetState)
+    },
+    check() {
+      return ipcRenderer.invoke(IPC.updatesCheck)
+    },
+    install() {
+      ipcRenderer.send(IPC.updatesInstall)
+    },
+    onStateChange(handler: (state: DesktopUpdateState) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, state: unknown) => {
+        if (isDesktopUpdateState(state)) handler(state)
+      }
+      ipcRenderer.on(IPC.updatesStateChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.updatesStateChanged, listener)
+      }
     },
   },
   hotkeys: {
@@ -77,6 +107,25 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
 }
 
 contextBridge.exposeInMainWorld('syrnikeDesktop', syrnikeDesktop)
+
+function isDesktopUpdateState(value: unknown): value is DesktopUpdateState {
+  if (!value || typeof value !== 'object') return false
+  const state = value as DesktopUpdateState
+  switch (state.status) {
+    case 'idle':
+    case 'checking':
+      return true
+    case 'available':
+    case 'ready':
+      return typeof state.version === 'string'
+    case 'downloading':
+      return typeof state.percent === 'number'
+    case 'error':
+      return typeof state.message === 'string'
+    default:
+      return false
+  }
+}
 
 function isHotkeyActivationEvent(value: unknown): value is HotkeyActivationEvent {
   if (!value || typeof value !== 'object') return false

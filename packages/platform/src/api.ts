@@ -15,6 +15,18 @@ export interface ActivityDetails {
   state?: string
 }
 
+export interface DesktopWindowPreferences {
+  closeToTray: boolean
+}
+
+export type DesktopUpdateState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'available'; version: string }
+  | { status: 'downloading'; percent: number }
+  | { status: 'ready'; version: string }
+  | { status: 'error'; message: string }
+
 export type HotkeyAction =
   | 'toggle-mic'
   | 'toggle-deafen'
@@ -107,11 +119,20 @@ export interface SyrnikeDesktopApi {
     minimize(): void
     maximize(): void
     close(): void
+    show(): void
     isMaximized(): Promise<boolean>
+    getPreferences(): Promise<DesktopWindowPreferences>
+    setCloseToTray(closeToTray: boolean): Promise<DesktopWindowPreferences>
   }
   activity: {
     set(details: ActivityDetails | null): Promise<void>
     clear(): Promise<void>
+  }
+  updates: {
+    getState(): Promise<DesktopUpdateState>
+    check(): Promise<DesktopUpdateState>
+    install(): void
+    onStateChange(handler: (state: DesktopUpdateState) => void): () => void
   }
   hotkeys: {
     getBindings(): Promise<HotkeyBinding[]>

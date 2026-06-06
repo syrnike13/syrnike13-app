@@ -17,7 +17,8 @@
     "typecheck": "pnpm --filter @syrnike13/platform build && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@syrnike13/platform": "workspace:*"
+    "@syrnike13/platform": "workspace:*",
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "@syrnike13/web": "workspace:*",
@@ -71,6 +72,13 @@
       "target": [
         "AppImage"
       ]
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://syrnike13.ru/downloads/desktop/"
+    },
+    "nsis": {
+      "differentialPackage": true
     }
   },
   "pnpm": {
