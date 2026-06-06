@@ -1,5 +1,7 @@
 import {
+  AudioPresets,
   ScreenSharePresets,
+  Track,
   type AudioCaptureOptions,
   type RoomOptions,
   type TrackPublishOptions,
@@ -20,6 +22,41 @@ function browserNoiseSuppressionEnabled(prefs: VoicePreferenceState) {
   if (prefs.noiseSuppression === 'disabled') return false
   if (prefs.noiseSuppression === 'browser') return true
   return prefs.voiceGateEnabled
+}
+
+export function screenShareAudioCaptureOptions(
+  enabled: boolean,
+): boolean | AudioCaptureOptions {
+  if (!enabled) return false
+  return {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    channelCount: 2,
+  }
+}
+
+export function screenShareAudioPublishOptions(): TrackPublishOptions {
+  return {
+    source: Track.Source.ScreenShareAudio,
+    forceStereo: true,
+    dtx: false,
+    red: false,
+    audioPreset: AudioPresets.musicStereo,
+  }
+}
+
+export function screenShareCombinedPublishOptions(
+  quality: ScreenShareQualityName,
+): TrackPublishOptions {
+  const capture = screenShareCaptureOptions(quality)
+  return {
+    ...capture.publish,
+    forceStereo: true,
+    dtx: false,
+    red: false,
+    audioPreset: AudioPresets.musicStereo,
+  }
 }
 
 export function voiceAudioProcessingConstraints(
@@ -122,7 +159,7 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
       return {
         capture: {
           resolution: ScreenSharePresets.h1080fps30.resolution,
-          audio: prefs.screenShareAudio,
+          audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'motion' as const,
         },
         publish: publish({
@@ -138,7 +175,7 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
             ...ScreenSharePresets.h1080fps30.resolution,
             frameRate: 60,
           },
-          audio: prefs.screenShareAudio,
+          audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'motion' as const,
         },
         publish: publish({
@@ -154,7 +191,7 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
             ...ScreenSharePresets.h1080fps30.resolution,
             frameRate: 5,
           },
-          audio: prefs.screenShareAudio,
+          audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'text' as const,
         },
         publish: publish({
@@ -168,7 +205,7 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
       return {
         capture: {
           resolution: ScreenSharePresets.h720fps30.resolution,
-          audio: prefs.screenShareAudio,
+          audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'motion' as const,
         },
         publish: publish({

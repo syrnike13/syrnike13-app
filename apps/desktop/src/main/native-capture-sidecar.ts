@@ -66,7 +66,9 @@ export function mapEncoderBackend(
 }
 
 export function mapAudioMode(value: string | undefined): NativeCaptureAudioMode {
-  return value === 'process' ? 'process' : 'system'
+  if (value === 'process') return 'process'
+  if (value === 'system_exclude') return 'system_exclude'
+  return 'none'
 }
 
 export type BgraFrameHeader = {

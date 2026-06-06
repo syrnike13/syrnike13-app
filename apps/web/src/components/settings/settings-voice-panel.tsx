@@ -506,6 +506,13 @@ export function SettingsVoicePanel() {
           />
           Передавать звук с экрана по умолчанию
         </label>
+        {!capabilities.nativeScreenShare ? (
+          <p className="text-xs text-muted-foreground">
+            В браузере звук экрана может дублировать голоса участников. В
+            desktop-приложении Windows захват исключает звук Syrnike и
+            передаётся в стерео.
+          </p>
+        ) : null}
       </section>
 
       <section className="space-y-3">

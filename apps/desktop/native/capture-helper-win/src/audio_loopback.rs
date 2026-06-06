@@ -31,6 +31,22 @@ impl AudioCaptureSession {
 pub fn try_start_process_audio(hwnd: isize) -> Result<(u16, AudioCaptureSession), String> {
     let process_id =
         process_id_for_hwnd(hwnd).ok_or_else(|| "window has no process id".to_string())?;
+    spawn_audio_capture(process_id, true)
+}
+
+pub fn try_start_system_audio_exclude(
+    exclude_process_id: u32,
+) -> Result<(u16, AudioCaptureSession), String> {
+    if exclude_process_id == 0 {
+        return Err("exclude process id is required".to_string());
+    }
+    spawn_audio_capture(exclude_process_id, false)
+}
+
+fn spawn_audio_capture(
+    process_id: u32,
+    include_tree: bool,
+) -> Result<(u16, AudioCaptureSession), String> {
     let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
     let port = listener
         .local_addr()
@@ -41,9 +57,14 @@ pub fn try_start_process_audio(hwnd: isize) -> Result<(u16, AudioCaptureSession)
     let stop_flag = Arc::clone(&stop);
 
     let thread = thread::Builder::new()
-        .name("process-audio-capture".into())
+        .name(if include_tree {
+            "process-audio-capture".into()
+        } else {
+            "system-audio-exclude-capture".into()
+        })
         .spawn(move || {
-            if let Err(error) = run_process_audio_loop(listener, process_id, stop_flag) {
+            if let Err(error) = run_audio_loopback_loop(listener, process_id, include_tree, stop_flag)
+            {
                 eprintln!("[audio-loopback] {error}");
             }
         })
@@ -58,9 +79,10 @@ pub fn try_start_process_audio(hwnd: isize) -> Result<(u16, AudioCaptureSession)
     ))
 }
 
-fn run_process_audio_loop(
+fn run_audio_loopback_loop(
     listener: TcpListener,
     process_id: u32,
+    include_tree: bool,
     stop: Arc<AtomicBool>,
 ) -> Result<(), String> {
     listener
@@ -92,8 +114,9 @@ fn run_process_audio_loop(
     let blockalign = wave_format.get_blockalign() as usize;
     let chunk_bytes = blockalign * CHUNK_FRAMES;
 
-    let mut audio_client = AudioClient::new_application_loopback_client(process_id, true)
-        .map_err(|error| error.to_string())?;
+    let mut audio_client =
+        AudioClient::new_application_loopback_client(process_id, include_tree)
+            .map_err(|error| error.to_string())?;
 
     let mode = StreamMode::EventsShared {
         autoconvert: true,

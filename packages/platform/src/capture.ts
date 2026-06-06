@@ -13,8 +13,8 @@ export type NativeCaptureEncoderBackend =
   | 'media_foundation'
   | 'openh264'
 
-/** process = звук выбранного окна/игры; system = весь системный вывод. */
-export type NativeCaptureAudioMode = 'process' | 'system'
+/** process = звук окна; system_exclude = системный вывод без Syrnike; none = звук недоступен. */
+export type NativeCaptureAudioMode = 'process' | 'system_exclude' | 'none'
 
 export type NativeCaptureTarget = {
   sourceId: string

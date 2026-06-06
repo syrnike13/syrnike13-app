@@ -35,6 +35,10 @@ pub struct StartCommand {
     #[serde(rename = "streamMode")]
     pub stream_mode: Option<String>,
     pub audio: Option<bool>,
+    #[serde(rename = "excludeProcessId")]
+    pub exclude_process_id: Option<u32>,
+    #[serde(rename = "selfWindowHwnd")]
+    pub self_window_hwnd: Option<isize>,
 }
 
 
@@ -140,6 +144,24 @@ mod tests {
         assert_eq!(target.hwnd, Some(12345));
 
         assert!(target.monitor_index.is_none());
+
+    }
+
+    #[test]
+
+    fn parses_exclude_process_id_from_start_command() {
+
+        let command: StartCommand = serde_json::from_str(
+
+            r#"{"cmd":"start","target":{"id":"screen:0:0"},"excludeProcessId":4242,"selfWindowHwnd":99}"#,
+
+        )
+
+        .expect("start command");
+
+        assert_eq!(command.exclude_process_id, Some(4242));
+
+        assert_eq!(command.self_window_hwnd, Some(99));
 
     }
 

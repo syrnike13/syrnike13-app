@@ -2,7 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
-import { createVoiceRoomOptions, screenShareCaptureOptions } from './voice-capture'
+import { AudioPresets, Track } from 'livekit-client'
+
+import {
+  createVoiceRoomOptions,
+  screenShareAudioCaptureOptions,
+  screenShareAudioPublishOptions,
+  screenShareCaptureOptions,
+  screenShareCombinedPublishOptions,
+} from './voice-capture'
 import { voicePreferenceStore } from './voice-preference-store'
 
 vi.mock('#/platform/runtime', () => ({
@@ -40,11 +48,36 @@ describe('createVoiceRoomOptions', () => {
   })
 })
 
+describe('screenShareAudioCaptureOptions', () => {
+  it('disables voice processing and requests stereo capture', () => {
+    expect(screenShareAudioCaptureOptions(false)).toBe(false)
+    expect(screenShareAudioCaptureOptions(true)).toEqual({
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 2,
+    })
+  })
+})
+
+describe('screenShareAudioPublishOptions', () => {
+  it('publishes screen share audio as stereo music without dtx', () => {
+    expect(screenShareAudioPublishOptions()).toEqual({
+      source: Track.Source.ScreenShareAudio,
+      forceStereo: true,
+      dtx: false,
+      red: false,
+      audioPreset: AudioPresets.musicStereo,
+    })
+  })
+})
+
 describe('screenShareCaptureOptions', () => {
   beforeEach(() => {
     vi.unstubAllGlobals()
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
     voicePreferenceStore.setScreenShareCodec('auto')
+    voicePreferenceStore.setScreenShareAudio(true)
   })
 
   it('publishes screen share as one high-quality browser stream', () => {
@@ -52,6 +85,12 @@ describe('screenShareCaptureOptions', () => {
 
     const options = screenShareCaptureOptions('high')
 
+    expect(options.capture.audio).toEqual({
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 2,
+    })
     expect(options.capture.contentHint).toBe('motion')
     expect(options.publish.screenShareEncoding).toEqual({
       maxBitrate: 4_000_000,
@@ -154,5 +193,26 @@ describe('screenShareCaptureOptions', () => {
 
     expect(options.capture.contentHint).toBe('text')
     expect(options.publish.screenShareEncoding?.maxFramerate).toBe(5)
+  })
+})
+
+describe('screenShareCombinedPublishOptions', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals()
+    vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
+    voicePreferenceStore.setScreenShareCodec('auto')
+    voicePreferenceStore.setScreenShareAudio(true)
+  })
+
+  it('merges video publish defaults with stereo music audio settings', () => {
+    vi.stubGlobal('RTCRtpSender', undefined)
+
+    const options = screenShareCombinedPublishOptions('high')
+
+    expect(options.forceStereo).toBe(true)
+    expect(options.dtx).toBe(false)
+    expect(options.red).toBe(false)
+    expect(options.audioPreset).toBe(AudioPresets.musicStereo)
+    expect(options.screenShareEncoding?.maxBitrate).toBe(4_000_000)
   })
 })

@@ -1,6 +1,10 @@
 import { LocalVideoTrack, Track, type LocalParticipant, type Room } from 'livekit-client'
+import { toast } from 'sonner'
 
-import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
+import {
+  screenShareAudioPublishOptions,
+  screenShareCaptureOptions,
+} from '#/features/voice/voice-capture'
 import { createNativeScreenShareTrack } from '#/features/voice/native-screen-share-bridge'
 import { createNativeScreenShareAudioTrack } from '#/features/voice/native-screen-share-audio-bridge'
 import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
@@ -13,6 +17,18 @@ export type NativeScreenShareSession = {
   publicationId?: string
   track: MediaStreamTrack
   stop: () => void
+}
+
+function hasNativeScreenShareAudio(
+  withAudio: boolean,
+  audioMode: string | undefined,
+  audioPort: number | undefined,
+) {
+  return (
+    withAudio &&
+    audioPort != null &&
+    (audioMode === 'process' || audioMode === 'system_exclude')
+  )
 }
 
 export async function publishNativeScreenShare(
@@ -103,19 +119,23 @@ export async function publishNativeScreenShare(
   let screenShareAudioTrack: MediaStreamTrack | null = null
 
   if (withAudio) {
-    if (session.audioMode === 'process' && session.audioPort) {
+    if (session.audioMode === 'none') {
+      toast.warning(
+        'Звук экрана недоступен при демонстрации окна Syrnike',
+      )
+    } else if (hasNativeScreenShareAudio(withAudio, session.audioMode, session.audioPort)) {
       const audioBridge = await createNativeScreenShareAudioTrack(
         desktop,
         session.sessionId,
       )
       audioBridgeStop = audioBridge.stop
       screenShareAudioTrack = audioBridge.track
-      await participant.publishTrack(audioBridge.track, {
-        source: Track.Source.ScreenShareAudio,
-      })
+      await participant.publishTrack(
+        audioBridge.track,
+        screenShareAudioPublishOptions(),
+      )
     } else {
-      await desktop.capture.prepareSystemAudio(sourceId)
-      screenShareAudioTrack = await publishSystemScreenShareAudio(participant)
+      toast.warning('Не удалось захватить звук экрана')
     }
   }
 
@@ -127,7 +147,6 @@ export async function publishNativeScreenShare(
       screenShareAudioTrack.stop()
       void participant.unpublishTrack(screenShareAudioTrack)
       screenShareAudioTrack = null
-      void desktop.capture.clearSystemAudio()
     }
     bridge.stop()
     nativeCaptureStatsStore.reset()
@@ -142,25 +161,5 @@ export async function publishNativeScreenShare(
     publicationId: publication.trackSid,
     track: bridge.track,
     stop,
-  }
-}
-
-async function publishSystemScreenShareAudio(
-  participant: LocalParticipant,
-): Promise<MediaStreamTrack | null> {
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: false,
-      audio: true,
-    })
-    const [audioTrack] = stream.getAudioTracks()
-    if (!audioTrack) return null
-
-    await participant.publishTrack(audioTrack, {
-      source: Track.Source.ScreenShareAudio,
-    })
-    return audioTrack
-  } catch {
-    return null
   }
 }

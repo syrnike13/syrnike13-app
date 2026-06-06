@@ -11,6 +11,12 @@ import {
 } from './native-capture-sidecar'
 
 describe('native capture sidecar protocol', () => {
+  it('maps system exclude and none audio modes', () => {
+    expect(mapAudioMode('system_exclude')).toBe('system_exclude')
+    expect(mapAudioMode('none')).toBe('none')
+    expect(mapAudioMode(undefined)).toBe('none')
+  })
+
   it('parses ready event with process audio port', () => {
     const event = parseSidecarEvent(
       JSON.stringify({

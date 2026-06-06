@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::audio_loopback::{try_start_process_audio, AudioCaptureSession};
+use crate::audio_loopback::{
+    try_start_process_audio, try_start_system_audio_exclude, AudioCaptureSession,
+};
 use crate::encoder::{EncoderBackend, VideoEncoder};
 use crate::frame_buffer::{pack_bgra_frame, pack_bgra_frame_header, SharedFrameBuffer};
 use crate::hybrid::{CaptureMethod, HybridCapturer};
@@ -47,6 +49,8 @@ pub fn start_capture_session(
     bitrate: u32,
     stream_mode: StreamMode,
     with_audio: bool,
+    exclude_process_id: Option<u32>,
+    self_window_hwnd: Option<isize>,
 ) -> Result<(u16, CaptureSession, CaptureSessionConfig), String> {
     let encoder_backend = match stream_mode {
         StreamMode::H264 => VideoEncoder::new(width, height, bitrate)?.1,
@@ -69,8 +73,12 @@ pub fn start_capture_session(
     let stop = Arc::new(AtomicBool::new(false));
     let stop_flag = Arc::clone(&stop);
 
-    let (audio_port, audio_mode, audio_session) =
-        start_window_process_audio(&target, with_audio)?;
+    let (audio_port, audio_mode, audio_session) = start_window_process_audio(
+        &target,
+        with_audio,
+        exclude_process_id,
+        self_window_hwnd,
+    )?;
 
     let thread = thread::spawn(move || {
         if let Err(error) = run_capture_loop(
@@ -108,20 +116,38 @@ pub fn start_capture_session(
 fn start_window_process_audio(
     target: &CaptureTarget,
     with_audio: bool,
+    exclude_process_id: Option<u32>,
+    self_window_hwnd: Option<isize>,
 ) -> Result<(Option<u16>, Option<&'static str>, Option<AudioCaptureSession>), String> {
     if !with_audio {
         return Ok((None, None, None));
     }
 
-    let Some(hwnd) = target.hwnd else {
-        return Ok((None, Some("system"), None));
-    };
+    if target
+        .hwnd
+        .is_some_and(|hwnd| self_window_hwnd.is_some_and(|self_hwnd| hwnd == self_hwnd))
+    {
+        return Ok((None, Some("none"), None));
+    }
 
-    match try_start_process_audio(hwnd) {
-        Ok((port, session)) => Ok((Some(port), Some("process"), Some(session))),
-        Err(error) => {
-            eprintln!("[capture] process audio unavailable: {error}");
-            Ok((None, Some("system"), None))
+    if let Some(hwnd) = target.hwnd {
+        match try_start_process_audio(hwnd) {
+            Ok((port, session)) => return Ok((Some(port), Some("process"), Some(session))),
+            Err(error) => eprintln!("[capture] process audio unavailable: {error}"),
+        }
+    }
+
+    match exclude_process_id {
+        Some(process_id) => match try_start_system_audio_exclude(process_id) {
+            Ok((port, session)) => Ok((Some(port), Some("system_exclude"), Some(session))),
+            Err(error) => {
+                eprintln!("[capture] system audio exclude unavailable: {error}");
+                Ok((None, Some("none"), None))
+            }
+        },
+        None => {
+            eprintln!("[capture] system audio exclude unavailable: missing exclude process id");
+            Ok((None, Some("none"), None))
         }
     }
 }

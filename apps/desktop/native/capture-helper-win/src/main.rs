@@ -82,6 +82,8 @@ fn handle_command(line: &str) -> Result<(), String> {
                 bitrate,
                 stream_mode,
                 with_audio,
+                command.exclude_process_id,
+                command.self_window_hwnd,
             )?;
 
             emit(&Event::Ready {

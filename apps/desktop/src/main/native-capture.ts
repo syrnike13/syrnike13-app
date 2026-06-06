@@ -90,6 +90,32 @@ function emptyStats(): NativeCaptureFrameStats {
   }
 }
 
+function readWindowHwnd(win: BrowserWindow): number | undefined {
+  const handle = win.getNativeWindowHandle()
+  if (handle.length < 4) return undefined
+  return handle.readInt32LE(0)
+}
+
+function buildCaptureStartCommand(
+  options: NativeCaptureStartOptions,
+  getWindow: () => BrowserWindow | null,
+) {
+  const win = getWindow()
+  return {
+    cmd: 'start',
+    target: { id: options.sourceId },
+    width: options.width,
+    height: options.height,
+    fps: options.fps,
+    bitrate: options.bitrate,
+    streamMode: options.streamMode ?? 'bgra',
+    audio: Boolean(options.withAudio),
+    excludeProcessId: process.pid,
+    selfWindowHwnd:
+      win && !win.isDestroyed() ? readWindowHwnd(win) : undefined,
+  }
+}
+
 function resolveCaptureHelperPath() {
   const helperName = 'syrnike-capture-helper-win.exe'
   const candidates = app.isPackaged
@@ -309,16 +335,7 @@ async function attemptSidecarReconnect(session: ActiveCaptureSession) {
     const helper = ensureCaptureHelper()
     const readyPromise = waitForSidecarReady()
     helper.stdin.write(
-      `${JSON.stringify({
-        cmd: 'start',
-        target: { id: session.startOptions.sourceId },
-        width: session.startOptions.width,
-        height: session.startOptions.height,
-        fps: session.startOptions.fps,
-        bitrate: session.startOptions.bitrate,
-        streamMode: session.startOptions.streamMode ?? 'bgra',
-        audio: Boolean(session.startOptions.withAudio),
-      })}\n`,
+      `${JSON.stringify(buildCaptureStartCommand(session.startOptions, getWindow))}\n`,
     )
 
     const readyEvent = await readyPromise
@@ -572,16 +589,7 @@ async function startNativeCapture(
   const readyPromise = waitForSidecarReady()
 
   helper.stdin.write(
-    `${JSON.stringify({
-      cmd: 'start',
-      target: { id: options.sourceId },
-      width: options.width,
-      height: options.height,
-      fps: options.fps,
-      bitrate: options.bitrate,
-      streamMode: options.streamMode ?? 'bgra',
-      audio: Boolean(options.withAudio),
-    })}\n`,
+    `${JSON.stringify(buildCaptureStartCommand(options, getWindow))}\n`,
   )
 
   const readyEvent = await readyPromise

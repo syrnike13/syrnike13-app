@@ -59,7 +59,11 @@ import {
   type RtcDebugSnapshot,
   type RtcDebugStageMediaItem,
 } from '#/features/voice/voice-rtc-debug'
-import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
+import {
+  screenShareAudioCaptureOptions,
+  screenShareCaptureOptions,
+  screenShareCombinedPublishOptions,
+} from '#/features/voice/voice-capture'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
 import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
@@ -1005,9 +1009,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         true,
         {
           ...capture.capture,
-          audio: withAudio,
+          audio: screenShareAudioCaptureOptions(withAudio),
         },
-        capture.publish,
+        withAudio
+          ? screenShareCombinedPublishOptions(quality)
+          : capture.publish,
       )
       if (publication) {
         ;(publication as StageMediaPublication).options = {
