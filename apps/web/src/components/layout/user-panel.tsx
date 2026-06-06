@@ -12,6 +12,7 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from '#/components/ui/popover'
@@ -88,98 +89,99 @@ export function UserPanel() {
           </>
         ) : null}
 
-        <div
-          className={cn(
-            'flex w-full items-center gap-2.5 px-2.5',
-            FLOATING_BAR_HEIGHT_CLASS,
-          )}
-        >
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-white/5"
-              >
-                <UserAvatar
-                  user={user}
-                  className="size-9 shrink-0"
-                  fallbackClassName="size-9"
-                  showPresence
-                />
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <p className="truncate text-sm font-semibold leading-4">
-                    {displayName}
-                  </p>
-                  <div className="relative h-4 overflow-hidden">
-                    <p
-                      className={cn(
-                        'truncate text-xs leading-4 transition-[transform,opacity] duration-200 ease-out',
-                        'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
-                        gatewayConnected
-                          ? 'text-muted-foreground'
-                          : 'text-destructive/80',
-                      )}
-                    >
-                      {statusLabel}
+        <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+          <PopoverAnchor asChild>
+            <div
+              className={cn(
+                'flex w-full items-center gap-2.5 px-2.5',
+                FLOATING_BAR_HEIGHT_CLASS,
+              )}
+            >
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="group/profile flex min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md py-1 pr-1 text-left hover:bg-white/5"
+                >
+                  <UserAvatar
+                    user={user}
+                    className="size-9 shrink-0"
+                    fallbackClassName="size-9"
+                    showPresence
+                  />
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="truncate text-sm font-semibold leading-4">
+                      {displayName}
                     </p>
-                    <p
-                      className={cn(
-                        'absolute inset-x-0 top-0 truncate text-xs leading-4 text-muted-foreground',
-                        'translate-y-full opacity-0 transition-[transform,opacity] duration-200 ease-out',
-                        'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
-                      )}
-                    >
-                      {usernameLabel}
-                    </p>
+                    <div className="relative h-4 overflow-hidden">
+                      <p
+                        className={cn(
+                          'truncate text-xs leading-4 transition-[transform,opacity] duration-200 ease-out',
+                          'group-hover/profile:-translate-y-full group-hover/profile:opacity-0',
+                          gatewayConnected
+                            ? 'text-muted-foreground'
+                            : 'text-destructive/80',
+                        )}
+                      >
+                        {statusLabel}
+                      </p>
+                      <p
+                        className={cn(
+                          'absolute inset-x-0 top-0 truncate text-xs leading-4 text-muted-foreground',
+                          'translate-y-full opacity-0 transition-[transform,opacity] duration-200 ease-out',
+                          'group-hover/profile:translate-y-0 group-hover/profile:opacity-100',
+                        )}
+                      >
+                        {usernameLabel}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              sideOffset={8}
-              collisionPadding={16}
-              style={{ width: USER_PANEL_SPAN_WIDTH }}
-              className="z-[200] max-w-[calc(100vw-1rem)] overflow-hidden border-0 bg-card p-0 text-foreground shadow-xl ring-1 ring-shell-divider"
-              onOpenAutoFocus={(event) => event.preventDefault()}
-            >
-              <CurrentUserProfileMenu
-                user={user}
-                onClose={() => setMenuOpen(false)}
-              />
-            </PopoverContent>
-          </Popover>
+                </button>
+              </PopoverTrigger>
 
-          <div className="flex shrink-0 items-center gap-1">
-            <VoiceMicSplitControl
-              surface="panel"
-              inVoice={inVoice}
-              connecting={voice.status === 'connecting'}
-              micMuted={micMuted}
-              micIssue={voice.micIssue}
-              onToggleMic={voice.toggleMic}
+              <div className="flex shrink-0 items-center gap-1">
+                <VoiceMicSplitControl
+                  surface="panel"
+                  inVoice={inVoice}
+                  connecting={voice.status === 'connecting'}
+                  micMuted={micMuted}
+                  micIssue={voice.micIssue}
+                  onToggleMic={voice.toggleMic}
+                />
+
+                <VoiceSoundSplitControl
+                  surface="panel"
+                  inVoice={inVoice}
+                  connecting={voice.status === 'connecting'}
+                  soundOff={soundOff}
+                  onToggleDeafen={voice.toggleDeafen}
+                />
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={userPanelControlButtonClass}
+                  title="Настройки"
+                  onClick={() => openSettings('account')}
+                >
+                  <SettingsIcon className="size-4" />
+                </Button>
+              </div>
+            </div>
+          </PopoverAnchor>
+          <PopoverContent
+            side="top"
+            align="start"
+            sideOffset={8}
+            collisionPadding={16}
+            className="z-[200] w-[min(300px,calc(100vw-1rem))] overflow-hidden border-0 bg-card p-0 text-foreground shadow-xl ring-1 ring-shell-divider"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+          >
+            <CurrentUserProfileMenu
+              user={user}
+              onClose={() => setMenuOpen(false)}
             />
-
-            <VoiceSoundSplitControl
-              surface="panel"
-              inVoice={inVoice}
-              connecting={voice.status === 'connecting'}
-              soundOff={soundOff}
-              onToggleDeafen={voice.toggleDeafen}
-            />
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className={userPanelControlButtonClass}
-              title="Настройки"
-              onClick={() => openSettings('account')}
-            >
-              <SettingsIcon className="size-4" />
-            </Button>
-          </div>
-        </div>
+          </PopoverContent>
+        </Popover>
       </div>
     </div>
   )
