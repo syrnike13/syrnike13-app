@@ -59,6 +59,36 @@ export type MediaEngineMicSetNoiseSuppressionResult = {
   mode: MediaEngineNoiseSuppressionMode
 }
 
+export type MediaEngineAudioDevice = {
+  id: string
+  label: string
+  kind: 'audioinput' | 'audiooutput'
+}
+
+export type MediaEngineDevicesListResult = {
+  devices: MediaEngineAudioDevice[]
+}
+
+export type MediaEngineMicSetDeviceParams = {
+  deviceId?: string
+}
+
+export type MediaEngineMicProcessingParams = {
+  voiceGateEnabled?: boolean
+  voiceGateThreshold?: number
+  echoCancellation?: boolean
+  autoGainControl?: boolean
+  noiseSuppression?: MediaEngineNoiseSuppressionMode
+}
+
+export type MediaEngineRoomGetRttResult = {
+  rttMs: number | null
+}
+
+export type MediaEngineRoomActiveSpeakersEvent = {
+  userIds: string[]
+}
+
 export type MediaEngineCameraSetEnabledResult = {
   enabled: boolean
 }
@@ -140,6 +170,10 @@ export type MediaEngineEvent =
   | {
       event: 'room.disconnected'
       params: Record<string, never>
+    }
+  | {
+      event: 'room.activeSpeakers'
+      params: MediaEngineRoomActiveSpeakersEvent
     }
   | {
       event: 'room.participants'

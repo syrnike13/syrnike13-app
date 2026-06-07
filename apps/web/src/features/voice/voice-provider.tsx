@@ -79,6 +79,11 @@ import {
   connectMediaEngineVoice,
   type MediaEngineVoiceSession,
 } from '#/features/voice/media-engine-voice'
+import {
+  applyEngineMicProcessing,
+  applyEngineVoiceDevices,
+  finishEngineLocalVoiceSetup,
+} from '#/features/voice/media-engine-voice-setup'
 import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
 import {
   clearNativePickerSelection,
@@ -971,6 +976,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               }
             },
             onStateChange: () => syncRoomParticipants(),
+            onActiveSpeakers: (userIds) => {
+              setSpeakingUserIds((current) =>
+                stringSetEquals(current, userIds) ? current : userIds,
+              )
+            },
             onDisconnected: () => {
               const activeChannelId = channelIdRef.current
               if (!activeChannelId) {
@@ -989,6 +999,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setDeafened(prefs.deafened)
         deafenedRef.current = prefs.deafened
         session.setDeafened(prefs.deafened)
+        await finishEngineLocalVoiceSetup(session, prefs)
         syncRoomParticipants()
         void syncVoiceStateToServer(targetChannelId, {
           is_receiving: !prefs.deafened,
@@ -1491,9 +1502,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return voiceListenerStore.subscribe(() => {
-      if (status === 'connected') {
-        applyAllRemoteAudio(deafenedRef.current)
-      }
+      if (status !== 'connected') return
+      if (engineVoiceSessionRef.current) return
+      applyAllRemoteAudio(deafenedRef.current)
     })
   }, [status])
 
@@ -1503,21 +1514,29 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const next = readVoicePreferences()
       lastVoicePreferencesRef.current = next
       if (status !== 'connected') return
+
+      const engineVoice = engineVoiceSessionRef.current
       const room = roomRef.current
-      if (!room) return
       const effects = voicePreferenceEffectFlags(previous, next)
+
+      if (engineVoice) {
+        if (effects.devicesChanged) {
+          void applyEngineVoiceDevices(engineVoice, next)
+        }
+        if (effects.micProcessingChanged) {
+          void applyEngineMicProcessing(engineVoice, next)
+        }
+        return
+      }
+
+      if (!room) return
       if (effects.devicesChanged) {
         void applyVoiceDevices(room)
       } else if (effects.remoteAudioChanged) {
         applyAllRemoteAudio(deafenedRef.current)
       }
       if (effects.micProcessingChanged) {
-        const engineVoice = engineVoiceSessionRef.current
-        if (engineVoice) {
-          void engineVoice.setNoiseSuppression(next.noiseSuppression)
-        } else {
-          void refreshMicProcessing(room)
-        }
+        void refreshMicProcessing(room)
       }
     })
   }, [applyVoiceDevices, status])
@@ -1540,12 +1559,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
 
     const room = roomRef.current
-    if (!room) return
+    const engineVoice = engineVoiceSessionRef.current
+    if (!room && !engineVoice) return
 
     let active = true
 
     async function samplePing() {
-      const ping = await measureVoicePingMs(room!)
+      const ping = engineVoice
+        ? await engineVoice.getRttMs()
+        : room
+          ? await measureVoicePingMs(room)
+          : null
       if (!active) return
       setVoicePingMs(ping)
       if (ping != null) {

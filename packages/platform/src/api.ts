@@ -1,6 +1,9 @@
 import type {
   MediaEngineCameraSetEnabledResult,
+  MediaEngineDevicesListResult,
   MediaEngineEvent,
+  MediaEngineMicProcessingParams,
+  MediaEngineMicSetDeviceParams,
   MediaEngineMicSetEnabledParams,
   MediaEngineMicSetEnabledResult,
   MediaEngineMicSetNoiseSuppressionResult,
@@ -8,6 +11,7 @@ import type {
   MediaEnginePingResult,
   MediaEngineRoomConnectParams,
   MediaEngineRoomConnectResult,
+  MediaEngineRoomGetRttResult,
   MediaEngineRuntimeStatus,
   MediaEngineScreenStartParams,
   MediaEngineScreenStartResult,
@@ -227,6 +231,14 @@ export interface SyrnikeDesktopApi {
     micSetNoiseSuppression(
       mode: MediaEngineNoiseSuppressionMode,
     ): Promise<MediaEngineMicSetNoiseSuppressionResult>
+    micSetDevice(
+      params: MediaEngineMicSetDeviceParams,
+    ): Promise<void>
+    micSetProcessing(
+      params: MediaEngineMicProcessingParams,
+    ): Promise<void>
+    devicesList(): Promise<MediaEngineDevicesListResult>
+    roomGetRtt(): Promise<MediaEngineRoomGetRttResult>
     cameraSetEnabled(
       enabled: boolean,
     ): Promise<MediaEngineCameraSetEnabledResult>

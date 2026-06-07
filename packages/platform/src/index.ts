@@ -34,10 +34,14 @@ export type {
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export type {
+  MediaEngineAudioDevice,
   MediaEngineCameraSetEnabledResult,
+  MediaEngineDevicesListResult,
   MediaEngineEvent,
   MediaEngineLocalPreviewEndedEvent,
   MediaEngineLocalPreviewFrameEvent,
+  MediaEngineMicProcessingParams,
+  MediaEngineMicSetDeviceParams,
   MediaEngineMicSetEnabledParams,
   MediaEngineMicSetEnabledResult,
   MediaEngineMicSetNoiseSuppressionResult,
@@ -46,9 +50,11 @@ export type {
   MediaEngineReadyEvent,
   MediaEngineRemoteAudioFrameEvent,
   MediaEngineRemoteVideoFrameEvent,
+  MediaEngineRoomActiveSpeakersEvent,
   MediaEngineRoomConnectParams,
   MediaEngineRoomConnectResult,
   MediaEngineRoomConnectedEvent,
+  MediaEngineRoomGetRttResult,
   MediaEngineRuntimeStatus,
   MediaEngineScreenStartParams,
   MediaEngineScreenStartResult,

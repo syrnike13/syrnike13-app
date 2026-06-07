@@ -1,14 +1,18 @@
 mod camera_publish;
 mod capture;
+mod devices;
 mod event_emitter;
 mod local_preview;
 mod livekit_room;
 mod mic_denoise;
+mod mic_gate;
+mod mic_processing;
 mod mic_publish;
 mod pipe;
 mod protocol;
 mod remote_audio;
 mod remote_video;
+mod room_stats;
 mod screen_publish;
 mod session;
 

@@ -9,9 +9,10 @@ use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::AudioSourceOptions;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle as TokioJoinHandle;
-use wasapi::{initialize_mta, AudioClient, DeviceEnumerator, Direction, StreamMode, WaveFormat};
+use wasapi::{AudioClient, Direction, StreamMode, WaveFormat};
 
-use crate::mic_denoise::{MicDenoiser, NoiseSuppressionMode};
+use crate::devices::resolve_capture_device;
+use crate::mic_processing::{MicProcessingConfig, MicProcessor};
 
 const SAMPLE_RATE: u32 = 48_000;
 const NUM_CHANNELS: u32 = 1;
@@ -23,7 +24,9 @@ pub struct MicPublisher {
     publish_task: Option<TokioJoinHandle<()>>,
     audio_source: Option<NativeAudioSource>,
     track_sid: Option<String>,
-    denoiser: Arc<Mutex<MicDenoiser>>,
+    processor: Arc<Mutex<MicProcessor>>,
+    device_id: Option<String>,
+    processing: MicProcessingConfig,
 }
 
 impl MicPublisher {
@@ -34,25 +37,41 @@ impl MicPublisher {
             publish_task: None,
             audio_source: None,
             track_sid: None,
-            denoiser: Arc::new(Mutex::new(MicDenoiser::new(NoiseSuppressionMode::Browser))),
+            processor: Arc::new(Mutex::new(MicProcessor::new(MicProcessingConfig::default()))),
+            device_id: None,
+            processing: MicProcessingConfig::default(),
         }
     }
 
-    pub fn set_noise_suppression(&self, mode: NoiseSuppressionMode) {
-        if let Ok(mut denoiser) = self.denoiser.lock() {
-            denoiser.set_mode(mode);
+    pub fn device_id(&self) -> Option<&str> {
+        self.device_id.as_deref()
+    }
+
+    pub fn processing_config(&self) -> MicProcessingConfig {
+        self.processing
+    }
+
+    pub fn set_device_id(&mut self, device_id: Option<String>) {
+        self.device_id = device_id.filter(|value| !value.is_empty());
+    }
+
+    pub fn set_processing(&mut self, processing: MicProcessingConfig) {
+        self.processing = processing;
+        if let Ok(mut processor) = self.processor.lock() {
+            processor.set_config(processing);
         }
     }
 
     pub async fn start(
         &mut self,
         room: Arc<Room>,
-        noise_suppression: NoiseSuppressionMode,
+        processing: MicProcessingConfig,
     ) -> Result<(), String> {
         self.stop(room.as_ref()).await?;
-        self.set_noise_suppression(noise_suppression);
+        self.set_processing(processing);
 
-        let audio_source = NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, NUM_CHANNELS, 0);
+        let audio_source =
+            NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, NUM_CHANNELS, 0);
         let track = LocalAudioTrack::create_audio_track(
             "microphone",
             RtcAudioSource::Native(audio_source.clone()),
@@ -73,12 +92,13 @@ impl MicPublisher {
         let (pcm_tx, mut pcm_rx) = mpsc::channel::<Vec<i16>>(8);
         let stop = Arc::new(AtomicBool::new(false));
         let stop_flag = Arc::clone(&stop);
-        let denoiser = Arc::clone(&self.denoiser);
+        let processor = Arc::clone(&self.processor);
+        let device_id = self.device_id.clone();
 
         let capture_thread = thread::Builder::new()
             .name("mic-capture".into())
             .spawn(move || {
-                if let Err(error) = run_mic_capture(stop_flag, pcm_tx) {
+                if let Err(error) = run_mic_capture(stop_flag, device_id, pcm_tx) {
                     log::warn!("mic capture stopped: {error}");
                 }
             })
@@ -90,8 +110,8 @@ impl MicPublisher {
                     continue;
                 }
 
-                if let Ok(mut denoiser) = denoiser.lock() {
-                    denoiser.process_i16(&mut samples);
+                if let Ok(mut processor) = processor.lock() {
+                    processor.process_i16(&mut samples);
                 }
 
                 let samples_per_channel = samples.len() as u32;
@@ -146,16 +166,10 @@ impl MicPublisher {
 
 fn run_mic_capture(
     stop: Arc<AtomicBool>,
+    device_id: Option<String>,
     tx: mpsc::Sender<Vec<i16>>,
 ) -> Result<(), String> {
-    if initialize_mta().is_err() {
-        return Err("failed to initialize COM MTA".to_string());
-    }
-
-    let device = DeviceEnumerator::new()
-        .map_err(|error| error.to_string())?
-        .get_default_device(&Direction::Capture)
-        .map_err(|error| error.to_string())?;
+    let device = resolve_capture_device(device_id.as_deref())?;
 
     let wave_format = WaveFormat::new(
         16,

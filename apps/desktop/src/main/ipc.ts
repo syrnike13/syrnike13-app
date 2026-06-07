@@ -33,8 +33,12 @@ import {
   disconnectMediaEngineRoom,
   getMediaEngineRuntimeStatus,
   initializeMediaEngine,
+  getMediaEngineRoomRtt,
+  listMediaEngineDevices,
+  micSetDeviceMediaEngine,
   micSetEnabledMediaEngine,
   micSetNoiseSuppressionMediaEngine,
+  micSetProcessingMediaEngine,
   pingMediaEngine,
   publishMediaEngineTestTone,
   startMediaEngineScreen,
@@ -175,6 +179,18 @@ export function registerDesktopIpc(
   ipcMain.handle(IPC.mediaEngineMicSetNoiseSuppression, (_event, mode) =>
     micSetNoiseSuppressionMediaEngine(mode),
   )
+
+  ipcMain.handle(IPC.mediaEngineMicSetDevice, (_event, params) =>
+    micSetDeviceMediaEngine(params),
+  )
+
+  ipcMain.handle(IPC.mediaEngineMicSetProcessing, (_event, params) =>
+    micSetProcessingMediaEngine(params),
+  )
+
+  ipcMain.handle(IPC.mediaEngineDevicesList, () => listMediaEngineDevices())
+
+  ipcMain.handle(IPC.mediaEngineRoomGetRtt, () => getMediaEngineRoomRtt())
 
   ipcMain.handle(IPC.mediaEngineCameraSetEnabled, (_event, enabled: boolean) =>
     cameraSetEnabledMediaEngine(enabled),

@@ -8,8 +8,12 @@ import {
   type MediaEngineEvent,
   type MediaEnginePingResult,
   type MediaEngineRoomConnectParams,
+  type MediaEngineMicProcessingParams,
+  type MediaEngineMicSetDeviceParams,
   type MediaEngineMicSetEnabledParams,
   type MediaEngineNoiseSuppressionMode,
+  type MediaEngineDevicesListResult,
+  type MediaEngineRoomGetRttResult,
   type MediaEngineRoomConnectResult,
   type MediaEngineRuntimeStatus,
   type MediaEngineScreenStartParams,
@@ -94,6 +98,26 @@ export async function micSetNoiseSuppressionMediaEngine(
   return (await sendRequest('mic.setNoiseSuppression', { mode })) as {
     mode: MediaEngineNoiseSuppressionMode
   }
+}
+
+export async function micSetDeviceMediaEngine(
+  params: MediaEngineMicSetDeviceParams,
+) {
+  await sendRequest('mic.setDevice', params)
+}
+
+export async function micSetProcessingMediaEngine(
+  params: MediaEngineMicProcessingParams,
+) {
+  await sendRequest('mic.setProcessing', params)
+}
+
+export async function listMediaEngineDevices(): Promise<MediaEngineDevicesListResult> {
+  return (await sendRequest('devices.list', {})) as MediaEngineDevicesListResult
+}
+
+export async function getMediaEngineRoomRtt(): Promise<MediaEngineRoomGetRttResult> {
+  return (await sendRequest('room.getRtt', {})) as MediaEngineRoomGetRttResult
 }
 
 export async function cameraSetEnabledMediaEngine(enabled: boolean) {

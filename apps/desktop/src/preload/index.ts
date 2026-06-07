@@ -205,6 +205,18 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     micSetNoiseSuppression(mode) {
       return ipcRenderer.invoke(IPC.mediaEngineMicSetNoiseSuppression, mode)
     },
+    micSetDevice(params) {
+      return ipcRenderer.invoke(IPC.mediaEngineMicSetDevice, params)
+    },
+    micSetProcessing(params) {
+      return ipcRenderer.invoke(IPC.mediaEngineMicSetProcessing, params)
+    },
+    devicesList() {
+      return ipcRenderer.invoke(IPC.mediaEngineDevicesList)
+    },
+    roomGetRtt() {
+      return ipcRenderer.invoke(IPC.mediaEngineRoomGetRtt)
+    },
     cameraSetEnabled(enabled: boolean) {
       return ipcRenderer.invoke(IPC.mediaEngineCameraSetEnabled, enabled)
     },

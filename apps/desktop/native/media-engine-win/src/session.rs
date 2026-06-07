@@ -1,10 +1,12 @@
 use serde_json::Value;
 
+use crate::devices::list_audio_devices;
 use crate::livekit_room::LiveKitRoom;
 use crate::mic_denoise::NoiseSuppressionMode;
 use crate::protocol::{
-    CameraSetEnabledParams, EventMessage, MicSetEnabledParams, MicSetNoiseSuppressionParams,
-    PingResult, RequestMessage, ResponseMessage, RoomConnectParams, ScreenStartParams, ENGINE_NAME,
+    CameraSetEnabledParams, EventMessage, MicSetDeviceParams, MicSetEnabledParams,
+    MicSetNoiseSuppressionParams, MicSetProcessingParams, PingResult, RequestMessage,
+    ResponseMessage, RoomConnectParams, RoomGetRttResult, ScreenStartParams, ENGINE_NAME,
     ENGINE_VERSION,
 };
 
@@ -144,6 +146,71 @@ impl EngineSession {
                     ),
                 }
             }
+            "devices.list" => match list_audio_devices() {
+                Ok(result) => ResponseMessage::success(request.id, result),
+                Err(message) => {
+                    ResponseMessage::failure(request.id, "DEVICES_LIST_FAILED", message)
+                }
+            },
+            "mic.setDevice" => {
+                match serde_json::from_value::<MicSetDeviceParams>(request.params) {
+                    Ok(params) => {
+                        match self.livekit_room.set_mic_device(params.device_id).await {
+                            Ok(()) => ResponseMessage::success(request.id, Value::Null),
+                            Err(message) => ResponseMessage::failure(
+                                request.id,
+                                "MIC_SET_DEVICE_FAILED",
+                                message,
+                            ),
+                        }
+                    }
+                    Err(error) => ResponseMessage::failure(
+                        request.id,
+                        "INVALID_PARAMS",
+                        format!("mic.setDevice params invalid: {error}"),
+                    ),
+                }
+            }
+            "mic.setProcessing" => {
+                match serde_json::from_value::<MicSetProcessingParams>(request.params) {
+                    Ok(params) => {
+                        let noise_suppression = params
+                            .noise_suppression
+                            .as_deref()
+                            .and_then(NoiseSuppressionMode::parse);
+                        match self
+                            .livekit_room
+                            .set_mic_processing(
+                                params.voice_gate_enabled,
+                                params.voice_gate_threshold,
+                                noise_suppression,
+                            )
+                            .await
+                        {
+                            Ok(()) => ResponseMessage::success(request.id, Value::Null),
+                            Err(message) => ResponseMessage::failure(
+                                request.id,
+                                "MIC_SET_PROCESSING_FAILED",
+                                message,
+                            ),
+                        }
+                    }
+                    Err(error) => ResponseMessage::failure(
+                        request.id,
+                        "INVALID_PARAMS",
+                        format!("mic.setProcessing params invalid: {error}"),
+                    ),
+                }
+            }
+            "room.getRtt" => match self.livekit_room.get_rtt_ms().await {
+                Ok(rtt_ms) => ResponseMessage::success(
+                    request.id,
+                    RoomGetRttResult { rtt_ms },
+                ),
+                Err(message) => {
+                    ResponseMessage::failure(request.id, "ROOM_GET_RTT_FAILED", message)
+                }
+            },
             "camera.setEnabled" => {
                 match serde_json::from_value::<CameraSetEnabledParams>(request.params) {
                     Ok(params) => {

@@ -92,6 +92,34 @@ pub struct MicSetNoiseSuppressionParams {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MicSetDeviceParams {
+    #[serde(default)]
+    pub device_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicSetProcessingParams {
+    #[serde(default)]
+    pub voice_gate_enabled: Option<bool>,
+    #[serde(default)]
+    pub voice_gate_threshold: Option<f32>,
+    #[serde(default)]
+    pub echo_cancellation: Option<bool>,
+    #[serde(default)]
+    pub auto_gain_control: Option<bool>,
+    #[serde(default)]
+    pub noise_suppression: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomGetRttResult {
+    pub rtt_ms: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CameraSetEnabledParams {
     pub enabled: bool,
 }

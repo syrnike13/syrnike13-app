@@ -40,6 +40,10 @@ export const IPC = {
   mediaEngineMicSetEnabled: 'syrnike-desktop:media-engine:mic-set-enabled',
   mediaEngineMicSetNoiseSuppression:
     'syrnike-desktop:media-engine:mic-set-noise-suppression',
+  mediaEngineMicSetDevice: 'syrnike-desktop:media-engine:mic-set-device',
+  mediaEngineMicSetProcessing: 'syrnike-desktop:media-engine:mic-set-processing',
+  mediaEngineDevicesList: 'syrnike-desktop:media-engine:devices-list',
+  mediaEngineRoomGetRtt: 'syrnike-desktop:media-engine:room-get-rtt',
   mediaEngineCameraSetEnabled: 'syrnike-desktop:media-engine:camera-set-enabled',
   mediaEngineScreenStart: 'syrnike-desktop:media-engine:screen-start',
   mediaEngineScreenStop: 'syrnike-desktop:media-engine:screen-stop',

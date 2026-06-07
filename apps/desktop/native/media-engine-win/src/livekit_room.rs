@@ -12,9 +12,12 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::camera_publish::CameraPublisher;
+use crate::event_emitter::emit_engine_event;
 use crate::mic_denoise::NoiseSuppressionMode;
+use crate::mic_processing::MicProcessingConfig;
 use crate::mic_publish::MicPublisher;
 use crate::protocol::{EventMessage, RoomConnectResult, ScreenStartParams, ScreenStartResult};
+use crate::room_stats::extract_rtt_ms;
 use crate::remote_audio::{
     emit_participants_snapshot, emit_room_connected, emit_room_disconnected, RemoteAudioForwarder,
 };
@@ -37,7 +40,8 @@ struct LiveKitRoomInner {
     camera_publisher: CameraPublisher,
     remote_audio: RemoteAudioForwarder,
     mic_enabled: bool,
-    mic_noise_suppression: NoiseSuppressionMode,
+    mic_device_id: Option<String>,
+    mic_processing: MicProcessingConfig,
     camera_enabled: bool,
 }
 
@@ -54,7 +58,8 @@ impl LiveKitRoom {
                 camera_publisher: CameraPublisher::new(),
                 remote_audio: RemoteAudioForwarder::new(),
                 mic_enabled: false,
-                mic_noise_suppression: NoiseSuppressionMode::Browser,
+                mic_device_id: None,
+                mic_processing: MicProcessingConfig::default(),
                 camera_enabled: false,
             }),
         }
@@ -137,6 +142,16 @@ impl LiveKitRoom {
                     RoomEvent::ParticipantConnected(_) | RoomEvent::ParticipantDisconnected(_) => {
                         emit_participants_snapshot(&observed);
                     }
+                    RoomEvent::ActiveSpeakersChanged { speakers } => {
+                        let user_ids: Vec<String> = speakers
+                            .iter()
+                            .map(|speaker| speaker.identity().to_string())
+                            .collect();
+                        emit_engine_event(
+                            "room.activeSpeakers",
+                            serde_json::json!({ "userIds": user_ids }),
+                        );
+                    }
                     RoomEvent::Disconnected { .. } => {
                         emit_room_disconnected();
                         break;
@@ -169,18 +184,21 @@ impl LiveKitRoom {
             .clone();
 
         if let Some(mode) = noise_suppression {
-            inner.mic_noise_suppression = mode;
-            inner.mic_publisher.set_noise_suppression(mode);
+            inner.mic_processing.noise_suppression = mode;
         }
 
         if enabled == inner.mic_enabled {
+            inner.mic_publisher.set_processing(inner.mic_processing);
             return Ok(());
         }
 
         if enabled {
             inner
                 .mic_publisher
-                .start(room.clone(), inner.mic_noise_suppression)
+                .set_device_id(inner.mic_device_id.clone());
+            inner
+                .mic_publisher
+                .start(room.clone(), inner.mic_processing)
                 .await?;
         } else {
             inner.mic_publisher.stop(&room).await?;
@@ -196,24 +214,48 @@ impl LiveKitRoom {
         mode: NoiseSuppressionMode,
     ) -> Result<(), String> {
         let mut inner = self.inner.lock().await;
-        inner.mic_noise_suppression = mode;
-        inner.mic_publisher.set_noise_suppression(mode);
+        inner.mic_processing.noise_suppression = mode;
+        self.restart_mic_locked(&mut inner).await
+    }
 
-        if inner.mic_enabled {
-            let room = inner
-                .room
-                .as_ref()
-                .ok_or_else(|| "room is not connected".to_string())?
-                .clone();
-            inner.mic_publisher.stop(&room).await?;
-            inner
-                .mic_publisher
-                .start(room.clone(), inner.mic_noise_suppression)
-                .await?;
-            emit_participants_snapshot(&room);
+    pub async fn set_mic_device(&self, device_id: Option<String>) -> Result<(), String> {
+        let mut inner = self.inner.lock().await;
+        inner.mic_device_id = device_id.filter(|value| !value.is_empty());
+        inner
+            .mic_publisher
+            .set_device_id(inner.mic_device_id.clone());
+        self.restart_mic_locked(&mut inner).await
+    }
+
+    pub async fn set_mic_processing(
+        &self,
+        voice_gate_enabled: Option<bool>,
+        voice_gate_threshold: Option<f32>,
+        noise_suppression: Option<NoiseSuppressionMode>,
+    ) -> Result<(), String> {
+        let mut inner = self.inner.lock().await;
+
+        if let Some(enabled) = voice_gate_enabled {
+            inner.mic_processing.voice_gate_enabled = enabled;
+        }
+        if let Some(threshold) = voice_gate_threshold {
+            inner.mic_processing.voice_gate_threshold = threshold;
+        }
+        if let Some(mode) = noise_suppression {
+            inner.mic_processing.noise_suppression = mode;
         }
 
-        Ok(())
+        self.restart_mic_locked(&mut inner).await
+    }
+
+    pub async fn get_rtt_ms(&self) -> Result<Option<u32>, String> {
+        let inner = self.inner.lock().await;
+        let room = inner
+            .room
+            .as_ref()
+            .ok_or_else(|| "room is not connected".to_string())?;
+        let stats = room.get_stats().await.map_err(|error| error.to_string())?;
+        Ok(extract_rtt_ms(&stats))
     }
 
     pub async fn set_camera_enabled(&self, enabled: bool) -> Result<(), String> {
@@ -325,6 +367,31 @@ impl LiveKitRoom {
 
     pub fn room_state_event(&self) -> EventMessage {
         EventMessage::new("room.state", serde_json::json!({ "connected": true }))
+    }
+
+    async fn restart_mic_locked(&self, inner: &mut LiveKitRoomInner) -> Result<(), String> {
+        inner.mic_publisher.set_processing(inner.mic_processing);
+
+        if !inner.mic_enabled {
+            return Ok(());
+        }
+
+        let room = inner
+            .room
+            .as_ref()
+            .ok_or_else(|| "room is not connected".to_string())?
+            .clone();
+
+        inner.mic_publisher.stop(&room).await?;
+        inner
+            .mic_publisher
+            .set_device_id(inner.mic_device_id.clone());
+        inner
+            .mic_publisher
+            .start(room.clone(), inner.mic_processing)
+            .await?;
+        emit_participants_snapshot(&room);
+        Ok(())
     }
 
     fn stop_event_task_locked(&self, inner: &mut LiveKitRoomInner) {

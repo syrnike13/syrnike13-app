@@ -1,9 +1,13 @@
 import type {
   MediaEngineEvent,
+  MediaEngineMicProcessingParams,
   MediaEngineNoiseSuppressionMode,
   MediaEngineRoomConnectParams,
 } from '@syrnike13/platform'
 
+import {
+  toEngineMicProcessingParams,
+} from '#/features/voice/media-engine-voice-setup'
 import { readVoicePreferences } from '#/features/voice/voice-preference-store'
 import type { NoiseSuppressionMode } from '#/features/voice/voice-preference-types'
 
@@ -32,8 +36,11 @@ export type MediaEngineVoiceSession = {
   disconnect: () => Promise<void>
   setMicEnabled: (enabled: boolean) => Promise<void>
   setNoiseSuppression: (mode: NoiseSuppressionMode) => Promise<void>
-  setCameraEnabled: (enabled: boolean) => Promise<void>
+  setMicDevice: (deviceId?: string) => Promise<void>
+  setMicProcessing: (params: MediaEngineMicProcessingParams) => Promise<void>
+  getRttMs: () => Promise<number | null>
   setDeafened: (deafened: boolean) => void
+  setCameraEnabled: (enabled: boolean) => Promise<void>
 }
 
 function toEngineNoiseSuppressionMode(
@@ -51,6 +58,7 @@ export type MediaEngineVoiceContext = {
 export type MediaEngineVoiceHandlers = {
   onStateChange?: () => void
   onDisconnected?: () => void
+  onActiveSpeakers?: (userIds: ReadonlySet<string>) => void
   getContext?: () => MediaEngineVoiceContext | null
 }
 
@@ -66,6 +74,13 @@ function parseParticipantsSnapshot(
   if (typeof snapshot.localUserId !== 'string') return null
   if (!Array.isArray(snapshot.participants)) return null
   return snapshot
+}
+
+function parseActiveSpeakerIds(params: unknown): string[] | null {
+  if (!params || typeof params !== 'object') return null
+  const userIds = (params as { userIds?: unknown }).userIds
+  if (!Array.isArray(userIds)) return null
+  return userIds.filter((value): value is string => typeof value === 'string')
 }
 
 export async function connectMediaEngineVoice(
@@ -101,6 +116,12 @@ export async function connectMediaEngineVoice(
           localReceiving: context.localReceiving,
         })
         handlers.onStateChange?.()
+        break
+      }
+      case 'room.activeSpeakers': {
+        const userIds = parseActiveSpeakerIds(event.params)
+        if (!userIds) break
+        handlers.onActiveSpeakers?.(new Set(userIds))
         break
       }
       case 'track.published': {
@@ -224,26 +245,44 @@ export async function connectMediaEngineVoice(
 
   const unsubscribe = desktop.mediaEngine.onEvent(handleEngineEvent)
 
-  const initialNoiseSuppression = readVoicePreferences().noiseSuppression
+  const initialPrefs = readVoicePreferences()
+  const initialProcessing = toEngineMicProcessingParams(initialPrefs)
+
+  await desktop.mediaEngine.micSetProcessing(initialProcessing)
+  if (initialPrefs.preferredAudioInputDevice) {
+    await desktop.mediaEngine.micSetDevice({
+      deviceId: initialPrefs.preferredAudioInputDevice,
+    })
+  }
 
   await desktop.mediaEngine.micSetEnabled({
     enabled: initialMicEnabled,
-    noiseSuppression: toEngineNoiseSuppressionMode(initialNoiseSuppression),
+    noiseSuppression: toEngineNoiseSuppressionMode(initialPrefs.noiseSuppression),
   })
 
   return {
     localUserId: localUserId || result.sid,
     async setMicEnabled(enabled: boolean) {
-      const noiseSuppression = readVoicePreferences().noiseSuppression
+      const prefs = readVoicePreferences()
       await desktop.mediaEngine.micSetEnabled({
         enabled,
-        noiseSuppression: toEngineNoiseSuppressionMode(noiseSuppression),
+        noiseSuppression: toEngineNoiseSuppressionMode(prefs.noiseSuppression),
       })
     },
     async setNoiseSuppression(mode: NoiseSuppressionMode) {
       await desktop.mediaEngine.micSetNoiseSuppression(
         toEngineNoiseSuppressionMode(mode),
       )
+    },
+    async setMicDevice(deviceId?: string) {
+      await desktop.mediaEngine.micSetDevice({ deviceId })
+    },
+    async setMicProcessing(params: MediaEngineMicProcessingParams) {
+      await desktop.mediaEngine.micSetProcessing(params)
+    },
+    async getRttMs() {
+      const result = await desktop.mediaEngine.roomGetRtt()
+      return result.rttMs
     },
     async setCameraEnabled(enabled: boolean) {
       await desktop.mediaEngine.cameraSetEnabled(enabled)
