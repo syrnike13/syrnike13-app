@@ -2,8 +2,8 @@ use serde_json::Value;
 
 use crate::livekit_room::LiveKitRoom;
 use crate::protocol::{
-    EventMessage, PingResult, RequestMessage, ResponseMessage, RoomConnectParams, ENGINE_NAME,
-    ENGINE_VERSION,
+    EventMessage, PingResult, RequestMessage, ResponseMessage, RoomConnectParams,
+    ScreenStartParams, ENGINE_NAME, ENGINE_VERSION,
 };
 
 pub struct EngineSession {
@@ -89,6 +89,23 @@ impl EngineSession {
                 Err(message) => {
                     ResponseMessage::failure(request.id, "ROOM_PUBLISH_TEST_TONE_FAILED", message)
                 }
+            },
+            "screen.start" => match serde_json::from_value::<ScreenStartParams>(request.params) {
+                Ok(params) => match self.livekit_room.start_screen(params).await {
+                    Ok(result) => ResponseMessage::success(request.id, result),
+                    Err(message) => {
+                        ResponseMessage::failure(request.id, "SCREEN_START_FAILED", message)
+                    }
+                },
+                Err(error) => ResponseMessage::failure(
+                    request.id,
+                    "INVALID_PARAMS",
+                    format!("screen.start params invalid: {error}"),
+                ),
+            },
+            "screen.stop" => match self.livekit_room.stop_screen().await {
+                Ok(()) => ResponseMessage::success(request.id, Value::Null),
+                Err(message) => ResponseMessage::failure(request.id, "SCREEN_STOP_FAILED", message),
             },
             other => ResponseMessage::failure(
                 request.id,

@@ -27,6 +27,20 @@ export type MediaEngineReadyEvent = {
   pipe: string
 }
 
+export type MediaEngineScreenStartParams = {
+  sourceId: string
+  width: number
+  height: number
+  fps: number
+  maxBitrate?: number
+  withAudio?: boolean
+}
+
+export type MediaEngineScreenStartResult = {
+  activeMethod: string
+  audioMode?: string | null
+}
+
 export type MediaEngineEvent =
   | {
       event: 'engine.ready'
@@ -43,4 +57,12 @@ export type MediaEngineEvent =
   | {
       event: 'room.state'
       params: { connected: boolean }
+    }
+  | {
+      event: 'screen.started'
+      params: MediaEngineScreenStartResult
+    }
+  | {
+      event: 'screen.stopped'
+      params: Record<string, never>
     }

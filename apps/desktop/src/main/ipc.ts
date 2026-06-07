@@ -34,7 +34,10 @@ import {
   initializeMediaEngine,
   pingMediaEngine,
   publishMediaEngineTestTone,
+  startMediaEngineScreen,
+  stopMediaEngineScreen,
 } from './media-engine'
+import { registerMediaEnginePickerIpc } from './media-engine-picker'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -50,6 +53,7 @@ export function registerDesktopIpc(
 ) {
   initializeHotkeys(getWindow)
   initializeMediaEngine(getWindow)
+  registerMediaEnginePickerIpc(getWindow)
   registerDisplayMediaIpc(getWindow)
 
   ipcMain.handle(IPC.versions, () => ({
@@ -160,6 +164,12 @@ export function registerDesktopIpc(
   ipcMain.handle(IPC.mediaEnginePublishTestTone, () =>
     publishMediaEngineTestTone(),
   )
+
+  ipcMain.handle(IPC.mediaEngineScreenStart, (_event, params) =>
+    startMediaEngineScreen(getWindow, params),
+  )
+
+  ipcMain.handle(IPC.mediaEngineScreenStop, () => stopMediaEngineScreen())
 
   return () => {
     lastActivity = null

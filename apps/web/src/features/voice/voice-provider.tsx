@@ -62,6 +62,18 @@ import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
 import {
+  startMediaEngineScreenShare,
+  type MediaEngineScreenShareSession,
+} from '#/features/voice/media-engine-screen-share'
+import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
+import {
+  clearNativePickerSelection,
+  rejectNativePickerSelection,
+  waitForNativePickerSelection,
+} from '#/features/voice/native-screen-share-session'
+import { shouldUseMediaEngineScreenShare } from '#/features/voice/native-screen-share-mode'
+import { getSyrnikeDesktop } from '#/platform/runtime'
+import {
   applyMicProcessing,
   refreshMicProcessing,
 } from '#/features/voice/voice-mic-processing'
@@ -276,6 +288,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setActiveRoom: (_room: Room) => {},
     attachRoomHandlers: (_room: Room) => {},
     onRoomConnected: (_room: Room, _channelId: string) => {},
+    onLivekitCredentials: (_credentials: { url: string; token: string }) => {},
     onJoinSuccess: () => {},
     abortJoin: () => {},
   })
@@ -296,6 +309,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         voiceJoinDepsRef.current.attachRoomHandlers(room),
       onRoomConnected: (room, channelId) =>
         voiceJoinDepsRef.current.onRoomConnected(room, channelId),
+      onLivekitCredentials: (credentials) =>
+        voiceJoinDepsRef.current.onLivekitCredentials(credentials),
       onJoinSuccess: () => voiceJoinDepsRef.current.onJoinSuccess(),
       abortJoin: () => voiceJoinDepsRef.current.abortJoin(),
     }),
@@ -313,6 +328,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       isGatewayConnected: () => voiceRejoinDepsRef.current.isGatewayConnected(),
     }),
   )
+  const livekitSessionRef = useRef<{ url: string; token: string } | null>(null)
+  const mediaEngineScreenShareRef =
+    useRef<MediaEngineScreenShareSession | null>(null)
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const lastVoicePreferencesRef = useRef(readVoicePreferences())
@@ -580,6 +598,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const leaveVoiceSession = useCallback(
     async (intent: 'switch' | 'leave' = 'switch') => {
       voiceRejoinRef.current.cancel()
+
+      const activeEngineScreen = mediaEngineScreenShareRef.current
+      if (activeEngineScreen) {
+        mediaEngineScreenShareRef.current = null
+        void activeEngineScreen.stop()
+      }
+      livekitSessionRef.current = null
+
       const room = roomRef.current
       const leftChannelId = channelIdRef.current
       const userId = room?.localParticipant.identity ?? auth.user?._id
@@ -814,6 +840,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         syncRoomParticipants()
         void finishLocalVoiceSetup(room, targetChannelId)
       },
+      onLivekitCredentials: (credentials) => {
+        livekitSessionRef.current = credentials
+      },
       onJoinSuccess: () => voiceRejoinRef.current.cancel(),
       abortJoin: abortJoinAttempt,
     }
@@ -957,6 +986,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
   }, [syncRoomParticipants])
 
+  const stopMediaEngineScreenShare = useCallback(() => {
+    const active = mediaEngineScreenShareRef.current
+    if (!active) return
+    mediaEngineScreenShareRef.current = null
+    void active.stop()
+  }, [])
+
   const startScreenShare = useCallback(
     async (quality: ScreenShareQualityName, withAudio: boolean) => {
       const room = roomRef.current
@@ -964,6 +1000,44 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       voicePreferenceStore.setScreenShareQuality(quality)
       voicePreferenceStore.setScreenShareAudio(withAudio)
+
+      const desktop = getSyrnikeDesktop()
+      const livekitSession = livekitSessionRef.current
+      if (
+        shouldUseMediaEngineScreenShare() &&
+        desktop &&
+        livekitSession
+      ) {
+        try {
+          const pickerPromise = waitForNativePickerSelection()
+          await desktop.screenShare.openNativePicker(withAudio)
+          const sourceId = await pickerPromise
+          const session = await startMediaEngineScreenShare(
+            livekitSession,
+            sourceId,
+            quality,
+            withAudio,
+          )
+          mediaEngineScreenShareRef.current = session
+          setScreenShareEnabled(true)
+          syncRoomParticipants()
+          return
+        } catch (error) {
+          stopMediaEngineScreenShare()
+          clearNativePickerSelection()
+          rejectNativePickerSelection(
+            error instanceof Error
+              ? error
+              : new Error('Не удалось начать нативную демонстрацию'),
+          )
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Не удалось начать нативную демонстрацию',
+          )
+          return
+        }
+      }
 
       try {
         const capture = screenShareCaptureOptions(quality)
@@ -1015,12 +1089,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
       }
     },
-    [syncRoomParticipants],
+    [stopMediaEngineScreenShare, syncRoomParticipants],
   )
 
   const toggleScreenShare = useCallback(() => {
     const room = roomRef.current
     if (!room) return
+
+    if (mediaEngineScreenShareRef.current) {
+      stopMediaEngineScreenShare()
+      setScreenShareEnabled(false)
+      syncRoomParticipants()
+      return
+    }
 
     if (room.localParticipant.isScreenShareEnabled) {
       void room.localParticipant
@@ -1041,7 +1122,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     const prefs = readVoicePreferences()
     void startScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
-  }, [startScreenShare])
+  }, [startScreenShare, stopMediaEngineScreenShare, syncRoomParticipants])
 
   const toggleStageFullscreen = useCallback(() => {
     setStageFullscreen((value) => !value)
@@ -1350,6 +1431,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     <VoiceContext.Provider value={value}>
       {children}
       <DesktopScreenSharePicker />
+      <NativeScreenShareCoordinator />
     </VoiceContext.Provider>
   )
 }

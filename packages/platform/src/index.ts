@@ -20,9 +20,17 @@ export type {
   HotkeyRuntimeStatus,
   HotkeyTrigger,
   NativeInputEvent,
+  NativePickerResolvedEvent,
   SyrnikeDesktopApi,
   SyrnikeRuntime,
 } from './api'
+export type {
+  NativeCaptureAudioMode,
+  NativeCaptureEncoderBackend,
+  NativeCaptureFrameMethod,
+  NativeCaptureFrameStats,
+  NativeCaptureStreamMode,
+} from './capture'
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export type {
@@ -32,4 +40,6 @@ export type {
   MediaEngineRoomConnectParams,
   MediaEngineRoomConnectResult,
   MediaEngineRuntimeStatus,
+  MediaEngineScreenStartParams,
+  MediaEngineScreenStartResult,
 } from './media-engine'

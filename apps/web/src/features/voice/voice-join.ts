@@ -34,6 +34,7 @@ export type VoiceJoinRunnerDeps = {
   setActiveRoom: (room: Room) => void
   attachRoomHandlers: (room: Room) => void
   onRoomConnected: (room: Room, channelId: string) => void
+  onLivekitCredentials?: (credentials: { url: string; token: string }) => void
   onJoinSuccess: () => void
   abortJoin: () => void
 }
@@ -102,6 +103,7 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       }
 
       const { url, token: livekitToken } = credentials
+      deps.onLivekitCredentials?.({ url, token: livekitToken })
       const room = new Room(createVoiceRoomOptions())
       deps.setActiveRoom(room)
       deps.attachRoomHandlers(room)

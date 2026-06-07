@@ -1,6 +1,8 @@
+mod capture;
 mod livekit_room;
 mod pipe;
 mod protocol;
+mod screen_publish;
 mod session;
 
 use std::env;

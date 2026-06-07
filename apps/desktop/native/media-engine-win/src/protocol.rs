@@ -55,6 +55,34 @@ pub struct RoomConnectResult {
     pub sid: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenStartParams {
+    pub source_id: String,
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
+    #[serde(default)]
+    pub max_bitrate: Option<u32>,
+    #[serde(default = "default_with_audio")]
+    pub with_audio: bool,
+    #[serde(default)]
+    pub exclude_process_id: Option<u32>,
+    #[serde(default)]
+    pub self_window_hwnd: Option<isize>,
+}
+
+fn default_with_audio() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenStartResult {
+    pub active_method: String,
+    pub audio_mode: Option<String>,
+}
+
 impl ResponseMessage {
     pub fn success(id: u64, result: impl Serialize) -> Self {
         Self {

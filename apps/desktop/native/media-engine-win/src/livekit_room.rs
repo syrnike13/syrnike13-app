@@ -11,7 +11,8 @@ use livekit::webrtc::audio_source::AudioSourceOptions;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::protocol::{EventMessage, RoomConnectResult};
+use crate::protocol::{EventMessage, RoomConnectResult, ScreenStartParams, ScreenStartResult};
+use crate::screen_publish::ScreenPublisher;
 
 pub struct LiveKitRoom {
     inner: Mutex<LiveKitRoomInner>,
@@ -22,6 +23,7 @@ struct LiveKitRoomInner {
     event_task: Option<JoinHandle<()>>,
     tone_task: Option<JoinHandle<()>>,
     tone_stop: Option<Arc<AtomicBool>>,
+    screen_publisher: ScreenPublisher,
 }
 
 impl LiveKitRoom {
@@ -32,6 +34,7 @@ impl LiveKitRoom {
                 event_task: None,
                 tone_task: None,
                 tone_stop: None,
+                screen_publisher: ScreenPublisher::new(),
             }),
         }
     }
@@ -66,8 +69,27 @@ impl LiveKitRoom {
         Ok(RoomConnectResult { room_name, sid })
     }
 
+    pub async fn start_screen(
+        &self,
+        params: ScreenStartParams,
+    ) -> Result<ScreenStartResult, String> {
+        let inner = self.inner.lock().await;
+        let room = inner
+            .room
+            .as_ref()
+            .ok_or_else(|| "room is not connected".to_string())?
+            .clone();
+        inner.screen_publisher.start(room, params).await
+    }
+
+    pub async fn stop_screen(&self) -> Result<(), String> {
+        let inner = self.inner.lock().await;
+        inner.screen_publisher.stop().await
+    }
+
     pub async fn disconnect(&self) -> Result<(), String> {
         let mut inner = self.inner.lock().await;
+        inner.screen_publisher.stop().await?;
         self.stop_tone_locked(&mut inner).await;
         self.stop_event_task_locked(&mut inner);
 

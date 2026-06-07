@@ -4,6 +4,8 @@ import type {
   MediaEngineRoomConnectParams,
   MediaEngineRoomConnectResult,
   MediaEngineRuntimeStatus,
+  MediaEngineScreenStartParams,
+  MediaEngineScreenStartResult,
 } from './media-engine'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
@@ -143,6 +145,12 @@ export type DesktopDisplayMediaSource = {
 export type DesktopDisplayMediaRequest = {
   id: string
   audioRequested: boolean
+  nativeVideo?: boolean
+}
+
+export type NativePickerResolvedEvent = {
+  requestId: string
+  sourceId: string
 }
 
 /**
@@ -195,6 +203,10 @@ export interface SyrnikeDesktopApi {
     selectSource(requestId: string, sourceId: string): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
+    openNativePicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
+    onNativePickerResolved(
+      handler: (event: NativePickerResolvedEvent) => void,
+    ): () => void
   }
   mediaEngine: {
     ping(): Promise<MediaEnginePingResult>
@@ -204,6 +216,10 @@ export interface SyrnikeDesktopApi {
     ): Promise<MediaEngineRoomConnectResult>
     roomDisconnect(): Promise<void>
     publishTestTone(): Promise<void>
+    screenStart(
+      params: MediaEngineScreenStartParams,
+    ): Promise<MediaEngineScreenStartResult>
+    screenStop(): Promise<void>
     onEvent(handler: (event: MediaEngineEvent) => void): () => void
   }
 }

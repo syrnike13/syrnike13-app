@@ -30,11 +30,15 @@ export const IPC = {
   screenShareGetSources: 'syrnike-desktop:screen-share:get-sources',
   screenShareSelectSource: 'syrnike-desktop:screen-share:select-source',
   screenShareCancelRequest: 'syrnike-desktop:screen-share:cancel-request',
+  screenShareOpenNativePicker: 'syrnike-desktop:screen-share:open-native-picker',
+  captureNativePickerResolved: 'syrnike-desktop:capture:native-picker-resolved',
   mediaEnginePing: 'syrnike-desktop:media-engine:ping',
   mediaEngineGetStatus: 'syrnike-desktop:media-engine:get-status',
   mediaEngineRoomConnect: 'syrnike-desktop:media-engine:room-connect',
   mediaEngineRoomDisconnect: 'syrnike-desktop:media-engine:room-disconnect',
   mediaEnginePublishTestTone: 'syrnike-desktop:media-engine:publish-test-tone',
+  mediaEngineScreenStart: 'syrnike-desktop:media-engine:screen-start',
+  mediaEngineScreenStop: 'syrnike-desktop:media-engine:screen-stop',
   mediaEngineEvent: 'syrnike-desktop:media-engine:event',
 } as const
 

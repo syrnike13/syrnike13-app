@@ -12,6 +12,7 @@ import type {
   HotkeyAction,
   HotkeyBinding,
   MediaEngineEvent,
+  NativePickerResolvedEvent,
   NativeInputEvent,
   SyrnikeDesktopApi,
 } from '@syrnike13/platform'
@@ -166,6 +167,21 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         ipcRenderer.removeListener(IPC.screenShareRequest, listener)
       }
     },
+    openNativePicker(audioRequested: boolean) {
+      return ipcRenderer.invoke(
+        IPC.screenShareOpenNativePicker,
+        audioRequested,
+      ) as Promise<DesktopDisplayMediaRequest>
+    },
+    onNativePickerResolved(handler: (event: NativePickerResolvedEvent) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isNativePickerResolvedEvent(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.captureNativePickerResolved, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.captureNativePickerResolved, listener)
+      }
+    },
   },
   mediaEngine: {
     ping() {
@@ -182,6 +198,12 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
     publishTestTone() {
       return ipcRenderer.invoke(IPC.mediaEnginePublishTestTone)
+    },
+    screenStart(params) {
+      return ipcRenderer.invoke(IPC.mediaEngineScreenStart, params)
+    },
+    screenStop() {
+      return ipcRenderer.invoke(IPC.mediaEngineScreenStop)
     },
     onEvent(handler: (event: MediaEngineEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
@@ -223,6 +245,14 @@ function isHotkeyActivationEvent(value: unknown): value is HotkeyActivationEvent
     typeof event.action === 'string' &&
     (event.phase === 'pressed' || event.phase === 'released')
   )
+}
+
+function isNativePickerResolvedEvent(
+  value: unknown,
+): value is NativePickerResolvedEvent {
+  if (!value || typeof value !== 'object') return false
+  const event = value as NativePickerResolvedEvent
+  return typeof event.requestId === 'string' && typeof event.sourceId === 'string'
 }
 
 function isMediaEngineEvent(value: unknown): value is MediaEngineEvent {

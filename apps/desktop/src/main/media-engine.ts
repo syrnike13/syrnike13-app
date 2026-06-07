@@ -10,6 +10,8 @@ import {
   type MediaEngineRoomConnectParams,
   type MediaEngineRoomConnectResult,
   type MediaEngineRuntimeStatus,
+  type MediaEngineScreenStartParams,
+  type MediaEngineScreenStartResult,
 } from '@syrnike13/platform'
 
 import {
@@ -74,6 +76,42 @@ export async function disconnectMediaEngineRoom(): Promise<void> {
 
 export async function publishMediaEngineTestTone(): Promise<void> {
   await sendRequest('room.publishTestTone', {})
+}
+
+export async function startMediaEngineScreen(
+  getWindow: () => BrowserWindow | null,
+  params: MediaEngineScreenStartParams,
+): Promise<MediaEngineScreenStartResult> {
+  const win = getWindow()
+  let selfWindowHwnd: number | undefined
+  if (win && !win.isDestroyed()) {
+    const handle = win.getNativeWindowHandle()
+    selfWindowHwnd =
+      handle.length >= 8
+        ? Number(handle.readBigInt64LE())
+        : handle.readInt32LE(0)
+  }
+
+  const result = (await sendRequest('screen.start', {
+    ...params,
+    excludeProcessId: process.pid,
+    selfWindowHwnd,
+  })) as MediaEngineScreenStartResult
+
+  emitEngineEvent({
+    event: 'screen.started',
+    params: result,
+  })
+
+  return result
+}
+
+export async function stopMediaEngineScreen(): Promise<void> {
+  await sendRequest('screen.stop', {})
+  emitEngineEvent({
+    event: 'screen.stopped',
+    params: {},
+  })
 }
 
 export function disposeMediaEngine() {
