@@ -79,6 +79,7 @@ import {
   connectMediaEngineVoice,
   type MediaEngineVoiceSession,
 } from '#/features/voice/media-engine-voice'
+import { refreshMediaEngineRemoteAudioGains } from '#/features/voice/media-engine-remote-audio'
 import {
   applyEngineMicProcessing,
   applyEngineVoiceDevices,
@@ -1503,7 +1504,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return voiceListenerStore.subscribe(() => {
       if (status !== 'connected') return
-      if (engineVoiceSessionRef.current) return
+      if (engineVoiceSessionRef.current) {
+        refreshMediaEngineRemoteAudioGains()
+        return
+      }
       applyAllRemoteAudio(deafenedRef.current)
     })
   }, [status])
@@ -1522,6 +1526,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       if (engineVoice) {
         if (effects.devicesChanged) {
           void applyEngineVoiceDevices(engineVoice, next)
+        } else if (effects.remoteAudioChanged) {
+          refreshMediaEngineRemoteAudioGains()
         }
         if (effects.micProcessingChanged) {
           void applyEngineMicProcessing(engineVoice, next)

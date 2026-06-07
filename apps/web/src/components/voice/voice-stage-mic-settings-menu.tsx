@@ -13,6 +13,7 @@ import {
 } from '#/components/voice/voice-stage-popover-styles'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
+import { useVoiceAudioInputDevices } from '#/features/voice/use-voice-audio-devices'
 import {
   ensureMediaDevicePermission,
   useMediaDevices,
@@ -39,7 +40,7 @@ const NOISE_SUPPRESSION_OPTIONS: {
   {
     value: 'enhanced',
     label: 'Усиленное',
-    description: 'DeepFilterNet — переподключитесь к голосу',
+    description: 'DeepFilterNet — применяется при следующем включении микрофона',
   },
   {
     value: 'disabled',
@@ -79,7 +80,7 @@ function useMicInputSettingsModel() {
   const prefs = useVoicePreferences()
   const voice = useVoice()
   const auth = useAuth()
-  const inputDevices = useMediaDevices('audioinput')
+  const inputDevices = useVoiceAudioInputDevices()
   const [meterLevels, setMeterLevels] = useState(() =>
     Array.from({ length: METER_BAR_COUNT }, () => 0),
   )

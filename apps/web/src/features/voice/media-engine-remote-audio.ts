@@ -108,6 +108,11 @@ export function setMediaEngineRemoteAudioDeafened(value: boolean) {
   applyAllStreamGains()
 }
 
+export function refreshMediaEngineRemoteAudioGains() {
+  ensurePreferenceSubscriptions()
+  applyAllStreamGains()
+}
+
 export function setMediaEngineRemoteAudioOutputDevice(deviceId?: string) {
   ensurePreferenceSubscriptions()
   outputDeviceId = deviceId

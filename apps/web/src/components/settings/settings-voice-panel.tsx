@@ -10,6 +10,8 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Slider } from '#/components/ui/slider'
+import { shouldUseDesktopMediaEngine } from '#/features/voice/desktop-media-engine'
+import { useVoiceAudioInputDevices } from '#/features/voice/use-voice-audio-devices'
 import {
   ensureMediaDevicePermission,
   useMediaDevices,
@@ -230,7 +232,8 @@ function useMicTestMeter(
 
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
-  const inputDevices = useMediaDevices('audioinput')
+  const engineAudioInput = shouldUseDesktopMediaEngine()
+  const inputDevices = useVoiceAudioInputDevices()
   const outputDevices = useMediaDevices('audiooutput')
   const videoDevices = useMediaDevices('videoinput')
   const [micTestActive, setMicTestActive] = useState(false)
@@ -320,18 +323,25 @@ export function SettingsVoicePanel() {
           }}
         />
 
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            size="sm"
-            variant={micTestActive ? 'secondary' : 'default'}
-            className="shrink-0"
-            onClick={() => setMicTestActive((value) => !value)}
-          >
-            {micTestActive ? 'Остановить' : 'Проверка микрофона'}
-          </Button>
-          <MicInputMeter levels={meterLevels} />
-        </div>
+        {engineAudioInput ? (
+          <p className="text-sm text-muted-foreground">
+            Проверка микрофона в десктопном движке недоступна — уровень виден в
+            голосовом канале при разговоре.
+          </p>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              variant={micTestActive ? 'secondary' : 'default'}
+              className="shrink-0"
+              onClick={() => setMicTestActive((value) => !value)}
+            >
+              {micTestActive ? 'Остановить' : 'Проверка микрофона'}
+            </Button>
+            <MicInputMeter levels={meterLevels} />
+          </div>
+        )}
       </section>
 
       <section className="space-y-4">
