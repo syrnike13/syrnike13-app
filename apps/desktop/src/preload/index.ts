@@ -11,6 +11,7 @@ import type {
   HotkeyActivationEvent,
   HotkeyAction,
   HotkeyBinding,
+  MediaEngineEvent,
   NativeInputEvent,
   SyrnikeDesktopApi,
 } from '@syrnike13/platform'
@@ -166,6 +167,32 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       }
     },
   },
+  mediaEngine: {
+    ping() {
+      return ipcRenderer.invoke(IPC.mediaEnginePing)
+    },
+    getStatus() {
+      return ipcRenderer.invoke(IPC.mediaEngineGetStatus)
+    },
+    roomConnect(params) {
+      return ipcRenderer.invoke(IPC.mediaEngineRoomConnect, params)
+    },
+    roomDisconnect() {
+      return ipcRenderer.invoke(IPC.mediaEngineRoomDisconnect)
+    },
+    publishTestTone() {
+      return ipcRenderer.invoke(IPC.mediaEnginePublishTestTone)
+    },
+    onEvent(handler: (event: MediaEngineEvent) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isMediaEngineEvent(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.mediaEngineEvent, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.mediaEngineEvent, listener)
+      }
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('syrnikeDesktop', syrnikeDesktop)
@@ -196,6 +223,12 @@ function isHotkeyActivationEvent(value: unknown): value is HotkeyActivationEvent
     typeof event.action === 'string' &&
     (event.phase === 'pressed' || event.phase === 'released')
   )
+}
+
+function isMediaEngineEvent(value: unknown): value is MediaEngineEvent {
+  if (!value || typeof value !== 'object') return false
+  const event = value as MediaEngineEvent
+  return typeof event.event === 'string' && typeof event.params === 'object'
 }
 
 function isDesktopDisplayMediaRequest(

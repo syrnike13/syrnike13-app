@@ -6,7 +6,8 @@
   "main": "./out/main/index.js",
   "scripts": {
     "build:hotkey-helper": "node scripts/build-hotkey-helper-win.mjs",
-    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper",
+    "build:media-engine": "node scripts/build-media-engine-win.mjs",
+    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper && pnpm run build:media-engine",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",

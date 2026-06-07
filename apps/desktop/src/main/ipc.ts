@@ -27,6 +27,14 @@ import {
   saveDesktopSession,
 } from './desktop-session'
 import { registerDisplayMediaIpc } from './media-permissions'
+import {
+  connectMediaEngineRoom,
+  disconnectMediaEngineRoom,
+  getMediaEngineRuntimeStatus,
+  initializeMediaEngine,
+  pingMediaEngine,
+  publishMediaEngineTestTone,
+} from './media-engine'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -41,6 +49,7 @@ export function registerDesktopIpc(
   },
 ) {
   initializeHotkeys(getWindow)
+  initializeMediaEngine(getWindow)
   registerDisplayMediaIpc(getWindow)
 
   ipcMain.handle(IPC.versions, () => ({
@@ -135,6 +144,22 @@ export function registerDesktopIpc(
   })
 
   ipcMain.handle(IPC.hotkeysGetRuntimeStatus, () => getHotkeyRuntimeStatus())
+
+  ipcMain.handle(IPC.mediaEnginePing, () => pingMediaEngine())
+
+  ipcMain.handle(IPC.mediaEngineGetStatus, () => getMediaEngineRuntimeStatus())
+
+  ipcMain.handle(IPC.mediaEngineRoomConnect, (_event, params) =>
+    connectMediaEngineRoom(params),
+  )
+
+  ipcMain.handle(IPC.mediaEngineRoomDisconnect, () =>
+    disconnectMediaEngineRoom(),
+  )
+
+  ipcMain.handle(IPC.mediaEnginePublishTestTone, () =>
+    publishMediaEngineTestTone(),
+  )
 
   return () => {
     lastActivity = null

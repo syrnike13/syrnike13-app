@@ -30,6 +30,12 @@ export const IPC = {
   screenShareGetSources: 'syrnike-desktop:screen-share:get-sources',
   screenShareSelectSource: 'syrnike-desktop:screen-share:select-source',
   screenShareCancelRequest: 'syrnike-desktop:screen-share:cancel-request',
+  mediaEnginePing: 'syrnike-desktop:media-engine:ping',
+  mediaEngineGetStatus: 'syrnike-desktop:media-engine:get-status',
+  mediaEngineRoomConnect: 'syrnike-desktop:media-engine:room-connect',
+  mediaEngineRoomDisconnect: 'syrnike-desktop:media-engine:room-disconnect',
+  mediaEnginePublishTestTone: 'syrnike-desktop:media-engine:publish-test-tone',
+  mediaEngineEvent: 'syrnike-desktop:media-engine:event',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

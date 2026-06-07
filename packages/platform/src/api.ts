@@ -1,3 +1,11 @@
+import type {
+  MediaEngineEvent,
+  MediaEnginePingResult,
+  MediaEngineRoomConnectParams,
+  MediaEngineRoomConnectResult,
+  MediaEngineRuntimeStatus,
+} from './media-engine'
+
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
 
@@ -187,5 +195,15 @@ export interface SyrnikeDesktopApi {
     selectSource(requestId: string, sourceId: string): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
+  }
+  mediaEngine: {
+    ping(): Promise<MediaEnginePingResult>
+    getStatus(): Promise<MediaEngineRuntimeStatus>
+    roomConnect(
+      params: MediaEngineRoomConnectParams,
+    ): Promise<MediaEngineRoomConnectResult>
+    roomDisconnect(): Promise<void>
+    publishTestTone(): Promise<void>
+    onEvent(handler: (event: MediaEngineEvent) => void): () => void
   }
 }

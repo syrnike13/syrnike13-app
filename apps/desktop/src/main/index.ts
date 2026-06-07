@@ -16,6 +16,7 @@ import {
 } from './auto-update'
 import { registerDesktopIpc } from './ipc'
 import { disposeHotkeys } from './hotkeys'
+import { disposeMediaEngine } from './media-engine'
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
 import { startEmbeddedWebServer, type EmbeddedWebServer } from './web-server'
@@ -293,6 +294,7 @@ if (setupSingleInstance()) {
     quitting = true
     disposeDesktopAutoUpdate()
     disposeHotkeys()
+    disposeMediaEngine()
     tray?.destroy()
     tray = null
     void embeddedServer?.close()

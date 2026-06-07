@@ -1,0 +1,7 @@
+# Required for linking libwebrtc (LiveKit Rust SDK).
+# See https://github.com/livekit/rust-sdks
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

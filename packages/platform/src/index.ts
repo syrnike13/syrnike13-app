@@ -25,3 +25,11 @@ export type {
 } from './api'
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
+export type {
+  MediaEngineEvent,
+  MediaEnginePingResult,
+  MediaEngineReadyEvent,
+  MediaEngineRoomConnectParams,
+  MediaEngineRoomConnectResult,
+  MediaEngineRuntimeStatus,
+} from './media-engine'
