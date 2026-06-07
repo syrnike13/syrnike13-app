@@ -107,3 +107,44 @@ docker compose logs --tail 200
 - Do not run destructive Docker, filesystem, or database commands unless the user explicitly asks.
 - For production investigations, avoid printing secrets from `.env`, `.env.web`, `secrets.env`, `Syrnike.toml`, or `livekit.yml`.
 - For deploy verification, compare the local commit/version, pushed state, GitHub Actions run, server image/container state, and public endpoint behavior before saying production is updated.
+
+## Cursor Cloud specific instructions
+
+### Быстрый старт (web)
+
+По умолчанию `pnpm web:dev` подключается к **продакшен API** (`syrnike13.ru`). Для UI-разработки не нужны Docker, Rust или локальный бэкенд:
+
+```sh
+pnpm install
+pnpm web:dev   # http://localhost:3000
+```
+
+Проверки: `pnpm web:test` (242 теста), `pnpm web:build`, typecheck в `packages/platform` и `packages/api-types`.
+
+### Локальный бэкенд (полный E2E)
+
+Требует Docker + инфра из `services/backend/compose.yml` (MongoDB, KeyDB, RabbitMQ, MinIO) и Rust **1.92** (edition 2024). В Cloud VM Docker по умолчанию **не установлен**; для `cargo check`/`cargo build` нужны `libssl-dev` и `pkg-config` (системные пакеты, не в update-скрипте).
+
+```sh
+source /usr/local/cargo/env   # если rustup установлен в /usr/local/cargo
+pnpm backend:check            # cargo check workspace
+cd services/backend && docker compose up -d && mise run start   # при наличии Docker и mise
+```
+
+Переменные для локального API — см. `apps/web/.env.example` (`VITE_API_URL`, `VITE_WS_URL`, и т.д.).
+
+### Dev-сервер в tmux
+
+Долгоживущие процессы (Vite, Electron) запускайте в tmux:
+
+```sh
+tmux -f /exec-daemon/tmux.portal.conf new-session -d -s web-dev-server -c /workspace -- "${SHELL:-zsh}" -l
+tmux -f /exec-daemon/tmux.portal.conf send-keys -t web-dev-server:0.0 'pnpm web:dev' C-m
+```
+
+### Прочее
+
+- **mise** — опционален; версии инструментов для бэкенда в `services/backend/.mise/config.toml` (Node 25, Rust 1.92, pnpm 10).
+- **Desktop**: `pnpm desktop:dev` тянет Electron; в headless VM без GUI удобнее ограничиться web.
+- **LiveKit**: `pnpm livekit:check` — `go test ./...` в `services/livekit-server` (нужен Go ≥1.24 из `go.mod`).
+- Отдельного root `lint`-скрипта нет; для web — `pnpm web:test` и сборка.
