@@ -18,7 +18,7 @@ describe('meterLevelsFromRms', () => {
   })
 })
 
-describe('native microphone denoise boundary', () => {
+describe('native microphone processing boundary', () => {
   it('does not reference RNNoise from the web voice package', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),

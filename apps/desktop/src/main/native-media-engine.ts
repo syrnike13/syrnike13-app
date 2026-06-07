@@ -14,7 +14,6 @@ import {
   type NativeMediaEngineSessionSummary,
   type NativeMediaFrameMethod,
   type NativeMediaFrameStats,
-  type NativeMediaNoiseSuppressionMode,
   type NativeMediaSession,
   type NativeMediaSidecarLostEvent,
   type NativeMediaSessionStartOptions,
@@ -39,6 +38,36 @@ import {
 
 const NATIVE_PICKER_TIMEOUT_MS = 120_000
 const MAX_SIDECAR_RECONNECT_ATTEMPTS = 1
+const NATIVE_MIC_DEBUG = process.env.SYRNIKE_NATIVE_MIC_DEBUG === '1'
+
+function resolveAgentDebugLogPath() {
+  return 'C:\\Users\\JAKEL\\AppData\\Local\\Temp\\debug-agent\\debug-d604d7.log'
+}
+
+function agentDebugLog(
+  hypothesisId: string,
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  // #region agent log
+  fetch('http://127.0.0.1:53161/ingest/d604d7', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Debug-Session-Id': 'd604d7',
+    },
+    body: JSON.stringify({
+      sessionId: 'd604d7',
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {})
+  // #endregion
+}
 
 export type PendingNativePicker = {
   id: string
@@ -57,7 +86,6 @@ type ActiveMediaEngineSession = {
     mode: NativeMediaAudioMode
     sampleRate?: 48_000
     channels?: 1 | 2
-    noiseSuppression?: NativeMediaNoiseSuppressionMode
   }
   helper: ChildProcessWithoutNullStreams
   stats: NativeMediaFrameStats
@@ -80,6 +108,8 @@ let mediaEngineStatus: NativeMediaSessionStatus = { status: 'idle' }
 let lastMediaEngineError: string | null = null
 let pendingNativePicker: PendingNativePicker | null = null
 let getWindowRef: (() => BrowserWindow | null) | null = null
+let lastNativeAudioPayloadDebugAt = 0
+let startSessionQueue: Promise<unknown> = Promise.resolve()
 
 function isTrustedSender(
   event: IpcMainInvokeEvent,
@@ -105,7 +135,6 @@ function buildSessionAudio(
   metadata?: {
     sampleRate?: 48_000
     channels?: 1 | 2
-    noiseSuppression?: NativeMediaNoiseSuppressionMode
   },
 ): NativeMediaSession['audio'] {
   if (!requested && mode === 'none' && !port) return undefined
@@ -115,7 +144,6 @@ function buildSessionAudio(
       port,
       sampleRate: metadata?.sampleRate ?? 48_000,
       channels: 1,
-      noiseSuppression: metadata?.noiseSuppression ?? 'disabled',
     }
   }
   return { mode, port }
@@ -141,7 +169,6 @@ export function buildNativeMediaStartCommand(
       sampleRate: options.sampleRate,
       channels: options.channels,
       echoCancellation: options.echoCancellation,
-      noiseSuppression: options.noiseSuppression,
       inputVolume: options.inputVolume,
     }
   }
@@ -416,10 +443,41 @@ function forwardStreamAudioPayload(
     payload.byteOffset,
     payload.byteOffset + payload.byteLength,
   )
+  if (NATIVE_MIC_DEBUG && session.startOptions.kind === 'microphone') {
+    const now = Date.now()
+    if (now - lastNativeAudioPayloadDebugAt > 1000) {
+      lastNativeAudioPayloadDebugAt = now
+      console.info('[native-mic-debug] main forwarding audio payload', {
+        sessionId: session.sessionId,
+        bytes: payload.byteLength,
+        rms: pcmF32Rms(payload),
+        peak: pcmF32Peak(payload),
+      })
+    }
+  }
   win.webContents.send(IPC.mediaStreamAudioChunk, {
     sessionId: session.sessionId,
     chunk: arrayBuffer,
   })
+}
+
+function pcmF32Rms(payload: Buffer) {
+  let sum = 0
+  let count = 0
+  for (let offset = 0; offset + 4 <= payload.byteLength; offset += 4) {
+    const value = payload.readFloatLE(offset)
+    sum += value * value
+    count += 1
+  }
+  return count > 0 ? Math.sqrt(sum / count) : 0
+}
+
+function pcmF32Peak(payload: Buffer) {
+  let peak = 0
+  for (let offset = 0; offset + 4 <= payload.byteLength; offset += 4) {
+    peak = Math.max(peak, Math.abs(payload.readFloatLE(offset)))
+  }
+  return peak
 }
 
 function processAudioStreamBuffer(
@@ -569,8 +627,36 @@ function attachAudioStreamRelay(
 ) {
   if (!session.audio?.port) return
 
+  // #region agent log
+  agentDebugLog(
+    'F',
+    'native-media-engine.ts:attach-audio-relay',
+    'connecting native audio stream relay',
+    {
+      sessionId: session.sessionId,
+      port: session.audio.port,
+      kind: session.startOptions.kind,
+    },
+  )
+  // #endregion
+
   const socket = net.connect(session.audio.port, '127.0.0.1')
   session.audioSocket = socket
+
+  socket.on('connect', () => {
+    // #region agent log
+    agentDebugLog(
+      'F',
+      'native-media-engine.ts:attach-audio-relay',
+      'native audio stream relay connected',
+      {
+        sessionId: session.sessionId,
+        port: session.audio?.port,
+        kind: session.startOptions.kind,
+      },
+    )
+    // #endregion
+  })
 
   socket.on('data', (chunk) => {
     session.audioSocketReadBuffer = Buffer.concat([
@@ -638,11 +724,26 @@ function ensureMediaEngineHelper() {
   const helper = spawn(helperPath, [], {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
+    env: {
+      ...process.env,
+      SYRNIKE_DEBUG_LOG: resolveAgentDebugLogPath(),
+    },
   })
 
   const reader = readline.createInterface({ input: helper.stdout })
   reader.on('line', (line) => {
     const event = parseSidecarEvent(line)
+    // #region agent log
+    agentDebugLog(
+      'C',
+      'native-media-engine.ts:helper-stdout',
+      'received sidecar stdout line',
+      {
+        parsedType: event?.type ?? null,
+        raw: line.slice(0, 500),
+      },
+    )
+    // #endregion
     if (!event) return
 
     if (event.type === 'session_lifecycle') {
@@ -696,6 +797,14 @@ function ensureMediaEngineHelper() {
     if (event.type === 'error') {
       mediaEngineStatus = { status: 'error', message: event.message }
       lastMediaEngineError = event.message
+      // #region agent log
+      agentDebugLog(
+        'A',
+        'native-media-engine.ts:sidecar-error',
+        'sidecar emitted error event',
+        { code: event.code, message: event.message },
+      )
+      // #endregion
       pendingStartResolver?.(event)
       pendingStartResolver = null
       return
@@ -711,7 +820,18 @@ function ensureMediaEngineHelper() {
   })
 
   helper.stderr.on('data', (chunk) => {
-    console.error('[media-engine-helper]', chunk.toString())
+    const text = chunk.toString()
+    console.error('[media-engine-helper]', text)
+    // #region agent log
+    if (text.includes('microphone') || text.includes('echo cancellation')) {
+      agentDebugLog(
+        'A',
+        'native-media-engine.ts:helper-stderr',
+        'capture helper stderr',
+        { text: text.trim() },
+      )
+    }
+    // #endregion
   })
 
   helper.on('exit', (code, signal) => {
@@ -785,6 +905,14 @@ async function listNativeMediaDevices(
 async function waitForSidecarReady(timeoutMs = 15_000) {
   return new Promise<SidecarEvent>((resolve, reject) => {
     const timer = setTimeout(() => {
+      // #region agent log
+      agentDebugLog(
+        'A',
+        'native-media-engine.ts:wait-ready-timeout',
+        'timed out waiting for sidecar ready',
+        { timeoutMs },
+      )
+      // #endregion
       pendingStartResolver = null
       lastMediaEngineError = 'Native media engine timed out'
       reject(new Error('Native media engine timed out'))
@@ -793,9 +921,29 @@ async function waitForSidecarReady(timeoutMs = 15_000) {
     pendingStartResolver = (event) => {
       clearTimeout(timer)
       if (event.type === 'error') {
+        // #region agent log
+        agentDebugLog(
+          'E',
+          'native-media-engine.ts:wait-ready-reject',
+          'start session rejected before ready',
+          { message: event.message, code: event.code },
+        )
+        // #endregion
         reject(new Error(event.message))
         return
       }
+      // #region agent log
+      agentDebugLog(
+        'A',
+        'native-media-engine.ts:wait-ready-resolve',
+        'sidecar ready wait resolved',
+        {
+          type: event.type,
+          audioPort: event.type === 'ready' ? event.audio_port : undefined,
+          audioMode: event.type === 'ready' ? event.audio_mode : undefined,
+        },
+      )
+      // #endregion
       resolve(event)
     }
   })
@@ -808,15 +956,9 @@ function mapReadyAudioMetadata(readyEvent: Extract<SidecarEvent, { type: 'ready'
       readyEvent.audio_channels === 1 || readyEvent.audio_channels === 2
         ? readyEvent.audio_channels
         : undefined,
-    noiseSuppression:
-      readyEvent.noise_suppression === 'deep_filter_net3' ||
-      readyEvent.noise_suppression === 'disabled'
-        ? readyEvent.noise_suppression
-        : undefined,
   } satisfies {
     sampleRate?: 48_000
     channels?: 1 | 2
-    noiseSuppression?: NativeMediaNoiseSuppressionMode
   }
 }
 
@@ -833,11 +975,38 @@ async function startNativeMediaSession(
 
   const sessionId = crypto.randomUUID()
 
+  // #region agent log
+  if (options.kind === 'microphone') {
+    agentDebugLog(
+      'A',
+      'native-media-engine.ts:start-session',
+      'starting native microphone session',
+      {
+        echoCancellation: options.echoCancellation,
+        deviceId: options.deviceId ?? 'default',
+        inputVolume: options.inputVolume,
+      },
+    )
+  }
+  // #endregion
+
   const helper = ensureMediaEngineHelper()
   const readyPromise = waitForSidecarReady()
+  const startCommand = buildNativeMediaStartCommand(options, sessionId, getWindow)
+
+  // #region agent log
+  if (options.kind === 'microphone') {
+    agentDebugLog(
+      'B',
+      'native-media-engine.ts:start-session',
+      'writing native microphone start command',
+      { sessionId, command: startCommand },
+    )
+  }
+  // #endregion
 
   helper.stdin.write(
-    `${JSON.stringify(buildNativeMediaStartCommand(options, sessionId, getWindow))}\n`,
+    `${JSON.stringify(startCommand)}\n`,
   )
 
   const readyEvent = await readyPromise
@@ -890,7 +1059,6 @@ async function startNativeMediaSession(
         port: audio.port,
         sampleRate: audioMetadata.sampleRate ?? 48_000,
         channels: 1,
-        noiseSuppression: audioMetadata.noiseSuppression ?? 'disabled',
       },
     }
   }
@@ -920,7 +1088,11 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
       if (!isTrustedSender(event, getWindow)) {
         throw new Error('Untrusted media engine start request')
       }
-      return startNativeMediaSession(getWindow, options)
+      const start = startSessionQueue.then(() =>
+        startNativeMediaSession(getWindow, options),
+      )
+      startSessionQueue = start.catch(() => undefined)
+      return start
     },
   )
 

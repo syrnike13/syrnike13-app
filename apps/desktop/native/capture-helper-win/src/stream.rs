@@ -6,6 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::audio_loopback::{try_start_process_audio, try_start_system_audio_exclude};
+use crate::protocol::{emit, Event};
 use crate::encoder::{EncoderBackend, VideoEncoder};
 use crate::frame_buffer::{pack_bgra_frame, pack_bgra_frame_header, SharedFrameBuffer};
 use crate::hybrid::{CaptureMethod, HybridCapturer};

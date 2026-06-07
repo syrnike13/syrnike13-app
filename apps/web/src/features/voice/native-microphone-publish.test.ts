@@ -9,7 +9,6 @@ import { readVoicePreferences } from '#/features/voice/voice-preference-store'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
-  nativeMicrophoneDenoiseMode,
   nativeMicrophoneSessionOptions,
   publishNativeMicrophone,
   shouldUseNativeMicrophone,
@@ -47,6 +46,30 @@ vi.mock('#/features/voice/voice-preference-store', () => ({
   readVoicePreferences: vi.fn(),
 }))
 
+vi.mock('#/features/voice/voice-mic-processor', () => ({
+  createMicProcessorConfigFromPrefs: vi.fn((prefs) => ({
+    gateEnabled: true,
+    gateThresholdDb: prefs.voiceGateThresholdDb,
+    gateAutoThreshold: prefs.voiceGateAutoThreshold,
+    gateStageOptions: prefs.voiceGateAutoThreshold
+      ? { autoDynamic: true }
+      : { manualThresholdDb: prefs.voiceGateThresholdDb },
+    inputVolume: prefs.inputVolume,
+  })),
+  SyrnikeMicProcessor: vi.fn(function SyrnikeMicProcessor() {
+    return {
+      processedTrack: undefined,
+      init: vi.fn(async function init(
+        this: { processedTrack?: MediaStreamTrack },
+        options: { track: MediaStreamTrack },
+      ) {
+        this.processedTrack = options.track
+      }),
+      destroy: vi.fn(async () => {}),
+    }
+  }),
+}))
+
 function preferences() {
   return {
     preferredAudioInputDevice: 'mic-1',
@@ -59,7 +82,6 @@ function preferences() {
     screenShareQuality: 'high',
     screenShareCodec: 'auto',
     echoCancellation: true,
-    noiseSuppression: 'enhanced',
     voiceGateEnabled: true,
     voiceGateThresholdDb: -45,
     voiceGateAutoThreshold: false,
@@ -78,18 +100,17 @@ function mediaTrack() {
 
 describe('native microphone publish', () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      'AudioContext',
+      vi.fn(function AudioContext() {
+        return {
+          close: vi.fn(async () => {}),
+        }
+      }),
+    )
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
     vi.mocked(readVoicePreferences).mockReturnValue(preferences())
     vi.mocked(createNativeAudioTrack).mockReset()
-  })
-
-  it('uses DeepFilterNet3 when enhanced denoise is selected', () => {
-    expect(nativeMicrophoneDenoiseMode({ noiseSuppression: 'enhanced' })).toBe(
-      'deep_filter_net3',
-    )
-    expect(nativeMicrophoneDenoiseMode({ noiseSuppression: 'disabled' })).toBe(
-      'disabled',
-    )
   })
 
   it('builds native microphone session options from voice preferences', () => {
@@ -99,7 +120,6 @@ describe('native microphone publish', () => {
       sampleRate: 48_000,
       channels: 1,
       echoCancellation: true,
-      noiseSuppression: 'deep_filter_net3',
       inputVolume: 0.75,
     })
   })
@@ -126,7 +146,6 @@ describe('native microphone publish', () => {
             port: 49152,
             sampleRate: 48_000,
             channels: 1,
-            noiseSuppression: 'deep_filter_net3',
           },
         })),
         stopSession,
@@ -166,7 +185,6 @@ describe('native microphone publish', () => {
             port: 49152,
             sampleRate: 48_000,
             channels: 1,
-            noiseSuppression: 'deep_filter_net3',
           },
         })),
         stopSession: vi.fn(async () => {}),
@@ -211,7 +229,6 @@ describe('native microphone publish', () => {
             port: 49152,
             sampleRate: 48_000,
             channels: 1,
-            noiseSuppression: 'deep_filter_net3',
           },
         })),
         stopSession,

@@ -18,7 +18,6 @@ import { VoiceInputGainStage } from '#/features/voice/voice-input-gain-stage'
 export const SYRNIKE_MIC_PROCESSOR_NAME = 'syrnike-mic-processor'
 
 export type SyrnikeMicProcessorConfig = {
-  denoiseEnabled: boolean
   gateEnabled: boolean
   gateThresholdDb: number
   gateAutoThreshold: boolean
@@ -36,7 +35,6 @@ export function micProcessingNeeded(config: SyrnikeMicProcessorConfig) {
 
 export function createMicProcessorConfigFromPrefs(
   prefs: {
-    noiseSuppression: 'disabled' | 'enhanced'
     voiceGateEnabled: boolean
     voiceGateThresholdDb: number
     voiceGateAutoThreshold: boolean
@@ -44,7 +42,6 @@ export function createMicProcessorConfigFromPrefs(
   },
 ): SyrnikeMicProcessorConfig {
   return {
-    denoiseEnabled: prefs.noiseSuppression === 'enhanced',
     gateEnabled: true,
     gateThresholdDb: prefs.voiceGateThresholdDb,
     gateAutoThreshold: prefs.voiceGateAutoThreshold,

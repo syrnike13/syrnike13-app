@@ -1,5 +1,3 @@
-export type NoiseSuppressionMode = 'disabled' | 'enhanced'
-
 export type ScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
 
 export type ScreenShareCodec = 'auto' | 'av1'

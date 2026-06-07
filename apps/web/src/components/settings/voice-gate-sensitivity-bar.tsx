@@ -34,6 +34,7 @@ export function VoiceGateSensitivityBar({
   const draggingRef = useRef(false)
   const displayInputDb = useRef(VOICE_GATE_DB_MIN)
   const displayThresholdDb = useRef(thresholdDb)
+  const lastAgentLogAt = useRef(0)
 
   useEffect(() => {
     displayThresholdDb.current = thresholdDb
@@ -56,6 +57,20 @@ export function VoiceGateSensitivityBar({
       const thresholdPos = gateDbToPosition(
         auto ? displayThresholdDb.current : thresholdDb,
       )
+
+      const now = Date.now()
+      if (now - lastAgentLogAt.current > 1000) {
+        lastAgentLogAt.current = now
+        const debugData = {
+          metricsInputDb: metrics?.inputDb ?? null,
+          displayInputDb: displayInputDb.current,
+          inputPos,
+          thresholdDb: auto ? displayThresholdDb.current : thresholdDb,
+          thresholdPos,
+          auto,
+        }
+        console.info('[gate-preview-debug]', 'sensitivity bar rendered metrics', debugData)
+      }
 
       if (levelRef.current) {
         levelRef.current.style.width = `${inputPos * 100}%`

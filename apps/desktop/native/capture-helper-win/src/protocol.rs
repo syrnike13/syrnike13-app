@@ -42,8 +42,6 @@ pub enum Event {
         #[serde(skip_serializing_if = "Option::is_none")]
         audio_channels: Option<u16>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        noise_suppression: Option<&'static str>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<String>,
     },
 
@@ -61,8 +59,6 @@ pub enum Event {
         audio_sample_rate: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         audio_channels: Option<u16>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        noise_suppression: Option<&'static str>,
     },
 
     FrameMethod {
@@ -128,7 +124,6 @@ mod tests {
             audio_mode: Some("process"),
             audio_sample_rate: None,
             audio_channels: None,
-            noise_suppression: None,
         })
         .expect("json");
 
@@ -153,7 +148,7 @@ mod tests {
     #[test]
     fn serializes_session_lifecycle_event() {
         let json = serde_json::to_string(&Event::SessionLifecycle {
-            session_id: "session-1",
+            session_id: "session-1".to_string(),
             kind: "screen",
             status: "running",
             port: Some(1234),
@@ -161,7 +156,6 @@ mod tests {
             audio_mode: Some("system_exclude"),
             audio_sample_rate: Some(48_000),
             audio_channels: Some(1),
-            noise_suppression: Some("deep_filter_net3"),
             message: None,
         })
         .expect("json");
@@ -175,7 +169,6 @@ mod tests {
         assert!(json.contains("\"audio_mode\":\"system_exclude\""));
         assert!(json.contains("\"audio_sample_rate\":48000"));
         assert!(json.contains("\"audio_channels\":1"));
-        assert!(json.contains("\"noise_suppression\":\"deep_filter_net3\""));
     }
 
     #[test]

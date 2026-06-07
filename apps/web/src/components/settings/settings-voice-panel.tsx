@@ -19,7 +19,6 @@ import {
 import {
   SCREEN_SHARE_CAPTURE_MODE_LABELS,
   SCREEN_SHARE_QUALITY_LABELS,
-  type NoiseSuppressionMode,
   type ScreenShareCaptureMode,
   type ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
@@ -174,7 +173,11 @@ export function SettingsVoicePanel() {
     micTestOutputDeviceId,
     gateMetricsRef,
   )
-  useVoiceGateMeter(!micTestActive, micTestDeviceId, gateMetricsRef)
+  useVoiceGateMeter(
+    !micTestActive,
+    micTestDeviceId,
+    gateMetricsRef,
+  )
 
   return (
     <div className="space-y-8">
@@ -282,25 +285,6 @@ export function SettingsVoicePanel() {
           />
         </div>
 
-        <div className="space-y-2">
-          <Label>Шумоподавление</Label>
-          <Select
-            value={prefs.noiseSuppression}
-            onValueChange={(value) =>
-              voicePreferenceStore.setNoiseSuppression(
-                value as NoiseSuppressionMode,
-              )
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="enhanced">Включено (DeepFilterNet3)</SelectItem>
-              <SelectItem value="disabled">Выключено</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="checkbox"

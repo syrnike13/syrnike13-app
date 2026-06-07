@@ -7,14 +7,9 @@ use crate::protocol::{emit, Event};
 pub struct AudioCaptureSession {
     pub(crate) stop: Arc<AtomicBool>,
     pub(crate) thread: Option<thread::JoinHandle<()>>,
-    pub(crate) noise_suppression_mode: &'static str,
 }
 
 impl AudioCaptureSession {
-    pub fn noise_suppression_mode(&self) -> &'static str {
-        self.noise_suppression_mode
-    }
-
     pub fn stop(mut self) {
         self.stop.store(true, Ordering::SeqCst);
         if let Some(thread) = self.thread.take() {
@@ -65,7 +60,6 @@ impl CaptureSession {
             audio_mode: None,
             audio_sample_rate: None,
             audio_channels: None,
-            noise_suppression: None,
             message: None,
         });
         emit(&Event::Stopped);

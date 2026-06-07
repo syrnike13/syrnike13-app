@@ -12,16 +12,23 @@ import {
 } from '#/features/voice/voice-gate-stage'
 import {
   DEFAULT_VOICE_GATE_THRESHOLD_DB,
-  rmsFromByteTimeDomain,
-  rmsToDb,
   VOICE_GATE_DB_MIN,
 } from '#/features/voice/voice-gate-level'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
+import { useVoice } from '#/features/voice/voice-provider'
 
 const DEFAULT_METRICS: VoiceGateMetrics = {
   inputDb: VOICE_GATE_DB_MIN,
   thresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   open: false,
+}
+
+function agentDebugLog(
+  hypothesisId: string,
+  message: string,
+  data: Record<string, unknown>,
+) {
+  console.info('[gate-preview-debug]', hypothesisId, message, data)
 }
 
 export function useVoiceGateMeter(
@@ -30,9 +37,10 @@ export function useVoiceGateMeter(
   metricsRef?: { current: VoiceGateMetrics },
 ) {
   const prefs = useVoicePreferences()
-  const internalMetricsRef = useRef<VoiceGateMetrics>(DEFAULT_METRICS)
-  const outputRef = metricsRef ?? internalMetricsRef
+  const { status, micPublishing, getNativeMicrophonePreviewTrack } = useVoice()
+  const outputRef = metricsRef ?? useRef<VoiceGateMetrics>(DEFAULT_METRICS)
   const gateRef = useRef<VoiceGateStage | null>(null)
+  const lastMetricLogAtRef = useRef(0)
   const prefsRef = useRef(prefs)
   prefsRef.current = prefs
 
@@ -42,10 +50,19 @@ export function useVoiceGateMeter(
     gateRef.current?.updateOptions({
       ...resolveVoiceGateStageOptions(prefs),
     })
-  }, [active, prefs.voiceGateAutoThreshold, prefs.voiceGateThresholdDb])
+  }, [
+    active,
+    prefs.voiceGateAutoThreshold,
+    prefs.voiceGateThresholdDb,
+  ])
 
   useEffect(() => {
     if (!active) {
+      agentDebugLog('N', 'gate meter inactive, resetting metrics', {
+        active,
+        micPublishing,
+        reason: 'active_false',
+      })
       outputRef.current = DEFAULT_METRICS
       return
     }
@@ -54,11 +71,76 @@ export function useVoiceGateMeter(
     let context: AudioContext | null = null
     let stream: MediaStream | null = null
     let nativeStop: (() => void) | null = null
-    let frame = 0
+
+    const startGateOnTrack = async (
+      track: MediaStreamTrack,
+      source: 'native-shared' | 'native-dedicated' | 'browser',
+    ) => {
+      agentDebugLog('J', 'starting gate stage on track', {
+        source,
+        trackReadyState: track.readyState,
+        trackEnabled: track.enabled,
+        trackMuted: track.muted,
+      })
+      context = new AudioContext()
+      const gate = new VoiceGateStage(prefsRef.current.voiceGateThresholdDb)
+      gateRef.current = gate
+      gate.start(context, track, {
+        ...resolveVoiceGateStageOptions(prefsRef.current),
+        onMetrics: (next) => {
+          if (!cancelled) {
+            outputRef.current = next
+            const now = Date.now()
+            if (now - lastMetricLogAtRef.current > 1000) {
+              lastMetricLogAtRef.current = now
+              agentDebugLog('K', 'gate stage emitted metrics', {
+                source,
+                inputDb: next.inputDb,
+                thresholdDb: next.thresholdDb,
+                open: next.open,
+              })
+            }
+          }
+        },
+      })
+      await context.resume()
+      agentDebugLog('J', 'audio context resumed for gate meter', {
+        source,
+        contextState: context.state,
+      })
+    }
 
     void (async () => {
       try {
         if (shouldUseNativeMicrophone()) {
+          const sharedTrack = getNativeMicrophonePreviewTrack()
+          agentDebugLog('I', 'gate meter native branch selected', {
+            active,
+            micPublishing,
+            hasSharedTrack: Boolean(sharedTrack),
+            sharedTrackReadyState: sharedTrack?.readyState ?? null,
+            sharedTrackEnabled: sharedTrack?.enabled ?? null,
+            sharedTrackMuted: sharedTrack?.muted ?? null,
+            inputDeviceId: inputDeviceId ?? 'default',
+          })
+          if (sharedTrack?.readyState === 'live') {
+            agentDebugLog('H', 'gate meter using shared native voice track', {
+              micPublishing,
+            })
+            await startGateOnTrack(sharedTrack, 'native-shared')
+            return
+          }
+
+          if (micPublishing) {
+            agentDebugLog('L', 'gate meter has publishing state without shared native track', {
+              micPublishing,
+              status,
+              hasSharedTrack: Boolean(sharedTrack),
+              sharedTrackReadyState: sharedTrack?.readyState ?? null,
+            })
+            if (status === 'connected') return
+          }
+
           const native = await startNativeMicrophoneTrack(
             prefsRef.current,
             inputDeviceId,
@@ -76,29 +158,11 @@ export function useVoiceGateMeter(
             return
           }
 
-          context = new AudioContext()
-          const analyser = context.createAnalyser()
-          analyser.fftSize = 512
-          const source = context.createMediaStreamSource(
-            new MediaStream([native.bridge.track]),
-          )
-          source.connect(analyser)
-          await context.resume()
+          agentDebugLog('H', 'gate meter started dedicated native preview session', {
+            inputDeviceId: inputDeviceId ?? 'default',
+          })
 
-          const samples = new Uint8Array(analyser.fftSize)
-          const tick = () => {
-            if (cancelled) return
-            analyser.getByteTimeDomainData(samples)
-            const inputDb = rmsToDb(rmsFromByteTimeDomain(samples))
-            const thresholdDb = prefsRef.current.voiceGateThresholdDb
-            outputRef.current = {
-              inputDb,
-              thresholdDb,
-              open: inputDb >= thresholdDb,
-            }
-            frame = requestAnimationFrame(tick)
-          }
-          frame = requestAnimationFrame(tick)
+          await startGateOnTrack(native.bridge.track, 'native-dedicated')
           return
         }
 
@@ -115,18 +179,16 @@ export function useVoiceGateMeter(
           throw new Error('Microphone track is unavailable')
         }
 
-        context = new AudioContext()
-        const gate = new VoiceGateStage(prefsRef.current.voiceGateThresholdDb)
-        gateRef.current = gate
-        gate.start(context, track, {
-          ...resolveVoiceGateStageOptions(prefsRef.current),
-          onMetrics: (next) => {
-            if (!cancelled) {
-              outputRef.current = next
-            }
-          },
+        agentDebugLog('J', 'gate meter browser branch selected', {
+          trackReadyState: track.readyState,
+          trackEnabled: track.enabled,
+          trackMuted: track.muted,
         })
-      } catch {
+        await startGateOnTrack(track, 'browser')
+      } catch (error) {
+        agentDebugLog('M', 'gate meter failed to start or update', {
+          message: error instanceof Error ? error.message : String(error),
+        })
         if (!cancelled) {
           outputRef.current = DEFAULT_METRICS
         }
@@ -138,17 +200,18 @@ export function useVoiceGateMeter(
       gateRef.current?.destroy()
       gateRef.current = null
       nativeStop?.()
-      if (frame) cancelAnimationFrame(frame)
       stream?.getTracks().forEach((track) => track.stop())
       void context?.close()
       outputRef.current = DEFAULT_METRICS
     }
   }, [
     active,
+    getNativeMicrophonePreviewTrack,
     inputDeviceId,
+    micPublishing,
     outputRef,
     prefs.echoCancellation,
-    prefs.noiseSuppression,
+    status,
   ])
 
   return outputRef

@@ -3,7 +3,6 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import {
   effectiveVoiceJoinPreferences,
   parseScreenShareCaptureMode,
-  parseNoiseSuppression,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 
@@ -11,9 +10,7 @@ describe('voicePreferenceStore', () => {
   beforeEach(() => {
     voicePreferenceStore.setMicEnabled(true)
     voicePreferenceStore.setDeafened(false)
-    voicePreferenceStore.setNoiseSuppression('enhanced')
     voicePreferenceStore.setVoiceGateEnabled(true)
-    voicePreferenceStore.setVoiceGateAutoThreshold(true)
     voicePreferenceStore.setVoiceGateAutoThreshold(true)
     voicePreferenceStore.setAutoBalanceEnabled(false)
     voicePreferenceStore.setAutoBalanceStrength(0.5)
@@ -41,11 +38,9 @@ describe('voicePreferenceStore', () => {
 
   it('defaults to discord-like mic processing settings', () => {
     expect(voicePreferenceStore.getState()).toMatchObject({
-      noiseSuppression: 'enhanced',
       voiceGateEnabled: true,
       voiceGateAutoThreshold: true,
       voiceGateThresholdDb: -28,
-      voiceGateAutoThreshold: true,
       autoBalanceEnabled: false,
       autoBalanceStrength: 0.5,
     })
@@ -57,12 +52,6 @@ describe('voicePreferenceStore', () => {
 
     expect(voicePreferenceStore.getState().voiceGateThresholdDb).toBe(0)
     expect(voicePreferenceStore.getState().autoBalanceStrength).toBe(0)
-  })
-
-  it('migrates legacy browser noise suppression to enhanced', () => {
-    expect(parseNoiseSuppression('browser')).toBe('enhanced')
-    expect(parseNoiseSuppression(true)).toBe('enhanced')
-    expect(parseNoiseSuppression(false)).toBe('disabled')
   })
 
   it('does not preserve legacy browser screen share capture mode', () => {

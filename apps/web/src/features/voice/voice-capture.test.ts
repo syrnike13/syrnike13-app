@@ -21,7 +21,6 @@ vi.mock('#/platform/runtime', () => ({
 describe('createVoiceRoomOptions', () => {
   beforeEach(() => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
-    voicePreferenceStore.setNoiseSuppression('enhanced')
     voicePreferenceStore.setVoiceGateEnabled(true)
   })
 

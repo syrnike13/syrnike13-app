@@ -63,7 +63,6 @@ fn spawn_audio_capture(
         AudioCaptureSession {
             stop,
             thread: Some(thread),
-            noise_suppression_mode: "disabled",
         },
     ))
 }

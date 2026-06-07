@@ -140,7 +140,7 @@ describe('native media engine entrypoint', () => {
     })
   })
 
-  it('builds microphone start command with DeepFilterNet3 processing', async () => {
+  it('builds microphone start command from session options', async () => {
     const { buildNativeMediaStartCommand } = await import('./native-media-engine')
 
     expect(
@@ -151,7 +151,6 @@ describe('native media engine entrypoint', () => {
           sampleRate: 48_000,
           channels: 1,
           echoCancellation: true,
-          noiseSuppression: 'deep_filter_net3',
           inputVolume: 1.25,
         },
         'mic-session-1',
@@ -165,7 +164,6 @@ describe('native media engine entrypoint', () => {
       sampleRate: 48_000,
       channels: 1,
       echoCancellation: true,
-      noiseSuppression: 'deep_filter_net3',
       inputVolume: 1.25,
     })
   })
@@ -176,7 +174,7 @@ describe('native media engine entrypoint', () => {
       'utf8',
     )
     const reconnectBody = source.match(
-      /async function attemptSidecarReconnect[\s\S]*?\n}\n\nasync function handleSidecarFailure/,
+      /async function attemptSidecarReconnect[\s\S]*?\r?\n}\r?\n\r?\nasync function handleSidecarFailure/,
     )?.[0]
 
     expect(reconnectBody).toBeDefined()
@@ -189,7 +187,7 @@ describe('native media engine entrypoint', () => {
       'utf8',
     )
     const relayBody = source.match(
-      /function attachAudioStreamRelay[\s\S]*?\n}\n\nfunction stopMediaEngineHelper/,
+      /function attachAudioStreamRelay[\s\S]*?\r?\n}\r?\n\r?\nfunction stopMediaEngineHelper/,
     )?.[0]
 
     expect(relayBody).toBeDefined()

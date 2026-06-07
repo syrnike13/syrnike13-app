@@ -19,29 +19,11 @@ import {
 } from '#/features/voice/use-media-devices'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import { useVoice } from '#/features/voice/voice-provider'
-import type { NoiseSuppressionMode } from '#/features/voice/voice-preference-types'
 import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 import { cn } from '#/lib/utils'
-
-const NOISE_SUPPRESSION_OPTIONS: {
-  value: NoiseSuppressionMode
-  label: string
-  description: string
-}[] = [
-  {
-    value: 'enhanced',
-    label: 'Включено',
-    description: 'DeepFilterNet3 — шумоподавление',
-  },
-  {
-    value: 'disabled',
-    label: 'Выключено',
-    description: 'Без шумоподавления',
-  },
-]
 
 const METER_BAR_COUNT = 25
 
@@ -92,11 +74,6 @@ function useMicInputSettingsModel() {
     [inputDevices, prefs.preferredAudioInputDevice],
   )
 
-  const profileSubtitle =
-    NOISE_SUPPRESSION_OPTIONS.find(
-      (option) => option.value === prefs.noiseSuppression,
-    )?.label ?? 'Включено'
-
   const selfSpeaking =
     auth.user?._id != null && voice.speakingUserIds.has(auth.user._id)
 
@@ -122,7 +99,6 @@ function useMicInputSettingsModel() {
     voice,
     inputDevices,
     inputSubtitle,
-    profileSubtitle,
     meterLevels,
   }
 }
@@ -130,36 +106,22 @@ function useMicInputSettingsModel() {
 function MicInputDeviceSettingsRows({
   inputDevices,
   inputSubtitle,
-  profileSubtitle,
   preferredAudioInputDevice,
-  noiseSuppression,
 }: {
   inputDevices: MediaDeviceInfo[]
   inputSubtitle: string
-  profileSubtitle: string
   preferredAudioInputDevice: string | undefined
-  noiseSuppression: NoiseSuppressionMode
 }) {
   return (
-    <>
-      <MicSettingsDeviceRow
-        title="Микрофон"
-        subtitle={inputSubtitle}
-        devices={inputDevices}
-        selectedId={preferredAudioInputDevice}
-        onSelect={(deviceId) => {
-          voicePreferenceStore.setPreferredAudioInputDevice(deviceId)
-        }}
-      />
-
-      <MicSettingsProfileRow
-        subtitle={profileSubtitle}
-        selected={noiseSuppression}
-        onSelect={(mode) => {
-          voicePreferenceStore.setNoiseSuppression(mode)
-        }}
-      />
-    </>
+    <MicSettingsDeviceRow
+      title="Микрофон"
+      subtitle={inputSubtitle}
+      devices={inputDevices}
+      selectedId={preferredAudioInputDevice}
+      onSelect={(deviceId) => {
+        voicePreferenceStore.setPreferredAudioInputDevice(deviceId)
+      }}
+    />
   )
 }
 
@@ -181,8 +143,7 @@ function MicInputMeterSection({
 
 /** UserPanel: устройство и профиль входа. */
 export function VoicePanelMicSettingsMenuContent() {
-  const { prefs, inputDevices, inputSubtitle, profileSubtitle } =
-    useMicInputSettingsModel()
+  const { prefs, inputDevices, inputSubtitle } = useMicInputSettingsModel()
   const { openSettings } = useSettingsModal()
 
   return (
@@ -190,9 +151,7 @@ export function VoicePanelMicSettingsMenuContent() {
       <MicInputDeviceSettingsRows
         inputDevices={inputDevices}
         inputSubtitle={inputSubtitle}
-        profileSubtitle={profileSubtitle}
         preferredAudioInputDevice={prefs.preferredAudioInputDevice}
-        noiseSuppression={prefs.noiseSuppression}
       />
 
       <button
@@ -212,14 +171,8 @@ export function VoicePanelMicSettingsMenuContent() {
 
 /** Оверлей стейджа: полное меню микрофона и звука. */
 export function VoiceStageMicSettingsMenuContent() {
-  const {
-    prefs,
-    voice,
-    inputDevices,
-    inputSubtitle,
-    profileSubtitle,
-    meterLevels,
-  } = useMicInputSettingsModel()
+  const { prefs, voice, inputDevices, inputSubtitle, meterLevels } =
+    useMicInputSettingsModel()
   const { openSettings } = useSettingsModal()
   const outputDevices = useMediaDevices('audiooutput')
 
@@ -237,9 +190,7 @@ export function VoiceStageMicSettingsMenuContent() {
       <MicInputDeviceSettingsRows
         inputDevices={inputDevices}
         inputSubtitle={inputSubtitle}
-        profileSubtitle={profileSubtitle}
         preferredAudioInputDevice={prefs.preferredAudioInputDevice}
-        noiseSuppression={prefs.noiseSuppression}
       />
 
       <MicSettingsDeviceRow
@@ -421,60 +372,6 @@ function MicSettingsDeviceRow({
               <CheckIcon className="size-4 shrink-0 text-primary" />
             ) : (
               <span className="size-4 shrink-0" aria-hidden />
-            )}
-          </button>
-        )
-      })}
-    </MicSettingsSubmenu>
-  )
-}
-
-function MicSettingsProfileRow({
-  subtitle,
-  selected,
-  onSelect,
-}: {
-  subtitle: string
-  selected: NoiseSuppressionMode
-  onSelect: (mode: NoiseSuppressionMode) => void
-}) {
-  return (
-    <MicSettingsSubmenu
-      trigger={
-        <>
-          <span className="min-w-0 flex-1">
-            <span className={voiceStagePopoverSectionTitleClass}>
-              Профиль входа
-            </span>
-            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-              {subtitle}
-            </span>
-          </span>
-          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
-        </>
-      }
-    >
-      {NOISE_SUPPRESSION_OPTIONS.map((option) => {
-        const isSelected = option.value === selected
-        return (
-          <button
-            key={option.value}
-            type="button"
-            className={cn(micSettingsMenuItemClass(isSelected), 'h-auto items-start py-2')}
-            onClick={() => onSelect(option.value)}
-          >
-            <span className="min-w-0 flex-1 text-left">
-              <span className="block truncate text-sm text-foreground">
-                {option.label}
-              </span>
-              <span className={cn('mt-0.5 block', voiceStagePopoverHintClass)}>
-                {option.description}
-              </span>
-            </span>
-            {isSelected ? (
-              <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
-            ) : (
-              <span className="mt-0.5 size-4 shrink-0" aria-hidden />
             )}
           </button>
         )

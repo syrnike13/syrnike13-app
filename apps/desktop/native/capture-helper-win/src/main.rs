@@ -1,8 +1,6 @@
 #[cfg(feature = "screen")]
 mod audio_loopback;
 mod command;
-#[cfg(feature = "microphone")]
-mod deep_filter_net3;
 #[cfg(feature = "screen")]
 mod encoder;
 #[cfg(feature = "screen")]
@@ -36,6 +34,27 @@ use session::{audio_only_session, CaptureSession};
 use target::parse_target;
 
 static SESSION: Mutex<Option<CaptureSession>> = Mutex::new(None);
+
+fn agent_debug_log(hypothesis_id: &str, location: &str, message: &str, data_json: &str) {
+    let Ok(path) = std::env::var("SYRNIKE_DEBUG_LOG") else {
+        return;
+    };
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        let _ = writeln!(
+            file,
+            r#"{{"sessionId":"d604d7","hypothesisId":"{hypothesis_id}","location":"{location}","message":"{message}","data":{data_json},"timestamp":{timestamp}}}"#
+        );
+    }
+}
 
 fn main() {
     let stdin = BufReader::new(std::io::stdin());
@@ -105,6 +124,20 @@ fn handle_command(line: &str) -> Result<(), String> {
                 None => return Err("missing sessionKind".to_string()),
             };
 
+            // #region agent log
+            agent_debug_log(
+                "D",
+                "main.rs:handle_command",
+                "handling start command",
+                &format!(
+                    r#"{{"sessionId":"{}","kind":"{}","deviceId":"{}"}}"#,
+                    session_id,
+                    session_kind,
+                    command.device_id.as_deref().unwrap_or("default")
+                ),
+            );
+            // #endregion
+
             emit(&Event::SessionLifecycle {
                 session_id: session_id.clone(),
                 kind: session_kind,
@@ -114,7 +147,6 @@ fn handle_command(line: &str) -> Result<(), String> {
                 audio_mode: None,
                 audio_sample_rate: None,
                 audio_channels: None,
-                noise_suppression: None,
                 message: None,
             });
 
@@ -125,17 +157,20 @@ fn handle_command(line: &str) -> Result<(), String> {
                 }
                 #[cfg(feature = "microphone")]
                 {
-                    let requested_noise_suppression = match command.noise_suppression.as_deref() {
-                        Some("deep_filter_net3") => "deep_filter_net3",
-                        _ => "disabled",
-                    };
                     let (audio_port, audio_session) = microphone::start_microphone_capture(
                         command.device_id.clone(),
                         command.echo_cancellation.unwrap_or(false),
                         command.input_volume.unwrap_or(1.0),
-                        requested_noise_suppression,
                     )?;
-                    let noise_suppression = audio_session.noise_suppression_mode();
+
+                    // #region agent log
+                    agent_debug_log(
+                        "D",
+                        "main.rs:handle_command",
+                        "emitting microphone ready",
+                        &format!(r#"{{"sessionId":"{}","audioPort":{}}}"#, session_id, audio_port),
+                    );
+                    // #endregion
 
                     emit(&Event::Ready {
                         port: 0,
@@ -146,7 +181,6 @@ fn handle_command(line: &str) -> Result<(), String> {
                         audio_mode: Some("microphone"),
                         audio_sample_rate: Some(command.sample_rate.unwrap_or(48_000)),
                         audio_channels: Some(command.channels.unwrap_or(1)),
-                        noise_suppression: Some(noise_suppression),
                     });
                     emit(&Event::SessionLifecycle {
                         session_id: session_id.clone(),
@@ -157,7 +191,6 @@ fn handle_command(line: &str) -> Result<(), String> {
                         audio_mode: Some("microphone"),
                         audio_sample_rate: Some(command.sample_rate.unwrap_or(48_000)),
                         audio_channels: Some(command.channels.unwrap_or(1)),
-                        noise_suppression: Some(noise_suppression),
                         message: None,
                     });
 
@@ -210,7 +243,6 @@ fn handle_command(line: &str) -> Result<(), String> {
                             audio_mode: None,
                             audio_sample_rate: None,
                             audio_channels: None,
-                            noise_suppression: None,
                             message: Some(error.clone()),
                         });
                         return Err(error);
@@ -226,7 +258,6 @@ fn handle_command(line: &str) -> Result<(), String> {
                     audio_mode: config.audio_mode,
                     audio_sample_rate: None,
                     audio_channels: None,
-                    noise_suppression: None,
                 });
                 emit(&Event::SessionLifecycle {
                     session_id,
@@ -237,7 +268,6 @@ fn handle_command(line: &str) -> Result<(), String> {
                     audio_mode: config.audio_mode,
                     audio_sample_rate: None,
                     audio_channels: None,
-                    noise_suppression: None,
                     message: None,
                 });
 

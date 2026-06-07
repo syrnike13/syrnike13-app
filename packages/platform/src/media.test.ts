@@ -40,7 +40,7 @@ describe('native media session contract', () => {
     }>()
   })
 
-  it('models microphone capture as a native media session with DeepFilterNet3', () => {
+  it('models microphone capture as a native media session', () => {
     expectTypeOf<NativeMediaSessionStartOptions>().toMatchTypeOf<
       | {
           kind: 'screen'
@@ -51,7 +51,6 @@ describe('native media session contract', () => {
           sampleRate: 48000
           channels: 1
           echoCancellation: boolean
-          noiseSuppression: 'disabled' | 'deep_filter_net3'
           inputVolume: number
         }
     >()
@@ -68,7 +67,6 @@ describe('native media session contract', () => {
             port: number
             sampleRate: 48000
             channels: 1
-            noiseSuppression: 'disabled' | 'deep_filter_net3'
           }
         }
     >()

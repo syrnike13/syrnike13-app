@@ -36,8 +36,6 @@ pub struct StartCommand {
     pub channels: Option<u16>,
     #[serde(rename = "echoCancellation")]
     pub echo_cancellation: Option<bool>,
-    #[serde(rename = "noiseSuppression")]
-    pub noise_suppression: Option<String>,
     #[serde(rename = "inputVolume")]
     pub input_volume: Option<f32>,
 }

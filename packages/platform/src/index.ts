@@ -8,7 +8,6 @@ export type {
   NativeMediaEngineSessionSummary,
   NativeMediaEngineSnapshot,
   NativeMediaMicrophoneSessionStartOptions,
-  NativeMediaNoiseSuppressionMode,
   NativeMediaSession,
   NativeMediaSessionKind,
   NativeMediaSessionStatus,

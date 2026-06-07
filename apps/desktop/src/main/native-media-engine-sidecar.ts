@@ -6,7 +6,6 @@ import type {
   NativeMediaDeviceInfo,
   NativeMediaEncoderBackend,
   NativeMediaFrameMethod,
-  NativeMediaNoiseSuppressionMode,
   NativeMediaStateEvent,
   NativeMediaStreamMode,
 } from '@syrnike13/platform'
@@ -22,7 +21,6 @@ export type SidecarEvent =
       audio_mode?: string
       audio_sample_rate?: number
       audio_channels?: number
-      noise_suppression?: string
     }
   | {
       type: 'frame_method'
@@ -47,7 +45,6 @@ export type SidecarEvent =
       audio_mode?: string
       audio_sample_rate?: number
       audio_channels?: number
-      noise_suppression?: string
       message?: string
     }
 
@@ -95,14 +92,6 @@ export function mapAudioMode(value: string | undefined): NativeMediaAudioMode {
   return 'none'
 }
 
-function mapNoiseSuppressionMode(
-  value: string | undefined,
-): NativeMediaNoiseSuppressionMode | undefined {
-  if (value === 'deep_filter_net3') return 'deep_filter_net3'
-  if (value === 'disabled') return 'disabled'
-  return undefined
-}
-
 export function mapLifecycleState(
   event: Extract<SidecarEvent, { type: 'session_lifecycle' }>,
 ): NativeMediaStateEvent {
@@ -125,9 +114,6 @@ export function mapLifecycleState(
                   event.audio_channels === 1 || event.audio_channels === 2
                     ? event.audio_channels
                     : undefined,
-                noiseSuppression: mapNoiseSuppressionMode(
-                  event.noise_suppression,
-                ),
               }
             : undefined,
       }

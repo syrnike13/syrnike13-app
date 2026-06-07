@@ -14,30 +14,21 @@ screen = [
   "dep:windows-capture",
 ]
 microphone = [
-  "dep:df",
-  "dep:ndarray",
-  "dep:tract-core",
-  "dep:tract-hir",
-  "dep:tract-onnx",
-  "dep:tract-pulse",
   "dep:wasapi",
-  "dep:windows",
+  "dep:windows-wasapi",
 ]
 
 [dependencies]
-df = { git = "https://github.com/Rikorose/DeepFilterNet", package = "deep_filter", default-features = false, features = ["tract", "default-model"], optional = true }
-ndarray = { version = "=0.15.6", optional = true }
 openh264 = { version = "0.6", optional = true }
 scrap = { version = "0.5", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 memmap2 = { version = "0.9", optional = true }
-tract-core = { version = "=0.21.4", optional = true }
-tract-hir = { version = "=0.21.4", optional = true }
-tract-onnx = { version = "=0.21.4", optional = true }
-tract-pulse = { version = "=0.21.4", optional = true }
 wasapi = { version = "0.19", optional = true }
 windows-capture = { version = "2.0", optional = true }
+windows-wasapi = { package = "windows", version = "0.61", optional = true, features = [
+  "Win32_Media_Audio",
+] }
 windows = { version = "0.58", optional = true, features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",

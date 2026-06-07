@@ -1,5 +1,4 @@
 import type {
-  NoiseSuppressionMode,
   ScreenShareCaptureMode,
   ScreenShareCodec,
   ScreenShareQualityName,
@@ -23,7 +22,6 @@ export type VoicePreferenceState = {
   inputVolume: number
   outputVolume: number
   echoCancellation: boolean
-  noiseSuppression: NoiseSuppressionMode
   voiceGateEnabled: boolean
   voiceGateThresholdDb: number
   voiceGateAutoThreshold: boolean
@@ -56,7 +54,6 @@ const DEFAULT_STATE: VoicePreferenceState = {
   inputVolume: 1,
   outputVolume: 1,
   echoCancellation: true,
-  noiseSuppression: 'enhanced',
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
@@ -75,15 +72,6 @@ export function effectiveVoiceJoinPreferences(
     micEnabled: preferences.deafened ? false : preferences.micEnabled,
     deafened: preferences.deafened,
   }
-}
-
-export function parseNoiseSuppression(value: unknown): NoiseSuppressionMode {
-  if (value === 'disabled' || value === 'enhanced') {
-    return value
-  }
-  if (value === 'browser' || value === true) return 'enhanced'
-  if (value === false) return 'disabled'
-  return DEFAULT_STATE.noiseSuppression
 }
 
 function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
@@ -135,9 +123,7 @@ function loadState(): VoicePreferenceState {
         screenShareQuality: defaultScreenShareQuality(),
       }
     }
-    const parsed = JSON.parse(raw) as Partial<VoicePreferenceState> & {
-      noiseSupression?: unknown
-    }
+    const parsed = JSON.parse(raw) as Partial<VoicePreferenceState>
     return {
       micEnabled:
         typeof parsed.micEnabled === 'boolean'
@@ -175,9 +161,6 @@ function loadState(): VoicePreferenceState {
         typeof parsed.echoCancellation === 'boolean'
           ? parsed.echoCancellation
           : DEFAULT_STATE.echoCancellation,
-      noiseSuppression: parseNoiseSuppression(
-        parsed.noiseSuppression ?? parsed.noiseSupression,
-      ),
       voiceGateEnabled: true,
       voiceGateThresholdDb: parseVoiceGateThresholdDb(parsed),
       voiceGateAutoThreshold:
@@ -286,10 +269,6 @@ export const voicePreferenceStore = {
   setEchoCancellation: (echoCancellation: boolean) => {
     if (state.echoCancellation === echoCancellation) return
     patch({ echoCancellation })
-  },
-  setNoiseSuppression: (noiseSuppression: NoiseSuppressionMode) => {
-    if (state.noiseSuppression === noiseSuppression) return
-    patch({ noiseSuppression })
   },
   setVoiceGateEnabled: (voiceGateEnabled: boolean) => {
     if (state.voiceGateEnabled === voiceGateEnabled) return

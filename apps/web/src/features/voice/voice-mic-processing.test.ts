@@ -12,7 +12,6 @@ function participantWithAudioTrack(audioTrack: unknown) {
 
 describe('applyMicProcessing', () => {
   beforeEach(() => {
-    voicePreferenceStore.setNoiseSuppression('enhanced')
     voicePreferenceStore.setVoiceGateEnabled(true)
     voicePreferenceStore.setVoiceGateThresholdDb(-28)
     voicePreferenceStore.setInputVolume(1)
@@ -44,7 +43,6 @@ describe('applyMicProcessing', () => {
   })
 
   it('still applies the processor when only gate remains active', async () => {
-    voicePreferenceStore.setNoiseSuppression('disabled')
     voicePreferenceStore.setInputVolume(1)
 
     const audioTrack = {

@@ -10,7 +10,10 @@ import {
 } from '#/features/voice/voice-mic-processor'
 import type { VoicePreferenceState } from '#/features/voice/voice-preference-store'
 import { resolveVoiceGateStageOptions } from '#/features/voice/voice-gate-session'
-import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
+import {
+  VoiceGateStage,
+  type VoiceGateMetrics,
+} from '#/features/voice/voice-gate-stage'
 import { rmsFromByteTimeDomain } from '#/features/voice/voice-gate-level'
 
 export const MIC_PREVIEW_METER_BAR_COUNT = 32
@@ -18,7 +21,6 @@ export const MIC_PREVIEW_METER_BAR_COUNT = 32
 export type MicPreviewPreferences = Pick<
   VoicePreferenceState,
   | 'echoCancellation'
-  | 'noiseSuppression'
   | 'voiceGateEnabled'
   | 'voiceGateThresholdDb'
   | 'voiceGateAutoThreshold'
@@ -85,12 +87,20 @@ export async function startMicPreview({
   onLevels,
   onGateMetrics,
 }: MicPreviewOptions) {
+  // #region agent log
+  console.info('[gate-preview-debug]', 'startMicPreview invoked', {
+    native: shouldUseNativeMicrophone(),
+    inputDeviceId: inputDeviceId ?? 'default',
+    hasGateMetricsCallback: Boolean(onGateMetrics),
+  })
+  // #endregion
   if (shouldUseNativeMicrophone()) {
     return startNativeMicPreview({
       inputDeviceId,
       outputDeviceId,
       prefs,
       onLevels,
+      onGateMetrics,
     })
   }
 
@@ -218,7 +228,14 @@ async function startNativeMicPreview({
   outputDeviceId,
   prefs,
   onLevels,
-}: Omit<MicPreviewOptions, 'onGateMetrics'>) {
+  onGateMetrics,
+}: MicPreviewOptions) {
+  // #region agent log
+  console.info('[gate-preview-debug]', 'native mic preview path selected', {
+    inputDeviceId: inputDeviceId ?? 'default',
+    hasGateMetricsCallback: Boolean(onGateMetrics),
+  })
+  // #endregion
   let native = await startNativeMicrophoneTrack(
     {
       ...prefs,
@@ -235,13 +252,28 @@ async function startNativeMicPreview({
     inputDeviceId,
   )
   let playbackTrack = native.bridge.track
+  const processContext = new AudioContext()
   const playbackContext = new AudioContext()
+  let gate: VoiceGateStage | null = null
 
   const monitorGain = playbackContext.createGain()
   const analyser = playbackContext.createAnalyser()
 
   analyser.fftSize = 512
   monitorGain.gain.value = prefs.outputVolume
+
+  const rebuildGateTrack = async (track: MediaStreamTrack, nextPrefs: MicPreviewPreferences) => {
+    gate?.destroy()
+    gate = new VoiceGateStage(nextPrefs.voiceGateThresholdDb)
+    const gatedTrack = gate.start(processContext, track, {
+      ...resolveVoiceGateStageOptions(nextPrefs),
+      onMetrics: onGateMetrics,
+    })
+    await processContext.resume()
+    return gatedTrack ?? track
+  }
+
+  playbackTrack = await rebuildGateTrack(native.bridge.track, prefs)
 
   let sourceNode = playbackContext.createMediaStreamSource(
     new MediaStream([playbackTrack]),
@@ -294,12 +326,17 @@ async function startNativeMicPreview({
     async setOutputDevice(deviceId?: string) {
       await applyPlaybackSink(playbackContext, deviceId)
     },
-    updateGatePreferences() {
-      // Native preview uses the native microphone stream as the source of truth.
+    updateGatePreferences(nextPrefs: MicPreviewPreferences) {
+      gate?.updateOptions({
+        ...resolveVoiceGateStageOptions(nextPrefs),
+        onMetrics: onGateMetrics,
+      })
     },
     async restartProcessing(nextPrefs: MicPreviewPreferences) {
       sourceNode.disconnect()
       stopNative()
+      gate?.destroy()
+      gate = null
 
       native = await startNativeMicrophoneTrack(
         {
@@ -317,7 +354,7 @@ async function startNativeMicPreview({
         inputDeviceId,
       )
       nativeStopped = false
-      playbackTrack = native.bridge.track
+      playbackTrack = await rebuildGateTrack(native.bridge.track, nextPrefs)
       sourceNode = playbackContext.createMediaStreamSource(
         new MediaStream([playbackTrack]),
       )
@@ -330,7 +367,9 @@ async function startNativeMicPreview({
       sourceNode.disconnect()
       monitorGain.disconnect()
       analyser.disconnect()
+      gate?.destroy()
       stopNative()
+      void processContext.close()
       void playbackContext.close()
     },
   }

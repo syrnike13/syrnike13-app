@@ -1,6 +1,7 @@
 import type { SyrnikeDesktopApi } from '@syrnike13/platform'
 
 const SAMPLE_RATE = 48_000
+const NATIVE_MIC_DEBUG_STORAGE_KEY = 'syrnike.nativeMicDebug'
 
 export type NativeAudioBridgeHandle = {
   track: MediaStreamTrack
@@ -53,6 +54,7 @@ export async function createNativeAudioTrack(
   let bridgeError: Error | null = null
   let timestampUs = 0
   let writerClosed = false
+  let lastDebugAt = 0
 
   const closeWriter = () => {
     if (writerClosed) return
@@ -97,6 +99,19 @@ export async function createNativeAudioTrack(
         if (frames === 0) continue
 
         try {
+          const now = Date.now()
+          if (isNativeMicDebugEnabled() && now - lastDebugAt > 1000) {
+            lastDebugAt = now
+            console.info('[native-mic-debug] renderer bridge received audio packet', {
+              sessionId,
+              bytes: packet.byteLength,
+              frames,
+              channels: options.channels,
+              sampleRate: options.sampleRate,
+              rms: pcmF32Rms(interleaved),
+              peak: pcmF32Peak(interleaved),
+            })
+          }
           const audioData = new AudioData({
             format: 'f32',
             sampleRate: options.sampleRate,
@@ -112,6 +127,14 @@ export async function createNativeAudioTrack(
         } catch (error) {
           bridgeError =
             error instanceof Error ? error : new Error(String(error))
+          console.error('[native-mic-debug] renderer bridge failed to write audio packet', {
+            sessionId,
+            message: bridgeError.message,
+            bytes: packet.byteLength,
+            frames,
+            channels: options.channels,
+            sampleRate: options.sampleRate,
+          })
           break
         }
       }
@@ -135,5 +158,29 @@ export async function createNativeAudioTrack(
   return {
     track: generator,
     stop,
+  }
+}
+
+function pcmF32Rms(samples: Float32Array) {
+  let sum = 0
+  for (const sample of samples) {
+    sum += sample * sample
+  }
+  return samples.length > 0 ? Math.sqrt(sum / samples.length) : 0
+}
+
+function pcmF32Peak(samples: Float32Array) {
+  let peak = 0
+  for (const sample of samples) {
+    peak = Math.max(peak, Math.abs(sample))
+  }
+  return peak
+}
+
+function isNativeMicDebugEnabled() {
+  try {
+    return globalThis.localStorage?.getItem(NATIVE_MIC_DEBUG_STORAGE_KEY) === '1'
+  } catch {
+    return false
   }
 }

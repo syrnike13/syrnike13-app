@@ -9,7 +9,6 @@ const base: VoicePreferenceState = {
   inputVolume: 1,
   outputVolume: 1,
   echoCancellation: true,
-  noiseSuppression: 'enhanced',
   voiceGateEnabled: true,
   voiceGateThresholdDb: -28,
   voiceGateAutoThreshold: true,

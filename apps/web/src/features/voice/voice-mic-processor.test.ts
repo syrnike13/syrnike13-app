@@ -11,7 +11,6 @@ describe('micProcessingNeeded', () => {
   it('is true when gate or input gain is active', () => {
     expect(
       micProcessingNeeded({
-        denoiseEnabled: true,
         gateEnabled: false,
         gateThresholdDb: -28,
         gateAutoThreshold: true,
@@ -21,7 +20,6 @@ describe('micProcessingNeeded', () => {
 
     expect(
       micProcessingNeeded({
-        denoiseEnabled: false,
         gateEnabled: true,
         gateThresholdDb: -28,
         gateAutoThreshold: true,
@@ -31,7 +29,6 @@ describe('micProcessingNeeded', () => {
 
     expect(
       micProcessingNeeded({
-        denoiseEnabled: false,
         gateEnabled: false,
         gateThresholdDb: -28,
         gateAutoThreshold: false,
@@ -43,7 +40,6 @@ describe('micProcessingNeeded', () => {
   it('is false when all processing stages are off', () => {
     expect(
       micProcessingNeeded({
-        denoiseEnabled: false,
         gateEnabled: false,
         gateThresholdDb: -28,
         gateAutoThreshold: true,
@@ -54,17 +50,15 @@ describe('micProcessingNeeded', () => {
 })
 
 describe('createMicProcessorConfigFromPrefs', () => {
-  it('keeps enhanced denoise as native-only processor metadata', () => {
+  it('maps voice preferences to processor config', () => {
     expect(
       createMicProcessorConfigFromPrefs({
-        noiseSuppression: 'enhanced',
         voiceGateEnabled: true,
         voiceGateThresholdDb: -22,
         voiceGateAutoThreshold: true,
         inputVolume: 2,
       }),
     ).toEqual({
-      denoiseEnabled: true,
       gateEnabled: true,
       gateThresholdDb: -22,
       gateAutoThreshold: true,
@@ -79,7 +73,6 @@ describe('createMicProcessorConfigFromPrefs', () => {
 describe('SyrnikeMicProcessor', () => {
   it('uses the composite processor name', () => {
     const processor = new SyrnikeMicProcessor({
-      denoiseEnabled: true,
       gateEnabled: true,
       gateThresholdDb: -28,
       gateAutoThreshold: true,

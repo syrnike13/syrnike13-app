@@ -177,6 +177,8 @@ type VoiceContextValue = {
   toggleDeafen: () => void
   toggleCamera: () => void
   toggleScreenShare: () => void
+  /** Трек активной native mic-сессии для превью в настройках без второго захвата. */
+  getNativeMicrophonePreviewTrack: () => MediaStreamTrack | null
 }
 
 const VoiceContext = createContext<VoiceContextValue | null>(null)
@@ -1492,6 +1494,26 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ],
   )
 
+  const getNativeMicrophonePreviewTrack = useCallback(
+    () => {
+      const nativeTrack = nativeMicrophoneRef.current?.track
+      if (nativeTrack?.readyState === 'live') {
+        console.info('[gate-preview-debug]', 'preview track from native microphone ref', {
+          readyState: nativeTrack.readyState,
+          enabled: nativeTrack.enabled,
+          muted: nativeTrack.muted,
+        })
+        return nativeTrack
+      }
+
+      console.info('[gate-preview-debug]', 'no live native microphone preview track', {
+        hasNativeRef: Boolean(nativeMicrophoneRef.current),
+      })
+      return null
+    },
+    [],
+  )
+
   const value = useMemo<VoiceContextValue>(
     () => ({
       channelId,
@@ -1525,6 +1547,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       toggleDeafen,
       toggleCamera,
       toggleScreenShare,
+      getNativeMicrophonePreviewTrack,
     }),
     [
       cameraEnabled,
@@ -1556,6 +1579,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       toggleStageFullscreen,
       setStageMediaFilters,
       setStageMediaSubscribed,
+      getNativeMicrophonePreviewTrack,
     ],
   )
 

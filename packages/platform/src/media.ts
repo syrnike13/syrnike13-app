@@ -20,10 +20,6 @@ export type NativeMediaAudioMode =
   | 'microphone'
   | 'none'
 
-export type NativeMediaNoiseSuppressionMode =
-  | 'disabled'
-  | 'deep_filter_net3'
-
 export type NativeMediaTarget = {
   sourceId: string
 }
@@ -55,7 +51,6 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   sampleRate: 48_000
   channels: 1
   echoCancellation: boolean
-  noiseSuppression: NativeMediaNoiseSuppressionMode
   inputVolume: number
 }
 
@@ -83,7 +78,6 @@ export type NativeMediaMicrophoneSession = {
     port: number
     sampleRate: 48_000
     channels: 1
-    noiseSuppression: NativeMediaNoiseSuppressionMode
   }
 }
 
@@ -114,7 +108,6 @@ export type NativeMediaEngineSessionSummary = {
     port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
-    noiseSuppression?: NativeMediaNoiseSuppressionMode
   }
 }
 
@@ -146,7 +139,6 @@ export type NativeMediaStateEvent = NativeMediaSessionStatus & {
     port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
-    noiseSuppression?: NativeMediaNoiseSuppressionMode
   }
 }
 
