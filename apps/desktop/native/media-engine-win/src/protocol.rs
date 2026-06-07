@@ -82,6 +82,12 @@ pub struct MicSetEnabledParams {
     pub enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CameraSetEnabledParams {
+    pub enabled: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenStartResult {

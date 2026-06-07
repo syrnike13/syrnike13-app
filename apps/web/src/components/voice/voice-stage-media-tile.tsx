@@ -18,7 +18,7 @@ import {
   VoiceOnAirBadge,
   VoiceParticipantIcons,
 } from '#/components/voice/voice-participant-icons'
-import { VoiceStageVideo } from '#/components/voice/voice-stage-video'
+import { VoiceStageMediaVideo } from '#/components/voice/voice-stage-media-video'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import {
   formatUserVolumeLabel,
@@ -134,7 +134,7 @@ export function StageMediaTile({
           {hasVideo && item.track ? (
             variant === 'strip' ? (
               <div className={stripMediaClipClass}>
-                <VoiceStageVideo
+                <VoiceStageMediaVideo
                   mediaId={item.id}
                   track={item.track}
                   fit={fit}
@@ -142,7 +142,7 @@ export function StageMediaTile({
                 />
               </div>
             ) : (
-              <VoiceStageVideo
+              <VoiceStageMediaVideo
                 mediaId={item.id}
                 track={item.track}
                 fit={fit}

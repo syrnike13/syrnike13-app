@@ -11,10 +11,14 @@ use livekit::webrtc::audio_source::AudioSourceOptions;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+use crate::camera_publish::CameraPublisher;
 use crate::mic_publish::MicPublisher;
 use crate::protocol::{EventMessage, RoomConnectResult, ScreenStartParams, ScreenStartResult};
 use crate::remote_audio::{
     emit_participants_snapshot, emit_room_connected, emit_room_disconnected, RemoteAudioForwarder,
+};
+use crate::remote_video::{
+    emit_track_published, emit_track_unpublished, RemoteVideoForwarder,
 };
 use crate::screen_publish::ScreenPublisher;
 
@@ -29,8 +33,10 @@ struct LiveKitRoomInner {
     tone_stop: Option<Arc<AtomicBool>>,
     screen_publisher: ScreenPublisher,
     mic_publisher: MicPublisher,
+    camera_publisher: CameraPublisher,
     remote_audio: RemoteAudioForwarder,
     mic_enabled: bool,
+    camera_enabled: bool,
 }
 
 impl LiveKitRoom {
@@ -43,8 +49,10 @@ impl LiveKitRoom {
                 tone_stop: None,
                 screen_publisher: ScreenPublisher::new(),
                 mic_publisher: MicPublisher::new(),
+                camera_publisher: CameraPublisher::new(),
                 remote_audio: RemoteAudioForwarder::new(),
                 mic_enabled: false,
+                camera_enabled: false,
             }),
         }
     }
@@ -55,6 +63,7 @@ impl LiveKitRoom {
         self.stop_event_task_locked(&mut inner);
         if let Some(room) = inner.room.as_ref() {
             inner.mic_publisher.stop(room).await?;
+            inner.camera_publisher.stop(room).await?;
         }
         inner.remote_audio.stop();
 
@@ -76,16 +85,50 @@ impl LiveKitRoom {
         let observed = room.clone();
         inner.event_task = Some(tokio::spawn(async move {
             let mut remote_audio = RemoteAudioForwarder::new();
+            let mut remote_video = RemoteVideoForwarder::new();
 
             while let Some(event) = events.recv().await {
                 match event {
-                    RoomEvent::TrackSubscribed { track, participant, .. } => {
-                        if let RemoteTrack::Audio(audio_track) = track {
-                            remote_audio.subscribe_track(
-                                participant.identity().to_string(),
-                                audio_track,
-                            );
+                    RoomEvent::TrackSubscribed {
+                        track,
+                        publication,
+                        participant,
+                    } => {
+                        let user_id = participant.identity().to_string();
+                        let source = publication.source();
+                        emit_track_published(
+                            &user_id,
+                            source,
+                            publication.is_subscribed(),
+                            publication.is_muted(),
+                        );
+
+                        match track {
+                            RemoteTrack::Audio(audio_track) => {
+                                remote_audio.subscribe_track(user_id, audio_track);
+                            }
+                            RemoteTrack::Video(video_track) => {
+                                remote_video.subscribe_track(
+                                    user_id,
+                                    source,
+                                    video_track,
+                                );
+                            }
                         }
+                        emit_participants_snapshot(&observed);
+                    }
+                    RoomEvent::TrackUnsubscribed { publication, participant, .. } => {
+                        emit_track_unpublished(
+                            &participant.identity().to_string(),
+                            publication.source(),
+                        );
+                        emit_participants_snapshot(&observed);
+                    }
+                    RoomEvent::TrackUnpublished { publication, participant } => {
+                        emit_track_unpublished(
+                            &participant.identity().to_string(),
+                            publication.source(),
+                        );
                         emit_participants_snapshot(&observed);
                     }
                     RoomEvent::ParticipantConnected(_) | RoomEvent::ParticipantDisconnected(_) => {
@@ -100,10 +143,12 @@ impl LiveKitRoom {
             }
 
             remote_audio.stop();
+            remote_video.stop();
         }));
 
         inner.room = Some(room);
         inner.mic_enabled = false;
+        inner.camera_enabled = false;
 
         Ok(RoomConnectResult { room_name, sid })
     }
@@ -127,6 +172,30 @@ impl LiveKitRoom {
         }
 
         inner.mic_enabled = enabled;
+        emit_participants_snapshot(&room);
+        Ok(())
+    }
+
+    pub async fn set_camera_enabled(&self, enabled: bool) -> Result<(), String> {
+        let mut inner = self.inner.lock().await;
+        let room = inner
+            .room
+            .as_ref()
+            .ok_or_else(|| "room is not connected".to_string())?
+            .clone();
+
+        if enabled == inner.camera_enabled {
+            return Ok(());
+        }
+
+        if enabled {
+            inner.camera_publisher.start(room.clone()).await?;
+        } else {
+            inner.camera_publisher.stop(&room).await?;
+        }
+
+        inner.camera_enabled = enabled;
+        emit_participants_snapshot(&room);
         Ok(())
     }
 
@@ -140,12 +209,18 @@ impl LiveKitRoom {
             .as_ref()
             .ok_or_else(|| "room is not connected".to_string())?
             .clone();
-        inner.screen_publisher.start(room, params).await
+        let result = inner.screen_publisher.start(room.clone(), params).await?;
+        emit_participants_snapshot(&room);
+        Ok(result)
     }
 
     pub async fn stop_screen(&self) -> Result<(), String> {
         let inner = self.inner.lock().await;
-        inner.screen_publisher.stop().await
+        let result = inner.screen_publisher.stop().await;
+        if let Some(room) = inner.room.as_ref() {
+            emit_participants_snapshot(room);
+        }
+        result
     }
 
     pub async fn disconnect(&self) -> Result<(), String> {
@@ -153,6 +228,7 @@ impl LiveKitRoom {
         inner.screen_publisher.stop().await?;
         if let Some(room) = inner.room.as_ref() {
             inner.mic_publisher.stop(room).await?;
+            inner.camera_publisher.stop(room).await?;
         }
         inner.remote_audio.stop();
         self.stop_tone_locked(&mut inner).await;
@@ -163,6 +239,7 @@ impl LiveKitRoom {
         }
 
         inner.mic_enabled = false;
+        inner.camera_enabled = false;
         emit_room_disconnected();
         Ok(())
     }

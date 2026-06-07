@@ -34,15 +34,19 @@ export type {
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export type {
+  MediaEngineCameraSetEnabledResult,
   MediaEngineEvent,
   MediaEngineMicSetEnabledResult,
   MediaEnginePingResult,
   MediaEngineReadyEvent,
   MediaEngineRemoteAudioFrameEvent,
+  MediaEngineRemoteVideoFrameEvent,
   MediaEngineRoomConnectParams,
   MediaEngineRoomConnectResult,
   MediaEngineRoomConnectedEvent,
   MediaEngineRuntimeStatus,
   MediaEngineScreenStartParams,
   MediaEngineScreenStartResult,
+  MediaEngineTrackPublishedEvent,
+  MediaEngineTrackUnpublishedEvent,
 } from './media-engine'

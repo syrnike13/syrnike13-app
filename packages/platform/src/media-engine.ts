@@ -45,6 +45,30 @@ export type MediaEngineMicSetEnabledResult = {
   enabled: boolean
 }
 
+export type MediaEngineCameraSetEnabledResult = {
+  enabled: boolean
+}
+
+export type MediaEngineRemoteVideoFrameEvent = {
+  userId: string
+  source: 'screen' | 'camera'
+  width: number
+  height: number
+  jpegBase64: string
+}
+
+export type MediaEngineTrackPublishedEvent = {
+  userId: string
+  source: 'screen' | 'camera'
+  subscribed: boolean
+  muted: boolean
+}
+
+export type MediaEngineTrackUnpublishedEvent = {
+  userId: string
+  source: 'screen' | 'camera'
+}
+
 export type MediaEngineRoomConnectedEvent = {
   roomName: string
   sid: string
@@ -96,7 +120,14 @@ export type MediaEngineEvent =
       event: 'room.participants'
       params: {
         localUserId: string
-        participants: Array<{ userId: string; sid: string }>
+        localCamera?: boolean
+        localScreensharing?: boolean
+        participants: Array<{
+          userId: string
+          sid: string
+          camera?: boolean
+          screensharing?: boolean
+        }>
       }
     }
   | {
@@ -106,4 +137,20 @@ export type MediaEngineEvent =
   | {
       event: 'remote.audio.ended'
       params: { userId: string }
+    }
+  | {
+      event: 'remote.video.frame'
+      params: MediaEngineRemoteVideoFrameEvent
+    }
+  | {
+      event: 'remote.video.ended'
+      params: { userId: string; source: 'screen' | 'camera' }
+    }
+  | {
+      event: 'track.published'
+      params: MediaEngineTrackPublishedEvent
+    }
+  | {
+      event: 'track.unpublished'
+      params: MediaEngineTrackUnpublishedEvent
     }

@@ -202,6 +202,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     micSetEnabled(enabled: boolean) {
       return ipcRenderer.invoke(IPC.mediaEngineMicSetEnabled, enabled)
     },
+    cameraSetEnabled(enabled: boolean) {
+      return ipcRenderer.invoke(IPC.mediaEngineCameraSetEnabled, enabled)
+    },
     screenStart(params) {
       return ipcRenderer.invoke(IPC.mediaEngineScreenStart, params)
     },

@@ -156,3 +156,11 @@ export function patchLocalVoiceDeafen(
     is_receiving: !deafened,
   })
 }
+
+export function patchLocalVoiceMedia(
+  channelId: string,
+  userId: string,
+  patch: { camera?: boolean; screensharing?: boolean },
+) {
+  syncStore.patchVoiceParticipant(channelId, userId, patch)
+}

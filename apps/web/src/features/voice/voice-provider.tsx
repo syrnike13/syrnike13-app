@@ -36,8 +36,17 @@ import { applyAllRemoteAudio, applyRemoteAudioElement } from '#/features/voice/r
 import { releaseRemoteAudioGain } from '#/features/voice/remote-audio-gain'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import {
+  createEngineStageVideoTrack,
+  type EngineStageVideoTrack,
+} from '#/features/voice/engine-stage-video'
+import {
+  hasMediaEngineRemoteVideoFrame,
+  subscribeMediaEngineRemoteVideo,
+} from '#/features/voice/media-engine-remote-video'
+import {
   liveKitChannelParticipants,
   patchLocalVoiceDeafen,
+  patchLocalVoiceMedia,
   patchLocalVoiceMic,
   removeLocalUserFromAllVoiceChannels,
   syncLiveKitRoomParticipants,
@@ -126,7 +135,7 @@ type StageMediaPublication = {
   }
 }
 export type VoiceStageMediaItem = StageMediaItem<
-  VideoTrack,
+  VideoTrack | EngineStageVideoTrack,
   StageMediaPublication
 >
 
@@ -413,6 +422,60 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const syncEngineStageMediaItems = useCallback(() => {
+    const activeChannelId = channelIdRef.current
+    if (!activeChannelId) return
+
+    const participants = Object.values(
+      syncStore.getState().voiceParticipants[activeChannelId] ?? {},
+    ).map((participant) => ({ id: participant.id }))
+    const authUserId = auth.user?._id
+    const tracks: StageMediaTrackEntry<
+      VideoTrack | EngineStageVideoTrack,
+      StageMediaPublication
+    >[] = []
+
+    for (const participant of participants) {
+      const state =
+        syncStore.getState().voiceParticipants[activeChannelId]?.[
+          participant.id
+        ]
+      if (!state) continue
+
+      if (state.screensharing) {
+        tracks.push({
+          userId: participant.id,
+          source: 'screen',
+          track: createEngineStageVideoTrack(participant.id, 'screen'),
+          subscribed: true,
+          live: hasMediaEngineRemoteVideoFrame(participant.id, 'screen'),
+        })
+      }
+
+      if (state.camera) {
+        tracks.push({
+          userId: participant.id,
+          source: 'camera',
+          track: createEngineStageVideoTrack(participant.id, 'camera'),
+          subscribed: true,
+          live: hasMediaEngineRemoteVideoFrame(participant.id, 'camera'),
+        })
+      }
+    }
+
+    const items = buildStageMediaItems({
+      participants,
+      currentUserId: authUserId,
+      tracks,
+      filters: stageMediaFilters,
+    }).map((item) => ({
+      ...item,
+      isLocal: item.userId === authUserId,
+    }))
+
+    setStageMediaItems(items)
+  }, [auth.user?._id, setStageMediaItems, stageMediaFilters])
+
   const syncStageMediaItems = useCallback(
     (room: Room) => {
       const participants = liveKitChannelParticipants(
@@ -478,7 +541,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!activeChannelId) return
 
     if (engineVoiceSessionRef.current) {
-      const receiving = !deafenedRef.current
       const fromStore = Object.values(
         syncStore.getState().voiceParticipants[activeChannelId] ?? {},
       )
@@ -489,8 +551,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       if (userId) {
         patchLocalVoiceMic(activeChannelId, userId, micPublishing)
         patchLocalVoiceDeafen(activeChannelId, userId, deafenedRef.current)
+        const localState = fromStore.find((participant) => participant.id === userId)
+        if (localState) {
+          setCameraEnabled(localState.camera)
+          setScreenShareEnabled(localState.screensharing)
+        }
       }
-      setStageMediaItems([])
+      syncEngineStageMediaItems()
       return
     }
 
@@ -513,7 +580,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setCameraEnabled(localMedia.camera)
     setScreenShareEnabled(localMedia.screensharing)
     syncStageMediaItems(room)
-  }, [auth.user?._id, micPublishing, syncStageMediaItems])
+  }, [auth.user?._id, micPublishing, syncEngineStageMediaItems, syncStageMediaItems])
+
+  useEffect(() => {
+    if (!engineVoiceSessionRef.current) return
+    return subscribeMediaEngineRemoteVideo(() => {
+      syncEngineStageMediaItems()
+    })
+  }, [channelId, status, syncEngineStageMediaItems])
 
   const cleanupAudio = useCallback(() => {
     for (const element of audioElementsRef.current) {
@@ -982,9 +1056,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
+    if (engineVoiceSessionRef.current) {
+      syncEngineStageMediaItems()
+      return
+    }
     const room = roomRef.current
     if (room) syncStageMediaItems(room)
-  }, [stageMediaFilters, syncStageMediaItems])
+  }, [stageMediaFilters, syncEngineStageMediaItems, syncStageMediaItems])
 
   useEffect(() => {
     setFocusedMediaId((current) =>
@@ -994,8 +1072,47 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     )
   }, [stageMediaItems])
 
+  const stopMediaEngineScreenShare = useCallback(() => {
+    const active = mediaEngineScreenShareRef.current
+    if (!active) return
+    mediaEngineScreenShareRef.current = null
+    void active.stop()
+  }, [])
+
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
+      if (engineVoiceSessionRef.current) {
+        const item = stageMediaItemsRef.current.find(
+          (stageItem) => stageItem.id === mediaId,
+        )
+        if (!item || item.kind !== 'screen') return
+
+        if (item.isLocal) {
+          if (!subscribed) {
+            stopMediaEngineScreenShare()
+            setScreenShareEnabled(false)
+            const activeChannelId = channelIdRef.current
+            const userId = auth.user?._id
+            if (activeChannelId && userId) {
+              patchLocalVoiceMedia(activeChannelId, userId, {
+                screensharing: false,
+              })
+            }
+            syncRoomParticipants()
+          }
+          return
+        }
+
+        setStageMediaItems(
+          stageMediaItemsRef.current.map((stageItem) =>
+            stageItem.id === mediaId
+              ? { ...stageItem, subscribed }
+              : stageItem,
+          ),
+        )
+        return
+      }
+
       const room = roomRef.current
       if (!room) return
       const item = stageMediaItemsRef.current.find(
@@ -1024,12 +1141,37 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         syncStageMediaItems(room)
       }
     },
-    [syncRoomParticipants, syncStageMediaItems],
+    [
+      auth.user?._id,
+      stopMediaEngineScreenShare,
+      syncRoomParticipants,
+      syncStageMediaItems,
+      setStageMediaItems,
+    ],
   )
 
   const toggleCamera = useCallback(() => {
     if (engineVoiceSessionRef.current) {
-      toast.error('Камера пока недоступна в нативном режиме голоса')
+      const engineVoice = engineVoiceSessionRef.current
+      const next = !cameraEnabled
+      void engineVoice
+        .setCameraEnabled(next)
+        .then(() => {
+          setCameraEnabled(next)
+          const activeChannelId = channelIdRef.current
+          const userId = auth.user?._id
+          if (activeChannelId && userId) {
+            patchLocalVoiceMedia(activeChannelId, userId, { camera: next })
+          }
+          syncRoomParticipants()
+        })
+        .catch((error) => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Не удалось переключить камеру',
+          )
+        })
       return
     }
 
@@ -1049,14 +1191,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             : 'Не удалось переключить камеру',
         )
       })
-  }, [syncRoomParticipants])
-
-  const stopMediaEngineScreenShare = useCallback(() => {
-    const active = mediaEngineScreenShareRef.current
-    if (!active) return
-    mediaEngineScreenShareRef.current = null
-    void active.stop()
-  }, [])
+  }, [auth.user?._id, cameraEnabled, syncRoomParticipants])
 
   const startScreenShare = useCallback(
     async (quality: ScreenShareQualityName, withAudio: boolean) => {
@@ -1078,6 +1213,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           )
           mediaEngineScreenShareRef.current = session
           setScreenShareEnabled(true)
+          const activeChannelId = channelIdRef.current
+          const userId = auth.user?._id
+          if (activeChannelId && userId) {
+            patchLocalVoiceMedia(activeChannelId, userId, {
+              screensharing: true,
+            })
+          }
           syncRoomParticipants()
           return
         } catch (error) {
@@ -1150,7 +1292,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
       }
     },
-    [stopMediaEngineScreenShare, syncRoomParticipants],
+    [auth.user?._id, stopMediaEngineScreenShare, syncRoomParticipants],
   )
 
   const toggleScreenShare = useCallback(() => {

@@ -84,6 +84,12 @@ export async function micSetEnabledMediaEngine(enabled: boolean) {
   }
 }
 
+export async function cameraSetEnabledMediaEngine(enabled: boolean) {
+  return (await sendRequest('camera.setEnabled', { enabled })) as {
+    enabled: boolean
+  }
+}
+
 export async function startMediaEngineScreen(
   getWindow: () => BrowserWindow | null,
   params: MediaEngineScreenStartParams,

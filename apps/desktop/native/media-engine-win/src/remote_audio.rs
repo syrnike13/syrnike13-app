@@ -69,14 +69,38 @@ impl RemoteAudioForwarder {
     }
 }
 
+fn participant_media_flags(participant: &livekit::participant::RemoteParticipant) -> (bool, bool) {
+    let mut camera = false;
+    let mut screensharing = false;
+
+    for publication in participant.track_publications().values() {
+        if publication.is_muted() {
+            continue;
+        }
+        match publication.source() {
+            livekit::prelude::TrackSource::Camera => camera = true,
+            livekit::prelude::TrackSource::Screenshare => screensharing = true,
+            _ => {}
+        }
+    }
+
+    (camera, screensharing)
+}
+
 pub fn emit_participants_snapshot(room: &Arc<Room>) {
+    let local = room.local_participant();
+    let (local_camera, local_screen) = local_participant_media_flags(&local);
+
     let participants: Vec<serde_json::Value> = room
         .remote_participants()
         .values()
         .map(|participant| {
+            let (camera, screensharing) = participant_media_flags(participant);
             serde_json::json!({
                 "userId": participant.identity().to_string(),
                 "sid": participant.sid().to_string(),
+                "camera": camera,
+                "screensharing": screensharing,
             })
         })
         .collect();
@@ -84,10 +108,32 @@ pub fn emit_participants_snapshot(room: &Arc<Room>) {
     emit_engine_event(
         "room.participants",
         serde_json::json!({
-            "localUserId": room.local_participant().identity().to_string(),
+            "localUserId": local.identity().to_string(),
+            "localCamera": local_camera,
+            "localScreensharing": local_screen,
             "participants": participants,
         }),
     );
+}
+
+fn local_participant_media_flags(
+    participant: &livekit::participant::LocalParticipant,
+) -> (bool, bool) {
+    let mut camera = false;
+    let mut screensharing = false;
+
+    for publication in participant.track_publications().values() {
+        if publication.is_muted() {
+            continue;
+        }
+        match publication.source() {
+            livekit::prelude::TrackSource::Camera => camera = true,
+            livekit::prelude::TrackSource::Screenshare => screensharing = true,
+            _ => {}
+        }
+    }
+
+    (camera, screensharing)
 }
 
 pub fn emit_room_connected(room: &Arc<Room>) {

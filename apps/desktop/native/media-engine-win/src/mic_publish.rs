@@ -35,7 +35,7 @@ impl MicPublisher {
     }
 
     pub async fn start(&mut self, room: Arc<Room>) -> Result<(), String> {
-        self.stop().await?;
+        self.stop(room.as_ref()).await?;
 
         let audio_source = NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, NUM_CHANNELS, 0);
         let track = LocalAudioTrack::create_audio_track(

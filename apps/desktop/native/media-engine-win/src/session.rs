@@ -2,8 +2,8 @@ use serde_json::Value;
 
 use crate::livekit_room::LiveKitRoom;
 use crate::protocol::{
-    EventMessage, MicSetEnabledParams, PingResult, RequestMessage, ResponseMessage,
-    RoomConnectParams, ScreenStartParams, ENGINE_NAME, ENGINE_VERSION,
+    CameraSetEnabledParams, EventMessage, MicSetEnabledParams, PingResult, RequestMessage,
+    ResponseMessage, RoomConnectParams, ScreenStartParams, ENGINE_NAME, ENGINE_VERSION,
 };
 
 pub struct EngineSession {
@@ -102,6 +102,27 @@ impl EngineSession {
                         request.id,
                         "INVALID_PARAMS",
                         format!("mic.setEnabled params invalid: {error}"),
+                    ),
+                }
+            }
+            "camera.setEnabled" => {
+                match serde_json::from_value::<CameraSetEnabledParams>(request.params) {
+                    Ok(params) => {
+                        match self.livekit_room.set_camera_enabled(params.enabled).await {
+                            Ok(()) => ResponseMessage::success(request.id, serde_json::json!({
+                                "enabled": params.enabled,
+                            })),
+                            Err(message) => ResponseMessage::failure(
+                                request.id,
+                                "CAMERA_SET_ENABLED_FAILED",
+                                message,
+                            ),
+                        }
+                    }
+                    Err(error) => ResponseMessage::failure(
+                        request.id,
+                        "INVALID_PARAMS",
+                        format!("camera.setEnabled params invalid: {error}"),
                     ),
                 }
             }
