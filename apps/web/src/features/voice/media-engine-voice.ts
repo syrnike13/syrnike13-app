@@ -1,5 +1,12 @@
-import type { MediaEngineRoomConnectParams } from '@syrnike13/platform'
+import type { MediaEngineEvent, MediaEngineRoomConnectParams } from '@syrnike13/platform'
 
+import {
+  applyEngineParticipantsSnapshot,
+  applyEngineTrackPublished,
+  applyEngineTrackUnpublished,
+  type EngineParticipantsSnapshot,
+  type EngineTrackSource,
+} from '#/features/voice/media-engine-participant-sync'
 import {
   disposeMediaEngineRemoteAudio,
   playMediaEngineRemoteAudioFrame,
@@ -21,9 +28,36 @@ export type MediaEngineVoiceSession = {
   setDeafened: (deafened: boolean) => void
 }
 
+export type MediaEngineVoiceContext = {
+  channelId: string
+  localMicPublishing: boolean
+  localReceiving: boolean
+}
+
+export type MediaEngineVoiceHandlers = {
+  onStateChange?: () => void
+  onDisconnected?: () => void
+  getContext?: () => MediaEngineVoiceContext | null
+}
+
+function isEngineTrackSource(value: unknown): value is EngineTrackSource {
+  return value === 'screen' || value === 'camera'
+}
+
+function parseParticipantsSnapshot(
+  params: unknown,
+): EngineParticipantsSnapshot | null {
+  if (!params || typeof params !== 'object') return null
+  const snapshot = params as EngineParticipantsSnapshot
+  if (typeof snapshot.localUserId !== 'string') return null
+  if (!Array.isArray(snapshot.participants)) return null
+  return snapshot
+}
+
 export async function connectMediaEngineVoice(
   credentials: MediaEngineRoomConnectParams,
   initialMicEnabled: boolean,
+  handlers: MediaEngineVoiceHandlers = {},
 ): Promise<MediaEngineVoiceSession> {
   const desktop = getSyrnikeDesktop()
   if (!desktop) {
@@ -33,13 +67,48 @@ export async function connectMediaEngineVoice(
   const result = await desktop.mediaEngine.roomConnect(credentials)
   let localUserId = ''
 
-  const unsubscribe = desktop.mediaEngine.onEvent((event) => {
+  const handleEngineEvent = (event: MediaEngineEvent) => {
+    const context = handlers.getContext?.()
+
     switch (event.event) {
       case 'room.connected':
         localUserId =
           typeof event.params.localUserId === 'string'
             ? event.params.localUserId
             : localUserId
+        handlers.onStateChange?.()
+        break
+      case 'room.participants': {
+        if (!context) break
+        const snapshot = parseParticipantsSnapshot(event.params)
+        if (!snapshot) break
+        applyEngineParticipantsSnapshot(context.channelId, snapshot, {
+          localMicPublishing: context.localMicPublishing,
+          localReceiving: context.localReceiving,
+        })
+        handlers.onStateChange?.()
+        break
+      }
+      case 'track.published': {
+        if (!context) break
+        const userId = event.params.userId
+        const source = event.params.source
+        if (typeof userId !== 'string' || !isEngineTrackSource(source)) break
+        applyEngineTrackPublished(context.channelId, userId, source)
+        handlers.onStateChange?.()
+        break
+      }
+      case 'track.unpublished': {
+        if (!context) break
+        const userId = event.params.userId
+        const source = event.params.source
+        if (typeof userId !== 'string' || !isEngineTrackSource(source)) break
+        applyEngineTrackUnpublished(context.channelId, userId, source)
+        handlers.onStateChange?.()
+        break
+      }
+      case 'room.disconnected':
+        handlers.onDisconnected?.()
         break
       case 'remote.audio.frame': {
         const userId = event.params.userId
@@ -78,7 +147,7 @@ export async function connectMediaEngineVoice(
         const height = event.params.height
         if (
           typeof userId !== 'string' ||
-          (source !== 'screen' && source !== 'camera') ||
+          !isEngineTrackSource(source) ||
           typeof jpegBase64 !== 'string' ||
           typeof width !== 'number' ||
           typeof height !== 'number'
@@ -97,18 +166,49 @@ export async function connectMediaEngineVoice(
       case 'remote.video.ended': {
         const userId = event.params.userId
         const source = event.params.source
-        if (
-          typeof userId === 'string' &&
-          (source === 'screen' || source === 'camera')
-        ) {
+        if (typeof userId === 'string' && isEngineTrackSource(source)) {
           clearMediaEngineRemoteVideo(userId, source)
+          handlers.onStateChange?.()
         }
+        break
+      }
+      case 'local.preview.frame': {
+        const source = event.params.source
+        const jpegBase64 = event.params.jpegBase64
+        const width = event.params.width
+        const height = event.params.height
+        if (
+          !localUserId ||
+          !isEngineTrackSource(source) ||
+          typeof jpegBase64 !== 'string' ||
+          typeof width !== 'number' ||
+          typeof height !== 'number'
+        ) {
+          return
+        }
+        updateMediaEngineRemoteVideoFrame(
+          localUserId,
+          source,
+          jpegBase64,
+          width,
+          height,
+        )
+        handlers.onStateChange?.()
+        break
+      }
+      case 'local.preview.ended': {
+        const source = event.params.source
+        if (!localUserId || !isEngineTrackSource(source)) return
+        clearMediaEngineRemoteVideo(localUserId, source)
+        handlers.onStateChange?.()
         break
       }
       default:
         break
     }
-  })
+  }
+
+  const unsubscribe = desktop.mediaEngine.onEvent(handleEngineEvent)
 
   await desktop.mediaEngine.micSetEnabled(initialMicEnabled)
 

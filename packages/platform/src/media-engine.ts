@@ -69,6 +69,17 @@ export type MediaEngineTrackUnpublishedEvent = {
   source: 'screen' | 'camera'
 }
 
+export type MediaEngineLocalPreviewFrameEvent = {
+  source: 'screen' | 'camera'
+  width: number
+  height: number
+  jpegBase64: string
+}
+
+export type MediaEngineLocalPreviewEndedEvent = {
+  source: 'screen' | 'camera'
+}
+
 export type MediaEngineRoomConnectedEvent = {
   roomName: string
   sid: string
@@ -153,4 +164,12 @@ export type MediaEngineEvent =
   | {
       event: 'track.unpublished'
       params: MediaEngineTrackUnpublishedEvent
+    }
+  | {
+      event: 'local.preview.frame'
+      params: MediaEngineLocalPreviewFrameEvent
+    }
+  | {
+      event: 'local.preview.ended'
+      params: MediaEngineLocalPreviewEndedEvent
     }

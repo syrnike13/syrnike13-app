@@ -18,6 +18,7 @@ use crate::capture::audio_loopback::{
     audio_mode_label, resolve_audio_loopback_target, AudioLoopbackCapture,
 };
 use crate::capture::color_convert::bgra_to_i420;
+use crate::local_preview::{emit_local_preview_ended, maybe_emit_local_preview_frame};
 use crate::capture::hybrid::{CaptureMethod, HybridCapturer};
 use crate::capture::target::{parse_target, CaptureTarget};
 use crate::protocol::{ScreenStartParams, ScreenStartResult};
@@ -236,6 +237,8 @@ impl ScreenPublisher {
             task.abort();
         }
 
+        emit_local_preview_ended("screen");
+
         Ok(())
     }
 }
@@ -269,6 +272,7 @@ fn run_capture_loop(
         }
 
         let buffer = bgra_to_i420(&frame.bgra, frame.width, frame.height, frame.stride)?;
+        maybe_emit_local_preview_frame("screen", &buffer);
         let timestamp_us = started_at.elapsed().as_micros() as i64;
         if frame_tx.blocking_send((buffer, timestamp_us)).is_err() {
             break;

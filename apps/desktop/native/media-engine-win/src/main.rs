@@ -1,6 +1,7 @@
 mod camera_publish;
 mod capture;
 mod event_emitter;
+mod local_preview;
 mod livekit_room;
 mod mic_publish;
 mod pipe;

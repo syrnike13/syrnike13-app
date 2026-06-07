@@ -960,6 +960,27 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const session = await connectMediaEngineVoice(
           credentials,
           prefs.micEnabled,
+          {
+            getContext: () => {
+              const activeChannelId = channelIdRef.current
+              if (!activeChannelId) return null
+              return {
+                channelId: activeChannelId,
+                localMicPublishing: voicePreferenceStore.getMicEnabled(),
+                localReceiving: !deafenedRef.current,
+              }
+            },
+            onStateChange: () => syncRoomParticipants(),
+            onDisconnected: () => {
+              const activeChannelId = channelIdRef.current
+              if (!activeChannelId) {
+                abortJoinAttempt()
+                return
+              }
+              setStatus('connecting')
+              voiceRejoinRef.current.onUnexpectedDisconnect(activeChannelId)
+            },
+          },
         )
         engineVoiceSessionRef.current = session
         setStatus('connected')
@@ -1367,6 +1388,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           setCurrentMicIssue(null)
           if (activeChannelId && userId) {
             patchLocalVoiceMic(activeChannelId, userId, nextMic)
+            if (status === 'connected') {
+              void syncVoiceStateToServer(activeChannelId, {
+                is_publishing: nextMic,
+              })
+            }
           }
           syncRoomParticipants()
         })
@@ -1400,7 +1426,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (activeChannelId && userId) {
       patchLocalVoiceMic(activeChannelId, userId, nextMic)
     }
-  }, [auth.user?._id, setCurrentMicIssue, syncMicFromRoom, syncRoomParticipants])
+  }, [
+    auth.user?._id,
+    setCurrentMicIssue,
+    status,
+    syncMicFromRoom,
+    syncRoomParticipants,
+    syncVoiceStateToServer,
+  ])
 
   const toggleDeafen = useCallback(() => {
     const room = roomRef.current

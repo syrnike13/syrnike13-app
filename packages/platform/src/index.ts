@@ -36,6 +36,8 @@ export { IPC, type IpcChannel } from './ipc'
 export type {
   MediaEngineCameraSetEnabledResult,
   MediaEngineEvent,
+  MediaEngineLocalPreviewEndedEvent,
+  MediaEngineLocalPreviewFrameEvent,
   MediaEngineMicSetEnabledResult,
   MediaEnginePingResult,
   MediaEngineReadyEvent,

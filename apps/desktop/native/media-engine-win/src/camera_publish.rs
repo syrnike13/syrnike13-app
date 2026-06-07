@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle as TokioJoinHandle;
 
 use crate::capture::color_convert::rgb_to_i420;
+use crate::local_preview::{emit_local_preview_ended, maybe_emit_local_preview_frame};
 
 const CAMERA_WIDTH: u32 = 640;
 const CAMERA_HEIGHT: u32 = 480;
@@ -119,6 +120,7 @@ impl CameraPublisher {
         }
 
         self.video_source = None;
+        emit_local_preview_ended("camera");
         Ok(())
     }
 
@@ -164,6 +166,7 @@ fn run_camera_capture(
 
         let rgb = decoded.into_raw();
         let buffer = rgb_to_i420(&rgb, width as usize, height as usize)?;
+        maybe_emit_local_preview_frame("camera", &buffer);
         if tx.blocking_send(buffer).is_err() {
             let _ = camera.stop_stream();
             return Ok(());
