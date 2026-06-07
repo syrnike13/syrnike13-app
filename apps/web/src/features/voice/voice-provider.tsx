@@ -63,6 +63,7 @@ import {
   screenShareAudioCaptureOptions,
   screenShareCaptureOptions,
   screenShareCombinedPublishOptions,
+  voiceMicPublishOptions,
 } from '#/features/voice/voice-capture'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
@@ -83,6 +84,8 @@ import {
   applyMicProcessing,
   refreshMicProcessing,
 } from '#/features/voice/voice-mic-processing'
+import { clearSessionVoiceGateThreshold } from '#/features/voice/voice-gate-session'
+import { resetDenoiseUnavailableNotify } from '#/features/voice/voice-mic-denoise-notify'
 import { voicePreferenceEffectFlags } from '#/features/voice/voice-preference-effects'
 import {
   describeMicDeviceError,
@@ -616,6 +619,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
 
       cleanupAudio()
+      clearSessionVoiceGateThreshold()
+      resetDenoiseUnavailableNotify()
       resetVoiceState()
 
       if (leftChannelId && userId) {
@@ -657,10 +662,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const prefs = effectiveVoiceJoinPreferences(readVoicePreferences())
       let micSetupFailed = false
       try {
-        await room.localParticipant.setMicrophoneEnabled(prefs.micEnabled)
-        if (prefs.micEnabled) {
-          await applyMicProcessing(room.localParticipant)
-        }
+        await room.localParticipant.setMicrophoneEnabled(
+          prefs.micEnabled,
+          undefined,
+          voiceMicPublishOptions(),
+        )
       } catch (error) {
         micSetupFailed = true
         syncMicFromRoom(room, describeMicDeviceError(error))
@@ -673,6 +679,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       deafenedRef.current = prefs.deafened
       applyAllRemoteAudio(prefs.deafened)
       await applyVoiceDevices(room)
+      if (prefs.micEnabled && !micSetupFailed) {
+        await applyMicProcessing(room.localParticipant)
+      }
       syncRoomParticipants()
 
       const userId = auth.user?._id
@@ -1192,7 +1201,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     if (room) {
       void room.localParticipant
-        .setMicrophoneEnabled(nextMic)
+        .setMicrophoneEnabled(nextMic, undefined, voiceMicPublishOptions())
         .then(() => {
           if (nextMic) void applyMicProcessing(room.localParticipant)
           syncMicFromRoom(room)
@@ -1278,7 +1287,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       if (!room) return
       const effects = voicePreferenceEffectFlags(previous, next)
       if (effects.devicesChanged) {
-        void applyVoiceDevices(room)
+        void applyVoiceDevices(room).then(() => {
+          void refreshMicProcessing(room)
+        })
       } else if (effects.remoteAudioChanged) {
         applyAllRemoteAudio(deafenedRef.current)
       }

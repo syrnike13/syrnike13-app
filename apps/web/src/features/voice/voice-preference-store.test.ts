@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 
 import {
   effectiveVoiceJoinPreferences,
+  parseNoiseSuppression,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 
@@ -9,8 +10,10 @@ describe('voicePreferenceStore', () => {
   beforeEach(() => {
     voicePreferenceStore.setMicEnabled(true)
     voicePreferenceStore.setDeafened(false)
-    voicePreferenceStore.setVoiceGateEnabled(false)
-    voicePreferenceStore.setVoiceGateThreshold(0.04)
+    voicePreferenceStore.setNoiseSuppression('enhanced')
+    voicePreferenceStore.setVoiceGateEnabled(true)
+    voicePreferenceStore.setVoiceGateAutoThreshold(true)
+    voicePreferenceStore.setVoiceGateAutoThreshold(true)
     voicePreferenceStore.setAutoBalanceEnabled(false)
     voicePreferenceStore.setAutoBalanceStrength(0.5)
   })
@@ -35,21 +38,40 @@ describe('voicePreferenceStore', () => {
     ).toBe(false)
   })
 
-  it('defaults voice gate and auto balance to conservative settings', () => {
+  it('defaults to discord-like mic processing settings', () => {
     expect(voicePreferenceStore.getState()).toMatchObject({
-      voiceGateEnabled: false,
-      voiceGateThreshold: 0.04,
+      noiseSuppression: 'enhanced',
+      voiceGateEnabled: true,
+      voiceGateAutoThreshold: true,
+      voiceGateThresholdDb: -28,
+      voiceGateAutoThreshold: true,
       autoBalanceEnabled: false,
       autoBalanceStrength: 0.5,
     })
   })
 
   it('clamps voice gate threshold and auto balance strength', () => {
-    voicePreferenceStore.setVoiceGateThreshold(2)
+    voicePreferenceStore.setVoiceGateThresholdDb(12)
     voicePreferenceStore.setAutoBalanceStrength(-1)
 
-    expect(voicePreferenceStore.getState().voiceGateThreshold).toBe(1)
+    expect(voicePreferenceStore.getState().voiceGateThresholdDb).toBe(0)
     expect(voicePreferenceStore.getState().autoBalanceStrength).toBe(0)
+  })
+
+  it('migrates legacy browser noise suppression to enhanced', () => {
+    expect(parseNoiseSuppression('browser')).toBe('enhanced')
+    expect(parseNoiseSuppression(true)).toBe('enhanced')
+    expect(parseNoiseSuppression(false)).toBe('disabled')
+  })
+
+  it('switches gate threshold to manual when the bar changes', () => {
+    voicePreferenceStore.setVoiceGateAutoThreshold(true)
+    voicePreferenceStore.setVoiceGateThresholdDb(-18)
+
+    expect(voicePreferenceStore.getState()).toMatchObject({
+      voiceGateThresholdDb: -18,
+      voiceGateAutoThreshold: false,
+    })
   })
 
   it('persists voice gate and auto balance toggles', () => {

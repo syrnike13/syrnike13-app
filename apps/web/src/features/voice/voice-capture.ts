@@ -18,10 +18,12 @@ import {
 } from '#/features/voice/voice-preference-store'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
-function browserNoiseSuppressionEnabled(prefs: VoicePreferenceState) {
-  if (prefs.noiseSuppression === 'disabled') return false
-  if (prefs.noiseSuppression === 'browser') return true
-  return prefs.voiceGateEnabled
+export function voiceMicPublishOptions(): TrackPublishOptions {
+  return {
+    source: Track.Source.Microphone,
+    audioPreset: AudioPresets.speech,
+    dtx: true,
+  }
 }
 
 export function screenShareAudioCaptureOptions(
@@ -65,8 +67,8 @@ export function voiceAudioProcessingConstraints(
   return {
     channelCount: 1,
     echoCancellation: prefs.echoCancellation,
-    noiseSuppression: browserNoiseSuppressionEnabled(prefs),
-    autoGainControl: prefs.autoGainControl,
+    noiseSuppression: false,
+    autoGainControl: false,
   }
 }
 

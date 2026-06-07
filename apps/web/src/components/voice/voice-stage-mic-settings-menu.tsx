@@ -32,19 +32,14 @@ const NOISE_SUPPRESSION_OPTIONS: {
   description: string
 }[] = [
   {
-    value: 'browser',
-    label: 'Браузер',
-    description: 'Стандартное шумоподавление',
-  },
-  {
     value: 'enhanced',
-    label: 'Усиленное',
-    description: 'RNNoise — переподключитесь к голосу',
+    label: 'Включено',
+    description: 'RNNoise — шумоподавление',
   },
   {
     value: 'disabled',
     label: 'Выключено',
-    description: 'Без обработки',
+    description: 'Без шумоподавления',
   },
 ]
 
@@ -100,7 +95,7 @@ function useMicInputSettingsModel() {
   const profileSubtitle =
     NOISE_SUPPRESSION_OPTIONS.find(
       (option) => option.value === prefs.noiseSuppression,
-    )?.label ?? 'Браузер'
+    )?.label ?? 'Включено'
 
   const selfSpeaking =
     auth.user?._id != null && voice.speakingUserIds.has(auth.user._id)

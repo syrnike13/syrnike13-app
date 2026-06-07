@@ -35,6 +35,8 @@ export const env = createEnv({
     VITE_HCAPTCHA_SITEKEY: z.string().optional(),
     /** LiveKit-нода для `join_call` (по умолчанию — первая из `GET /`). */
     VITE_VOICE_NODE: z.string().min(1).optional(),
+    /** Override RNNoise worklet/wasm base URL (trailing slash optional). */
+    VITE_RNNOISE_WORKLET_CDN_URL: z.string().url().optional(),
   },
 
   runtimeEnv: import.meta.env,

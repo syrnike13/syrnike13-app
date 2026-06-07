@@ -9,10 +9,10 @@ const base: VoicePreferenceState = {
   inputVolume: 1,
   outputVolume: 1,
   echoCancellation: true,
-  noiseSuppression: 'browser',
-  autoGainControl: true,
-  voiceGateEnabled: false,
-  voiceGateThreshold: 0.04,
+  noiseSuppression: 'enhanced',
+  voiceGateEnabled: true,
+  voiceGateThresholdDb: -28,
+  voiceGateAutoThreshold: true,
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
@@ -26,7 +26,7 @@ describe('voicePreferenceEffectFlags', () => {
     expect(
       voicePreferenceEffectFlags(base, {
         ...base,
-        voiceGateThreshold: 0.08,
+        voiceGateThresholdDb: -18,
       }),
     ).toMatchObject({
       devicesChanged: false,
@@ -45,6 +45,32 @@ describe('voicePreferenceEffectFlags', () => {
       devicesChanged: false,
       micProcessingChanged: false,
       remoteAudioChanged: true,
+    })
+  })
+
+  it('tracks auto gate threshold changes as mic processing changes', () => {
+    expect(
+      voicePreferenceEffectFlags(base, {
+        ...base,
+        voiceGateAutoThreshold: false,
+      }),
+    ).toMatchObject({
+      devicesChanged: false,
+      micProcessingChanged: true,
+      remoteAudioChanged: false,
+    })
+  })
+
+  it('tracks input volume changes as mic processing changes', () => {
+    expect(
+      voicePreferenceEffectFlags(base, {
+        ...base,
+        inputVolume: 1.5,
+      }),
+    ).toMatchObject({
+      devicesChanged: false,
+      micProcessingChanged: true,
+      remoteAudioChanged: false,
     })
   })
 

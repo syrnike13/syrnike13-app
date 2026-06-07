@@ -9,7 +9,8 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "rnnoise:vendor": "node scripts/vendor-rnnoise.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

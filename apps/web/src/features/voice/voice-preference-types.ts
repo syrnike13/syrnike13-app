@@ -1,4 +1,4 @@
-export type NoiseSuppressionMode = 'disabled' | 'browser' | 'enhanced'
+export type NoiseSuppressionMode = 'disabled' | 'enhanced'
 
 export type ScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
 

@@ -4,6 +4,11 @@ import type {
   ScreenShareCodec,
   ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
+import {
+  DEFAULT_VOICE_GATE_THRESHOLD_DB,
+  linearThresholdToDb,
+  normalizeVoiceGateThresholdDb,
+} from '#/features/voice/voice-gate-level'
 
 const STORAGE_KEY = 'syrnike13-voice-preferences'
 
@@ -19,9 +24,9 @@ export type VoicePreferenceState = {
   outputVolume: number
   echoCancellation: boolean
   noiseSuppression: NoiseSuppressionMode
-  autoGainControl: boolean
   voiceGateEnabled: boolean
-  voiceGateThreshold: number
+  voiceGateThresholdDb: number
+  voiceGateAutoThreshold: boolean
   autoBalanceEnabled: boolean
   autoBalanceStrength: number
   screenShareQuality: ScreenShareQualityName
@@ -51,10 +56,10 @@ const DEFAULT_STATE: VoicePreferenceState = {
   inputVolume: 1,
   outputVolume: 1,
   echoCancellation: true,
-  noiseSuppression: 'browser',
-  autoGainControl: true,
-  voiceGateEnabled: false,
-  voiceGateThreshold: 0.04,
+  noiseSuppression: 'enhanced',
+  voiceGateEnabled: true,
+  voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
+  voiceGateAutoThreshold: true,
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
   screenShareQuality: defaultScreenShareQuality(),
@@ -72,11 +77,11 @@ export function effectiveVoiceJoinPreferences(
   }
 }
 
-function parseNoiseSuppression(value: unknown): NoiseSuppressionMode {
-  if (value === 'disabled' || value === 'browser' || value === 'enhanced') {
+export function parseNoiseSuppression(value: unknown): NoiseSuppressionMode {
+  if (value === 'disabled' || value === 'enhanced') {
     return value
   }
-  if (value === true) return 'browser'
+  if (value === 'browser' || value === true) return 'enhanced'
   if (value === false) return 'disabled'
   return DEFAULT_STATE.noiseSuppression
 }
@@ -108,6 +113,16 @@ function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureMode {
 function clampUnitInterval(value: unknown, fallback: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(1, Math.max(0, Number(value.toFixed(3))))
+}
+
+function parseVoiceGateThresholdDb(parsed: Record<string, unknown>) {
+  if (typeof parsed.voiceGateThresholdDb === 'number') {
+    return normalizeVoiceGateThresholdDb(parsed.voiceGateThresholdDb)
+  }
+  if (typeof parsed.voiceGateThreshold === 'number') {
+    return linearThresholdToDb(parsed.voiceGateThreshold)
+  }
+  return DEFAULT_STATE.voiceGateThresholdDb
 }
 
 function loadState(): VoicePreferenceState {
@@ -163,18 +178,12 @@ function loadState(): VoicePreferenceState {
       noiseSuppression: parseNoiseSuppression(
         parsed.noiseSuppression ?? parsed.noiseSupression,
       ),
-      autoGainControl:
-        typeof parsed.autoGainControl === 'boolean'
-          ? parsed.autoGainControl
-          : DEFAULT_STATE.autoGainControl,
-      voiceGateEnabled:
-        typeof parsed.voiceGateEnabled === 'boolean'
-          ? parsed.voiceGateEnabled
-          : DEFAULT_STATE.voiceGateEnabled,
-      voiceGateThreshold: clampUnitInterval(
-        parsed.voiceGateThreshold,
-        DEFAULT_STATE.voiceGateThreshold,
-      ),
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: parseVoiceGateThresholdDb(parsed),
+      voiceGateAutoThreshold:
+        typeof parsed.voiceGateAutoThreshold === 'boolean'
+          ? parsed.voiceGateAutoThreshold
+          : DEFAULT_STATE.voiceGateAutoThreshold,
       autoBalanceEnabled:
         typeof parsed.autoBalanceEnabled === 'boolean'
           ? parsed.autoBalanceEnabled
@@ -282,21 +291,20 @@ export const voicePreferenceStore = {
     if (state.noiseSuppression === noiseSuppression) return
     patch({ noiseSuppression })
   },
-  setAutoGainControl: (autoGainControl: boolean) => {
-    if (state.autoGainControl === autoGainControl) return
-    patch({ autoGainControl })
-  },
   setVoiceGateEnabled: (voiceGateEnabled: boolean) => {
     if (state.voiceGateEnabled === voiceGateEnabled) return
     patch({ voiceGateEnabled })
   },
-  setVoiceGateThreshold: (voiceGateThreshold: number) => {
-    const next = clampUnitInterval(
-      voiceGateThreshold,
-      DEFAULT_STATE.voiceGateThreshold,
-    )
-    if (state.voiceGateThreshold === next) return
-    patch({ voiceGateThreshold: next })
+  setVoiceGateThresholdDb: (voiceGateThresholdDb: number) => {
+    const next = normalizeVoiceGateThresholdDb(voiceGateThresholdDb)
+    if (state.voiceGateThresholdDb === next && !state.voiceGateAutoThreshold) {
+      return
+    }
+    patch({ voiceGateThresholdDb: next, voiceGateAutoThreshold: false })
+  },
+  setVoiceGateAutoThreshold: (voiceGateAutoThreshold: boolean) => {
+    if (state.voiceGateAutoThreshold === voiceGateAutoThreshold) return
+    patch({ voiceGateAutoThreshold })
   },
   setAutoBalanceEnabled: (autoBalanceEnabled: boolean) => {
     if (state.autoBalanceEnabled === autoBalanceEnabled) return
