@@ -35,10 +35,13 @@ export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export type {
   MediaEngineEvent,
+  MediaEngineMicSetEnabledResult,
   MediaEnginePingResult,
   MediaEngineReadyEvent,
+  MediaEngineRemoteAudioFrameEvent,
   MediaEngineRoomConnectParams,
   MediaEngineRoomConnectResult,
+  MediaEngineRoomConnectedEvent,
   MediaEngineRuntimeStatus,
   MediaEngineScreenStartParams,
   MediaEngineScreenStartResult,

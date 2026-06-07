@@ -41,6 +41,24 @@ export type MediaEngineScreenStartResult = {
   audioMode?: string | null
 }
 
+export type MediaEngineMicSetEnabledResult = {
+  enabled: boolean
+}
+
+export type MediaEngineRoomConnectedEvent = {
+  roomName: string
+  sid: string
+  localUserId: string
+}
+
+export type MediaEngineRemoteAudioFrameEvent = {
+  userId: string
+  sampleRate: number
+  channels: number
+  samplesPerChannel: number
+  pcmBase64: string
+}
+
 export type MediaEngineEvent =
   | {
       event: 'engine.ready'
@@ -65,4 +83,27 @@ export type MediaEngineEvent =
   | {
       event: 'screen.stopped'
       params: Record<string, never>
+    }
+  | {
+      event: 'room.connected'
+      params: MediaEngineRoomConnectedEvent
+    }
+  | {
+      event: 'room.disconnected'
+      params: Record<string, never>
+    }
+  | {
+      event: 'room.participants'
+      params: {
+        localUserId: string
+        participants: Array<{ userId: string; sid: string }>
+      }
+    }
+  | {
+      event: 'remote.audio.frame'
+      params: MediaEngineRemoteAudioFrameEvent
+    }
+  | {
+      event: 'remote.audio.ended'
+      params: { userId: string }
     }

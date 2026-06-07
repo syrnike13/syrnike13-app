@@ -78,6 +78,12 @@ export async function publishMediaEngineTestTone(): Promise<void> {
   await sendRequest('room.publishTestTone', {})
 }
 
+export async function micSetEnabledMediaEngine(enabled: boolean) {
+  return (await sendRequest('mic.setEnabled', { enabled })) as {
+    enabled: boolean
+  }
+}
+
 export async function startMediaEngineScreen(
   getWindow: () => BrowserWindow | null,
   params: MediaEngineScreenStartParams,
@@ -315,6 +321,11 @@ function handleEngineLine(line: string) {
   }
 
   const event = parsed.message as MediaEngineEvent
+  if (parsed.kind === 'event' && event.event !== 'engine.ready') {
+    emitEngineEvent(event)
+    return
+  }
+
   if (
     readyWaiter &&
     event.event === 'engine.ready' &&

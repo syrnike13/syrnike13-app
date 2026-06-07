@@ -31,9 +31,11 @@ export type VoiceJoinRunnerDeps = {
     channelId: string,
     preview: ReturnType<typeof createConnectingLocalVoiceState>[],
   ) => void
-  setActiveRoom: (room: Room) => void
+  setActiveRoom: (room: Room | null) => void
   attachRoomHandlers: (room: Room) => void
   onRoomConnected: (room: Room, channelId: string) => void
+  onEngineVoiceConnected?: (channelId: string) => Promise<void>
+  shouldUseDesktopMediaEngine?: () => boolean
   onLivekitCredentials?: (credentials: { url: string; token: string }) => void
   onJoinSuccess: () => void
   abortJoin: () => void
@@ -104,6 +106,14 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
 
       const { url, token: livekitToken } = credentials
       deps.onLivekitCredentials?.({ url, token: livekitToken })
+
+      if (deps.shouldUseDesktopMediaEngine?.() && deps.onEngineVoiceConnected) {
+        deps.setActiveRoom(null)
+        await deps.onEngineVoiceConnected(targetChannelId)
+        deps.onJoinSuccess()
+        return true
+      }
+
       const room = new Room(createVoiceRoomOptions())
       deps.setActiveRoom(room)
       deps.attachRoomHandlers(room)

@@ -245,6 +245,11 @@ export function installMediaPermissions(
   )
 
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (process.platform === 'win32') {
+      callback({})
+      return
+    }
+
     if (!isAllowedMediaOrigin(loadUrl, request.securityOrigin)) {
       callback({})
       return

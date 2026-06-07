@@ -199,6 +199,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     publishTestTone() {
       return ipcRenderer.invoke(IPC.mediaEnginePublishTestTone)
     },
+    micSetEnabled(enabled: boolean) {
+      return ipcRenderer.invoke(IPC.mediaEngineMicSetEnabled, enabled)
+    },
     screenStart(params) {
       return ipcRenderer.invoke(IPC.mediaEngineScreenStart, params)
     },

@@ -32,6 +32,7 @@ import {
   disconnectMediaEngineRoom,
   getMediaEngineRuntimeStatus,
   initializeMediaEngine,
+  micSetEnabledMediaEngine,
   pingMediaEngine,
   publishMediaEngineTestTone,
   startMediaEngineScreen,
@@ -163,6 +164,10 @@ export function registerDesktopIpc(
 
   ipcMain.handle(IPC.mediaEnginePublishTestTone, () =>
     publishMediaEngineTestTone(),
+  )
+
+  ipcMain.handle(IPC.mediaEngineMicSetEnabled, (_event, enabled: boolean) =>
+    micSetEnabledMediaEngine(enabled),
   )
 
   ipcMain.handle(IPC.mediaEngineScreenStart, (_event, params) =>

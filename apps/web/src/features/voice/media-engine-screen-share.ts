@@ -4,14 +4,12 @@ import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
 import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import { getSyrnikeDesktop } from '#/platform/runtime'
-import type { MediaEngineRoomConnectParams } from '@syrnike13/platform'
 
 export type MediaEngineScreenShareSession = {
   stop: () => Promise<void>
 }
 
 export async function startMediaEngineScreenShare(
-  livekitSession: MediaEngineRoomConnectParams,
   sourceId: string,
   quality: ScreenShareQualityName,
   withAudio: boolean,
@@ -23,8 +21,6 @@ export async function startMediaEngineScreenShare(
 
   const capture = screenShareCaptureOptions(quality)
   const encoding = capture.publish.screenShareEncoding
-
-  await desktop.mediaEngine.roomConnect(livekitSession)
 
   const result = await desktop.mediaEngine.screenStart({
     sourceId,
@@ -52,7 +48,6 @@ export async function startMediaEngineScreenShare(
   return {
     async stop() {
       await desktop.mediaEngine.screenStop()
-      await desktop.mediaEngine.roomDisconnect()
       nativeCaptureStatsStore.reset()
     },
   }

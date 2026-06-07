@@ -11,7 +11,11 @@ use livekit::webrtc::audio_source::AudioSourceOptions;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+use crate::mic_publish::MicPublisher;
 use crate::protocol::{EventMessage, RoomConnectResult, ScreenStartParams, ScreenStartResult};
+use crate::remote_audio::{
+    emit_participants_snapshot, emit_room_connected, emit_room_disconnected, RemoteAudioForwarder,
+};
 use crate::screen_publish::ScreenPublisher;
 
 pub struct LiveKitRoom {
@@ -24,6 +28,9 @@ struct LiveKitRoomInner {
     tone_task: Option<JoinHandle<()>>,
     tone_stop: Option<Arc<AtomicBool>>,
     screen_publisher: ScreenPublisher,
+    mic_publisher: MicPublisher,
+    remote_audio: RemoteAudioForwarder,
+    mic_enabled: bool,
 }
 
 impl LiveKitRoom {
@@ -35,6 +42,9 @@ impl LiveKitRoom {
                 tone_task: None,
                 tone_stop: None,
                 screen_publisher: ScreenPublisher::new(),
+                mic_publisher: MicPublisher::new(),
+                remote_audio: RemoteAudioForwarder::new(),
+                mic_enabled: false,
             }),
         }
     }
@@ -43,6 +53,10 @@ impl LiveKitRoom {
         let mut inner = self.inner.lock().await;
         self.stop_tone_locked(&mut inner).await;
         self.stop_event_task_locked(&mut inner);
+        if let Some(room) = inner.room.as_ref() {
+            inner.mic_publisher.stop(room).await?;
+        }
+        inner.remote_audio.stop();
 
         if let Some(room) = inner.room.take() {
             room.close().await;
@@ -56,17 +70,64 @@ impl LiveKitRoom {
         let room_name = room.name();
         let sid = room.sid();
 
+        emit_room_connected(&room);
+        emit_participants_snapshot(&room);
+
         let observed = room.clone();
         inner.event_task = Some(tokio::spawn(async move {
+            let mut remote_audio = RemoteAudioForwarder::new();
+
             while let Some(event) = events.recv().await {
-                log::debug!("livekit event: {:?}", event);
-                let _ = &observed;
+                match event {
+                    RoomEvent::TrackSubscribed { track, participant, .. } => {
+                        if let RemoteTrack::Audio(audio_track) = track {
+                            remote_audio.subscribe_track(
+                                participant.identity().to_string(),
+                                audio_track,
+                            );
+                        }
+                        emit_participants_snapshot(&observed);
+                    }
+                    RoomEvent::ParticipantConnected(_) | RoomEvent::ParticipantDisconnected(_) => {
+                        emit_participants_snapshot(&observed);
+                    }
+                    RoomEvent::Disconnected { .. } => {
+                        emit_room_disconnected();
+                        break;
+                    }
+                    _ => {}
+                }
             }
+
+            remote_audio.stop();
         }));
 
         inner.room = Some(room);
+        inner.mic_enabled = false;
 
         Ok(RoomConnectResult { room_name, sid })
+    }
+
+    pub async fn set_mic_enabled(&self, enabled: bool) -> Result<(), String> {
+        let mut inner = self.inner.lock().await;
+        let room = inner
+            .room
+            .as_ref()
+            .ok_or_else(|| "room is not connected".to_string())?
+            .clone();
+
+        if enabled == inner.mic_enabled {
+            return Ok(());
+        }
+
+        if enabled {
+            inner.mic_publisher.start(room.clone()).await?;
+        } else {
+            inner.mic_publisher.stop(&room).await?;
+        }
+
+        inner.mic_enabled = enabled;
+        Ok(())
     }
 
     pub async fn start_screen(
@@ -90,6 +151,10 @@ impl LiveKitRoom {
     pub async fn disconnect(&self) -> Result<(), String> {
         let mut inner = self.inner.lock().await;
         inner.screen_publisher.stop().await?;
+        if let Some(room) = inner.room.as_ref() {
+            inner.mic_publisher.stop(room).await?;
+        }
+        inner.remote_audio.stop();
         self.stop_tone_locked(&mut inner).await;
         self.stop_event_task_locked(&mut inner);
 
@@ -97,6 +162,8 @@ impl LiveKitRoom {
             room.close().await;
         }
 
+        inner.mic_enabled = false;
+        emit_room_disconnected();
         Ok(())
     }
 

@@ -1,5 +1,6 @@
 import type {
   MediaEngineEvent,
+  MediaEngineMicSetEnabledResult,
   MediaEnginePingResult,
   MediaEngineRoomConnectParams,
   MediaEngineRoomConnectResult,
@@ -216,6 +217,7 @@ export interface SyrnikeDesktopApi {
     ): Promise<MediaEngineRoomConnectResult>
     roomDisconnect(): Promise<void>
     publishTestTone(): Promise<void>
+    micSetEnabled(enabled: boolean): Promise<MediaEngineMicSetEnabledResult>
     screenStart(
       params: MediaEngineScreenStartParams,
     ): Promise<MediaEngineScreenStartResult>

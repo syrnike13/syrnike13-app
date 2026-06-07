@@ -2,8 +2,8 @@ use serde_json::Value;
 
 use crate::livekit_room::LiveKitRoom;
 use crate::protocol::{
-    EventMessage, PingResult, RequestMessage, ResponseMessage, RoomConnectParams,
-    ScreenStartParams, ENGINE_NAME, ENGINE_VERSION,
+    EventMessage, MicSetEnabledParams, PingResult, RequestMessage, ResponseMessage,
+    RoomConnectParams, ScreenStartParams, ENGINE_NAME, ENGINE_VERSION,
 };
 
 pub struct EngineSession {
@@ -84,6 +84,27 @@ impl EngineSession {
                     ResponseMessage::failure(request.id, "ROOM_DISCONNECT_FAILED", message)
                 }
             },
+            "mic.setEnabled" => {
+                match serde_json::from_value::<MicSetEnabledParams>(request.params) {
+                    Ok(params) => {
+                        match self.livekit_room.set_mic_enabled(params.enabled).await {
+                            Ok(()) => ResponseMessage::success(request.id, serde_json::json!({
+                                "enabled": params.enabled,
+                            })),
+                            Err(message) => ResponseMessage::failure(
+                                request.id,
+                                "MIC_SET_ENABLED_FAILED",
+                                message,
+                            ),
+                        }
+                    }
+                    Err(error) => ResponseMessage::failure(
+                        request.id,
+                        "INVALID_PARAMS",
+                        format!("mic.setEnabled params invalid: {error}"),
+                    ),
+                }
+            }
             "room.publishTestTone" => match self.livekit_room.publish_test_tone().await {
                 Ok(()) => ResponseMessage::success(request.id, Value::Null),
                 Err(message) => {

@@ -76,6 +76,12 @@ fn default_with_audio() -> bool {
     true
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicSetEnabledParams {
+    pub enabled: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenStartResult {

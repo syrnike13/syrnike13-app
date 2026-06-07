@@ -61,17 +61,21 @@ import {
 import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
+import { shouldUseDesktopMediaEngine } from '#/features/voice/desktop-media-engine'
 import {
   startMediaEngineScreenShare,
   type MediaEngineScreenShareSession,
 } from '#/features/voice/media-engine-screen-share'
+import {
+  connectMediaEngineVoice,
+  type MediaEngineVoiceSession,
+} from '#/features/voice/media-engine-voice'
 import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
 import {
   clearNativePickerSelection,
   rejectNativePickerSelection,
   waitForNativePickerSelection,
 } from '#/features/voice/native-screen-share-session'
-import { shouldUseMediaEngineScreenShare } from '#/features/voice/native-screen-share-mode'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 import {
   applyMicProcessing,
@@ -285,7 +289,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       _channelId: string,
       _preview: ReturnType<typeof createConnectingLocalVoiceState>[],
     ) => {},
-    setActiveRoom: (_room: Room) => {},
+    setActiveRoom: (_room: Room | null) => {},
     attachRoomHandlers: (_room: Room) => {},
     onRoomConnected: (_room: Room, _channelId: string) => {},
     onLivekitCredentials: (_credentials: { url: string; token: string }) => {},
@@ -309,6 +313,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         voiceJoinDepsRef.current.attachRoomHandlers(room),
       onRoomConnected: (room, channelId) =>
         voiceJoinDepsRef.current.onRoomConnected(room, channelId),
+      onEngineVoiceConnected: (channelId) =>
+        voiceJoinDepsRef.current.onEngineVoiceConnected?.(channelId),
+      shouldUseDesktopMediaEngine: () =>
+        voiceJoinDepsRef.current.shouldUseDesktopMediaEngine?.() ?? false,
       onLivekitCredentials: (credentials) =>
         voiceJoinDepsRef.current.onLivekitCredentials(credentials),
       onJoinSuccess: () => voiceJoinDepsRef.current.onJoinSuccess(),
@@ -329,6 +337,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }),
   )
   const livekitSessionRef = useRef<{ url: string; token: string } | null>(null)
+  const engineVoiceSessionRef = useRef<MediaEngineVoiceSession | null>(null)
   const mediaEngineScreenShareRef =
     useRef<MediaEngineScreenShareSession | null>(null)
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
@@ -465,9 +474,28 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const syncRoomParticipants = useCallback(() => {
-    const room = roomRef.current
     const activeChannelId = channelIdRef.current
-    if (!room || !activeChannelId) return
+    if (!activeChannelId) return
+
+    if (engineVoiceSessionRef.current) {
+      const receiving = !deafenedRef.current
+      const fromStore = Object.values(
+        syncStore.getState().voiceParticipants[activeChannelId] ?? {},
+      )
+      setLiveChannelParticipants((current) =>
+        voiceStateListEquals(current, fromStore) ? current : fromStore,
+      )
+      const userId = auth.user?._id
+      if (userId) {
+        patchLocalVoiceMic(activeChannelId, userId, micPublishing)
+        patchLocalVoiceDeafen(activeChannelId, userId, deafenedRef.current)
+      }
+      setStageMediaItems([])
+      return
+    }
+
+    const room = roomRef.current
+    if (!room) return
     const receiving = !deafenedRef.current
     const participants = liveKitChannelParticipants(room, receiving)
     const liveKitIdentity = room.localParticipant.identity
@@ -485,7 +513,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setCameraEnabled(localMedia.camera)
     setScreenShareEnabled(localMedia.screensharing)
     syncStageMediaItems(room)
-  }, [syncStageMediaItems])
+  }, [auth.user?._id, micPublishing, syncStageMediaItems])
 
   const cleanupAudio = useCallback(() => {
     for (const element of audioElementsRef.current) {
@@ -605,6 +633,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         void activeEngineScreen.stop()
       }
       livekitSessionRef.current = null
+
+      const engineVoice = engineVoiceSessionRef.current
+      if (engineVoice) {
+        engineVoiceSessionRef.current = null
+        await engineVoice.disconnect()
+      }
 
       const room = roomRef.current
       const leftChannelId = channelIdRef.current
@@ -820,6 +854,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       },
       shouldLeaveBeforeJoin: () =>
         roomRef.current != null ||
+        engineVoiceSessionRef.current != null ||
         channelIdRef.current != null ||
         status !== 'idle',
       leaveBeforeJoin: () => leaveVoiceSession('switch'),
@@ -834,11 +869,36 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setActiveRoom: (room) => {
         roomRef.current = room
       },
+      shouldUseDesktopMediaEngine,
       attachRoomHandlers: (room) => attachAudio(room),
       onRoomConnected: (room, targetChannelId) => {
         setStatus('connected')
         syncRoomParticipants()
         void finishLocalVoiceSetup(room, targetChannelId)
+      },
+      onEngineVoiceConnected: async (targetChannelId) => {
+        const credentials = livekitSessionRef.current
+        if (!credentials) {
+          throw new Error('LiveKit credentials are missing')
+        }
+
+        const prefs = effectiveVoiceJoinPreferences(readVoicePreferences())
+        const session = await connectMediaEngineVoice(
+          credentials,
+          prefs.micEnabled,
+        )
+        engineVoiceSessionRef.current = session
+        setStatus('connected')
+        setMicEnabled(prefs.micEnabled)
+        setMicPublishing(prefs.micEnabled)
+        setDeafened(prefs.deafened)
+        deafenedRef.current = prefs.deafened
+        session.setDeafened(prefs.deafened)
+        syncRoomParticipants()
+        void syncVoiceStateToServer(targetChannelId, {
+          is_receiving: !prefs.deafened,
+          is_publishing: prefs.micEnabled,
+        })
       },
       onLivekitCredentials: (credentials) => {
         livekitSessionRef.current = credentials
@@ -889,7 +949,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       if (
         channelId === targetChannelId &&
         status === 'connected' &&
-        roomRef.current != null
+        (roomRef.current != null || engineVoiceSessionRef.current != null)
       ) {
         return
       }
@@ -968,6 +1028,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const toggleCamera = useCallback(() => {
+    if (engineVoiceSessionRef.current) {
+      toast.error('Камера пока недоступна в нативном режиме голоса')
+      return
+    }
+
     const room = roomRef.current
     if (!room) return
     const next = !room.localParticipant.isCameraEnabled
@@ -995,25 +1060,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const startScreenShare = useCallback(
     async (quality: ScreenShareQualityName, withAudio: boolean) => {
-      const room = roomRef.current
-      if (!room) return
+      if (!roomRef.current && !engineVoiceSessionRef.current) return
 
       voicePreferenceStore.setScreenShareQuality(quality)
       voicePreferenceStore.setScreenShareAudio(withAudio)
 
       const desktop = getSyrnikeDesktop()
-      const livekitSession = livekitSessionRef.current
-      if (
-        shouldUseMediaEngineScreenShare() &&
-        desktop &&
-        livekitSession
-      ) {
+      if (shouldUseDesktopMediaEngine() && desktop) {
         try {
           const pickerPromise = waitForNativePickerSelection()
           await desktop.screenShare.openNativePicker(withAudio)
           const sourceId = await pickerPromise
           const session = await startMediaEngineScreenShare(
-            livekitSession,
             sourceId,
             quality,
             withAudio,
@@ -1038,6 +1096,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           return
         }
       }
+
+      const room = roomRef.current
+      if (!room) return
 
       try {
         const capture = screenShareCaptureOptions(quality)
@@ -1093,13 +1154,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const toggleScreenShare = useCallback(() => {
-    const room = roomRef.current
-    if (!room) return
+    if (!roomRef.current && !engineVoiceSessionRef.current) return
 
     if (mediaEngineScreenShareRef.current) {
       stopMediaEngineScreenShare()
       setScreenShareEnabled(false)
       syncRoomParticipants()
+      return
+    }
+
+    const room = roomRef.current
+    if (!room) {
+      const prefs = readVoicePreferences()
+      void startScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
       return
     }
 
@@ -1129,7 +1196,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const toggleMic = useCallback(() => {
-    const room = roomRef.current
+    const engineVoice = engineVoiceSessionRef.current
     const activeChannelId = channelIdRef.current
     const userId = auth.user?._id
     const nextMic = !voicePreferenceStore.getMicEnabled()
@@ -1150,6 +1217,28 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    if (engineVoice) {
+      void engineVoice
+        .setMicEnabled(nextMic)
+        .then(() => {
+          setMicPublishing(nextMic)
+          setCurrentMicIssue(null)
+          if (activeChannelId && userId) {
+            patchLocalVoiceMic(activeChannelId, userId, nextMic)
+          }
+          syncRoomParticipants()
+        })
+        .catch((error) => {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Не удалось переключить микрофон',
+          )
+        })
+      return
+    }
+
+    const room = roomRef.current
     if (room) {
       void room.localParticipant
         .setMicrophoneEnabled(nextMic)
@@ -1173,6 +1262,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const toggleDeafen = useCallback(() => {
     const room = roomRef.current
+    const engineVoice = engineVoiceSessionRef.current
     const activeChannelId = channelIdRef.current
     const userId = auth.user?._id
     const nextDeafened = !voicePreferenceStore.getDeafened()
@@ -1180,6 +1270,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setDeafened(nextDeafened)
     deafenedRef.current = nextDeafened
     applyAllRemoteAudio(nextDeafened)
+    engineVoice?.setDeafened(nextDeafened)
 
     if (nextDeafened) {
       voicePreferenceStore.setMicEnabled(false)
@@ -1188,6 +1279,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setCurrentMicIssue(null)
       if (room) {
         void room.localParticipant.setMicrophoneEnabled(false)
+      }
+      if (engineVoice) {
+        void engineVoice.setMicEnabled(false)
       }
       if (activeChannelId && userId) {
         patchLocalVoiceMic(activeChannelId, userId, false)
@@ -1203,7 +1297,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         })
       }
     }
-    if (room && activeChannelId) {
+    if ((room || engineVoice) && activeChannelId) {
       syncRoomParticipants()
     }
   }, [

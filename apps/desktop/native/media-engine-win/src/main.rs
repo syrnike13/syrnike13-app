@@ -1,7 +1,10 @@
 mod capture;
+mod event_emitter;
 mod livekit_room;
+mod mic_publish;
 mod pipe;
 mod protocol;
+mod remote_audio;
 mod screen_publish;
 mod session;
 

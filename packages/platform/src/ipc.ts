@@ -37,6 +37,7 @@ export const IPC = {
   mediaEngineRoomConnect: 'syrnike-desktop:media-engine:room-connect',
   mediaEngineRoomDisconnect: 'syrnike-desktop:media-engine:room-disconnect',
   mediaEnginePublishTestTone: 'syrnike-desktop:media-engine:publish-test-tone',
+  mediaEngineMicSetEnabled: 'syrnike-desktop:media-engine:mic-set-enabled',
   mediaEngineScreenStart: 'syrnike-desktop:media-engine:screen-start',
   mediaEngineScreenStop: 'syrnike-desktop:media-engine:screen-stop',
   mediaEngineEvent: 'syrnike-desktop:media-engine:event',
