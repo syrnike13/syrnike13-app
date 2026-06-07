@@ -10,9 +10,11 @@ import {
   type DesktopDisplayMediaRequest,
   type DesktopOs,
   type NativeMediaAudioMode,
+  type NativeMediaDeviceInfo,
   type NativeMediaEngineSessionSummary,
   type NativeMediaFrameMethod,
   type NativeMediaFrameStats,
+  type NativeMediaNoiseSuppressionMode,
   type NativeMediaSession,
   type NativeMediaSidecarLostEvent,
   type NativeMediaSessionStartOptions,
@@ -47,12 +49,15 @@ export type PendingNativePicker = {
 
 type ActiveMediaEngineSession = {
   sessionId: string
-  port: number
-  streamMode: NativeMediaStreamMode
+  port?: number
+  streamMode?: NativeMediaStreamMode
   frameBufferPath?: string
   audio?: {
     port?: number
     mode: NativeMediaAudioMode
+    sampleRate?: 48_000
+    channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
   }
   helper: ChildProcessWithoutNullStreams
   stats: NativeMediaFrameStats
@@ -97,8 +102,22 @@ function buildSessionAudio(
   requested: boolean | undefined,
   mode: NativeMediaAudioMode,
   port: number | undefined,
+  metadata?: {
+    sampleRate?: 48_000
+    channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
+  },
 ): NativeMediaSession['audio'] {
   if (!requested && mode === 'none' && !port) return undefined
+  if (mode === 'microphone' && port != null) {
+    return {
+      mode,
+      port,
+      sampleRate: metadata?.sampleRate ?? 48_000,
+      channels: 1,
+      noiseSuppression: metadata?.noiseSuppression ?? 'disabled',
+    }
+  }
   return { mode, port }
 }
 
@@ -108,11 +127,25 @@ function readWindowHwnd(win: BrowserWindow): number | undefined {
   return handle.readInt32LE(0)
 }
 
-function buildScreenShareStartCommand(
+export function buildNativeMediaStartCommand(
   options: NativeMediaSessionStartOptions,
   sessionId: string,
   getWindow: () => BrowserWindow | null,
 ) {
+  if (options.kind === 'microphone') {
+    return {
+      cmd: 'start',
+      sessionId,
+      sessionKind: options.kind,
+      deviceId: options.deviceId,
+      sampleRate: options.sampleRate,
+      channels: options.channels,
+      echoCancellation: options.echoCancellation,
+      noiseSuppression: options.noiseSuppression,
+      inputVolume: options.inputVolume,
+    }
+  }
+
   const win = getWindow()
   return {
     cmd: 'start',
@@ -129,6 +162,14 @@ function buildScreenShareStartCommand(
     selfWindowHwnd:
       win && !win.isDestroyed() ? readWindowHwnd(win) : undefined,
   }
+}
+
+function buildScreenShareStartCommand(
+  options: Extract<NativeMediaSessionStartOptions, { kind: 'screen' }>,
+  sessionId: string,
+  getWindow: () => BrowserWindow | null,
+) {
+  return buildNativeMediaStartCommand(options, sessionId, getWindow)
 }
 
 function assertScreenSessionOptions(
@@ -198,6 +239,7 @@ export function buildNativeMediaEngineSnapshot(
                 ? 'starting'
                 : 'running',
           port: input.activeSession.port,
+          audio: input.activeSession.audio,
         },
       ]
     : []
@@ -393,6 +435,7 @@ function processAudioStreamBuffer(
 async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
   if (session.reconnecting) return false
   if (session.reconnectAttempts >= MAX_SIDECAR_RECONNECT_ATTEMPTS) return false
+  if (session.startOptions.kind !== 'screen') return false
 
   session.reconnecting = true
   session.reconnectAttempts += 1
@@ -443,18 +486,13 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
       session.startOptions.audio?.requested,
       audioMode,
       readyEvent.audio_port,
+      mapReadyAudioMetadata(readyEvent),
     )
     session.stats = emptyStats()
     session.activeMethod = undefined
     session.socketReadBuffer = Buffer.alloc(0)
     session.audioSocketReadBuffer = Buffer.alloc(0)
     attachStreamRelay(getWindow, session)
-
-    emitMediaEngineState(getWindow, {
-      status: 'running',
-      sessionId: session.sessionId,
-      port: readyEvent.port,
-    })
 
     session.reconnecting = false
     return true
@@ -499,6 +537,7 @@ function attachStreamRelay(
   getWindow: () => BrowserWindow | null,
   session: ActiveMediaEngineSession,
 ) {
+  if (session.port == null) return
   const socket = net.connect(session.port, '127.0.0.1')
   session.socket = socket
 
@@ -541,7 +580,31 @@ function attachAudioStreamRelay(
     processAudioStreamBuffer(getWindow, session)
   })
 
+  socket.on('end', () => {
+    const win = getWindow()
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IPC.mediaStreamEnded, session.sessionId)
+    }
+    if (
+      session.startOptions.kind === 'microphone' &&
+      activeSession?.sessionId === session.sessionId
+    ) {
+      void handleSidecarFailure(
+        session,
+        'stream_error',
+        'Native microphone audio stream ended',
+      )
+    }
+  })
+
   socket.on('error', (error) => {
+    if (
+      session.startOptions.kind === 'microphone' &&
+      activeSession?.sessionId === session.sessionId
+    ) {
+      void handleSidecarFailure(session, 'stream_error', error.message)
+      return
+    }
     console.warn('[media-engine] audio stream error', error.message)
   })
 }
@@ -666,6 +729,59 @@ function ensureMediaEngineHelper() {
   return helper
 }
 
+async function listNativeMediaDevices(
+  kind: 'audioinput',
+): Promise<NativeMediaDeviceInfo[]> {
+  if (process.platform !== 'win32' || kind !== 'audioinput') return []
+
+  const helperPath = resolveMediaEngineHelperPath()
+  if (!helperPath) return []
+
+  return new Promise((resolve, reject) => {
+    const helper = spawn(helperPath, [], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    const reader = readline.createInterface({ input: helper.stdout })
+    let settled = false
+
+    const finish = (devices: NativeMediaDeviceInfo[]) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reader.close()
+      helper.kill()
+      resolve(devices)
+    }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reader.close()
+      helper.kill()
+      reject(error)
+    }
+    const timer = setTimeout(() => {
+      fail(new Error('Native media device enumeration timed out'))
+    }, 5_000)
+
+    reader.on('line', (line) => {
+      const event = parseSidecarEvent(line)
+      if (!event) return
+      if (event.type === 'device_list') {
+        finish(event.devices.filter((device) => device.kind === kind))
+      } else if (event.type === 'error') {
+        fail(new Error(event.message))
+      }
+    })
+    helper.on('error', fail)
+    helper.on('exit', () => {
+      if (!settled) finish([])
+    })
+    helper.stdin.write(`${JSON.stringify({ cmd: 'list_devices', kind })}\n`)
+  })
+}
+
 async function waitForSidecarReady(timeoutMs = 15_000) {
   return new Promise<SidecarEvent>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -685,12 +801,29 @@ async function waitForSidecarReady(timeoutMs = 15_000) {
   })
 }
 
-async function startNativeScreenShareSession(
+function mapReadyAudioMetadata(readyEvent: Extract<SidecarEvent, { type: 'ready' }>) {
+  return {
+    sampleRate: readyEvent.audio_sample_rate === 48_000 ? 48_000 : undefined,
+    channels:
+      readyEvent.audio_channels === 1 || readyEvent.audio_channels === 2
+        ? readyEvent.audio_channels
+        : undefined,
+    noiseSuppression:
+      readyEvent.noise_suppression === 'deep_filter_net3' ||
+      readyEvent.noise_suppression === 'disabled'
+        ? readyEvent.noise_suppression
+        : undefined,
+  } satisfies {
+    sampleRate?: 48_000
+    channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
+  }
+}
+
+async function startNativeMediaSession(
   getWindow: () => BrowserWindow | null,
   options: NativeMediaSessionStartOptions,
 ): Promise<NativeMediaSession> {
-  assertScreenSessionOptions(options)
-
   if (process.platform !== 'win32') {
     throw new Error('Native media engine is only available on Windows')
   }
@@ -704,7 +837,7 @@ async function startNativeScreenShareSession(
   const readyPromise = waitForSidecarReady()
 
   helper.stdin.write(
-    `${JSON.stringify(buildScreenShareStartCommand(options, sessionId, getWindow))}\n`,
+    `${JSON.stringify(buildNativeMediaStartCommand(options, sessionId, getWindow))}\n`,
   )
 
   const readyEvent = await readyPromise
@@ -712,18 +845,21 @@ async function startNativeScreenShareSession(
     throw new Error('Native media engine failed to start')
   }
 
-  const streamMode = mapStreamMode(readyEvent.stream_mode)
-  const encoder = mapEncoderBackend(readyEvent.encoder)
   const audioMode = mapAudioMode(readyEvent.audio_mode)
+  const audioMetadata = mapReadyAudioMetadata(readyEvent)
+  const audio = buildSessionAudio(
+    options.kind === 'screen' ? options.audio?.requested : true,
+    audioMode,
+    readyEvent.audio_port,
+    audioMetadata,
+  )
+  const streamMode =
+    options.kind === 'screen' ? mapStreamMode(readyEvent.stream_mode) : undefined
 
   activeSession = {
     sessionId,
-    port: readyEvent.port,
-    audio: buildSessionAudio(
-      options.audio?.requested,
-      audioMode,
-      readyEvent.audio_port,
-    ),
+    port: options.kind === 'screen' ? readyEvent.port : undefined,
+    audio,
     streamMode,
     frameBufferPath: readyEvent.frame_buffer_path,
     helper,
@@ -736,19 +872,38 @@ async function startNativeScreenShareSession(
     reconnectAttempts: 0,
     reconnecting: false,
   }
-  attachStreamRelay(getWindow, activeSession)
+  if (options.kind === 'screen') {
+    attachStreamRelay(getWindow, activeSession)
+  } else if (audio?.port) {
+    attachAudioStreamRelay(getWindow, activeSession)
+  }
+
+  if (options.kind === 'microphone') {
+    if (!audio || audio.mode !== 'microphone' || audio.port == null) {
+      throw new Error('Native microphone session did not provide audio')
+    }
+    return {
+      kind: 'microphone',
+      sessionId,
+      audio: {
+        mode: 'microphone',
+        port: audio.port,
+        sampleRate: audioMetadata.sampleRate ?? 48_000,
+        channels: 1,
+        noiseSuppression: audioMetadata.noiseSuppression ?? 'disabled',
+      },
+    }
+  }
+
+  const encoder = mapEncoderBackend(readyEvent.encoder)
 
   const session: NativeMediaSession = {
     kind: 'screen',
     sessionId,
     port: readyEvent.port,
-    streamMode,
+    streamMode: streamMode ?? 'bgra',
     encoder,
-    audio: buildSessionAudio(
-      options.audio?.requested,
-      audioMode,
-      readyEvent.audio_port,
-    ),
+    audio,
   }
 
   return session
@@ -765,7 +920,7 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
       if (!isTrustedSender(event, getWindow)) {
         throw new Error('Untrusted media engine start request')
       }
-      return startNativeScreenShareSession(getWindow, options)
+      return startNativeMediaSession(getWindow, options)
     },
   )
 
@@ -773,6 +928,11 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
     if (!isTrustedSender(event, getWindow)) return
     if (sessionId && activeSession?.sessionId !== sessionId) return
     stopMediaEngineHelper()
+  })
+
+  ipcMain.handle(IPC.mediaListDevices, async (event, kind: 'audioinput') => {
+    if (!isTrustedSender(event, getWindow)) return []
+    return listNativeMediaDevices(kind)
   })
 
   ipcMain.handle(

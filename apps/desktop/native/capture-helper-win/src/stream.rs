@@ -5,42 +5,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::audio_loopback::{
-    try_start_process_audio, try_start_system_audio_exclude, AudioCaptureSession,
-};
+use crate::audio_loopback::{try_start_process_audio, try_start_system_audio_exclude};
 use crate::encoder::{EncoderBackend, VideoEncoder};
 use crate::frame_buffer::{pack_bgra_frame, pack_bgra_frame_header, SharedFrameBuffer};
 use crate::hybrid::{CaptureMethod, HybridCapturer};
-use crate::protocol::{emit, Event, StreamMode};
+use crate::protocol::StreamMode;
+use crate::session::{AudioCaptureSession, CaptureSession};
 use crate::target::CaptureTarget;
-
-pub struct CaptureSession {
-    session_id: String,
-    session_kind: &'static str,
-    stop: Arc<AtomicBool>,
-    thread: Option<thread::JoinHandle<()>>,
-    audio: Option<AudioCaptureSession>,
-}
-
-impl CaptureSession {
-    pub fn stop(mut self) {
-        self.stop.store(true, Ordering::SeqCst);
-        if let Some(audio) = self.audio.take() {
-            audio.stop();
-        }
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-        emit(&Event::SessionLifecycle {
-            session_id: self.session_id,
-            kind: self.session_kind,
-            status: "stopped",
-            port: None,
-            message: None,
-        });
-        emit(&Event::Stopped);
-    }
-}
 
 pub struct CaptureSessionConfig {
     pub encoder_backend: EncoderBackend,
@@ -84,12 +55,8 @@ pub fn start_capture_session(
     let stop = Arc::new(AtomicBool::new(false));
     let stop_flag = Arc::clone(&stop);
 
-    let (audio_port, audio_mode, audio_session) = start_window_process_audio(
-        &target,
-        with_audio,
-        exclude_process_id,
-        self_window_hwnd,
-    )?;
+    let (audio_port, audio_mode, audio_session) =
+        start_window_process_audio(&target, with_audio, exclude_process_id, self_window_hwnd)?;
 
     let thread = thread::spawn(move || {
         if let Err(error) = run_capture_loop(
@@ -109,13 +76,7 @@ pub fn start_capture_session(
 
     Ok((
         port,
-        CaptureSession {
-            session_id,
-            session_kind,
-            stop,
-            thread: Some(thread),
-            audio: audio_session,
-        },
+        CaptureSession::new(session_id, session_kind, stop, Some(thread), audio_session),
         CaptureSessionConfig {
             encoder_backend,
             stream_mode,
@@ -131,7 +92,14 @@ fn start_window_process_audio(
     with_audio: bool,
     exclude_process_id: Option<u32>,
     self_window_hwnd: Option<isize>,
-) -> Result<(Option<u16>, Option<&'static str>, Option<AudioCaptureSession>), String> {
+) -> Result<
+    (
+        Option<u16>,
+        Option<&'static str>,
+        Option<AudioCaptureSession>,
+    ),
+    String,
+> {
     if !with_audio {
         return Ok((None, None, None));
     }

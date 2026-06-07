@@ -1,21 +1,20 @@
 import type { SyrnikeDesktopApi } from '@syrnike13/platform'
 
 const SAMPLE_RATE = 48_000
-const CHANNELS = 2
 
 export type NativeAudioBridgeHandle = {
   track: MediaStreamTrack
   stop: () => void
 }
 
-function waitForQueueData(queue: Uint8Array[]) {
+function waitForQueueData(queue: Uint8Array[], shouldContinue: () => boolean) {
   return new Promise<void>((resolve) => {
     const tick = () => {
-      if (queue.length > 0) {
+      if (queue.length > 0 || !shouldContinue()) {
         resolve()
         return
       }
-      window.setTimeout(tick, 5)
+      globalThis.setTimeout(tick, 5)
     }
     tick()
   })
@@ -24,6 +23,20 @@ function waitForQueueData(queue: Uint8Array[]) {
 export async function createNativeScreenShareAudioTrack(
   desktop: SyrnikeDesktopApi,
   sessionId: string,
+): Promise<NativeAudioBridgeHandle> {
+  return createNativeAudioTrack(desktop, sessionId, {
+    sampleRate: SAMPLE_RATE,
+    channels: 2,
+  })
+}
+
+export async function createNativeAudioTrack(
+  desktop: SyrnikeDesktopApi,
+  sessionId: string,
+  options: {
+    sampleRate: number
+    channels: 1 | 2
+  },
 ): Promise<NativeAudioBridgeHandle> {
   if (typeof MediaStreamTrackGenerator === 'undefined') {
     throw new Error('MediaStreamTrackGenerator is not supported')
@@ -39,6 +52,15 @@ export async function createNativeScreenShareAudioTrack(
   let ended = false
   let bridgeError: Error | null = null
   let timestampUs = 0
+  let writerClosed = false
+
+  const closeWriter = () => {
+    if (writerClosed) return
+    writerClosed = true
+    void writer.close().catch(() => {
+      // Track shutdown is best-effort; the native session is already ending.
+    })
+  }
 
   const unsubscribeChunk = desktop.media.onStreamAudioChunk((event) => {
     if (event.sessionId !== sessionId) return
@@ -55,40 +77,46 @@ export async function createNativeScreenShareAudioTrack(
   })
 
   const pump = async () => {
-    while (!ended && !bridgeError) {
-      await waitForQueueData(packetQueue)
-      const packet = packetQueue.shift()
-      if (!packet) continue
+    try {
+      while (!ended && !bridgeError) {
+        await waitForQueueData(packetQueue, () => !ended && !bridgeError)
+        if (ended || bridgeError) break
 
-      // Main already strips TCP length prefix; each IPC chunk is one PCM packet.
-      if (packet.byteLength < CHANNELS * 4) continue
+        const packet = packetQueue.shift()
+        if (!packet) continue
 
-      const interleaved = new Float32Array(
-        packet.buffer,
-        packet.byteOffset,
-        Math.floor(packet.byteLength / 4),
-      )
-      const frames = Math.floor(interleaved.length / CHANNELS)
-      if (frames === 0) continue
+        // Main already strips TCP length prefix; each IPC chunk is one PCM packet.
+        if (packet.byteLength < options.channels * 4) continue
 
-      try {
-        const audioData = new AudioData({
-          format: 'f32',
-          sampleRate: SAMPLE_RATE,
-          numberOfFrames: frames,
-          numberOfChannels: CHANNELS,
-          timestamp: timestampUs,
-          data: interleaved,
-        })
+        const interleaved = new Float32Array(
+          packet.buffer,
+          packet.byteOffset,
+          Math.floor(packet.byteLength / 4),
+        )
+        const frames = Math.floor(interleaved.length / options.channels)
+        if (frames === 0) continue
 
-        await writer.write(audioData)
-        audioData.close()
-        timestampUs += Math.round((frames / SAMPLE_RATE) * 1_000_000)
-      } catch (error) {
-        bridgeError =
-          error instanceof Error ? error : new Error(String(error))
-        break
+        try {
+          const audioData = new AudioData({
+            format: 'f32',
+            sampleRate: options.sampleRate,
+            numberOfFrames: frames,
+            numberOfChannels: options.channels,
+            timestamp: timestampUs,
+            data: interleaved,
+          })
+
+          await writer.write(audioData)
+          audioData.close()
+          timestampUs += Math.round((frames / options.sampleRate) * 1_000_000)
+        } catch (error) {
+          bridgeError =
+            error instanceof Error ? error : new Error(String(error))
+          break
+        }
       }
+    } finally {
+      closeWriter()
     }
   }
 
@@ -101,7 +129,7 @@ export async function createNativeScreenShareAudioTrack(
     unsubscribeChunk()
     unsubscribeEnded()
     unsubscribeError()
-    void writer.close()
+    closeWriter()
   }
 
   return {

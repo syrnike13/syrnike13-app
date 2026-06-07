@@ -20,6 +20,7 @@ vi.mock('#/platform/runtime', () => ({
 
 describe('createVoiceRoomOptions', () => {
   beforeEach(() => {
+    vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
     voicePreferenceStore.setNoiseSuppression('enhanced')
     voicePreferenceStore.setVoiceGateEnabled(true)
   })
@@ -35,6 +36,17 @@ describe('createVoiceRoomOptions', () => {
 
     expect(options.audioCaptureDefaults?.noiseSuppression).toBe(false)
     expect(options.audioCaptureDefaults?.autoGainControl).toBe(false)
+  })
+
+  it('does not configure browser audio capture defaults on Windows desktop', () => {
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      runtime: 'desktop',
+      platform: { os: 'win32' },
+    } as ReturnType<typeof getSyrnikeDesktop>)
+
+    const options = createVoiceRoomOptions()
+
+    expect(options.audioCaptureDefaults).toBeUndefined()
   })
 })
 

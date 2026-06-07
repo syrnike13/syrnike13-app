@@ -8,9 +8,7 @@ use windows::Win32::Graphics::Gdi::{
     HGDIOBJ, SRCCOPY,
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, GetWindowRect, PW_RENDERFULLCONTENT,
-};
+use windows::Win32::UI::WindowsAndMessaging::{GetClientRect, GetWindowRect, PW_RENDERFULLCONTENT};
 
 use crate::monitor::monitor_bounds_by_index;
 use crate::target::CaptureTarget;
@@ -146,9 +144,7 @@ impl HybridCapturer {
                     .into_iter()
                     .nth(index)
                     .ok_or_else(|| "monitor not found".to_string())?;
-                self.scrap = Some(
-                    Capturer::new(display).map_err(|error| error.to_string())?,
-                );
+                self.scrap = Some(Capturer::new(display).map_err(|error| error.to_string())?);
                 return Ok(());
             }
             self.method = CaptureMethod::GdiBlt;
@@ -178,14 +174,13 @@ impl HybridCapturer {
         let from = self.method;
         self.wgc = None;
         self.scrap = None;
-        self.last_downgrade_reason = Some(format!(
-            "{} failed: {}",
-            from.as_str(),
-            reason
-        ));
+        self.last_downgrade_reason = Some(format!("{} failed: {}", from.as_str(), reason));
 
-        self.method = match (from, self.target.hwnd.is_some(), self.target.monitor_index.is_some())
-        {
+        self.method = match (
+            from,
+            self.target.hwnd.is_some(),
+            self.target.monitor_index.is_some(),
+        ) {
             (CaptureMethod::Wgc, true, _) => CaptureMethod::GdiPrint,
             (CaptureMethod::Wgc, false, true) => CaptureMethod::Dxgi,
             (CaptureMethod::Wgc, false, false) => CaptureMethod::GdiBlt,
@@ -348,14 +343,20 @@ fn capture_hwnd_gdi(
 
         let old = SelectObject(mem_dc, HGDIOBJ(bitmap.0));
         let copied = if use_print_window {
-            PrintWindow(
-                hwnd,
-                mem_dc,
-                PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT),
-            )
-            .as_bool()
+            PrintWindow(hwnd, mem_dc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool()
         } else {
-            BitBlt(mem_dc, 0, 0, width as i32, height as i32, window_dc, 0, 0, SRCCOPY).is_ok()
+            BitBlt(
+                mem_dc,
+                0,
+                0,
+                width as i32,
+                height as i32,
+                window_dc,
+                0,
+                0,
+                SRCCOPY,
+            )
+            .is_ok()
         };
 
         let mut bmi = BITMAPINFO {
@@ -432,15 +433,7 @@ fn capture_monitor_gdi(
         let bitmap: HBITMAP = CreateCompatibleBitmap(screen_dc, width, height);
         let old = SelectObject(mem_dc, HGDIOBJ(bitmap.0));
         let copied = BitBlt(
-            mem_dc,
-            0,
-            0,
-            width,
-            height,
-            screen_dc,
-            origin.0,
-            origin.1,
-            SRCCOPY,
+            mem_dc, 0, 0, width, height, screen_dc, origin.0, origin.1, SRCCOPY,
         )
         .is_ok();
 

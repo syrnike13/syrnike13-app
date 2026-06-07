@@ -1,4 +1,5 @@
 import type {
+  NativeMediaDeviceInfo,
   NativeMediaSession,
   NativeMediaSessionStartOptions,
   NativeMediaState,
@@ -149,6 +150,7 @@ export type DesktopDisplayMediaRequest = {
 
 export type {
   NativeMediaEncoderBackend,
+  NativeMediaDeviceInfo,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
   NativeMediaSession,
@@ -213,6 +215,7 @@ export interface SyrnikeDesktopApi {
     selectDisplaySource(requestId: string, sourceId: string): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
+    listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: { requestId: string; sourceId: string }) => void,

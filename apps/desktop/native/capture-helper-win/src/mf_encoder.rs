@@ -3,15 +3,17 @@ use std::ptr::null_mut;
 
 use windows::core::GUID;
 use windows::Win32::Media::MediaFoundation::{
-    IMFActivate, IMFMediaType, IMFSample, IMFTransform, MF_E_TRANSFORM_NEED_MORE_INPUT,
-    MF_E_TRANSFORM_STREAM_CHANGE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE,
-    MF_MT_AVG_BITRATE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MFCreateMediaType, MFCreateMemoryBuffer,
-    MFCreateSample, MFMediaType_Video, MFSTARTUP_FULL, MFVideoFormat_H264, MFVideoFormat_NV12,
-    MFVideoInterlace_Progressive, MFT_CATEGORY_VIDEO_ENCODER, MFT_ENUM_FLAG_HARDWARE,
-    MFT_ENUM_FLAG_SORTANDFILTER, MFT_ENUM_FLAG_SYNCMFT, MFT_REGISTER_TYPE_INFO,
-    MFMediaType_Video as MF_MT_VIDEO,
+    IMFActivate, IMFMediaType, IMFSample, IMFTransform, MFCreateMediaType, MFCreateMemoryBuffer,
+    MFCreateSample, MFMediaType_Video, MFMediaType_Video as MF_MT_VIDEO, MFVideoFormat_H264,
+    MFVideoFormat_NV12, MFVideoInterlace_Progressive, MFSTARTUP_FULL, MFT_CATEGORY_VIDEO_ENCODER,
+    MFT_ENUM_FLAG_HARDWARE, MFT_ENUM_FLAG_SORTANDFILTER, MFT_ENUM_FLAG_SYNCMFT,
+    MFT_REGISTER_TYPE_INFO, MF_E_TRANSFORM_NEED_MORE_INPUT, MF_E_TRANSFORM_STREAM_CHANGE,
+    MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE,
+    MF_MT_SUBTYPE,
 };
-use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED};
+use windows::Win32::System::Com::{
+    CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED,
+};
 
 pub struct MfH264Encoder {
     transform: IMFTransform,
@@ -64,12 +66,13 @@ impl MfH264Encoder {
 
             loop {
                 let mut status = 0u32;
-                let output_buffer = windows::Win32::Media::MediaFoundation::MFT_OUTPUT_DATA_BUFFER {
-                    dwStreamID: 0,
-                    pSample: ManuallyDrop::new(None),
-                    dwStatus: 0,
-                    pEvents: ManuallyDrop::new(None),
-                };
+                let output_buffer =
+                    windows::Win32::Media::MediaFoundation::MFT_OUTPUT_DATA_BUFFER {
+                        dwStreamID: 0,
+                        pSample: ManuallyDrop::new(None),
+                        dwStatus: 0,
+                        pEvents: ManuallyDrop::new(None),
+                    };
                 let mut buffers = [output_buffer];
                 match self.transform.ProcessOutput(0, &mut buffers, &mut status) {
                     Ok(()) => {
@@ -309,13 +312,7 @@ fn avcc_sample_to_annex_b(avcc: &[u8]) -> Vec<u8> {
     annex_b
 }
 
-fn bgra_to_nv12(
-    bgra: &[u8],
-    stride: usize,
-    width: usize,
-    height: usize,
-    nv12: &mut [u8],
-) {
+fn bgra_to_nv12(bgra: &[u8], stride: usize, width: usize, height: usize, nv12: &mut [u8]) {
     let y_plane = width * height;
     let uv_plane = y_plane / 4;
 

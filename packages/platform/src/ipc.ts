@@ -31,6 +31,7 @@ export const IPC = {
   mediaSelectDisplaySource: 'syrnike-desktop:media:select-display-source',
   mediaCancelRequest: 'syrnike-desktop:media:cancel-request',
   mediaOpenDisplayPicker: 'syrnike-desktop:media:open-display-picker',
+  mediaListDevices: 'syrnike-desktop:media:list-devices',
   mediaStartSession: 'syrnike-desktop:media:start-session',
   mediaStopSession: 'syrnike-desktop:media:stop-session',
   mediaGetState: 'syrnike-desktop:media:get-state',

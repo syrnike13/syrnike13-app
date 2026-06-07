@@ -73,6 +73,11 @@ import {
   publishNativeScreenShare,
   type NativeScreenShareSession,
 } from '#/features/voice/native-screen-share-publish'
+import {
+  publishNativeMicrophone,
+  shouldUseNativeMicrophone,
+  type NativeMicrophoneSession,
+} from '#/features/voice/native-microphone-publish'
 import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
 import {
   clearNativePickerSelection,
@@ -85,7 +90,6 @@ import {
   refreshMicProcessing,
 } from '#/features/voice/voice-mic-processing'
 import { clearSessionVoiceGateThreshold } from '#/features/voice/voice-gate-session'
-import { resetDenoiseUnavailableNotify } from '#/features/voice/voice-mic-denoise-notify'
 import { voicePreferenceEffectFlags } from '#/features/voice/voice-preference-effects'
 import {
   describeMicDeviceError,
@@ -274,6 +278,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const roomRef = useRef<Room | null>(null)
   const nativeScreenShareRef = useRef<NativeScreenShareSession | null>(null)
+  const nativeMicrophoneRef = useRef<NativeMicrophoneSession | null>(null)
   const audioElementsRef = useRef<HTMLAudioElement[]>([])
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
@@ -574,6 +579,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const resetVoiceState = useCallback(() => {
+    if (nativeMicrophoneRef.current) {
+      nativeMicrophoneRef.current.stop()
+      nativeMicrophoneRef.current = null
+    }
     if (nativeScreenShareRef.current) {
       nativeScreenShareRef.current.stop()
       nativeScreenShareRef.current = null
@@ -620,7 +629,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       cleanupAudio()
       clearSessionVoiceGateThreshold()
-      resetDenoiseUnavailableNotify()
       resetVoiceState()
 
       if (leftChannelId && userId) {
@@ -640,7 +648,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const applyVoiceDevices = useCallback(async (room: Room) => {
     const prefs = readVoicePreferences()
-    if (prefs.preferredAudioInputDevice) {
+    if (prefs.preferredAudioInputDevice && !shouldUseNativeMicrophone()) {
       await switchDeviceWithTimeout(
         room,
         'audioinput',
@@ -657,16 +665,50 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     applyAllRemoteAudio(deafenedRef.current)
   }, [])
 
+  const stopNativeMicrophone = useCallback(() => {
+    const active = nativeMicrophoneRef.current
+    if (!active) return
+    nativeMicrophoneRef.current = null
+    active.stop()
+  }, [])
+
+  const startNativeMicrophone = useCallback(
+    async (room: Room) => {
+      stopNativeMicrophone()
+      const session = await publishNativeMicrophone(
+        room.localParticipant,
+        (sessionId) => {
+          if (nativeMicrophoneRef.current?.sessionId !== sessionId) return
+          nativeMicrophoneRef.current = null
+          syncMicFromRoom(room)
+          syncRoomParticipants()
+        },
+      )
+      nativeMicrophoneRef.current = session
+      syncMicFromRoom(room)
+      syncRoomParticipants()
+    },
+    [stopNativeMicrophone, syncMicFromRoom, syncRoomParticipants],
+  )
+
   const finishLocalVoiceSetup = useCallback(
     async (room: Room, targetChannelId: string) => {
       const prefs = effectiveVoiceJoinPreferences(readVoicePreferences())
       let micSetupFailed = false
       try {
-        await room.localParticipant.setMicrophoneEnabled(
-          prefs.micEnabled,
-          undefined,
-          voiceMicPublishOptions(),
-        )
+        if (shouldUseNativeMicrophone()) {
+          if (prefs.micEnabled) {
+            await startNativeMicrophone(room)
+          } else {
+            stopNativeMicrophone()
+          }
+        } else {
+          await room.localParticipant.setMicrophoneEnabled(
+            prefs.micEnabled,
+            undefined,
+            voiceMicPublishOptions(),
+          )
+        }
       } catch (error) {
         micSetupFailed = true
         syncMicFromRoom(room, describeMicDeviceError(error))
@@ -679,7 +721,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       deafenedRef.current = prefs.deafened
       applyAllRemoteAudio(prefs.deafened)
       await applyVoiceDevices(room)
-      if (prefs.micEnabled && !micSetupFailed) {
+      if (
+        prefs.micEnabled &&
+        !micSetupFailed &&
+        !shouldUseNativeMicrophone()
+      ) {
         await applyMicProcessing(room.localParticipant)
       }
       syncRoomParticipants()
@@ -696,6 +742,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [
       applyVoiceDevices,
       auth.user?._id,
+      startNativeMicrophone,
+      stopNativeMicrophone,
       syncMicFromRoom,
       syncRoomParticipants,
       syncVoiceStateToServer,
@@ -1189,6 +1237,24 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
 
     if (room) {
+      if (shouldUseNativeMicrophone()) {
+        if (nextMic) {
+          void startNativeMicrophone(room)
+            .then(() => {
+              syncMicFromRoom(room)
+              syncRoomParticipants()
+            })
+            .catch((error) => {
+              syncMicFromRoom(room, describeMicDeviceError(error))
+              syncRoomParticipants()
+            })
+        } else {
+          stopNativeMicrophone()
+          syncMicFromRoom(room)
+          syncRoomParticipants()
+        }
+        return
+      }
       void room.localParticipant
         .setMicrophoneEnabled(nextMic, undefined, voiceMicPublishOptions())
         .then(() => {
@@ -1207,7 +1273,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (activeChannelId && userId) {
       patchLocalVoiceMic(activeChannelId, userId, nextMic)
     }
-  }, [auth.user?._id, setCurrentMicIssue, syncMicFromRoom, syncRoomParticipants])
+  }, [
+    auth.user?._id,
+    setCurrentMicIssue,
+    startNativeMicrophone,
+    stopNativeMicrophone,
+    syncMicFromRoom,
+    syncRoomParticipants,
+  ])
 
   const toggleDeafen = useCallback(() => {
     const room = roomRef.current
@@ -1225,7 +1298,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setMicPublishing(false)
       setCurrentMicIssue(null)
       if (room) {
-        void room.localParticipant.setMicrophoneEnabled(false)
+        if (shouldUseNativeMicrophone()) {
+          stopNativeMicrophone()
+        } else {
+          void room.localParticipant.setMicrophoneEnabled(false)
+        }
       }
       if (activeChannelId && userId) {
         patchLocalVoiceMic(activeChannelId, userId, false)
@@ -1248,6 +1325,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     auth.user?._id,
     setCurrentMicIssue,
     status,
+    stopNativeMicrophone,
     syncRoomParticipants,
     syncVoiceStateToServer,
   ])
@@ -1277,16 +1355,30 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const effects = voicePreferenceEffectFlags(previous, next)
       if (effects.devicesChanged) {
         void applyVoiceDevices(room).then(() => {
-          void refreshMicProcessing(room)
+          if (
+            shouldUseNativeMicrophone() &&
+            voicePreferenceStore.getMicEnabled()
+          ) {
+            void startNativeMicrophone(room)
+          } else {
+            void refreshMicProcessing(room)
+          }
         })
       } else if (effects.remoteAudioChanged) {
         applyAllRemoteAudio(deafenedRef.current)
       }
       if (effects.micProcessingChanged) {
-        void refreshMicProcessing(room)
+        if (
+          shouldUseNativeMicrophone() &&
+          voicePreferenceStore.getMicEnabled()
+        ) {
+          void startNativeMicrophone(room)
+        } else {
+          void refreshMicProcessing(room)
+        }
       }
     })
-  }, [applyVoiceDevices, status])
+  }, [applyVoiceDevices, startNativeMicrophone, status])
 
   useEffect(() => {
     return () => {

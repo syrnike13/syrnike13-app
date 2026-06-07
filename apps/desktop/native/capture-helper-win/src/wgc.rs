@@ -46,8 +46,7 @@ impl GraphicsCaptureApiHandler for WgcHandler {
         let height = buffer.height();
         let pixels = buffer.as_raw_buffer();
 
-        *self.shared.data.lock().map_err(|_| "wgc lock poisoned")? =
-            Some(pixels.to_vec());
+        *self.shared.data.lock().map_err(|_| "wgc lock poisoned")? = Some(pixels.to_vec());
         *self.shared.width.lock().map_err(|_| "wgc lock poisoned")? = width;
         *self.shared.height.lock().map_err(|_| "wgc lock poisoned")? = height;
         self.shared.ready.store(true, Ordering::SeqCst);
@@ -160,16 +159,8 @@ impl WgcCapturer {
                 .map_err(|_| "wgc lock poisoned")?
                 .clone()
             {
-                let width = *self
-                    .shared
-                    .width
-                    .lock()
-                    .map_err(|_| "wgc lock poisoned")?;
-                let height = *self
-                    .shared
-                    .height
-                    .lock()
-                    .map_err(|_| "wgc lock poisoned")?;
+                let width = *self.shared.width.lock().map_err(|_| "wgc lock poisoned")?;
+                let height = *self.shared.height.lock().map_err(|_| "wgc lock poisoned")?;
                 if width > 0 && height > 0 {
                     let stride = width as usize * 4;
                     let mut bgra = pixels;
@@ -181,11 +172,7 @@ impl WgcCapturer {
                         target_width as usize,
                         target_height as usize,
                     );
-                    return Ok((
-                        bgra,
-                        target_width as usize,
-                        target_height as usize,
-                    ));
+                    return Ok((bgra, target_width as usize, target_height as usize));
                 }
             }
 

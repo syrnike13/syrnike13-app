@@ -8,7 +8,7 @@ import {
 } from './voice-mic-processor'
 
 describe('micProcessingNeeded', () => {
-  it('is true when denoise, gate, or input gain is active', () => {
+  it('is true when gate or input gain is active', () => {
     expect(
       micProcessingNeeded({
         denoiseEnabled: true,
@@ -17,7 +17,7 @@ describe('micProcessingNeeded', () => {
         gateAutoThreshold: true,
         inputVolume: 1,
       }),
-    ).toBe(true)
+    ).toBe(false)
 
     expect(
       micProcessingNeeded({
@@ -54,7 +54,7 @@ describe('micProcessingNeeded', () => {
 })
 
 describe('createMicProcessorConfigFromPrefs', () => {
-  it('maps voice preferences to processor config', () => {
+  it('keeps enhanced denoise as native-only processor metadata', () => {
     expect(
       createMicProcessorConfigFromPrefs({
         noiseSuppression: 'enhanced',

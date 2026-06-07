@@ -39,12 +39,7 @@ impl OpenH264Encoder {
     }
 }
 
-fn bgra_to_yuv_buffer(
-    bgra: &[u8],
-    stride: usize,
-    width: usize,
-    height: usize,
-) -> YUVBuffer {
+fn bgra_to_yuv_buffer(bgra: &[u8], stride: usize, width: usize, height: usize) -> YUVBuffer {
     let mut y = vec![0u8; width * height];
     let mut u = vec![0u8; (width / 2) * (height / 2)];
     let mut v = vec![0u8; (width / 2) * (height / 2)];

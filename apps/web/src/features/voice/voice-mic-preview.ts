@@ -1,5 +1,9 @@
 import { voiceAudioProcessingConstraints } from '#/features/voice/voice-capture'
 import {
+  shouldUseNativeMicrophone,
+  startNativeMicrophoneTrack,
+} from '#/features/voice/native-microphone-publish'
+import {
   createMicProcessorConfigFromPrefs,
   micProcessingNeeded,
   SyrnikeMicProcessor,
@@ -81,6 +85,15 @@ export async function startMicPreview({
   onLevels,
   onGateMetrics,
 }: MicPreviewOptions) {
+  if (shouldUseNativeMicrophone()) {
+    return startNativeMicPreview({
+      inputDeviceId,
+      outputDeviceId,
+      prefs,
+      onLevels,
+    })
+  }
+
   const captureConstraints = voiceAudioProcessingConstraints(prefs)
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -195,6 +208,129 @@ export async function startMicPreview({
       void processor?.destroy()
       stream.getTracks().forEach((track) => track.stop())
       void processContext.close()
+      void playbackContext.close()
+    },
+  }
+}
+
+async function startNativeMicPreview({
+  inputDeviceId,
+  outputDeviceId,
+  prefs,
+  onLevels,
+}: Omit<MicPreviewOptions, 'onGateMetrics'>) {
+  let native = await startNativeMicrophoneTrack(
+    {
+      ...prefs,
+      preferredAudioInputDevice: inputDeviceId,
+      preferredAudioOutputDevice: outputDeviceId,
+      preferredVideoDevice: undefined,
+      micEnabled: true,
+      deafened: false,
+      cameraEnabled: false,
+      screenShareEnabled: false,
+      screenShareQuality: 'high',
+      screenShareCodec: 'auto',
+    },
+    inputDeviceId,
+  )
+  let playbackTrack = native.bridge.track
+  const playbackContext = new AudioContext()
+
+  const monitorGain = playbackContext.createGain()
+  const analyser = playbackContext.createAnalyser()
+
+  analyser.fftSize = 512
+  monitorGain.gain.value = prefs.outputVolume
+
+  let sourceNode = playbackContext.createMediaStreamSource(
+    new MediaStream([playbackTrack]),
+  )
+  sourceNode.connect(monitorGain)
+  monitorGain.connect(analyser)
+  monitorGain.connect(playbackContext.destination)
+
+  await applyPlaybackSink(playbackContext, outputDeviceId)
+  await playbackContext.resume()
+
+  const samples = new Uint8Array(analyser.fftSize)
+  let frame = 0
+  let stopped = false
+  let previousLevels = Array.from(
+    { length: MIC_PREVIEW_METER_BAR_COUNT },
+    () => 0,
+  )
+
+  let nativeStopped = false
+  const stopNative = () => {
+    if (nativeStopped) return
+    nativeStopped = true
+    native.bridge.stop()
+    native.bridge.track.stop()
+    void native.desktop.media.stopSession(native.session.sessionId)
+  }
+
+  const tick = () => {
+    if (stopped) return
+    analyser.getByteTimeDomainData(samples)
+    const targets = meterLevelsFromRms(
+      rmsFromByteTimeDomain(samples),
+      MIC_PREVIEW_METER_BAR_COUNT,
+    )
+    previousLevels = previousLevels.map((previous, index) => {
+      const target = targets[index] ?? 0
+      return previous * 0.45 + target * 0.55
+    })
+    onLevels(previousLevels)
+    frame = requestAnimationFrame(tick)
+  }
+
+  frame = requestAnimationFrame(tick)
+
+  return {
+    setOutputVolume(volume: number) {
+      monitorGain.gain.value = volume
+    },
+    async setOutputDevice(deviceId?: string) {
+      await applyPlaybackSink(playbackContext, deviceId)
+    },
+    updateGatePreferences() {
+      // Native preview uses the native microphone stream as the source of truth.
+    },
+    async restartProcessing(nextPrefs: MicPreviewPreferences) {
+      sourceNode.disconnect()
+      stopNative()
+
+      native = await startNativeMicrophoneTrack(
+        {
+          ...nextPrefs,
+          preferredAudioInputDevice: inputDeviceId,
+          preferredAudioOutputDevice: outputDeviceId,
+          preferredVideoDevice: undefined,
+          micEnabled: true,
+          deafened: false,
+          cameraEnabled: false,
+          screenShareEnabled: false,
+          screenShareQuality: 'high',
+          screenShareCodec: 'auto',
+        },
+        inputDeviceId,
+      )
+      nativeStopped = false
+      playbackTrack = native.bridge.track
+      sourceNode = playbackContext.createMediaStreamSource(
+        new MediaStream([playbackTrack]),
+      )
+      sourceNode.connect(monitorGain)
+    },
+    stop() {
+      if (stopped) return
+      stopped = true
+      cancelAnimationFrame(frame)
+      sourceNode.disconnect()
+      monitorGain.disconnect()
+      analyser.disconnect()
+      stopNative()
       void playbackContext.close()
     },
   }

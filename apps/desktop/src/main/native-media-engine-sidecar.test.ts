@@ -57,6 +57,32 @@ describe('native media engine sidecar protocol', () => {
     }
   })
 
+  it('parses native audio input device list events', () => {
+    const event = parseSidecarEvent(
+      JSON.stringify({
+        type: 'device_list',
+        devices: [
+          {
+            deviceId: '{0.0.1.00000000}.native-mic',
+            kind: 'audioinput',
+            label: 'Native microphone',
+          },
+        ],
+      }),
+    )
+
+    expect(event?.type).toBe('device_list')
+    if (event?.type === 'device_list') {
+      expect(event.devices).toEqual([
+        {
+          deviceId: '{0.0.1.00000000}.native-mic',
+          kind: 'audioinput',
+          label: 'Native microphone',
+        },
+      ])
+    }
+  })
+
   it('parses frame method stats', () => {
     const event = parseSidecarEvent(
       JSON.stringify({
@@ -108,6 +134,54 @@ describe('native media engine sidecar protocol', () => {
       status: 'running',
       sessionId: 'session-1',
       port: 55123,
+    })
+  })
+
+  it('maps session lifecycle audio to desktop media state', () => {
+    expect(
+      mapLifecycleState({
+        type: 'session_lifecycle',
+        session_id: 'session-1',
+        kind: 'screen',
+        status: 'running',
+        port: 55123,
+        audio_port: 55124,
+        audio_mode: 'system_exclude',
+      }),
+    ).toEqual({
+      status: 'running',
+      sessionId: 'session-1',
+      port: 55123,
+      audio: {
+        mode: 'system_exclude',
+        port: 55124,
+      },
+    })
+  })
+
+  it('maps microphone lifecycle audio to desktop media state', () => {
+    expect(
+      mapLifecycleState({
+        type: 'session_lifecycle',
+        session_id: 'mic-session-1',
+        kind: 'microphone',
+        status: 'running',
+        audio_port: 55200,
+        audio_mode: 'microphone',
+        audio_sample_rate: 48_000,
+        audio_channels: 1,
+        noise_suppression: 'deep_filter_net3',
+      }),
+    ).toEqual({
+      status: 'running',
+      sessionId: 'mic-session-1',
+      audio: {
+        mode: 'microphone',
+        port: 55200,
+        sampleRate: 48_000,
+        channels: 1,
+        noiseSuppression: 'deep_filter_net3',
+      },
     })
   })
 

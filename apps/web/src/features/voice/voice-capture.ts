@@ -75,13 +75,9 @@ export function voiceAudioProcessingConstraints(
 export function createVoiceRoomOptions(): RoomOptions {
   const prefs = readVoicePreferences()
 
-  return {
+  const options: RoomOptions = {
     adaptiveStream: true,
     dynacast: true,
-    audioCaptureDefaults: {
-      ...voiceAudioProcessingConstraints(prefs),
-      deviceId: prefs.preferredAudioInputDevice,
-    },
     audioOutput: {
       deviceId: prefs.preferredAudioOutputDevice,
     },
@@ -89,6 +85,15 @@ export function createVoiceRoomOptions(): RoomOptions {
       deviceId: prefs.preferredVideoDevice,
     },
   }
+
+  if (!isWindowsDesktopRuntime()) {
+    options.audioCaptureDefaults = {
+      ...voiceAudioProcessingConstraints(prefs),
+      deviceId: prefs.preferredAudioInputDevice,
+    }
+  }
+
+  return options
 }
 
 type RtpVideoCodec = 'vp8' | 'h264' | 'vp9' | 'av1'

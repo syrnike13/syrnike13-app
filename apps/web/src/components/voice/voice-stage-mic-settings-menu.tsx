@@ -34,7 +34,7 @@ const NOISE_SUPPRESSION_OPTIONS: {
   {
     value: 'enhanced',
     label: 'Включено',
-    description: 'RNNoise — шумоподавление',
+    description: 'DeepFilterNet3 — шумоподавление',
   },
   {
     value: 'disabled',

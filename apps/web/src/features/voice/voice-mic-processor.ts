@@ -14,8 +14,6 @@ import type {
   VoiceGateStageOptions,
 } from '#/features/voice/voice-gate-stage'
 import { VoiceInputGainStage } from '#/features/voice/voice-input-gain-stage'
-import { notifyDenoiseUnavailableOnce } from '#/features/voice/voice-mic-denoise-notify'
-import { rnnoiseWorkletBaseUrl } from '#/features/voice/voice-rnnoise-assets'
 
 export const SYRNIKE_MIC_PROCESSOR_NAME = 'syrnike-mic-processor'
 
@@ -29,18 +27,8 @@ export type SyrnikeMicProcessorConfig = {
   inputVolume: number
 }
 
-type DenoiseProcessor = TrackProcessor<Track.Kind.Audio, AudioProcessorOptions>
-
-async function createDenoiseProcessor() {
-  const { DenoiseTrackProcessor } = await import('livekit-rnnoise-processor')
-  return new DenoiseTrackProcessor({
-    workletCDNURL: rnnoiseWorkletBaseUrl(),
-  })
-}
-
 export function micProcessingNeeded(config: SyrnikeMicProcessorConfig) {
   return (
-    config.denoiseEnabled ||
     config.gateEnabled ||
     config.inputVolume !== 1
   )
@@ -72,7 +60,6 @@ export class SyrnikeMicProcessor
   processedTrack?: MediaStreamTrack
 
   readonly #config: SyrnikeMicProcessorConfig
-  #denoise: DenoiseProcessor | null = null
   #gate: VoiceGateStage | null = null
   #inputGain: VoiceInputGainStage | null = null
 
@@ -115,30 +102,13 @@ export class SyrnikeMicProcessor
   async destroy() {
     this.#inputGain?.destroy()
     this.#gate?.destroy()
-    if (this.#denoise) {
-      await this.#denoise.destroy()
-    }
     this.#inputGain = null
     this.#gate = null
-    this.#denoise = null
     this.processedTrack = undefined
   }
 
   async #build(options: AudioProcessorOptions) {
     let track = options.track
-
-    if (this.#config.denoiseEnabled) {
-      try {
-        const denoise = await createDenoiseProcessor()
-        this.#denoise = denoise
-        await denoise.init({ ...options, track })
-        track = denoise.processedTrack ?? track
-      } catch (error) {
-        this.#denoise = null
-        console.warn('[voice] RNNoise init failed', error)
-        notifyDenoiseUnavailableOnce()
-      }
-    }
 
     if (this.#config.gateEnabled) {
       this.#gate = new VoiceGateStage(this.#config.gateThresholdDb)

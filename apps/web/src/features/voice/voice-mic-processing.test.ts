@@ -18,7 +18,7 @@ describe('applyMicProcessing', () => {
     voicePreferenceStore.setInputVolume(1)
   })
 
-  it('applies the composite mic processor with RNNoise and gate enabled', async () => {
+  it('applies the composite mic processor with gate enabled', async () => {
     const audioTrack = {
       mediaStreamTrack: {
         applyConstraints: vi.fn(async () => {}),

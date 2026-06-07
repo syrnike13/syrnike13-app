@@ -3,30 +3,17 @@ use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::time::Duration;
 
 use wasapi::{initialize_mta, AudioClient, Direction, StreamMode, WaveFormat};
 
+use crate::session::AudioCaptureSession;
 use crate::target::process_id_for_hwnd;
 
 const SAMPLE_RATE: usize = 48_000;
 const CHANNELS: usize = 2;
 const CHUNK_FRAMES: usize = 960;
-
-pub struct AudioCaptureSession {
-    stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
-}
-
-impl AudioCaptureSession {
-    pub fn stop(mut self) {
-        self.stop.store(true, Ordering::SeqCst);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
 
 pub fn try_start_process_audio(hwnd: isize) -> Result<(u16, AudioCaptureSession), String> {
     let process_id =
@@ -63,7 +50,8 @@ fn spawn_audio_capture(
             "system-audio-exclude-capture".into()
         })
         .spawn(move || {
-            if let Err(error) = run_audio_loopback_loop(listener, process_id, include_tree, stop_flag)
+            if let Err(error) =
+                run_audio_loopback_loop(listener, process_id, include_tree, stop_flag)
             {
                 eprintln!("[audio-loopback] {error}");
             }
@@ -75,6 +63,7 @@ fn spawn_audio_capture(
         AudioCaptureSession {
             stop,
             thread: Some(thread),
+            noise_suppression_mode: "disabled",
         },
     ))
 }
@@ -92,8 +81,7 @@ fn run_audio_loopback_loop(
     let mut client: Option<TcpStream> = None;
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
 
-    while client.is_none() && std::time::Instant::now() < deadline && !stop.load(Ordering::SeqCst)
-    {
+    while client.is_none() && std::time::Instant::now() < deadline && !stop.load(Ordering::SeqCst) {
         if let Ok((stream, _addr)) = listener.accept() {
             client = Some(stream);
             break;
@@ -110,13 +98,19 @@ fn run_audio_loopback_loop(
         return Err("failed to initialize COM MTA".to_string());
     }
 
-    let wave_format = WaveFormat::new(32, 32, &wasapi::SampleType::Float, SAMPLE_RATE, CHANNELS, None);
+    let wave_format = WaveFormat::new(
+        32,
+        32,
+        &wasapi::SampleType::Float,
+        SAMPLE_RATE,
+        CHANNELS,
+        None,
+    );
     let blockalign = wave_format.get_blockalign() as usize;
     let chunk_bytes = blockalign * CHUNK_FRAMES;
 
-    let mut audio_client =
-        AudioClient::new_application_loopback_client(process_id, include_tree)
-            .map_err(|error| error.to_string())?;
+    let mut audio_client = AudioClient::new_application_loopback_client(process_id, include_tree)
+        .map_err(|error| error.to_string())?;
 
     let mode = StreamMode::EventsShared {
         autoconvert: true,
@@ -136,7 +130,9 @@ fn run_audio_loopback_loop(
         .map_err(|error| error.to_string())?;
 
     let mut sample_queue: VecDeque<u8> = VecDeque::new();
-    audio_client.start_stream().map_err(|error| error.to_string())?;
+    audio_client
+        .start_stream()
+        .map_err(|error| error.to_string())?;
 
     while !stop.load(Ordering::SeqCst) {
         while sample_queue.len() >= chunk_bytes {

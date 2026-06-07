@@ -3,8 +3,10 @@ import { open } from 'node:fs/promises'
 
 import type {
   NativeMediaAudioMode,
+  NativeMediaDeviceInfo,
   NativeMediaEncoderBackend,
   NativeMediaFrameMethod,
+  NativeMediaNoiseSuppressionMode,
   NativeMediaStateEvent,
   NativeMediaStreamMode,
 } from '@syrnike13/platform'
@@ -18,6 +20,9 @@ export type SidecarEvent =
       frame_buffer_path?: string
       audio_port?: number
       audio_mode?: string
+      audio_sample_rate?: number
+      audio_channels?: number
+      noise_suppression?: string
     }
   | {
       type: 'frame_method'
@@ -29,11 +34,20 @@ export type SidecarEvent =
   | { type: 'error'; code: string; message: string }
   | { type: 'stopped' }
   | {
+      type: 'device_list'
+      devices: NativeMediaDeviceInfo[]
+    }
+  | {
       type: 'session_lifecycle'
       session_id: string
-      kind: 'screen'
+      kind: 'screen' | 'microphone'
       status: 'starting' | 'running' | 'stopped' | 'error'
       port?: number
+      audio_port?: number
+      audio_mode?: string
+      audio_sample_rate?: number
+      audio_channels?: number
+      noise_suppression?: string
       message?: string
     }
 
@@ -77,7 +91,16 @@ export function mapEncoderBackend(
 export function mapAudioMode(value: string | undefined): NativeMediaAudioMode {
   if (value === 'process') return 'process'
   if (value === 'system_exclude') return 'system_exclude'
+  if (value === 'microphone') return 'microphone'
   return 'none'
+}
+
+function mapNoiseSuppressionMode(
+  value: string | undefined,
+): NativeMediaNoiseSuppressionMode | undefined {
+  if (value === 'deep_filter_net3') return 'deep_filter_net3'
+  if (value === 'disabled') return 'disabled'
+  return undefined
 }
 
 export function mapLifecycleState(
@@ -90,7 +113,23 @@ export function mapLifecycleState(
       return {
         status: 'running',
         sessionId: event.session_id,
-        port: event.port ?? 0,
+        port: event.port,
+        audio:
+          event.audio_mode || event.audio_port != null
+            ? {
+                mode: mapAudioMode(event.audio_mode),
+                port: event.audio_port,
+                sampleRate:
+                  event.audio_sample_rate === 48_000 ? 48_000 : undefined,
+                channels:
+                  event.audio_channels === 1 || event.audio_channels === 2
+                    ? event.audio_channels
+                    : undefined,
+                noiseSuppression: mapNoiseSuppressionMode(
+                  event.noise_suppression,
+                ),
+              }
+            : undefined,
       }
     case 'error':
       return {

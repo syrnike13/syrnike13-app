@@ -11,6 +11,7 @@ import type {
   HotkeyActivationEvent,
   HotkeyAction,
   HotkeyBinding,
+  NativeMediaDeviceInfo,
   NativeMediaSession,
   NativeMediaSidecarLostEvent,
   NativeMediaSessionStartOptions,
@@ -167,6 +168,12 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         IPC.mediaOpenDisplayPicker,
         audioRequested,
       ) as Promise<DesktopDisplayMediaRequest>
+    },
+    listDevices(kind: 'audioinput') {
+      return ipcRenderer.invoke(
+        IPC.mediaListDevices,
+        kind,
+      ) as Promise<NativeMediaDeviceInfo[]>
     },
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void) {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {

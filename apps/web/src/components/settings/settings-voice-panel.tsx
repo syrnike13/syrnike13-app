@@ -296,7 +296,7 @@ export function SettingsVoicePanel() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="enhanced">Включено (RNNoise)</SelectItem>
+              <SelectItem value="enhanced">Включено (DeepFilterNet3)</SelectItem>
               <SelectItem value="disabled">Выключено</SelectItem>
             </SelectContent>
           </Select>

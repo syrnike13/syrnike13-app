@@ -68,9 +68,7 @@ impl SharedFrameBuffer {
         self.mmap[4..8].copy_from_slice(&height.to_le_bytes());
         self.mmap[8..12].copy_from_slice(&stride.to_le_bytes());
         self.mmap[12..12 + payload_len].copy_from_slice(bgra);
-        self.mmap
-            .flush()
-            .map_err(|error| error.to_string())?;
+        self.mmap.flush().map_err(|error| error.to_string())?;
         Ok(())
     }
 

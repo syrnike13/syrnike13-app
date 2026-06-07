@@ -13,14 +13,28 @@ export type NativeMediaEncoderBackend =
   | 'media_foundation'
   | 'openh264'
 
-/** process = звук окна; system_exclude = системный вывод без Syrnike; none = звук недоступен. */
-export type NativeMediaAudioMode = 'process' | 'system_exclude' | 'none'
+/** process/system_exclude = звук демонстрации; microphone = входной голос; none = звук недоступен. */
+export type NativeMediaAudioMode =
+  | 'process'
+  | 'system_exclude'
+  | 'microphone'
+  | 'none'
+
+export type NativeMediaNoiseSuppressionMode =
+  | 'disabled'
+  | 'deep_filter_net3'
 
 export type NativeMediaTarget = {
   sourceId: string
 }
 
-export type NativeMediaSessionKind = 'screen'
+export type NativeMediaSessionKind = 'screen' | 'microphone'
+
+export type NativeMediaDeviceInfo = {
+  deviceId: string
+  kind: 'audioinput'
+  label: string
+}
 
 export type NativeMediaScreenSessionStartOptions = {
   kind: 'screen'
@@ -35,10 +49,22 @@ export type NativeMediaScreenSessionStartOptions = {
   }
 }
 
-export type NativeMediaSessionStartOptions = NativeMediaScreenSessionStartOptions
+export type NativeMediaMicrophoneSessionStartOptions = {
+  kind: 'microphone'
+  deviceId?: string
+  sampleRate: 48_000
+  channels: 1
+  echoCancellation: boolean
+  noiseSuppression: NativeMediaNoiseSuppressionMode
+  inputVolume: number
+}
 
-export type NativeMediaSession = {
-  kind: NativeMediaSessionKind
+export type NativeMediaSessionStartOptions =
+  | NativeMediaScreenSessionStartOptions
+  | NativeMediaMicrophoneSessionStartOptions
+
+export type NativeMediaScreenSession = {
+  kind: 'screen'
   sessionId: string
   port: number
   streamMode: NativeMediaStreamMode
@@ -49,10 +75,26 @@ export type NativeMediaSession = {
   }
 }
 
+export type NativeMediaMicrophoneSession = {
+  kind: 'microphone'
+  sessionId: string
+  audio: {
+    mode: 'microphone'
+    port: number
+    sampleRate: 48_000
+    channels: 1
+    noiseSuppression: NativeMediaNoiseSuppressionMode
+  }
+}
+
+export type NativeMediaSession =
+  | NativeMediaScreenSession
+  | NativeMediaMicrophoneSession
+
 export type NativeMediaSessionStatus =
   | { status: 'idle' }
   | { status: 'starting' }
-  | { status: 'running'; sessionId: string; port: number }
+  | { status: 'running'; sessionId: string; port?: number }
   | { status: 'error'; message: string }
 
 export type NativeMediaEngineCapabilities = {
@@ -67,6 +109,13 @@ export type NativeMediaEngineSessionSummary = {
   sessionId: string
   status: 'starting' | 'running' | 'error'
   port?: number
+  audio?: {
+    mode: NativeMediaAudioMode
+    port?: number
+    sampleRate?: 48_000
+    channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
+  }
 }
 
 export type NativeMediaEngineSnapshot = {
@@ -92,6 +141,13 @@ export type NativeMediaStatsEvent = {
 
 export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   sessionId?: string
+  audio?: {
+    mode: NativeMediaAudioMode
+    port?: number
+    sampleRate?: 48_000
+    channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
+  }
 }
 
 export type NativeMediaSidecarLostEvent = {

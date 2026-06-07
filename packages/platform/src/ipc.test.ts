@@ -8,6 +8,10 @@ describe('desktop media IPC contract', () => {
     expect('mediaStartScreenShare' in IPC).toBe(false)
   })
 
+  it('exposes native media device enumeration through the media namespace', () => {
+    expect(IPC.mediaListDevices).toBe('syrnike-desktop:media:list-devices')
+  })
+
   it('does not expose out-of-band media audio preparation channels', () => {
     expect('mediaPrepareSystemAudio' in IPC).toBe(false)
     expect('mediaClearSystemAudio' in IPC).toBe(false)
