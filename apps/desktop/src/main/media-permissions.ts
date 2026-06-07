@@ -18,7 +18,7 @@ import {
   clearPendingNativePicker,
   getPendingNativePicker,
   setPendingNativePicker,
-} from './native-capture'
+} from './native-media-engine'
 
 type DisplayMediaHandler = NonNullable<
   Parameters<Session['setDisplayMediaRequestHandler']>[0]
@@ -39,22 +39,9 @@ const DISPLAY_MEDIA_THUMBNAIL_SIZE = { width: 320, height: 180 }
 let mediaPermissionsInstalledForOrigin: string | null = null
 let displayMediaIpcRegistered = false
 let pendingDisplayMediaRequest: PendingDisplayMediaRequest | null = null
-let pendingAudioLoopbackSourceId: string | null = null
 
 function isScreenCaptureSource(sourceId: string) {
   return sourceId.startsWith('screen:')
-}
-
-export function rememberNativeAudioLoopbackSource(sourceId: string | null) {
-  if (sourceId && isScreenCaptureSource(sourceId)) {
-    pendingAudioLoopbackSourceId = sourceId
-    return
-  }
-  pendingAudioLoopbackSourceId = null
-}
-
-export function clearNativeAudioLoopbackSource() {
-  pendingAudioLoopbackSourceId = null
 }
 
 function originFromUrl(value: string | null | undefined) {
@@ -270,20 +257,6 @@ export function installMediaPermissions(
       return
     }
 
-    if (
-      !request.videoRequested &&
-      request.audioRequested &&
-      pendingAudioLoopbackSourceId &&
-      process.platform === 'win32' &&
-      isScreenCaptureSource(pendingAudioLoopbackSourceId)
-    ) {
-      pendingAudioLoopbackSourceId = null
-      callback({
-        audio: 'loopback',
-      })
-      return
-    }
-
     const win = getWindow()
     if (!win || win.isDestroyed()) {
       callback({})
@@ -310,11 +283,4 @@ export function installMediaPermissions(
 
     win.webContents.send(IPC.mediaRequest, displayRequest)
   })
-}
-
-export function completeNativeAudioLoopback(requestId: string, sourceId: string) {
-  if (!isScreenCaptureSource(sourceId)) {
-    return false
-  }
-  return selectPendingDisplayMediaSource(requestId, sourceId, true)
 }

@@ -15,6 +15,8 @@ use crate::protocol::{emit, Event, StreamMode};
 use crate::target::CaptureTarget;
 
 pub struct CaptureSession {
+    session_id: String,
+    session_kind: &'static str,
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
     audio: Option<AudioCaptureSession>,
@@ -29,6 +31,13 @@ impl CaptureSession {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+        emit(&Event::SessionLifecycle {
+            session_id: self.session_id,
+            kind: self.session_kind,
+            status: "stopped",
+            port: None,
+            message: None,
+        });
         emit(&Event::Stopped);
     }
 }
@@ -42,6 +51,8 @@ pub struct CaptureSessionConfig {
 }
 
 pub fn start_capture_session(
+    session_id: String,
+    session_kind: &'static str,
     target: CaptureTarget,
     width: u32,
     height: u32,
@@ -99,6 +110,8 @@ pub fn start_capture_session(
     Ok((
         port,
         CaptureSession {
+            session_id,
+            session_kind,
             stop,
             thread: Some(thread),
             audio: audio_session,
@@ -133,7 +146,7 @@ fn start_window_process_audio(
     if let Some(hwnd) = target.hwnd {
         match try_start_process_audio(hwnd) {
             Ok((port, session)) => return Ok((Some(port), Some("process"), Some(session))),
-            Err(error) => eprintln!("[capture] process audio unavailable: {error}"),
+            Err(error) => eprintln!("[media-engine] process audio unavailable: {error}"),
         }
     }
 
@@ -141,12 +154,14 @@ fn start_window_process_audio(
         Some(process_id) => match try_start_system_audio_exclude(process_id) {
             Ok((port, session)) => Ok((Some(port), Some("system_exclude"), Some(session))),
             Err(error) => {
-                eprintln!("[capture] system audio exclude unavailable: {error}");
+                eprintln!("[media-engine] system audio exclude unavailable: {error}");
                 Ok((None, Some("none"), None))
             }
         },
         None => {
-            eprintln!("[capture] system audio exclude unavailable: missing exclude process id");
+            eprintln!(
+                "[media-engine] system audio exclude unavailable: missing exclude process id",
+            );
             Ok((None, Some("none"), None))
         }
     }

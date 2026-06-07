@@ -1,4 +1,4 @@
-import type { NativeCaptureStreamMode, SyrnikeDesktopApi } from '@syrnike13/platform'
+import type { NativeMediaStreamMode, SyrnikeDesktopApi } from '@syrnike13/platform'
 
 import {
   avc1CodecString,
@@ -46,7 +46,7 @@ function readLengthPrefixedPacket(readBuffer: Uint8Array) {
 export async function createNativeScreenShareTrack(
   desktop: SyrnikeDesktopApi,
   sessionId: string,
-  streamMode: NativeCaptureStreamMode = 'h264',
+  streamMode: NativeMediaStreamMode = 'h264',
 ): Promise<NativeBridgeHandle> {
   if (typeof MediaStreamTrackGenerator === 'undefined') {
     throw new Error('MediaStreamTrackGenerator is not supported')
@@ -196,7 +196,7 @@ export async function createNativeScreenShareTrack(
       firstFrameReady,
       new Promise<void>((_resolve, reject) => {
         window.setTimeout(
-          () => reject(new Error('Native capture first frame timeout')),
+          () => reject(new Error('Native media engine first frame timeout')),
           timeoutMs,
         )
       }),
@@ -357,7 +357,7 @@ async function createRawBgraTrack(
       firstFrameReady,
       new Promise<void>((_resolve, reject) => {
         window.setTimeout(
-          () => reject(new Error('Native capture first frame timeout')),
+          () => reject(new Error('Native media engine first frame timeout')),
           timeoutMs,
         )
       }),

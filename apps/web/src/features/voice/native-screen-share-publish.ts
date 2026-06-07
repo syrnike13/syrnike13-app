@@ -7,8 +7,8 @@ import {
 } from '#/features/voice/voice-capture'
 import { createNativeScreenShareTrack } from '#/features/voice/native-screen-share-bridge'
 import { createNativeScreenShareAudioTrack } from '#/features/voice/native-screen-share-audio-bridge'
-import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
-import { defaultNativeCaptureStreamMode } from '#/features/voice/native-screen-share-mode'
+import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
+import { defaultNativeMediaStreamMode } from '#/features/voice/native-screen-share-mode'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import { getSyrnikeDesktop } from '#/platform/runtime'
@@ -46,7 +46,7 @@ export async function publishNativeScreenShare(
 
   const capture = screenShareCaptureOptions(quality)
   const encoding = capture.publish.screenShareEncoding
-  const streamMode = defaultNativeCaptureStreamMode()
+  const streamMode = defaultNativeMediaStreamMode()
 
   const bridge = await createNativeScreenShareTrack(
     desktop,
@@ -54,21 +54,24 @@ export async function publishNativeScreenShare(
     streamMode,
   )
 
-  const session = await desktop.media.startScreenShare({
+  const session = await desktop.media.startSession({
+    kind: 'screen',
     sourceId,
     width: capture.capture.resolution.width,
     height: capture.capture.resolution.height,
     fps: capture.capture.resolution.frameRate ?? 30,
     bitrate: encoding?.maxBitrate ?? 4_000_000,
     streamMode,
-    withAudio,
+    audio: {
+      requested: withAudio,
+    },
   })
 
   bridge.bindSession(session.sessionId)
 
   const unsubscribeStats = desktop.media.onStats((event) => {
     if (event.sessionId !== session.sessionId) return
-    nativeCaptureStatsStore.setNative(event.methods, event.activeMethod)
+    nativeMediaEngineStatsStore.setNative(event.methods, event.activeMethod)
   })
 
   const unsubscribeSidecarLost = desktop.media.onSidecarLost((event) => {
@@ -119,11 +122,17 @@ export async function publishNativeScreenShare(
   let screenShareAudioTrack: MediaStreamTrack | null = null
 
   if (withAudio) {
-    if (session.audioMode === 'none') {
+    if (session.audio?.mode === 'none') {
       toast.warning(
         'Звук экрана недоступен при демонстрации окна Syrnike',
       )
-    } else if (hasNativeScreenShareAudio(withAudio, session.audioMode, session.audioPort)) {
+    } else if (
+      hasNativeScreenShareAudio(
+        withAudio,
+        session.audio?.mode,
+        session.audio?.port,
+      )
+    ) {
       const audioBridge = await createNativeScreenShareAudioTrack(
         desktop,
         session.sessionId,
@@ -149,7 +158,7 @@ export async function publishNativeScreenShare(
       screenShareAudioTrack = null
     }
     bridge.stop()
-    nativeCaptureStatsStore.reset()
+    nativeMediaEngineStatsStore.reset()
     void participant.unpublishTrack(localTrack)
   }
 

@@ -8,16 +8,19 @@ import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'elect
 import {
   IPC,
   type DesktopDisplayMediaRequest,
-  type NativeCaptureAudioMode,
-  type NativeCaptureFrameMethod,
-  type NativeCaptureFrameStats,
-  type NativeCaptureSession,
-  type NativeCaptureSidecarLostEvent,
-  type NativeCaptureStartOptions,
-  type NativeCaptureState,
-  type NativeCaptureStateEvent,
-  type NativeCaptureStatsEvent,
-  type NativeCaptureStreamMode,
+  type DesktopOs,
+  type NativeMediaAudioMode,
+  type NativeMediaEngineSessionSummary,
+  type NativeMediaFrameMethod,
+  type NativeMediaFrameStats,
+  type NativeMediaSession,
+  type NativeMediaSidecarLostEvent,
+  type NativeMediaSessionStartOptions,
+  type NativeMediaSessionStatus,
+  type NativeMediaState,
+  type NativeMediaStateEvent,
+  type NativeMediaStatsEvent,
+  type NativeMediaStreamMode,
 } from '@syrnike13/platform'
 
 import {
@@ -25,15 +28,12 @@ import {
   mapAudioMode,
   mapEncoderBackend,
   mapFrameMethod,
+  mapLifecycleState,
   mapStreamMode,
   parseSidecarEvent,
   readBgraFramePacketAsync,
   type SidecarEvent,
-} from './native-capture-sidecar'
-import {
-  clearNativeAudioLoopbackSource,
-  rememberNativeAudioLoopbackSource,
-} from './media-permissions'
+} from './native-media-engine-sidecar'
 
 const NATIVE_PICKER_TIMEOUT_MS = 120_000
 const MAX_SIDECAR_RECONNECT_ATTEMPTS = 1
@@ -45,31 +45,34 @@ export type PendingNativePicker = {
   timeout: ReturnType<typeof setTimeout>
 }
 
-type ActiveCaptureSession = {
+type ActiveMediaEngineSession = {
   sessionId: string
   port: number
-  streamMode: NativeCaptureStreamMode
+  streamMode: NativeMediaStreamMode
   frameBufferPath?: string
-  audioPort?: number
-  audioMode?: NativeCaptureAudioMode
+  audio?: {
+    port?: number
+    mode: NativeMediaAudioMode
+  }
   helper: ChildProcessWithoutNullStreams
-  stats: NativeCaptureFrameStats
-  activeMethod?: NativeCaptureFrameMethod
+  stats: NativeMediaFrameStats
+  activeMethod?: NativeMediaFrameMethod
   socket: net.Socket | null
   socketReadBuffer: Buffer
   audioSocket: net.Socket | null
   audioSocketReadBuffer: Buffer
-  startOptions: NativeCaptureStartOptions
+  startOptions: NativeMediaSessionStartOptions
   reconnectAttempts: number
   reconnecting: boolean
 }
 
-let captureIpcRegistered = false
-let captureHelper: ChildProcessWithoutNullStreams | null = null
-let captureHelperReader: readline.Interface | null = null
-let activeSession: ActiveCaptureSession | null = null
+let mediaEngineIpcRegistered = false
+let mediaEngineHelper: ChildProcessWithoutNullStreams | null = null
+let mediaEngineHelperReader: readline.Interface | null = null
+let activeSession: ActiveMediaEngineSession | null = null
 let pendingStartResolver: ((event: SidecarEvent) => void) | null = null
-let captureState: NativeCaptureState = { status: 'idle' }
+let mediaEngineStatus: NativeMediaSessionStatus = { status: 'idle' }
+let lastMediaEngineError: string | null = null
 let pendingNativePicker: PendingNativePicker | null = null
 let getWindowRef: (() => BrowserWindow | null) | null = null
 
@@ -81,7 +84,7 @@ function isTrustedSender(
   return Boolean(win && !win.isDestroyed() && event.sender === win.webContents)
 }
 
-function emptyStats(): NativeCaptureFrameStats {
+function emptyStats(): NativeMediaFrameStats {
   return {
     wgc: 0,
     dxgi: 0,
@@ -90,33 +93,53 @@ function emptyStats(): NativeCaptureFrameStats {
   }
 }
 
+function buildSessionAudio(
+  requested: boolean | undefined,
+  mode: NativeMediaAudioMode,
+  port: number | undefined,
+): NativeMediaSession['audio'] {
+  if (!requested && mode === 'none' && !port) return undefined
+  return { mode, port }
+}
+
 function readWindowHwnd(win: BrowserWindow): number | undefined {
   const handle = win.getNativeWindowHandle()
   if (handle.length < 4) return undefined
   return handle.readInt32LE(0)
 }
 
-function buildCaptureStartCommand(
-  options: NativeCaptureStartOptions,
+function buildScreenShareStartCommand(
+  options: NativeMediaSessionStartOptions,
+  sessionId: string,
   getWindow: () => BrowserWindow | null,
 ) {
   const win = getWindow()
   return {
     cmd: 'start',
+    sessionId,
+    sessionKind: options.kind,
     target: { id: options.sourceId },
     width: options.width,
     height: options.height,
     fps: options.fps,
     bitrate: options.bitrate,
     streamMode: options.streamMode ?? 'bgra',
-    audio: Boolean(options.withAudio),
+    audio: Boolean(options.audio?.requested),
     excludeProcessId: process.pid,
     selfWindowHwnd:
       win && !win.isDestroyed() ? readWindowHwnd(win) : undefined,
   }
 }
 
-function resolveCaptureHelperPath() {
+function assertScreenSessionOptions(
+  options: NativeMediaSessionStartOptions,
+): asserts options is Extract<NativeMediaSessionStartOptions, { kind: 'screen' }> {
+  if (options.kind !== 'screen') {
+    throw new Error(`Unsupported native media session kind: ${String(options.kind)}`)
+  }
+}
+
+function resolveMediaEngineHelperPath() {
   const helperName = 'syrnike-capture-helper-win.exe'
   const candidates = app.isPackaged
     ? [path.join(process.resourcesPath, 'native', helperName)]
@@ -137,19 +160,82 @@ function resolveCaptureHelperPath() {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null
 }
 
-function emitCaptureState(
+function emitMediaEngineState(
   getWindow: () => BrowserWindow | null,
-  next: NativeCaptureStateEvent,
+  next: NativeMediaStateEvent,
 ) {
-  captureState = next
+  mediaEngineStatus = next
+  if (next.status === 'error') {
+    lastMediaEngineError = next.message
+  }
   const win = getWindow()
   if (!win || win.isDestroyed()) return
   win.webContents.send(IPC.mediaStateChanged, next)
 }
 
-function emitCaptureStats(
+type NativeMediaEngineSnapshotInput = {
+  platform: NodeJS.Platform | DesktopOs
+  helperAvailable: boolean
+  helperRunning: boolean
+  activeSession: ActiveMediaEngineSession | null
+  lastError: string | null
+  status?: NativeMediaSessionStatus
+}
+
+export function buildNativeMediaEngineSnapshot(
+  input: NativeMediaEngineSnapshotInput,
+): NativeMediaState {
+  const supportsNativeMedia = input.platform === 'win32'
+  const activeSessions: NativeMediaEngineSessionSummary[] = input.activeSession
+    ? [
+        {
+          kind: 'screen',
+          sessionId: input.activeSession.sessionId,
+          status:
+            input.status?.status === 'error'
+              ? 'error'
+              : input.status?.status === 'starting'
+                ? 'starting'
+                : 'running',
+          port: input.activeSession.port,
+        },
+      ]
+    : []
+
+  return {
+    ...(input.status ?? { status: 'idle' }),
+    engine: {
+      available: supportsNativeMedia && input.helperAvailable,
+      helper: {
+        available: input.helperAvailable,
+        running: input.helperRunning,
+      },
+      capabilities: {
+        screen: supportsNativeMedia && input.helperAvailable,
+        systemAudio: supportsNativeMedia && input.helperAvailable,
+        microphone: false,
+        camera: false,
+      },
+      activeSessions,
+      lastError: input.lastError,
+    },
+  }
+}
+
+function getNativeMediaEngineState(): NativeMediaState {
+  return buildNativeMediaEngineSnapshot({
+    platform: process.platform,
+    helperAvailable: Boolean(resolveMediaEngineHelperPath()),
+    helperRunning: Boolean(mediaEngineHelper),
+    activeSession,
+    lastError: lastMediaEngineError,
+    status: mediaEngineStatus,
+  })
+}
+
+function emitMediaEngineStats(
   getWindow: () => BrowserWindow | null,
-  event: NativeCaptureStatsEvent,
+  event: NativeMediaStatsEvent,
 ) {
   const win = getWindow()
   if (!win || win.isDestroyed()) return
@@ -158,7 +244,7 @@ function emitCaptureStats(
 
 function emitSidecarLost(
   getWindow: () => BrowserWindow | null,
-  event: NativeCaptureSidecarLostEvent,
+  event: NativeMediaSidecarLostEvent,
 ) {
   const win = getWindow()
   if (!win || win.isDestroyed()) return
@@ -179,7 +265,7 @@ export function clearPendingNativePicker() {
   pendingNativePicker = null
 }
 
-function cleanupFrameBuffer(session: ActiveCaptureSession | null) {
+function cleanupFrameBuffer(session: ActiveMediaEngineSession | null) {
   if (!session?.frameBufferPath) return
   try {
     fs.unlinkSync(session.frameBufferPath)
@@ -188,7 +274,7 @@ function cleanupFrameBuffer(session: ActiveCaptureSession | null) {
   }
 }
 
-function stopStreamRelay(session: ActiveCaptureSession | null) {
+function stopStreamRelay(session: ActiveMediaEngineSession | null) {
   if (!session) return
   if (session.socket) {
     session.socket.removeAllListeners()
@@ -205,8 +291,8 @@ function stopStreamRelay(session: ActiveCaptureSession | null) {
 }
 
 function notifySidecarLost(
-  session: ActiveCaptureSession,
-  reason: NativeCaptureSidecarLostEvent['reason'],
+  session: ActiveMediaEngineSession,
+  reason: NativeMediaSidecarLostEvent['reason'],
   message: string,
 ) {
   const getWindow = getWindowRef
@@ -230,7 +316,7 @@ function notifySidecarLost(
 
 function forwardStreamPayload(
   getWindow: () => BrowserWindow | null,
-  session: ActiveCaptureSession,
+  session: ActiveMediaEngineSession,
   payload: Buffer,
 ) {
   const win = getWindow()
@@ -268,7 +354,7 @@ function processLengthPrefixedBuffer(
 
 function processStreamBuffer(
   getWindow: () => BrowserWindow | null,
-  session: ActiveCaptureSession,
+  session: ActiveMediaEngineSession,
 ) {
   session.socketReadBuffer = processLengthPrefixedBuffer(
     session.socketReadBuffer,
@@ -278,7 +364,7 @@ function processStreamBuffer(
 
 function forwardStreamAudioPayload(
   getWindow: () => BrowserWindow | null,
-  session: ActiveCaptureSession,
+  session: ActiveMediaEngineSession,
   payload: Buffer,
 ) {
   const win = getWindow()
@@ -296,7 +382,7 @@ function forwardStreamAudioPayload(
 
 function processAudioStreamBuffer(
   getWindow: () => BrowserWindow | null,
-  session: ActiveCaptureSession,
+  session: ActiveMediaEngineSession,
 ) {
   session.audioSocketReadBuffer = processLengthPrefixedBuffer(
     session.audioSocketReadBuffer,
@@ -304,7 +390,7 @@ function processAudioStreamBuffer(
   )
 }
 
-async function attemptSidecarReconnect(session: ActiveCaptureSession) {
+async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
   if (session.reconnecting) return false
   if (session.reconnectAttempts >= MAX_SIDECAR_RECONNECT_ATTEMPTS) return false
 
@@ -321,40 +407,50 @@ async function attemptSidecarReconnect(session: ActiveCaptureSession) {
     stopStreamRelay(session)
     cleanupFrameBuffer(session)
 
-    if (captureHelper) {
+    if (mediaEngineHelper) {
       try {
-        captureHelper.stdin.write(`${JSON.stringify({ cmd: 'stop' })}\n`)
+        mediaEngineHelper.stdin.write(`${JSON.stringify({ cmd: 'stop' })}\n`)
       } catch {
         // ignore
       }
-      captureHelper.kill()
-      captureHelper = null
-      captureHelperReader = null
+      mediaEngineHelper.kill()
+      mediaEngineHelper = null
+      mediaEngineHelperReader = null
     }
 
-    const helper = ensureCaptureHelper()
+    const helper = ensureMediaEngineHelper()
     const readyPromise = waitForSidecarReady()
     helper.stdin.write(
-      `${JSON.stringify(buildCaptureStartCommand(session.startOptions, getWindow))}\n`,
+      `${JSON.stringify(
+        buildScreenShareStartCommand(
+          session.startOptions,
+          session.sessionId,
+          getWindow,
+        ),
+      )}\n`,
     )
 
     const readyEvent = await readyPromise
     if (readyEvent.type !== 'ready') {
-      throw new Error('Native capture reconnect failed')
+      throw new Error('Native media engine reconnect failed')
     }
 
     session.port = readyEvent.port
     session.streamMode = mapStreamMode(readyEvent.stream_mode)
     session.frameBufferPath = readyEvent.frame_buffer_path
-    session.audioPort = readyEvent.audio_port
-    session.audioMode = mapAudioMode(readyEvent.audio_mode)
+    const audioMode = mapAudioMode(readyEvent.audio_mode)
+    session.audio = buildSessionAudio(
+      session.startOptions.audio?.requested,
+      audioMode,
+      readyEvent.audio_port,
+    )
     session.stats = emptyStats()
     session.activeMethod = undefined
     session.socketReadBuffer = Buffer.alloc(0)
     session.audioSocketReadBuffer = Buffer.alloc(0)
     attachStreamRelay(getWindow, session)
 
-    emitCaptureState(getWindow, {
+    emitMediaEngineState(getWindow, {
       status: 'running',
       sessionId: session.sessionId,
       port: readyEvent.port,
@@ -364,14 +460,14 @@ async function attemptSidecarReconnect(session: ActiveCaptureSession) {
     return true
   } catch (error) {
     session.reconnecting = false
-    console.warn('[capture] sidecar reconnect failed', error)
+    console.warn('[media-engine] sidecar reconnect failed', error)
     return false
   }
 }
 
 async function handleSidecarFailure(
-  session: ActiveCaptureSession,
-  reason: NativeCaptureSidecarLostEvent['reason'],
+  session: ActiveMediaEngineSession,
+  reason: NativeMediaSidecarLostEvent['reason'],
   message: string,
 ) {
   const reconnected = await attemptSidecarReconnect(session)
@@ -381,9 +477,10 @@ async function handleSidecarFailure(
   stopStreamRelay(session)
   cleanupFrameBuffer(session)
   activeSession = null
-  captureState = { status: 'idle' }
-  captureHelper = null
-  captureHelperReader = null
+  mediaEngineStatus = { status: 'idle' }
+  lastMediaEngineError = message
+  mediaEngineHelper = null
+  mediaEngineHelperReader = null
 }
 
 function handleHelperExit(code: number | null, signal: NodeJS.Signals | null) {
@@ -392,15 +489,15 @@ function handleHelperExit(code: number | null, signal: NodeJS.Signals | null) {
 
   const message =
     signal != null
-      ? `Native capture helper stopped (${signal})`
-      : `Native capture helper exited (${code ?? 'unknown'})`
+      ? `Native media engine stopped (${signal})`
+      : `Native media engine exited (${code ?? 'unknown'})`
 
   void handleSidecarFailure(session, 'exit', message)
 }
 
 function attachStreamRelay(
   getWindow: () => BrowserWindow | null,
-  session: ActiveCaptureSession,
+  session: ActiveMediaEngineSession,
 ) {
   const socket = net.connect(session.port, '127.0.0.1')
   session.socket = socket
@@ -422,18 +519,18 @@ function attachStreamRelay(
     }
   })
 
-  if (session.audioPort) {
+  if (session.audio?.port) {
     attachAudioStreamRelay(getWindow, session)
   }
 }
 
 function attachAudioStreamRelay(
   getWindow: () => BrowserWindow | null,
-  session: ActiveCaptureSession,
+  session: ActiveMediaEngineSession,
 ) {
-  if (!session.audioPort) return
+  if (!session.audio?.port) return
 
-  const socket = net.connect(session.audioPort, '127.0.0.1')
+  const socket = net.connect(session.audio.port, '127.0.0.1')
   session.audioSocket = socket
 
   socket.on('data', (chunk) => {
@@ -445,36 +542,34 @@ function attachAudioStreamRelay(
   })
 
   socket.on('error', (error) => {
-    console.warn('[capture] audio stream error', error.message)
+    console.warn('[media-engine] audio stream error', error.message)
   })
 }
 
-function stopCaptureHelper() {
+function stopMediaEngineHelper() {
   cleanupFrameBuffer(activeSession)
   stopStreamRelay(activeSession)
-  captureHelperReader?.close()
-  captureHelperReader = null
 
-  if (captureHelper) {
+  if (mediaEngineHelper) {
     try {
-      captureHelper.stdin.write(`${JSON.stringify({ cmd: 'stop' })}\n`)
+      mediaEngineHelper.stdin.write(`${JSON.stringify({ cmd: 'stop' })}\n`)
     } catch {
-      // ignore
+      mediaEngineHelper.kill()
+      mediaEngineHelper = null
+      mediaEngineHelperReader?.close()
+      mediaEngineHelperReader = null
     }
-    captureHelper.kill()
-    captureHelper = null
   }
 
-  activeSession = null
   pendingStartResolver = null
 }
 
-function ensureCaptureHelper() {
-  if (captureHelper) return captureHelper
+function ensureMediaEngineHelper() {
+  if (mediaEngineHelper) return mediaEngineHelper
 
-  const helperPath = resolveCaptureHelperPath()
+  const helperPath = resolveMediaEngineHelperPath()
   if (!helperPath) {
-    throw new Error('Native capture helper is not available')
+    throw new Error('Native media engine is not available')
   }
 
   const helper = spawn(helperPath, [], {
@@ -487,6 +582,24 @@ function ensureCaptureHelper() {
     const event = parseSidecarEvent(line)
     if (!event) return
 
+    if (event.type === 'session_lifecycle') {
+      if (getWindowRef) {
+        emitMediaEngineState(getWindowRef, mapLifecycleState(event))
+      } else {
+        mediaEngineStatus = mapLifecycleState(event)
+        if (mediaEngineStatus.status === 'error') {
+          lastMediaEngineError = mediaEngineStatus.message
+        }
+      }
+
+      if (event.status === 'stopped') {
+        cleanupFrameBuffer(activeSession)
+        stopStreamRelay(activeSession)
+        activeSession = null
+      }
+      return
+    }
+
     if (event.type === 'frame_method' && activeSession) {
       const method = mapFrameMethod(event.method)
       const activeMethod = mapFrameMethod(event.active_method ?? event.method)
@@ -497,7 +610,7 @@ function ensureCaptureHelper() {
         activeSession.activeMethod = activeMethod
       }
       if (getWindowRef) {
-        emitCaptureStats(getWindowRef, {
+        emitMediaEngineStats(getWindowRef, {
           sessionId: activeSession.sessionId,
           methods: { ...activeSession.stats },
           activeMethod: activeSession.activeMethod,
@@ -508,7 +621,7 @@ function ensureCaptureHelper() {
 
     if (event.type === 'downgrade') {
       console.warn(
-        '[capture-helper] downgrade',
+        '[media-engine-helper] downgrade',
         event.from,
         '->',
         event.to,
@@ -518,7 +631,8 @@ function ensureCaptureHelper() {
     }
 
     if (event.type === 'error') {
-      captureState = { status: 'error', message: event.message }
+      mediaEngineStatus = { status: 'error', message: event.message }
+      lastMediaEngineError = event.message
       pendingStartResolver?.(event)
       pendingStartResolver = null
       return
@@ -526,7 +640,6 @@ function ensureCaptureHelper() {
 
     if (event.type === 'stopped') {
       activeSession = null
-      captureState = { status: 'idle' }
       return
     }
 
@@ -535,7 +648,7 @@ function ensureCaptureHelper() {
   })
 
   helper.stderr.on('data', (chunk) => {
-    console.error('[capture-helper]', chunk.toString())
+    console.error('[media-engine-helper]', chunk.toString())
   })
 
   helper.on('exit', (code, signal) => {
@@ -543,13 +656,13 @@ function ensureCaptureHelper() {
       handleHelperExit(code, signal)
       return
     }
-    captureHelper = null
-    captureHelperReader = null
-    captureState = { status: 'idle' }
+    mediaEngineHelper = null
+    mediaEngineHelperReader = null
+    mediaEngineStatus = { status: 'idle' }
   })
 
-  captureHelper = helper
-  captureHelperReader = reader
+  mediaEngineHelper = helper
+  mediaEngineHelperReader = reader
   return helper
 }
 
@@ -557,7 +670,8 @@ async function waitForSidecarReady(timeoutMs = 15_000) {
   return new Promise<SidecarEvent>((resolve, reject) => {
     const timer = setTimeout(() => {
       pendingStartResolver = null
-      reject(new Error('Native capture helper timed out'))
+      lastMediaEngineError = 'Native media engine timed out'
+      reject(new Error('Native media engine timed out'))
     }, timeoutMs)
 
     pendingStartResolver = (event) => {
@@ -571,30 +685,31 @@ async function waitForSidecarReady(timeoutMs = 15_000) {
   })
 }
 
-async function startNativeCapture(
+async function startNativeScreenShareSession(
   getWindow: () => BrowserWindow | null,
-  options: NativeCaptureStartOptions,
-): Promise<NativeCaptureSession> {
+  options: NativeMediaSessionStartOptions,
+): Promise<NativeMediaSession> {
+  assertScreenSessionOptions(options)
+
   if (process.platform !== 'win32') {
-    throw new Error('Native capture is only available on Windows')
+    throw new Error('Native media engine is only available on Windows')
   }
 
   getWindowRef = getWindow
-  stopCaptureHelper()
+  stopMediaEngineHelper()
 
   const sessionId = crypto.randomUUID()
-  emitCaptureState(getWindow, { status: 'starting', sessionId })
 
-  const helper = ensureCaptureHelper()
+  const helper = ensureMediaEngineHelper()
   const readyPromise = waitForSidecarReady()
 
   helper.stdin.write(
-    `${JSON.stringify(buildCaptureStartCommand(options, getWindow))}\n`,
+    `${JSON.stringify(buildScreenShareStartCommand(options, sessionId, getWindow))}\n`,
   )
 
   const readyEvent = await readyPromise
   if (readyEvent.type !== 'ready') {
-    throw new Error('Native capture failed to start')
+    throw new Error('Native media engine failed to start')
   }
 
   const streamMode = mapStreamMode(readyEvent.stream_mode)
@@ -604,8 +719,11 @@ async function startNativeCapture(
   activeSession = {
     sessionId,
     port: readyEvent.port,
-    audioPort: readyEvent.audio_port,
-    audioMode,
+    audio: buildSessionAudio(
+      options.audio?.requested,
+      audioMode,
+      readyEvent.audio_port,
+    ),
     streamMode,
     frameBufferPath: readyEvent.frame_buffer_path,
     helper,
@@ -620,57 +738,41 @@ async function startNativeCapture(
   }
   attachStreamRelay(getWindow, activeSession)
 
-  const session: NativeCaptureSession = {
+  const session: NativeMediaSession = {
+    kind: 'screen',
     sessionId,
     port: readyEvent.port,
     streamMode,
     encoder,
-    audioPort: readyEvent.audio_port,
-    audioMode,
+    audio: buildSessionAudio(
+      options.audio?.requested,
+      audioMode,
+      readyEvent.audio_port,
+    ),
   }
-
-  emitCaptureState(getWindow, {
-    status: 'running',
-    sessionId,
-    port: readyEvent.port,
-  })
 
   return session
 }
 
-export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) {
-  if (captureIpcRegistered) return
-  captureIpcRegistered = true
+export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | null) {
+  if (mediaEngineIpcRegistered) return
+  mediaEngineIpcRegistered = true
   getWindowRef = getWindow
 
   ipcMain.handle(
-    IPC.mediaStartScreenShare,
-    async (event, options: NativeCaptureStartOptions) => {
+    IPC.mediaStartSession,
+    async (event, options: NativeMediaSessionStartOptions) => {
       if (!isTrustedSender(event, getWindow)) {
-        throw new Error('Untrusted capture start request')
+        throw new Error('Untrusted media engine start request')
       }
-      return startNativeCapture(getWindow, options)
+      return startNativeScreenShareSession(getWindow, options)
     },
   )
 
   ipcMain.handle(IPC.mediaStopSession, async (event, sessionId?: string) => {
     if (!isTrustedSender(event, getWindow)) return
     if (sessionId && activeSession?.sessionId !== sessionId) return
-    stopCaptureHelper()
-    emitCaptureState(getWindow, { status: 'idle' })
-  })
-
-  ipcMain.handle(
-    IPC.mediaPrepareSystemAudio,
-    async (event, sourceId: string) => {
-      if (!isTrustedSender(event, getWindow)) return
-      rememberNativeAudioLoopbackSource(sourceId)
-    },
-  )
-
-  ipcMain.handle(IPC.mediaClearSystemAudio, async (event) => {
-    if (!isTrustedSender(event, getWindow)) return
-    clearNativeAudioLoopbackSource()
+    stopMediaEngineHelper()
   })
 
   ipcMain.handle(
@@ -701,9 +803,15 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
 
   ipcMain.handle(IPC.mediaGetState, async (event) => {
     if (!isTrustedSender(event, getWindow)) {
-      return { status: 'idle' } satisfies NativeCaptureState
+      return buildNativeMediaEngineSnapshot({
+        platform: process.platform,
+        helperAvailable: false,
+        helperRunning: false,
+        activeSession: null,
+        lastError: null,
+      })
     }
-    return captureState
+    return getNativeMediaEngineState()
   })
 
   ipcMain.handle(
@@ -739,7 +847,7 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
   )
 }
 
-export function getActiveCaptureStats() {
+export function getActiveMediaEngineStats() {
   return activeSession
     ? {
         sessionId: activeSession.sessionId,

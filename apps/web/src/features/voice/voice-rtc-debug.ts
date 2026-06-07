@@ -1,6 +1,6 @@
 import type { Room } from 'livekit-client'
 
-import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
+import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { getVoicePeerConnectionEntries } from '#/features/voice/voice-ping'
 
 export const RTC_DEBUG_BROWSER_UNAVAILABLE = 'N/A'
@@ -417,7 +417,7 @@ function screenShareSnapshot(
   const options = publication?.options
   const encoding = options?.screenShareEncoding ?? options?.videoEncoding
 
-  const nativeStats = item.isLocal ? nativeCaptureStatsStore.getState() : null
+  const nativeStats = item.isLocal ? nativeMediaEngineStatsStore.getState() : null
   const hybridUnavailable = RTC_DEBUG_BROWSER_UNAVAILABLE
 
   return {

@@ -1,22 +1,22 @@
 import type {
-  NativeCaptureFrameMethod,
-  NativeCaptureFrameStats,
+  NativeMediaFrameMethod,
+  NativeMediaFrameStats,
 } from '@syrnike13/platform'
 
-export type NativeCaptureDebugState = {
+export type NativeMediaEngineDebugState = {
   backend: 'native' | 'chromium'
-  methods: NativeCaptureFrameStats
-  activeMethod?: NativeCaptureFrameMethod
+  methods: NativeMediaFrameStats
+  activeMethod?: NativeMediaFrameMethod
 }
 
-const emptyMethods = (): NativeCaptureFrameStats => ({
+const emptyMethods = (): NativeMediaFrameStats => ({
   wgc: 0,
   dxgi: 0,
   gdi_blt: 0,
   gdi_print: 0,
 })
 
-let state: NativeCaptureDebugState = {
+let state: NativeMediaEngineDebugState = {
   backend: 'chromium',
   methods: emptyMethods(),
 }
@@ -27,15 +27,15 @@ function emit() {
   listeners.forEach((listener) => listener())
 }
 
-export const nativeCaptureStatsStore = {
+export const nativeMediaEngineStatsStore = {
   subscribe(listener: () => void) {
     listeners.add(listener)
     return () => listeners.delete(listener)
   },
   getState: () => state,
   setNative(
-    methods: NativeCaptureFrameStats,
-    activeMethod?: NativeCaptureFrameMethod,
+    methods: NativeMediaFrameStats,
+    activeMethod?: NativeMediaFrameMethod,
   ) {
     state = {
       backend: 'native',

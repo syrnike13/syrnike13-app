@@ -1,10 +1,10 @@
 import type {
-  NativeCaptureSession,
-  NativeCaptureStartOptions,
-  NativeCaptureState,
-  NativeCaptureStateEvent,
-  NativeCaptureStatsEvent,
-} from './capture'
+  NativeMediaSession,
+  NativeMediaSessionStartOptions,
+  NativeMediaState,
+  NativeMediaStateEvent,
+  NativeMediaStatsEvent,
+} from './media'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -148,18 +148,20 @@ export type DesktopDisplayMediaRequest = {
 }
 
 export type {
-  NativeCaptureEncoderBackend,
-  NativeCaptureFrameMethod,
-  NativeCaptureFrameStats,
-  NativeCaptureSession,
-  NativeCaptureSidecarLostEvent,
-  NativeCaptureStartOptions,
-  NativeCaptureState,
-  NativeCaptureStateEvent,
-  NativeCaptureStatsEvent,
-  NativeCaptureStreamMode,
-  NativeCaptureTarget,
-} from './capture'
+  NativeMediaEncoderBackend,
+  NativeMediaFrameMethod,
+  NativeMediaFrameStats,
+  NativeMediaSession,
+  NativeMediaSidecarLostEvent,
+  NativeMediaSessionKind,
+  NativeMediaSessionStartOptions,
+  NativeMediaScreenSessionStartOptions,
+  NativeMediaState,
+  NativeMediaStateEvent,
+  NativeMediaStatsEvent,
+  NativeMediaStreamMode,
+  NativeMediaTarget,
+} from './media'
 
 /**
  * API, который preload пробрасывает в `window.syrnikeDesktop`.
@@ -215,14 +217,12 @@ export interface SyrnikeDesktopApi {
     onDisplayPickerResolved(
       handler: (payload: { requestId: string; sourceId: string }) => void,
     ): () => void
-    startScreenShare(options: NativeCaptureStartOptions): Promise<NativeCaptureSession>
+    startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
     stopSession(sessionId?: string): Promise<void>
-    getState(): Promise<NativeCaptureState>
-    onStats(handler: (event: NativeCaptureStatsEvent) => void): () => void
-    onStateChange(handler: (event: NativeCaptureStateEvent) => void): () => void
+    getState(): Promise<NativeMediaState>
+    onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
+    onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
     readSharedFrame(sessionId: string): Promise<ArrayBuffer | null>
-    prepareSystemAudio(sourceId: string): Promise<void>
-    clearSystemAudio(): Promise<void>
     onStreamChunk(
       handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
     ): () => void
@@ -234,7 +234,7 @@ export interface SyrnikeDesktopApi {
       handler: (event: { sessionId: string; message: string }) => void,
     ): () => void
     onSidecarLost(
-      handler: (event: import('./capture').NativeCaptureSidecarLostEvent) => void,
+      handler: (event: import('./media').NativeMediaSidecarLostEvent) => void,
     ): () => void
   }
 }

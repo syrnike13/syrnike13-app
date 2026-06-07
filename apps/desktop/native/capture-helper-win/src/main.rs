@@ -60,6 +60,23 @@ fn handle_command(line: &str) -> Result<(), String> {
         }
         "start" => {
             stop_session();
+            let session_id = command
+                .session_id
+                .clone()
+                .ok_or_else(|| "missing sessionId".to_string())?;
+            let session_kind = match command.session_kind.as_deref() {
+                Some("screen") => "screen",
+                Some(other) => return Err(format!("unsupported session kind {other}")),
+                None => return Err("missing sessionKind".to_string()),
+            };
+
+            emit(&Event::SessionLifecycle {
+                session_id: session_id.clone(),
+                kind: session_kind,
+                status: "starting",
+                port: None,
+                message: None,
+            });
 
             let target_payload = command
                 .target
@@ -74,7 +91,9 @@ fn handle_command(line: &str) -> Result<(), String> {
             let stream_mode = parse_stream_mode(command.stream_mode.as_deref());
 
             let with_audio = command.audio.unwrap_or(false);
-            let (port, session, config) = stream::start_capture_session(
+            let (port, session, config) = match stream::start_capture_session(
+                session_id.clone(),
+                session_kind,
                 capture_target,
                 width,
                 height,
@@ -84,7 +103,19 @@ fn handle_command(line: &str) -> Result<(), String> {
                 with_audio,
                 command.exclude_process_id,
                 command.self_window_hwnd,
-            )?;
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    emit(&Event::SessionLifecycle {
+                        session_id,
+                        kind: session_kind,
+                        status: "error",
+                        port: None,
+                        message: Some(error.clone()),
+                    });
+                    return Err(error);
+                }
+            };
 
             emit(&Event::Ready {
                 port,
@@ -93,6 +124,13 @@ fn handle_command(line: &str) -> Result<(), String> {
                 frame_buffer_path: config.frame_buffer_path.clone(),
                 audio_port: config.audio_port,
                 audio_mode: config.audio_mode,
+            });
+            emit(&Event::SessionLifecycle {
+                session_id,
+                kind: session_kind,
+                status: "running",
+                port: Some(port),
+                message: None,
             });
 
             let mut guard = SESSION

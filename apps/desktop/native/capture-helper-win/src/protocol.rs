@@ -40,6 +40,16 @@ impl StreamMode {
 
 pub enum Event {
 
+    SessionLifecycle {
+        session_id: String,
+        kind: &'static str,
+        status: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+
     Ready {
         port: u16,
         stream_mode: &'static str,
@@ -140,5 +150,22 @@ mod tests {
         assert!(json.contains("\"type\":\"downgrade\""));
         assert!(json.contains("\"reason\":\"timeout\""));
     }
-}
 
+    #[test]
+    fn serializes_session_lifecycle_event() {
+        let json = serde_json::to_string(&Event::SessionLifecycle {
+            session_id: "session-1",
+            kind: "screen",
+            status: "running",
+            port: Some(1234),
+            message: None,
+        })
+        .expect("json");
+
+        assert!(json.contains("\"type\":\"session_lifecycle\""));
+        assert!(json.contains("\"session_id\":\"session-1\""));
+        assert!(json.contains("\"kind\":\"screen\""));
+        assert!(json.contains("\"status\":\"running\""));
+        assert!(json.contains("\"port\":1234"));
+    }
+}

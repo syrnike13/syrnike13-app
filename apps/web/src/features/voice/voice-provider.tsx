@@ -67,7 +67,7 @@ import {
 } from '#/features/voice/voice-capture'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
-import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
+import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { shouldUseNativeScreenShare } from '#/features/voice/native-screen-share-mode'
 import {
   publishNativeScreenShare,
@@ -577,7 +577,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (nativeScreenShareRef.current) {
       nativeScreenShareRef.current.stop()
       nativeScreenShareRef.current = null
-      nativeCaptureStatsStore.reset()
+      nativeMediaEngineStatsStore.reset()
     }
     setChannelId(null)
     setStatus('idle')
@@ -952,7 +952,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!active) return
     active.stop()
     nativeScreenShareRef.current = null
-    nativeCaptureStatsStore.reset()
+    nativeMediaEngineStatsStore.reset()
   }, [])
 
   const setStageMediaSubscribed = useCallback(
@@ -1040,7 +1040,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      nativeCaptureStatsStore.setChromium()
+      nativeMediaEngineStatsStore.setChromium()
 
       const videoTrack = publication?.videoTrack
       if (videoTrack?.mediaStreamTrack) {
@@ -1064,7 +1064,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [syncRoomParticipants],
   )
 
-  const startScreenShare = useCallback(
+  const startLocalScreenShare = useCallback(
     async (quality: ScreenShareQualityName, withAudio: boolean) => {
       const room = roomRef.current
       if (!room) return
@@ -1159,8 +1159,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
 
     const prefs = readVoicePreferences()
-    void startScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
-  }, [startScreenShare, stopNativeScreenShare, syncRoomParticipants])
+    void startLocalScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
+  }, [startLocalScreenShare, stopNativeScreenShare, syncRoomParticipants])
 
   const toggleStageFullscreen = useCallback(() => {
     setStageFullscreen((value) => !value)

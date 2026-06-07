@@ -15,7 +15,7 @@ import {
   readScreenShareBroadcastSource,
   screenShareBroadcastIcon,
 } from '#/features/voice/voice-broadcast-source'
-import { nativeCaptureStatsStore } from '#/features/voice/native-capture-stats'
+import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { useVoice } from '#/features/voice/voice-provider'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
@@ -95,9 +95,9 @@ function BroadcastStrip({
 function useLocalScreenShareSource() {
   const voice = useVoice()
   const nativeStats = useSyncExternalStore(
-    nativeCaptureStatsStore.subscribe,
-    nativeCaptureStatsStore.getState,
-    nativeCaptureStatsStore.getState,
+    nativeMediaEngineStatsStore.subscribe,
+    nativeMediaEngineStatsStore.getState,
+    nativeMediaEngineStatsStore.getState,
   )
 
   return useMemo(() => {

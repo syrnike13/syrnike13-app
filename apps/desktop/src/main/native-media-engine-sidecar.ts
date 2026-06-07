@@ -2,10 +2,11 @@ import fs from 'node:fs'
 import { open } from 'node:fs/promises'
 
 import type {
-  NativeCaptureAudioMode,
-  NativeCaptureEncoderBackend,
-  NativeCaptureFrameMethod,
-  NativeCaptureStreamMode,
+  NativeMediaAudioMode,
+  NativeMediaEncoderBackend,
+  NativeMediaFrameMethod,
+  NativeMediaStateEvent,
+  NativeMediaStreamMode,
 } from '@syrnike13/platform'
 
 export type SidecarEvent =
@@ -27,6 +28,14 @@ export type SidecarEvent =
   | { type: 'downgrade'; from: string; to: string; reason: string }
   | { type: 'error'; code: string; message: string }
   | { type: 'stopped' }
+  | {
+      type: 'session_lifecycle'
+      session_id: string
+      kind: 'screen'
+      status: 'starting' | 'running' | 'stopped' | 'error'
+      port?: number
+      message?: string
+    }
 
 export function parseSidecarEvent(line: string): SidecarEvent | null {
   const trimmed = line.trim()
@@ -40,7 +49,7 @@ export function parseSidecarEvent(line: string): SidecarEvent | null {
   }
 }
 
-export function mapFrameMethod(method: string): NativeCaptureFrameMethod | null {
+export function mapFrameMethod(method: string): NativeMediaFrameMethod | null {
   switch (method) {
     case 'wgc':
       return 'wgc'
@@ -55,20 +64,43 @@ export function mapFrameMethod(method: string): NativeCaptureFrameMethod | null 
   }
 }
 
-export function mapStreamMode(value: string | undefined): NativeCaptureStreamMode {
+export function mapStreamMode(value: string | undefined): NativeMediaStreamMode {
   return value === 'bgra' ? 'bgra' : 'h264'
 }
 
 export function mapEncoderBackend(
   value: string | undefined,
-): NativeCaptureEncoderBackend {
+): NativeMediaEncoderBackend {
   return value === 'media_foundation' ? 'media_foundation' : 'openh264'
 }
 
-export function mapAudioMode(value: string | undefined): NativeCaptureAudioMode {
+export function mapAudioMode(value: string | undefined): NativeMediaAudioMode {
   if (value === 'process') return 'process'
   if (value === 'system_exclude') return 'system_exclude'
   return 'none'
+}
+
+export function mapLifecycleState(
+  event: Extract<SidecarEvent, { type: 'session_lifecycle' }>,
+): NativeMediaStateEvent {
+  switch (event.status) {
+    case 'starting':
+      return { status: 'starting', sessionId: event.session_id }
+    case 'running':
+      return {
+        status: 'running',
+        sessionId: event.session_id,
+        port: event.port ?? 0,
+      }
+    case 'error':
+      return {
+        status: 'error',
+        sessionId: event.session_id,
+        message: event.message ?? 'Native media engine session failed',
+      }
+    case 'stopped':
+      return { status: 'idle', sessionId: event.session_id }
+  }
 }
 
 export type BgraFrameHeader = {
@@ -124,6 +156,6 @@ export async function readBgraFramePacketAsync(
   }
 }
 
-export function isSharedFrameSignal(length: number, streamMode: NativeCaptureStreamMode) {
+export function isSharedFrameSignal(length: number, streamMode: NativeMediaStreamMode) {
   return streamMode === 'bgra' && length === 12
 }

@@ -5,12 +5,13 @@ import {
   mapAudioMode,
   mapEncoderBackend,
   mapFrameMethod,
+  mapLifecycleState,
   mapStreamMode,
   parseBgraFrameHeader,
   parseSidecarEvent,
-} from './native-capture-sidecar'
+} from './native-media-engine-sidecar'
 
-describe('native capture sidecar protocol', () => {
+describe('native media engine sidecar protocol', () => {
   it('maps system exclude and none audio modes', () => {
     expect(mapAudioMode('system_exclude')).toBe('system_exclude')
     expect(mapAudioMode('none')).toBe('none')
@@ -72,6 +73,42 @@ describe('native capture sidecar protocol', () => {
       expect(mapFrameMethod(event.active_method ?? '')).toBe('wgc')
       expect(event.count).toBe(42)
     }
+  })
+
+  it('parses session lifecycle events', () => {
+    const event = parseSidecarEvent(
+      JSON.stringify({
+        type: 'session_lifecycle',
+        session_id: 'session-1',
+        kind: 'screen',
+        status: 'running',
+        port: 55123,
+      }),
+    )
+
+    expect(event?.type).toBe('session_lifecycle')
+    if (event?.type === 'session_lifecycle') {
+      expect(event.session_id).toBe('session-1')
+      expect(event.kind).toBe('screen')
+      expect(event.status).toBe('running')
+      expect(event.port).toBe(55123)
+    }
+  })
+
+  it('maps session lifecycle events to desktop media state', () => {
+    expect(
+      mapLifecycleState({
+        type: 'session_lifecycle',
+        session_id: 'session-1',
+        kind: 'screen',
+        status: 'running',
+        port: 55123,
+      }),
+    ).toEqual({
+      status: 'running',
+      sessionId: 'session-1',
+      port: 55123,
+    })
   })
 
   it('detects shared frame signal packets', () => {

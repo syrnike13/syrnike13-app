@@ -11,12 +11,12 @@ import type {
   HotkeyActivationEvent,
   HotkeyAction,
   HotkeyBinding,
-  NativeCaptureSession,
-  NativeCaptureSidecarLostEvent,
-  NativeCaptureStartOptions,
-  NativeCaptureState,
-  NativeCaptureStateEvent,
-  NativeCaptureStatsEvent,
+  NativeMediaSession,
+  NativeMediaSidecarLostEvent,
+  NativeMediaSessionStartOptions,
+  NativeMediaState,
+  NativeMediaStateEvent,
+  NativeMediaStatsEvent,
   NativeInputEvent,
   SyrnikeDesktopApi,
 } from '@syrnike13/platform'
@@ -188,27 +188,27 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         ipcRenderer.removeListener(IPC.mediaDisplayPickerResolved, listener)
       }
     },
-    startScreenShare(options: NativeCaptureStartOptions) {
-      return ipcRenderer.invoke(IPC.mediaStartScreenShare, options) as Promise<NativeCaptureSession>
+    startSession(options: NativeMediaSessionStartOptions) {
+      return ipcRenderer.invoke(IPC.mediaStartSession, options) as Promise<NativeMediaSession>
     },
     stopSession(sessionId?: string) {
       return ipcRenderer.invoke(IPC.mediaStopSession, sessionId)
     },
     getState() {
-      return ipcRenderer.invoke(IPC.mediaGetState) as Promise<NativeCaptureState>
+      return ipcRenderer.invoke(IPC.mediaGetState) as Promise<NativeMediaState>
     },
-    onStats(handler: (event: NativeCaptureStatsEvent) => void) {
+    onStats(handler: (event: NativeMediaStatsEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isNativeCaptureStatsEvent(payload)) handler(payload)
+        if (isNativeMediaStatsEvent(payload)) handler(payload)
       }
       ipcRenderer.on(IPC.mediaStats, listener)
       return () => {
         ipcRenderer.removeListener(IPC.mediaStats, listener)
       }
     },
-    onStateChange(handler: (event: NativeCaptureStateEvent) => void) {
+    onStateChange(handler: (event: NativeMediaStateEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isNativeCaptureStateEvent(payload)) handler(payload)
+        if (isNativeMediaStateEvent(payload)) handler(payload)
       }
       ipcRenderer.on(IPC.mediaStateChanged, listener)
       return () => {
@@ -220,12 +220,6 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         IPC.mediaReadSharedFrame,
         sessionId,
       ) as Promise<ArrayBuffer | null>
-    },
-    prepareSystemAudio(sourceId: string) {
-      return ipcRenderer.invoke(IPC.mediaPrepareSystemAudio, sourceId)
-    },
-    clearSystemAudio() {
-      return ipcRenderer.invoke(IPC.mediaClearSystemAudio)
     },
     onStreamChunk(
       handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
@@ -277,9 +271,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         ipcRenderer.removeListener(IPC.mediaStreamError, listener)
       }
     },
-    onSidecarLost(handler: (event: NativeCaptureSidecarLostEvent) => void) {
+    onSidecarLost(handler: (event: NativeMediaSidecarLostEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isNativeCaptureSidecarLostEvent(payload)) handler(payload)
+        if (isNativeMediaSidecarLostEvent(payload)) handler(payload)
       }
       ipcRenderer.on(IPC.mediaEngineLost, listener)
       return () => {
@@ -340,15 +334,15 @@ function isNativePickerResolved(
   )
 }
 
-function isNativeCaptureStatsEvent(value: unknown): value is NativeCaptureStatsEvent {
+function isNativeMediaStatsEvent(value: unknown): value is NativeMediaStatsEvent {
   if (!value || typeof value !== 'object') return false
-  const event = value as NativeCaptureStatsEvent
+  const event = value as NativeMediaStatsEvent
   return typeof event.sessionId === 'string' && typeof event.methods === 'object'
 }
 
-function isNativeCaptureStateEvent(value: unknown): value is NativeCaptureStateEvent {
+function isNativeMediaStateEvent(value: unknown): value is NativeMediaStateEvent {
   if (!value || typeof value !== 'object') return false
-  const event = value as NativeCaptureStateEvent
+  const event = value as NativeMediaStateEvent
   return typeof event.status === 'string'
 }
 
@@ -380,11 +374,11 @@ function isCaptureStreamError(
   return typeof event.sessionId === 'string' && typeof event.message === 'string'
 }
 
-function isNativeCaptureSidecarLostEvent(
+function isNativeMediaSidecarLostEvent(
   value: unknown,
-): value is NativeCaptureSidecarLostEvent {
+): value is NativeMediaSidecarLostEvent {
   if (!value || typeof value !== 'object') return false
-  const event = value as NativeCaptureSidecarLostEvent
+  const event = value as NativeMediaSidecarLostEvent
   return (
     typeof event.sessionId === 'string' &&
     (event.reason === 'exit' || event.reason === 'stream_error') &&

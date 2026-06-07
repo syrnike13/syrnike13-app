@@ -22,6 +22,12 @@ pub struct StartCommand {
 
     pub cmd: String,
 
+    #[serde(rename = "sessionId")]
+    pub session_id: Option<String>,
+
+    #[serde(rename = "sessionKind")]
+    pub session_kind: Option<String>,
+
     pub target: Option<TargetPayload>,
 
     pub width: Option<u32>,
@@ -153,11 +159,15 @@ mod tests {
 
         let command: StartCommand = serde_json::from_str(
 
-            r#"{"cmd":"start","target":{"id":"screen:0:0"},"excludeProcessId":4242,"selfWindowHwnd":99}"#,
+            r#"{"cmd":"start","sessionId":"session-1","sessionKind":"screen","target":{"id":"screen:0:0"},"excludeProcessId":4242,"selfWindowHwnd":99}"#,
 
         )
 
         .expect("start command");
+
+        assert_eq!(command.session_id.as_deref(), Some("session-1"));
+
+        assert_eq!(command.session_kind.as_deref(), Some("screen"));
 
         assert_eq!(command.exclude_process_id, Some(4242));
 
@@ -166,4 +176,3 @@ mod tests {
     }
 
 }
-
