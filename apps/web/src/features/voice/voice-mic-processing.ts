@@ -20,11 +20,17 @@ let processor: DenoiseProcessor | null = null
 let processorLoad: Promise<DenoiseProcessor | null> | null = null
 
 async function createDenoiseProcessor() {
-  const { DenoiseTrackProcessor } = await import('livekit-rnnoise-processor')
-  return new DenoiseTrackProcessor()
+  const { DeepFilterNoiseFilterProcessor } = await import(
+    'deepfilternet3-noise-filter'
+  )
+  return new DeepFilterNoiseFilterProcessor({
+    sampleRate: 48_000,
+    noiseReductionLevel: 80,
+    enabled: true,
+  })
 }
 
-/** RNNoise только в браузере — пакет ломает Node SSR (ESM без расширений). */
+/** DeepFilterNet только в браузере — пакет ломает Node SSR (ESM без расширений). */
 async function loadDenoiseProcessor() {
   if (typeof window === 'undefined') return null
   if (processor) return processor

@@ -25,6 +25,8 @@ tokio = { version = "1", features = [
 ] }
 
 [target.'cfg(windows)'.dependencies]
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", tag = "v0.5.6", default-features = false, features = ["tract", "default-model", "transforms", "logging"] }
+ndarray = "0.15"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 livekit = { version = "0.7", features = ["tokio", "rustls-tls-webpki-roots"] }
 nokhwa = { version = "0.10", features = ["input-msmf"] }

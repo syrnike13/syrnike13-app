@@ -8,6 +8,8 @@ import {
   type MediaEngineEvent,
   type MediaEnginePingResult,
   type MediaEngineRoomConnectParams,
+  type MediaEngineMicSetEnabledParams,
+  type MediaEngineNoiseSuppressionMode,
   type MediaEngineRoomConnectResult,
   type MediaEngineRuntimeStatus,
   type MediaEngineScreenStartParams,
@@ -78,9 +80,19 @@ export async function publishMediaEngineTestTone(): Promise<void> {
   await sendRequest('room.publishTestTone', {})
 }
 
-export async function micSetEnabledMediaEngine(enabled: boolean) {
-  return (await sendRequest('mic.setEnabled', { enabled })) as {
+export async function micSetEnabledMediaEngine(
+  params: MediaEngineMicSetEnabledParams,
+) {
+  return (await sendRequest('mic.setEnabled', params)) as {
     enabled: boolean
+  }
+}
+
+export async function micSetNoiseSuppressionMediaEngine(
+  mode: MediaEngineNoiseSuppressionMode,
+) {
+  return (await sendRequest('mic.setNoiseSuppression', { mode })) as {
+    mode: MediaEngineNoiseSuppressionMode
   }
 }
 

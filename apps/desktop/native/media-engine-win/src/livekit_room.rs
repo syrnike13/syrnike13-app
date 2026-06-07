@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::camera_publish::CameraPublisher;
+use crate::mic_denoise::NoiseSuppressionMode;
 use crate::mic_publish::MicPublisher;
 use crate::protocol::{EventMessage, RoomConnectResult, ScreenStartParams, ScreenStartResult};
 use crate::remote_audio::{
@@ -36,6 +37,7 @@ struct LiveKitRoomInner {
     camera_publisher: CameraPublisher,
     remote_audio: RemoteAudioForwarder,
     mic_enabled: bool,
+    mic_noise_suppression: NoiseSuppressionMode,
     camera_enabled: bool,
 }
 
@@ -52,6 +54,7 @@ impl LiveKitRoom {
                 camera_publisher: CameraPublisher::new(),
                 remote_audio: RemoteAudioForwarder::new(),
                 mic_enabled: false,
+                mic_noise_suppression: NoiseSuppressionMode::Browser,
                 camera_enabled: false,
             }),
         }
@@ -153,7 +156,11 @@ impl LiveKitRoom {
         Ok(RoomConnectResult { room_name, sid })
     }
 
-    pub async fn set_mic_enabled(&self, enabled: bool) -> Result<(), String> {
+    pub async fn set_mic_enabled(
+        &self,
+        enabled: bool,
+        noise_suppression: Option<NoiseSuppressionMode>,
+    ) -> Result<(), String> {
         let mut inner = self.inner.lock().await;
         let room = inner
             .room
@@ -161,18 +168,51 @@ impl LiveKitRoom {
             .ok_or_else(|| "room is not connected".to_string())?
             .clone();
 
+        if let Some(mode) = noise_suppression {
+            inner.mic_noise_suppression = mode;
+            inner.mic_publisher.set_noise_suppression(mode);
+        }
+
         if enabled == inner.mic_enabled {
             return Ok(());
         }
 
         if enabled {
-            inner.mic_publisher.start(room.clone()).await?;
+            inner
+                .mic_publisher
+                .start(room.clone(), inner.mic_noise_suppression)
+                .await?;
         } else {
             inner.mic_publisher.stop(&room).await?;
         }
 
         inner.mic_enabled = enabled;
         emit_participants_snapshot(&room);
+        Ok(())
+    }
+
+    pub async fn set_mic_noise_suppression(
+        &self,
+        mode: NoiseSuppressionMode,
+    ) -> Result<(), String> {
+        let mut inner = self.inner.lock().await;
+        inner.mic_noise_suppression = mode;
+        inner.mic_publisher.set_noise_suppression(mode);
+
+        if inner.mic_enabled {
+            let room = inner
+                .room
+                .as_ref()
+                .ok_or_else(|| "room is not connected".to_string())?
+                .clone();
+            inner.mic_publisher.stop(&room).await?;
+            inner
+                .mic_publisher
+                .start(room.clone(), inner.mic_noise_suppression)
+                .await?;
+            emit_participants_snapshot(&room);
+        }
+
         Ok(())
     }
 

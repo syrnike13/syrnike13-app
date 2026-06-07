@@ -1,9 +1,11 @@
 use serde_json::Value;
 
 use crate::livekit_room::LiveKitRoom;
+use crate::mic_denoise::NoiseSuppressionMode;
 use crate::protocol::{
-    CameraSetEnabledParams, EventMessage, MicSetEnabledParams, PingResult, RequestMessage,
-    ResponseMessage, RoomConnectParams, ScreenStartParams, ENGINE_NAME, ENGINE_VERSION,
+    CameraSetEnabledParams, EventMessage, MicSetEnabledParams, MicSetNoiseSuppressionParams,
+    PingResult, RequestMessage, ResponseMessage, RoomConnectParams, ScreenStartParams, ENGINE_NAME,
+    ENGINE_VERSION,
 };
 
 pub struct EngineSession {
@@ -87,7 +89,15 @@ impl EngineSession {
             "mic.setEnabled" => {
                 match serde_json::from_value::<MicSetEnabledParams>(request.params) {
                     Ok(params) => {
-                        match self.livekit_room.set_mic_enabled(params.enabled).await {
+                        let noise_suppression = params
+                            .noise_suppression
+                            .as_deref()
+                            .and_then(NoiseSuppressionMode::parse);
+                        match self
+                            .livekit_room
+                            .set_mic_enabled(params.enabled, noise_suppression)
+                            .await
+                        {
                             Ok(()) => ResponseMessage::success(request.id, serde_json::json!({
                                 "enabled": params.enabled,
                             })),
@@ -102,6 +112,35 @@ impl EngineSession {
                         request.id,
                         "INVALID_PARAMS",
                         format!("mic.setEnabled params invalid: {error}"),
+                    ),
+                }
+            }
+            "mic.setNoiseSuppression" => {
+                match serde_json::from_value::<MicSetNoiseSuppressionParams>(request.params) {
+                    Ok(params) => {
+                        let Some(mode) = NoiseSuppressionMode::parse(&params.mode) else {
+                            return ResponseMessage::failure(
+                                request.id,
+                                "INVALID_PARAMS",
+                                format!("unsupported noise suppression mode: {}", params.mode),
+                            );
+                        };
+                        match self.livekit_room.set_mic_noise_suppression(mode).await {
+                            Ok(()) => ResponseMessage::success(
+                                request.id,
+                                serde_json::json!({ "mode": params.mode }),
+                            ),
+                            Err(message) => ResponseMessage::failure(
+                                request.id,
+                                "MIC_SET_NOISE_SUPPRESSION_FAILED",
+                                message,
+                            ),
+                        }
+                    }
+                    Err(error) => ResponseMessage::failure(
+                        request.id,
+                        "INVALID_PARAMS",
+                        format!("mic.setNoiseSuppression params invalid: {error}"),
                     ),
                 }
             }

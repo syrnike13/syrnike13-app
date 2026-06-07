@@ -1512,7 +1512,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         applyAllRemoteAudio(deafenedRef.current)
       }
       if (effects.micProcessingChanged) {
-        void refreshMicProcessing(room)
+        const engineVoice = engineVoiceSessionRef.current
+        if (engineVoice) {
+          void engineVoice.setNoiseSuppression(next.noiseSuppression)
+        } else {
+          void refreshMicProcessing(room)
+        }
       }
     })
   }, [applyVoiceDevices, status])

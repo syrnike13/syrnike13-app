@@ -39,7 +39,7 @@ const NOISE_SUPPRESSION_OPTIONS: {
   {
     value: 'enhanced',
     label: 'Усиленное',
-    description: 'RNNoise — переподключитесь к голосу',
+    description: 'DeepFilterNet — переподключитесь к голосу',
   },
   {
     value: 'disabled',

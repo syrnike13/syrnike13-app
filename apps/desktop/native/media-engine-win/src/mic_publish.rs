@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 use livekit::options::TrackPublishOptions;
@@ -11,6 +11,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle as TokioJoinHandle;
 use wasapi::{initialize_mta, AudioClient, DeviceEnumerator, Direction, StreamMode, WaveFormat};
 
+use crate::mic_denoise::{MicDenoiser, NoiseSuppressionMode};
+
 const SAMPLE_RATE: u32 = 48_000;
 const NUM_CHANNELS: u32 = 1;
 const CHUNK_FRAMES: usize = 480;
@@ -21,6 +23,7 @@ pub struct MicPublisher {
     publish_task: Option<TokioJoinHandle<()>>,
     audio_source: Option<NativeAudioSource>,
     track_sid: Option<String>,
+    denoiser: Arc<Mutex<MicDenoiser>>,
 }
 
 impl MicPublisher {
@@ -31,11 +34,23 @@ impl MicPublisher {
             publish_task: None,
             audio_source: None,
             track_sid: None,
+            denoiser: Arc::new(Mutex::new(MicDenoiser::new(NoiseSuppressionMode::Browser))),
         }
     }
 
-    pub async fn start(&mut self, room: Arc<Room>) -> Result<(), String> {
+    pub fn set_noise_suppression(&self, mode: NoiseSuppressionMode) {
+        if let Ok(mut denoiser) = self.denoiser.lock() {
+            denoiser.set_mode(mode);
+        }
+    }
+
+    pub async fn start(
+        &mut self,
+        room: Arc<Room>,
+        noise_suppression: NoiseSuppressionMode,
+    ) -> Result<(), String> {
         self.stop(room.as_ref()).await?;
+        self.set_noise_suppression(noise_suppression);
 
         let audio_source = NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, NUM_CHANNELS, 0);
         let track = LocalAudioTrack::create_audio_track(
@@ -58,6 +73,7 @@ impl MicPublisher {
         let (pcm_tx, mut pcm_rx) = mpsc::channel::<Vec<i16>>(8);
         let stop = Arc::new(AtomicBool::new(false));
         let stop_flag = Arc::clone(&stop);
+        let denoiser = Arc::clone(&self.denoiser);
 
         let capture_thread = thread::Builder::new()
             .name("mic-capture".into())
@@ -69,9 +85,13 @@ impl MicPublisher {
             .map_err(|error| error.to_string())?;
 
         let publish_task = tokio::spawn(async move {
-            while let Some(samples) = pcm_rx.recv().await {
+            while let Some(mut samples) = pcm_rx.recv().await {
                 if samples.is_empty() {
                     continue;
+                }
+
+                if let Ok(mut denoiser) = denoiser.lock() {
+                    denoiser.process_i16(&mut samples);
                 }
 
                 let samples_per_channel = samples.len() as u32;

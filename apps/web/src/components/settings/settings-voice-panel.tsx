@@ -354,7 +354,7 @@ export function SettingsVoicePanel() {
             <SelectContent>
               <SelectItem value="disabled">Выключено</SelectItem>
               <SelectItem value="browser">Браузер</SelectItem>
-              <SelectItem value="enhanced">Усиленное (RNNoise)</SelectItem>
+              <SelectItem value="enhanced">Усиленное (DeepFilterNet)</SelectItem>
             </SelectContent>
           </Select>
         </div>

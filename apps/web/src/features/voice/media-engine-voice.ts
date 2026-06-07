@@ -1,4 +1,11 @@
-import type { MediaEngineEvent, MediaEngineRoomConnectParams } from '@syrnike13/platform'
+import type {
+  MediaEngineEvent,
+  MediaEngineNoiseSuppressionMode,
+  MediaEngineRoomConnectParams,
+} from '@syrnike13/platform'
+
+import { readVoicePreferences } from '#/features/voice/voice-preference-store'
+import type { NoiseSuppressionMode } from '#/features/voice/voice-preference-types'
 
 import {
   applyEngineParticipantsSnapshot,
@@ -24,8 +31,15 @@ export type MediaEngineVoiceSession = {
   localUserId: string
   disconnect: () => Promise<void>
   setMicEnabled: (enabled: boolean) => Promise<void>
+  setNoiseSuppression: (mode: NoiseSuppressionMode) => Promise<void>
   setCameraEnabled: (enabled: boolean) => Promise<void>
   setDeafened: (deafened: boolean) => void
+}
+
+function toEngineNoiseSuppressionMode(
+  mode: NoiseSuppressionMode,
+): MediaEngineNoiseSuppressionMode {
+  return mode
 }
 
 export type MediaEngineVoiceContext = {
@@ -210,12 +224,26 @@ export async function connectMediaEngineVoice(
 
   const unsubscribe = desktop.mediaEngine.onEvent(handleEngineEvent)
 
-  await desktop.mediaEngine.micSetEnabled(initialMicEnabled)
+  const initialNoiseSuppression = readVoicePreferences().noiseSuppression
+
+  await desktop.mediaEngine.micSetEnabled({
+    enabled: initialMicEnabled,
+    noiseSuppression: toEngineNoiseSuppressionMode(initialNoiseSuppression),
+  })
 
   return {
     localUserId: localUserId || result.sid,
     async setMicEnabled(enabled: boolean) {
-      await desktop.mediaEngine.micSetEnabled(enabled)
+      const noiseSuppression = readVoicePreferences().noiseSuppression
+      await desktop.mediaEngine.micSetEnabled({
+        enabled,
+        noiseSuppression: toEngineNoiseSuppressionMode(noiseSuppression),
+      })
+    },
+    async setNoiseSuppression(mode: NoiseSuppressionMode) {
+      await desktop.mediaEngine.micSetNoiseSuppression(
+        toEngineNoiseSuppressionMode(mode),
+      )
     },
     async setCameraEnabled(enabled: boolean) {
       await desktop.mediaEngine.cameraSetEnabled(enabled)

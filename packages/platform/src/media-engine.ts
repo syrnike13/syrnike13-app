@@ -41,8 +41,22 @@ export type MediaEngineScreenStartResult = {
   audioMode?: string | null
 }
 
+export type MediaEngineNoiseSuppressionMode =
+  | 'disabled'
+  | 'browser'
+  | 'enhanced'
+
+export type MediaEngineMicSetEnabledParams = {
+  enabled: boolean
+  noiseSuppression?: MediaEngineNoiseSuppressionMode
+}
+
 export type MediaEngineMicSetEnabledResult = {
   enabled: boolean
+}
+
+export type MediaEngineMicSetNoiseSuppressionResult = {
+  mode: MediaEngineNoiseSuppressionMode
 }
 
 export type MediaEngineCameraSetEnabledResult = {

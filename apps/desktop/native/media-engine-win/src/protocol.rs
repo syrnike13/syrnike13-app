@@ -80,6 +80,14 @@ fn default_with_audio() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct MicSetEnabledParams {
     pub enabled: bool,
+    #[serde(default)]
+    pub noise_suppression: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicSetNoiseSuppressionParams {
+    pub mode: String,
 }
 
 #[derive(Debug, Deserialize)]

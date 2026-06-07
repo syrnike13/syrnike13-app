@@ -34,6 +34,7 @@ import {
   getMediaEngineRuntimeStatus,
   initializeMediaEngine,
   micSetEnabledMediaEngine,
+  micSetNoiseSuppressionMediaEngine,
   pingMediaEngine,
   publishMediaEngineTestTone,
   startMediaEngineScreen,
@@ -167,8 +168,12 @@ export function registerDesktopIpc(
     publishMediaEngineTestTone(),
   )
 
-  ipcMain.handle(IPC.mediaEngineMicSetEnabled, (_event, enabled: boolean) =>
-    micSetEnabledMediaEngine(enabled),
+  ipcMain.handle(IPC.mediaEngineMicSetEnabled, (_event, params) =>
+    micSetEnabledMediaEngine(params),
+  )
+
+  ipcMain.handle(IPC.mediaEngineMicSetNoiseSuppression, (_event, mode) =>
+    micSetNoiseSuppressionMediaEngine(mode),
   )
 
   ipcMain.handle(IPC.mediaEngineCameraSetEnabled, (_event, enabled: boolean) =>

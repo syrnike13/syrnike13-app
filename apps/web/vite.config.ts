@@ -26,7 +26,7 @@ const config = defineConfig({
   },
   ssr: {
     /** ESM entry without `.js` extensions — only load in the browser. */
-    external: ['livekit-rnnoise-processor'],
+    external: ['deepfilternet3-noise-filter'],
     /** Workspace TS package — bundle in SSR, do not treat as external Node dep. */
     noExternal: ['@syrnike13/api-types', '@syrnike13/platform'],
   },
