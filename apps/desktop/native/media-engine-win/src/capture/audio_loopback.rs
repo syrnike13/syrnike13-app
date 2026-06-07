@@ -1,25 +1,50 @@
 use std::collections::VecDeque;
-use std::io::Write;
-use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
+use tokio::sync::mpsc;
 use wasapi::{initialize_mta, AudioClient, Direction, StreamMode, WaveFormat};
 
-use crate::capture::target::process_id_for_hwnd;
+use crate::capture::target::{process_id_for_hwnd, CaptureTarget};
 
-const SAMPLE_RATE: usize = 48_000;
-const CHANNELS: usize = 2;
+const SAMPLE_RATE: u32 = 48_000;
+const NUM_CHANNELS: u32 = 2;
 const CHUNK_FRAMES: usize = 960;
 
-pub struct AudioCaptureSession {
+pub struct AudioLoopbackCapture {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
-impl AudioCaptureSession {
+pub enum AudioLoopbackTarget {
+    Process { process_id: u32 },
+    SystemExclude { exclude_process_id: u32 },
+}
+
+impl AudioLoopbackCapture {
+    pub fn start(
+        target: AudioLoopbackTarget,
+        tx: mpsc::Sender<Vec<i16>>,
+    ) -> Result<Self, String> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_flag = Arc::clone(&stop);
+
+        let thread = thread::Builder::new()
+            .name("screen-audio-loopback".into())
+            .spawn(move || {
+                if let Err(error) = run_audio_loopback(target, stop_flag, tx) {
+                    log::warn!("screen audio loopback stopped: {error}");
+                }
+            })
+            .map_err(|error| error.to_string())?;
+
+        Ok(Self {
+            stop,
+            thread: Some(thread),
+        })
+    }
+
     pub fn stop(mut self) {
         self.stop.store(true, Ordering::SeqCst);
         if let Some(thread) = self.thread.take() {
@@ -28,89 +53,68 @@ impl AudioCaptureSession {
     }
 }
 
-pub fn try_start_process_audio(hwnd: isize) -> Result<(u16, AudioCaptureSession), String> {
-    let process_id =
-        process_id_for_hwnd(hwnd).ok_or_else(|| "window has no process id".to_string())?;
-    spawn_audio_capture(process_id, true)
-}
-
-pub fn try_start_system_audio_exclude(
+pub fn resolve_audio_loopback_target(
+    target: &CaptureTarget,
+    with_audio: bool,
     exclude_process_id: u32,
-) -> Result<(u16, AudioCaptureSession), String> {
-    if exclude_process_id == 0 {
-        return Err("exclude process id is required".to_string());
+    self_window_hwnd: Option<isize>,
+) -> Option<AudioLoopbackTarget> {
+    if !with_audio {
+        return None;
     }
-    spawn_audio_capture(exclude_process_id, false)
-}
 
-fn spawn_audio_capture(
-    process_id: u32,
-    include_tree: bool,
-) -> Result<(u16, AudioCaptureSession), String> {
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| error.to_string())?
-        .port();
-
-    let stop = Arc::new(AtomicBool::new(false));
-    let stop_flag = Arc::clone(&stop);
-
-    let thread = thread::Builder::new()
-        .name(if include_tree {
-            "process-audio-capture".into()
-        } else {
-            "system-audio-exclude-capture".into()
-        })
-        .spawn(move || {
-            if let Err(error) = run_audio_loopback_loop(listener, process_id, include_tree, stop_flag)
-            {
-                eprintln!("[audio-loopback] {error}");
-            }
-        })
-        .map_err(|error| error.to_string())?;
-
-    Ok((
-        port,
-        AudioCaptureSession {
-            stop,
-            thread: Some(thread),
-        },
-    ))
-}
-
-fn run_audio_loopback_loop(
-    listener: TcpListener,
-    process_id: u32,
-    include_tree: bool,
-    stop: Arc<AtomicBool>,
-) -> Result<(), String> {
-    listener
-        .set_nonblocking(true)
-        .map_err(|error| error.to_string())?;
-
-    let mut client: Option<TcpStream> = None;
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-
-    while client.is_none() && std::time::Instant::now() < deadline && !stop.load(Ordering::SeqCst)
+    if target
+        .hwnd
+        .is_some_and(|hwnd| self_window_hwnd.is_some_and(|self_hwnd| hwnd == self_hwnd))
     {
-        if let Ok((stream, _addr)) = listener.accept() {
-            client = Some(stream);
-            break;
-        }
-        thread::sleep(Duration::from_millis(10));
+        return None;
     }
 
-    let mut stream = client.ok_or_else(|| "audio stream client timeout".to_string())?;
-    stream
-        .set_nodelay(true)
-        .map_err(|error| error.to_string())?;
+    if let Some(hwnd) = target.hwnd {
+        let process_id = process_id_for_hwnd(hwnd)?;
+        return Some(AudioLoopbackTarget::Process { process_id });
+    }
 
+    if exclude_process_id == 0 {
+        return None;
+    }
+
+    Some(AudioLoopbackTarget::SystemExclude {
+        exclude_process_id,
+    })
+}
+
+pub fn audio_mode_label(target: &AudioLoopbackTarget) -> &'static str {
+    match target {
+        AudioLoopbackTarget::Process { .. } => "process",
+        AudioLoopbackTarget::SystemExclude { .. } => "system_exclude",
+    }
+}
+
+fn run_audio_loopback(
+    target: AudioLoopbackTarget,
+    stop: Arc<AtomicBool>,
+    tx: mpsc::Sender<Vec<i16>>,
+) -> Result<(), String> {
     if initialize_mta().is_err() {
         return Err("failed to initialize COM MTA".to_string());
     }
 
-    let wave_format = WaveFormat::new(32, 32, &wasapi::SampleType::Float, SAMPLE_RATE, CHANNELS, None);
+    let (process_id, include_tree) = match target {
+        AudioLoopbackTarget::Process { process_id } => (process_id, true),
+        AudioLoopbackTarget::SystemExclude {
+            exclude_process_id,
+        } => (exclude_process_id, false),
+    };
+
+    let wave_format = WaveFormat::new(
+        32,
+        32,
+        &wasapi::SampleType::Float,
+        SAMPLE_RATE as usize,
+        NUM_CHANNELS as usize,
+        None,
+    );
     let blockalign = wave_format.get_blockalign() as usize;
     let chunk_bytes = blockalign * CHUNK_FRAMES;
 
@@ -141,7 +145,11 @@ fn run_audio_loopback_loop(
     while !stop.load(Ordering::SeqCst) {
         while sample_queue.len() >= chunk_bytes {
             let chunk: Vec<u8> = sample_queue.drain(..chunk_bytes).collect();
-            write_packet(&mut stream, &chunk)?;
+            let samples = float_bytes_to_i16_stereo(&chunk);
+            if tx.blocking_send(samples).is_err() {
+                let _ = audio_client.stop_stream();
+                return Ok(());
+            }
         }
 
         let new_frames = capture_client
@@ -167,13 +175,13 @@ fn run_audio_loopback_loop(
     Ok(())
 }
 
-fn write_packet(stream: &mut TcpStream, payload: &[u8]) -> Result<(), String> {
-    let length = payload.len() as u32;
-    stream
-        .write_all(&length.to_le_bytes())
-        .map_err(|error| error.to_string())?;
-    stream
-        .write_all(payload)
-        .map_err(|error| error.to_string())?;
-    Ok(())
+fn float_bytes_to_i16_stereo(bytes: &[u8]) -> Vec<i16> {
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| {
+            let bits = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            let sample = f32::from_bits(bits).clamp(-1.0, 1.0);
+            (sample * i16::MAX as f32) as i16
+        })
+        .collect()
 }

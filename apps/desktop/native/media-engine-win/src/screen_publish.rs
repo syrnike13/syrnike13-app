@@ -1,35 +1,43 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use livekit::options::TrackPublishOptions;
 use livekit::prelude::*;
+use livekit::webrtc::audio_frame::AudioFrame;
+use livekit::webrtc::audio_source::native::NativeAudioSource;
+use livekit::webrtc::audio_source::AudioSourceOptions;
 use livekit::webrtc::video_frame::{I420Buffer, VideoFrame, VideoRotation};
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::{RtcVideoSource, VideoResolution};
-use tokio::sync::Mutex;
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::JoinHandle as TokioJoinHandle;
 
+use crate::capture::audio_loopback::{
+    audio_mode_label, resolve_audio_loopback_target, AudioLoopbackCapture,
+};
 use crate::capture::color_convert::bgra_to_i420;
 use crate::capture::hybrid::{CaptureMethod, HybridCapturer};
 use crate::capture::target::{parse_target, CaptureTarget};
 use crate::protocol::{ScreenStartParams, ScreenStartResult};
 
 pub struct ScreenPublisher {
-    inner: Mutex<Option<ScreenPublisherInner>>,
+    inner: AsyncMutex<Option<ScreenPublisherInner>>,
 }
 
 struct ScreenPublisherInner {
     stop: Arc<AtomicBool>,
     capture_thread: Option<JoinHandle<()>>,
-    publish_task: Option<TokioJoinHandle<()>>,
+    video_publish_task: Option<TokioJoinHandle<()>>,
+    audio_publish_task: Option<TokioJoinHandle<()>>,
+    audio_capture: Option<AudioLoopbackCapture>,
 }
 
 impl ScreenPublisher {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(None),
+            inner: AsyncMutex::new(None),
         }
     }
 
@@ -74,19 +82,87 @@ impl ScreenPublisher {
             .await
             .map_err(|error| error.to_string())?;
 
-        let audio_mode = resolve_screen_audio_mode(
+        let audio_target = resolve_audio_loopback_target(
             &target,
             params.with_audio,
             exclude_process_id,
             self_window_hwnd,
         );
+        let audio_mode = if params.with_audio {
+            Some(
+                audio_target
+                    .as_ref()
+                    .map(audio_mode_label)
+                    .unwrap_or("none")
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
+        let mut audio_capture = None;
+        let mut audio_publish_task = None;
+
+        if let Some(loopback_target) = audio_target {
+            let audio_source = NativeAudioSource::new(
+                AudioSourceOptions::default(),
+                SAMPLE_RATE,
+                NUM_CHANNELS,
+                0,
+            );
+            let audio_track = LocalAudioTrack::create_audio_track(
+                "screen_share_audio",
+                RtcAudioSource::Native(audio_source.clone()),
+            );
+
+            room.local_participant()
+                .publish_track(
+                    LocalTrack::Audio(audio_track),
+                    TrackPublishOptions {
+                        source: TrackSource::ScreenshareAudio,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+
+            let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<i16>>(8);
+            audio_capture = Some(AudioLoopbackCapture::start(loopback_target, audio_tx)?);
+
+            audio_publish_task = Some(tokio::spawn(async move {
+                while let Some(samples) = audio_rx.recv().await {
+                    if samples.is_empty() {
+                        continue;
+                    }
+
+                    let samples_per_channel =
+                        (samples.len() / NUM_CHANNELS as usize) as u32;
+                    if samples_per_channel == 0 {
+                        continue;
+                    }
+
+                    let frame = AudioFrame {
+                        data: samples.into(),
+                        sample_rate: SAMPLE_RATE,
+                        num_channels: NUM_CHANNELS,
+                        samples_per_channel,
+                    };
+
+                    if audio_source.capture_frame(&frame).await.is_err() {
+                        break;
+                    }
+                }
+            }));
+        }
 
         let stop = Arc::new(AtomicBool::new(true));
         let stop_flag = Arc::clone(&stop);
+        let active_method = Arc::new(Mutex::new(CaptureMethod::Wgc.as_str().to_string()));
+        let active_method_for_capture = Arc::clone(&active_method);
         let (frame_tx, mut frame_rx) =
             tokio::sync::mpsc::channel::<(I420Buffer, i64)>(2);
 
-        let publish_task = tokio::spawn(async move {
+        let video_publish_task = tokio::spawn(async move {
             let mut frame = VideoFrame {
                 rotation: VideoRotation::VideoRotation0,
                 timestamp_us: 0,
@@ -113,22 +189,29 @@ impl ScreenPublisher {
                     fps,
                     stop_flag,
                     frame_tx,
+                    active_method_for_capture,
                 ) {
                     log::warn!("screen capture loop stopped: {error}");
                 }
             })
             .map_err(|error| error.to_string())?;
 
-        let active_method = "wgc".to_string();
+        let active_method = active_method
+            .lock()
+            .map(|value| value.clone())
+            .unwrap_or_else(|_| CaptureMethod::Wgc.as_str().to_string());
+
         let mut inner = self.inner.lock().await;
         *inner = Some(ScreenPublisherInner {
             stop,
             capture_thread: Some(capture_thread),
-            publish_task: Some(publish_task),
+            video_publish_task: Some(video_publish_task),
+            audio_publish_task,
+            audio_capture,
         });
 
         Ok(ScreenStartResult {
-            audio_mode: audio_mode.map(str::to_string),
+            audio_mode,
             active_method,
         })
     }
@@ -143,7 +226,13 @@ impl ScreenPublisher {
         if let Some(thread) = session.capture_thread {
             let _ = thread.join();
         }
-        if let Some(task) = session.publish_task {
+        if let Some(capture) = session.audio_capture {
+            capture.stop();
+        }
+        if let Some(task) = session.video_publish_task {
+            task.abort();
+        }
+        if let Some(task) = session.audio_publish_task {
             task.abort();
         }
 
@@ -151,33 +240,8 @@ impl ScreenPublisher {
     }
 }
 
-fn resolve_screen_audio_mode(
-    target: &CaptureTarget,
-    with_audio: bool,
-    exclude_process_id: u32,
-    self_window_hwnd: Option<isize>,
-) -> Option<String> {
-    if !with_audio {
-        return None;
-    }
-
-    if target
-        .hwnd
-        .is_some_and(|hwnd| self_window_hwnd.is_some_and(|self_hwnd| hwnd == self_hwnd))
-    {
-        return Some("none".into());
-    }
-
-    if target.hwnd.is_some() {
-        return Some("process".into());
-    }
-
-    if exclude_process_id == 0 {
-        return Some("none".into());
-    }
-
-    Some("system_exclude".into())
-}
+const SAMPLE_RATE: u32 = 48_000;
+const NUM_CHANNELS: u32 = 2;
 
 fn run_capture_loop(
     target: CaptureTarget,
@@ -186,6 +250,7 @@ fn run_capture_loop(
     fps: u32,
     stop: Arc<AtomicBool>,
     frame_tx: tokio::sync::mpsc::Sender<(I420Buffer, i64)>,
+    active_method: Arc<Mutex<String>>,
 ) -> Result<(), String> {
     let mut capturer = HybridCapturer::new(target, width, height)?;
     let frame_interval = Duration::from_micros(1_000_000 / fps as u64);
@@ -199,14 +264,15 @@ fn run_capture_loop(
             continue;
         }
 
+        if let Ok(mut method) = active_method.lock() {
+            *method = frame.method.as_str().to_string();
+        }
+
         let buffer = bgra_to_i420(&frame.bgra, frame.width, frame.height, frame.stride)?;
         let timestamp_us = started_at.elapsed().as_micros() as i64;
         if frame_tx.blocking_send((buffer, timestamp_us)).is_err() {
             break;
         }
-
-        let _ = frame.method;
-        let _ = CaptureMethod::Wgc;
 
         let elapsed = tick_started.elapsed();
         if elapsed < frame_interval {
