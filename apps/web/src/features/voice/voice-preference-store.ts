@@ -103,8 +103,8 @@ function parseScreenShareCodec(value: unknown): ScreenShareCodec {
   return DEFAULT_STATE.screenShareCodec
 }
 
-function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureMode {
-  if (value === 'native' || value === 'browser' || value === 'auto') {
+export function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureMode {
+  if (value === 'native' || value === 'auto') {
     return value
   }
   return DEFAULT_STATE.screenShareCaptureMode

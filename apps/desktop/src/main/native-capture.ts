@@ -144,7 +144,7 @@ function emitCaptureState(
   captureState = next
   const win = getWindow()
   if (!win || win.isDestroyed()) return
-  win.webContents.send(IPC.captureStateChanged, next)
+  win.webContents.send(IPC.mediaStateChanged, next)
 }
 
 function emitCaptureStats(
@@ -153,7 +153,7 @@ function emitCaptureStats(
 ) {
   const win = getWindow()
   if (!win || win.isDestroyed()) return
-  win.webContents.send(IPC.captureStats, event)
+  win.webContents.send(IPC.mediaStats, event)
 }
 
 function emitSidecarLost(
@@ -162,7 +162,7 @@ function emitSidecarLost(
 ) {
   const win = getWindow()
   if (!win || win.isDestroyed()) return
-  win.webContents.send(IPC.captureSidecarLost, event)
+  win.webContents.send(IPC.mediaEngineLost, event)
 }
 
 export function getPendingNativePicker() {
@@ -220,11 +220,11 @@ function notifySidecarLost(
 
   const win = getWindow()
   if (win && !win.isDestroyed()) {
-    win.webContents.send(IPC.captureStreamError, {
+    win.webContents.send(IPC.mediaStreamError, {
       sessionId: session.sessionId,
       message,
     })
-    win.webContents.send(IPC.captureStreamEnded, session.sessionId)
+    win.webContents.send(IPC.mediaStreamEnded, session.sessionId)
   }
 }
 
@@ -244,7 +244,7 @@ function forwardStreamPayload(
     framed.byteOffset,
     framed.byteOffset + framed.byteLength,
   )
-  win.webContents.send(IPC.captureStreamChunk, {
+  win.webContents.send(IPC.mediaStreamChunk, {
     sessionId: session.sessionId,
     chunk: arrayBuffer,
   })
@@ -288,7 +288,7 @@ function forwardStreamAudioPayload(
     payload.byteOffset,
     payload.byteOffset + payload.byteLength,
   )
-  win.webContents.send(IPC.captureStreamAudioChunk, {
+  win.webContents.send(IPC.mediaStreamAudioChunk, {
     sessionId: session.sessionId,
     chunk: arrayBuffer,
   })
@@ -413,7 +413,7 @@ function attachStreamRelay(
   socket.on('end', () => {
     const win = getWindow()
     if (!win || win.isDestroyed()) return
-    win.webContents.send(IPC.captureStreamEnded, session.sessionId)
+    win.webContents.send(IPC.mediaStreamEnded, session.sessionId)
   })
 
   socket.on('error', (error) => {
@@ -644,7 +644,7 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
   getWindowRef = getWindow
 
   ipcMain.handle(
-    IPC.captureStart,
+    IPC.mediaStartScreenShare,
     async (event, options: NativeCaptureStartOptions) => {
       if (!isTrustedSender(event, getWindow)) {
         throw new Error('Untrusted capture start request')
@@ -653,7 +653,7 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
     },
   )
 
-  ipcMain.handle(IPC.captureStop, async (event, sessionId?: string) => {
+  ipcMain.handle(IPC.mediaStopSession, async (event, sessionId?: string) => {
     if (!isTrustedSender(event, getWindow)) return
     if (sessionId && activeSession?.sessionId !== sessionId) return
     stopCaptureHelper()
@@ -661,20 +661,20 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
   })
 
   ipcMain.handle(
-    IPC.capturePrepareSystemAudio,
+    IPC.mediaPrepareSystemAudio,
     async (event, sourceId: string) => {
       if (!isTrustedSender(event, getWindow)) return
       rememberNativeAudioLoopbackSource(sourceId)
     },
   )
 
-  ipcMain.handle(IPC.captureClearSystemAudio, async (event) => {
+  ipcMain.handle(IPC.mediaClearSystemAudio, async (event) => {
     if (!isTrustedSender(event, getWindow)) return
     clearNativeAudioLoopbackSource()
   })
 
   ipcMain.handle(
-    IPC.captureReadSharedFrame,
+    IPC.mediaReadSharedFrame,
     async (event, sessionId: string) => {
       if (!isTrustedSender(event, getWindow)) return null
       if (
@@ -699,7 +699,7 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
     },
   )
 
-  ipcMain.handle(IPC.captureGetState, async (event) => {
+  ipcMain.handle(IPC.mediaGetState, async (event) => {
     if (!isTrustedSender(event, getWindow)) {
       return { status: 'idle' } satisfies NativeCaptureState
     }
@@ -707,7 +707,7 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
   })
 
   ipcMain.handle(
-    IPC.screenShareOpenNativePicker,
+    IPC.mediaOpenDisplayPicker,
     async (event, audioRequested: boolean) => {
       if (!isTrustedSender(event, getWindow)) {
         throw new Error('Untrusted native picker request')
@@ -733,7 +733,7 @@ export function registerNativeCaptureIpc(getWindow: () => BrowserWindow | null) 
         timeout: setTimeout(clearPendingNativePicker, NATIVE_PICKER_TIMEOUT_MS),
       }
 
-      win.webContents.send(IPC.screenShareRequest, request)
+      win.webContents.send(IPC.mediaRequest, request)
       return request
     },
   )

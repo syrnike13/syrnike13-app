@@ -206,19 +206,17 @@ export interface SyrnikeDesktopApi {
     onRecordedInput(handler: (event: NativeInputEvent) => void): () => void
     onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
   }
-  screenShare: {
-    getSources(requestId: string): Promise<DesktopDisplayMediaSource[]>
-    selectSource(requestId: string, sourceId: string): Promise<boolean>
+  media: {
+    getDisplaySources(requestId: string): Promise<DesktopDisplayMediaSource[]>
+    selectDisplaySource(requestId: string, sourceId: string): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
-    openNativePicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
+    openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
-    onNativePickerResolved(
+    onDisplayPickerResolved(
       handler: (payload: { requestId: string; sourceId: string }) => void,
     ): () => void
-  }
-  capture: {
-    start(options: NativeCaptureStartOptions): Promise<NativeCaptureSession>
-    stop(sessionId?: string): Promise<void>
+    startScreenShare(options: NativeCaptureStartOptions): Promise<NativeCaptureSession>
+    stopSession(sessionId?: string): Promise<void>
     getState(): Promise<NativeCaptureState>
     onStats(handler: (event: NativeCaptureStatsEvent) => void): () => void
     onStateChange(handler: (event: NativeCaptureStateEvent) => void): () => void

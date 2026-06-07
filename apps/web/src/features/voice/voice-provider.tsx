@@ -947,6 +947,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     )
   }, [stageMediaItems])
 
+  const stopNativeScreenShare = useCallback(() => {
+    const active = nativeScreenShareRef.current
+    if (!active) return
+    active.stop()
+    nativeScreenShareRef.current = null
+    nativeCaptureStatsStore.reset()
+  }, [])
+
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
       const room = roomRef.current
@@ -957,6 +965,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const action = setStageScreenSubscription(item, subscribed)
 
       if (action === 'stop-local-screen') {
+        if (nativeScreenShareRef.current) {
+          stopNativeScreenShare()
+          setScreenShareEnabled(false)
+          syncRoomParticipants()
+          return
+        }
+
         void room.localParticipant
           .setScreenShareEnabled(false)
           .then(() => {
@@ -977,7 +992,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         syncStageMediaItems(room)
       }
     },
-    [syncRoomParticipants, syncStageMediaItems],
+    [stopNativeScreenShare, syncRoomParticipants, syncStageMediaItems],
   )
 
   const toggleCamera = useCallback(() => {
@@ -998,14 +1013,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
       })
   }, [syncRoomParticipants])
-
-  const stopNativeScreenShare = useCallback(() => {
-    const active = nativeScreenShareRef.current
-    if (!active) return
-    active.stop()
-    nativeScreenShareRef.current = null
-    nativeCaptureStatsStore.reset()
-  }, [])
 
   const startBrowserScreenShare = useCallback(
     async (
@@ -1071,53 +1078,31 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       try {
         if (useNative && desktop) {
-          try {
-            const pickerPromise = waitForNativePickerSelection()
-            await desktop.screenShare.openNativePicker(withAudio)
-            const sourceId = await pickerPromise
-            let sidecarFallbackStarted = false
-            const session = await publishNativeScreenShare(
-              room,
-              room.localParticipant,
-              sourceId,
-              quality,
-              withAudio,
-              async (message) => {
-                if (sidecarFallbackStarted) return
-                sidecarFallbackStarted = true
-                console.warn('[voice] native sidecar lost, falling back', message)
-                toast.warning(
-                  'Нативный захват прерван, используется браузерный режим',
-                )
-                stopNativeScreenShare()
-                try {
-                  await startBrowserScreenShare(room, quality, withAudio)
-                  setScreenShareEnabled(
-                    localParticipantVoiceFlags(room.localParticipant)
-                      .screensharing,
-                  )
-                  syncRoomParticipants()
-                } catch (fallbackError) {
-                  toast.error(
-                    fallbackError instanceof Error
-                      ? fallbackError.message
-                      : 'Не удалось восстановить демонстрацию экрана',
-                  )
-                }
-              },
-            )
-            nativeScreenShareRef.current = session
-            setScreenShareEnabled(true)
-            syncRoomParticipants()
-            return
-          } catch (nativeError) {
-            console.warn('[voice] native screen share failed, falling back', nativeError)
-            toast.warning(
-              'Нативный захват недоступен, используется браузерный режим',
-            )
-            stopNativeScreenShare()
-            clearNativePickerSelection()
-          }
+          const pickerPromise = waitForNativePickerSelection()
+          await desktop.media.openDisplayPicker(withAudio)
+          const sourceId = await pickerPromise
+          const session = await publishNativeScreenShare(
+            room,
+            room.localParticipant,
+            sourceId,
+            quality,
+            withAudio,
+            (message) => {
+              console.warn('[voice] native media engine lost', message)
+              toast.error('Нативный захват прерван')
+              stopNativeScreenShare()
+              setScreenShareEnabled(false)
+              syncRoomParticipants()
+            },
+          )
+          nativeScreenShareRef.current = session
+          setScreenShareEnabled(true)
+          syncRoomParticipants()
+          return
+        }
+
+        if (desktop?.platform.os === 'win32') {
+          throw new Error('Нативный media engine недоступен')
         }
 
         await startBrowserScreenShare(room, quality, withAudio)
@@ -1126,6 +1111,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
         syncRoomParticipants()
       } catch (error) {
+        if (desktop?.platform.os === 'win32') {
+          stopNativeScreenShare()
+          clearNativePickerSelection()
+        }
         rejectNativePickerSelection(
           error instanceof Error
             ? error

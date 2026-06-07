@@ -187,7 +187,7 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
   if (displayMediaIpcRegistered) return
   displayMediaIpcRegistered = true
 
-  ipcMain.handle(IPC.screenShareGetSources, async (event, requestId: string) => {
+  ipcMain.handle(IPC.mediaGetDisplaySources, async (event, requestId: string) => {
     if (!isTrustedSender(event, getWindow)) return []
     const nativePending = getPendingNativePicker()
     if (nativePending?.id === requestId) {
@@ -197,7 +197,7 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
   })
 
   ipcMain.handle(
-    IPC.screenShareSelectSource,
+    IPC.mediaSelectDisplaySource,
     async (event, requestId: string, sourceId: string) => {
       if (!isTrustedSender(event, getWindow)) return false
 
@@ -213,7 +213,7 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
         const win = getWindow()
         if (!win || win.isDestroyed()) return false
 
-        win.webContents.send(IPC.captureNativePickerResolved, {
+        win.webContents.send(IPC.mediaDisplayPickerResolved, {
           requestId,
           sourceId,
         })
@@ -224,7 +224,7 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
     },
   )
 
-  ipcMain.handle(IPC.screenShareCancelRequest, async (event, requestId: string) => {
+  ipcMain.handle(IPC.mediaCancelRequest, async (event, requestId: string) => {
     if (!isTrustedSender(event, getWindow)) return
 
     const nativePending = getPendingNativePicker()
@@ -308,7 +308,7 @@ export function installMediaPermissions(
       ),
     }
 
-    win.webContents.send(IPC.screenShareRequest, displayRequest)
+    win.webContents.send(IPC.mediaRequest, displayRequest)
   })
 }
 

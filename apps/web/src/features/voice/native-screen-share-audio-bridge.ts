@@ -40,16 +40,16 @@ export async function createNativeScreenShareAudioTrack(
   let bridgeError: Error | null = null
   let timestampUs = 0
 
-  const unsubscribeChunk = desktop.capture.onStreamAudioChunk((event) => {
+  const unsubscribeChunk = desktop.media.onStreamAudioChunk((event) => {
     if (event.sessionId !== sessionId) return
     packetQueue.push(new Uint8Array(event.chunk))
   })
 
-  const unsubscribeEnded = desktop.capture.onStreamEnded((id) => {
+  const unsubscribeEnded = desktop.media.onStreamEnded((id) => {
     if (id === sessionId) ended = true
   })
 
-  const unsubscribeError = desktop.capture.onStreamError((event) => {
+  const unsubscribeError = desktop.media.onStreamError((event) => {
     if (event.sessionId !== sessionId) return
     bridgeError = new Error(event.message)
   })

@@ -13,7 +13,7 @@ export function NativeScreenShareCoordinator() {
   useEffect(() => {
     if (!desktop) return
 
-    return desktop.screenShare.onNativePickerResolved((payload) => {
+    return desktop.media.onDisplayPickerResolved((payload) => {
       resolveNativePickerSelection(payload.sourceId)
     })
   }, [desktop])

@@ -4,7 +4,6 @@ import type { ScreenShareCaptureMode } from '#/features/voice/voice-preference-t
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 export function shouldUseNativeScreenShare(mode: ScreenShareCaptureMode) {
-  if (mode === 'browser') return false
   if (mode === 'native') {
     return getSyrnikeDesktop()?.platform.os === 'win32'
   }

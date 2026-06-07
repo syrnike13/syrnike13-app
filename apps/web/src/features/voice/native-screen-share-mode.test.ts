@@ -21,7 +21,7 @@ describe('shouldUseNativeScreenShare', () => {
     expect(shouldUseNativeScreenShare('native')).toBe(false)
   })
 
-  it('returns true on windows desktop for auto and native modes', () => {
+  it('returns true on windows desktop for every supported mode', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       runtime: 'desktop',
       platform: { os: 'win32' },
@@ -29,7 +29,6 @@ describe('shouldUseNativeScreenShare', () => {
 
     expect(shouldUseNativeScreenShare('auto')).toBe(true)
     expect(shouldUseNativeScreenShare('native')).toBe(true)
-    expect(shouldUseNativeScreenShare('browser')).toBe(false)
   })
 })
 

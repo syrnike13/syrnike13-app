@@ -54,7 +54,7 @@ export async function publishNativeScreenShare(
     streamMode,
   )
 
-  const session = await desktop.capture.start({
+  const session = await desktop.media.startScreenShare({
     sourceId,
     width: capture.capture.resolution.width,
     height: capture.capture.resolution.height,
@@ -66,12 +66,12 @@ export async function publishNativeScreenShare(
 
   bridge.bindSession(session.sessionId)
 
-  const unsubscribeStats = desktop.capture.onStats((event) => {
+  const unsubscribeStats = desktop.media.onStats((event) => {
     if (event.sessionId !== session.sessionId) return
     nativeCaptureStatsStore.setNative(event.methods, event.activeMethod)
   })
 
-  const unsubscribeSidecarLost = desktop.capture.onSidecarLost((event) => {
+  const unsubscribeSidecarLost = desktop.media.onSidecarLost((event) => {
     if (event.sessionId !== session.sessionId) return
     onSidecarLost?.(event.message)
   })

@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 
 import {
   effectiveVoiceJoinPreferences,
+  parseScreenShareCaptureMode,
   parseNoiseSuppression,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
@@ -62,6 +63,10 @@ describe('voicePreferenceStore', () => {
     expect(parseNoiseSuppression('browser')).toBe('enhanced')
     expect(parseNoiseSuppression(true)).toBe('enhanced')
     expect(parseNoiseSuppression(false)).toBe('disabled')
+  })
+
+  it('does not preserve legacy browser screen share capture mode', () => {
+    expect(parseScreenShareCaptureMode('browser')).toBe('auto')
   })
 
   it('switches gate threshold to manual when the bar changes', () => {

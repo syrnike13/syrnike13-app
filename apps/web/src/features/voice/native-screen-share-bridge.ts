@@ -79,7 +79,7 @@ export async function createNativeScreenShareTrack(
     resolveFirstFrame = resolve
   })
 
-  const unsubscribeChunk = desktop.capture.onStreamChunk((event) => {
+  const unsubscribeChunk = desktop.media.onStreamChunk((event) => {
     if (
       event.sessionId !== activeSessionId &&
       activeSessionId !== '__pending__'
@@ -92,11 +92,11 @@ export async function createNativeScreenShareTrack(
     packetQueue.push(new Uint8Array(event.chunk))
   })
 
-  const unsubscribeEnded = desktop.capture.onStreamEnded((id) => {
+  const unsubscribeEnded = desktop.media.onStreamEnded((id) => {
     if (id === activeSessionId) ended = true
   })
 
-  const unsubscribeError = desktop.capture.onStreamError((event) => {
+  const unsubscribeError = desktop.media.onStreamError((event) => {
     if (event.sessionId !== activeSessionId) return
     decodeError = new Error(event.message)
   })
@@ -187,7 +187,7 @@ export async function createNativeScreenShareTrack(
     decoder.close()
     void writer.close()
     if (activeSessionId !== '__pending__') {
-      void desktop.capture.stop(activeSessionId)
+      void desktop.media.stopSession(activeSessionId)
     }
   }
 
@@ -238,7 +238,7 @@ async function createRawBgraTrack(
 
   let activeSessionId = sessionId
 
-  const unsubscribeChunk = desktop.capture.onStreamChunk((event) => {
+  const unsubscribeChunk = desktop.media.onStreamChunk((event) => {
     if (
       event.sessionId !== activeSessionId &&
       activeSessionId !== '__pending__'
@@ -254,11 +254,11 @@ async function createRawBgraTrack(
     }
   })
 
-  const unsubscribeEnded = desktop.capture.onStreamEnded((id) => {
+  const unsubscribeEnded = desktop.media.onStreamEnded((id) => {
     if (id === activeSessionId) ended = true
   })
 
-  const unsubscribeError = desktop.capture.onStreamError((event) => {
+  const unsubscribeError = desktop.media.onStreamError((event) => {
     if (event.sessionId !== activeSessionId) return
     bridgeError = new Error(event.message)
   })
@@ -289,7 +289,7 @@ async function createRawBgraTrack(
           if (sharedReadInFlight) continue
           sharedReadInFlight = true
           try {
-            const expanded = await desktop.capture.readSharedFrame(activeSessionId)
+            const expanded = await desktop.media.readSharedFrame(activeSessionId)
             if (!expanded) continue
             framePayload = new Uint8Array(expanded)
           } finally {
@@ -348,7 +348,7 @@ async function createRawBgraTrack(
     unsubscribeError()
     void writer.close()
     if (activeSessionId !== '__pending__') {
-      void desktop.capture.stop(activeSessionId)
+      void desktop.media.stopSession(activeSessionId)
     }
   }
 

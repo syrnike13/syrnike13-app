@@ -145,26 +145,26 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       }
     },
   },
-  screenShare: {
-    getSources(requestId: string) {
+  media: {
+    getDisplaySources(requestId: string) {
       return ipcRenderer.invoke(
-        IPC.screenShareGetSources,
+        IPC.mediaGetDisplaySources,
         requestId,
       ) as Promise<DesktopDisplayMediaSource[]>
     },
-    selectSource(requestId: string, sourceId: string) {
+    selectDisplaySource(requestId: string, sourceId: string) {
       return ipcRenderer.invoke(
-        IPC.screenShareSelectSource,
+        IPC.mediaSelectDisplaySource,
         requestId,
         sourceId,
       ) as Promise<boolean>
     },
     cancelRequest(requestId: string) {
-      return ipcRenderer.invoke(IPC.screenShareCancelRequest, requestId)
+      return ipcRenderer.invoke(IPC.mediaCancelRequest, requestId)
     },
-    openNativePicker(audioRequested: boolean) {
+    openDisplayPicker(audioRequested: boolean) {
       return ipcRenderer.invoke(
-        IPC.screenShareOpenNativePicker,
+        IPC.mediaOpenDisplayPicker,
         audioRequested,
       ) as Promise<DesktopDisplayMediaRequest>
     },
@@ -172,62 +172,60 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
         if (isDesktopDisplayMediaRequest(request)) handler(request)
       }
-      ipcRenderer.on(IPC.screenShareRequest, listener)
+      ipcRenderer.on(IPC.mediaRequest, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.screenShareRequest, listener)
+        ipcRenderer.removeListener(IPC.mediaRequest, listener)
       }
     },
-    onNativePickerResolved(
+    onDisplayPickerResolved(
       handler: (payload: { requestId: string; sourceId: string }) => void,
     ) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
         if (isNativePickerResolved(payload)) handler(payload)
       }
-      ipcRenderer.on(IPC.captureNativePickerResolved, listener)
+      ipcRenderer.on(IPC.mediaDisplayPickerResolved, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureNativePickerResolved, listener)
+        ipcRenderer.removeListener(IPC.mediaDisplayPickerResolved, listener)
       }
     },
-  },
-  capture: {
-    start(options: NativeCaptureStartOptions) {
-      return ipcRenderer.invoke(IPC.captureStart, options) as Promise<NativeCaptureSession>
+    startScreenShare(options: NativeCaptureStartOptions) {
+      return ipcRenderer.invoke(IPC.mediaStartScreenShare, options) as Promise<NativeCaptureSession>
     },
-    stop(sessionId?: string) {
-      return ipcRenderer.invoke(IPC.captureStop, sessionId)
+    stopSession(sessionId?: string) {
+      return ipcRenderer.invoke(IPC.mediaStopSession, sessionId)
     },
     getState() {
-      return ipcRenderer.invoke(IPC.captureGetState) as Promise<NativeCaptureState>
+      return ipcRenderer.invoke(IPC.mediaGetState) as Promise<NativeCaptureState>
     },
     onStats(handler: (event: NativeCaptureStatsEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
         if (isNativeCaptureStatsEvent(payload)) handler(payload)
       }
-      ipcRenderer.on(IPC.captureStats, listener)
+      ipcRenderer.on(IPC.mediaStats, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureStats, listener)
+        ipcRenderer.removeListener(IPC.mediaStats, listener)
       }
     },
     onStateChange(handler: (event: NativeCaptureStateEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
         if (isNativeCaptureStateEvent(payload)) handler(payload)
       }
-      ipcRenderer.on(IPC.captureStateChanged, listener)
+      ipcRenderer.on(IPC.mediaStateChanged, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureStateChanged, listener)
+        ipcRenderer.removeListener(IPC.mediaStateChanged, listener)
       }
     },
     readSharedFrame(sessionId: string) {
       return ipcRenderer.invoke(
-        IPC.captureReadSharedFrame,
+        IPC.mediaReadSharedFrame,
         sessionId,
       ) as Promise<ArrayBuffer | null>
     },
     prepareSystemAudio(sourceId: string) {
-      return ipcRenderer.invoke(IPC.capturePrepareSystemAudio, sourceId)
+      return ipcRenderer.invoke(IPC.mediaPrepareSystemAudio, sourceId)
     },
     clearSystemAudio() {
-      return ipcRenderer.invoke(IPC.captureClearSystemAudio)
+      return ipcRenderer.invoke(IPC.mediaClearSystemAudio)
     },
     onStreamChunk(
       handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
@@ -239,9 +237,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
           chunk: normalizeCaptureChunk(payload.chunk),
         })
       }
-      ipcRenderer.on(IPC.captureStreamChunk, listener)
+      ipcRenderer.on(IPC.mediaStreamChunk, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureStreamChunk, listener)
+        ipcRenderer.removeListener(IPC.mediaStreamChunk, listener)
       }
     },
     onStreamAudioChunk(
@@ -254,18 +252,18 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
           chunk: normalizeCaptureChunk(payload.chunk),
         })
       }
-      ipcRenderer.on(IPC.captureStreamAudioChunk, listener)
+      ipcRenderer.on(IPC.mediaStreamAudioChunk, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureStreamAudioChunk, listener)
+        ipcRenderer.removeListener(IPC.mediaStreamAudioChunk, listener)
       }
     },
     onStreamEnded(handler: (sessionId: string) => void) {
       const listener = (_event: Electron.IpcRendererEvent, sessionId: unknown) => {
         if (typeof sessionId === 'string') handler(sessionId)
       }
-      ipcRenderer.on(IPC.captureStreamEnded, listener)
+      ipcRenderer.on(IPC.mediaStreamEnded, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureStreamEnded, listener)
+        ipcRenderer.removeListener(IPC.mediaStreamEnded, listener)
       }
     },
     onStreamError(
@@ -274,18 +272,18 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
         if (isCaptureStreamError(payload)) handler(payload)
       }
-      ipcRenderer.on(IPC.captureStreamError, listener)
+      ipcRenderer.on(IPC.mediaStreamError, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureStreamError, listener)
+        ipcRenderer.removeListener(IPC.mediaStreamError, listener)
       }
     },
     onSidecarLost(handler: (event: NativeCaptureSidecarLostEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
         if (isNativeCaptureSidecarLostEvent(payload)) handler(payload)
       }
-      ipcRenderer.on(IPC.captureSidecarLost, listener)
+      ipcRenderer.on(IPC.mediaEngineLost, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.captureSidecarLost, listener)
+        ipcRenderer.removeListener(IPC.mediaEngineLost, listener)
       }
     },
   },

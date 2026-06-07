@@ -48,7 +48,7 @@ export function DesktopScreenSharePicker() {
 
   useEffect(() => {
     if (!desktop) return
-    return desktop.screenShare.onRequest((nextRequest) => {
+    return desktop.media.onRequest((nextRequest) => {
       setRequest(nextRequest)
       setSources([])
       setSelectedSourceId(null)
@@ -62,8 +62,8 @@ export function DesktopScreenSharePicker() {
 
     let cancelled = false
     setLoading(true)
-    void desktop.screenShare
-      .getSources(request.id)
+    void desktop.media
+      .getDisplaySources(request.id)
       .then((nextSources) => {
         if (cancelled) return
         setSources(nextSources)
@@ -106,7 +106,7 @@ export function DesktopScreenSharePicker() {
       if (activeRequest.nativeVideo) {
         rejectNativePickerSelection(new Error('Screen share picker cancelled'))
       }
-      void desktop.screenShare.cancelRequest(activeRequest.id)
+      void desktop.media.cancelRequest(activeRequest.id)
     }
   }, [desktop, request])
 
@@ -115,7 +115,7 @@ export function DesktopScreenSharePicker() {
 
     setSubmitting(true)
     try {
-      const selected = await desktop.screenShare.selectSource(
+      const selected = await desktop.media.selectDisplaySource(
         request.id,
         selectedSourceId,
       )
