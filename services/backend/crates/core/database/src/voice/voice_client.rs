@@ -1,7 +1,7 @@
 use crate::{
+    Database,
     models::{Channel, User},
     voice::RoomMetadata,
-    Database,
 };
 use livekit_api::{
     access_token::{AccessToken, VideoGrants},
@@ -9,9 +9,9 @@ use livekit_api::{
 };
 use livekit_protocol::{ParticipantInfo, ParticipantPermission, Room};
 use std::{collections::HashMap, time::Duration};
-use syrnike_config::{config, LiveKitNode};
+use syrnike_config::{LiveKitNode, config};
 use syrnike_permissions::{ChannelPermission, PermissionValue};
-use syrnike_result::{create_error, Result, ToSyrnikeError};
+use syrnike_result::{Result, ToSyrnikeError, create_error};
 
 use super::get_allowed_sources;
 
@@ -64,11 +64,12 @@ impl VoiceClient {
             .ok_or_else(|| create_error!(UnknownNode))
     }
 
-    pub async fn create_token(
+    pub async fn create_token_for_identity(
         &self,
         node: &str,
         db: &Database,
         user: &User,
+        identity: &str,
         permissions: PermissionValue,
         channel: &Channel,
     ) -> Result<String> {
@@ -79,7 +80,7 @@ impl VoiceClient {
 
         AccessToken::with_api_key(&room.node.key, &room.node.secret)
             .with_name(&format!("{}#{}", user.username, user.discriminator))
-            .with_identity(&user.id)
+            .with_identity(identity)
             .with_metadata(
                 &serde_json::to_string(&user.clone().into(db, None).await).to_internal_error()?,
             )

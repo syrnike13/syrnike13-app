@@ -10421,10 +10421,20 @@
         "description": "Voice server token response",
         "type": "object",
         "required": [
+          "native_identity",
+          "native_token",
           "token",
           "url"
         ],
         "properties": {
+          "native_identity": {
+            "description": "LiveKit identity for native desktop microphone publishing",
+            "type": "string"
+          },
+          "native_token": {
+            "description": "Token for native desktop microphone publishing",
+            "type": "string"
+          },
           "token": {
             "description": "Token for authenticating with the voice server",
             "type": "string"

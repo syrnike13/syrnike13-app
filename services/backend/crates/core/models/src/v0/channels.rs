@@ -1,8 +1,8 @@
 #![allow(deprecated)]
 use super::{File, UserVoiceState};
 
-use syrnike_permissions::{Override, OverrideField};
 use std::collections::{HashMap, HashSet};
+use syrnike_permissions::{Override, OverrideField};
 
 #[cfg(feature = "rocket")]
 use rocket::FromForm;
@@ -290,6 +290,10 @@ auto_derived!(
     pub struct CreateVoiceUserResponse {
         /// Token for authenticating with the voice server
         pub token: String,
+        /// Token for native desktop microphone publishing
+        pub native_token: String,
+        /// LiveKit identity for native desktop microphone publishing
+        pub native_identity: String,
         /// Url of the livekit server to connect to
         pub url: String,
     }
