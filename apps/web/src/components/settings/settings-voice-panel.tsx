@@ -12,6 +12,7 @@ import {
 import { Slider } from '#/components/ui/slider'
 import { shouldUseDesktopMediaEngine } from '#/features/voice/desktop-media-engine'
 import { useVoiceAudioInputDevices } from '#/features/voice/use-voice-audio-devices'
+import { useVoiceVideoDevices } from '#/features/voice/use-voice-video-devices'
 import {
   ensureMediaDevicePermission,
   useMediaDevices,
@@ -235,7 +236,7 @@ export function SettingsVoicePanel() {
   const engineAudioInput = shouldUseDesktopMediaEngine()
   const inputDevices = useVoiceAudioInputDevices()
   const outputDevices = useMediaDevices('audiooutput')
-  const videoDevices = useMediaDevices('videoinput')
+  const videoDevices = useVoiceVideoDevices()
   const [micTestActive, setMicTestActive] = useState(false)
   const av1Supported = isAv1ScreenShareSupported()
 

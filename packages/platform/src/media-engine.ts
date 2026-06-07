@@ -62,7 +62,7 @@ export type MediaEngineMicSetNoiseSuppressionResult = {
 export type MediaEngineAudioDevice = {
   id: string
   label: string
-  kind: 'audioinput' | 'audiooutput'
+  kind: 'audioinput' | 'audiooutput' | 'videoinput'
 }
 
 export type MediaEngineDevicesListResult = {
@@ -91,6 +91,10 @@ export type MediaEngineRoomActiveSpeakersEvent = {
 
 export type MediaEngineCameraSetEnabledResult = {
   enabled: boolean
+}
+
+export type MediaEngineCameraSetDeviceParams = {
+  deviceId?: string
 }
 
 export type MediaEngineRemoteVideoFrameEvent = {

@@ -154,6 +154,26 @@ export type RtcDebugSnapshot = {
   rates?: RtcDebugRates
 }
 
+export async function collectEngineRtcDebugSnapshot(
+  getRttMs: () => Promise<number | null>,
+  stageMediaItems: readonly RtcDebugStageMediaItem[],
+  timestamp = Date.now(),
+): Promise<RtcDebugSnapshot> {
+  const pingMs = await getRttMs()
+
+  return {
+    timestamp,
+    transport: {
+      pingMs: pingMs ?? undefined,
+    },
+    outbound: [],
+    inbound: [],
+    screenShares: stageMediaItems
+      .filter((item) => item.kind === 'screen')
+      .map((item) => screenShareSnapshot(item)),
+  }
+}
+
 export async function collectVoiceRtcDebugSnapshot(
   room: RtcDebugRoomLike,
   stageMediaItems: readonly RtcDebugStageMediaItem[],

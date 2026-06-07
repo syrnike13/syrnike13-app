@@ -28,6 +28,7 @@ import {
 } from './desktop-session'
 import { registerDisplayMediaIpc } from './media-permissions'
 import {
+  cameraSetDeviceMediaEngine,
   cameraSetEnabledMediaEngine,
   connectMediaEngineRoom,
   disconnectMediaEngineRoom,
@@ -194,6 +195,10 @@ export function registerDesktopIpc(
 
   ipcMain.handle(IPC.mediaEngineCameraSetEnabled, (_event, enabled: boolean) =>
     cameraSetEnabledMediaEngine(enabled),
+  )
+
+  ipcMain.handle(IPC.mediaEngineCameraSetDevice, (_event, params) =>
+    cameraSetDeviceMediaEngine(params),
   )
 
   ipcMain.handle(IPC.mediaEngineScreenStart, (_event, params) =>

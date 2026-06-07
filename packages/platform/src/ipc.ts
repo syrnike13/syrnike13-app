@@ -45,6 +45,7 @@ export const IPC = {
   mediaEngineDevicesList: 'syrnike-desktop:media-engine:devices-list',
   mediaEngineRoomGetRtt: 'syrnike-desktop:media-engine:room-get-rtt',
   mediaEngineCameraSetEnabled: 'syrnike-desktop:media-engine:camera-set-enabled',
+  mediaEngineCameraSetDevice: 'syrnike-desktop:media-engine:camera-set-device',
   mediaEngineScreenStart: 'syrnike-desktop:media-engine:screen-start',
   mediaEngineScreenStop: 'syrnike-desktop:media-engine:screen-stop',
   mediaEngineEvent: 'syrnike-desktop:media-engine:event',

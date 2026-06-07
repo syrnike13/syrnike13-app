@@ -1,4 +1,5 @@
 import type {
+  MediaEngineCameraSetDeviceParams,
   MediaEngineCameraSetEnabledResult,
   MediaEngineDevicesListResult,
   MediaEngineEvent,
@@ -242,6 +243,9 @@ export interface SyrnikeDesktopApi {
     cameraSetEnabled(
       enabled: boolean,
     ): Promise<MediaEngineCameraSetEnabledResult>
+    cameraSetDevice(
+      params: MediaEngineCameraSetDeviceParams,
+    ): Promise<void>
     screenStart(
       params: MediaEngineScreenStartParams,
     ): Promise<MediaEngineScreenStartResult>

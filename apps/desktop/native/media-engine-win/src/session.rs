@@ -1,10 +1,11 @@
 use serde_json::Value;
 
-use crate::devices::list_audio_devices;
+use crate::devices::list_devices;
 use crate::livekit_room::LiveKitRoom;
 use crate::mic_denoise::NoiseSuppressionMode;
 use crate::protocol::{
-    CameraSetEnabledParams, EventMessage, MicSetDeviceParams, MicSetEnabledParams,
+    CameraSetDeviceParams, CameraSetEnabledParams, EventMessage, MicSetDeviceParams,
+    MicSetEnabledParams,
     MicSetNoiseSuppressionParams, MicSetProcessingParams, PingResult, RequestMessage,
     ResponseMessage, RoomConnectParams, RoomGetRttResult, ScreenStartParams, ENGINE_NAME,
     ENGINE_VERSION,
@@ -146,7 +147,7 @@ impl EngineSession {
                     ),
                 }
             }
-            "devices.list" => match list_audio_devices() {
+            "devices.list" => match list_devices() {
                 Ok(result) => ResponseMessage::success(request.id, result),
                 Err(message) => {
                     ResponseMessage::failure(request.id, "DEVICES_LIST_FAILED", message)
@@ -229,6 +230,25 @@ impl EngineSession {
                         request.id,
                         "INVALID_PARAMS",
                         format!("camera.setEnabled params invalid: {error}"),
+                    ),
+                }
+            }
+            "camera.setDevice" => {
+                match serde_json::from_value::<CameraSetDeviceParams>(request.params) {
+                    Ok(params) => {
+                        match self.livekit_room.set_camera_device(params.device_id).await {
+                            Ok(()) => ResponseMessage::success(request.id, Value::Null),
+                            Err(message) => ResponseMessage::failure(
+                                request.id,
+                                "CAMERA_SET_DEVICE_FAILED",
+                                message,
+                            ),
+                        }
+                    }
+                    Err(error) => ResponseMessage::failure(
+                        request.id,
+                        "INVALID_PARAMS",
+                        format!("camera.setDevice params invalid: {error}"),
                     ),
                 }
             }

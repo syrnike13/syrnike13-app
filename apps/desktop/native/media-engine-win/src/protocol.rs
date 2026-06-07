@@ -124,6 +124,13 @@ pub struct CameraSetEnabledParams {
     pub enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CameraSetDeviceParams {
+    #[serde(default)]
+    pub device_id: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenStartResult {

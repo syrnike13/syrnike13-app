@@ -59,4 +59,17 @@ describe('voicePreferenceEffectFlags', () => {
       remoteAudioChanged: false,
     })
   })
+
+  it('tracks video device changes as device changes', () => {
+    expect(
+      voicePreferenceEffectFlags(base, {
+        ...base,
+        preferredVideoDevice: '1',
+      }),
+    ).toMatchObject({
+      devicesChanged: true,
+      micProcessingChanged: false,
+      remoteAudioChanged: false,
+    })
+  })
 })

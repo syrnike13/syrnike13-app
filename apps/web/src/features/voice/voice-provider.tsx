@@ -62,6 +62,7 @@ import {
 import { measureVoicePingMs } from '#/features/voice/voice-ping'
 import {
   appendRtcDebugSample,
+  collectEngineRtcDebugSnapshot,
   collectVoiceRtcDebugSnapshot,
   deriveRtcRates,
   type RtcDebugSnapshot,
@@ -1607,16 +1608,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!rtcDebugEnabled) return
 
     const room = roomRef.current
-    if (!room) return
+    const engineVoice = engineVoiceSessionRef.current
+    if (!room && !engineVoice) return
 
     let active = true
 
     async function sampleRtcDebug() {
       try {
-        const current = await collectVoiceRtcDebugSnapshot(
-          room!,
-          stageMediaItemsRef.current as RtcDebugStageMediaItem[],
-        )
+        const current = engineVoice
+          ? await collectEngineRtcDebugSnapshot(
+              () => engineVoice.getRttMs(),
+              stageMediaItemsRef.current as RtcDebugStageMediaItem[],
+            )
+          : await collectVoiceRtcDebugSnapshot(
+              room!,
+              stageMediaItemsRef.current as RtcDebugStageMediaItem[],
+            )
         if (!active) return
 
         const previous = rtcDebugSnapshotRef.current

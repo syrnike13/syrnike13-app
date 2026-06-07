@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   appendRtcDebugSample,
+  collectEngineRtcDebugSnapshot,
   collectVoiceRtcDebugSnapshot,
   deriveRtcRates,
   RTC_DEBUG_BROWSER_UNAVAILABLE,
@@ -282,6 +283,29 @@ describe('voice rtc debug', () => {
       outbound: { out: 8_000 },
       inbound: { in: 16_000 },
     })
+  })
+
+  it('collects engine rtc debug snapshot from room rtt', async () => {
+    const snapshot = await collectEngineRtcDebugSnapshot(
+      async () => 42,
+      [
+        {
+          id: 'user:screen',
+          userId: 'user',
+          kind: 'screen',
+          isLocal: false,
+          live: true,
+        },
+      ],
+      5_000,
+    )
+
+    expect(snapshot.timestamp).toBe(5_000)
+    expect(snapshot.transport.pingMs).toBe(42)
+    expect(snapshot.outbound).toEqual([])
+    expect(snapshot.inbound).toEqual([])
+    expect(snapshot.screenShares).toHaveLength(1)
+    expect(snapshot.screenShares[0]?.ownerUserId).toBe('user')
   })
 
   it('keeps only the last 180 debug samples', () => {

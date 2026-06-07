@@ -43,6 +43,7 @@ struct LiveKitRoomInner {
     mic_device_id: Option<String>,
     mic_processing: MicProcessingConfig,
     camera_enabled: bool,
+    camera_device_id: Option<String>,
 }
 
 impl LiveKitRoom {
@@ -61,6 +62,7 @@ impl LiveKitRoom {
                 mic_device_id: None,
                 mic_processing: MicProcessingConfig::default(),
                 camera_enabled: false,
+                camera_device_id: None,
             }),
         }
     }
@@ -271,6 +273,9 @@ impl LiveKitRoom {
         }
 
         if enabled {
+            inner
+                .camera_publisher
+                .set_device_id(inner.camera_device_id.clone());
             inner.camera_publisher.start(room.clone()).await?;
         } else {
             inner.camera_publisher.stop(&room).await?;
@@ -279,6 +284,15 @@ impl LiveKitRoom {
         inner.camera_enabled = enabled;
         emit_participants_snapshot(&room);
         Ok(())
+    }
+
+    pub async fn set_camera_device(&self, device_id: Option<String>) -> Result<(), String> {
+        let mut inner = self.inner.lock().await;
+        inner.camera_device_id = device_id.filter(|value| !value.is_empty());
+        inner
+            .camera_publisher
+            .set_device_id(inner.camera_device_id.clone());
+        self.restart_camera_locked(&mut inner).await
     }
 
     pub async fn start_screen(
@@ -367,6 +381,26 @@ impl LiveKitRoom {
 
     pub fn room_state_event(&self) -> EventMessage {
         EventMessage::new("room.state", serde_json::json!({ "connected": true }))
+    }
+
+    async fn restart_camera_locked(&self, inner: &mut LiveKitRoomInner) -> Result<(), String> {
+        if !inner.camera_enabled {
+            return Ok(());
+        }
+
+        let room = inner
+            .room
+            .as_ref()
+            .ok_or_else(|| "room is not connected".to_string())?
+            .clone();
+
+        inner.camera_publisher.stop(&room).await?;
+        inner
+            .camera_publisher
+            .set_device_id(inner.camera_device_id.clone());
+        inner.camera_publisher.start(room.clone()).await?;
+        emit_participants_snapshot(&room);
+        Ok(())
     }
 
     async fn restart_mic_locked(&self, inner: &mut LiveKitRoomInner) -> Result<(), String> {

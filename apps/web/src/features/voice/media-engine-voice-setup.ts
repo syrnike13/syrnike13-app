@@ -24,6 +24,7 @@ export async function applyEngineVoiceDevices(
   prefs: VoicePreferenceState,
 ) {
   await session.setMicDevice(prefs.preferredAudioInputDevice)
+  await session.setCameraDevice(prefs.preferredVideoDevice)
   setMediaEngineRemoteAudioOutputDevice(prefs.preferredAudioOutputDevice)
 }
 

@@ -35,6 +35,7 @@ export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export type {
   MediaEngineAudioDevice,
+  MediaEngineCameraSetDeviceParams,
   MediaEngineCameraSetEnabledResult,
   MediaEngineDevicesListResult,
   MediaEngineEvent,

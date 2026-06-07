@@ -13,7 +13,8 @@ export function voicePreferenceEffectFlags(
   return {
     devicesChanged:
       previous.preferredAudioInputDevice !== next.preferredAudioInputDevice ||
-      previous.preferredAudioOutputDevice !== next.preferredAudioOutputDevice,
+      previous.preferredAudioOutputDevice !== next.preferredAudioOutputDevice ||
+      previous.preferredVideoDevice !== next.preferredVideoDevice,
     micProcessingChanged:
       previous.echoCancellation !== next.echoCancellation ||
       previous.noiseSuppression !== next.noiseSuppression ||

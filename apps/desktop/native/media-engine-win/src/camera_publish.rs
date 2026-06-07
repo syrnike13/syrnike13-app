@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle as TokioJoinHandle;
 
 use crate::capture::color_convert::rgb_to_i420;
+use crate::devices::resolve_camera_index;
 use crate::local_preview::{emit_local_preview_ended, maybe_emit_local_preview_frame};
 
 const CAMERA_WIDTH: u32 = 640;
@@ -27,6 +28,7 @@ pub struct CameraPublisher {
     publish_task: Option<TokioJoinHandle<()>>,
     video_source: Option<NativeVideoSource>,
     track_sid: Option<String>,
+    device_id: Option<String>,
 }
 
 impl CameraPublisher {
@@ -37,7 +39,12 @@ impl CameraPublisher {
             publish_task: None,
             video_source: None,
             track_sid: None,
+            device_id: None,
         }
+    }
+
+    pub fn set_device_id(&mut self, device_id: Option<String>) {
+        self.device_id = device_id.filter(|value| !value.is_empty());
     }
 
     pub async fn start(&mut self, room: Arc<Room>) -> Result<(), String> {
@@ -69,10 +76,11 @@ impl CameraPublisher {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_flag = Arc::clone(&stop);
 
+        let camera_index = resolve_camera_index(self.device_id.as_deref());
         let capture_thread = thread::Builder::new()
             .name("camera-capture".into())
             .spawn(move || {
-                if let Err(error) = run_camera_capture(stop_flag, frame_tx) {
+                if let Err(error) = run_camera_capture(stop_flag, frame_tx, camera_index) {
                     log::warn!("camera capture stopped: {error}");
                 }
             })
@@ -132,8 +140,8 @@ impl CameraPublisher {
 fn run_camera_capture(
     stop: Arc<AtomicBool>,
     tx: mpsc::Sender<I420Buffer>,
+    index: CameraIndex,
 ) -> Result<(), String> {
-    let index = CameraIndex::Index(0);
     let requested = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
     let mut camera = Camera::new(index, requested).map_err(|error| error.to_string())?;
     camera.open_stream().map_err(|error| error.to_string())?;

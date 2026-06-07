@@ -12,6 +12,7 @@ import {
   type MediaEngineMicSetDeviceParams,
   type MediaEngineMicSetEnabledParams,
   type MediaEngineNoiseSuppressionMode,
+  type MediaEngineCameraSetDeviceParams,
   type MediaEngineDevicesListResult,
   type MediaEngineRoomGetRttResult,
   type MediaEngineRoomConnectResult,
@@ -124,6 +125,12 @@ export async function cameraSetEnabledMediaEngine(enabled: boolean) {
   return (await sendRequest('camera.setEnabled', { enabled })) as {
     enabled: boolean
   }
+}
+
+export async function cameraSetDeviceMediaEngine(
+  params: MediaEngineCameraSetDeviceParams,
+) {
+  await sendRequest('camera.setDevice', params)
 }
 
 export async function startMediaEngineScreen(

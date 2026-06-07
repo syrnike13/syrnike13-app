@@ -40,6 +40,7 @@ export type MediaEngineVoiceSession = {
   setMicProcessing: (params: MediaEngineMicProcessingParams) => Promise<void>
   getRttMs: () => Promise<number | null>
   setDeafened: (deafened: boolean) => void
+  setCameraDevice: (deviceId?: string) => Promise<void>
   setCameraEnabled: (enabled: boolean) => Promise<void>
 }
 
@@ -254,6 +255,11 @@ export async function connectMediaEngineVoice(
       deviceId: initialPrefs.preferredAudioInputDevice,
     })
   }
+  if (initialPrefs.preferredVideoDevice) {
+    await desktop.mediaEngine.cameraSetDevice({
+      deviceId: initialPrefs.preferredVideoDevice,
+    })
+  }
 
   await desktop.mediaEngine.micSetEnabled({
     enabled: initialMicEnabled,
@@ -283,6 +289,9 @@ export async function connectMediaEngineVoice(
     async getRttMs() {
       const result = await desktop.mediaEngine.roomGetRtt()
       return result.rttMs
+    },
+    async setCameraDevice(deviceId?: string) {
+      await desktop.mediaEngine.cameraSetDevice({ deviceId })
     },
     async setCameraEnabled(enabled: boolean) {
       await desktop.mediaEngine.cameraSetEnabled(enabled)
