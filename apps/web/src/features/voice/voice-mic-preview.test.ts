@@ -2,9 +2,25 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { meterLevelsFromRms, MIC_PREVIEW_METER_BAR_COUNT } from './voice-mic-preview'
+import { getSyrnikeDesktop } from '#/platform/runtime'
+
+import {
+  meterLevelsFromRms,
+  MIC_PREVIEW_METER_BAR_COUNT,
+  startMicPreview,
+  type MicPreviewPreferences,
+} from './voice-mic-preview'
+
+vi.mock('#/platform/runtime', () => ({
+  getSyrnikeDesktop: vi.fn(() => null),
+}))
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
+})
 
 describe('meterLevelsFromRms', () => {
   it('returns higher bars for louder input', () => {
@@ -35,5 +51,63 @@ describe('native microphone processing boundary', () => {
       const source = readFileSync(resolve(repoRoot, file), 'utf8')
       expect(source.toLowerCase()).not.toContain('rnnoise')
     }
+  })
+
+  it('configures native preview gate and input gain without restarting preview', async () => {
+    vi.useFakeTimers()
+    const startMicrophonePreview = vi.fn(async () => ({ sessionId: 'preview-1' }))
+    const configureMicrophoneRuntime = vi.fn(async () => {})
+    const stopMicrophonePreview = vi.fn(async () => {})
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startMicrophonePreview,
+        configureMicrophoneRuntime,
+        stopMicrophonePreview,
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const prefs: MicPreviewPreferences = {
+      echoCancellation: true,
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: -28,
+      voiceGateAutoThreshold: false,
+      inputVolume: 1,
+      outputVolume: 1,
+    }
+
+    const session = await startMicPreview({
+      prefs,
+      onLevels: vi.fn(),
+    })
+
+    session.updateGatePreferences({
+      ...prefs,
+      voiceGateThresholdDb: -18,
+    })
+    await session.restartProcessing({
+      ...prefs,
+      voiceGateEnabled: false,
+      inputVolume: 1.5,
+    })
+    await vi.advanceTimersByTimeAsync(39)
+
+    expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
+    expect(stopMicrophonePreview).not.toHaveBeenCalled()
+    expect(configureMicrophoneRuntime).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(configureMicrophoneRuntime).toHaveBeenCalledTimes(1)
+    expect(configureMicrophoneRuntime).toHaveBeenLastCalledWith(
+      'preview-1',
+      expect.objectContaining({
+        voiceGateEnabled: false,
+        inputVolume: 1.5,
+      }),
+    )
+
+    session.stop()
+    expect(stopMicrophonePreview).toHaveBeenCalledWith('preview-1')
   })
 })

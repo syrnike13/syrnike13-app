@@ -35,9 +35,12 @@ export const IPC = {
   mediaStartMicrophonePreview: 'syrnike-desktop:media:start-microphone-preview',
   mediaStopMicrophonePreview: 'syrnike-desktop:media:stop-microphone-preview',
   mediaStartSession: 'syrnike-desktop:media:start-session',
+  mediaConfigureMicrophoneRuntime:
+    'syrnike-desktop:media:configure-microphone-runtime',
   mediaStopSession: 'syrnike-desktop:media:stop-session',
   mediaGetState: 'syrnike-desktop:media:get-state',
   mediaStats: 'syrnike-desktop:media:stats',
+  mediaMicrophoneMetrics: 'syrnike-desktop:media:microphone-metrics',
   mediaStateChanged: 'syrnike-desktop:media:state-changed',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
   mediaStreamChunk: 'syrnike-desktop:media:stream-chunk',

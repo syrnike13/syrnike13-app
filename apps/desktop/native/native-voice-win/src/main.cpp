@@ -1,6 +1,8 @@
 #include <audioclient.h>
 #include <avrt.h>
 #include <mmdeviceapi.h>
+#include <functiondiscoverykeys_devpkey.h>
+#include <propsys.h>
 #include <windows.h>
 #include <wrl/client.h>
 
@@ -40,7 +42,30 @@ struct StartCommand {
   std::string participant_identity;
   bool echo_cancellation = false;
   float input_volume = 1.0f;
+  bool voice_gate_enabled = true;
+  float voice_gate_threshold_db = -28.0f;
 };
+
+struct RuntimeConfig {
+  float input_volume = 1.0f;
+  bool voice_gate_enabled = true;
+  float voice_gate_threshold_db = -28.0f;
+};
+
+std::mutex g_config_mutex;
+RuntimeConfig g_config;
+
+RuntimeConfig readRuntimeConfig() {
+  std::lock_guard<std::mutex> lock(g_config_mutex);
+  return g_config;
+}
+
+void updateRuntimeConfig(const StartCommand& command) {
+  std::lock_guard<std::mutex> lock(g_config_mutex);
+  g_config.input_volume = command.input_volume;
+  g_config.voice_gate_enabled = command.voice_gate_enabled;
+  g_config.voice_gate_threshold_db = command.voice_gate_threshold_db;
+}
 
 class NativeRoomDelegate final : public livekit::RoomDelegate {
 public:
@@ -109,10 +134,11 @@ std::string stringField(const std::string& json, const std::string& key) {
   return match[1].str();
 }
 
-bool boolField(const std::string& json, const std::string& key) {
+bool boolField(const std::string& json, const std::string& key, bool fallback = false) {
   const std::regex pattern("\"" + key + "\"\\s*:\\s*(true|false)");
   std::smatch match;
-  return std::regex_search(json, match, pattern) && match[1].str() == "true";
+  if (!std::regex_search(json, match, pattern)) return fallback;
+  return match[1].str() == "true";
 }
 
 float numberField(const std::string& json, const std::string& key, float fallback) {
@@ -135,6 +161,8 @@ StartCommand parseStartCommand(const std::string& json) {
   command.participant_identity = stringField(json, "participantIdentity");
   command.echo_cancellation = boolField(json, "echoCancellation");
   command.input_volume = numberField(json, "inputVolume", 1.0f);
+  command.voice_gate_enabled = boolField(json, "voiceGateEnabled", true);
+  command.voice_gate_threshold_db = numberField(json, "voiceGateThresholdDb", -28.0f);
   return command;
 }
 
@@ -152,6 +180,25 @@ std::string narrow(const std::wstring& value) {
   std::string out(static_cast<size_t>(count), '\0');
   WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), out.data(), count, nullptr, nullptr);
   return out;
+}
+
+std::string deviceFriendlyName(const ComPtr<IMMDevice>& device, const std::string& fallback) {
+  ComPtr<IPropertyStore> store;
+  HRESULT hr = device->OpenPropertyStore(STGM_READ, &store);
+  if (FAILED(hr) || !store) return fallback;
+
+  PROPVARIANT name;
+  PropVariantInit(&name);
+  hr = store->GetValue(PKEY_Device_FriendlyName, &name);
+  if (SUCCEEDED(hr) && name.vt == VT_LPWSTR && name.pwszVal) {
+    const std::string label = narrow(name.pwszVal);
+    PropVariantClear(&name);
+    if (!label.empty()) return label;
+    return fallback;
+  }
+
+  PropVariantClear(&name);
+  return fallback;
 }
 
 ComPtr<IMMDevice> getCaptureDevice(const std::string& device_id) {
@@ -218,7 +265,10 @@ void emitDeviceList() {
       const std::string id = narrow(raw_id);
       CoTaskMemFree(raw_id);
 
-      const std::string label = "Microphone " + std::to_string(index + 1);
+      const std::string label = deviceFriendlyName(
+        device,
+        "Microphone " + std::to_string(index + 1)
+      );
 
       if (!first) json += ",";
       first = false;
@@ -255,6 +305,28 @@ std::int16_t clampToPcm16(float sample) {
   return static_cast<std::int16_t>(std::lrint(sample * 32767.0f));
 }
 
+float rmsToDb(float rms) {
+  if (!std::isfinite(rms) || rms <= 0.0000001f) return -60.0f;
+  return std::max(-60.0f, std::min(0.0f, 20.0f * std::log10(rms)));
+}
+
+bool gateOpen(float input_db, const RuntimeConfig& config) {
+  if (!config.voice_gate_enabled) return true;
+  return input_db >= config.voice_gate_threshold_db;
+}
+
+void emitMicrophoneMetrics(
+  const std::string& session_id,
+  float input_db,
+  float threshold_db,
+  bool open
+) {
+  emit("{\"type\":\"microphone_metrics\",\"session_id\":\"" + jsonEscape(session_id) +
+       "\",\"input_db\":" + std::to_string(input_db) +
+       ",\"threshold_db\":" + std::to_string(threshold_db) +
+       ",\"open\":" + (open ? "true" : "false") + "}");
+}
+
 void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit::AudioSource>& audio_source) {
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   const bool com_initialized = SUCCEEDED(hr);
@@ -288,6 +360,9 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
 
     std::vector<std::int16_t> frame;
     frame.reserve(kSamplesPer10Ms);
+    float frame_square_sum = 0.0f;
+    int frame_sample_count = 0;
+    auto last_metrics_at = std::chrono::steady_clock::now();
 
     while (g_running.load()) {
       UINT32 packet_frames = 0;
@@ -307,13 +382,32 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
 
       const float* samples = reinterpret_cast<const float*>(data);
       for (UINT32 index = 0; index < frames; ++index) {
-        const float sample = (flags & AUDCLNT_BUFFERFLAGS_SILENT) ? 0.0f : samples[index] * command.input_volume;
-        frame.push_back(clampToPcm16(sample));
+        const RuntimeConfig config = readRuntimeConfig();
+        const float raw_sample = (flags & AUDCLNT_BUFFERFLAGS_SILENT) ? 0.0f : samples[index];
+        const float amplified_sample = raw_sample * config.input_volume;
+        frame_square_sum += amplified_sample * amplified_sample;
+        frame_sample_count += 1;
+
+        const float input_db = frame_sample_count > 0
+          ? rmsToDb(std::sqrt(frame_square_sum / static_cast<float>(frame_sample_count)))
+          : -60.0f;
+        const bool open = gateOpen(input_db, config);
+        const float processed = open ? amplified_sample : 0.0f;
+        frame.push_back(clampToPcm16(processed));
+
         if (frame.size() == kSamplesPer10Ms) {
           livekit::AudioFrame audio_frame(std::move(frame), kSampleRate, kChannels, kSamplesPer10Ms);
           audio_source->captureFrame(audio_frame);
           frame.clear();
           frame.reserve(kSamplesPer10Ms);
+
+          const auto now = std::chrono::steady_clock::now();
+          if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
+            emitMicrophoneMetrics(command.session_id, input_db, config.voice_gate_threshold_db, open);
+            last_metrics_at = now;
+          }
+          frame_square_sum = 0.0f;
+          frame_sample_count = 0;
         }
       }
 
@@ -331,6 +425,22 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
 
 void runMicrophonePreview(const StartCommand& command) {
   g_running.store(true);
+  updateRuntimeConfig(command);
+
+  std::thread([]() {
+    std::string line;
+    while (g_running.load() && std::getline(std::cin, line)) {
+      if (line.find("\"cmd\":\"stop\"") != std::string::npos ||
+          line.find("\"cmd\": \"stop\"") != std::string::npos) {
+        g_running.store(false);
+        break;
+      }
+      if (line.find("\"cmd\":\"configure\"") != std::string::npos ||
+          line.find("\"cmd\": \"configure\"") != std::string::npos) {
+        updateRuntimeConfig(parseStartCommand(line));
+      }
+    }
+  }).detach();
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   const bool com_initialized = SUCCEEDED(hr);
@@ -390,13 +500,16 @@ void runMicrophonePreview(const StartCommand& command) {
     if (FAILED(hr)) throw std::runtime_error("failed to start preview render stream");
 
     emit("{\"type\":\"ready\",\"port\":0,\"stream_mode\":\"audio\",\"audio_mode\":\"microphone\","
-         "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"windows\"}");
+         "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\"}");
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
          "\",\"kind\":\"microphone\",\"status\":\"running\",\"audio_mode\":\"microphone\","
-         "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"windows\"}");
+         "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\"}");
 
     std::vector<float> queued_samples;
     queued_samples.reserve(static_cast<size_t>(render_buffer_frames));
+    float frame_square_sum = 0.0f;
+    int frame_sample_count = 0;
+    auto last_metrics_at = std::chrono::steady_clock::now();
 
     while (g_running.load()) {
       UINT32 packet_frames = 0;
@@ -412,10 +525,27 @@ void runMicrophonePreview(const StartCommand& command) {
 
         const float* samples = reinterpret_cast<const float*>(data);
         for (UINT32 index = 0; index < frames; ++index) {
-          const float sample = (flags & AUDCLNT_BUFFERFLAGS_SILENT)
-            ? 0.0f
-            : std::max(-1.0f, std::min(1.0f, samples[index] * command.input_volume));
+          const RuntimeConfig config = readRuntimeConfig();
+          const float raw_sample = (flags & AUDCLNT_BUFFERFLAGS_SILENT) ? 0.0f : samples[index];
+          const float amplified_sample = std::max(-1.0f, std::min(1.0f, raw_sample * config.input_volume));
+          frame_square_sum += amplified_sample * amplified_sample;
+          frame_sample_count += 1;
+          const float input_db = frame_sample_count > 0
+            ? rmsToDb(std::sqrt(frame_square_sum / static_cast<float>(frame_sample_count)))
+            : -60.0f;
+          const bool open = gateOpen(input_db, config);
+          const float sample = open ? amplified_sample : 0.0f;
           queued_samples.push_back(sample);
+
+          if (frame_sample_count >= kSamplesPer10Ms) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
+              emitMicrophoneMetrics(command.session_id, input_db, config.voice_gate_threshold_db, open);
+              last_metrics_at = now;
+            }
+            frame_square_sum = 0.0f;
+            frame_sample_count = 0;
+          }
         }
         capture->ReleaseBuffer(frames);
 
@@ -466,6 +596,7 @@ void runMicrophonePreview(const StartCommand& command) {
 
 void runMicrophonePublisher(const StartCommand& command) {
   g_running.store(true);
+  updateRuntimeConfig(command);
   if (command.session_id.empty() || command.livekit_url.empty() || command.livekit_token.empty()) {
     emitError("invalid_start_command", "missing sessionId or LiveKit credentials");
     return;
@@ -482,7 +613,7 @@ void runMicrophonePublisher(const StartCommand& command) {
   room->setDelegate(&delegate);
   livekit::RoomOptions room_options;
   room_options.auto_subscribe = false;
-  room_options.single_peer_connection = true;
+  room_options.single_peer_connection = false;
 
   bool connected = false;
   try {
@@ -524,11 +655,11 @@ void runMicrophonePublisher(const StartCommand& command) {
   }
 
   emit("{\"type\":\"ready\",\"port\":0,\"stream_mode\":\"audio\",\"audio_mode\":\"microphone\","
-       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"windows\","
+       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\","
        "\"native_participant_identity\":\"" + jsonEscape(native_identity) + "\"}");
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"kind\":\"microphone\",\"status\":\"running\",\"audio_mode\":\"microphone\","
-       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"windows\"}");
+       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\"}");
 
   std::thread capture_thread(captureMicrophone, command, audio_source);
 
@@ -538,6 +669,11 @@ void runMicrophonePublisher(const StartCommand& command) {
         line.find("\"cmd\": \"stop\"") != std::string::npos) {
       g_running.store(false);
       break;
+    }
+    if (line.find("\"cmd\":\"configure\"") != std::string::npos ||
+        line.find("\"cmd\": \"configure\"") != std::string::npos) {
+      updateRuntimeConfig(parseStartCommand(line));
+      continue;
     }
   }
 

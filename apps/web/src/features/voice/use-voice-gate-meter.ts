@@ -11,6 +11,8 @@ import {
   VOICE_GATE_DB_MIN,
 } from '#/features/voice/voice-gate-level'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
+import { shouldUseNativeMicrophone } from '#/features/voice/native-microphone-publish'
+import { getSyrnikeDesktop } from '#/platform/runtime'
 
 const DEFAULT_METRICS: VoiceGateMetrics = {
   inputDb: VOICE_GATE_DB_MIN,
@@ -31,6 +33,7 @@ export function useVoiceGateMeter(
 
   useEffect(() => {
     if (!active) return
+    if (shouldUseNativeMicrophone()) return
 
     gateRef.current?.updateOptions({
       ...resolveVoiceGateStageOptions(prefs),
@@ -45,6 +48,21 @@ export function useVoiceGateMeter(
     if (!active) {
       outputRef.current = DEFAULT_METRICS
       return
+    }
+
+    if (shouldUseNativeMicrophone()) {
+      const desktop = getSyrnikeDesktop()
+      if (!desktop) {
+        outputRef.current = DEFAULT_METRICS
+        return
+      }
+      return desktop.media.onMicrophoneMetrics((metrics) => {
+        outputRef.current = {
+          inputDb: metrics.inputDb,
+          thresholdDb: metrics.thresholdDb,
+          open: metrics.open,
+        }
+      })
     }
 
     let cancelled = false

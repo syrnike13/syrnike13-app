@@ -58,11 +58,22 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   channels: 1
   echoCancellation: boolean
   inputVolume: number
+  voiceGateEnabled?: boolean
+  voiceGateThresholdDb?: number
+  voiceGateAutoThreshold?: boolean
   livekit: {
     url: string
     token: string
     participantIdentity: string
   }
+}
+
+export type NativeMicrophoneRuntimeConfig = {
+  inputVolume?: number
+  voiceGateEnabled?: boolean
+  voiceGateThresholdDb?: number
+  voiceGateAutoThreshold?: boolean
+  echoCancellation?: boolean
 }
 
 export type NativeMicrophonePreviewStartOptions = {
@@ -71,6 +82,9 @@ export type NativeMicrophonePreviewStartOptions = {
   channels: 1
   echoCancellation: boolean
   inputVolume: number
+  voiceGateEnabled?: boolean
+  voiceGateThresholdDb?: number
+  voiceGateAutoThreshold?: boolean
 }
 
 export type NativeMicrophonePreviewSession = {
@@ -155,6 +169,13 @@ export type NativeMediaStatsEvent = {
   sessionId: string
   methods: NativeMediaFrameStats
   activeMethod?: NativeMediaFrameMethod
+}
+
+export type NativeMicrophoneMetricsEvent = {
+  sessionId: string
+  inputDb: number
+  thresholdDb: number
+  open: boolean
 }
 
 export type NativeMediaStateEvent = NativeMediaSessionStatus & {

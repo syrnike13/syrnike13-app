@@ -9,6 +9,8 @@ export type {
   NativeMediaEngineSessionSummary,
   NativeMediaEngineSnapshot,
   NativeMediaMicrophoneSessionStartOptions,
+  NativeMicrophoneMetricsEvent,
+  NativeMicrophoneRuntimeConfig,
   NativeMicrophonePreviewSession,
   NativeMicrophonePreviewStartOptions,
   NativeMediaSession,

@@ -74,6 +74,7 @@ import {
   type NativeScreenShareSession,
 } from '#/features/voice/native-screen-share-publish'
 import {
+  configureNativeMicrophoneSession,
   publishNativeMicrophone,
   shouldUseNativeMicrophone,
   type NativeMicrophoneSession,
@@ -1390,7 +1391,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const effects = voicePreferenceEffectFlags(previous, next)
       if (effects.devicesChanged) {
         void applyVoiceDevices(room).then(() => {
-          if (!shouldUseNativeMicrophone()) {
+          if (shouldUseNativeMicrophone()) {
+            configureNativeMicrophoneSession(nativeMicrophoneRef.current, next)
+          } else {
             void refreshMicProcessing(room)
           }
         })
@@ -1398,7 +1401,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         applyAllRemoteAudio(deafenedRef.current)
       }
       if (effects.micProcessingChanged) {
-        if (!shouldUseNativeMicrophone()) {
+        if (shouldUseNativeMicrophone()) {
+          configureNativeMicrophoneSession(nativeMicrophoneRef.current, next)
+        } else {
           void refreshMicProcessing(room)
         }
       }

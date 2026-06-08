@@ -17,6 +17,7 @@ import {
   type NativeMediaFrameStats,
   type NativeMicrophonePreviewSession,
   type NativeMicrophonePreviewStartOptions,
+  type NativeMicrophoneRuntimeConfig,
   type NativeMediaSession,
   type NativeMediaSidecarLostEvent,
   type NativeMediaSessionStartOptions,
@@ -25,6 +26,7 @@ import {
   type NativeMediaStateEvent,
   type NativeMediaStatsEvent,
   type NativeMediaStreamMode,
+  type NativeMicrophoneMetricsEvent,
 } from '@syrnike13/platform'
 
 import {
@@ -34,6 +36,7 @@ import {
   mapEchoCancellationMode,
   mapFrameMethod,
   mapLifecycleState,
+  mapMicrophoneMetrics,
   mapStreamMode,
   parseSidecarEvent,
   readBgraFramePacketAsync,
@@ -148,6 +151,12 @@ export function buildNativeMediaStartCommand(
       channels: options.channels,
       echoCancellation: options.echoCancellation,
       inputVolume: options.inputVolume,
+      voiceGateEnabled: options.voiceGateEnabled,
+      voiceGateThresholdDb: options.voiceGateThresholdDb,
+      voiceGateAutoThreshold: options.voiceGateAutoThreshold,
+      url: options.livekit.url,
+      token: options.livekit.token,
+      participantIdentity: options.livekit.participantIdentity,
       livekit: options.livekit,
     }
   }
@@ -303,6 +312,15 @@ function emitMediaEngineStats(
   win.webContents.send(IPC.mediaStats, event)
 }
 
+function emitMicrophoneMetrics(
+  getWindow: () => BrowserWindow | null,
+  event: NativeMicrophoneMetricsEvent,
+) {
+  const win = getWindow()
+  if (!win || win.isDestroyed()) return
+  win.webContents.send(IPC.mediaMicrophoneMetrics, event)
+}
+
 function emitSidecarLost(
   getWindow: () => BrowserWindow | null,
   event: NativeMediaSidecarLostEvent,
@@ -310,6 +328,28 @@ function emitSidecarLost(
   const win = getWindow()
   if (!win || win.isDestroyed()) return
   win.webContents.send(IPC.mediaEngineLost, event)
+}
+
+function writeHelperCommand(
+  helper: ChildProcessWithoutNullStreams,
+  command: Record<string, unknown>,
+) {
+  if (helper.killed || helper.exitCode !== null || !helper.stdin.writable) {
+    return false
+  }
+
+  try {
+    return helper.stdin.write(`${JSON.stringify(command)}\n`, (error) => {
+      if (!error) return
+      if ((error as NodeJS.ErrnoException).code === 'EPIPE') return
+      console.error('[media-engine-helper] stdin write failed', error)
+    })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EPIPE') {
+      console.error('[media-engine-helper] stdin write failed', error)
+    }
+    return false
+  }
 }
 
 export function getPendingNativePicker() {
@@ -472,11 +512,7 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     cleanupFrameBuffer(session)
 
     if (mediaEngineHelper) {
-      try {
-        mediaEngineHelper.stdin.write(`${JSON.stringify({ cmd: 'stop' })}\n`)
-      } catch {
-        // ignore
-      }
+      writeHelperCommand(mediaEngineHelper, { cmd: 'stop' })
       mediaEngineHelper.kill()
       mediaEngineHelper = null
       mediaEngineHelperReader = null
@@ -484,14 +520,13 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
 
     const helper = ensureMediaEngineHelper('screen')
     const readyPromise = waitForSidecarReady()
-    helper.stdin.write(
-      `${JSON.stringify(
-        buildScreenShareStartCommand(
-          session.startOptions,
-          session.sessionId,
-          getWindow,
-        ),
-      )}\n`,
+    writeHelperCommand(
+      helper,
+      buildScreenShareStartCommand(
+        session.startOptions,
+        session.sessionId,
+        getWindow,
+      ),
     )
 
     const readyEvent = await readyPromise
@@ -618,9 +653,7 @@ function stopMediaEngineHelper() {
   stopStreamRelay(activeSession)
 
   if (mediaEngineHelper) {
-    try {
-      mediaEngineHelper.stdin.write(`${JSON.stringify({ cmd: 'stop' })}\n`)
-    } catch {
+    if (!writeHelperCommand(mediaEngineHelper, { cmd: 'stop' })) {
       mediaEngineHelper.kill()
       mediaEngineHelper = null
       mediaEngineHelperReader?.close()
@@ -633,14 +666,41 @@ function stopMediaEngineHelper() {
 
 function stopMicrophonePreviewHelper() {
   if (!microphonePreviewHelper) return
-  try {
-    microphonePreviewHelper.stdin.write(`${JSON.stringify({ cmd: 'stop' })}\n`)
-  } catch {
-    // ignore
-  }
+  writeHelperCommand(microphonePreviewHelper, { cmd: 'stop' })
   microphonePreviewHelper.kill()
   microphonePreviewHelper = null
   microphonePreviewSessionId = null
+}
+
+function configureNativeMicrophoneRuntime(
+  sessionId: string,
+  config: NativeMicrophoneRuntimeConfig,
+) {
+  if (microphonePreviewHelper && microphonePreviewSessionId === sessionId) {
+    const written = writeHelperCommand(microphonePreviewHelper, {
+      cmd: 'configure',
+      sessionId,
+      ...config,
+    })
+    if (!written) {
+      throw new Error('Native microphone preview helper is not writable')
+    }
+    return
+  }
+
+  if (activeSession?.sessionId === sessionId) {
+    const written = writeHelperCommand(activeSession.helper, {
+      cmd: 'configure',
+      sessionId,
+      ...config,
+    })
+    if (!written) {
+      throw new Error('Native media helper is not writable')
+    }
+    return
+  }
+
+  throw new Error('Native microphone runtime is not active')
 }
 
 async function startNativeMicrophonePreview(
@@ -681,6 +741,12 @@ async function startNativeMicrophonePreview(
         reject(new Error(event.message))
         return
       }
+      if (event.type === 'microphone_metrics') {
+        if (getWindowRef) {
+          emitMicrophoneMetrics(getWindowRef, mapMicrophoneMetrics(event))
+        }
+        return
+      }
       if (event.type === 'ready') {
         clearTimeout(timer)
         resolve({ sessionId })
@@ -704,9 +770,13 @@ async function startNativeMicrophonePreview(
   helper.stderr.on('data', (chunk) => {
     console.error('[microphone-preview-helper]', chunk.toString())
   })
+  helper.stdin.on('error', (error) => {
+    if ((error as NodeJS.ErrnoException).code === 'EPIPE') return
+    console.error('[microphone-preview-helper] stdin error', error)
+  })
 
-  helper.stdin.write(
-    `${JSON.stringify({
+  if (
+    !writeHelperCommand(helper, {
       cmd: 'start_preview',
       sessionId,
       deviceId: options.deviceId,
@@ -714,8 +784,14 @@ async function startNativeMicrophonePreview(
       channels: options.channels,
       echoCancellation: options.echoCancellation,
       inputVolume: options.inputVolume,
-    })}\n`,
-  )
+      voiceGateEnabled: options.voiceGateEnabled,
+      voiceGateThresholdDb: options.voiceGateThresholdDb,
+      voiceGateAutoThreshold: options.voiceGateAutoThreshold,
+    })
+  ) {
+    stopMicrophonePreviewHelper()
+    throw new Error('Native microphone preview helper is not writable')
+  }
 
   return ready
 }
@@ -775,6 +851,11 @@ function ensureMediaEngineHelper(kind: NativeMediaSessionStartOptions['kind']) {
       return
     }
 
+    if (event.type === 'microphone_metrics' && getWindowRef) {
+      emitMicrophoneMetrics(getWindowRef, mapMicrophoneMetrics(event))
+      return
+    }
+
     if (event.type === 'downgrade') {
       console.warn(
         '[media-engine-helper] downgrade',
@@ -806,6 +887,10 @@ function ensureMediaEngineHelper(kind: NativeMediaSessionStartOptions['kind']) {
   helper.stderr.on('data', (chunk) => {
     const text = chunk.toString()
     console.error('[media-engine-helper]', text)
+  })
+  helper.stdin.on('error', (error) => {
+    if ((error as NodeJS.ErrnoException).code === 'EPIPE') return
+    console.error('[media-engine-helper] stdin error', error)
   })
 
   helper.on('exit', (code, signal) => {
@@ -872,7 +957,16 @@ async function listNativeMediaDevices(
     helper.on('exit', () => {
       if (!settled) finish([])
     })
-    helper.stdin.write(`${JSON.stringify({ cmd: 'list_devices', kind })}\n`)
+    helper.stdin.on('error', (error) => {
+      if ((error as NodeJS.ErrnoException).code === 'EPIPE') {
+        finish([])
+        return
+      }
+      fail(error)
+    })
+    if (!writeHelperCommand(helper, { cmd: 'list_devices', kind })) {
+      finish([])
+    }
   })
 }
 
@@ -927,9 +1021,9 @@ async function startNativeMediaSession(
   const readyPromise = waitForSidecarReady()
   const startCommand = buildNativeMediaStartCommand(options, sessionId, getWindow)
 
-  helper.stdin.write(
-    `${JSON.stringify(startCommand)}\n`,
-  )
+  if (!writeHelperCommand(helper, startCommand)) {
+    throw new Error('Native media helper is not writable')
+  }
 
   const readyEvent = await readyPromise
   if (readyEvent.type !== 'ready') {
@@ -1024,6 +1118,20 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
     if (sessionId && activeSession?.sessionId !== sessionId) return
     stopMediaEngineHelper()
   })
+
+  ipcMain.handle(
+    IPC.mediaConfigureMicrophoneRuntime,
+    async (
+      event,
+      sessionId: string,
+      config: NativeMicrophoneRuntimeConfig,
+    ) => {
+      if (!isTrustedSender(event, getWindow)) {
+        throw new Error('Untrusted media engine configure request')
+      }
+      configureNativeMicrophoneRuntime(sessionId, config)
+    },
+  )
 
   ipcMain.handle(IPC.mediaListDevices, async (event, kind: 'audioinput') => {
     if (!isTrustedSender(event, getWindow)) return []

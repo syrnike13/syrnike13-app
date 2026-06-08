@@ -13,6 +13,11 @@ import {
 import { rmsFromByteTimeDomain } from '#/features/voice/voice-gate-level'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
+import {
+  clearNativeMicrophoneRuntimeConfig,
+  configureNativeMicrophoneRuntime,
+} from './native-microphone-runtime-config'
+
 export const MIC_PREVIEW_METER_BAR_COUNT = 32
 
 export type MicPreviewPreferences = Pick<
@@ -93,24 +98,39 @@ export async function startMicPreview({
         channels: 1,
         echoCancellation: nextPrefs.echoCancellation,
         inputVolume: nextPrefs.inputVolume,
+        voiceGateEnabled: nextPrefs.voiceGateEnabled,
+        voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
+        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
       })
 
     let session = await startNative(prefs)
     let stopped = false
     onLevels(meterLevelsFromRms(0.08, MIC_PREVIEW_METER_BAR_COUNT))
 
+    const configureNative = (nextPrefs: MicPreviewPreferences) => {
+      if (stopped) return
+      configureNativeMicrophoneRuntime(session.sessionId, {
+        echoCancellation: nextPrefs.echoCancellation,
+        inputVolume: nextPrefs.inputVolume,
+        voiceGateEnabled: nextPrefs.voiceGateEnabled,
+        voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
+        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
+      })
+    }
+
     return {
       setOutputVolume(_volume: number) {},
       async setOutputDevice(_deviceId?: string) {},
-      updateGatePreferences(_nextPrefs: MicPreviewPreferences) {},
+      updateGatePreferences(nextPrefs: MicPreviewPreferences) {
+        configureNative(nextPrefs)
+      },
       async restartProcessing(nextPrefs: MicPreviewPreferences) {
-        if (stopped) return
-        await desktop.media.stopMicrophonePreview(session.sessionId)
-        session = await startNative(nextPrefs)
+        configureNative(nextPrefs)
       },
       stop() {
         if (stopped) return
         stopped = true
+        clearNativeMicrophoneRuntimeConfig(session.sessionId)
         void desktop.media.stopMicrophonePreview(session.sessionId)
       },
     }

@@ -1,5 +1,6 @@
 import type {
   NativeMediaDeviceInfo,
+  NativeMicrophoneRuntimeConfig,
   NativeMicrophonePreviewSession,
   NativeMicrophonePreviewStartOptions,
   NativeMediaSession,
@@ -229,9 +230,16 @@ export interface SyrnikeDesktopApi {
       handler: (payload: { requestId: string; sourceId: string }) => void,
     ): () => void
     startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
+    configureMicrophoneRuntime(
+      sessionId: string,
+      config: NativeMicrophoneRuntimeConfig,
+    ): Promise<void>
     stopSession(sessionId?: string): Promise<void>
     getState(): Promise<NativeMediaState>
     onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
+    onMicrophoneMetrics(
+      handler: (event: import('./media').NativeMicrophoneMetricsEvent) => void,
+    ): () => void
     onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
     readSharedFrame(sessionId: string): Promise<ArrayBuffer | null>
     onStreamChunk(

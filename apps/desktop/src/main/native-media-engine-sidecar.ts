@@ -9,6 +9,7 @@ import type {
   NativeMediaFrameMethod,
   NativeMediaStateEvent,
   NativeMediaStreamMode,
+  NativeMicrophoneMetricsEvent,
 } from '@syrnike13/platform'
 
 export type SidecarEvent =
@@ -39,6 +40,13 @@ export type SidecarEvent =
       devices: NativeMediaDeviceInfo[]
     }
   | {
+      type: 'microphone_metrics'
+      session_id: string
+      input_db: number
+      threshold_db: number
+      open: boolean
+    }
+  | {
       type: 'session_lifecycle'
       session_id: string
       kind: 'screen' | 'microphone'
@@ -61,6 +69,17 @@ export function parseSidecarEvent(line: string): SidecarEvent | null {
     return event
   } catch {
     return null
+  }
+}
+
+export function mapMicrophoneMetrics(
+  event: Extract<SidecarEvent, { type: 'microphone_metrics' }>,
+): NativeMicrophoneMetricsEvent {
+  return {
+    sessionId: event.session_id,
+    inputDb: event.input_db,
+    thresholdDb: event.threshold_db,
+    open: event.open,
   }
 }
 

@@ -20,6 +20,8 @@ import type {
   NativeMediaState,
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
+  NativeMicrophoneMetricsEvent,
+  NativeMicrophoneRuntimeConfig,
   NativeInputEvent,
   SyrnikeDesktopApi,
 } from '@syrnike13/platform'
@@ -209,6 +211,16 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     startSession(options: NativeMediaSessionStartOptions) {
       return ipcRenderer.invoke(IPC.mediaStartSession, options) as Promise<NativeMediaSession>
     },
+    configureMicrophoneRuntime(
+      sessionId: string,
+      config: NativeMicrophoneRuntimeConfig,
+    ) {
+      return ipcRenderer.invoke(
+        IPC.mediaConfigureMicrophoneRuntime,
+        sessionId,
+        config,
+      )
+    },
     stopSession(sessionId?: string) {
       return ipcRenderer.invoke(IPC.mediaStopSession, sessionId)
     },
@@ -222,6 +234,15 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.mediaStats, listener)
       return () => {
         ipcRenderer.removeListener(IPC.mediaStats, listener)
+      }
+    },
+    onMicrophoneMetrics(handler: (event: NativeMicrophoneMetricsEvent) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isNativeMicrophoneMetricsEvent(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.mediaMicrophoneMetrics, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.mediaMicrophoneMetrics, listener)
       }
     },
     onStateChange(handler: (event: NativeMediaStateEvent) => void) {
@@ -356,6 +377,19 @@ function isNativeMediaStatsEvent(value: unknown): value is NativeMediaStatsEvent
   if (!value || typeof value !== 'object') return false
   const event = value as NativeMediaStatsEvent
   return typeof event.sessionId === 'string' && typeof event.methods === 'object'
+}
+
+function isNativeMicrophoneMetricsEvent(
+  value: unknown,
+): value is NativeMicrophoneMetricsEvent {
+  if (!value || typeof value !== 'object') return false
+  const event = value as NativeMicrophoneMetricsEvent
+  return (
+    typeof event.sessionId === 'string' &&
+    typeof event.inputDb === 'number' &&
+    typeof event.thresholdDb === 'number' &&
+    typeof event.open === 'boolean'
+  )
 }
 
 function isNativeMediaStateEvent(value: unknown): value is NativeMediaStateEvent {

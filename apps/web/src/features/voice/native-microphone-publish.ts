@@ -6,6 +6,11 @@ import {
 } from '#/features/voice/voice-preference-store'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
+import {
+  clearNativeMicrophoneRuntimeConfig,
+  configureNativeMicrophoneRuntime,
+} from './native-microphone-runtime-config'
+
 export type NativeMicrophoneSession = {
   sessionId: string
   nativeParticipantIdentity: string
@@ -35,6 +40,9 @@ export function nativeMicrophoneSessionOptions(
     channels: 1 as const,
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,
+    voiceGateEnabled: prefs.voiceGateEnabled,
+    voiceGateThresholdDb: prefs.voiceGateThresholdDb,
+    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
     livekit,
   }
 }
@@ -78,6 +86,7 @@ export async function publishNativeMicrophone(
   const stop = () => {
     if (stopped) return
     stopped = true
+    clearNativeMicrophoneRuntimeConfig(session.sessionId)
     void desktop.media.stopSession(session.sessionId)
     onStopped?.(session.sessionId)
   }
@@ -87,4 +96,17 @@ export async function publishNativeMicrophone(
     nativeParticipantIdentity: session.nativeParticipantIdentity,
     stop,
   }
+}
+
+export function configureNativeMicrophoneSession(
+  session: NativeMicrophoneSession | null,
+  prefs: VoicePreferenceState,
+) {
+  configureNativeMicrophoneRuntime(session?.sessionId, {
+    echoCancellation: prefs.echoCancellation,
+    inputVolume: prefs.inputVolume,
+    voiceGateEnabled: prefs.voiceGateEnabled,
+    voiceGateThresholdDb: prefs.voiceGateThresholdDb,
+    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
+  })
 }

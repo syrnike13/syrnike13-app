@@ -8,6 +8,7 @@ import { readVoicePreferences } from '#/features/voice/voice-preference-store'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
+  configureNativeMicrophoneSession,
   nativeMicrophoneSessionOptions,
   publishNativeMicrophone,
   shouldUseNativeMicrophone,
@@ -63,6 +64,7 @@ function preferences() {
 
 describe('native microphone publish', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     vi.stubGlobal(
       'AudioContext',
       vi.fn(function AudioContext() {
@@ -89,6 +91,9 @@ describe('native microphone publish', () => {
       channels: 1,
       echoCancellation: true,
       inputVolume: 0.75,
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: -45,
+      voiceGateAutoThreshold: false,
       livekit: {
         url: 'wss://livekit.example',
         token: 'livekit-token',
@@ -235,6 +240,47 @@ describe('native microphone publish', () => {
 
     expect(stopSession).toHaveBeenCalledWith('native-mic-1')
     expect(onStopped).toHaveBeenCalledWith('native-mic-1')
+  })
+
+  it('debounces runtime config updates for native microphone publishing', async () => {
+    vi.useFakeTimers()
+    const configureMicrophoneRuntime = vi.fn(async () => {})
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        configureMicrophoneRuntime,
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const session = {
+      sessionId: 'native-mic-1',
+      nativeParticipantIdentity: 'user-1:desktop-native',
+      stop: vi.fn(),
+    }
+
+    configureNativeMicrophoneSession(session, {
+      ...preferences(),
+      voiceGateThresholdDb: -32,
+    })
+    configureNativeMicrophoneSession(session, {
+      ...preferences(),
+      inputVolume: 1.8,
+      voiceGateEnabled: false,
+    })
+    await vi.advanceTimersByTimeAsync(39)
+
+    expect(configureMicrophoneRuntime).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(configureMicrophoneRuntime).toHaveBeenCalledTimes(1)
+    expect(configureMicrophoneRuntime).toHaveBeenCalledWith(
+      'native-mic-1',
+      expect.objectContaining({
+        inputVolume: 1.8,
+        voiceGateEnabled: false,
+      }),
+    )
   })
 })
 
