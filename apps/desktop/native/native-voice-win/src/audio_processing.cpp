@@ -12,6 +12,19 @@ std::int16_t clampToPcm16(float sample) {
   return static_cast<std::int16_t>(std::lrint(sample * 32767.0f));
 }
 
+float softLimitSample(float sample) {
+  if (!std::isfinite(sample)) return 0.0f;
+  constexpr float kKnee = 0.80f;
+  constexpr float kLimit = 0.98f;
+  const float magnitude = std::abs(sample);
+  if (magnitude <= kKnee) return sample;
+
+  const float compressed = kKnee +
+    (kLimit - kKnee) *
+      (1.0f - std::exp(-(magnitude - kKnee) / (kLimit - kKnee)));
+  return std::copysign(std::min(kLimit, compressed), sample);
+}
+
 float rmsToDb(float rms) {
   if (!std::isfinite(rms) || rms <= 0.0000001f) return -60.0f;
   return std::max(-60.0f, std::min(0.0f, 20.0f * std::log10(rms)));

@@ -4,6 +4,7 @@ import { IPC } from '@syrnike13/platform'
 import type {
   DesktopOs,
   DesktopDisplayMediaRequest,
+  DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
   DesktopPlatformInfo,
   DesktopStoredSession,
@@ -157,11 +158,16 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         requestId,
       ) as Promise<DesktopDisplayMediaSource[]>
     },
-    selectDisplaySource(requestId: string, sourceId: string) {
+    selectDisplaySource(
+      requestId: string,
+      sourceId: string,
+      audioRequested?: boolean,
+    ) {
       return ipcRenderer.invoke(
         IPC.mediaSelectDisplaySource,
         requestId,
         sourceId,
+        audioRequested,
       ) as Promise<boolean>
     },
     cancelRequest(requestId: string) {
@@ -198,7 +204,7 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       }
     },
     onDisplayPickerResolved(
-      handler: (payload: { requestId: string; sourceId: string }) => void,
+      handler: (payload: DesktopDisplayMediaSelection) => void,
     ) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
         if (isNativePickerResolved(payload)) handler(payload)
@@ -252,42 +258,6 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.mediaStateChanged, listener)
       return () => {
         ipcRenderer.removeListener(IPC.mediaStateChanged, listener)
-      }
-    },
-    readSharedFrame(sessionId: string) {
-      return ipcRenderer.invoke(
-        IPC.mediaReadSharedFrame,
-        sessionId,
-      ) as Promise<ArrayBuffer | null>
-    },
-    onStreamChunk(
-      handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
-    ) {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (!isCaptureStreamChunk(payload)) return
-        handler({
-          sessionId: payload.sessionId,
-          chunk: normalizeCaptureChunk(payload.chunk),
-        })
-      }
-      ipcRenderer.on(IPC.mediaStreamChunk, listener)
-      return () => {
-        ipcRenderer.removeListener(IPC.mediaStreamChunk, listener)
-      }
-    },
-    onStreamAudioChunk(
-      handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
-    ) {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (!isCaptureStreamChunk(payload)) return
-        handler({
-          sessionId: payload.sessionId,
-          chunk: normalizeCaptureChunk(payload.chunk),
-        })
-      }
-      ipcRenderer.on(IPC.mediaStreamAudioChunk, listener)
-      return () => {
-        ipcRenderer.removeListener(IPC.mediaStreamAudioChunk, listener)
       }
     },
     onStreamEnded(handler: (sessionId: string) => void) {
@@ -365,11 +335,17 @@ function isDesktopDisplayMediaRequest(
 
 function isNativePickerResolved(
   value: unknown,
-): value is { requestId: string; sourceId: string } {
+): value is DesktopDisplayMediaSelection {
   if (!value || typeof value !== 'object') return false
-  const payload = value as { requestId?: unknown; sourceId?: unknown }
+  const payload = value as {
+    requestId?: unknown
+    sourceId?: unknown
+    audioRequested?: unknown
+  }
   return (
-    typeof payload.requestId === 'string' && typeof payload.sourceId === 'string'
+    typeof payload.requestId === 'string' &&
+    typeof payload.sourceId === 'string' &&
+    typeof payload.audioRequested === 'boolean'
   )
 }
 
@@ -396,26 +372,6 @@ function isNativeMediaStateEvent(value: unknown): value is NativeMediaStateEvent
   if (!value || typeof value !== 'object') return false
   const event = value as NativeMediaStateEvent
   return typeof event.status === 'string'
-}
-
-function isBinaryChunk(value: unknown): value is ArrayBuffer | ArrayBufferView {
-  return value instanceof ArrayBuffer || ArrayBuffer.isView(value)
-}
-
-function normalizeCaptureChunk(chunk: ArrayBuffer | ArrayBufferView): ArrayBuffer {
-  if (chunk instanceof ArrayBuffer) return chunk
-  return chunk.buffer.slice(
-    chunk.byteOffset,
-    chunk.byteOffset + chunk.byteLength,
-  ) as ArrayBuffer
-}
-
-function isCaptureStreamChunk(
-  value: unknown,
-): value is { sessionId: string; chunk: ArrayBuffer | ArrayBufferView } {
-  if (!value || typeof value !== 'object') return false
-  const event = value as { sessionId?: unknown; chunk?: unknown }
-  return typeof event.sessionId === 'string' && isBinaryChunk(event.chunk)
 }
 
 function isCaptureStreamError(

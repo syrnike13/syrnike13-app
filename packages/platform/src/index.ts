@@ -5,6 +5,7 @@ export type {
   NativeMediaEchoCancellationMode,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
+  NativeMediaLoopbackMode,
   NativeMediaEngineCapabilities,
   NativeMediaEngineSessionSummary,
   NativeMediaEngineSnapshot,
@@ -22,12 +23,12 @@ export type {
   NativeMediaState,
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
-  NativeMediaStreamMode,
   NativeMediaTarget,
 } from './media'
 export type {
   ActivityDetails,
   DesktopDisplayMediaRequest,
+  DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
   DesktopDisplayMediaSourceType,
   DesktopOs,

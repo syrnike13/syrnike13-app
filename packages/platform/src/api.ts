@@ -134,7 +134,7 @@ export type HotkeyActivationEvent = {
   phase: 'pressed' | 'released'
 }
 
-export type DesktopDisplayMediaSourceType = 'screen' | 'window'
+export type DesktopDisplayMediaSourceType = 'screen' | 'window' | 'game'
 
 export type DesktopDisplayMediaSource = {
   id: string
@@ -142,6 +142,11 @@ export type DesktopDisplayMediaSource = {
   type: DesktopDisplayMediaSourceType
   thumbnailDataUrl: string | null
   appIconDataUrl: string | null
+  processId?: number
+  processPath?: string
+  classification?: string
+  audioAvailable?: boolean
+  audioMode?: 'system_exclude' | 'process' | 'none'
 }
 
 export type DesktopDisplayMediaRequest = {
@@ -151,11 +156,18 @@ export type DesktopDisplayMediaRequest = {
   nativeVideo?: boolean
 }
 
+export type DesktopDisplayMediaSelection = {
+  requestId: string
+  sourceId: string
+  audioRequested: boolean
+}
+
 export type {
   NativeMediaEncoderBackend,
   NativeMediaDeviceInfo,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
+  NativeMediaLoopbackMode,
   NativeMediaSession,
   NativeMediaSidecarLostEvent,
   NativeMediaSessionKind,
@@ -166,7 +178,6 @@ export type {
   NativeMediaState,
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
-  NativeMediaStreamMode,
   NativeMediaTarget,
 } from './media'
 
@@ -217,7 +228,11 @@ export interface SyrnikeDesktopApi {
   }
   media: {
     getDisplaySources(requestId: string): Promise<DesktopDisplayMediaSource[]>
-    selectDisplaySource(requestId: string, sourceId: string): Promise<boolean>
+    selectDisplaySource(
+      requestId: string,
+      sourceId: string,
+      audioRequested?: boolean,
+    ): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
     listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
@@ -227,7 +242,7 @@ export interface SyrnikeDesktopApi {
     stopMicrophonePreview(sessionId?: string): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
-      handler: (payload: { requestId: string; sourceId: string }) => void,
+      handler: (payload: DesktopDisplayMediaSelection) => void,
     ): () => void
     startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
     configureMicrophoneRuntime(
@@ -241,13 +256,6 @@ export interface SyrnikeDesktopApi {
       handler: (event: import('./media').NativeMicrophoneMetricsEvent) => void,
     ): () => void
     onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
-    readSharedFrame(sessionId: string): Promise<ArrayBuffer | null>
-    onStreamChunk(
-      handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
-    ): () => void
-    onStreamAudioChunk(
-      handler: (event: { sessionId: string; chunk: ArrayBuffer }) => void,
-    ): () => void
     onStreamEnded(handler: (sessionId: string) => void): () => void
     onStreamError(
       handler: (event: { sessionId: string; message: string }) => void,

@@ -24,16 +24,23 @@ export function participantHasCamera(participant: Participant) {
 }
 
 export function participantHasScreenShare(participant: Participant) {
-  return hasPublishedVideoSource(participant, Track.Source.ScreenShare)
+  return hasPublishedVideoSource(
+    participant,
+    Track.Source.ScreenShare,
+    false,
+  )
 }
 
 function hasPublishedVideoSource(
   participant: Participant,
   source: Track.Source.Camera | Track.Source.ScreenShare,
+  requireTrack = false,
 ) {
   for (const publication of participant.trackPublications.values()) {
     if (publication.source !== source) continue
-    if (publication.track && !publication.isMuted) return true
+    if (publication.isMuted) continue
+    if (requireTrack && !publication.track) continue
+    return true
   }
   return false
 }
@@ -41,13 +48,21 @@ function hasPublishedVideoSource(
 export function localParticipantVoiceFlags(participant: LocalParticipant) {
   return {
     camera: participantHasCamera(participant),
-    screensharing: participantHasScreenShare(participant),
+    screensharing: hasPublishedVideoSource(
+      participant,
+      Track.Source.ScreenShare,
+      true,
+    ),
   }
 }
 
 export function remoteParticipantVoiceFlags(participant: RemoteParticipant) {
   return {
     camera: participantHasCamera(participant),
-    screensharing: participantHasScreenShare(participant),
+    screensharing: hasPublishedVideoSource(
+      participant,
+      Track.Source.ScreenShare,
+      false,
+    ),
   }
 }

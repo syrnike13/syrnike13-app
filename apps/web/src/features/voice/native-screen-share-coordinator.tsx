@@ -14,7 +14,7 @@ export function NativeScreenShareCoordinator() {
     if (!desktop) return
 
     return desktop.media.onDisplayPickerResolved((payload) => {
-      resolveNativePickerSelection(payload.sourceId)
+      resolveNativePickerSelection(payload)
     })
   }, [desktop])
 

@@ -1,6 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
-import net from 'node:net'
 import path from 'node:path'
 import readline from 'node:readline'
 
@@ -8,6 +7,7 @@ import { app, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'elect
 import {
   IPC,
   type DesktopDisplayMediaRequest,
+  type DesktopDisplayMediaSource,
   type DesktopOs,
   type NativeMediaAudioMode,
   type NativeMediaDeviceInfo,
@@ -25,21 +25,18 @@ import {
   type NativeMediaState,
   type NativeMediaStateEvent,
   type NativeMediaStatsEvent,
-  type NativeMediaStreamMode,
   type NativeMicrophoneMetricsEvent,
 } from '@syrnike13/platform'
 
 import {
-  isSharedFrameSignal,
   mapAudioMode,
   mapEncoderBackend,
   mapEchoCancellationMode,
   mapFrameMethod,
   mapLifecycleState,
+  mapLoopbackMode,
   mapMicrophoneMetrics,
-  mapStreamMode,
   parseSidecarEvent,
-  readBgraFramePacketAsync,
   type SidecarEvent,
 } from './native-media-engine-sidecar'
 
@@ -49,15 +46,18 @@ const MAX_SIDECAR_RECONNECT_ATTEMPTS = 1
 export type PendingNativePicker = {
   id: string
   audioRequested: boolean
-  sources: Electron.DesktopCapturerSource[]
+  sources: DesktopDisplayMediaSource[]
   timeout: ReturnType<typeof setTimeout>
 }
 
 type ActiveMediaEngineSession = {
   sessionId: string
   port?: number
-  streamMode?: NativeMediaStreamMode
   frameBufferPath?: string
+  width?: number
+  height?: number
+  fps?: number
+  bitrate?: number
   audio?: {
     port?: number
     mode: NativeMediaAudioMode
@@ -68,10 +68,16 @@ type ActiveMediaEngineSession = {
   helper: ChildProcessWithoutNullStreams
   stats: NativeMediaFrameStats
   activeMethod?: NativeMediaFrameMethod
-  socket: net.Socket | null
-  socketReadBuffer: Buffer
-  audioSocket: net.Socket | null
-  audioSocketReadBuffer: Buffer
+  publishedVideo: boolean
+  publishedAudio: boolean
+  audioFrames?: number
+  audioPackets?: number
+  audioPeakDb?: number
+  audioRmsDb?: number
+  videoFrames?: number
+  videoIntervalFrames?: number
+  videoLateFrames?: number
+  videoAvgCaptureUs?: number
   startOptions: NativeMediaSessionStartOptions
   reconnectAttempts: number
   reconnecting: boolean
@@ -115,6 +121,8 @@ function buildSessionAudio(
     sampleRate?: 48_000
     channels?: 1 | 2
     echoCancellation?: NativeMediaEchoCancellationMode
+    targetProcessId?: number
+    loopbackMode?: import('@syrnike13/platform').NativeMediaLoopbackMode
   },
 ): NativeMediaSession['audio'] {
   if (!requested && mode === 'none' && !port) return undefined
@@ -127,13 +135,19 @@ function buildSessionAudio(
       echoCancellation: metadata?.echoCancellation ?? 'disabled',
     }
   }
-  return { mode, port }
+  return {
+    mode,
+    port,
+    targetProcessId: metadata?.targetProcessId,
+    loopbackMode: metadata?.loopbackMode,
+  }
 }
 
-function readWindowHwnd(win: BrowserWindow): number | undefined {
+function readWindowHwnd(win: BrowserWindow): string | undefined {
   const handle = win.getNativeWindowHandle()
   if (handle.length < 4) return undefined
-  return handle.readInt32LE(0)
+  if (handle.length >= 8) return handle.readBigUInt64LE(0).toString()
+  return handle.readUInt32LE(0).toString()
 }
 
 export function buildNativeMediaStartCommand(
@@ -166,13 +180,17 @@ export function buildNativeMediaStartCommand(
     cmd: 'start',
     sessionId,
     sessionKind: options.kind,
+    sourceId: options.sourceId,
     target: { id: options.sourceId },
     width: options.width,
     height: options.height,
     fps: options.fps,
     bitrate: options.bitrate,
-    streamMode: options.streamMode ?? 'bgra',
     audio: Boolean(options.audio?.requested),
+    url: options.livekit.url,
+    token: options.livekit.token,
+    participantIdentity: options.livekit.participantIdentity,
+    livekit: options.livekit,
     excludeProcessId: process.pid,
     selfWindowHwnd:
       win && !win.isDestroyed() ? readWindowHwnd(win) : undefined,
@@ -187,6 +205,17 @@ function buildScreenShareStartCommand(
   return buildNativeMediaStartCommand(options, sessionId, getWindow)
 }
 
+export function buildScreenSharePreflightCommand(
+  options: Extract<NativeMediaSessionStartOptions, { kind: 'screen' }>,
+  getWindow: () => BrowserWindow | null,
+) {
+  return {
+    ...buildNativeMediaStartCommand(options, 'preflight', getWindow),
+    cmd: 'probe_screen_share',
+    durationMs: 1000,
+  }
+}
+
 function assertScreenSessionOptions(
   options: NativeMediaSessionStartOptions,
 ): asserts options is Extract<NativeMediaSessionStartOptions, { kind: 'screen' }> {
@@ -198,8 +227,6 @@ function assertScreenSessionOptions(
 function resolveMediaEngineHelperPath(
   kind: NativeMediaSessionStartOptions['kind'] = 'screen',
 ) {
-  if (kind !== 'microphone') return null
-
   const helperName = 'syrnike-native-voice-win.exe'
   const candidates = app.isPackaged
     ? [path.join(process.resourcesPath, 'native', helperName)]
@@ -264,6 +291,10 @@ export function buildNativeMediaEngineSnapshot(
                 ? 'starting'
                 : 'running',
           port: input.activeSession.port,
+          width: input.activeSession.width,
+          height: input.activeSession.height,
+          fps: input.activeSession.fps,
+          bitrate: input.activeSession.bitrate,
           audio: input.activeSession.audio,
         },
       ]
@@ -310,6 +341,26 @@ function emitMediaEngineStats(
   const win = getWindow()
   if (!win || win.isDestroyed()) return
   win.webContents.send(IPC.mediaStats, event)
+}
+
+function buildMediaEngineStatsEvent(
+  session: ActiveMediaEngineSession,
+): NativeMediaStatsEvent {
+  return {
+    sessionId: session.sessionId,
+    methods: { ...session.stats },
+    activeMethod: session.activeMethod,
+    publishedVideo: session.publishedVideo,
+    publishedAudio: session.publishedAudio,
+    audioFrames: session.audioFrames,
+    audioPackets: session.audioPackets,
+    audioPeakDb: session.audioPeakDb,
+    audioRmsDb: session.audioRmsDb,
+    videoFrames: session.videoFrames,
+    videoIntervalFrames: session.videoIntervalFrames,
+    videoLateFrames: session.videoLateFrames,
+    videoAvgCaptureUs: session.videoAvgCaptureUs,
+  }
 }
 
 function emitMicrophoneMetrics(
@@ -366,31 +417,6 @@ export function clearPendingNativePicker() {
   pendingNativePicker = null
 }
 
-function cleanupFrameBuffer(session: ActiveMediaEngineSession | null) {
-  if (!session?.frameBufferPath) return
-  try {
-    fs.unlinkSync(session.frameBufferPath)
-  } catch {
-    // ignore
-  }
-}
-
-function stopStreamRelay(session: ActiveMediaEngineSession | null) {
-  if (!session) return
-  if (session.socket) {
-    session.socket.removeAllListeners()
-    session.socket.destroy()
-    session.socket = null
-  }
-  session.socketReadBuffer = Buffer.alloc(0)
-  if (session.audioSocket) {
-    session.audioSocket.removeAllListeners()
-    session.audioSocket.destroy()
-    session.audioSocket = null
-  }
-  session.audioSocketReadBuffer = Buffer.alloc(0)
-}
-
 function notifySidecarLost(
   session: ActiveMediaEngineSession,
   reason: NativeMediaSidecarLostEvent['reason'],
@@ -415,84 +441,6 @@ function notifySidecarLost(
   }
 }
 
-function forwardStreamPayload(
-  getWindow: () => BrowserWindow | null,
-  session: ActiveMediaEngineSession,
-  payload: Buffer,
-) {
-  const win = getWindow()
-  if (!win || win.isDestroyed()) return
-
-  const framed = Buffer.alloc(4 + payload.length)
-  framed.writeUInt32LE(payload.length, 0)
-  payload.copy(framed, 4)
-
-  const arrayBuffer = framed.buffer.slice(
-    framed.byteOffset,
-    framed.byteOffset + framed.byteLength,
-  )
-  win.webContents.send(IPC.mediaStreamChunk, {
-    sessionId: session.sessionId,
-    chunk: arrayBuffer,
-  })
-}
-
-function processLengthPrefixedBuffer(
-  readBuffer: Buffer,
-  onPayload: (payload: Buffer) => void,
-): Buffer {
-  let buffer = readBuffer
-  while (buffer.length >= 4) {
-    const length = buffer.readUInt32LE(0)
-    if (buffer.length < 4 + length) break
-
-    const payload = buffer.subarray(4, 4 + length)
-    buffer = buffer.subarray(4 + length)
-    onPayload(payload)
-  }
-  return buffer
-}
-
-function processStreamBuffer(
-  getWindow: () => BrowserWindow | null,
-  session: ActiveMediaEngineSession,
-) {
-  session.socketReadBuffer = processLengthPrefixedBuffer(
-    session.socketReadBuffer,
-    (payload) => forwardStreamPayload(getWindow, session, payload),
-  )
-}
-
-function forwardStreamAudioPayload(
-  getWindow: () => BrowserWindow | null,
-  session: ActiveMediaEngineSession,
-  payload: Buffer,
-) {
-  if (session.startOptions.kind === 'microphone') return
-
-  const win = getWindow()
-  if (!win || win.isDestroyed()) return
-
-  const arrayBuffer = payload.buffer.slice(
-    payload.byteOffset,
-    payload.byteOffset + payload.byteLength,
-  )
-  win.webContents.send(IPC.mediaStreamAudioChunk, {
-    sessionId: session.sessionId,
-    chunk: arrayBuffer,
-  })
-}
-
-function processAudioStreamBuffer(
-  getWindow: () => BrowserWindow | null,
-  session: ActiveMediaEngineSession,
-) {
-  session.audioSocketReadBuffer = processLengthPrefixedBuffer(
-    session.audioSocketReadBuffer,
-    (payload) => forwardStreamAudioPayload(getWindow, session, payload),
-  )
-}
-
 async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
   if (session.reconnecting) return false
   if (session.reconnectAttempts >= MAX_SIDECAR_RECONNECT_ATTEMPTS) return false
@@ -508,9 +456,6 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
   }
 
   try {
-    stopStreamRelay(session)
-    cleanupFrameBuffer(session)
-
     if (mediaEngineHelper) {
       writeHelperCommand(mediaEngineHelper, { cmd: 'stop' })
       mediaEngineHelper.kill()
@@ -535,8 +480,11 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     }
 
     session.port = readyEvent.port
-    session.streamMode = mapStreamMode(readyEvent.stream_mode)
     session.frameBufferPath = readyEvent.frame_buffer_path
+    session.width = readyEvent.width
+    session.height = readyEvent.height
+    session.fps = readyEvent.fps
+    session.bitrate = readyEvent.bitrate
     const audioMode = mapAudioMode(readyEvent.audio_mode)
     session.audio = buildSessionAudio(
       session.startOptions.audio?.requested,
@@ -546,9 +494,16 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     )
     session.stats = emptyStats()
     session.activeMethod = undefined
-    session.socketReadBuffer = Buffer.alloc(0)
-    session.audioSocketReadBuffer = Buffer.alloc(0)
-    attachStreamRelay(getWindow, session)
+    session.publishedVideo = false
+    session.publishedAudio = false
+    session.audioFrames = undefined
+    session.audioPackets = undefined
+    session.audioPeakDb = undefined
+    session.audioRmsDb = undefined
+    session.videoFrames = undefined
+    session.videoIntervalFrames = undefined
+    session.videoLateFrames = undefined
+    session.videoAvgCaptureUs = undefined
 
     session.reconnecting = false
     return true
@@ -568,8 +523,6 @@ async function handleSidecarFailure(
   if (reconnected) return
 
   notifySidecarLost(session, reason, message)
-  stopStreamRelay(session)
-  cleanupFrameBuffer(session)
   activeSession = null
   mediaEngineStatus = { status: 'idle' }
   lastMediaEngineError = message
@@ -589,71 +542,10 @@ function handleHelperExit(code: number | null, signal: NodeJS.Signals | null) {
   void handleSidecarFailure(session, 'exit', message)
 }
 
-function attachStreamRelay(
-  getWindow: () => BrowserWindow | null,
-  session: ActiveMediaEngineSession,
-) {
-  if (session.port == null) return
-  const socket = net.connect(session.port, '127.0.0.1')
-  session.socket = socket
-
-  socket.on('data', (chunk) => {
-    session.socketReadBuffer = Buffer.concat([session.socketReadBuffer, chunk])
-    processStreamBuffer(getWindow, session)
-  })
-
-  socket.on('end', () => {
-    const win = getWindow()
-    if (!win || win.isDestroyed()) return
-    win.webContents.send(IPC.mediaStreamEnded, session.sessionId)
-  })
-
-  socket.on('error', (error) => {
-    if (activeSession?.sessionId === session.sessionId) {
-      void handleSidecarFailure(session, 'stream_error', error.message)
-    }
-  })
-
-  if (session.audio?.port) {
-    attachAudioStreamRelay(getWindow, session)
-  }
-}
-
-function attachAudioStreamRelay(
-  getWindow: () => BrowserWindow | null,
-  session: ActiveMediaEngineSession,
-) {
-  if (!session.audio?.port) return
-
-  const socket = net.connect(session.audio.port, '127.0.0.1')
-  session.audioSocket = socket
-
-  socket.on('data', (chunk) => {
-    session.audioSocketReadBuffer = Buffer.concat([
-      session.audioSocketReadBuffer,
-      chunk,
-    ])
-    processAudioStreamBuffer(getWindow, session)
-  })
-
-  socket.on('end', () => {
-    const win = getWindow()
-    if (win && !win.isDestroyed()) {
-      win.webContents.send(IPC.mediaStreamEnded, session.sessionId)
-    }
-  })
-
-  socket.on('error', (error) => {
-    console.warn('[media-engine] audio stream error', error.message)
-  })
-}
-
-function stopMediaEngineHelper() {
-  cleanupFrameBuffer(activeSession)
-  stopStreamRelay(activeSession)
-
+function stopMediaEngineHelper(force = false) {
   if (mediaEngineHelper) {
-    if (!writeHelperCommand(mediaEngineHelper, { cmd: 'stop' })) {
+    const stopped = writeHelperCommand(mediaEngineHelper, { cmd: 'stop' })
+    if (force || !stopped) {
       mediaEngineHelper.kill()
       mediaEngineHelper = null
       mediaEngineHelperReader?.close()
@@ -825,8 +717,6 @@ function ensureMediaEngineHelper(kind: NativeMediaSessionStartOptions['kind']) {
       }
 
       if (event.status === 'stopped') {
-        cleanupFrameBuffer(activeSession)
-        stopStreamRelay(activeSession)
         activeSession = null
       }
       return
@@ -842,17 +732,84 @@ function ensureMediaEngineHelper(kind: NativeMediaSessionStartOptions['kind']) {
         activeSession.activeMethod = activeMethod
       }
       if (getWindowRef) {
-        emitMediaEngineStats(getWindowRef, {
-          sessionId: activeSession.sessionId,
-          methods: { ...activeSession.stats },
-          activeMethod: activeSession.activeMethod,
-        })
+        emitMediaEngineStats(getWindowRef, buildMediaEngineStatsEvent(activeSession))
       }
       return
     }
 
     if (event.type === 'microphone_metrics' && getWindowRef) {
       emitMicrophoneMetrics(getWindowRef, mapMicrophoneMetrics(event))
+      return
+    }
+
+    if (event.type === 'track_published') {
+      if (activeSession?.sessionId === event.session_id) {
+        if (event.kind === 'video') activeSession.publishedVideo = true
+        if (event.kind === 'audio') {
+          activeSession.publishedAudio = true
+          activeSession.audio = buildSessionAudio(
+            activeSession.startOptions.kind === 'screen'
+              ? activeSession.startOptions.audio?.requested
+              : true,
+            mapAudioMode(event.audio_mode),
+            undefined,
+            mapSidecarAudioMetadata(event),
+          )
+        }
+        if (getWindowRef) {
+          emitMediaEngineStats(getWindowRef, buildMediaEngineStatsEvent(activeSession))
+        }
+      }
+      console.info(
+        '[media-engine-helper] track published',
+        event.session_id,
+        event.kind,
+        event.source,
+      )
+      return
+    }
+
+    if (event.type === 'screen_audio_frame') {
+      if (activeSession?.sessionId === event.session_id) {
+        activeSession.audioFrames = event.frames
+        activeSession.audioPackets = event.packets
+        activeSession.audioPeakDb = event.peak_db
+        activeSession.audioRmsDb = event.rms_db
+        activeSession.audio = buildSessionAudio(
+          activeSession.startOptions.kind === 'screen'
+            ? activeSession.startOptions.audio?.requested
+            : true,
+          mapAudioMode(event.audio_mode),
+          undefined,
+          mapSidecarAudioMetadata({
+            audio_sample_rate: event.sample_rate,
+            audio_channels: event.channels,
+            audio_target_process_id: event.audio_target_process_id,
+            audio_loopback_mode: event.audio_loopback_mode,
+          }),
+        )
+        if (getWindowRef) {
+          emitMediaEngineStats(getWindowRef, buildMediaEngineStatsEvent(activeSession))
+        }
+      }
+      return
+    }
+
+    if (event.type === 'screen_video_frame') {
+      if (activeSession?.sessionId === event.session_id) {
+        const method = event.method ? mapFrameMethod(event.method) : null
+        if (method) {
+          activeSession.stats[method] = event.frames
+          activeSession.activeMethod = method
+        }
+        activeSession.videoFrames = event.frames
+        activeSession.videoIntervalFrames = event.interval_frames
+        activeSession.videoLateFrames = event.late_frames
+        activeSession.videoAvgCaptureUs = event.avg_capture_us
+        if (getWindowRef) {
+          emitMediaEngineStats(getWindowRef, buildMediaEngineStatsEvent(activeSession))
+        }
+      }
       return
     }
 
@@ -868,8 +825,17 @@ function ensureMediaEngineHelper(kind: NativeMediaSessionStartOptions['kind']) {
     }
 
     if (event.type === 'error') {
-      mediaEngineStatus = { status: 'error', message: event.message }
-      lastMediaEngineError = event.message
+      const errorState: NativeMediaStateEvent = {
+        status: 'error',
+        sessionId: activeSession?.sessionId,
+        message: event.message,
+      }
+      if (getWindowRef) {
+        emitMediaEngineState(getWindowRef, errorState)
+      } else {
+        mediaEngineStatus = errorState
+        lastMediaEngineError = event.message
+      }
       pendingStartResolver?.(event)
       pendingStartResolver = null
       return
@@ -970,6 +936,142 @@ async function listNativeMediaDevices(
   })
 }
 
+async function runNativeScreenSharePreflight(
+  options: Extract<NativeMediaSessionStartOptions, { kind: 'screen' }>,
+  getWindow: () => BrowserWindow | null,
+) {
+  const helperPath = resolveMediaEngineHelperPath('screen')
+  if (!helperPath) {
+    throw new Error('Native screen capture is not available')
+  }
+
+  return new Promise<Extract<SidecarEvent, { type: 'screen_share_preflight' }>>(
+    (resolve, reject) => {
+      const helper = spawn(helperPath, [], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+      const reader = readline.createInterface({ input: helper.stdout })
+      let settled = false
+
+      const finish = (
+        event: Extract<SidecarEvent, { type: 'screen_share_preflight' }>,
+      ) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reader.close()
+        helper.kill()
+        if (!event.ok) {
+          reject(new Error(event.message ?? 'Native screen share preflight failed'))
+          return
+        }
+        resolve(event)
+      }
+      const fail = (error: Error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        reader.close()
+        helper.kill()
+        reject(error)
+      }
+      const timer = setTimeout(() => {
+        fail(new Error('Native screen share preflight timed out'))
+      }, 7_500)
+
+      reader.on('line', (line) => {
+        const event = parseSidecarEvent(line)
+        if (!event) return
+        if (event.type === 'screen_share_preflight') {
+          finish(event)
+        } else if (event.type === 'error') {
+          fail(new Error(event.message))
+        }
+      })
+      helper.on('error', fail)
+      helper.on('exit', () => {
+        if (!settled) fail(new Error('Native screen share preflight exited'))
+      })
+      helper.stdin.on('error', (error) => {
+        if ((error as NodeJS.ErrnoException).code === 'EPIPE') {
+          fail(new Error('Native screen share preflight pipe closed'))
+          return
+        }
+        fail(error)
+      })
+      if (!writeHelperCommand(helper, buildScreenSharePreflightCommand(options, getWindow))) {
+        fail(new Error('Native screen share preflight helper is not writable'))
+      }
+    },
+  )
+}
+
+export async function listNativeDisplaySources(
+  getWindow?: () => BrowserWindow | null,
+): Promise<DesktopDisplayMediaSource[]> {
+  if (process.platform !== 'win32') return []
+
+  const helperPath = resolveMediaEngineHelperPath('screen')
+  if (!helperPath) return []
+
+  return new Promise((resolve, reject) => {
+    const helper = spawn(helperPath, [], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
+    const reader = readline.createInterface({ input: helper.stdout })
+    let settled = false
+
+    const finish = (sources: DesktopDisplayMediaSource[]) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reader.close()
+      helper.kill()
+      resolve(sources)
+    }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reader.close()
+      helper.kill()
+      reject(error)
+    }
+    const timer = setTimeout(() => {
+      fail(new Error('Native display source enumeration timed out'))
+    }, 5_000)
+
+    reader.on('line', (line) => {
+      const event = parseSidecarEvent(line)
+      if (!event) return
+      if (event.type === 'display_source_list') {
+        finish(event.sources)
+      } else if (event.type === 'error') {
+        fail(new Error(event.message))
+      }
+    })
+    helper.on('error', fail)
+    helper.on('exit', () => {
+      if (!settled) finish([])
+    })
+    helper.stdin.on('error', (error) => {
+      if ((error as NodeJS.ErrnoException).code === 'EPIPE') {
+        finish([])
+        return
+      }
+      fail(error)
+    })
+    const win = getWindow?.()
+    const selfWindowHwnd =
+      win && !win.isDestroyed() ? readWindowHwnd(win) : undefined
+    if (!writeHelperCommand(helper, { cmd: 'list_screen_sources', selfWindowHwnd })) {
+      finish([])
+    }
+  })
+}
+
 async function waitForSidecarReady(timeoutMs = 15_000) {
   return new Promise<SidecarEvent>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -989,19 +1091,36 @@ async function waitForSidecarReady(timeoutMs = 15_000) {
   })
 }
 
-function mapReadyAudioMetadata(readyEvent: Extract<SidecarEvent, { type: 'ready' }>) {
+function mapSidecarAudioMetadata(event: {
+  audio_sample_rate?: number
+  audio_channels?: number
+  echo_cancellation?: string
+  audio_target_process_id?: number
+  audio_loopback_mode?: string
+}) {
   return {
-    sampleRate: readyEvent.audio_sample_rate === 48_000 ? 48_000 : undefined,
+    sampleRate: event.audio_sample_rate === 48_000 ? 48_000 : undefined,
     channels:
-      readyEvent.audio_channels === 1 || readyEvent.audio_channels === 2
-        ? readyEvent.audio_channels
+      event.audio_channels === 1 || event.audio_channels === 2
+        ? event.audio_channels
         : undefined,
-    echoCancellation: mapEchoCancellationMode(readyEvent.echo_cancellation),
+    echoCancellation: mapEchoCancellationMode(event.echo_cancellation),
+    targetProcessId:
+      typeof event.audio_target_process_id === 'number'
+        ? event.audio_target_process_id
+        : undefined,
+    loopbackMode: mapLoopbackMode(event.audio_loopback_mode),
   } satisfies {
     sampleRate?: 48_000
     channels?: 1 | 2
     echoCancellation?: NativeMediaEchoCancellationMode
+    targetProcessId?: number
+    loopbackMode?: import('@syrnike13/platform').NativeMediaLoopbackMode
   }
+}
+
+function mapReadyAudioMetadata(readyEvent: Extract<SidecarEvent, { type: 'ready' }>) {
+  return mapSidecarAudioMetadata(readyEvent)
 }
 
 async function startNativeMediaSession(
@@ -1017,16 +1136,49 @@ async function startNativeMediaSession(
 
   const sessionId = crypto.randomUUID()
 
+  if (options.kind === 'screen') {
+    try {
+      await runNativeScreenSharePreflight(options, getWindow)
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Native screen share preflight failed'
+      emitMediaEngineState(getWindow, {
+        status: 'error',
+        sessionId,
+        message,
+      })
+      throw error
+    }
+  }
+
   const helper = ensureMediaEngineHelper(options.kind)
   const readyPromise = waitForSidecarReady()
   const startCommand = buildNativeMediaStartCommand(options, sessionId, getWindow)
 
   if (!writeHelperCommand(helper, startCommand)) {
+    stopMediaEngineHelper(true)
     throw new Error('Native media helper is not writable')
   }
 
-  const readyEvent = await readyPromise
+  let readyEvent: SidecarEvent
+  try {
+    readyEvent = await readyPromise
+  } catch (error) {
+    stopMediaEngineHelper(true)
+    emitMediaEngineState(getWindow, {
+      status: 'error',
+      sessionId,
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Native media engine failed to start',
+    })
+    throw error
+  }
   if (readyEvent.type !== 'ready') {
+    stopMediaEngineHelper(true)
     throw new Error('Native media engine failed to start')
   }
 
@@ -1038,27 +1190,30 @@ async function startNativeMediaSession(
     readyEvent.audio_port,
     audioMetadata,
   )
-  const streamMode =
-    options.kind === 'screen' ? mapStreamMode(readyEvent.stream_mode) : undefined
-
   activeSession = {
     sessionId,
     port: options.kind === 'screen' ? readyEvent.port : undefined,
+    width: readyEvent.width,
+    height: readyEvent.height,
+    fps: readyEvent.fps,
+    bitrate: readyEvent.bitrate,
     audio,
-    streamMode,
     frameBufferPath: readyEvent.frame_buffer_path,
     helper,
     stats: emptyStats(),
-    socket: null,
-    socketReadBuffer: Buffer.alloc(0),
-    audioSocket: null,
-    audioSocketReadBuffer: Buffer.alloc(0),
+    publishedVideo: false,
+    publishedAudio: false,
+    audioFrames: undefined,
+    audioPackets: undefined,
+    audioPeakDb: undefined,
+    audioRmsDb: undefined,
+    videoFrames: undefined,
+    videoIntervalFrames: undefined,
+    videoLateFrames: undefined,
+    videoAvgCaptureUs: undefined,
     startOptions: options,
     reconnectAttempts: 0,
     reconnecting: false,
-  }
-  if (options.kind === 'screen') {
-    attachStreamRelay(getWindow, activeSession)
   }
 
   if (options.kind === 'microphone') {
@@ -1085,10 +1240,14 @@ async function startNativeMediaSession(
   const session: NativeMediaSession = {
     kind: 'screen',
     sessionId,
-    port: readyEvent.port,
-    streamMode: streamMode ?? 'bgra',
+    port: readyEvent.port || undefined,
     encoder,
+    width: readyEvent.width,
+    height: readyEvent.height,
+    fps: readyEvent.fps,
+    bitrate: readyEvent.bitrate,
     audio,
+    nativeParticipantIdentity: readyEvent.native_participant_identity,
   }
 
   return session
@@ -1157,32 +1316,6 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
     },
   )
 
-  ipcMain.handle(
-    IPC.mediaReadSharedFrame,
-    async (event, sessionId: string) => {
-      if (!isTrustedSender(event, getWindow)) return null
-      if (
-        !activeSession ||
-        activeSession.sessionId !== sessionId ||
-        !activeSession.frameBufferPath
-      ) {
-        return null
-      }
-
-      try {
-        const framePayload = await readBgraFramePacketAsync(
-          activeSession.frameBufferPath,
-        )
-        return framePayload.buffer.slice(
-          framePayload.byteOffset,
-          framePayload.byteOffset + framePayload.byteLength,
-        )
-      } catch {
-        return null
-      }
-    },
-  )
-
   ipcMain.handle(IPC.mediaGetState, async (event) => {
     if (!isTrustedSender(event, getWindow)) {
       return buildNativeMediaEngineSnapshot({
@@ -1238,6 +1371,14 @@ export function getActiveMediaEngineStats() {
         sessionId: activeSession.sessionId,
         methods: { ...activeSession.stats },
         activeMethod: activeSession.activeMethod,
+        audioFrames: activeSession.audioFrames,
+        audioPackets: activeSession.audioPackets,
+        audioPeakDb: activeSession.audioPeakDb,
+        audioRmsDb: activeSession.audioRmsDb,
+        videoFrames: activeSession.videoFrames,
+        videoIntervalFrames: activeSession.videoIntervalFrames,
+        videoLateFrames: activeSession.videoLateFrames,
+        videoAvgCaptureUs: activeSession.videoAvgCaptureUs,
       }
     : null
 }

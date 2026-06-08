@@ -118,6 +118,7 @@ export type RtcDebugScreenShareSnapshot = {
   captureWidth?: number
   captureHeight?: number
   captureFrameRate?: number
+  captureBitrate?: number
   displaySurface?: string
   cursor?: string
   logicalSurface?: boolean
@@ -132,6 +133,19 @@ export type RtcDebugScreenShareSnapshot = {
   qualityLimitationReason?: string
   captureBackend?: 'native' | 'chromium'
   captureMethod?: string
+  captureVideoPublished?: boolean
+  captureVideoFrames?: number
+  captureVideoIntervalFrames?: number
+  captureVideoLateFrames?: number
+  captureVideoAvgCaptureUs?: number
+  captureAudioPublished?: boolean
+  captureAudioMode?: string
+  captureAudioLoopbackMode?: string
+  captureAudioTargetProcessId?: number
+  captureAudioFrames?: number
+  captureAudioPackets?: number
+  captureAudioPeakDb?: number
+  captureAudioRmsDb?: number
   hybridDxgiFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
   hybridGdiBitBltFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
   hybridGdiPrintWindowFrames: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE
@@ -432,9 +446,14 @@ function screenShareSnapshot(
     maxFramerate: encoding?.maxFramerate,
     simulcast: options?.simulcast,
     degradationPreference: options?.degradationPreference,
-    captureWidth: browserSettings?.width,
-    captureHeight: browserSettings?.height,
-    captureFrameRate: browserSettings?.frameRate,
+    captureWidth:
+      nativeStats?.backend === 'native' ? nativeStats.width : browserSettings?.width,
+    captureHeight:
+      nativeStats?.backend === 'native'
+        ? nativeStats.height
+        : browserSettings?.height,
+    captureFrameRate:
+      nativeStats?.backend === 'native' ? nativeStats.fps : browserSettings?.frameRate,
     displaySurface: stringValue(browserSettings?.displaySurface),
     cursor: stringValue(browserSettings?.cursor),
     logicalSurface: browserSettings?.logicalSurface,
@@ -445,6 +464,48 @@ function screenShareSnapshot(
       nativeStats?.backend === 'native'
         ? nativeStats.activeMethod
         : undefined,
+    captureVideoPublished:
+      nativeStats?.backend === 'native'
+        ? nativeStats.publishedVideo
+        : undefined,
+    captureVideoFrames:
+      nativeStats?.backend === 'native' ? nativeStats.videoFrames : undefined,
+    captureVideoIntervalFrames:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoIntervalFrames
+        : undefined,
+    captureVideoLateFrames:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoLateFrames
+        : undefined,
+    captureVideoAvgCaptureUs:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoAvgCaptureUs
+        : undefined,
+    captureAudioPublished:
+      nativeStats?.backend === 'native'
+        ? nativeStats.publishedAudio
+        : undefined,
+    captureAudioMode:
+      nativeStats?.backend === 'native' ? nativeStats.audioMode : undefined,
+    captureAudioLoopbackMode:
+      nativeStats?.backend === 'native'
+        ? nativeStats.audioLoopbackMode
+        : undefined,
+    captureAudioTargetProcessId:
+      nativeStats?.backend === 'native'
+        ? nativeStats.audioTargetProcessId
+        : undefined,
+    captureAudioFrames:
+      nativeStats?.backend === 'native' ? nativeStats.audioFrames : undefined,
+    captureAudioPackets:
+      nativeStats?.backend === 'native' ? nativeStats.audioPackets : undefined,
+    captureAudioPeakDb:
+      nativeStats?.backend === 'native' ? nativeStats.audioPeakDb : undefined,
+    captureAudioRmsDb:
+      nativeStats?.backend === 'native' ? nativeStats.audioRmsDb : undefined,
+    captureBitrate:
+      nativeStats?.backend === 'native' ? nativeStats.bitrate : undefined,
     hybridDxgiFrames:
       nativeStats?.backend === 'native' ? nativeStats.methods.dxgi : hybridUnavailable,
     hybridGdiBitBltFrames:

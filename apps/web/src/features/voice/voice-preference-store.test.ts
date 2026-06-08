@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 
 import {
+  defaultScreenShareQuality,
   effectiveVoiceJoinPreferences,
   parseScreenShareCaptureMode,
   voicePreferenceStore,
@@ -56,6 +57,27 @@ describe('voicePreferenceStore', () => {
 
   it('does not preserve legacy browser screen share capture mode', () => {
     expect(parseScreenShareCaptureMode('browser')).toBe('auto')
+  })
+
+  it('defaults Windows desktop screen share quality to 1080p 60fps', () => {
+    const previousWindow = globalThis.window
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        syrnikeDesktop: {
+          platform: { os: 'win32' },
+        },
+      },
+    })
+
+    try {
+      expect(defaultScreenShareQuality()).toBe('high60')
+    } finally {
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: previousWindow,
+      })
+    }
   })
 
   it('switches gate threshold to manual when the bar changes', () => {

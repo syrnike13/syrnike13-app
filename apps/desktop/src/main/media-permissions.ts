@@ -17,6 +17,7 @@ import {
 import {
   clearPendingNativePicker,
   getPendingNativePicker,
+  listNativeDisplaySources,
   setPendingNativePicker,
 } from './native-media-engine'
 
@@ -73,7 +74,14 @@ export function shouldGrantDesktopMediaPermission(
 export function displayMediaSourceTypeFromId(
   id: string,
 ): DesktopDisplayMediaSourceType {
+  if (id.startsWith('game:')) return 'game'
   return id.startsWith('screen:') ? 'screen' : 'window'
+}
+
+export function shouldAllowBrowserDisplayMediaFallback(
+  platform: NodeJS.Platform,
+) {
+  return platform !== 'win32'
 }
 
 function requestOrigin(details: {
@@ -140,10 +148,15 @@ async function refreshPendingDisplayMediaSources(requestId: string) {
   return loadSourcesForRequest(requestId, pending)
 }
 
-async function refreshPendingNativePickerSources(requestId: string) {
+async function refreshPendingNativePickerSources(
+  requestId: string,
+  getWindow: () => BrowserWindow | null,
+) {
   const pending = getPendingNativePicker()
   if (!pending || pending.id !== requestId) return []
-  return loadSourcesForRequest(requestId, pending)
+  const sources = await listNativeDisplaySources(getWindow)
+  pending.sources = sources
+  return sources
 }
 
 function selectPendingDisplayMediaSource(
@@ -178,14 +191,19 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
     if (!isTrustedSender(event, getWindow)) return []
     const nativePending = getPendingNativePicker()
     if (nativePending?.id === requestId) {
-      return refreshPendingNativePickerSources(requestId)
+      return refreshPendingNativePickerSources(requestId, getWindow)
     }
     return refreshPendingDisplayMediaSources(requestId)
   })
 
   ipcMain.handle(
     IPC.mediaSelectDisplaySource,
-    async (event, requestId: string, sourceId: string) => {
+    async (
+      event,
+      requestId: string,
+      sourceId: string,
+      audioRequested?: boolean,
+    ) => {
       if (!isTrustedSender(event, getWindow)) return false
 
       const nativePending = getPendingNativePicker()
@@ -200,9 +218,16 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
         const win = getWindow()
         if (!win || win.isDestroyed()) return false
 
+        const selectedAudioRequested =
+          (typeof audioRequested === 'boolean'
+            ? audioRequested
+            : nativePending.audioRequested) &&
+          source.audioAvailable !== false
+
         win.webContents.send(IPC.mediaDisplayPickerResolved, {
           requestId,
           sourceId,
+          audioRequested: selectedAudioRequested,
         })
         return true
       }
@@ -252,6 +277,11 @@ export function installMediaPermissions(
   )
 
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (!shouldAllowBrowserDisplayMediaFallback(process.platform)) {
+      callback({})
+      return
+    }
+
     if (!isAllowedMediaOrigin(loadUrl, request.securityOrigin)) {
       callback({})
       return

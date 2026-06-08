@@ -1,18 +1,22 @@
+import type { DesktopDisplayMediaSelection } from '@syrnike13/platform'
+
 type NativePickerResolver = {
-  resolve: (sourceId: string) => void
+  resolve: (selection: DesktopDisplayMediaSelection) => void
   reject: (error: Error) => void
 }
 
 let pendingPicker: NativePickerResolver | null = null
 
 export function waitForNativePickerSelection() {
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<DesktopDisplayMediaSelection>((resolve, reject) => {
     pendingPicker = { resolve, reject }
   })
 }
 
-export function resolveNativePickerSelection(sourceId: string) {
-  pendingPicker?.resolve(sourceId)
+export function resolveNativePickerSelection(
+  selection: DesktopDisplayMediaSelection,
+) {
+  pendingPicker?.resolve(selection)
   pendingPicker = null
 }
 

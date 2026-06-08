@@ -31,6 +31,29 @@ float numberField(const std::string& json, const std::string& key, float fallbac
   }
 }
 
+int intField(const std::string& json, const std::string& key, int fallback) {
+  const std::regex pattern("\"" + key + "\"\\s*:\\s*(-?[0-9]+)");
+  std::smatch match;
+  if (!std::regex_search(json, match, pattern)) return fallback;
+  try {
+    return std::stoi(match[1].str());
+  } catch (...) {
+    return fallback;
+  }
+}
+
+uintptr_t uintptrField(const std::string& json, const std::string& key, uintptr_t fallback) {
+  const std::regex pattern("\"" + key + "\"\\s*:\\s*(?:\"([0-9]+)\"|([0-9]+))");
+  std::smatch match;
+  if (!std::regex_search(json, match, pattern)) return fallback;
+  const std::string value = match[1].matched ? match[1].str() : match[2].str();
+  try {
+    return static_cast<uintptr_t>(std::stoull(value));
+  } catch (...) {
+    return fallback;
+  }
+}
+
 }  // namespace
 
 std::string jsonEscape(const std::string& value) {
@@ -62,10 +85,23 @@ bool commandMatches(const std::string& json, const std::string& command) {
 StartCommand parseStartCommand(const std::string& json) {
   StartCommand command;
   command.session_id = stringField(json, "sessionId");
+  command.session_kind = stringField(json, "sessionKind");
   command.device_id = stringField(json, "deviceId");
+  command.source_id = stringField(json, "sourceId");
+  if (command.source_id.empty()) {
+    command.source_id = stringField(json, "id");
+  }
   command.livekit_url = stringField(json, "url");
   command.livekit_token = stringField(json, "token");
   command.participant_identity = stringField(json, "participantIdentity");
+  command.width = intField(json, "width", 1920);
+  command.height = intField(json, "height", 1080);
+  command.fps = intField(json, "fps", 60);
+  command.bitrate = intField(json, "bitrate", 8000000);
+  command.duration_ms = intField(json, "durationMs", 1000);
+  command.exclude_process_id = intField(json, "excludeProcessId", 0);
+  command.self_window_hwnd = uintptrField(json, "selfWindowHwnd", 0);
+  command.audio_requested = boolField(json, "audio");
   command.echo_cancellation = boolField(json, "echoCancellation");
   command.input_volume = numberField(json, "inputVolume", 1.0f);
   command.voice_gate_enabled = boolField(json, "voiceGateEnabled", true);

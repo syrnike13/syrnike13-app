@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AppWindowIcon,
   CheckIcon,
+  Gamepad2Icon,
   Loader2Icon,
   MonitorIcon,
 } from 'lucide-react'
@@ -23,6 +24,7 @@ import {
 import { rejectNativePickerSelection } from '#/features/voice/native-screen-share-session'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
+import { Switch } from '#/components/ui/switch'
 
 type SourceTab = DesktopDisplayMediaSourceType
 
@@ -32,8 +34,34 @@ const SOURCE_TABS: Array<{
   icon: typeof MonitorIcon
 }> = [
   { value: 'screen', label: 'Экраны', icon: MonitorIcon },
+  { value: 'game', label: 'Игры', icon: Gamepad2Icon },
   { value: 'window', label: 'Окна', icon: AppWindowIcon },
 ]
+
+const EMPTY_TAB_TEXT: Record<SourceTab, string> = {
+  screen: 'Экраны не найдены',
+  game: 'Запустите игру с видимым окном',
+  window: 'Окна не найдены',
+}
+
+function sourceProcessName(source: DesktopDisplayMediaSource) {
+  if (!source.processPath) return null
+  const normalized = source.processPath.replaceAll('\\', '/')
+  return normalized.split('/').at(-1) || null
+}
+
+export function sourceAudioLabel(source: DesktopDisplayMediaSource) {
+  if (source.audioAvailable === false) return 'Звук недоступен'
+  if (source.type === 'screen') return 'Системный звук без приложения'
+  if (source.type === 'game') return 'Звук только игры'
+  return 'Звук только окна'
+}
+
+export function canRequestSourceAudio(
+  source: DesktopDisplayMediaSource | null | undefined,
+) {
+  return source?.audioAvailable !== false
+}
 
 export function DesktopScreenSharePicker() {
   const { desktop } = usePlatform()
@@ -43,6 +71,7 @@ export function DesktopScreenSharePicker() {
   const [sources, setSources] = useState<DesktopDisplayMediaSource[]>([])
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<SourceTab>('screen')
+  const [audioRequested, setAudioRequested] = useState(true)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -53,6 +82,7 @@ export function DesktopScreenSharePicker() {
       setSources([])
       setSelectedSourceId(null)
       setActiveTab('screen')
+      setAudioRequested(nextRequest.audioRequested)
       setSubmitting(false)
     })
   }, [desktop])
@@ -95,6 +125,17 @@ export function DesktopScreenSharePicker() {
     () => sources.filter((source) => source.type === activeTab),
     [activeTab, sources],
   )
+  const selectedSource = useMemo(
+    () => sources.find((source) => source.id === selectedSourceId) ?? null,
+    [selectedSourceId, sources],
+  )
+  const selectedAudioAvailable = canRequestSourceAudio(selectedSource)
+
+  useEffect(() => {
+    if (!selectedAudioAvailable && audioRequested) {
+      setAudioRequested(false)
+    }
+  }, [audioRequested, selectedAudioAvailable])
 
   const cancelRequest = useCallback(() => {
     const activeRequest = request
@@ -118,6 +159,7 @@ export function DesktopScreenSharePicker() {
       const selected = await desktop.media.selectDisplaySource(
         request.id,
         selectedSourceId,
+        audioRequested && selectedAudioAvailable,
       )
       if (!selected) {
         toast.error('Источник демонстрации больше недоступен')
@@ -135,7 +177,7 @@ export function DesktopScreenSharePicker() {
       )
       setSubmitting(false)
     }
-  }, [desktop, request, selectedSourceId])
+  }, [audioRequested, desktop, request, selectedAudioAvailable, selectedSourceId])
 
   const open = Boolean(request)
 
@@ -187,28 +229,42 @@ export function DesktopScreenSharePicker() {
             </div>
           ) : (
             <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-              Источники не найдены
+              {EMPTY_TAB_TEXT[activeTab]}
             </div>
           )}
         </div>
 
-        <DialogFooter className="flex-row justify-end border-t border-border px-4 py-3">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={cancelRequest}
-            disabled={submitting}
-          >
-            Отмена
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void selectSource()}
-            disabled={!selectedSourceId || submitting}
-          >
-            {submitting ? <Loader2Icon className="size-4 animate-spin" /> : null}
-            Поделиться
-          </Button>
+        <DialogFooter className="flex-row items-center justify-between border-t border-border px-4 py-3">
+          {request?.nativeVideo ? (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Switch
+                checked={audioRequested}
+                onCheckedChange={setAudioRequested}
+                disabled={submitting || !selectedAudioAvailable}
+              />
+              <span>Звук</span>
+            </label>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={cancelRequest}
+              disabled={submitting}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void selectSource()}
+              disabled={!selectedSourceId || submitting}
+            >
+              {submitting ? <Loader2Icon className="size-4 animate-spin" /> : null}
+              Поделиться
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -224,7 +280,13 @@ function DisplaySourceTile({
   selected: boolean
   onSelect: () => void
 }) {
-  const FallbackIcon = source.type === 'screen' ? MonitorIcon : AppWindowIcon
+  const processName = sourceProcessName(source)
+  const FallbackIcon =
+    source.type === 'screen'
+      ? MonitorIcon
+      : source.type === 'game'
+        ? Gamepad2Icon
+        : AppWindowIcon
 
   return (
     <button
@@ -266,6 +328,12 @@ function DisplaySourceTile({
           <FallbackIcon className="size-4 shrink-0 text-muted-foreground" />
         )}
         <span className="truncate text-sm font-medium">{source.name}</span>
+      </div>
+      <div className="flex min-w-0 items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
+        <span className="truncate">{sourceAudioLabel(source)}</span>
+        {processName ? (
+          <span className="max-w-24 shrink-0 truncate">{processName}</span>
+        ) : null}
       </div>
     </button>
   )

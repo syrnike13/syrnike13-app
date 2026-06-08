@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(syrnike_native_voice_win LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<CONFIG>")
 
@@ -29,11 +29,22 @@ add_executable(syrnike-native-voice-win
   src/microphone_publisher.cpp
   src/protocol.cpp
   src/runtime_config.cpp
+  src/screen_audio_capture.cpp
+  src/screen_preflight.cpp
+  src/screen_publisher.cpp
+  src/screen_sources.cpp
+  src/screen_video_capture.cpp
 )
 
 target_link_libraries(syrnike-native-voice-win PRIVATE
   LiveKit::livekit
+  d3d11
+  dwmapi
+  dxgi
   ole32
+  user32
+  Shell32
+  Mmdevapi
   avrt
 )
 

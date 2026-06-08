@@ -38,12 +38,12 @@ export type VoiceJoinPreferences = Pick<
   'micEnabled' | 'deafened'
 >
 
-function defaultScreenShareQuality(): ScreenShareQualityName {
+export function defaultScreenShareQuality(): ScreenShareQualityName {
   if (
     typeof window !== 'undefined' &&
     window.syrnikeDesktop?.platform.os === 'win32'
   ) {
-    return 'high'
+    return 'high60'
   }
   return 'low'
 }

@@ -14,6 +14,7 @@
     "desktop:dev": "pnpm --filter @syrnike13/desktop dev",
     "desktop:build": "pnpm version:sync && pnpm --filter @syrnike13/desktop build",
     "desktop:package": "pnpm version:sync && pnpm --filter @syrnike13/desktop package",
+    "desktop:test": "pnpm --filter @syrnike13/desktop test",
     "desktop:typecheck": "pnpm --filter @syrnike13/desktop typecheck",
     "platform:build": "pnpm --filter @syrnike13/platform build",
     "backend:check": "cargo check --manifest-path services/backend/Cargo.toml --workspace",

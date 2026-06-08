@@ -22,9 +22,18 @@ import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
-import { createVoiceJoinRunner } from '#/features/voice/voice-join'
-import { createVoiceRejoinController } from '#/features/voice/voice-rejoin'
-import { patchChannelVoiceState } from '#/features/api/voice-api'
+import {
+  createVoiceJoinRunner,
+  type VoiceJoinRunnerDeps,
+} from '#/features/voice/voice-join'
+import {
+  createVoiceRejoinController,
+  type VoiceRejoinControllerOptions,
+} from '#/features/voice/voice-rejoin'
+import {
+  joinChannelCall,
+  patchChannelVoiceState,
+} from '#/features/api/voice-api'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
 import { isValidVoiceUserId } from '#/features/sync/voice-participant-resolve'
 import type { UserVoiceState } from '#/features/sync/voice-types'
@@ -79,7 +88,10 @@ import {
   shouldUseNativeMicrophone,
   type NativeMicrophoneSession,
 } from '#/features/voice/native-microphone-publish'
-import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
+import {
+  baseVoiceIdentity,
+  isDesktopNativeVoiceIdentity,
+} from '#/features/voice/native-voice-identity'
 import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
 import {
   clearNativePickerSelection,
@@ -118,6 +130,7 @@ import {
   type StageMediaTrackSource,
 } from '#/features/voice/voice-stage-media'
 import { setStageScreenSubscription } from '#/features/voice/voice-stage-subscription'
+import { runVoiceRequest } from '#/features/voice/voice-request-gate'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected'
 type StageMediaPublication = {
@@ -135,6 +148,12 @@ type StageMediaPublication = {
       maxFramerate?: number
     }
   }
+}
+
+type LiveKitNativeCredentials = {
+  url: string
+  token: string
+  participantIdentity: string
 }
 export type VoiceStageMediaItem = StageMediaItem<
   VideoTrack,
@@ -265,6 +284,38 @@ function stageMediaTrackSource(
   return null
 }
 
+function liveKitTokenExpMs(token: string) {
+  const [, payload] = token.split('.')
+  if (!payload) return null
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      '=',
+    )
+    const parsed = JSON.parse(window.atob(padded)) as { exp?: unknown }
+    return typeof parsed.exp === 'number' ? parsed.exp * 1000 : null
+  } catch {
+    return null
+  }
+}
+
+function shouldRefreshLiveKitToken(credentials: LiveKitNativeCredentials) {
+  const expMs = liveKitTokenExpMs(credentials.token)
+  return expMs == null || expMs - Date.now() < 60_000
+}
+
+function isLiveKitTokenFailure(error: unknown) {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('invalid token') ||
+    message.includes('expired') ||
+    message.includes('unauthorized') ||
+    message.includes('401')
+  )
+}
+
 async function switchDeviceWithTimeout(
   room: Room,
   kind: 'audioinput' | 'audiooutput',
@@ -283,11 +334,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const roomRef = useRef<Room | null>(null)
   const nativeScreenShareRef = useRef<NativeScreenShareSession | null>(null)
   const nativeMicrophoneRef = useRef<NativeMicrophoneSession | null>(null)
-  const liveKitCredentialsRef = useRef<{
-    url: string
-    token: string
-    participantIdentity: string
-  } | null>(null)
+  const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
   const audioElementsRef = useRef<HTMLAudioElement[]>([])
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
@@ -295,10 +342,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const joinBlockedUntilRef = useRef(0)
   const joinInFlightRef = useRef<{
     channelId: string
-    promise: Promise<void>
+    promise: Promise<boolean>
   } | null>(null)
   const disconnectIntentRef = useRef<'none' | 'switch' | 'leave'>('none')
-  const voiceJoinDepsRef = useRef({
+  const voiceJoinDepsRef = useRef<VoiceJoinRunnerDeps>({
     getToken: () => undefined as string | undefined,
     getLocalUserId: () => undefined as string | undefined,
     isJoinBlocked: () => false,
@@ -343,7 +390,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       abortJoin: () => voiceJoinDepsRef.current.abortJoin(),
     }),
   )
-  const voiceRejoinDepsRef = useRef({
+  const voiceRejoinDepsRef = useRef<
+    Pick<VoiceRejoinControllerOptions, 'attemptRejoin' | 'onGiveUp' | 'isGatewayConnected'>
+  >({
     attemptRejoin: async (_channelId: string) => false,
     onGiveUp: () => {},
     isGatewayConnected: () => false,
@@ -508,7 +557,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     syncLiveKitRoomParticipants(activeChannelId, room, receiving)
     const localMedia = localParticipantVoiceFlags(room.localParticipant)
     setCameraEnabled(localMedia.camera)
-    setScreenShareEnabled(localMedia.screensharing)
+    setScreenShareEnabled(
+      localMedia.screensharing || Boolean(nativeScreenShareRef.current),
+    )
     syncStageMediaItems(room)
   }, [syncStageMediaItems])
 
@@ -594,6 +645,42 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         handleVoiceApiError(channelId, error)
       }
+    },
+    [auth.session?.token],
+  )
+
+  const refreshNativeLiveKitCredentials = useCallback(
+    async (force = false): Promise<LiveKitNativeCredentials> => {
+      const current = liveKitCredentialsRef.current
+      if (!force && current && !shouldRefreshLiveKitToken(current)) {
+        return current
+      }
+
+      const token = auth.session?.token
+      const activeChannelId = channelIdRef.current
+      if (!token || !activeChannelId) {
+        throw new Error('LiveKit credentials are not available')
+      }
+
+      const credentials = await runVoiceRequest(
+        `join_call:${activeChannelId}:native-refresh`,
+        () =>
+          joinChannelCall(token, activeChannelId, {
+            force_disconnect: false,
+          }),
+        10_000,
+      )
+      if (!credentials) {
+        throw new Error('Не удалось обновить LiveKit token')
+      }
+
+      const next = {
+        url: credentials.url,
+        token: credentials.native_token,
+        participantIdentity: credentials.native_identity,
+      }
+      liveKitCredentialsRef.current = next
+      return next
     },
     [auth.session?.token],
   )
@@ -696,10 +783,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const startNativeMicrophone = useCallback(
     async (room: Room) => {
       stopNativeMicrophone()
-      const livekit = liveKitCredentialsRef.current
-      if (!livekit) {
-        throw new Error('LiveKit credentials are not available for native microphone')
-      }
       const session = await publishNativeMicrophone(
         room.localParticipant,
         (sessionId) => {
@@ -708,13 +791,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           setMicPublishing(false)
           syncRoomParticipants()
         },
-        livekit,
+        await refreshNativeLiveKitCredentials(),
       )
       nativeMicrophoneRef.current = session
       setMicPublishing(true)
       syncRoomParticipants()
     },
-    [stopNativeMicrophone, syncRoomParticipants],
+    [refreshNativeLiveKitCredentials, stopNativeMicrophone, syncRoomParticipants],
   )
 
   const finishLocalVoiceSetup = useCallback(
@@ -797,6 +880,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         participant: RemoteParticipant,
       ) => {
         if (track.kind !== Track.Kind.Audio) return
+        if (
+          isDesktopNativeVoiceIdentity(participant.identity) &&
+          baseVoiceIdentity(participant.identity) === auth.user?._id
+        ) {
+          track.detach().forEach(removeRemoteAudioElement)
+          return
+        }
         track.detach().forEach(removeRemoteAudioElement)
         const element = track.attach() as HTMLAudioElement
         const audioSource =
@@ -904,7 +994,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       onParticipantsChanged()
       syncSpeakers()
     },
-    [abortJoinAttempt, cleanupAudio, syncMicFromRoom, syncRoomParticipants],
+    [
+      abortJoinAttempt,
+      auth.user?._id,
+      cleanupAudio,
+      syncMicFromRoom,
+      syncRoomParticipants,
+    ],
   )
 
   useEffect(() => {
@@ -965,10 +1061,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [abortJoinAttempt, auth.gatewayState])
 
   useEffect(() => {
-    return eventsGateway.subscribeState((state) => {
+    const unsubscribe = eventsGateway.subscribeState((state) => {
       if (state !== 'connected') return
       voiceRejoinRef.current.onGatewayConnected()
     })
+    return () => {
+      void unsubscribe()
+    }
   }, [])
 
   const join = useCallback(
@@ -993,7 +1092,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       const inFlight = joinInFlightRef.current
       if (inFlight?.channelId === targetChannelId) {
-        return inFlight.promise
+        await inFlight.promise
+        return
       }
       if (inFlight) {
         await inFlight.promise.catch(() => {})
@@ -1164,21 +1264,34 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         if (useNative && desktop) {
           const pickerPromise = waitForNativePickerSelection()
           await desktop.media.openDisplayPicker(withAudio)
-          const sourceId = await pickerPromise
-          const session = await publishNativeScreenShare(
-            room,
-            room.localParticipant,
-            sourceId,
-            quality,
-            withAudio,
-            (message) => {
-              console.warn('[voice] native media engine lost', message)
-              toast.error('Нативный захват прерван')
-              stopNativeScreenShare()
-              setScreenShareEnabled(false)
-              syncRoomParticipants()
-            },
-          )
+          const selection = await pickerPromise
+          voicePreferenceStore.setScreenShareAudio(selection.audioRequested)
+          const handleSidecarLost = (message: string) => {
+            console.warn('[voice] native media engine lost', message)
+            toast.error('Нативный захват прерван')
+            stopNativeScreenShare()
+            setScreenShareEnabled(false)
+            syncRoomParticipants()
+          }
+          const startNative = async (forceRefresh: boolean) =>
+            publishNativeScreenShare(
+              room,
+              room.localParticipant,
+              selection.sourceId,
+              quality,
+              selection.audioRequested,
+              handleSidecarLost,
+              await refreshNativeLiveKitCredentials(forceRefresh),
+            )
+
+          let session: NativeScreenShareSession
+          try {
+            session = await startNative(false)
+          } catch (error) {
+            if (!isLiveKitTokenFailure(error)) throw error
+            stopNativeScreenShare()
+            session = await startNative(true)
+          }
           nativeScreenShareRef.current = session
           setScreenShareEnabled(true)
           syncRoomParticipants()
@@ -1211,7 +1324,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
       }
     },
-    [startBrowserScreenShare, stopNativeScreenShare, syncRoomParticipants],
+    [
+      refreshNativeLiveKitCredentials,
+      startBrowserScreenShare,
+      stopNativeScreenShare,
+      syncRoomParticipants,
+    ],
   )
 
   const toggleScreenShare = useCallback(() => {

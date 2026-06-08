@@ -1,15 +1,26 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace syrnike::voice {
 
 struct StartCommand {
   std::string session_id;
+  std::string session_kind;
   std::string device_id;
+  std::string source_id;
   std::string livekit_url;
   std::string livekit_token;
   std::string participant_identity;
+  int width = 1920;
+  int height = 1080;
+  int fps = 60;
+  int bitrate = 8000000;
+  int duration_ms = 1000;
+  int exclude_process_id = 0;
+  uintptr_t self_window_hwnd = 0;
+  bool audio_requested = false;
   bool echo_cancellation = false;
   float input_volume = 1.0f;
   bool voice_gate_enabled = true;

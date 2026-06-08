@@ -104,8 +104,8 @@ void runMicrophonePreview(const StartCommand& command) {
 
     std::vector<float> queued_samples;
     queued_samples.reserve(static_cast<size_t>(render_buffer_frames));
-    float frame_square_sum = 0.0f;
-    int frame_sample_count = 0;
+    std::vector<float> raw_frame;
+    raw_frame.reserve(kSamplesPer10Ms);
     auto last_metrics_at = std::chrono::steady_clock::now();
 
     while (g_running.load()) {
@@ -122,26 +122,32 @@ void runMicrophonePreview(const StartCommand& command) {
 
         const float* samples = reinterpret_cast<const float*>(data);
         for (UINT32 index = 0; index < frames; ++index) {
-          const RuntimeConfig config = readRuntimeConfig();
           const float raw_sample = (flags & AUDCLNT_BUFFERFLAGS_SILENT) ? 0.0f : samples[index];
-          const float amplified_sample = std::max(-1.0f, std::min(1.0f, raw_sample * config.input_volume));
-          frame_square_sum += amplified_sample * amplified_sample;
-          frame_sample_count += 1;
-          const float input_db = frame_sample_count > 0
-            ? rmsToDb(std::sqrt(frame_square_sum / static_cast<float>(frame_sample_count)))
-            : -60.0f;
-          const bool open = gateOpen(input_db, config);
-          const float sample = open ? amplified_sample : 0.0f;
-          queued_samples.push_back(sample);
+          raw_frame.push_back(raw_sample);
 
-          if (frame_sample_count >= kSamplesPer10Ms) {
+          if (raw_frame.size() == kSamplesPer10Ms) {
+            const RuntimeConfig config = readRuntimeConfig();
+            float frame_square_sum = 0.0f;
+            for (float sample : raw_frame) {
+              const float amplified_sample = sample * config.input_volume;
+              frame_square_sum += amplified_sample * amplified_sample;
+            }
+            const float input_db = rmsToDb(std::sqrt(
+              frame_square_sum / static_cast<float>(raw_frame.size())
+            ));
+            const bool open = gateOpen(input_db, config);
+
+            for (float sample : raw_frame) {
+              const float amplified_sample = sample * config.input_volume;
+              queued_samples.push_back(open ? softLimitSample(amplified_sample) : 0.0f);
+            }
+
             const auto now = std::chrono::steady_clock::now();
             if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
               emitMicrophoneMetrics(command.session_id, input_db, config.voice_gate_threshold_db, open);
               last_metrics_at = now;
             }
-            frame_square_sum = 0.0f;
-            frame_sample_count = 0;
+            raw_frame.clear();
           }
         }
         capture->ReleaseBuffer(frames);

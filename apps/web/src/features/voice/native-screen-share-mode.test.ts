@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
-  defaultNativeMediaStreamMode,
   shouldUseNativeScreenShare,
 } from './native-screen-share-mode'
 
@@ -29,24 +28,5 @@ describe('shouldUseNativeScreenShare', () => {
 
     expect(shouldUseNativeScreenShare('auto')).toBe(true)
     expect(shouldUseNativeScreenShare('native')).toBe(true)
-  })
-})
-
-describe('defaultNativeMediaStreamMode', () => {
-  beforeEach(() => {
-    vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
-  })
-
-  it('defaults to h264 on windows desktop', () => {
-    vi.mocked(getSyrnikeDesktop).mockReturnValue({
-      runtime: 'desktop',
-      platform: { os: 'win32' },
-    } as ReturnType<typeof getSyrnikeDesktop>)
-
-    expect(defaultNativeMediaStreamMode()).toBe('h264')
-  })
-
-  it('defaults to bgra on web', () => {
-    expect(defaultNativeMediaStreamMode()).toBe('bgra')
   })
 })

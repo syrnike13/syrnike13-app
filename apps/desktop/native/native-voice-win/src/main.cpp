@@ -5,6 +5,11 @@
 #include "microphone_preview.hpp"
 #include "microphone_publisher.hpp"
 #include "protocol.hpp"
+#include "screen_audio_capture.hpp"
+#include "screen_publisher.hpp"
+#include "screen_preflight.hpp"
+#include "screen_sources.hpp"
+#include "screen_video_capture.hpp"
 
 int main() {
   using namespace syrnike::voice;
@@ -15,8 +20,29 @@ int main() {
       emitDeviceList();
       continue;
     }
+    if (commandMatches(line, "list_screen_sources")) {
+      emitScreenSourceList(parseStartCommand(line).self_window_hwnd);
+      continue;
+    }
+    if (commandMatches(line, "probe_screen_capture")) {
+      emitScreenCaptureProbe(parseStartCommand(line));
+      continue;
+    }
+    if (commandMatches(line, "probe_screen_audio")) {
+      emitScreenAudioProbe(parseStartCommand(line));
+      continue;
+    }
+    if (commandMatches(line, "probe_screen_share")) {
+      emitScreenSharePreflight(parseStartCommand(line));
+      continue;
+    }
     if (commandMatches(line, "start")) {
-      runMicrophonePublisher(parseStartCommand(line));
+      const auto command = parseStartCommand(line);
+      if (command.session_kind == "screen") {
+        runScreenPublisher(command);
+      } else {
+        runMicrophonePublisher(command);
+      }
       return 0;
     }
     if (commandMatches(line, "start_preview")) {

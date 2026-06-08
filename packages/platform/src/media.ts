@@ -7,10 +7,9 @@ export type NativeMediaFrameMethod =
 
 export type NativeMediaFrameStats = Record<NativeMediaFrameMethod, number>
 
-export type NativeMediaStreamMode = 'h264' | 'bgra'
-
 export type NativeMediaEncoderBackend =
   | 'media_foundation'
+  | 'webrtc'
   | 'openh264'
 
 /** process/system_exclude = звук демонстрации; microphone = входной голос; none = звук недоступен. */
@@ -19,6 +18,10 @@ export type NativeMediaAudioMode =
   | 'system_exclude'
   | 'microphone'
   | 'none'
+
+export type NativeMediaLoopbackMode =
+  | 'include_target_process_tree'
+  | 'exclude_target_process_tree'
 
 export type NativeMediaEchoCancellationMode =
   | 'disabled'
@@ -45,9 +48,13 @@ export type NativeMediaScreenSessionStartOptions = {
   height: number
   fps: number
   bitrate: number
-  streamMode?: NativeMediaStreamMode
   audio?: {
     requested: boolean
+  }
+  livekit: {
+    url: string
+    token: string
+    participantIdentity: string
   }
 }
 
@@ -98,13 +105,19 @@ export type NativeMediaSessionStartOptions =
 export type NativeMediaScreenSession = {
   kind: 'screen'
   sessionId: string
-  port: number
-  streamMode: NativeMediaStreamMode
+  port?: number
   encoder: NativeMediaEncoderBackend
+  width?: number
+  height?: number
+  fps?: number
+  bitrate?: number
   audio?: {
     mode: NativeMediaAudioMode
     port?: number
+    targetProcessId?: number
+    loopbackMode?: NativeMediaLoopbackMode
   }
+  nativeParticipantIdentity?: string
 }
 
 export type NativeMediaMicrophoneSession = {
@@ -126,7 +139,15 @@ export type NativeMediaSession =
 export type NativeMediaSessionStatus =
   | { status: 'idle' }
   | { status: 'starting' }
-  | { status: 'running'; sessionId: string; port?: number }
+  | {
+      status: 'running'
+      sessionId: string
+      port?: number
+      width?: number
+      height?: number
+      fps?: number
+      bitrate?: number
+    }
   | { status: 'error'; message: string }
 
 export type NativeMediaEngineCapabilities = {
@@ -141,12 +162,18 @@ export type NativeMediaEngineSessionSummary = {
   sessionId: string
   status: 'starting' | 'running' | 'error'
   port?: number
+  width?: number
+  height?: number
+  fps?: number
+  bitrate?: number
   audio?: {
     mode: NativeMediaAudioMode
     port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
     echoCancellation?: NativeMediaEchoCancellationMode
+    targetProcessId?: number
+    loopbackMode?: NativeMediaLoopbackMode
   }
 }
 
@@ -169,6 +196,16 @@ export type NativeMediaStatsEvent = {
   sessionId: string
   methods: NativeMediaFrameStats
   activeMethod?: NativeMediaFrameMethod
+  publishedVideo?: boolean
+  publishedAudio?: boolean
+  audioFrames?: number
+  audioPackets?: number
+  audioPeakDb?: number
+  audioRmsDb?: number
+  videoFrames?: number
+  videoIntervalFrames?: number
+  videoLateFrames?: number
+  videoAvgCaptureUs?: number
 }
 
 export type NativeMicrophoneMetricsEvent = {
@@ -186,6 +223,8 @@ export type NativeMediaStateEvent = NativeMediaSessionStatus & {
     sampleRate?: 48_000
     channels?: 1 | 2
     echoCancellation?: NativeMediaEchoCancellationMode
+    targetProcessId?: number
+    loopbackMode?: NativeMediaLoopbackMode
   }
 }
 

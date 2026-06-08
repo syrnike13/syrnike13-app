@@ -99,10 +99,8 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
     hr = audio_client->Start();
     if (FAILED(hr)) throw std::runtime_error("failed to start microphone stream");
 
-    std::vector<std::int16_t> frame;
-    frame.reserve(kSamplesPer10Ms);
-    float frame_square_sum = 0.0f;
-    int frame_sample_count = 0;
+    std::vector<float> raw_frame;
+    raw_frame.reserve(kSamplesPer10Ms);
     auto last_metrics_at = std::chrono::steady_clock::now();
 
     while (g_running.load()) {
@@ -123,32 +121,38 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
 
       const float* samples = reinterpret_cast<const float*>(data);
       for (UINT32 index = 0; index < frames; ++index) {
-        const RuntimeConfig config = readRuntimeConfig();
         const float raw_sample = (flags & AUDCLNT_BUFFERFLAGS_SILENT) ? 0.0f : samples[index];
-        const float amplified_sample = raw_sample * config.input_volume;
-        frame_square_sum += amplified_sample * amplified_sample;
-        frame_sample_count += 1;
+        raw_frame.push_back(raw_sample);
 
-        const float input_db = frame_sample_count > 0
-          ? rmsToDb(std::sqrt(frame_square_sum / static_cast<float>(frame_sample_count)))
-          : -60.0f;
-        const bool open = gateOpen(input_db, config);
-        const float processed = open ? amplified_sample : 0.0f;
-        frame.push_back(clampToPcm16(processed));
+        if (raw_frame.size() == kSamplesPer10Ms) {
+          const RuntimeConfig config = readRuntimeConfig();
+          float frame_square_sum = 0.0f;
+          for (float sample : raw_frame) {
+            const float amplified_sample = sample * config.input_volume;
+            frame_square_sum += amplified_sample * amplified_sample;
+          }
+          const float input_db = rmsToDb(std::sqrt(
+            frame_square_sum / static_cast<float>(raw_frame.size())
+          ));
+          const bool open = gateOpen(input_db, config);
 
-        if (frame.size() == kSamplesPer10Ms) {
-          livekit::AudioFrame audio_frame(std::move(frame), kSampleRate, kChannels, kSamplesPer10Ms);
+          std::vector<std::int16_t> pcm_frame;
+          pcm_frame.reserve(kSamplesPer10Ms);
+          for (float sample : raw_frame) {
+            const float amplified_sample = sample * config.input_volume;
+            const float processed = open ? softLimitSample(amplified_sample) : 0.0f;
+            pcm_frame.push_back(clampToPcm16(processed));
+          }
+
+          livekit::AudioFrame audio_frame(std::move(pcm_frame), kSampleRate, kChannels, kSamplesPer10Ms);
           audio_source->captureFrame(audio_frame);
-          frame.clear();
-          frame.reserve(kSamplesPer10Ms);
+          raw_frame.clear();
 
           const auto now = std::chrono::steady_clock::now();
           if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
             emitMicrophoneMetrics(command.session_id, input_db, config.voice_gate_threshold_db, open);
             last_metrics_at = now;
           }
-          frame_square_sum = 0.0f;
-          frame_sample_count = 0;
         }
       }
 
