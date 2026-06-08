@@ -4,8 +4,8 @@ package routingfakes
 import (
 	"sync"
 
-	"github.com/livekit/protocol/livekit"
 	"github.com/syrnike13/livekit-server/pkg/routing"
+	"github.com/livekit/protocol/livekit"
 	"google.golang.org/protobuf/proto"
 )
 

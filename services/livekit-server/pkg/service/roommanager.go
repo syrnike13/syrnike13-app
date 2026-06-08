@@ -16,21 +16,26 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
+	"maps"
+	"net"
 	"os"
+	"slices"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/pkg/errors"
-	"golang.org/x/exp/maps"
 
-	"github.com/syrnike13/livekit-server/pkg/agent"
-	"github.com/syrnike13/livekit-server/pkg/sfu"
-	sutils "github.com/syrnike13/livekit-server/pkg/utils"
 	"github.com/livekit/mediatransportutil/pkg/rtcconfig"
 	"github.com/livekit/protocol/auth"
+	"github.com/livekit/protocol/codecs/mime"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
+	"github.com/livekit/protocol/observability"
 	"github.com/livekit/protocol/observability/roomobs"
 	"github.com/livekit/protocol/rpc"
 	"github.com/livekit/protocol/utils"
@@ -38,6 +43,10 @@ import (
 	"github.com/livekit/protocol/utils/must"
 	"github.com/livekit/psrpc"
 	"github.com/livekit/psrpc/pkg/middleware"
+
+	"github.com/syrnike13/livekit-server/pkg/agent"
+	"github.com/syrnike13/livekit-server/pkg/sfu"
+	sutils "github.com/syrnike13/livekit-server/pkg/utils"
 
 	"github.com/syrnike13/livekit-server/pkg/clientconfiguration"
 	"github.com/syrnike13/livekit-server/pkg/config"
@@ -210,7 +219,7 @@ func (r *RoomManager) deleteRoom(ctx context.Context, roomName livekit.RoomName)
 
 func (r *RoomManager) CloseIdleRooms() {
 	r.lock.RLock()
-	rooms := maps.Values(r.rooms)
+	rooms := slices.Collect(maps.Values(r.rooms))
 	r.lock.RUnlock()
 
 	for _, room := range rooms {
@@ -233,7 +242,7 @@ func (r *RoomManager) HasParticipants() bool {
 func (r *RoomManager) Stop() {
 	// disconnect all clients
 	r.lock.RLock()
-	rooms := maps.Values(r.rooms)
+	rooms := slices.Collect(maps.Values(r.rooms))
 	r.lock.RUnlock()
 
 	for _, room := range rooms {
@@ -338,6 +347,7 @@ func (r *RoomManager) StartSession(
 						Leave: leave,
 					},
 				})
+				prometheus.IncrementParticipantRtcCanceled(1)
 				return errors.New("could not restart closed participant")
 			}
 
@@ -395,6 +405,7 @@ func (r *RoomManager) StartSession(
 				Leave: leave,
 			},
 		})
+		prometheus.IncrementParticipantRtcCanceled(1)
 		return errors.New("could not restart participant")
 	}
 
@@ -452,6 +463,13 @@ func (r *RoomManager) StartSession(
 		subscriberAllowPause = *pi.SubscriberAllowPause
 	}
 
+	enabledCodecs := protoRoom.EnabledCodecs
+	if !slices.ContainsFunc(enabledCodecs, func(codec *livekit.Codec) bool {
+		return mime.IsMimeTypeStringRTX(codec.Mime)
+	}) {
+		enabledCodecs = append(enabledCodecs, &livekit.Codec{Mime: mime.MimeTypeRTX.String()})
+	}
+
 	participant, err = rtc.NewParticipant(rtc.ParticipantParams{
 		Identity:                pi.Identity,
 		Name:                    pi.Name,
@@ -463,12 +481,13 @@ func (r *RoomManager) StartSession(
 		LimitConfig:             r.config.Limit,
 		ProtocolVersion:         pv,
 		SessionStartTime:        sessionStartTime,
-		Telemetry:               r.telemetry,
+		SessionTimer:            observability.NewSessionTimer(sessionStartTime),
+		TelemetryListener:       room.ParticipantTelemetryListener(),
 		Trailer:                 room.Trailer(),
 		PLIThrottleConfig:       r.config.RTC.PLIThrottle,
 		CongestionControlConfig: r.config.RTC.CongestionControl,
-		PublishEnabledCodecs:    protoRoom.EnabledCodecs,
-		SubscribeEnabledCodecs:  protoRoom.EnabledCodecs,
+		PublishEnabledCodecs:    enabledCodecs,
+		SubscribeEnabledCodecs:  enabledCodecs,
 		Grants:                  pi.Grants,
 		Reconnect:               pi.Reconnect,
 		Logger:                  pLogger,
@@ -479,26 +498,30 @@ func (r *RoomManager) StartSession(
 		AdaptiveStream:          pi.AdaptiveStream,
 		AllowTCPFallback:        allowFallback,
 		TURNSEnabled:            r.config.IsTURNSEnabled(),
+		ParticipantListener:     room.LocalParticipantListener(),
 		ParticipantHelper: &roomManagerParticipantHelper{
 			room:                     room,
 			codecRegressionThreshold: r.config.Video.CodecRegressionThreshold,
 		},
-		ReconnectOnPublicationError:  reconnectOnPublicationError,
-		ReconnectOnSubscriptionError: reconnectOnSubscriptionError,
-		ReconnectOnDataChannelError:  reconnectOnDataChannelError,
-		VersionGenerator:             r.versionGenerator,
-		SubscriberAllowPause:         subscriberAllowPause,
-		SubscriptionLimitAudio:       r.config.Limit.SubscriptionLimitAudio,
-		SubscriptionLimitVideo:       r.config.Limit.SubscriptionLimitVideo,
-		PlayoutDelay:                 roomInternal.GetPlayoutDelay(),
-		SyncStreams:                  roomInternal.GetSyncStreams(),
-		ForwardStats:                 r.forwardStats,
-		MetricConfig:                 r.config.Metric,
-		UseOneShotSignallingMode:     useOneShotSignallingMode,
-		DataChannelMaxBufferedAmount: r.config.RTC.DataChannelMaxBufferedAmount,
-		DatachannelSlowThreshold:     r.config.RTC.DatachannelSlowThreshold,
-		FireOnTrackBySdp:             true,
-		UseSinglePeerConnection:      pi.UseSinglePeerConnection,
+		ReconnectOnPublicationError:     reconnectOnPublicationError,
+		ReconnectOnSubscriptionError:    reconnectOnSubscriptionError,
+		ReconnectOnDataChannelError:     reconnectOnDataChannelError,
+		VersionGenerator:                r.versionGenerator,
+		SubscriberAllowPause:            subscriberAllowPause,
+		SubscriptionLimitAudio:          r.config.Limit.SubscriptionLimitAudio,
+		SubscriptionLimitVideo:          r.config.Limit.SubscriptionLimitVideo,
+		PlayoutDelay:                    roomInternal.GetPlayoutDelay(),
+		SyncStreams:                     roomInternal.GetSyncStreams(),
+		ForwardStats:                    r.forwardStats,
+		MetricConfig:                    r.config.Metric,
+		UseOneShotSignallingMode:        useOneShotSignallingMode,
+		DataChannelMaxBufferedAmount:    r.config.RTC.DataChannelMaxBufferedAmount,
+		DatachannelSlowThreshold:        r.config.RTC.DatachannelSlowThreshold,
+		DatachannelLossyTargetLatency:   r.config.RTC.DatachannelLossyTargetLatency,
+		FireOnTrackBySdp:                true,
+		UseSinglePeerConnection:         pi.UseSinglePeerConnection,
+		EnableDataTracks:                r.config.EnableDataTracks,
+		EnableRTPStreamRestartDetection: r.config.RTC.EnableRTPStreamRestartDetection,
 	})
 	if err != nil {
 		return err
@@ -508,6 +531,9 @@ func (r *RoomManager) StartSession(
 	// join room
 	opts := rtc.ParticipantOptions{
 		AutoSubscribe: pi.AutoSubscribe,
+	}
+	if pi.AutoSubscribeDataTrack != nil {
+		opts.AutoSubscribeDataTrack = *pi.AutoSubscribeDataTrack
 	}
 	iceServers := r.iceServersForParticipant(apiKey, participant, iceConfig.PreferenceSubscriber == livekit.ICECandidateType_ICT_TLS)
 	if err = room.Join(participant, requestSource, &opts, iceServers); err != nil {
@@ -551,13 +577,11 @@ func (r *RoomManager) StartSession(
 		}
 	}
 
-	proto := room.ToProto()
-
 	// update room store with new numParticipants
-	persistRoomForParticipantCount(proto)
+	persistRoomForParticipantCount(room.ToProto())
 
 	clientMeta := &livekit.AnalyticsClientMeta{Region: r.currentNode.Region(), Node: string(r.currentNode.NodeID())}
-	r.telemetry.ParticipantJoined(ctx, proto, participant.ToProto(), pi.Client, clientMeta, true, participant.TelemetryGuard())
+	r.telemetry.ParticipantJoined(ctx, protoRoom, participant.ToProto(), pi.Client, clientMeta, true, participant.TelemetryGuard())
 	participant.AddOnClose(types.ParticipantCloseKeyNormal, func(p types.LocalParticipant) {
 		participantServerClosers.Close()
 
@@ -663,7 +687,7 @@ func (r *RoomManager) getOrCreateRoom(ctx context.Context, createRoom *livekit.C
 		}
 	})
 
-	newRoom.OnParticipantChanged(func(p types.LocalParticipant) {
+	newRoom.OnParticipantChanged(func(p types.Participant) {
 		if !p.IsDisconnected() {
 			if err := r.roomStore.StoreParticipant(ctx, roomName, p.ToProto()); err != nil {
 				newRoom.Logger().Errorw("could not handle participant change", err)
@@ -761,6 +785,37 @@ func (r *RoomManager) roomAndParticipantForReq(ctx context.Context, req particip
 	}
 
 	return room, participant, nil
+}
+
+func (r *RoomManager) ListParticipants(ctx context.Context, req *livekit.ListParticipantsRequest) (*livekit.ListParticipantsResponse, error) {
+	room := r.GetRoom(ctx, livekit.RoomName(req.Room))
+	if room == nil {
+		return nil, ErrRoomNotFound
+	}
+
+	participants := room.GetParticipants()
+	items := make([]*livekit.ParticipantInfo, 0, len(participants))
+	for _, p := range participants {
+		items = append(items, p.ToProto())
+	}
+
+	return &livekit.ListParticipantsResponse{
+		Participants: items,
+	}, nil
+}
+
+func (r *RoomManager) GetParticipant(ctx context.Context, req *livekit.RoomParticipantIdentity) (*livekit.ParticipantInfo, error) {
+	room := r.GetRoom(ctx, livekit.RoomName(req.Room))
+	if room == nil {
+		return nil, ErrRoomNotFound
+	}
+
+	participant := room.GetParticipant(livekit.ParticipantIdentity(req.Identity))
+	if participant == nil {
+		return nil, ErrParticipantNotFound
+	}
+
+	return participant.ToProto(), nil
 }
 
 func (r *RoomManager) RemoveParticipant(ctx context.Context, req *livekit.RoomParticipantIdentity) (*livekit.RemoveParticipantResponse, error) {
@@ -981,19 +1036,20 @@ func (r *RoomManager) iceServersForParticipant(apiKey string, participant types.
 		if r.config.TURN.UDPPort > 0 && !tlsOnly {
 			// UDP TURN is used as STUN
 			hasSTUN = true
-			urls = append(urls, fmt.Sprintf("turn:%s:%d?transport=udp", r.config.RTC.NodeIP, r.config.TURN.UDPPort))
+			for _, ip := range r.config.RTC.NodeIP.ToStringSlice() {
+				urls = append(urls, fmt.Sprintf("turn:%s?transport=udp", net.JoinHostPort(ip, strconv.Itoa(int(r.config.TURN.UDPPort)))))
+			}
 		}
 		if r.config.TURN.TLSPort > 0 {
 			urls = append(urls, fmt.Sprintf("turns:%s:443?transport=tcp", r.config.TURN.Domain))
 		}
 		if len(urls) > 0 {
-			username := r.turnAuthHandler.CreateUsername(apiKey, participant.ID())
-			password, err := r.turnAuthHandler.CreatePassword(apiKey, participant.ID())
+			username, expiry := r.turnAuthHandler.CreateUsername(apiKey, participant.ID(), r.config.TURN.TTLSeconds)
+			password, err := r.turnAuthHandler.CreatePassword(apiKey, participant.ID(), expiry)
 			if err != nil {
 				participant.GetLogger().Warnw("could not create turn password", err)
 				hasSTUN = false
 			} else {
-				logger.Infow("created TURN password", "username", username, "password", password)
 				iceServers = append(iceServers, &livekit.ICEServer{
 					Urls:       urls,
 					Username:   username,
@@ -1008,17 +1064,41 @@ func (r *RoomManager) iceServersForParticipant(apiKey string, participant types.
 		for _, s := range r.config.RTC.TURNServers {
 			scheme := "turn"
 			transport := "tcp"
-			if s.Protocol == "tls" {
+			switch s.Protocol {
+			case "tls":
 				scheme = "turns"
-			} else if s.Protocol == "udp" {
+			case "udp":
 				transport = "udp"
 			}
+
+			var username, credential string
+			if s.Secret != "" {
+				// Generate dynamic credentials using TURN static auth secrets
+				ttl := s.TTL
+				if ttl == 0 {
+					ttl = 14400 // Default 4 hours
+				}
+
+				expiry := time.Now().Add(time.Duration(ttl) * time.Second).Unix()
+				participantID := string(participant.ID())
+				username = fmt.Sprintf("%d:%s", expiry, participantID)
+
+				// HMAC-SHA1 signature
+				h := hmac.New(sha1.New, []byte(s.Secret))
+				h.Write([]byte(username))
+				credential = base64.StdEncoding.EncodeToString(h.Sum(nil))
+			} else {
+				// Use static credentials
+				username = s.Username
+				credential = s.Credential
+			}
+
 			is := &livekit.ICEServer{
 				Urls: []string{
 					fmt.Sprintf("%s:%s:%d?transport=%s", scheme, s.Host, s.Port, transport),
 				},
-				Username:   s.Username,
-				Credential: s.Credential,
+				Username:   username,
+				Credential: credential,
 			}
 			iceServers = append(iceServers, is)
 		}
@@ -1114,6 +1194,10 @@ func (h *roomManagerParticipantHelper) GetSubscriberForwarderState(lp types.Loca
 
 func (h *roomManagerParticipantHelper) ResolveMediaTrack(lp types.LocalParticipant, trackID livekit.TrackID) types.MediaResolverResult {
 	return h.room.ResolveMediaTrackForSubscriber(lp, trackID)
+}
+
+func (h *roomManagerParticipantHelper) ResolveDataTrack(lp types.LocalParticipant, trackID livekit.TrackID) types.DataResolverResult {
+	return h.room.ResolveDataTrackForSubscriber(lp, trackID)
 }
 
 func (h *roomManagerParticipantHelper) ShouldRegressCodec() bool {

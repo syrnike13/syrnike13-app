@@ -482,7 +482,7 @@ func (q *qualityScorer) updateAtLocked(stat *windowStat, at time.Time) {
 		ulgr.Debugw("quality rise")
 	default:
 		packets := stat.packets + stat.packetsPadding
-		if packets != 0 && (stat.packetsLost*100/packets) > 10 {
+		if packets != 0 && ((stat.packetsLost-stat.packetsMissing-stat.packetsOutOfOrder)*100/packets) > 10 {
 			ulgr.Debugw("quality hold - high loss")
 		}
 	}
@@ -525,10 +525,7 @@ func (q *qualityScorer) isUnmutedEnough(at time.Time) bool {
 		sinceLayerUnmute = at.Sub(q.layerUnmutedAt)
 	}
 
-	validDuration := sinceUnmute
-	if sinceLayerUnmute < validDuration {
-		validDuration = sinceLayerUnmute
-	}
+	validDuration := min(sinceLayerUnmute, sinceUnmute)
 
 	sinceLastUpdate := at.Sub(q.lastUpdateAt)
 
@@ -567,7 +564,7 @@ func (q *qualityScorer) getAdjustedPacketLossWeight(stat *windowStat) float64 {
 	//  2. enough time has elapsed since last calculation
 	if q.numPPSReadings > cPPSMinReadings && time.Since(q.modeCalculatedAt) > cModeCalculationInterval {
 		q.ppsMode = 0
-		for i := 0; i < len(q.ppsHistogram); i++ {
+		for i := range len(q.ppsHistogram) {
 			if q.ppsHistogram[i] > q.ppsMode {
 				q.ppsMode = i
 			}

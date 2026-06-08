@@ -2,9 +2,441 @@
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-06-08
+
+## ATTENTION: This release removes backwards compatibility for TURN authentication without TTL. Please refer to change log of [1.12.0](https://github.com/livekit/livekit/releases/tag/v1.12.0) for details on changes to TURN authentication and permissions handling. It was removed in https://github.com/livekit/livekit/pull/4539.
+
+### Added
+
+- rtc: report participant kind code and details (#4534)
+- Add IsIntentionalDisconnect (#4537)
+- rtc: emit per-data-track bytes via BytesTrackStats (#4540)
+- Start tracking Twirp method request latency in prometheus too, not just in logs (#4545)
+- Config documentation for advertise_internal_ip and skip_external_ip_validation (#4552, #4554, #4563)
+- Metrics for participant active, i. e. fully established. (#4557)
+- turn: allow for providing secret via file (#4564)
+
+### Changed
+
+- Always enable rtx codec (#4533)
+- Don't require media sections when joining (#4535)
+- Use NACKQuueInterface type. (#4538)
+- Remove backwards compatibility support for TURN auth. (#4539)
+- telemetry: split webhook-processed hook out of NewTelemetryService (#4548)
+- rtc: prevent duration reporting for inactive participants (#4550)
+- rtc: report participant session end time on room move (#4561)
+- Update mediatransportutil to get ICE candidate timeout config (#4572)
+
+### Fixed
+
+- Check Less and LessEq in version compare. (#4532)
+- fix sip error categorization (#4528)
+- handle nil clientInfo (#4546, #4547)
+- Prevent panic from nil(illegal) syncState.Subscriptions message (#4560)
+
+## [1.12.0] - 2026-05-16
+
+## ATTENTION: This release introduces important changes to how TURN authentication and permissions are handled. These changes make the system more secure. This release maintains backwards compatibility. However, backwards compatibility will be removed in the next release. So, please plan accordingly.
+
+### TURN permission handling changes
+
+By default, TURN will not relay traffic to private IPs. If you need to relay traffic to private IPs, please use `allow_restricted_peer_cidrs` which is explained in config-sample.yaml and replicated below.
+
+```
+#   # list of restricted peer CIDRs (loopback, link-local (unicast, multicast), multicast, private, unspecified) to allow access to.
+#   # By default (i. e. empty list), all restricted peer CIDRs are denied access.
+#   # When not empty, only the specified CIDRs are allowed access.
+#   # Note that this check is applied to restricted peer CIDRs only.
+#   allow_restricted_peer_cidrs:
+#     - 10.0.0.0/8
+#     - 192.168.0.0/16
+```
+
+That list can be paired with a deny list which takes precedence if there is an overlap.
+
+```
+#   # list of peer CIDRs to deny access to.
+#   # This applies to all peer CIDRs, including restricted ones.
+#   # Deny list takes precedence over allow list.
+#   deny_peer_cidrs:
+#     - 10.0.0.0/8
+#     - 192.168.0.0/16
+```
+
+Relevant PRs: #4505
+
+### TURN authentication handling changes
+
+TURN credentials now have a TTL (Time-To-Live) beyond which they are not valid to join a room. We recommend rotating your TURN authentication secrets to ensure older credentials are rendered stale and not usable.
+
+```
+#   # TTL of the TURN credentials in seconds - defaults to 300
+#   ttl_seconds: 300
+```
+
+Please note that the TTL is always used in constructing the credentials. So, a value of 0 will create credentials that expire immediately.
+
+Relevant PRs: #4505, #4515, #4524, #4526
+
+### Added
+
+- add support for client capabilities (#4461)
+- Additional data tracks logging (#4489)
+- Add CloseWithReason to agent SignalConn interface (#4492)
+- add agent environment (#4498)
+- add duration seconds reporting (#4500)
+- add helper to check for agent worker endpoint (#4503)
+- test: verify upstream and downstream connection stats end-to-end (#4508)
+- Add TURN permission handler. (#4505)
+- allow setting agent job assignment url (#4512)
+- Add expiry to TURN password. (#4505, #4515)
+- add AssignmentHook to AssignJob; propagate websocket write errors (#4516)
+- Apply room tags from JWT grant room configuration (#4518)
+- feat: auto create rooms for tokens with the RoomCreate grant (#4320)
+- Add integration test for TURN auth failures (#4524)
+- Support SIP auth realm for inbound. (#4522)
+- Apply ttl check only when authenticate allocation creating (#4526)
+
+### Changed
+
+- feat(pion/ice): replace deprecated NAT1To1 with SetAddressRewriteRules (#4466)
+- do not log data track stats if not started (#4468)
+- Consolidate RTCP packets and do RTCP callback outside lock. (#4469)
+- Keep a shadow copy of tracks for use by different stream allocator state (#4470)
+- Avoid stream allocator event data cast to interface and back. (#4471)
+- Convert sort.Slice -> slices.SortFunc (#4472)
+- Turn off transceiver re-use on Safari. (#4474)
+- reduce some heap use in packet path by (#4478)
+- Close peer connection unconditionally to unblock set local/remote (#4485)
+- Misc optimisations. (#4490)
+- report all simulcast layers (#4491)
+- Use mediatransportutil/codec package, no functional change (#4497)
+- rename agent environment to deployment (#4506)
+- Update protocol to support SIP media config. (#4509)
+- update protocol for protojson (#4510)
+- Populate data track loggers with context (#4514)
+- Log large packets receive/send. (#4521)
+- Log details of RTCP packets. (#4525)
+- Create NACK tracker only once. (#4527)
+
+### Fixed
+
+- fix: wrap IPv6 addresses in brackets in UDP TURN URLs (RFC 3986) (#4476)
+- Legacy TrackInfo.Simulcast flag. (#4493)
+- Fix publish-only limitations being incorrectly applied to receivers (#4495)
+- Include reception reoprts in receiver report callback. (#4496)
+- Fix sense check in DeltaInfo gathering (#4507)
+- Fix SIP media config upgrade. (#4511)
+
+## [1.11.0] - 2026-04-17
+
+NOTE: Minor version bump that enables data tracks (https://docs.livekit.io/transport/data/data-tracks/) by default.
+
+### Added
+
+- Embedded turn test (#4412)
+- chore: log API key during worker registration (#4428)
+- Add some simple data track stats (#4431)
+- Add `Close` method for UpDataTrackManager and call it on participant (#4432)
+- Log join duration. (#4433)
+- Add subscriber stream start event notification (#4449)
+
+### Changed
+
+- Cleaning up some logs and standardising log frequency. (#4420)
+- Keep subscription synchronous when publisher is expected to resume. (#4424, #4425)
+- Do not close publisher peer connection to aid migration. (#4426, #4427)
+- Enable data tracks by default. (#4429)
+- chore: pin GH commits and switch to golangci-lint (#4444)
+- Switch to stdlib maps, slices (#4445)
+- Store concrete ICE candidate for remote candidates. (#4458)
+
+### Fixed
+
+- clear track notifier observers on subscription teardown (#4413)
+- Guard against timestamp inversion in RED -> Opus conversion. (#4414, #4415, #4418)
+- ensure participant init is correctly serialized for logging (#4417)
+- Clean up data track observers on unsubscribe. (#4421)
+- compute agent dispatch affinity from target load (#4442)
+- Apply IPFilter when get local ip (#4440)
+- Unsubscribe from data track on close (#4443)
+- Use Muted in TrackInfo to propagated published track muted. (#4453)
+- fix: limit join request and WHIP request body to http.DefaultMaxHeaderBytes (#4450)
+- fix publisher frame count reporting for simulcast streams (#4457)
+
+## [1.10.1] - 2026-03-30
+
+### Added
+
+- add packet trailer stripping support (#4361)
+- Path check helpers (#4392)
+- add deadline to dtls connect context (#4395)
+- feat(agent-dispatch): add job restart policy (#4401)
+
+### Changed
+
+- Close both peer connections to aid migration. (#4382)
+
+### Fixed
+
+- Fix TURN server URL (#4389)
+- AV1 parser overflow fix. (#4405)
+- Address malformed H264/H265 parsing issues (#4407)
+
+## [1.10.0] - 2026-03-23
+
+## PLEASE NOTE: The logging key for participant session ID (a.k.a participant SID) has been changed from `pID` to `participantID` in this release for the sake of clarity. Hence the minor version bump.
+
+### Added
+
+- Add option to require media sections when participant joining (#4347, #4354)
+- Support originating calls from custom domains (#4349)
+- Add StopEgress function to the EgressLauncher interface (#4353)
+- Add option to not re-use transceiver in e2ee. (#4356)
+- Add API to restart lite stats. (#4366, #4368)
+
+* handle AGENT_ERROR disconnect reason (#4339)
+
+### Changed
+
+- Mark last run of grow bucket outside goroutine. (#4348)
+- Refine ipv6 support (#4352)
+- Sample data send error logging. (#4358)
+- Switch data track extension to 1-byte ID/length. (#4362)
+- Do not kick off migration of closed participant (#4363)
+- Do not block all ext ID determination on stream allocator listener (#4364)
+- Rename log field pID to participantID (#4365)
+- Replace deprecated io/ioutil with io in whipservice (#4375)
+- Update grpc to address CVE-2026-33186 (#4381)
+
+### Fixed
+
+- Fix repair stream ID reporting for RTX pairing. (#4369)
+
+## [1.9.12] - 2026-03-05
+
+### Added
+
+- Add silent frame for pcmu/a (#4258)
+- adds a test to ensure agent worker errors cause disconnection (#4273)
+- Populate client_protocol field in ParticipantInfo (#4293)
+- Read client protocol from query param (#4294)
+- generate & log egressID for start egress request (#4303)
+- ESP32 Client Info (#4267)
+- feat: make INSTALL_PATH overridable in install script (#3954)
+
+### Changed
+
+- Defer setting clock rate in RTPStats module till codec is bound. (#4250)
+- Wrapping SIP errors for invalid argument and not found (#4253)
+- Ignore parse addr error when add remote candidate (#4264)
+- Generate config flags (#4268)
+- clear reference guard when resetting signal stats (#4279)
+- refresh telemetry guard on participant move (#4280)
+- use separate allocation for signal stats telemetry guard (#4281)
+- Set up audio config in audio level module when config is updated. (#4290)
+- Update self-hosting deployment documentation link (#4312)
+- Key telemetry stats worker using combination of roomID, participantID (#4323)
+- Two phase restart when doing external restart of receiver. (#4329)
+- Send participant left event after track unpublished for moved (#4334)
+
+### Fixed
+
+- Fix receiver restart race (#4248)
+- require participant broadcast when metadata/attributes are set in token (#4266)
+- Create buffer if needed when a PLI is requested. (#4282)
+- Do not increase max expected layer on track info update. (#4285)
+- Publish is always on publisher peer connection.(#4307)
+- Potential fix for code scanning alert no. 35: Workflow does not contain permissions (#4311)
+- Potential fix for code scanning alert no. 36: Workflow does not contain permissions (#4310)
+- Fix for some CodeQL reported issues (#4314)
+- Protect against incorrect temporal layer. (#4327)
+- do not discount packets lost on duplicate packets (#4333)
+- Use ParticipantTelemetryListener of LocalParticipant. (#4342)
+- Fix SIP client timeout. (#4345)
+
+## [1.9.11] - 2026-01-15
+
+## PLEASE NOTE: The previous release tag v1.9.10 hit a panic under some conditions. Sincerely regret the inconvenience caused. Although we do test rigorously, it is not guaranteed to cover all scenarios. We request you to report any issues you encounter. Thank you.
+
+### Added
+
+- Support OpenTelemetry tracing. Add Jaeger support. (#4222)
+- Add option to force simuclast codec. (#4226)
+- Log timeout in API (#4231, #4232)
+- Add participant option for data track auto-subscribe. (#4240)
+
+### Changed
+
+- Remove enable arrival time forwarding method. (#4217)
+- sfu/receiver and sfu/buffer refactor (#4221, #4224, #4225)
+- Change some logs to debugw (#4229)
+- Changing field naming of data track packet (#4235)
+- Update Pion transport package. (#4237)
+- Wrapping the invalid request errors for CreateSipParticipant (#4239)
+
+### Fixed
+
+- Swap result sink atomically rather than closing and setting (#4216)
+- Address crash in v1.9.10 (#4219, #4220)
+- Return on SDP fragment read error. (#4228)
+
+## [1.9.10] - 2026-01-01
+
+## WARNING: Please do not use this release. There is a run time issue which causes the server to panic. The issue has been addressed in #4219 and #4220.
+
+### Added
+
+- add explicit room exists servicestore op (#4175)
+- Add support for TURN static auth secret credentials (#3796)
+- Make new path for signalling v1.5 support. (#4180)
+- report video size from media data for whip (#4211)
+- Support preserving external supplied time. (#4212)
+
+### Changed
+
+- Use published track for model access in data down track. (#4176)
+- Refactor receiver and buffer into Base and higher layer. (#4185, #4186, #4187, #4189, #4196, #4198, #4207)
+- Update pion/webrtc to v4.2.1 (#4191)
+- Receiver restart related changes. (#4192, #4200, #4202, #4208)
+- Do not warn about track not bound if participant is not ready. (#4205, #4206)
+
+### Fixed
+
+- Flush ext packets on restart/close and release packets. (#4179)
+- Resolve RTX pair via OnTrack also. (#4190)
+- Handle repair SSRC of simulcast tracks during migration. (#4193)
+- return iceservers for whip (#4210)
+
+## [1.9.9] - 2025-12-18
+
+### Added
+
+- Add support for RTP stream restart. (#4161)
+
+### Changed
+
+- Avoid duplicate track add to room track manager. (#4152, #4153)
+- Consistently undo update to sequence number and timestamp when the incoming packet cannot be sequenced. (#4156)
+- deregister observability function when participant is closed (#4157)
+- Ensure subscribe data track handles are unique (#4162)
+- move delete to oss service store (#4164)
+- clean up manual roomservice log redaction (#4165)
+- skip lost sequence number ranges in getIntervalStats (#4166, #4169)
+
+### Fixed
+
+- chore: fix a large number of spelling issues (#4147)
+- Handle case of sequence number jump just after start. (#4150)
+- Drop run away receiver reports. (#4170)
+- Publish/Unpublish counter match. (#4173)
+
+## [1.9.8] - 2025-12-10
+
+### Added
+
+- Mark RTCP buffer Write as noinline. (for better heap attribution) (#4138)
+- add debug metric for tracking references (#4134)
+
+### Changed
+
+- Use isEnding to indicate if down track could be resumed. (#4132)
+- switch participant callbacks to room to listener interface (#4136)
+- protocol deps to get inactive file adjusted memory usage. (#4137)
+- update webrtc to 4.1.8 to pick up DTLS fingerprint check during handshake (#4140)
+
+### Fixed
+
+- Do not pause rid in SDP to prevent race with adaptive streaming (#4129)
+- leak fixes (#4131, #4141, #4142, #4143, #4144)
+
+## [1.9.7] - 2025-12-05
+
+### Added
+
+- Data tracks (experimental and not ready for use) (#4089)
+
+### Changed
+
+- log bucket growth (#4122)
+- Update pion/ice to stop gather first on close (#4123)
+- move utils.WrapAround to mediatransportutil (#4124)
+- Let participant close remove the published tracks. (#4125)
+
+### Fixed
+
+- Fix concurrent map access for https://github.com/livekit/livekit/issues/4126. (#4127)
+
+## [1.9.6] - 2025-12-01
+
+### Added
+
+- Control latency of lossy data channel (#4088)
+- logger proto redaction. (#4090)
+- Record join/publish/subscribe cancellations (#4102, #4104)
+
+### Fixed
+
+- Fix "address" typo in transport logs (addddress → address) (#4097)
+- Clear stereo=1 if stereo is not enabled. (#4101)
+- Participant session close deadlock fixes (#4107, #4113, #4116)
+
+### Changed
+
+- Switch forwarding latency log to Debugw (#4098)
+- Update mediatransportutil to get OWD estimator relocation (#4115)
+
+## [1.9.5] - 2025-12-01 - scratched
+
+## [1.9.4] - 2025-11-15
+
+### Added
+
+- Log reason for subscriber not being able to determine codec. (#4071)
+- Kind details for connector (#4072)
+
+### Fixed
+
+- Prevent invalid track access while peer connection is shutting down. (#4054)
+
+### Changed
+
+- Update PsRPC to get redis pipeliner implementation (#4055)
+- Forwarding latency measurement. (#4056. #4057, #4059, #4061, #4062, #4067, #4080)
+- Update pion/transport to v3.1.1 (to get batch I/O ping-pong buffer) (#4070)
+- Use sync.Pool for objects in packet path. (#4066)
+- Bump protocol to pull sip validation changes and error mapping (#4081)
+
+## [1.9.3] - 2025-11-02
+
+### Added
+
+- Opportunistic video layer allocation on setting max spatial layer. (#4003, #4030, #4031, #4033)
+- use env var for GOARCH. (#4012)
+- Use simulcast codec as default policy for audio track. (#4040)
+- Enable AbsCaptureTimeURI in RTC configuration. (#4043)
+- Add prom histogram for forwarding latency and jitter. (#4044, #4045)
+
+### Fixed
+
+- Correct direction for request/response for prom counters. (#4027)
+- Do not bind buffer if codec is invalid. (#4028)
+- Remove ~ from rid which indicates disabled layer to get the actual rid. (#4032)
+- Prevent leakage of previous codec after codec regression. (#4035, #4037)
+- fix: add missing Unlock() in AddReceiver. (#4036)
+
+### Changed
+
+- Some golang modernisation bits. (#4106)
+- Use rtp converter from protocol/utils. (#4019, #4020)
+- High forwarding latency. (#4034, #4038)
+- if RingingTimeout is provided, deadline should be set to that timeout. (#4018)
+- Don't warn 0 payload type for PCMU. (#4039)
+
 ## [1.9.2] - 2025-10-17
 
 ### Added
+
 - Use gzip reader pool (#3903)
 - Rpcs for ingress proxy WHIP (#3911)
 - Include agent_name as a participant attribute (#3914)
@@ -28,6 +460,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Include mid -> trackID in both SDP offer and answer. (#4007)
 
 ### Fixed
+
 - add incoming request id to request response message (#3912)
 - Simulcast audio fixes (#3925)
 - Fix dynacast subscriber node clearing on move participant. (#3926)
@@ -44,6 +477,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Update pion/webrtc to prevent GetStats panic. (#4004)
 
 ### Changed
+
 - update protocol for sip api change (#3902)
 - Refactor subscribedTrack + mediaTrackSubscriptions. (#3908)
 - Set publisher codec preferences after setting remote description (#3913)
@@ -54,7 +488,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - More debugging of DD jump (#3934)
 - Use difference in key frame counter to stop seeder. (#3936)
 - Update protocol for SipCreateParticipant (#3939)
-- mediatransportutil to log local address when validating external IP  (#3942)
+- mediatransportutil to log local address when validating external IP (#3942)
 - Use microseconds for forwarding stats. (#3943)
 - Tweaks tresholds for logging high forwarding latency/jitter. (#3945)
 - Flush stats when there are no packets. (#3947)
@@ -178,7 +612,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - [🤖 readme-manager] Update README (#3808)
 - [🤖 readme-manager] Update README (#3809)
 - Rename RTCRest -> WHIP (#3829)
-- Delete v2 signalling  (#3835)
+- Delete v2 signalling (#3835)
 - Clean up missed v2 pieces (#3837)
 - Update go deps (#3849)
 - Populate SDP cid in track info when available. (#3845)

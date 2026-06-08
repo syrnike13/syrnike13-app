@@ -17,7 +17,7 @@ package rtpstats
 import (
 	"go.uber.org/zap/zapcore"
 
-	"github.com/syrnike13/livekit-server/pkg/sfu/utils"
+	"github.com/livekit/mediatransportutil/pkg/utils"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/utils/mono"
 )
@@ -102,7 +102,9 @@ func (r *RTPStatsReceiverLite) Update(packetTime int64, packetSize int, sequence
 	gapSN := int64(resSN.ExtendedVal - resSN.PreExtendedHighest)
 	if gapSN <= 0 { // duplicate OR out-of-order
 		r.packetsOutOfOrder++ // counting duplicate as out-of-order
-		r.packetsLost--
+		if gapSN != 0 && r.packetsLost > 0 {
+			r.packetsLost--
+		}
 	} else { // in-order
 		r.updateGapHistogram(int(gapSN))
 		r.packetsLost += uint64(gapSN - 1)
@@ -119,7 +121,7 @@ func (r *RTPStatsReceiverLite) DeltaInfoLite(snapshotLiteID uint32) *RTPDeltaInf
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	deltaInfoLite, err, loggingFields := r.deltaInfoLite(
+	deltaInfoLite, loggingFields, err := r.deltaInfoLite(
 		snapshotLiteID,
 		r.sequenceNumber.GetExtendedStart(),
 		r.sequenceNumber.GetExtendedHighest(),

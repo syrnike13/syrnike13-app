@@ -27,8 +27,8 @@ import (
 	"github.com/syrnike13/livekit-server/pkg/rtc/types"
 )
 
-func (p *ParticipantImpl) SetResponseSink(sink routing.MessageSink) {
-	p.signaller.SetResponseSink(sink)
+func (p *ParticipantImpl) SwapResponseSink(sink routing.MessageSink, reason types.SignallingCloseReason) {
+	p.signaller.SwapResponseSink(sink, reason)
 }
 
 func (p *ParticipantImpl) GetResponseSink() routing.MessageSink {
@@ -349,4 +349,22 @@ func (p *ParticipantImpl) sendMediaSectionsRequirement(numAudios uint32, numVide
 		p.subLogger.Errorw("could not send media sections requirement", err)
 	}
 	return err
+}
+
+func (p *ParticipantImpl) sendPublishDataTrackResponse(dti *livekit.DataTrackInfo) error {
+	return p.signaller.WriteMessage(p.signalling.SignalPublishDataTrackResponse(&livekit.PublishDataTrackResponse{
+		Info: dti,
+	}))
+}
+
+func (p *ParticipantImpl) sendUnpublishDataTrackResponse(dti *livekit.DataTrackInfo) error {
+	return p.signaller.WriteMessage(p.signalling.SignalUnpublishDataTrackResponse(&livekit.UnpublishDataTrackResponse{
+		Info: dti,
+	}))
+}
+
+func (p *ParticipantImpl) SendDataTrackSubscriberHandles(handles map[uint32]*livekit.DataTrackSubscriberHandles_PublishedDataTrack) error {
+	return p.signaller.WriteMessage(p.signalling.SignalDataTrackSubscriberHandles(&livekit.DataTrackSubscriberHandles{
+		SubHandles: handles,
+	}))
 }

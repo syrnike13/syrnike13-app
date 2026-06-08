@@ -77,8 +77,8 @@ func NewRTPMunger(logger logger.Logger) *RTPMunger {
 	}
 }
 
-func (r *RTPMunger) DebugInfo() map[string]interface{} {
-	return map[string]interface{}{
+func (r *RTPMunger) DebugInfo() map[string]any {
+	return map[string]any{
 		"ExtHighestIncomingSN": r.extHighestIncomingSN,
 		"ExtLastSN":            r.extLastSN,
 		"ExtSecondLastSN":      r.extSecondLastSN,
@@ -100,6 +100,10 @@ func (r *RTPMunger) GetState() *livekit.RTPMungerState {
 		LastMarker:                  r.lastMarker,
 		SecondLastMarker:            r.secondLastMarker,
 	}
+}
+
+func (r *RTPMunger) GetExtLastTimestamp() uint64 {
+	return r.extLastTS
 }
 
 func (r *RTPMunger) GetTSOffset() uint64 {
@@ -185,7 +189,7 @@ func (r *RTPMunger) UpdateAndGetSnTs(extPkt *buffer.ExtPacket, marker bool) (Tra
 		r.secondLastMarker = r.lastMarker
 		r.lastMarker = marker
 
-		if extPkt.KeyFrame {
+		if extPkt.IsKeyFrame {
 			r.extRtxGateSn = extMungedSN
 			r.isInRtxGateRegion = true
 		}
@@ -207,7 +211,7 @@ func (r *RTPMunger) UpdateAndGetSnTs(extPkt *buffer.ExtPacket, marker bool) (Tra
 		if err != nil {
 			return TranslationParamsRTP{
 				snOrdering: SequenceNumberOrderingOutOfOrder,
-			}, ErrOutOfOrderSequenceNumberCacheMiss
+			}, errOutOfOrderSequenceNumberCacheMiss
 		}
 
 		extSequenceNumber := extPkt.ExtSequenceNumber - snOffset
@@ -223,7 +227,7 @@ func (r *RTPMunger) UpdateAndGetSnTs(extPkt *buffer.ExtPacket, marker bool) (Tra
 			)
 			return TranslationParamsRTP{
 				snOrdering: SequenceNumberOrderingOutOfOrder,
-			}, ErrOutOfOrderSequenceNumberCacheMiss
+			}, errOutOfOrderSequenceNumberCacheMiss
 		}
 
 		return TranslationParamsRTP{
@@ -245,13 +249,13 @@ func (r *RTPMunger) UpdateAndGetSnTs(extPkt *buffer.ExtPacket, marker bool) (Tra
 
 		return TranslationParamsRTP{
 			snOrdering: SequenceNumberOrderingContiguous,
-		}, ErrPaddingOnlyPacket
+		}, errPaddingOnlyPacket
 	}
 
 	// can get duplicate packet due to FEC
 	return TranslationParamsRTP{
 		snOrdering: SequenceNumberOrderingDuplicate,
-	}, ErrDuplicatePacket
+	}, errDuplicatePacket
 }
 
 func (r *RTPMunger) FilterRTX(nacks []uint16) []uint16 {
@@ -284,7 +288,7 @@ func (r *RTPMunger) UpdateAndGetPaddingSnTs(
 	tsOffset := 0
 	if !r.lastMarker {
 		if !forceMarker {
-			return nil, ErrPaddingNotOnFrameBoundary
+			return nil, errPaddingNotOnFrameBoundary
 		}
 
 		// if forcing frame end, use timestamp of latest received frame for the first one
@@ -295,7 +299,7 @@ func (r *RTPMunger) UpdateAndGetPaddingSnTs(
 	extLastSN := r.extLastSN
 	extLastTS := r.extLastTS
 	vals := make([]SnTs, num)
-	for i := 0; i < num; i++ {
+	for i := range num {
 		extLastSN++
 		vals[i].extSequenceNumber = extLastSN
 

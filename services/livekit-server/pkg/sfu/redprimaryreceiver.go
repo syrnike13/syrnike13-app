@@ -24,9 +24,12 @@ import (
 	"github.com/pion/webrtc/v4"
 
 	"github.com/syrnike13/livekit-server/pkg/sfu/buffer"
+	"github.com/syrnike13/livekit-server/pkg/sfu/utils"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 )
+
+var _ REDTransformer = (*RedPrimaryReceiver)(nil)
 
 var (
 	ErrIncompleteRedHeader = errors.New("incomplete red block header")
@@ -35,28 +38,30 @@ var (
 
 type RedPrimaryReceiver struct {
 	TrackReceiver
-	downTrackSpreader *DownTrackSpreader
+	downTrackSpreader *utils.DownTrackSpreader[TrackSender]
 	logger            logger.Logger
 	closed            atomic.Bool
 	redPT             uint8
 
-	firstPktReceived bool
-	lastSeq          uint16
+	firstPktReceived                  bool
+	lastSeq                           uint16
+	highestForwardedExtSequenceNumber uint64
+	highestForwardedExtTimestamp      uint64
 
 	// bitset for upstream packet receive history [lastSeq-8, lastSeq-1], bit 1 represents packet received
 	pktHistory byte
 }
 
-func NewRedPrimaryReceiver(receiver TrackReceiver, dsp DownTrackSpreaderParams) *RedPrimaryReceiver {
+func NewRedPrimaryReceiver(receiver TrackReceiver, dsp utils.DownTrackSpreaderParams) REDTransformer {
 	return &RedPrimaryReceiver{
 		TrackReceiver:     receiver,
-		downTrackSpreader: NewDownTrackSpreader(dsp),
+		downTrackSpreader: utils.NewDownTrackSpreader[TrackSender](dsp),
 		logger:            dsp.Logger,
 		redPT:             uint8(receiver.Codec().PayloadType),
 	}
 }
 
-func (r *RedPrimaryReceiver) ForwardRTP(pkt *buffer.ExtPacket, spatialLayer int32) int {
+func (r *RedPrimaryReceiver) ForwardRTP(pkt *buffer.ExtPacket, spatialLayer int32) int32 {
 	// extract primary payload from RED and forward to downtracks
 	if r.downTrackSpreader.DownTrackCount() == 0 {
 		return 0
@@ -64,9 +69,11 @@ func (r *RedPrimaryReceiver) ForwardRTP(pkt *buffer.ExtPacket, spatialLayer int3
 
 	if pkt.Packet.PayloadType != r.redPT {
 		// forward non-red packet directly
-		return r.downTrackSpreader.Broadcast(func(dt TrackSender) {
-			_ = dt.WriteRTP(pkt, spatialLayer)
+		var writeCount atomic.Int32
+		r.downTrackSpreader.Broadcast(func(dt TrackSender) {
+			writeCount.Add(dt.WriteRTP(pkt, spatialLayer))
 		})
+		return writeCount.Load()
 	}
 
 	pkts, err := r.getSendPktsFromRed(pkt.Packet)
@@ -75,7 +82,7 @@ func (r *RedPrimaryReceiver) ForwardRTP(pkt *buffer.ExtPacket, spatialLayer int3
 		return 0
 	}
 
-	var count int
+	var writeCount atomic.Int32
 	for i, sendPkt := range pkts {
 		pPkt := *pkt
 		if i != len(pkts)-1 {
@@ -86,13 +93,43 @@ func (r *RedPrimaryReceiver) ForwardRTP(pkt *buffer.ExtPacket, spatialLayer int3
 		}
 		pPkt.Packet = sendPkt
 
+		if r.highestForwardedExtTimestamp != 0 {
+			if (pPkt.ExtSequenceNumber > r.highestForwardedExtSequenceNumber && pPkt.ExtTimestamp < r.highestForwardedExtTimestamp) ||
+				(pPkt.ExtSequenceNumber < r.highestForwardedExtSequenceNumber && pPkt.ExtTimestamp > r.highestForwardedExtTimestamp) {
+				r.logger.Warnw(
+					"sequence number OR timestamp inversion, dropping", nil,
+					"numPackets", len(pkts),
+					"primaryIncomingSN", pkt.Packet.Header.SequenceNumber,
+					"primaryIncomingTS", pkt.Packet.Header.Timestamp,
+					"primaryExtractedSN", pkts[len(pkts)-1].SequenceNumber,
+					"primaryExtractedTS", pkts[len(pkts)-1].Timestamp,
+					"primaryESN", pkt.ExtSequenceNumber,
+					"primaryETS", pkt.ExtTimestamp,
+					"packetIndex", i,
+					"packetExtractedSN", pkts[i].SequenceNumber,
+					"packetESN", pPkt.ExtSequenceNumber,
+					"packetExtractedTS", pkts[i].Timestamp,
+					"packetETS", pPkt.ExtTimestamp,
+					"pktHistory", r.pktHistory,
+					"redHeader", pkt.Packet.Payload[:10],
+					"payloadSize", len(pkt.Packet.Payload),
+					"lastSeq", r.lastSeq,
+					"highestFowardedExtSequenceNumber", r.highestForwardedExtSequenceNumber,
+					"highestFowardedExtTimestamp", r.highestForwardedExtTimestamp,
+				)
+				continue // drop the packet which causes the inversion
+			}
+		}
+		r.highestForwardedExtSequenceNumber = max(r.highestForwardedExtSequenceNumber, pPkt.ExtSequenceNumber)
+		r.highestForwardedExtTimestamp = max(r.highestForwardedExtTimestamp, pPkt.ExtTimestamp)
+
 		// not modify the ExtPacket.RawPacket here for performance since it is not used by the DownTrack,
 		// otherwise it should be set to the correct value (marshal the primary rtp packet)
-		count += r.downTrackSpreader.Broadcast(func(dt TrackSender) {
-			_ = dt.WriteRTP(&pPkt, spatialLayer)
+		r.downTrackSpreader.Broadcast(func(dt TrackSender) {
+			writeCount.Add(dt.WriteRTP(&pPkt, spatialLayer))
 		})
 	}
-	return count
+	return writeCount.Load()
 }
 
 func (r *RedPrimaryReceiver) ForwardRTCPSenderReport(
@@ -135,6 +172,12 @@ func (r *RedPrimaryReceiver) GetDownTracks() []TrackSender {
 func (r *RedPrimaryReceiver) ResyncDownTracks() {
 	r.downTrackSpreader.Broadcast(func(dt TrackSender) {
 		dt.Resync()
+	})
+}
+
+func (r *RedPrimaryReceiver) OnStreamRestart() {
+	r.downTrackSpreader.Broadcast(func(dt TrackSender) {
+		dt.ReceiverRestart(r)
 	})
 }
 
@@ -202,7 +245,7 @@ func (r *RedPrimaryReceiver) getSendPktsFromRed(rtp *rtp.Packet) ([]*rtp.Packet,
 	var recoverBits byte
 	if needRecover {
 		bitIndex := r.lastSeq - rtp.SequenceNumber
-		for i := 0; i < maxRedCount; i++ {
+		for i := range maxRedCount {
 			if bitIndex > 7 {
 				break
 			}
@@ -215,6 +258,8 @@ func (r *RedPrimaryReceiver) getSendPktsFromRed(rtp *rtp.Packet) ([]*rtp.Packet,
 
 	return extractPktsFromRed(rtp, recoverBits)
 }
+
+// ---------------------------------------
 
 type block struct {
 	tsOffset uint32

@@ -174,7 +174,7 @@ func (r *StandardRoomAllocator) SelectRoomNode(ctx context.Context, roomName liv
 
 func (r *StandardRoomAllocator) ValidateCreateRoom(ctx context.Context, roomName livekit.RoomName) error {
 	// when auto create is disabled, we'll check to ensure it's already created
-	if !r.config.Room.AutoCreate {
+	if !r.config.Room.AutoCreate && EnsureCreatePermission(ctx) != nil {
 		_, _, err := r.roomStore.LoadRoom(ctx, roomName, false)
 		if err != nil {
 			return err
@@ -208,7 +208,7 @@ func (r *StandardRoomAllocator) applyNamedRoomConfiguration(req *livekit.CreateR
 
 	conf, ok := r.config.Room.RoomConfigurations[req.RoomPreset]
 	if !ok {
-		return req, psrpc.NewErrorf(psrpc.InvalidArgument, "unknown room confguration in create room request")
+		return req, psrpc.NewErrorf(psrpc.InvalidArgument, "unknown room configuration in create room request")
 	}
 
 	clone := utils.CloneProto(req)

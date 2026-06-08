@@ -25,13 +25,12 @@ import (
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/utils"
 	"github.com/livekit/protocol/utils/mono"
+	"github.com/livekit/protocol/utils/rtputil"
 )
 
 const (
 	cFirstPacketTimeAdjustWindow    = 2 * time.Minute
 	cFirstPacketTimeAdjustThreshold = 15 * 1e9
-
-	cSequenceNumberLargeJumpThreshold = 100
 )
 
 // -------------------------------------------------------
@@ -192,6 +191,8 @@ func (w WrappedRTCPSenderReportStateLogger) MarshalLogObject(e zapcore.ObjectEnc
 	return nil
 }
 
+// ------------------------------------------------------------------
+
 func RTCPSenderReportPropagationDelay(rsrs *livekit.RTCPSenderReportState, passThrough bool) time.Duration {
 	if passThrough {
 		return 0
@@ -204,6 +205,8 @@ func RTCPSenderReportPropagationDelay(rsrs *livekit.RTCPSenderReportState, passT
 
 type rtpStatsBase struct {
 	*rtpStatsBaseLite
+
+	rtpConverter *rtputil.RTPConverter
 
 	firstTime           int64
 	firstTimeAdjustment time.Duration
@@ -249,6 +252,18 @@ func newRTPStatsBase(params RTPStatsParams) *rtpStatsBase {
 		nextSnapshotID:   cFirstSnapshotID,
 		snapshots:        make([]snapshot, 2),
 	}
+}
+
+func (r *rtpStatsBase) SetClockRate(clockRate uint32) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	r.setClockRateLocked(clockRate)
+}
+
+func (r *rtpStatsBase) setClockRateLocked(clockRate uint32) {
+	r.rtpConverter = rtputil.NewRTPConverter(int64(clockRate))
+	r.rtpStatsBaseLite.setClockRateLocked(clockRate)
 }
 
 func (r *rtpStatsBase) seed(from *rtpStatsBase) bool {
@@ -385,7 +400,7 @@ func (r *rtpStatsBase) maybeAdjustFirstPacketTime(
 	srData *livekit.RTCPSenderReportState,
 	tsOffset uint64,
 	extStartTS uint64,
-) (adjustment int64, err error, loggingFields []interface{}) {
+) (adjustment int64, loggingFields []any, err error) {
 	nowNano := mono.UnixNano()
 	if time.Duration(nowNano-r.startTime) > cFirstPacketTimeAdjustWindow {
 		return
@@ -398,50 +413,50 @@ func (r *rtpStatsBase) maybeAdjustFirstPacketTime(
 	// in some network element along the way), push back first time
 	// to an earlier instance.
 	timeSinceReceive := time.Duration(nowNano - srData.AtAdjusted)
-	extNowTS := srData.RtpTimestampExt - tsOffset + uint64(timeSinceReceive.Nanoseconds()*int64(r.params.ClockRate)/1e9)
+	extNowTS := srData.RtpTimestampExt - tsOffset + r.rtpConverter.ToRTPExt(timeSinceReceive)
 	samplesDiff := int64(extNowTS - extStartTS)
 	if samplesDiff < 0 {
 		// out-of-order, skip
 		return
 	}
 
-	samplesDuration := time.Duration(float64(samplesDiff) / float64(r.params.ClockRate) * float64(time.Second))
+	samplesDuration := r.rtpConverter.ToDurationExt(uint64(samplesDiff))
 	timeSinceFirst := time.Duration(nowNano - r.firstTime)
 	now := r.firstTime + timeSinceFirst.Nanoseconds()
 	firstTime := now - samplesDuration.Nanoseconds()
 	adjustment = r.firstTime - firstTime
 
-	getFields := func() []interface{} {
-		return []interface{}{
-			"startTime", time.Unix(0, r.startTime),
-			"nowTime", time.Unix(0, now),
-			"before", time.Unix(0, r.firstTime),
-			"after", time.Unix(0, firstTime),
-			"adjustment", time.Duration(adjustment),
-			"firstTimeAdjustment", r.firstTimeAdjustment,
-			"extNowTS", extNowTS,
-			"extStartTS", extStartTS,
-			"srData", WrappedRTCPSenderReportStateLogger{srData},
-			"tsOffset", tsOffset,
-			"timeSinceReceive", timeSinceReceive,
-			"timeSinceFirst", timeSinceFirst,
-			"samplesDiff", samplesDiff,
-			"samplesDuration", samplesDuration,
-		}
-	}
-
 	if firstTime < r.firstTime {
 		if adjustment > cFirstPacketTimeAdjustThreshold {
 			err = errors.New("adjusting first packet time, too big, ignoring")
-			loggingFields = getFields()
+			loggingFields = r.firstPacketTimeAdjustLogFields(now, firstTime, adjustment, extNowTS, extStartTS, srData, tsOffset, timeSinceReceive, timeSinceFirst, samplesDuration, samplesDiff)
 		} else {
 			r.firstTimeAdjustment += time.Duration(adjustment)
-			r.logger.Debugw("adjusting first packet time", getFields()...)
+			r.logger.Debugw("adjusting first packet time", r.firstPacketTimeAdjustLogFields(now, firstTime, adjustment, extNowTS, extStartTS, srData, tsOffset, timeSinceReceive, timeSinceFirst, samplesDuration, samplesDiff)...)
 			r.firstTime = firstTime
 		}
 	}
 
 	return
+}
+
+func (r *rtpStatsBase) firstPacketTimeAdjustLogFields(now, firstTime int64, adjustment int64, extNowTS, extStartTS uint64, srData *livekit.RTCPSenderReportState, tsOffset uint64, timeSinceReceive, timeSinceFirst, samplesDuration time.Duration, samplesDiff int64) []any {
+	return []any{
+		"startTime", time.Unix(0, r.startTime),
+		"nowTime", time.Unix(0, now),
+		"before", time.Unix(0, r.firstTime),
+		"after", time.Unix(0, firstTime),
+		"adjustment", time.Duration(adjustment),
+		"firstTimeAdjustment", r.firstTimeAdjustment,
+		"extNowTS", extNowTS,
+		"extStartTS", extStartTS,
+		"srData", WrappedRTCPSenderReportStateLogger{srData},
+		"tsOffset", tsOffset,
+		"timeSinceReceive", timeSinceReceive,
+		"timeSinceFirst", timeSinceFirst,
+		"samplesDiff", samplesDiff,
+		"samplesDuration", samplesDuration,
+	}
 }
 
 func (r *rtpStatsBase) getPacketsSeenMinusPadding(extStartSN, extHighestSN uint64) uint64 {
@@ -461,9 +476,13 @@ func (r *rtpStatsBase) deltaInfo(
 	snapshotID uint32,
 	extStartSN uint64,
 	extHighestSN uint64,
-) (deltaInfo *RTPDeltaInfo, err error, loggingFields []interface{}) {
-	then, now := r.getAndResetSnapshot(snapshotID, extStartSN, extHighestSN)
-	if now == nil || then == nil {
+) (deltaInfo *RTPDeltaInfo, loggingFields []any, err error) {
+	if r.clockRate == 0 {
+		return
+	}
+
+	then, now, ok := r.getAndResetSnapshot(snapshotID, extStartSN, extHighestSN)
+	if !ok {
 		return
 	}
 
@@ -475,7 +494,7 @@ func (r *rtpStatsBase) deltaInfo(
 		packetsExpected = 0
 	}
 	if packetsExpected > cNumSequenceNumbers {
-		loggingFields = []interface{}{
+		loggingFields = []any{
 			"snapshotID", snapshotID,
 			"snapshotNow", now,
 			"snapshotThen", then,
@@ -501,7 +520,7 @@ func (r *rtpStatsBase) deltaInfo(
 	// padding packets delta could be higher than expected due to out-of-order padding packets
 	packetsPadding := now.packetsPadding - then.packetsPadding
 	if packetsExpected < packetsPadding {
-		loggingFields = []interface{}{
+		loggingFields = []any{
 			"snapshotID", snapshotID,
 			"snapshotNow", now,
 			"snapshotThen", then,
@@ -532,7 +551,7 @@ func (r *rtpStatsBase) deltaInfo(
 		PacketsOutOfOrder:    uint32(now.packetsOutOfOrder - then.packetsOutOfOrder),
 		Frames:               now.frames - then.frames,
 		RttMax:               then.maxRtt,
-		JitterMax:            then.maxJitter / float64(r.params.ClockRate) * 1e6,
+		JitterMax:            then.maxJitter / float64(r.clockRate) * 1e6,
 		Nacks:                now.nacks - then.nacks,
 		Plis:                 now.plis - then.plis,
 		Firs:                 now.firs - then.firs,
@@ -628,8 +647,8 @@ func (r *rtpStatsBase) toProto(
 	p.KeyFrames = r.keyFrames
 	p.LastKeyFrame = timestamppb.New(r.lastKeyFrame)
 
-	p.JitterCurrent = jitter / float64(r.params.ClockRate) * 1e6
-	p.JitterMax = maxJitter / float64(r.params.ClockRate) * 1e6
+	p.JitterCurrent = jitter / float64(r.clockRate) * 1e6
+	p.JitterMax = maxJitter / float64(r.clockRate) * 1e6
 
 	p.Firs = r.firs
 	p.LastFir = timestamppb.New(r.lastFir)
@@ -649,9 +668,9 @@ func (r *rtpStatsBase) updateJitter(ets uint64, packetTime int64) float64 {
 	//          p1f1 -> p1f2 -> p2f1
 	//       In this case, p2f1 (packet 2, frame 1) will still be used in jitter calculation
 	//       although it is the second packet of a frame because of out-of-order receival.
-	if r.lastJitterExtTimestamp != ets {
+	if r.lastJitterExtTimestamp != ets && r.rtpConverter != nil {
 		timeSinceFirst := packetTime - r.firstTime
-		packetTimeRTP := uint64(timeSinceFirst * int64(r.params.ClockRate) / 1e9)
+		packetTimeRTP := r.rtpConverter.ToRTPExt(time.Duration(timeSinceFirst))
 		transit := packetTimeRTP - ets
 
 		if r.lastTransit != 0 {
@@ -675,9 +694,9 @@ func (r *rtpStatsBase) updateJitter(ets uint64, packetTime int64) float64 {
 	return r.jitter
 }
 
-func (r *rtpStatsBase) getAndResetSnapshot(snapshotID uint32, extStartSN uint64, extHighestSN uint64) (*snapshot, *snapshot) {
-	if !r.initialized {
-		return nil, nil
+func (r *rtpStatsBase) getAndResetSnapshot(snapshotID uint32, extStartSN uint64, extHighestSN uint64) (snapshot, snapshot, bool) {
+	if !r.initialized || snapshotID < cFirstSnapshotID {
+		return snapshot{}, snapshot{}, false
 	}
 
 	idx := snapshotID - cFirstSnapshotID
@@ -690,7 +709,7 @@ func (r *rtpStatsBase) getAndResetSnapshot(snapshotID uint32, extStartSN uint64,
 	// snapshot now
 	now := r.getSnapshot(mono.UnixNano(), extHighestSN+1)
 	r.snapshots[idx] = now
-	return &then, &now
+	return then, now, true
 }
 
 func (r *rtpStatsBase) getDrift(extStartTS, extHighestTS uint64) (
@@ -700,21 +719,20 @@ func (r *rtpStatsBase) getDrift(extStartTS, extHighestTS uint64) (
 	rebasedReportDrift *livekit.RTPDrift,
 ) {
 	if r.firstTime != 0 {
-		elapsed := r.highestTime - r.firstTime
+		elapsed := time.Duration(r.highestTime - r.firstTime)
 		rtpClockTicks := extHighestTS - extStartTS
-		driftSamples := int64(rtpClockTicks - uint64(elapsed*int64(r.params.ClockRate)/1e9))
+		driftSamples := int64(rtpClockTicks - r.rtpConverter.ToRTPExt(elapsed))
 		if elapsed > 0 {
-			elapsedSeconds := time.Duration(elapsed).Seconds()
 			packetDrift = &livekit.RTPDrift{
 				StartTime:      timestamppb.New(time.Unix(0, r.firstTime)),
 				EndTime:        timestamppb.New(time.Unix(0, r.highestTime)),
-				Duration:       elapsedSeconds,
+				Duration:       elapsed.Seconds(),
 				StartTimestamp: extStartTS,
 				EndTimestamp:   extHighestTS,
 				RtpClockTicks:  rtpClockTicks,
 				DriftSamples:   driftSamples,
-				DriftMs:        (float64(driftSamples) * 1000) / float64(r.params.ClockRate),
-				ClockRate:      float64(rtpClockTicks) / elapsedSeconds,
+				DriftMs:        (float64(driftSamples) * 1000) / float64(r.clockRate),
+				ClockRate:      float64(rtpClockTicks) / elapsed.Seconds(),
 			}
 		}
 	}
@@ -722,25 +740,27 @@ func (r *rtpStatsBase) getDrift(extStartTS, extHighestTS uint64) (
 	if r.srFirst != nil && r.srNewest != nil && r.srFirst.RtpTimestamp != r.srNewest.RtpTimestamp {
 		rtpClockTicks := r.srNewest.RtpTimestampExt - r.srFirst.RtpTimestampExt
 
-		elapsed := mediatransportutil.NtpTime(r.srNewest.NtpTimestamp).Time().Sub(mediatransportutil.NtpTime(r.srFirst.NtpTimestamp).Time())
+		srFirstTime := mediatransportutil.NtpTime(r.srFirst.NtpTimestamp).Time()
+		srNewestTime := mediatransportutil.NtpTime(r.srNewest.NtpTimestamp).Time()
+		elapsed := srNewestTime.Sub(srFirstTime)
 		if elapsed.Seconds() > 0.0 {
-			driftSamples := int64(rtpClockTicks - uint64(elapsed.Nanoseconds()*int64(r.params.ClockRate)/1e9))
+			driftSamples := int64(rtpClockTicks - r.rtpConverter.ToRTPExt(elapsed))
 			ntpReportDrift = &livekit.RTPDrift{
-				StartTime:      timestamppb.New(mediatransportutil.NtpTime(r.srFirst.NtpTimestamp).Time()),
-				EndTime:        timestamppb.New(mediatransportutil.NtpTime(r.srNewest.NtpTimestamp).Time()),
+				StartTime:      timestamppb.New(srFirstTime),
+				EndTime:        timestamppb.New(srNewestTime),
 				Duration:       elapsed.Seconds(),
 				StartTimestamp: r.srFirst.RtpTimestampExt,
 				EndTimestamp:   r.srNewest.RtpTimestampExt,
 				RtpClockTicks:  rtpClockTicks,
 				DriftSamples:   driftSamples,
-				DriftMs:        (float64(driftSamples) * 1000) / float64(r.params.ClockRate),
+				DriftMs:        (float64(driftSamples) * 1000) / float64(r.clockRate),
 				ClockRate:      float64(rtpClockTicks) / elapsed.Seconds(),
 			}
 		}
 
 		elapsed = time.Duration(r.srNewest.At - r.srFirst.At)
 		if elapsed.Seconds() > 0.0 {
-			driftSamples := int64(rtpClockTicks - uint64(elapsed.Nanoseconds()*int64(r.params.ClockRate)/1e9))
+			driftSamples := int64(rtpClockTicks - r.rtpConverter.ToRTPExt(elapsed))
 			receivedReportDrift = &livekit.RTPDrift{
 				StartTime:      timestamppb.New(time.Unix(0, r.srFirst.At)),
 				EndTime:        timestamppb.New(time.Unix(0, r.srNewest.At)),
@@ -749,14 +769,14 @@ func (r *rtpStatsBase) getDrift(extStartTS, extHighestTS uint64) (
 				EndTimestamp:   r.srNewest.RtpTimestampExt,
 				RtpClockTicks:  rtpClockTicks,
 				DriftSamples:   driftSamples,
-				DriftMs:        (float64(driftSamples) * 1000) / float64(r.params.ClockRate),
+				DriftMs:        (float64(driftSamples) * 1000) / float64(r.clockRate),
 				ClockRate:      float64(rtpClockTicks) / elapsed.Seconds(),
 			}
 		}
 
 		elapsed = time.Duration(r.srNewest.AtAdjusted - r.srFirst.AtAdjusted)
 		if elapsed.Seconds() > 0.0 {
-			driftSamples := int64(rtpClockTicks - uint64(elapsed.Nanoseconds()*int64(r.params.ClockRate)/1e9))
+			driftSamples := int64(rtpClockTicks - r.rtpConverter.ToRTPExt(elapsed))
 			rebasedReportDrift = &livekit.RTPDrift{
 				StartTime:      timestamppb.New(time.Unix(0, r.srFirst.AtAdjusted)),
 				EndTime:        timestamppb.New(time.Unix(0, r.srNewest.AtAdjusted)),
@@ -765,7 +785,7 @@ func (r *rtpStatsBase) getDrift(extStartTS, extHighestTS uint64) (
 				EndTimestamp:   r.srNewest.RtpTimestampExt,
 				RtpClockTicks:  rtpClockTicks,
 				DriftSamples:   driftSamples,
-				DriftMs:        (float64(driftSamples) * 1000) / float64(r.params.ClockRate),
+				DriftMs:        (float64(driftSamples) * 1000) / float64(r.clockRate),
 				ClockRate:      float64(rtpClockTicks) / elapsed.Seconds(),
 			}
 		}

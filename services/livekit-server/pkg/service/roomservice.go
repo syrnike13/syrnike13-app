@@ -24,11 +24,10 @@ import (
 	"github.com/syrnike13/livekit-server/pkg/config"
 	"github.com/syrnike13/livekit-server/pkg/routing"
 	"github.com/syrnike13/livekit-server/pkg/rtc"
-	"github.com/livekit/protocol/egress"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/rpc"
-	"github.com/livekit/protocol/utils"
+	"github.com/livekit/psrpc"
 )
 
 type RoomService struct {
@@ -72,10 +71,9 @@ func NewRoomService(
 }
 
 func (s *RoomService) CreateRoom(ctx context.Context, req *livekit.CreateRoomRequest) (*livekit.Room, error) {
-	redactedReq := redactCreateRoomRequest(req)
-	RecordRequest(ctx, redactedReq)
+	RecordRequest(ctx, req)
 
-	AppendLogFields(ctx, "room", req.Name, "request", logger.Proto(redactedReq))
+	AppendLogFields(ctx, "room", req.Name, "request", logger.Proto(req))
 	if err := EnsureCreatePermission(ctx); err != nil {
 		return nil, twirpAuthError(err)
 	} else if req.Egress != nil && s.egressLauncher == nil {
@@ -130,9 +128,11 @@ func (s *RoomService) DeleteRoom(ctx context.Context, req *livekit.DeleteRoomReq
 		return nil, twirpAuthError(err)
 	}
 
-	_, _, err := s.roomStore.LoadRoom(ctx, livekit.RoomName(req.Room), false)
+	exists, err := s.roomStore.RoomExists(ctx, livekit.RoomName(req.Room))
 	if err != nil {
 		return nil, err
+	} else if !exists {
+		return nil, ErrRoomNotFound
 	}
 
 	// ensure at least one node is available to handle the request
@@ -146,13 +146,15 @@ func (s *RoomService) DeleteRoom(ctx context.Context, req *livekit.DeleteRoomReq
 		return nil, err
 	}
 
-	err = s.roomStore.DeleteRoom(ctx, livekit.RoomName(req.Room))
+	if os, ok := s.roomStore.(OSSServiceStore); ok {
+		err = os.DeleteRoom(ctx, livekit.RoomName(req.Room))
+	}
 	res := &livekit.DeleteRoomResponse{}
 	RecordResponse(ctx, room)
 	return res, err
 }
 
-func (s *RoomService) ListParticipants(ctx context.Context, req *livekit.ListParticipantsRequest) (*livekit.ListParticipantsResponse, error) {
+func (s *RoomService) ListParticipants(ctx context.Context, req *livekit.ListParticipantsRequest) (res *livekit.ListParticipantsResponse, err error) {
 	RecordRequest(ctx, req)
 
 	AppendLogFields(ctx, "room", req.Room)
@@ -160,19 +162,29 @@ func (s *RoomService) ListParticipants(ctx context.Context, req *livekit.ListPar
 		return nil, twirpAuthError(err)
 	}
 
-	participants, err := s.roomStore.ListParticipants(ctx, livekit.RoomName(req.Room))
+	if s.apiConf.EnablePsrpcForGetListParticpants {
+		res, err = s.roomClient.ListParticipants(ctx, s.topicFormatter.RoomTopic(ctx, livekit.RoomName(req.Room)), req)
+	} else if store, ok := s.roomStore.(OSSServiceStore); ok {
+		var participants []*livekit.ParticipantInfo
+		participants, err = store.ListParticipants(ctx, livekit.RoomName(req.Room))
+		if err == nil {
+			res = &livekit.ListParticipantsResponse{
+				Participants: participants,
+			}
+		}
+	} else {
+		err = psrpc.ErrUnimplemented
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	res := &livekit.ListParticipantsResponse{
-		Participants: participants,
-	}
 	RecordResponse(ctx, res)
 	return res, nil
 }
 
-func (s *RoomService) GetParticipant(ctx context.Context, req *livekit.RoomParticipantIdentity) (*livekit.ParticipantInfo, error) {
+func (s *RoomService) GetParticipant(ctx context.Context, req *livekit.RoomParticipantIdentity) (participant *livekit.ParticipantInfo, err error) {
 	RecordRequest(ctx, req)
 
 	AppendLogFields(ctx, "room", req.Room, "participant", req.Identity)
@@ -180,7 +192,14 @@ func (s *RoomService) GetParticipant(ctx context.Context, req *livekit.RoomParti
 		return nil, twirpAuthError(err)
 	}
 
-	participant, err := s.roomStore.LoadParticipant(ctx, livekit.RoomName(req.Room), livekit.ParticipantIdentity(req.Identity))
+	if s.apiConf.EnablePsrpcForGetListParticpants {
+		participant, err = s.roomClient.GetParticipant(ctx, s.topicFormatter.RoomTopic(ctx, livekit.RoomName(req.Room)), req)
+	} else if store, ok := s.roomStore.(OSSServiceStore); ok {
+		participant, err = store.LoadParticipant(ctx, livekit.RoomName(req.Room), livekit.ParticipantIdentity(req.Identity))
+	} else {
+		err = psrpc.ErrUnimplemented
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -198,8 +217,13 @@ func (s *RoomService) RemoveParticipant(ctx context.Context, req *livekit.RoomPa
 		return nil, twirpAuthError(err)
 	}
 
-	if _, err := s.roomStore.LoadParticipant(ctx, livekit.RoomName(req.Room), livekit.ParticipantIdentity(req.Identity)); err == ErrParticipantNotFound {
-		return nil, twirp.NotFoundError("participant not found")
+	if os, ok := s.roomStore.(OSSServiceStore); ok {
+		found, err := os.HasParticipant(ctx, livekit.RoomName(req.Room), livekit.ParticipantIdentity(req.Identity))
+		if err != nil {
+			return nil, err
+		} else if !found {
+			return nil, ErrParticipantNotFound
+		}
 	}
 
 	res, err := s.participantClient.RemoveParticipant(ctx, s.topicFormatter.ParticipantTopic(ctx, livekit.RoomName(req.Room), livekit.ParticipantIdentity(req.Identity)), req)
@@ -221,7 +245,7 @@ func (s *RoomService) MutePublishedTrack(ctx context.Context, req *livekit.MuteR
 }
 
 func (s *RoomService) UpdateParticipant(ctx context.Context, req *livekit.UpdateParticipantRequest) (*livekit.ParticipantInfo, error) {
-	RecordRequest(ctx, redactUpdateParticipantRequest(req))
+	RecordRequest(ctx, req)
 
 	AppendLogFields(ctx, "room", req.Room, "participant", req.Identity)
 
@@ -274,7 +298,7 @@ func (s *RoomService) UpdateSubscriptions(ctx context.Context, req *livekit.Upda
 }
 
 func (s *RoomService) SendData(ctx context.Context, req *livekit.SendDataRequest) (*livekit.SendDataResponse, error) {
-	RecordRequest(ctx, redactSendDataRequest(req))
+	RecordRequest(ctx, req)
 
 	roomName := livekit.RoomName(req.Room)
 	AppendLogFields(ctx, "room", roomName, "size", len(req.Data))
@@ -293,7 +317,7 @@ func (s *RoomService) SendData(ctx context.Context, req *livekit.SendDataRequest
 }
 
 func (s *RoomService) UpdateRoomMetadata(ctx context.Context, req *livekit.UpdateRoomMetadataRequest) (*livekit.Room, error) {
-	RecordRequest(ctx, redactUpdateRoomMetadataRequest(req))
+	RecordRequest(ctx, req)
 
 	AppendLogFields(ctx, "room", req.Room, "size", len(req.Metadata))
 	maxMetadataSize := int(s.limitConf.MaxMetadataSize)
@@ -305,9 +329,11 @@ func (s *RoomService) UpdateRoomMetadata(ctx context.Context, req *livekit.Updat
 		return nil, twirpAuthError(err)
 	}
 
-	_, _, err := s.roomStore.LoadRoom(ctx, livekit.RoomName(req.Room), false)
+	exists, err := s.roomStore.RoomExists(ctx, livekit.RoomName(req.Room))
 	if err != nil {
 		return nil, err
+	} else if !exists {
+		return nil, ErrRoomNotFound
 	}
 
 	room, err := s.roomClient.UpdateRoomMetadata(ctx, s.topicFormatter.RoomTopic(ctx, livekit.RoomName(req.Room)), req)
@@ -371,88 +397,4 @@ func (s *RoomService) PerformRpc(ctx context.Context, req *livekit.PerformRpcReq
 	res, err := s.participantClient.PerformRpc(ctx, s.topicFormatter.ParticipantTopic(ctx, roomName, livekit.ParticipantIdentity(req.DestinationIdentity)), req)
 	RecordResponse(ctx, res)
 	return res, err
-}
-
-func redactCreateRoomRequest(req *livekit.CreateRoomRequest) *livekit.CreateRoomRequest {
-	if req.Egress == nil && req.Metadata == "" {
-		// nothing to redact
-		return req
-	}
-
-	clone := utils.CloneProto(req)
-
-	if clone.Egress != nil {
-		if clone.Egress.Room != nil {
-			egress.RedactEncodedOutputs(clone.Egress.Room)
-		}
-		if clone.Egress.Participant != nil {
-			egress.RedactAutoEncodedOutput(clone.Egress.Participant)
-		}
-		if clone.Egress.Tracks != nil {
-			egress.RedactUpload(clone.Egress.Tracks)
-		}
-	}
-
-	// replace with size of metadata to provide visibility on request size
-	if clone.Metadata != "" {
-		clone.Metadata = fmt.Sprintf("__size: %d", len(clone.Metadata))
-	}
-
-	return clone
-}
-
-func redactUpdateParticipantRequest(req *livekit.UpdateParticipantRequest) *livekit.UpdateParticipantRequest {
-	if req.Metadata == "" && len(req.Attributes) == 0 {
-		return req
-	}
-
-	clone := utils.CloneProto(req)
-
-	// replace with size of metadata/attributes to provide visibility on request size
-	if clone.Metadata != "" {
-		clone.Metadata = fmt.Sprintf("__size: %d", len(clone.Metadata))
-	}
-
-	if len(clone.Attributes) != 0 {
-		keysSize := 0
-		valuesSize := 0
-		for k, v := range clone.Attributes {
-			keysSize += len(k)
-			valuesSize += len(v)
-		}
-
-		clone.Attributes = map[string]string{
-			"__num_elements": fmt.Sprintf("%d", len(clone.Attributes)),
-			"__keys_size":    fmt.Sprintf("%d", keysSize),
-			"__values_size":  fmt.Sprintf("%d", valuesSize),
-		}
-	}
-
-	return clone
-}
-
-func redactSendDataRequest(req *livekit.SendDataRequest) *livekit.SendDataRequest {
-	if len(req.Data) == 0 {
-		return req
-	}
-
-	clone := utils.CloneProto(req)
-
-	// replace with size of data to provide visibility on request size
-	clone.Data = []byte(fmt.Sprintf("__size: %d", len(clone.Data)))
-
-	return clone
-}
-
-func redactUpdateRoomMetadataRequest(req *livekit.UpdateRoomMetadataRequest) *livekit.UpdateRoomMetadataRequest {
-	if req.Metadata == "" {
-		return req
-	}
-
-	clone := utils.CloneProto(req)
-
-	// replace with size of metadata to provide visibility on request size
-	clone.Metadata = fmt.Sprintf("__size: %d", len(clone.Metadata))
-
-	return clone
 }

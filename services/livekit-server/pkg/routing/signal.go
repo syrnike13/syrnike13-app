@@ -94,7 +94,7 @@ func (r *signalClient) StartParticipantSignal(
 		"reqNodeID", nodeID,
 		"participant", pi.Identity,
 		"connID", connectionID,
-		"participantInit", pi,
+		"participantInit", &pi,
 		"startSession", logger.Proto(ss),
 	)
 
@@ -133,8 +133,8 @@ func (r *signalClient) StartParticipantSignal(
 			resChan,
 			signalResponseMessageReader{},
 			r.config,
-			prometheus.RecordSignalRequestSuccess,
-			prometheus.RecordSignalRequestFailure,
+			prometheus.RecordSignalResponseSuccess,
+			prometheus.RecordSignalResponseFailure,
 		)
 		l.Debugw("signal stream closed", "error", err)
 

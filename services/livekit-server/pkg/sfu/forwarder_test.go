@@ -20,6 +20,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/require"
 
+	"github.com/livekit/mediatransportutil/pkg/codec"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 
@@ -33,7 +34,13 @@ func disable(f *Forwarder) {
 }
 
 func newForwarder(codec webrtc.RTPCodecCapability, kind webrtc.RTPCodecType) *Forwarder {
-	f := NewForwarder(kind, logger.GetLogger(), true, nil)
+	f := NewForwarder(
+		kind,
+		logger.GetLogger(),
+		true, // skipReferenceTS
+		true, // disableOpportunisticAllocation
+		nil,
+	)
 	f.DetermineCodec(codec, nil, livekit.VideoLayer_MODE_UNUSED)
 	return f
 }
@@ -464,6 +471,9 @@ func TestForwarderProvisionalAllocate(t *testing.T) {
 	f.SetMaxPublishedLayer(buffer.DefaultMaxLayerSpatial)
 	f.SetMaxTemporalLayerSeen(buffer.DefaultMaxLayerTemporal)
 
+	// Reset to invalid layers for testing allocation from scratch
+	disable(f)
+
 	bitrates := Bitrates{
 		{1, 2, 3, 4},
 		{5, 6, 7, 8},
@@ -682,6 +692,9 @@ func TestForwarderProvisionalAllocateMute(t *testing.T) {
 	f.SetMaxSpatialLayer(buffer.DefaultMaxLayerSpatial)
 	f.SetMaxTemporalLayer(buffer.DefaultMaxLayerTemporal)
 
+	// Reset to invalid layers for testing muted state
+	disable(f)
+
 	bitrates := Bitrates{
 		{1, 2, 3, 4},
 		{5, 6, 7, 8},
@@ -722,6 +735,9 @@ func TestForwarderProvisionalAllocateGetCooperativeTransition(t *testing.T) {
 	f.SetMaxTemporalLayer(buffer.DefaultMaxLayerTemporal)
 	f.SetMaxPublishedLayer(buffer.DefaultMaxLayerSpatial)
 	f.SetMaxTemporalLayerSeen(buffer.DefaultMaxLayerTemporal)
+
+	// Reset to invalid layers for testing cooperative transition from scratch
+	disable(f)
 
 	availableLayers := []int32{0, 1, 2}
 	bitrates := Bitrates{
@@ -1301,6 +1317,7 @@ func TestForwarderGetTranslationParamsAudio(t *testing.T) {
 
 	// should lock onto the first in-order packet
 	expectedTP = TranslationParams{
+		isStarting: true,
 		rtp: TranslationParamsRTP{
 			snOrdering:        SequenceNumberOrderingContiguous,
 			extSequenceNumber: 23333,
@@ -1463,7 +1480,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		Marker:         true,
 		IsOutOfOrder:   true,
 	}
-	vp8 := &buffer.VP8{
+	vp8 := &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1497,7 +1514,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		PayloadSize:    20,
 		Marker:         true,
 	}
-	vp8 = &buffer.VP8{
+	vp8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1535,7 +1552,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 	require.Equal(t, expectedTP, actualTP)
 
 	// should lock onto packet (key frame)
-	vp8 = &buffer.VP8{
+	vp8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1551,7 +1568,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		IsKeyFrame: true,
 	}
 	extPkt, _ = testutils.GetTestExtPacketVP8(params, vp8)
-	expectedVP8 := &buffer.VP8{
+	expectedVP8 := &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1566,8 +1583,9 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		HeaderSize: 6,
 		IsKeyFrame: true,
 	}
-	marshalledVP8, err := expectedVP8.Marshal()
+	marshalledVP8, _ := expectedVP8.Marshal()
 	expectedTP = TranslationParams{
+		isStarting:  true,
 		isSwitching: true,
 		isResuming:  true,
 		rtp: TranslationParamsRTP{
@@ -1631,7 +1649,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		PayloadSize:    20,
 	}
 	extPkt, _ = testutils.GetTestExtPacketVP8(params, vp8)
-	expectedVP8 = &buffer.VP8{
+	expectedVP8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1668,7 +1686,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		SSRC:           0x12345678,
 		PayloadSize:    20,
 	}
-	vp8 = &buffer.VP8{
+	vp8 = &codec.VP8{
 		FirstByte:  25,
 		S:          true,
 		I:          true,
@@ -1685,7 +1703,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		IsKeyFrame: true,
 	}
 	extPkt, _ = testutils.GetTestExtPacketVP8(params, vp8)
-	expectedVP8 = &buffer.VP8{
+	expectedVP8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1722,7 +1740,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		SSRC:           0x12345678,
 		PayloadSize:    20,
 	}
-	vp8 = &buffer.VP8{
+	vp8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1757,7 +1775,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		SSRC:           0x12345678,
 		PayloadSize:    20,
 	}
-	vp8 = &buffer.VP8{
+	vp8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1773,7 +1791,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		IsKeyFrame: false,
 	}
 	extPkt, _ = testutils.GetTestExtPacketVP8(params, vp8)
-	expectedVP8 = &buffer.VP8{
+	expectedVP8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1854,7 +1872,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 		SSRC:           0x87654321,
 		PayloadSize:    20,
 	}
-	vp8 = &buffer.VP8{
+	vp8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          false,
@@ -1871,7 +1889,7 @@ func TestForwarderGetTranslationParamsVideo(t *testing.T) {
 	}
 	extPkt, _ = testutils.GetTestExtPacketVP8(params, vp8)
 
-	expectedVP8 = &buffer.VP8{
+	expectedVP8 = &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1913,7 +1931,7 @@ func TestForwarderGetSnTsForPadding(t *testing.T) {
 		SSRC:           0x12345678,
 		PayloadSize:    20,
 	}
-	vp8 := &buffer.VP8{
+	vp8 := &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -1950,7 +1968,7 @@ func TestForwarderGetSnTsForPadding(t *testing.T) {
 	clockRate := uint32(0)
 	frameRate := uint32(5)
 	var sntsExpected = make([]SnTs, numPadding)
-	for i := 0; i < numPadding; i++ {
+	for i := range numPadding {
 		sntsExpected[i] = SnTs{
 			extSequenceNumber: 23333 + uint64(i) + 1,
 			extTimestamp:      0xabcdef + (uint64(i)*uint64(clockRate))/uint64(frameRate),
@@ -1962,7 +1980,7 @@ func TestForwarderGetSnTsForPadding(t *testing.T) {
 	snts, err = f.GetSnTsForPadding(numPadding, 0, false)
 	require.NoError(t, err)
 
-	for i := 0; i < numPadding; i++ {
+	for i := range numPadding {
 		sntsExpected[i] = SnTs{
 			extSequenceNumber: 23338 + uint64(i) + 1,
 			extTimestamp:      0xabcdef + (uint64(i+1)*uint64(clockRate))/uint64(frameRate),
@@ -1980,7 +1998,7 @@ func TestForwarderGetSnTsForBlankFrames(t *testing.T) {
 		SSRC:           0x12345678,
 		PayloadSize:    20,
 	}
-	vp8 := &buffer.VP8{
+	vp8 := &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -2057,7 +2075,7 @@ func TestForwarderGetPaddingVP8(t *testing.T) {
 		SSRC:           0x12345678,
 		PayloadSize:    20,
 	}
-	vp8 := &buffer.VP8{
+	vp8 := &codec.VP8{
 		FirstByte:  25,
 		I:          true,
 		M:          true,
@@ -2084,7 +2102,7 @@ func TestForwarderGetPaddingVP8(t *testing.T) {
 	_, _ = f.GetTranslationParams(extPkt, 0)
 
 	// getting padding with frame end needed, should repeat the last picture id
-	expectedVP8 := buffer.VP8{
+	expectedVP8 := codec.VP8{
 		FirstByte:  16,
 		I:          true,
 		M:          true,
@@ -2106,7 +2124,7 @@ func TestForwarderGetPaddingVP8(t *testing.T) {
 	require.Equal(t, marshalledVP8, buf)
 
 	// getting padding with no frame end needed, should get next picture id
-	expectedVP8 = buffer.VP8{
+	expectedVP8 = codec.VP8{
 		FirstByte:  16,
 		I:          true,
 		M:          true,

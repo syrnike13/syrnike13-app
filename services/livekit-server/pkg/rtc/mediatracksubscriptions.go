@@ -19,7 +19,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/syrnike13/livekit-server/pkg/sfu/mime"
+	"github.com/livekit/protocol/codecs/mime"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 	"github.com/pion/webrtc/v4"
@@ -27,7 +27,6 @@ import (
 
 	"github.com/syrnike13/livekit-server/pkg/rtc/types"
 	"github.com/syrnike13/livekit-server/pkg/sfu"
-	"github.com/syrnike13/livekit-server/pkg/telemetry"
 )
 
 var (
@@ -53,8 +52,6 @@ type MediaTrackSubscriptionsParams struct {
 
 	ReceiverConfig   ReceiverConfig
 	SubscriberConfig DirectionConfig
-
-	Telemetry telemetry.TelemetryService
 
 	Logger logger.Logger
 }
@@ -112,7 +109,7 @@ func (t *MediaTrackSubscriptions) AddSubscriber(sub types.LocalParticipant, wr *
 		Subscriber:         sub,
 		MediaTrack:         t.params.MediaTrack,
 		AdaptiveStream:     sub.GetAdaptiveStream(),
-		Telemetry:          t.params.Telemetry,
+		TelemetryListener:  sub.GetTelemetryListener(),
 		WrappedReceiver:    wr,
 		IsRelayed:          t.params.IsRelayed,
 		OnDownTrackCreated: t.onDownTrackCreated,
@@ -215,7 +212,7 @@ func (t *MediaTrackSubscriptions) AddSubscriber(sub types.LocalParticipant, wr *
 		}
 
 		sub.VerifySubscribeParticipantInfo(subTrack.PublisherID(), subTrack.PublisherVersion())
-		if sub.SupportsTransceiverReuse() {
+		if sub.SupportsTransceiverReuse(t.params.MediaTrack) {
 			//
 			// AddTrack will create a new transceiver or re-use an unused one
 			// if the attributes match. This prevents SDP from bloating
@@ -250,6 +247,7 @@ func (t *MediaTrackSubscriptions) AddSubscriber(sub types.LocalParticipant, wr *
 	// But, the subscription could be removed early if the published track is closed
 	// while adding subscription. In those cases, subscription manager would not have set
 	// the `OnClose` callback. So, set it here to handle cases of early close.
+	// Subscription manager will reset this if this subscription proceeds till that point.
 	subTrack.OnClose(func(isExpectedToResume bool) {
 		if !isExpectedToResume {
 			if err := sub.RemoveTrackLocal(sender); err != nil {
@@ -287,10 +285,10 @@ func (t *MediaTrackSubscriptions) closeSubscribedTrack(subTrack types.Subscribed
 	}
 
 	if isExpectedToResume {
-		dt.CloseWithFlush(false)
+		dt.CloseWithFlush(false, false)
 	} else {
 		// flushing blocks, avoid blocking when publisher removes all its subscribers
-		go dt.CloseWithFlush(true)
+		go dt.CloseWithFlush(true, true)
 	}
 }
 
@@ -355,8 +353,8 @@ func (t *MediaTrackSubscriptions) getAllSubscribedTracksLocked() []types.Subscri
 	return subTracks
 }
 
-func (t *MediaTrackSubscriptions) DebugInfo() []map[string]interface{} {
-	subscribedTrackInfo := make([]map[string]interface{}, 0)
+func (t *MediaTrackSubscriptions) DebugInfo() []map[string]any {
+	subscribedTrackInfo := make([]map[string]any, 0)
 	for _, val := range t.getAllSubscribedTracks() {
 		if st, ok := val.(*SubscribedTrack); ok {
 			subscribedTrackInfo = append(subscribedTrackInfo, st.DownTrack().DebugInfo())

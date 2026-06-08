@@ -26,10 +26,11 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/livekit/protocol/livekit"
+
 	"github.com/syrnike13/livekit-server/pkg/telemetry"
 	"github.com/syrnike13/livekit-server/pkg/telemetry/prometheus"
 	"github.com/syrnike13/livekit-server/pkg/utils"
-	"github.com/livekit/protocol/livekit"
 )
 
 type twirpRequestFields struct {
@@ -46,9 +47,9 @@ type twirpLoggerKey struct{}
 // License: Apache-2.0
 func TwirpLogger() *twirp.ServerHooks {
 	loggerPool := &sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &twirpLogger{
-				fieldsOrig: make([]interface{}, 0, 30),
+				fieldsOrig: make([]any, 0, 30),
 			}
 		},
 	}
@@ -67,12 +68,20 @@ func TwirpLogger() *twirp.ServerHooks {
 type twirpLogger struct {
 	twirpRequestFields
 
-	fieldsOrig []interface{}
-	fields     []interface{}
+	fieldsOrig []any
+	fields     []any
 	startedAt  time.Time
+	deadline   time.Time
 }
 
-func AppendLogFields(ctx context.Context, fields ...interface{}) {
+func (t *twirpLogger) reset() {
+	t.fields = t.fieldsOrig
+	t.error = nil
+	t.startedAt = time.Time{}
+	t.deadline = time.Time{}
+}
+
+func AppendLogFields(ctx context.Context, fields ...any) {
 	r, ok := ctx.Value(twirpLoggerKey{}).(*twirpLogger)
 	if !ok || r == nil {
 		return
@@ -84,6 +93,9 @@ func AppendLogFields(ctx context.Context, fields ...interface{}) {
 func loggerRequestReceived(ctx context.Context, twirpLoggerPool *sync.Pool) (context.Context, error) {
 	r := twirpLoggerPool.Get().(*twirpLogger)
 	r.startedAt = time.Now()
+	if deadline, ok := ctx.Deadline(); ok {
+		r.deadline = deadline
+	}
 	r.fields = r.fieldsOrig
 	r.error = nil
 
@@ -114,7 +126,14 @@ func loggerResponseSent(ctx context.Context, twirpLoggerPool *sync.Pool) {
 		return
 	}
 
-	r.fields = append(r.fields, "duration", time.Since(r.startedAt))
+	duration := time.Since(r.startedAt)
+	r.fields = append(r.fields, "duration", duration)
+	if !r.deadline.IsZero() {
+		r.fields = append(r.fields, "requestedTimeout", r.deadline.Sub(r.startedAt))
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		r.fields = append(r.fields, "modifiedTimeout", deadline.Sub(r.startedAt))
+	}
 
 	if status, ok := twirp.StatusCode(ctx); ok {
 		r.fields = append(r.fields, "status", status)
@@ -126,10 +145,10 @@ func loggerResponseSent(ctx context.Context, twirpLoggerPool *sync.Pool) {
 
 	serviceMethod := "API " + r.service + "." + r.method
 	utils.GetLogger(ctx).WithComponent(utils.ComponentAPI).Infow(serviceMethod, r.fields...)
+	prometheus.RecordTwirpRequestLatency(r.service, r.method, duration)
 
-	r.fields = r.fieldsOrig
-	r.error = nil
-
+	// reset fields and return to pool
+	r.reset()
 	twirpLoggerPool.Put(r)
 }
 
@@ -391,7 +410,7 @@ func telemetryResponseSent(
 	}
 	a.NodeId = string(nodeID)
 	if statusCode, ok := twirp.StatusCode(ctx); ok {
-		if status, err := strconv.Atoi(statusCode); err == nil {
+		if status, err := strconv.ParseInt(statusCode, 10, 32); err == nil {
 			a.Status = int32(status)
 		}
 	}

@@ -28,13 +28,14 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/syrnike13/livekit-server/pkg/rtc"
-	"github.com/syrnike13/livekit-server/pkg/telemetry/prometheus"
 	"github.com/livekit/protocol/logger"
+	"github.com/livekit/protocol/tracer/jaeger"
 
 	"github.com/syrnike13/livekit-server/pkg/config"
 	"github.com/syrnike13/livekit-server/pkg/routing"
+	"github.com/syrnike13/livekit-server/pkg/rtc"
 	"github.com/syrnike13/livekit-server/pkg/service"
+	"github.com/syrnike13/livekit-server/pkg/telemetry/prometheus"
 	"github.com/syrnike13/livekit-server/version"
 )
 
@@ -197,10 +198,7 @@ func getConfig(c *cli.Command) (*config.Config, error) {
 		return nil, err
 	}
 
-	strictMode := true
-	if c.Bool("disable-strict-config") {
-		strictMode = false
-	}
+	strictMode := !c.Bool("disable-strict-config")
 
 	conf, err := config.NewConfig(confString, strictMode, c, baseFlags)
 	if err != nil {
@@ -246,15 +244,22 @@ func getConfig(c *cli.Command) (*config.Config, error) {
 	return conf, nil
 }
 
-func startServer(_ context.Context, c *cli.Command) error {
+func startServer(ctx context.Context, c *cli.Command) error {
 	conf, err := getConfig(c)
 	if err != nil {
 		return err
+	}
+	if url := conf.Trace.JaegerURL; url != "" {
+		jaeger.Configure(ctx, url, "livekit")
 	}
 
 	// validate API key length
 	err = conf.ValidateKeys()
 	if err != nil {
+		return err
+	}
+
+	if err = conf.LoadTURNSecrets(); err != nil {
 		return err
 	}
 
@@ -304,7 +309,7 @@ func startServer(_ context.Context, c *cli.Command) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	go func() {
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			sig := <-sigChan
 			force := i > 0
 			logger.Infow("exit requested, shutting down", "signal", sig, "force", force)

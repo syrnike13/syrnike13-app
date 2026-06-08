@@ -5,8 +5,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/livekit/protocol/livekit"
 	"github.com/syrnike13/livekit-server/pkg/routing"
+	"github.com/livekit/protocol/livekit"
 )
 
 type FakeRouter struct {

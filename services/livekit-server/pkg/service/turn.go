@@ -21,9 +21,11 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jxskiss/base62"
-	"github.com/pion/turn/v4"
+	"github.com/pion/stun/v3"
+	"github.com/pion/turn/v5"
 	"github.com/pkg/errors"
 
 	"github.com/livekit/protocol/auth"
@@ -40,9 +42,9 @@ const (
 	LivekitRealm = "livekit"
 
 	allocateRetries = 50
-	turnMinPort     = 1024
-	turnMaxPort     = 30000
 )
+
+var ErrExpired = errors.New("expired")
 
 func NewTurnServer(conf *config.Config, authHandler turn.AuthHandler, standalone bool) (*turn.Server, error) {
 	turnConf := conf.TURN
@@ -52,29 +54,7 @@ func NewTurnServer(conf *config.Config, authHandler turn.AuthHandler, standalone
 
 	if turnConf.TLSPort <= 0 && turnConf.UDPPort <= 0 {
 		return nil, errors.New("invalid TURN ports")
-	}
-
-	serverConfig := turn.ServerConfig{
-		Realm:         LivekitRealm,
-		AuthHandler:   authHandler,
-		LoggerFactory: pionlogger.NewLoggerFactory(logger.GetLogger()),
-	}
-	var relayAddrGen turn.RelayAddressGenerator = &turn.RelayAddressGeneratorPortRange{
-		RelayAddress: net.ParseIP(conf.RTC.NodeIP),
-		Address:      "0.0.0.0",
-		MinPort:      turnConf.RelayPortRangeStart,
-		MaxPort:      turnConf.RelayPortRangeEnd,
-		MaxRetries:   allocateRetries,
-	}
-	if standalone {
-		relayAddrGen = telemetry.NewRelayAddressGenerator(relayAddrGen)
-	}
-	var logValues []interface{}
-
-	logValues = append(logValues, "turn.relay_range_start", turnConf.RelayPortRangeStart)
-	logValues = append(logValues, "turn.relay_range_end", turnConf.RelayPortRangeEnd)
-
-	if turnConf.TLSPort > 0 {
+	} else if turnConf.TLSPort > 0 {
 		if turnConf.Domain == "" {
 			return nil, errors.New("TURN domain required")
 		}
@@ -82,64 +62,129 @@ func NewTurnServer(conf *config.Config, authHandler turn.AuthHandler, standalone
 		if !IsValidDomain(turnConf.Domain) {
 			return nil, errors.New("TURN domain is not correct")
 		}
-
-		if !turnConf.ExternalTLS {
-			cert, err := tls.LoadX509KeyPair(turnConf.CertFile, turnConf.KeyFile)
-			if err != nil {
-				return nil, errors.Wrap(err, "TURN tls cert required")
-			}
-
-			tlsListener, err := tls.Listen("tcp4", "0.0.0.0:"+strconv.Itoa(turnConf.TLSPort),
-				&tls.Config{
-					MinVersion:   tls.VersionTLS12,
-					Certificates: []tls.Certificate{cert},
-				})
-			if err != nil {
-				return nil, errors.Wrap(err, "could not listen on TURN TCP port")
-			}
-			if standalone {
-				tlsListener = telemetry.NewListener(tlsListener)
-			}
-
-			listenerConfig := turn.ListenerConfig{
-				Listener:              tlsListener,
-				RelayAddressGenerator: relayAddrGen,
-			}
-			serverConfig.ListenerConfigs = append(serverConfig.ListenerConfigs, listenerConfig)
-		} else {
-			tcpListener, err := net.Listen("tcp4", "0.0.0.0:"+strconv.Itoa(turnConf.TLSPort))
-			if err != nil {
-				return nil, errors.Wrap(err, "could not listen on TURN TCP port")
-			}
-			if standalone {
-				tcpListener = telemetry.NewListener(tcpListener)
-			}
-
-			listenerConfig := turn.ListenerConfig{
-				Listener:              tcpListener,
-				RelayAddressGenerator: relayAddrGen,
-			}
-			serverConfig.ListenerConfigs = append(serverConfig.ListenerConfigs, listenerConfig)
-		}
-		logValues = append(logValues, "turn.portTLS", turnConf.TLSPort, "turn.externalTLS", turnConf.ExternalTLS)
 	}
 
-	if turnConf.UDPPort > 0 {
-		udpListener, err := net.ListenPacket("udp4", "0.0.0.0:"+strconv.Itoa(turnConf.UDPPort))
-		if err != nil {
-			return nil, errors.Wrap(err, "could not listen on TURN UDP port")
+	serverConfig := turn.ServerConfig{
+		Realm:         LivekitRealm,
+		AuthHandler:   authHandler,
+		LoggerFactory: pionlogger.NewLoggerFactory(logger.GetLogger()),
+	}
+
+	var logValues []any
+	logValues = append(logValues, "turn.relay_range_start", turnConf.RelayPortRangeStart)
+	logValues = append(logValues, "turn.relay_range_end", turnConf.RelayPortRangeEnd)
+
+	for _, addr := range turnConf.BindAddresses {
+		var nodeIP string
+		if net.ParseIP(addr).To4() != nil {
+			nodeIP = conf.RTC.NodeIP.V4
+		} else {
+			nodeIP = conf.RTC.NodeIP.V6
+		}
+		if nodeIP == "" {
+			return nil, errors.New("no matching node IP for relay")
 		}
 
+		var relayAddrGen turn.RelayAddressGenerator = &turn.RelayAddressGeneratorPortRange{
+			RelayAddress: net.ParseIP(nodeIP),
+			Address:      addr,
+			MinPort:      turnConf.RelayPortRangeStart,
+			MaxPort:      turnConf.RelayPortRangeEnd,
+			MaxRetries:   allocateRetries,
+		}
 		if standalone {
-			udpListener = telemetry.NewPacketConn(udpListener, prometheus.Incoming)
+			relayAddrGen = telemetry.NewRelayAddressGenerator(relayAddrGen)
 		}
 
-		packetConfig := turn.PacketConnConfig{
-			PacketConn:            udpListener,
-			RelayAddressGenerator: relayAddrGen,
+		permissionHandler := func(_clientAddr net.Addr, peerIP net.IP) bool {
+			// restricted peer IP is denied by default, unless allowed by the allow list,
+			if peerIP.IsLoopback() ||
+				peerIP.IsLinkLocalUnicast() ||
+				peerIP.IsLinkLocalMulticast() ||
+				peerIP.IsMulticast() ||
+				peerIP.IsPrivate() ||
+				peerIP.IsUnspecified() {
+				allowed := false
+				for _, cidr := range turnConf.AllowRestrictedPeerCIDRs {
+					if _, ipnet, err := net.ParseCIDR(cidr); err == nil {
+						if ipnet.Contains(peerIP) {
+							allowed = true
+							break
+						}
+					}
+				}
+				if !allowed {
+					return false
+				}
+
+				// if allowed, check deny list for overrides
+			}
+
+			for _, cidr := range turnConf.DenyPeerCIDRs {
+				if _, ipnet, err := net.ParseCIDR(cidr); err == nil {
+					if ipnet.Contains(peerIP) {
+						return false
+					}
+				}
+			}
+
+			return true
 		}
-		serverConfig.PacketConnConfigs = append(serverConfig.PacketConnConfigs, packetConfig)
-		logValues = append(logValues, "turn.portUDP", turnConf.UDPPort)
+
+		if turnConf.TLSPort > 0 {
+			var listener net.Listener
+			var listenerErr error
+
+			if turnConf.ExternalTLS {
+				listener, listenerErr = net.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(turnConf.TLSPort)))
+			} else {
+				cert, err := tls.LoadX509KeyPair(turnConf.CertFile, turnConf.KeyFile)
+				if err != nil {
+					return nil, errors.Wrap(err, "TURN tls cert required")
+				}
+
+				listener, listenerErr = tls.Listen("tcp", net.JoinHostPort(addr, strconv.Itoa(turnConf.TLSPort)),
+					&tls.Config{
+						MinVersion:   tls.VersionTLS12,
+						Certificates: []tls.Certificate{cert},
+					})
+			}
+
+			if listenerErr != nil {
+				return nil, errors.Wrap(listenerErr, "could not listen on TURN TCP port")
+			}
+			if standalone {
+				listener = telemetry.NewListener(listener)
+			}
+
+			listenerConfig := turn.ListenerConfig{
+				Listener:              listener,
+				RelayAddressGenerator: relayAddrGen,
+				PermissionHandler:     permissionHandler,
+			}
+			serverConfig.ListenerConfigs = append(serverConfig.ListenerConfigs, listenerConfig)
+
+			logValues = append(logValues, "turn.portTLS", turnConf.TLSPort, "turn.externalTLS", turnConf.ExternalTLS)
+		}
+
+		if turnConf.UDPPort > 0 {
+			udpListener, err := net.ListenPacket("udp", net.JoinHostPort(addr, strconv.Itoa(turnConf.UDPPort)))
+			if err != nil {
+				return nil, errors.Wrap(err, "could not listen on TURN UDP port")
+			}
+
+			if standalone {
+				udpListener = telemetry.NewPacketConn(udpListener, prometheus.Incoming)
+			}
+
+			packetConfig := turn.PacketConnConfig{
+				PacketConn:            udpListener,
+				RelayAddressGenerator: relayAddrGen,
+				PermissionHandler:     permissionHandler,
+			}
+			serverConfig.PacketConnConfigs = append(serverConfig.PacketConnConfigs, packetConfig)
+			logValues = append(logValues, "turn.portUDP", turnConf.UDPPort)
+		}
 	}
 
 	logger.Infow("Starting TURN server", logValues...)
@@ -160,46 +205,82 @@ func NewTURNAuthHandler(keyProvider auth.KeyProvider) *TURNAuthHandler {
 	}
 }
 
-func (h *TURNAuthHandler) CreateUsername(apiKey string, pID livekit.ParticipantID) string {
-	return base62.EncodeToString([]byte(fmt.Sprintf("%s|%s", apiKey, pID)))
+func (h *TURNAuthHandler) CreateUsername(apiKey string, pID livekit.ParticipantID, ttlSeconds int) (string, int64) {
+	expiry := time.Now().Add(time.Duration(ttlSeconds) * time.Second).Unix()
+	return base62.EncodeToString(fmt.Appendf(nil, "%s|%s|%d", apiKey, pID, expiry)), expiry
 }
 
-func (h *TURNAuthHandler) ParseUsername(username string) (apiKey string, pID livekit.ParticipantID, err error) {
+func (h *TURNAuthHandler) ParseUsername(username string) (string, livekit.ParticipantID, int64, error) {
 	decoded, err := base62.DecodeString(username)
 	if err != nil {
-		return "", "", err
+		return "", "", 0, err
 	}
 	parts := strings.Split(string(decoded), "|")
-	if len(parts) != 2 {
-		return "", "", errors.New("invalid username")
+	if len(parts) != 3 {
+		return "", "", 0, errors.New("invalid username")
+	}
+	expiry, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if expiry == 0 {
+		return "", "", 0, ErrExpired
 	}
 
-	return parts[0], livekit.ParticipantID(parts[1]), nil
+	return parts[0], livekit.ParticipantID(parts[1]), expiry, nil
 }
 
-func (h *TURNAuthHandler) CreatePassword(apiKey string, pID livekit.ParticipantID) (string, error) {
+func (h *TURNAuthHandler) CreatePassword(apiKey string, pID livekit.ParticipantID, expiry int64) (string, error) {
+	if expiry == 0 || time.Now().After(time.Unix(expiry, 0)) {
+		return "", ErrExpired
+	}
+	return h.computePassword(apiKey, pID, expiry)
+}
+
+func (h *TURNAuthHandler) computePassword(apiKey string, pID livekit.ParticipantID, expiry int64) (string, error) {
 	secret := h.keyProvider.GetSecret(apiKey)
 	if secret == "" {
 		return "", ErrInvalidAPIKey
 	}
-	keyInput := fmt.Sprintf("%s|%s", secret, pID)
+
+	keyInput := fmt.Sprintf("%s|%s|%d", secret, pID, expiry)
+
 	sum := sha256.Sum256([]byte(keyInput))
 	return base62.EncodeToString(sum[:]), nil
 }
 
-func (h *TURNAuthHandler) HandleAuth(username, realm string, srcAddr net.Addr) (key []byte, ok bool) {
+func (h *TURNAuthHandler) HandleAuth(ra *turn.RequestAttributes) (userID string, key []byte, ok bool) {
+	username := ra.Username
 	decoded, err := base62.DecodeString(username)
 	if err != nil {
-		return nil, false
+		return "", nil, false
 	}
 	parts := strings.Split(string(decoded), "|")
-	if len(parts) != 2 {
-		return nil, false
+	if len(parts) != 3 {
+		return "", nil, false
 	}
-	password, err := h.CreatePassword(parts[0], livekit.ParticipantID(parts[1]))
+	expiry, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
-		logger.Warnw("could not create TURN password", err, "username", username)
-		return nil, false
+		return "", nil, false
 	}
-	return turn.GenerateAuthKey(username, LivekitRealm, password), true
+	if expiry == 0 {
+		return "", nil, false
+	}
+	expiryTime := time.Unix(expiry, 0)
+	if time.Now().After(expiryTime) {
+		// TTL only applies to initial allocation. Refresh / CreatePermission /
+		// ChannelBind / Send / Data requests are still authenticated against the
+		// username/password but skip the TTL check so long-running sessions can
+		// keep refreshing past the credential expiry.
+		if ra.Method == stun.MethodAllocate {
+			logger.Infow("TURN credential expired", "username", decoded, "participantID", parts[1], "expiry", expiryTime, "method", ra.Method)
+			return "", nil, false
+		}
+	}
+	password, err := h.computePassword(parts[0], livekit.ParticipantID(parts[1]), expiry)
+	if err != nil {
+		logger.Warnw("could not create TURN password", err, "username", decoded)
+		return "", nil, false
+	}
+	return parts[1], turn.GenerateAuthKey(username, LivekitRealm, password), true
 }

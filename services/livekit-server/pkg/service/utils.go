@@ -15,10 +15,13 @@
 package service
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"regexp"
@@ -39,7 +42,33 @@ import (
 	"github.com/livekit/protocol/logger"
 )
 
-func handleError(w http.ResponseWriter, r *http.Request, status int, err error, keysAndValues ...interface{}) {
+var (
+	ErrGzipReadFailed = errors.New("cannot read decompressed data")
+	ErrGzipTooLarge   = errors.New("decompressed data too large")
+)
+
+var gzipReaderPool = sync.Pool{
+	New: func() any { return &gzip.Reader{} },
+}
+
+func DecompressGzip(compressed []byte) ([]byte, error) {
+	reader := gzipReaderPool.Get().(*gzip.Reader)
+	defer gzipReaderPool.Put(reader)
+	if err := reader.Reset(bytes.NewReader(compressed)); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrGzipReadFailed, err)
+	}
+
+	out, err := io.ReadAll(io.LimitReader(reader, http.DefaultMaxHeaderBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrGzipReadFailed, err)
+	}
+	if len(out) > http.DefaultMaxHeaderBytes {
+		return nil, ErrGzipTooLarge
+	}
+	return out, nil
+}
+
+func handleError(w http.ResponseWriter, r *http.Request, status int, err error, keysAndValues ...any) {
 	keysAndValues = append(keysAndValues, "status", status)
 	if r != nil && r.URL != nil {
 		keysAndValues = append(keysAndValues, "method", r.Method, "path", r.URL.Path)
@@ -50,12 +79,12 @@ func handleError(w http.ResponseWriter, r *http.Request, status int, err error, 
 	w.WriteHeader(status)
 }
 
-func HandleError(w http.ResponseWriter, r *http.Request, status int, err error, keysAndValues ...interface{}) {
+func HandleError(w http.ResponseWriter, r *http.Request, status int, err error, keysAndValues ...any) {
 	handleError(w, r, status, err, keysAndValues...)
 	_, _ = w.Write([]byte(err.Error()))
 }
 
-func HandleErrorJson(w http.ResponseWriter, r *http.Request, status int, err error, keysAndValues ...interface{}) {
+func HandleErrorJson(w http.ResponseWriter, r *http.Request, status int, err error, keysAndValues ...any) {
 	handleError(w, r, status, err, keysAndValues...)
 	json.NewEncoder(w).Encode(struct {
 		Error string `json:"error"`
@@ -109,13 +138,17 @@ func SetRoomConfiguration(createRequest *livekit.CreateRoomRequest, conf *liveki
 	createRequest.MaxPlayoutDelay = conf.MaxPlayoutDelay
 	createRequest.SyncStreams = conf.SyncStreams
 	createRequest.Metadata = conf.Metadata
+	createRequest.Tags = conf.Tags
 }
 
 func ParseClientInfo(r *http.Request) *livekit.ClientInfo {
 	values := r.Form
 	ci := &livekit.ClientInfo{}
-	if pv, err := strconv.Atoi(values.Get("protocol")); err == nil {
+	if pv, err := strconv.ParseInt(values.Get("protocol"), 10, 32); err == nil {
 		ci.Protocol = int32(pv)
+	}
+	if cp, err := strconv.ParseInt(values.Get("client_protocol"), 10, 32); err == nil {
+		ci.ClientProtocol = int32(cp)
 	}
 	sdkString := values.Get("sdk")
 	switch sdkString {
@@ -143,6 +176,8 @@ func ParseClientInfo(r *http.Request) *livekit.ClientInfo {
 		ci.Sdk = livekit.ClientInfo_UNITY_WEB
 	case "node":
 		ci.Sdk = livekit.ClientInfo_NODE
+	case "esp32":
+		ci.Sdk = livekit.ClientInfo_ESP32
 	}
 
 	ci.Version = values.Get("version")
@@ -152,6 +187,18 @@ func ParseClientInfo(r *http.Request) *livekit.ClientInfo {
 	ci.BrowserVersion = values.Get("browser_version")
 	ci.DeviceModel = values.Get("device_model")
 	ci.Network = values.Get("network")
+
+	if capStr := values.Get("capabilities"); capStr != "" {
+		for _, name := range strings.Split(capStr, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if v, ok := livekit.ClientInfo_Capability_value[name]; ok {
+				ci.Capabilities = append(ci.Capabilities, livekit.ClientInfo_Capability(v))
+			}
+		}
+	}
 
 	AugmentClientInfo(ci, r)
 
@@ -166,13 +213,13 @@ var (
 func createUserAgentParserWithCustomRules() (*uaparser.Parser, error) {
 	defaultYaml := uaparser.DefinitionYaml
 
-	rules := make(map[string]interface{})
+	rules := make(map[string]any)
 	err := yaml.Unmarshal(defaultYaml, rules)
 	if err != nil {
 		return nil, err
 	}
 
-	rules["user_agent_parsers"] = append(rules["user_agent_parsers"].([]interface{}), map[string]interface{}{
+	rules["user_agent_parsers"] = append(rules["user_agent_parsers"].([]any), map[string]any{
 		"regex":              "OBS-Studio\\/([0-9\\.]+)",
 		"family_replacement": "OBS Studio",
 		"v1_replacement":     "$1",
@@ -199,6 +246,10 @@ func getUserAgentParser() *uaparser.Parser {
 }
 
 func AugmentClientInfo(ci *livekit.ClientInfo, req *http.Request) {
+	if ci == nil {
+		return
+	}
+
 	// get real address (forwarded http header) - check Cloudflare headers first, fall back to X-Forwarded-For
 	ci.Address = GetClientIP(req)
 
@@ -352,4 +403,20 @@ func ValidateConnectRequest(
 
 	res.grants = claims
 	return res, http.StatusOK, nil
+}
+
+func IsRTCPath(path string) bool {
+	return path == "/rtc" || path == "/rtc/v1"
+}
+
+func IsRTCValidatePath(path string) bool {
+	return path == "/rtc/validate" || path == "/rtc/v1/validate"
+}
+
+func IsAgentWorkerPath(path string) bool {
+	return path == "/agent"
+}
+
+func IsAgentPath(path string) bool {
+	return strings.HasPrefix(path, "/agent")
 }

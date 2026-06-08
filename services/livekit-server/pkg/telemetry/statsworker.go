@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/syrnike13/livekit-server/pkg/utils"
@@ -51,6 +52,13 @@ func (s *ReferenceCount) Release(guard *ReferenceGuard) bool {
 	return s.count == 0
 }
 
+func (s ReferenceCount) MarshalLogObject(e zapcore.ObjectEncoder) error {
+	e.AddInt("count", s.count)
+	return nil
+}
+
+// ----------------------------------------
+
 // StatsWorker handles participant stats
 type StatsWorker struct {
 	next *StatsWorker
@@ -59,7 +67,6 @@ type StatsWorker struct {
 	t                   TelemetryService
 	roomID              livekit.RoomID
 	roomName            livekit.RoomName
-	roomMetadata        string
 	participantID       livekit.ParticipantID
 	participantIdentity livekit.ParticipantIdentity
 	isConnected         bool
@@ -76,7 +83,6 @@ func newStatsWorker(
 	t TelemetryService,
 	roomID livekit.RoomID,
 	roomName livekit.RoomName,
-	roomMetadata string,
 	participantID livekit.ParticipantID,
 	identity livekit.ParticipantIdentity,
 	guard *ReferenceGuard,
@@ -86,7 +92,6 @@ func newStatsWorker(
 		t:                   t,
 		roomID:              roomID,
 		roomName:            roomName,
-		roomMetadata: 		 roomMetadata,
 		participantID:       participantID,
 		participantIdentity: identity,
 		outgoingPerTrack:    make(map[livekit.TrackID][]*livekit.AnalyticsStat),
@@ -123,7 +128,7 @@ func (s *StatsWorker) IsConnected() bool {
 	return s.isConnected
 }
 
-func (s *StatsWorker) Flush(now time.Time) bool {
+func (s *StatsWorker) Flush(now time.Time, closeWait time.Duration) bool {
 	ts := timestamppb.New(now)
 
 	s.lock.Lock()
@@ -135,7 +140,7 @@ func (s *StatsWorker) Flush(now time.Time) bool {
 	outgoingPerTrack := s.outgoingPerTrack
 	s.outgoingPerTrack = make(map[livekit.TrackID][]*livekit.AnalyticsStat)
 
-	closed := !s.closedAt.IsZero() && now.Sub(s.closedAt) > workerCleanupWait
+	closed := !s.closedAt.IsZero() && now.Sub(s.closedAt) > closeWait
 	s.lock.Unlock()
 
 	stats = s.collectStats(ts, livekit.StreamType_UPSTREAM, incomingPerTrack, stats)
@@ -193,6 +198,20 @@ func (s *StatsWorker) collectStats(
 		stats = append(stats, coalesced)
 	}
 	return stats
+}
+
+func (s *StatsWorker) MarshalLogObject(e zapcore.ObjectEncoder) error {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	e.AddString("room", string(s.roomName))
+	e.AddString("roomID", string(s.roomID))
+	e.AddString("participant", string(s.participantIdentity))
+	e.AddString("participantID", string(s.participantID))
+	e.AddBool("isConnected", s.isConnected)
+	e.AddTime("closedAt", s.closedAt)
+	e.AddObject("refCount", s.refCount)
+	return nil
 }
 
 // -------------------------------------------------------------------------
@@ -291,7 +310,7 @@ func coalesce(stats []*livekit.AnalyticsStat) *livekit.AnalyticsStat {
 
 	stat := &livekit.AnalyticsStat{
 		MinScore:    minScore,
-		MedianScore: utils.MedianFloat32(scores),
+		MedianScore: utils.Median(scores),
 		Streams:     []*livekit.AnalyticsStream{coalescedStream},
 		Mime:        stats[len(stats)-1].Mime, // use the latest Mime
 	}
@@ -329,7 +348,9 @@ func CondenseStat(stat *livekit.AnalyticsStat) (ps CondensedStat, ok bool) {
 		ps.Bytes += stream.PrimaryBytes
 		ps.Packets += stream.PrimaryPackets
 		ps.PacketsLost += stream.PacketsLost
-		ps.Frames += stream.Frames
+		if stream.Frames > ps.Frames {
+			ps.Frames = stream.Frames
+		}
 	}
 
 	return

@@ -13,7 +13,7 @@ use syrnike_config::{config, LiveKitNode};
 use syrnike_permissions::{ChannelPermission, PermissionValue};
 use syrnike_result::{create_error, Result, ToSyrnikeError};
 
-use super::get_allowed_sources;
+use super::{desktop_native_voice_identity, get_allowed_sources};
 
 #[derive(Debug)]
 pub struct RoomClient {
@@ -177,23 +177,25 @@ impl VoiceClient {
                     })
                     .to_internal_error()?;
 
-                if !participants
-                    .iter()
-                    .any(|participant| participant.identity == user_id)
-                {
-                    continue;
-                }
+                for identity in [user_id.to_string(), desktop_native_voice_identity(user_id)] {
+                    if !participants
+                        .iter()
+                        .any(|participant| participant.identity == identity)
+                    {
+                        continue;
+                    }
 
-                room.client
-                    .remove_participant(&livekit_room.name, user_id)
-                    .await
-                    .inspect_err(|error| {
-                        log::warn!(
-                            "Failed to remove LiveKit participant {user_id} from room {} on node {node_name}: {error}",
-                            livekit_room.name
-                        );
-                    })
-                    .to_internal_error()?;
+                    room.client
+                        .remove_participant(&livekit_room.name, &identity)
+                        .await
+                        .inspect_err(|error| {
+                            log::warn!(
+                                "Failed to remove LiveKit participant {identity} from room {} on node {node_name}: {error}",
+                                livekit_room.name
+                            );
+                        })
+                        .to_internal_error()?;
+                }
             }
         }
 

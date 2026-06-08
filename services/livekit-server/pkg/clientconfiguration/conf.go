@@ -15,7 +15,7 @@
 package clientconfiguration
 
 import (
-	"github.com/syrnike13/livekit-server/pkg/sfu/mime"
+	"github.com/livekit/protocol/codecs/mime"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/utils/must"
 )

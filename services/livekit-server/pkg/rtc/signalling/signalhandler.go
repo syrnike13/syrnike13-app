@@ -32,8 +32,6 @@ type SignalHandlerParams struct {
 }
 
 type signalhandler struct {
-	signalhandlerUnimplemented
-
 	params SignalHandlerParams
 }
 
@@ -94,6 +92,8 @@ func (s *signalhandler) HandleMessage(msg proto.Message) error {
 			reason = types.ParticipantCloseReasonUserUnavailable
 		case livekit.DisconnectReason_USER_REJECTED:
 			reason = types.ParticipantCloseReasonUserRejected
+		case livekit.DisconnectReason_AGENT_ERROR:
+			reason = types.ParticipantCloseReasonAgentError
 		}
 		s.params.Logger.Debugw("client leaving room", "reason", reason)
 		s.params.Participant.HandleLeaveRequest(reason)
@@ -142,6 +142,15 @@ func (s *signalhandler) HandleMessage(msg proto.Message) error {
 		if err := s.params.Participant.UpdateVideoTrack(msg.UpdateVideoTrack); err != nil {
 			s.params.Logger.Warnw("could not update video track", err, "update", msg.UpdateVideoTrack)
 		}
+
+	case *livekit.SignalRequest_PublishDataTrackRequest:
+		s.params.Participant.HandlePublishDataTrackRequest(msg.PublishDataTrackRequest)
+
+	case *livekit.SignalRequest_UnpublishDataTrackRequest:
+		s.params.Participant.HandleUnpublishDataTrackRequest(msg.UnpublishDataTrackRequest)
+
+	case *livekit.SignalRequest_UpdateDataSubscription:
+		s.params.Participant.HandleUpdateDataSubscription(msg.UpdateDataSubscription)
 	}
 
 	return nil

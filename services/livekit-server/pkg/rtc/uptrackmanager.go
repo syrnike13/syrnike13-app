@@ -16,14 +16,15 @@ package rtc
 
 import (
 	"errors"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
-	"golang.org/x/exp/maps"
 
-	"github.com/syrnike13/livekit-server/pkg/rtc/types"
 	"github.com/livekit/protocol/utils"
+	"github.com/syrnike13/livekit-server/pkg/rtc/types"
 )
 
 var (
@@ -59,6 +60,9 @@ type UpTrackManager struct {
 }
 
 func NewUpTrackManager(params UpTrackManagerParams) *UpTrackManager {
+	if params.VersionGenerator == nil {
+		params.VersionGenerator = utils.NewDefaultTimedVersionGenerator()
+	}
 	return &UpTrackManager{
 		params:          params,
 		publishedTracks: make(map[livekit.TrackID]types.MediaTrack),
@@ -146,7 +150,7 @@ func (u *UpTrackManager) GetPublishedTracks() []types.MediaTrack {
 	u.lock.RLock()
 	defer u.lock.RUnlock()
 
-	return maps.Values(u.publishedTracks)
+	return slices.Collect(maps.Values(u.publishedTracks))
 }
 
 func (u *UpTrackManager) UpdateSubscriptionPermission(
@@ -175,7 +179,11 @@ func (u *UpTrackManager) UpdateSubscriptionPermission(
 		u.subscriptionPermissionVersion.Update(timedVersion)
 	} else {
 		// for requests coming from the current node, use local versions
-		u.subscriptionPermissionVersion.Update(u.params.VersionGenerator.Next())
+		nextVersion := u.params.VersionGenerator.Next()
+		if !nextVersion.After(u.subscriptionPermissionVersion) {
+			nextVersion = u.subscriptionPermissionVersion.Next()
+		}
+		u.subscriptionPermissionVersion.Update(nextVersion)
 	}
 
 	// store as is for use when migrating
@@ -310,7 +318,11 @@ func (u *UpTrackManager) parseSubscriptionPermissionsLocked(
 
 			sub := resolver(livekit.ParticipantID(trackPerms.ParticipantSid))
 			if sub == nil {
-				u.params.Logger.Warnw("could not find subscriber for permissions update", nil, "subscriberID", trackPerms.ParticipantSid)
+				u.params.Logger.Warnw(
+					"could not find subscriber for permissions update", nil,
+					"subscriberID", trackPerms.ParticipantSid,
+					"subscriptionPermission", logger.Proto(subscriptionPermission),
+				)
 				continue
 			}
 
@@ -319,10 +331,19 @@ func (u *UpTrackManager) parseSubscriptionPermissionsLocked(
 			if trackPerms.ParticipantSid != "" {
 				sub := resolver(livekit.ParticipantID(trackPerms.ParticipantSid))
 				if sub != nil && sub.Identity() != subscriberIdentity {
-					u.params.Logger.Errorw("participant identity mismatch", nil, "expected", subscriberIdentity, "got", sub.Identity())
+					u.params.Logger.Errorw(
+						"participant identity mismatch", nil,
+						"expected", subscriberIdentity,
+						"got", sub.Identity(),
+						"subscriptionPermission", logger.Proto(subscriptionPermission),
+					)
 				}
 				if sub == nil {
-					u.params.Logger.Warnw("could not find subscriber for permissions update", nil, "subscriberID", trackPerms.ParticipantSid)
+					u.params.Logger.Warnw(
+						"could not find subscriber for permissions update", nil,
+						"subscriberID", trackPerms.ParticipantSid,
+						"subscriptionPermission", logger.Proto(subscriptionPermission),
+					)
 				}
 			}
 		}
@@ -398,16 +419,16 @@ func (u *UpTrackManager) maybeRevokeSubscriptions() {
 	}
 }
 
-func (u *UpTrackManager) DebugInfo() map[string]interface{} {
-	info := map[string]interface{}{}
-	publishedTrackInfo := make(map[livekit.TrackID]interface{})
+func (u *UpTrackManager) DebugInfo() map[string]any {
+	info := map[string]any{}
+	publishedTrackInfo := make(map[livekit.TrackID]any)
 
 	u.lock.RLock()
 	for trackID, track := range u.publishedTracks {
 		if mt, ok := track.(*MediaTrack); ok {
 			publishedTrackInfo[trackID] = mt.DebugInfo()
 		} else {
-			publishedTrackInfo[trackID] = map[string]interface{}{
+			publishedTrackInfo[trackID] = map[string]any{
 				"ID":       track.ID(),
 				"Kind":     track.Kind().String(),
 				"PubMuted": track.IsMuted(),

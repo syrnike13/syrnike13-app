@@ -20,8 +20,8 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/syrnike13/livekit-server/pkg/sfu/mime"
 	"github.com/syrnike13/livekit-server/pkg/telemetry/prometheus"
+	"github.com/livekit/protocol/codecs/mime"
 	"github.com/livekit/protocol/egress"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
@@ -87,7 +87,6 @@ func (t *telemetryService) ParticipantJoined(
 			ctx,
 			livekit.RoomID(room.Sid),
 			livekit.RoomName(room.Name),
-			room.Metadata,
 			livekit.ParticipantID(participant.Sid),
 			livekit.ParticipantIdentity(participant.Identity),
 			guard,
@@ -128,16 +127,15 @@ func (t *telemetryService) ParticipantActive(
 			ctx,
 			livekit.RoomID(room.Sid),
 			livekit.RoomName(room.Name),
-			room.Metadata,
 			livekit.ParticipantID(participant.Sid),
 			livekit.ParticipantIdentity(participant.Identity),
 			guard,
 		)
 		if !found {
-			// need to also account for participant count
 			prometheus.AddParticipant()
 		}
 		worker.SetConnected()
+		prometheus.IncrementParticipantRtcActive(1)
 
 		ev := newParticipantEvent(livekit.AnalyticsEventType_PARTICIPANT_ACTIVE, room, participant)
 		ev.ClientMeta = clientMeta
@@ -166,7 +164,6 @@ func (t *telemetryService) ParticipantResumed(
 			ctx,
 			livekit.RoomID(room.Sid),
 			livekit.RoomName(room.Name),
-			room.Metadata,
 			livekit.ParticipantID(participant.Sid),
 			livekit.ParticipantIdentity(participant.Identity),
 			nil,
@@ -192,10 +189,19 @@ func (t *telemetryService) ParticipantLeft(ctx context.Context,
 ) {
 	t.enqueue(func() {
 		isConnected := false
-		if worker, ok := t.getWorker(livekit.ParticipantID(participant.Sid)); ok {
+		if worker, ok := t.getWorker(livekit.RoomID(room.Sid), livekit.ParticipantID(participant.Sid)); ok {
 			isConnected = worker.IsConnected()
 			if worker.Close(guard) {
 				prometheus.SubParticipant()
+			} else {
+				logger.Infow(
+					"stats worker active",
+					"room", room.Name,
+					"roomID", room.Sid,
+					"participant", participant.Identity,
+					"participantID", participant.Sid,
+					"worker", worker,
+				)
 			}
 		}
 
@@ -219,13 +225,15 @@ func (t *telemetryService) ParticipantLeft(ctx context.Context,
 
 func (t *telemetryService) TrackPublishRequested(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	identity livekit.ParticipantIdentity,
 	track *livekit.TrackInfo,
 ) {
 	t.enqueue(func() {
-		prometheus.AddPublishAttempt(track.Type.String())
-		room := t.getRoomDetails(participantID)
+		prometheus.RecordTrackPublishAttempt(track.Type.String())
+		room := toMinimalRoomProto(roomID, roomName)
 		ev := newTrackEvent(livekit.AnalyticsEventType_TRACK_PUBLISH_REQUESTED, room, participantID, track)
 		if ev.Participant != nil {
 			ev.Participant.Identity = string(identity)
@@ -236,15 +244,21 @@ func (t *telemetryService) TrackPublishRequested(
 
 func (t *telemetryService) TrackPublished(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	identity livekit.ParticipantIdentity,
 	track *livekit.TrackInfo,
+	shouldSendEvent bool,
 ) {
 	t.enqueue(func() {
 		prometheus.AddPublishedTrack(track.Type.String())
-		prometheus.AddPublishSuccess(track.Type.String())
+		prometheus.RecordTrackPublishSuccess(track.Type.String())
+		if !shouldSendEvent {
+			return
+		}
 
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		participant := &livekit.ParticipantInfo{
 			Sid:      string(participantID),
 			Identity: string(identity),
@@ -262,22 +276,30 @@ func (t *telemetryService) TrackPublished(
 	})
 }
 
-func (t *telemetryService) TrackPublishedUpdate(ctx context.Context, participantID livekit.ParticipantID, track *livekit.TrackInfo) {
+func (t *telemetryService) TrackPublishedUpdate(
+	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
+	participantID livekit.ParticipantID,
+	track *livekit.TrackInfo,
+) {
 	t.enqueue(func() {
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		t.SendEvent(ctx, newTrackEvent(livekit.AnalyticsEventType_TRACK_PUBLISHED_UPDATE, room, participantID, track))
 	})
 }
 
 func (t *telemetryService) TrackMaxSubscribedVideoQuality(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	track *livekit.TrackInfo,
 	mime mime.MimeType,
 	maxQuality livekit.VideoQuality,
 ) {
 	t.enqueue(func() {
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		ev := newTrackEvent(livekit.AnalyticsEventType_TRACK_MAX_SUBSCRIBED_VIDEO_QUALITY, room, participantID, track)
 		ev.MaxSubscribedVideoQuality = maxQuality
 		ev.Mime = mime.String()
@@ -287,13 +309,15 @@ func (t *telemetryService) TrackMaxSubscribedVideoQuality(
 
 func (t *telemetryService) TrackSubscribeRequested(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	track *livekit.TrackInfo,
 ) {
 	t.enqueue(func() {
 		prometheus.RecordTrackSubscribeAttempt()
 
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		ev := newTrackEvent(livekit.AnalyticsEventType_TRACK_SUBSCRIBE_REQUESTED, room, participantID, track)
 		t.SendEvent(ctx, ev)
 	})
@@ -301,6 +325,8 @@ func (t *telemetryService) TrackSubscribeRequested(
 
 func (t *telemetryService) TrackSubscribed(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	track *livekit.TrackInfo,
 	publisher *livekit.ParticipantInfo,
@@ -313,7 +339,7 @@ func (t *telemetryService) TrackSubscribed(
 			return
 		}
 
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		ev := newTrackEvent(livekit.AnalyticsEventType_TRACK_SUBSCRIBED, room, participantID, track)
 		ev.Publisher = publisher
 		t.SendEvent(ctx, ev)
@@ -322,6 +348,8 @@ func (t *telemetryService) TrackSubscribed(
 
 func (t *telemetryService) TrackSubscribeFailed(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	trackID livekit.TrackID,
 	err error,
@@ -330,7 +358,7 @@ func (t *telemetryService) TrackSubscribeFailed(
 	t.enqueue(func() {
 		prometheus.RecordTrackSubscribeFailure(err, isUserError)
 
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		ev := newTrackEvent(livekit.AnalyticsEventType_TRACK_SUBSCRIBE_FAILED, room, participantID, &livekit.TrackInfo{
 			Sid: string(trackID),
 		})
@@ -341,6 +369,8 @@ func (t *telemetryService) TrackSubscribeFailed(
 
 func (t *telemetryService) TrackUnsubscribed(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	track *livekit.TrackInfo,
 	shouldSendEvent bool,
@@ -349,7 +379,7 @@ func (t *telemetryService) TrackUnsubscribed(
 		prometheus.RecordTrackUnsubscribed(track.Type.String())
 
 		if shouldSendEvent {
-			room := t.getRoomDetails(participantID)
+			room := toMinimalRoomProto(roomID, roomName)
 			t.SendEvent(ctx, newTrackEvent(livekit.AnalyticsEventType_TRACK_UNSUBSCRIBED, room, participantID, track))
 		}
 	})
@@ -357,6 +387,8 @@ func (t *telemetryService) TrackUnsubscribed(
 
 func (t *telemetryService) TrackUnpublished(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	identity livekit.ParticipantIdentity,
 	track *livekit.TrackInfo,
@@ -368,7 +400,7 @@ func (t *telemetryService) TrackUnpublished(
 			return
 		}
 
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		participant := &livekit.ParticipantInfo{
 			Sid:      string(participantID),
 			Identity: string(identity),
@@ -386,52 +418,34 @@ func (t *telemetryService) TrackUnpublished(
 
 func (t *telemetryService) TrackMuted(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
-	identity livekit.ParticipantIdentity,
 	track *livekit.TrackInfo,
 ) {
 	t.enqueue(func() {
-		room := t.getRoomDetails(participantID)
-		participant := &livekit.ParticipantInfo{
-			Sid:      string(participantID),
-			Identity: string(identity),
-		}
-		t.NotifyEvent(ctx, &livekit.WebhookEvent{
-			Event:       webhook.EventTrackMuted,
-			Room:        room,
-			Participant: participant,
-			Track:       track,
-		})
-
+		room := toMinimalRoomProto(roomID, roomName)
 		t.SendEvent(ctx, newTrackEvent(livekit.AnalyticsEventType_TRACK_MUTED, room, participantID, track))
 	})
 }
 
 func (t *telemetryService) TrackUnmuted(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
-	identity livekit.ParticipantIdentity,
 	track *livekit.TrackInfo,
 ) {
 	t.enqueue(func() {
-		room := t.getRoomDetails(participantID)
-		participant := &livekit.ParticipantInfo{
-			Sid:      string(participantID),
-			Identity: string(identity),
-		}
-		t.NotifyEvent(ctx, &livekit.WebhookEvent{
-			Event:       webhook.EventTrackUnmuted,
-			Room:        room,
-			Participant: participant,
-			Track:       track,
-		})
-
+		room := toMinimalRoomProto(roomID, roomName)
 		t.SendEvent(ctx, newTrackEvent(livekit.AnalyticsEventType_TRACK_UNMUTED, room, participantID, track))
 	})
 }
 
 func (t *telemetryService) TrackPublishRTPStats(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	trackID livekit.TrackID,
 	mimeType mime.MimeType,
@@ -439,7 +453,7 @@ func (t *telemetryService) TrackPublishRTPStats(
 	stats *livekit.RTPStats,
 ) {
 	t.enqueue(func() {
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		ev := newRoomEvent(livekit.AnalyticsEventType_TRACK_PUBLISH_STATS, room)
 		ev.ParticipantId = string(participantID)
 		ev.TrackId = string(trackID)
@@ -452,13 +466,15 @@ func (t *telemetryService) TrackPublishRTPStats(
 
 func (t *telemetryService) TrackSubscribeRTPStats(
 	ctx context.Context,
+	roomID livekit.RoomID,
+	roomName livekit.RoomName,
 	participantID livekit.ParticipantID,
 	trackID livekit.TrackID,
 	mimeType mime.MimeType,
 	stats *livekit.RTPStats,
 ) {
 	t.enqueue(func() {
-		room := t.getRoomDetails(participantID)
+		room := toMinimalRoomProto(roomID, roomName)
 		ev := newRoomEvent(livekit.AnalyticsEventType_TRACK_SUBSCRIBE_STATS, room)
 		ev.ParticipantId = string(participantID)
 		ev.TrackId = string(trackID)
@@ -575,20 +591,6 @@ func (t *telemetryService) Webhook(ctx context.Context, webhookInfo *livekit.Web
 	})
 }
 
-// returns a livekit.Room with only name, sid and metadata filled out
-// returns nil if room is not found
-func (t *telemetryService) getRoomDetails(participantID livekit.ParticipantID) *livekit.Room {
-	if worker, ok := t.getWorker(participantID); ok {
-		return &livekit.Room{
-			Sid:  string(worker.roomID),
-			Name: string(worker.roomName),
-			Metadata: worker.roomMetadata,
-		}
-	}
-
-	return nil
-}
-
 func newRoomEvent(event livekit.AnalyticsEventType, room *livekit.Room) *livekit.AnalyticsEvent {
 	ev := &livekit.AnalyticsEvent{
 		Type:      event,
@@ -637,5 +639,12 @@ func newIngressEvent(event livekit.AnalyticsEventType, ingress *livekit.IngressI
 		Timestamp: timestamppb.Now(),
 		IngressId: ingress.IngressId,
 		Ingress:   ingress,
+	}
+}
+
+func toMinimalRoomProto(roomID livekit.RoomID, roomName livekit.RoomName) *livekit.Room {
+	return &livekit.Room{
+		Sid:  string(roomID),
+		Name: string(roomName),
 	}
 }

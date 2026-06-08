@@ -28,8 +28,6 @@ type SignallingParams struct {
 }
 
 type signalling struct {
-	signallingUnimplemented
-
 	params SignallingParams
 }
 
@@ -221,7 +219,7 @@ func (s *signalling) SignalSubscriptionPermissionUpdate(subscriptionPermissionUp
 	}
 }
 
-func (u *signalling) SignalMediaSectionsRequirement(mediaSectionsRequirement *livekit.MediaSectionsRequirement) proto.Message {
+func (s *signalling) SignalMediaSectionsRequirement(mediaSectionsRequirement *livekit.MediaSectionsRequirement) proto.Message {
 	return &livekit.SignalResponse{
 		Message: &livekit.SignalResponse_MediaSectionsRequirement{
 			MediaSectionsRequirement: mediaSectionsRequirement,
@@ -233,6 +231,30 @@ func (s *signalling) SignalSubscribedAudioCodecUpdate(subscribedAudioCodecUpdate
 	return &livekit.SignalResponse{
 		Message: &livekit.SignalResponse_SubscribedAudioCodecUpdate{
 			SubscribedAudioCodecUpdate: subscribedAudioCodecUpdate,
+		},
+	}
+}
+
+func (s *signalling) SignalPublishDataTrackResponse(publishDataTrackResponse *livekit.PublishDataTrackResponse) proto.Message {
+	return &livekit.SignalResponse{
+		Message: &livekit.SignalResponse_PublishDataTrackResponse{
+			PublishDataTrackResponse: publishDataTrackResponse,
+		},
+	}
+}
+
+func (s *signalling) SignalUnpublishDataTrackResponse(unpublishDataTrackResponse *livekit.UnpublishDataTrackResponse) proto.Message {
+	return &livekit.SignalResponse{
+		Message: &livekit.SignalResponse_UnpublishDataTrackResponse{
+			UnpublishDataTrackResponse: unpublishDataTrackResponse,
+		},
+	}
+}
+
+func (s *signalling) SignalDataTrackSubscriberHandles(dataTrackSubscriberHandles *livekit.DataTrackSubscriberHandles) proto.Message {
+	return &livekit.SignalResponse{
+		Message: &livekit.SignalResponse_DataTrackSubscriberHandles{
+			DataTrackSubscriberHandles: dataTrackSubscriberHandles,
 		},
 	}
 }

@@ -7,9 +7,10 @@ use syrnike_database::{
     iso8601_timestamp::{Duration, Timestamp},
     util::reference::Reference,
     voice::{
-        create_voice_state, delete_channel_voice_state_for_room, delete_voice_state_for_session,
-        get_user_moved_from_voice, get_user_moved_to_voice, get_user_voice_channels,
-        get_voice_channel_members, remove_user_from_voice_channel,
+        base_voice_identity, create_voice_state, delete_channel_voice_state_for_room,
+        delete_voice_state_for_session, get_user_moved_from_voice, get_user_moved_to_voice,
+        get_user_voice_channels, get_voice_channel_members, is_desktop_native_voice_identity,
+        remove_user_from_voice_channel, update_voice_state_tracks,
         update_voice_state_tracks_for_session, user_voice_join_intent_matches, RoomMetadata,
         UserVoiceChannel, VoiceClient,
     },
@@ -100,7 +101,8 @@ pub async fn ingress(
         // User joined a channel
         "participant_joined" => {
             let channel_id = channel_id.to_internal_error()?;
-            let user_id = user_id.to_internal_error()?;
+            let participant_identity = user_id.to_internal_error()?;
+            let user_id = base_voice_identity(participant_identity);
             let participant_id = participant_id.to_internal_error()?;
             let room_id = room_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
@@ -110,6 +112,10 @@ pub async fn ingress(
                     "Removing user {user_id} from stale LiveKit join in channel {channel_id}; latest join intent targets another channel."
                 );
                 let _ = voice_client.remove_user(node, user_id, channel_id).await;
+                return Ok(EmptyResponse);
+            }
+
+            if is_desktop_native_voice_identity(participant_identity) {
                 return Ok(EmptyResponse);
             }
 
@@ -201,9 +207,27 @@ pub async fn ingress(
         // User left a channel
         "participant_left" => {
             let channel_id = channel_id.to_internal_error()?;
-            let user_id = user_id.to_internal_error()?;
+            let participant_identity = user_id.to_internal_error()?;
+            let user_id = base_voice_identity(participant_identity);
             let participant_id = participant_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
+
+            if is_desktop_native_voice_identity(participant_identity) {
+                let partial = update_voice_state_tracks(
+                    &channel, user_id, false, /* TrackSource::Microphone */ 2,
+                )
+                .await?;
+
+                EventV1::UserVoiceStateUpdate {
+                    id: user_id.to_string(),
+                    channel_id: channel_id.clone(),
+                    data: partial,
+                }
+                .p(channel_id.clone())
+                .await;
+
+                return Ok(EmptyResponse);
+            }
 
             if !delete_voice_state_for_session(&channel, user_id, participant_id).await? {
                 log::debug!(
@@ -219,7 +243,7 @@ pub async fn ingress(
             {
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
-                    user: user_id.clone(),
+                    user: user_id.to_string(),
                 }
                 .p(channel_id.clone())
                 .await;
@@ -272,7 +296,8 @@ pub async fn ingress(
         // Audio/video track was started/stopped/unmuted/muted
         "track_published" | "track_unpublished" | "track_unmuted" | "track_muted" => {
             let channel_id = channel_id.to_internal_error()?;
-            let user_id = user_id.to_internal_error()?;
+            let participant_identity = user_id.to_internal_error()?;
+            let user_id = base_voice_identity(participant_identity);
             let participant_id = participant_id.to_internal_error()?;
             let track = event.track.as_ref().to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
@@ -318,7 +343,7 @@ pub async fn ingress(
                     if delete_voice_state_for_session(&channel, user_id, participant_id).await? {
                         EventV1::VoiceChannelLeave {
                             id: channel_id.clone(),
-                            user: user_id.clone(),
+                            user: user_id.to_string(),
                         }
                         .p(channel_id.clone())
                         .await;
@@ -328,24 +353,30 @@ pub async fn ingress(
                 };
             };
 
-            let Some(partial) = update_voice_state_tracks_for_session(
-                &channel,
-                user_id,
-                event.event == "track_published" || event.event == "track_unmuted", // to avoid duplicating this entire case twice
-                track.source,
-                participant_id,
-            )
-            .await?
-            else {
-                log::debug!(
-                    "Ignoring stale {} for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}.",
-                    event.event
-                );
-                return Ok(EmptyResponse);
+            let added = event.event == "track_published" || event.event == "track_unmuted";
+            let partial = if is_desktop_native_voice_identity(participant_identity) {
+                update_voice_state_tracks(&channel, user_id, added, track.source).await?
+            } else {
+                let Some(partial) = update_voice_state_tracks_for_session(
+                    &channel,
+                    user_id,
+                    added,
+                    track.source,
+                    participant_id,
+                )
+                .await?
+                else {
+                    log::debug!(
+                        "Ignoring stale {} for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}.",
+                        event.event
+                    );
+                    return Ok(EmptyResponse);
+                };
+                partial
             };
 
             EventV1::UserVoiceStateUpdate {
-                id: user_id.clone(),
+                id: user_id.to_string(),
                 channel_id: channel_id.clone(),
                 data: partial,
             }
