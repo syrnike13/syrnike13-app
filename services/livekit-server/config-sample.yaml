@@ -65,6 +65,15 @@ rtc:
   # this is useful for cloud environments such as AWS & Google where hosts have an internal IP
   # that maps to an external one
   use_external_ip: true
+  # # when set to true, advertises both mapped external and internal IPs to clients as server candidates.
+  # # useful when clients connect from both private and public networks.
+  # # works only when `use_external_ip` is set to true.
+  # # when both this and `external_ip_only` are set, SFU advertises all private IPs with their mapped external IPs and skips
+  # # private IPs that do not have a mapped external IP.
+  # advertise_internal_ip: true
+  # # when set to true, SFU skips external IP accessibility checks via self-ping.
+  # # enable this when SFU is behind NAT that does not allow self-ping. only works when `use_external_ip` is set to true.
+  # skip_external_ip_validation: true
   # # there are cases where the public IP determined via STUN is not the correct one
   # # in such cases, use this setting to set the public IP of the node
   # # use_external_ip takes precedence, for this to take effect, set use_external_ip to false
@@ -87,6 +96,13 @@ rtc:
   #     port: 443
   #     # tls, tcp, or udp
   #     protocol: tls
+  #     # Shared secret for TURN server authentication
+  #     secret: ""
+  #     # Path for file containing shared secret for TURN server authentication
+  #     # When both secret and secret_file are set, secret takes precedence
+  #     secret_file: "/var/lib/coturn/secret"
+  #     ttl: 14400 # seconds
+  #     # Insecure username/password authentication
   #     username: ""
   #     credential: ""
   # # allows LiveKit to monitor congestion when sending streams and automatically
@@ -273,6 +289,21 @@ keys:
 #   # optional (set only if not using external TLS termination)
 #   # cert_file: /path/to/cert.pem
 #   # key_file: /path/to/key.pem
+#   # TTL of the TURN credentials in seconds - defaults to 300
+#   ttl_seconds: 300
+#   # list of restricted peer CIDRs (loopback, link-local (unicast, multicast), multicast, private, unspecified) to allow access to.
+#   # By default (i. e. empty list), all restricted peer CIDRs are denied access.
+#   # When not empty, only the specified CIDRs are allowed access.
+#   # Note that this check is applied to restricted peer CIDRs only.
+#   allow_restricted_peer_cidrs:
+#     - 10.0.0.0/8
+#     - 192.168.0.0/16
+#   # list of peer CIDRs to deny access to.
+#   # This applies to all peer CIDRs, including restricted ones.
+#   # Deny list takes precedence over allow list.
+#   deny_peer_cidrs:
+#     - 10.0.0.0/8
+#     - 192.168.0.0/16
 
 # ingress server
 # ingress:

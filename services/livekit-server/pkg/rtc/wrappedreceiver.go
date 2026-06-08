@@ -16,19 +16,21 @@ package rtc
 
 import (
 	"errors"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/pion/webrtc/v4"
 	"go.uber.org/atomic"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 
+	"github.com/livekit/mediatransportutil/pkg/codec"
+	protoCodecs "github.com/livekit/protocol/codecs"
+	"github.com/livekit/protocol/codecs/mime"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 
 	"github.com/syrnike13/livekit-server/pkg/sfu"
 	"github.com/syrnike13/livekit-server/pkg/sfu/buffer"
-	"github.com/syrnike13/livekit-server/pkg/sfu/mime"
 )
 
 // wrapper around WebRTC receiver, overriding its ID
@@ -64,10 +66,10 @@ func NewWrappedReceiver(params WrappedReceiverParams) *WrappedReceiver {
 		normalizedMimeType := mime.NormalizeMimeType(codecs[0].MimeType)
 		if normalizedMimeType == mime.MimeTypeRED {
 			// if upstream is opus/red, then add opus to match clients that don't support red
-			codecs = append(codecs, OpusCodecParameters)
+			codecs = append(codecs, protoCodecs.OpusCodecParameters)
 		} else if !params.DisableRed && normalizedMimeType == mime.MimeTypeOpus {
 			// if upstream is opus only and red enabled, add red to match clients that support red
-			codecs = append(codecs, RedCodecParameters)
+			codecs = append(codecs, protoCodecs.RedCodecParameters)
 			// prefer red codec
 			codecs[0], codecs[1] = codecs[1], codecs[0]
 		}
@@ -93,10 +95,11 @@ func (r *WrappedReceiver) StreamID() string {
 // isAvailable: returns true if given codec is a potential codec from publisher or if an existing published codec can be translated
 // needsPublish: indicates if the codec is needed from publisher, some combinations can be achieved via codec translation internally,
 //
-//	example: unecrypted opus -> RED translation and vice-versa can be done without the need for publisher to send the other codec.
+//	example: unencrypted opus -> RED translation and vice-versa can be done without the need for publisher to send the other codec.
 func (r *WrappedReceiver) DetermineReceiver(codec webrtc.RTPCodecCapability) (isAvailable bool, needsPublish bool) {
 	r.lock.Lock()
 
+	reason := "no matching receiver"
 	codecMimeType := mime.NormalizeMimeType(codec.MimeType)
 	var trackReceiver sfu.TrackReceiver
 	for _, receiver := range r.receivers {
@@ -108,22 +111,33 @@ func (r *WrappedReceiver) DetermineReceiver(codec webrtc.RTPCodecCapability) (is
 			break
 		}
 
-		if !r.params.IsEncrypted {
-			if receiverMimeType == mime.MimeTypeRED && codecMimeType == mime.MimeTypeOpus {
-				// audio opus/red can match opus only
+		if receiverMimeType == mime.MimeTypeRED && codecMimeType == mime.MimeTypeOpus {
+			// audio opus/red can match opus only
+			if !r.params.IsEncrypted { // cannot match encrypted source
 				trackReceiver = receiver.GetPrimaryReceiverForRed()
 				isAvailable = true
 				break
-			} else if receiverMimeType == mime.MimeTypeOpus && codecMimeType == mime.MimeTypeRED {
+			} else {
+				reason = "encrypted source"
+			}
+		} else if receiverMimeType == mime.MimeTypeOpus && codecMimeType == mime.MimeTypeRED {
+			if !r.params.IsEncrypted { // cannot match encrypted source
 				trackReceiver = receiver.GetRedReceiver()
 				isAvailable = true
 				break
+			} else {
+				reason = "encrypted source"
 			}
 		}
+
 	}
 	if trackReceiver == nil {
 		r.lock.Unlock()
-		r.params.Logger.Warnw("can't determine receiver for codec", nil, "codec", codec.MimeType)
+		r.params.Logger.Warnw(
+			"can't determine receiver for codec", nil,
+			"codec", codec.MimeType,
+			"reason", reason,
+		)
 		return
 	}
 	r.TrackReceiver = trackReceiver
@@ -183,8 +197,6 @@ type DummyReceiver struct {
 	settingsLock          sync.Mutex
 	maxExpectedLayerValid bool
 	maxExpectedLayer      int32
-	pausedValid           bool
-	paused                bool
 
 	redReceiver, primaryReceiver *DummyRedReceiver
 }
@@ -233,17 +245,10 @@ func (d *DummyReceiver) Upgrade(receiver sfu.TrackReceiver) {
 	d.settingsLock.Lock()
 	maxExpectedLayerValid := d.maxExpectedLayerValid
 	d.maxExpectedLayerValid = false
-
-	pausedValid := d.pausedValid
-	d.pausedValid = false
 	d.settingsLock.Unlock()
 
 	if maxExpectedLayerValid {
 		receiver.SetMaxExpectedSpatialLayer(d.maxExpectedLayer)
-	}
-
-	if pausedValid {
-		receiver.SetUpTrackPaused(d.paused)
 	}
 
 	d.settingsLock.Lock()
@@ -319,22 +324,6 @@ func (d *DummyReceiver) SendPLI(layer int32, force bool) {
 	}
 }
 
-func (d *DummyReceiver) SetUpTrackPaused(paused bool) {
-	d.settingsLock.Lock()
-	receiver := d.getReceiver()
-	if receiver != nil {
-		d.pausedValid = false
-	} else {
-		d.pausedValid = true
-		d.paused = paused
-	}
-	d.settingsLock.Unlock()
-
-	if receiver != nil {
-		receiver.SetUpTrackPaused(paused)
-	}
-}
-
 func (d *DummyReceiver) SetMaxExpectedSpatialLayer(layer int32) {
 	d.settingsLock.Lock()
 	receiver := d.getReceiver()
@@ -381,10 +370,10 @@ func (d *DummyReceiver) GetDownTracks() []sfu.TrackSender {
 	if receiver := d.getReceiver(); receiver != nil {
 		return receiver.GetDownTracks()
 	}
-	return maps.Values(d.downTracks)
+	return slices.Collect(maps.Values(d.downTracks))
 }
 
-func (d *DummyReceiver) DebugInfo() map[string]interface{} {
+func (d *DummyReceiver) DebugInfo() map[string]any {
 	if receiver := d.getReceiver(); receiver != nil {
 		return receiver.DebugInfo()
 	}
@@ -481,12 +470,18 @@ func (d *DummyReceiver) CodecState() sfu.ReceiverCodecState {
 	return sfu.ReceiverCodecStateNormal
 }
 
-func (d *DummyReceiver) VideoSizes() []buffer.VideoSize {
+func (d *DummyReceiver) VideoSizes() []codec.VideoSize {
 	if receiver := d.getReceiver(); receiver != nil {
 		return receiver.VideoSizes()
 	}
 
 	return nil
+}
+
+func (d *DummyReceiver) Restart(reason string) {
+	if receiver := d.getReceiver(); receiver != nil {
+		receiver.Restart(reason)
+	}
 }
 
 func (d *DummyReceiver) getReceiver() sfu.TrackReceiver {
@@ -548,7 +543,7 @@ func (d *DummyRedReceiver) GetDownTracks() []sfu.TrackSender {
 	if r, ok := d.redReceiver.Load().(sfu.TrackReceiver); ok {
 		return r.GetDownTracks()
 	}
-	return maps.Values(d.downTracks)
+	return slices.Collect(maps.Values(d.downTracks))
 }
 
 func (d *DummyRedReceiver) ReadRTP(buf []byte, layer uint8, esn uint64) (int, error) {

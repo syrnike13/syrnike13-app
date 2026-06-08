@@ -28,6 +28,7 @@ import (
 //counterfeiter:generate . ObjectStore
 type ObjectStore interface {
 	ServiceStore
+	OSSServiceStore
 
 	// enable locking on a specific room to prevent race
 	// returns a (lock uuid, error)
@@ -43,17 +44,18 @@ type ObjectStore interface {
 //counterfeiter:generate . ServiceStore
 type ServiceStore interface {
 	LoadRoom(ctx context.Context, roomName livekit.RoomName, includeInternal bool) (*livekit.Room, *livekit.RoomInternal, error)
-	DeleteRoom(ctx context.Context, roomName livekit.RoomName) error
+	RoomExists(ctx context.Context, roomName livekit.RoomName) (bool, error)
 
 	// ListRooms returns currently active rooms. if names is not nil, it'll filter and return
 	// only rooms that match
 	ListRooms(ctx context.Context, roomNames []livekit.RoomName) ([]*livekit.Room, error)
-	LoadParticipant(ctx context.Context, roomName livekit.RoomName, identity livekit.ParticipantIdentity) (*livekit.ParticipantInfo, error)
-	ListParticipants(ctx context.Context, roomName livekit.RoomName) ([]*livekit.ParticipantInfo, error)
 }
 
 type OSSServiceStore interface {
+	DeleteRoom(ctx context.Context, roomName livekit.RoomName) error
 	HasParticipant(context.Context, livekit.RoomName, livekit.ParticipantIdentity) (bool, error)
+	LoadParticipant(ctx context.Context, roomName livekit.RoomName, identity livekit.ParticipantIdentity) (*livekit.ParticipantInfo, error)
+	ListParticipants(ctx context.Context, roomName livekit.RoomName) ([]*livekit.ParticipantInfo, error)
 }
 
 //counterfeiter:generate . EgressStore

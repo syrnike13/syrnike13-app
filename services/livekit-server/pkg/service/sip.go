@@ -88,7 +88,7 @@ func (s *SIPService) CreateSIPTrunk(ctx context.Context, req *livekit.CreateSIPT
 		Metadata:         req.Metadata,
 	}
 	if err := info.Validate(); err != nil {
-		return nil, err
+		return nil, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, err.Error()), err)
 	}
 
 	// Validate all trunks including the new one first.
@@ -181,7 +181,7 @@ func (s *SIPService) UpdateSIPInboundTrunk(ctx context.Context, req *livekit.Upd
 		return nil, ErrSIPNotConnected
 	}
 	if err := req.Validate(); err != nil {
-		return nil, err
+		return nil, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, err.Error()), err)
 	}
 
 	AppendLogFields(ctx,
@@ -192,6 +192,9 @@ func (s *SIPService) UpdateSIPInboundTrunk(ctx context.Context, req *livekit.Upd
 	// Validate all trunks including the new one first.
 	info, err := s.store.LoadSIPInboundTrunk(ctx, req.SipTrunkId)
 	if err != nil {
+		if errors.Is(err, ErrSIPTrunkNotFound) {
+			return nil, twirp.NewError(twirp.NotFound, err.Error())
+		}
 		return nil, err
 	}
 	switch a := req.Action.(type) {
@@ -233,7 +236,7 @@ func (s *SIPService) UpdateSIPOutboundTrunk(ctx context.Context, req *livekit.Up
 		return nil, ErrSIPNotConnected
 	}
 	if err := req.Validate(); err != nil {
-		return nil, err
+		return nil, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, err.Error()), err)
 	}
 
 	AppendLogFields(ctx,
@@ -243,6 +246,9 @@ func (s *SIPService) UpdateSIPOutboundTrunk(ctx context.Context, req *livekit.Up
 
 	info, err := s.store.LoadSIPOutboundTrunk(ctx, req.SipTrunkId)
 	if err != nil {
+		if errors.Is(err, ErrSIPTrunkNotFound) {
+			return nil, twirp.NewError(twirp.NotFound, err.Error())
+		}
 		return nil, err
 	}
 	switch a := req.Action.(type) {
@@ -275,6 +281,9 @@ func (s *SIPService) GetSIPInboundTrunk(ctx context.Context, req *livekit.GetSIP
 
 	trunk, err := s.store.LoadSIPInboundTrunk(ctx, req.SipTrunkId)
 	if err != nil {
+		if errors.Is(err, ErrSIPTrunkNotFound) {
+			return nil, twirp.NewError(twirp.NotFound, err.Error())
+		}
 		return nil, err
 	}
 
@@ -295,6 +304,9 @@ func (s *SIPService) GetSIPOutboundTrunk(ctx context.Context, req *livekit.GetSI
 
 	trunk, err := s.store.LoadSIPOutboundTrunk(ctx, req.SipTrunkId)
 	if err != nil {
+		if errors.Is(err, ErrSIPTrunkNotFound) {
+			return nil, twirp.NewError(twirp.NotFound, err.Error())
+		}
 		return nil, err
 	}
 
@@ -409,6 +421,7 @@ func (s *SIPService) CreateSIPDispatchRule(ctx context.Context, req *livekit.Cre
 	if s.store == nil {
 		return nil, ErrSIPNotConnected
 	}
+	req.DispatchRule.Upgrade()
 	if err := req.Validate(); err != nil {
 		return nil, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, err.Error()), err)
 	}
@@ -449,7 +462,7 @@ func (s *SIPService) UpdateSIPDispatchRule(ctx context.Context, req *livekit.Upd
 		return nil, ErrSIPNotConnected
 	}
 	if err := req.Validate(); err != nil {
-		return nil, err
+		return nil, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, err.Error()), err)
 	}
 
 	AppendLogFields(ctx,
@@ -460,6 +473,9 @@ func (s *SIPService) UpdateSIPDispatchRule(ctx context.Context, req *livekit.Upd
 	// Validate all trunks including the new one first.
 	info, err := s.store.LoadSIPDispatchRule(ctx, req.SipDispatchRuleId)
 	if err != nil {
+		if errors.Is(err, ErrSIPDispatchRuleNotFound) {
+			return nil, twirp.NewError(twirp.NotFound, err.Error())
+		}
 		return nil, err
 	}
 	switch a := req.Action.(type) {
@@ -539,6 +555,9 @@ func (s *SIPService) DeleteSIPDispatchRule(ctx context.Context, req *livekit.Del
 
 	info, err := s.store.LoadSIPDispatchRule(ctx, req.SipDispatchRuleId)
 	if err != nil {
+		if errors.Is(err, ErrSIPDispatchRuleNotFound) {
+			return nil, twirp.NewError(twirp.NotFound, err.Error())
+		}
 		return nil, err
 	}
 
@@ -565,7 +584,7 @@ func (s *SIPService) CreateSIPParticipant(ctx context.Context, req *livekit.Crea
 	ireq, err := s.CreateSIPParticipantRequest(ctx, req, "", "", "", "")
 	if err != nil {
 		unlikelyLogger.Errorw("cannot create sip participant request", err)
-		return nil, err
+		return nil, wrapSIPContextError(err)
 	}
 	unlikelyLogger = unlikelyLogger.WithValues(
 		"callID", ireq.SipCallId,
@@ -594,7 +613,7 @@ func (s *SIPService) CreateSIPParticipant(ctx context.Context, req *livekit.Crea
 	resp, err := s.psrpcClient.CreateSIPParticipant(ctx, "", ireq, psrpc.WithRequestTimeout(timeout))
 	if err != nil {
 		unlikelyLogger.Errorw("cannot create sip participant", err)
-		return nil, err
+		return nil, wrapSIPContextError(err)
 	}
 	return &livekit.SIPParticipantInfo{
 		ParticipantId:       resp.ParticipantId,
@@ -611,8 +630,9 @@ func (s *SIPService) CreateSIPParticipantRequest(ctx context.Context, req *livek
 	if s.store == nil {
 		return nil, ErrSIPNotConnected
 	}
+	req.Upgrade()
 	if err := req.Validate(); err != nil {
-		return nil, err
+		return nil, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, err.Error()), err)
 	}
 	callID := sip.NewCallID()
 	log := logger.GetLogger().WithUnlikelyValues(
@@ -631,8 +651,16 @@ func (s *SIPService) CreateSIPParticipantRequest(ctx context.Context, req *livek
 		trunk, err = s.store.LoadSIPOutboundTrunk(ctx, req.SipTrunkId)
 		if err != nil {
 			log.Errorw("cannot get trunk to update sip participant", err)
+			if errors.Is(err, ErrSIPTrunkNotFound) {
+				return nil, twirp.NewError(twirp.NotFound, err.Error())
+			}
 			return nil, err
 		}
+	}
+	if trunk != nil && trunk.FromHost != "" {
+		host = trunk.FromHost
+	} else if t := req.Trunk; t != nil && t.FromHost != "" {
+		host = t.FromHost
 	}
 	return rpc.NewCreateSIPParticipantRequest(projectID, callID, host, wsUrl, token, req, trunk)
 }
@@ -654,12 +682,25 @@ func (s *SIPService) TransferSIPParticipant(ctx context.Context, req *livekit.Tr
 	ireq, err := s.transferSIPParticipantRequest(ctx, req)
 	if err != nil {
 		log.Errorw("cannot create transfer sip participant request", err)
-		return nil, err
+		return nil, wrapSIPContextError(err)
 	}
 
+	// by default we set the timeout to be 30 seconds.
+	// this timeout covers:
+	//  - a network failure between this process and the LiveKit SIP bridge
+	//  - the SIP transfer target not returning 200 OK fast enough.
+	// WARN: any timeout/cancellation of a SIP transfer risks leaving
+	// either the SIP bridge, or the SIP REFER exchange, in a "unknown" state.
 	timeout := 30 * time.Second
+	if req.RingingTimeout != nil {
+		timeout = req.RingingTimeout.AsDuration()
+	}
+
+	// it's also possible the ctx has a Deadline.
+	// in that case we want to use that deadline,
+	// or our timeout, whichover is soonest.
 	if deadline, ok := ctx.Deadline(); ok {
-		timeout = time.Until(deadline)
+		timeout = min(timeout, time.Until(deadline))
 	} else {
 		var cancel func()
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -668,7 +709,7 @@ func (s *SIPService) TransferSIPParticipant(ctx context.Context, req *livekit.Tr
 	_, err = s.psrpcClient.TransferSIPParticipant(ctx, ireq.SipCallId, ireq, psrpc.WithRequestTimeout(timeout))
 	if err != nil {
 		log.Errorw("cannot transfer sip participant", err)
-		return nil, err
+		return nil, wrapSIPContextError(err)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -690,7 +731,7 @@ func (s *SIPService) transferSIPParticipantRequest(ctx context.Context, req *liv
 		return nil, twirpAuthError(err)
 	}
 	if err := req.Validate(); err != nil {
-		return nil, err
+		return nil, twirp.WrapError(twirp.NewError(twirp.InvalidArgument, err.Error()), err)
 	}
 
 	resp, err := s.roomService.GetParticipant(ctx, &livekit.RoomParticipantIdentity{
@@ -714,4 +755,25 @@ func (s *SIPService) transferSIPParticipantRequest(ctx context.Context, req *liv
 		Headers:        req.Headers,
 		RingingTimeout: req.RingingTimeout,
 	}, nil
+}
+
+// wrapSIPContextError converts raw context.DeadlineExceeded / context.Canceled
+// into psrpc-coded errors so they aren't surfaced as @code:unknown / HTTP 500
+// at the Twirp boundary. psrpc errors and any error that already carries a
+// gRPC status are passed through unchanged.
+func wrapSIPContextError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var psErr psrpc.Error
+	if errors.As(err, &psErr) {
+		return err
+	}
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return psrpc.NewError(psrpc.DeadlineExceeded, err)
+	case errors.Is(err, context.Canceled):
+		return psrpc.NewError(psrpc.Canceled, err)
+	}
+	return err
 }

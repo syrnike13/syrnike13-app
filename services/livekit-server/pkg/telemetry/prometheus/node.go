@@ -37,6 +37,7 @@ var (
 	promMessageCounter            *prometheus.CounterVec
 	promServiceOperationCounter   *prometheus.CounterVec
 	promTwirpRequestStatusCounter *prometheus.CounterVec
+	promTwirpRequestLatency       *prometheus.HistogramVec
 
 	sysPacketsStart        uint32
 	sysDroppedPacketsStart uint32
@@ -81,6 +82,17 @@ func Init(nodeID string, nodeType livekit.NodeType) error {
 		[]string{"service", "method", "status", "code"},
 	)
 
+	promTwirpRequestLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:   livekitNamespace,
+			Subsystem:   "node",
+			Name:        "twirp_request_latency_ms",
+			ConstLabels: prometheus.Labels{"node_id": nodeID, "node_type": nodeType.String()},
+			Buckets:     []float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000},
+		},
+		[]string{"service", "method"},
+	)
+
 	promSysPacketGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace:   livekitNamespace,
@@ -95,6 +107,7 @@ func Init(nodeID string, nodeType livekit.NodeType) error {
 	prometheus.MustRegister(promMessageCounter)
 	prometheus.MustRegister(promServiceOperationCounter)
 	prometheus.MustRegister(promTwirpRequestStatusCounter)
+	prometheus.MustRegister(promTwirpRequestLatency)
 	prometheus.MustRegister(promSysPacketGauge)
 
 	sysPacketsStart, sysDroppedPacketsStart, _ = getTCStats()
@@ -105,6 +118,7 @@ func Init(nodeID string, nodeType livekit.NodeType) error {
 	webhook.InitWebhookStats(prometheus.Labels{"node_id": nodeID, "node_type": nodeType.String()})
 	initQualityStats(nodeID, nodeType)
 	initDataPacketStats(nodeID, nodeType)
+	initDebugStats(nodeID, nodeType)
 
 	var err error
 	cpuStats, err = hwstats.NewCPUStats(nil)
@@ -135,37 +149,43 @@ func GetNodeStats(nodeStartedAt int64, prevStats []*livekit.NodeStats, rateInter
 	promSysPacketGauge.WithLabelValues("dropped").Set(float64(sysDroppedPackets - sysDroppedPacketsStart))
 
 	stats := &livekit.NodeStats{
-		StartedAt:                  nodeStartedAt,
-		UpdatedAt:                  time.Now().Unix(),
-		NumRooms:                   roomCurrent.Load(),
-		NumClients:                 participantCurrent.Load(),
-		NumTracksIn:                trackPublishedCurrent.Load(),
-		NumTracksOut:               trackSubscribedCurrent.Load(),
-		NumTrackPublishAttempts:    trackPublishAttempts.Load(),
-		NumTrackPublishSuccess:     trackPublishSuccess.Load(),
-		NumTrackSubscribeAttempts:  trackSubscribeAttempts.Load(),
-		NumTrackSubscribeSuccess:   trackSubscribeSuccess.Load(),
-		BytesIn:                    bytesIn.Load(),
-		BytesOut:                   bytesOut.Load(),
-		PacketsIn:                  packetsIn.Load(),
-		PacketsOut:                 packetsOut.Load(),
-		RetransmitBytesOut:         retransmitBytes.Load(),
-		RetransmitPacketsOut:       retransmitPackets.Load(),
-		NackTotal:                  nackTotal.Load(),
-		ParticipantSignalConnected: participantSignalConnected.Load(),
-		ParticipantRtcInit:         participantRTCInit.Load(),
-		ParticipantRtcConnected:    participantRTCConnected.Load(),
-		ForwardLatency:             forwardLatency.Load(),
-		ForwardJitter:              forwardJitter.Load(),
-		NumCpus:                    uint32(cpuStats.NumCPU()), // this will round down to the nearest integer
-		CpuLoad:                    float32(cpuStats.GetCPULoad()),
-		MemoryTotal:                memTotal,
-		MemoryUsed:                 memUsed,
-		LoadAvgLast1Min:            float32(loadAvg.Loadavg1),
-		LoadAvgLast5Min:            float32(loadAvg.Loadavg5),
-		LoadAvgLast15Min:           float32(loadAvg.Loadavg15),
-		SysPacketsOut:              sysPackets,
-		SysPacketsDropped:          sysDroppedPackets,
+		StartedAt:                         nodeStartedAt,
+		UpdatedAt:                         time.Now().Unix(),
+		NumRooms:                          roomCurrent.Load(),
+		NumClients:                        participantCurrent.Load(),
+		NumTracksIn:                       trackPublishedCurrent.Load(),
+		NumTracksOut:                      trackSubscribedCurrent.Load(),
+		NumTrackPublishAttempts:           trackPublishAttempts.Load(),
+		NumTrackPublishSuccess:            trackPublishSuccess.Load(),
+		NumTrackPublishCancels:            trackPublishCancels.Load(),
+		NumTrackSubscribeAttempts:         trackSubscribeAttempts.Load(),
+		NumTrackSubscribeSuccess:          trackSubscribeSuccess.Load(),
+		NumTrackSubscribeCancels:          trackSubscribeCancels.Load(),
+		BytesIn:                           bytesIn.Load(),
+		BytesOut:                          bytesOut.Load(),
+		PacketsIn:                         packetsIn.Load(),
+		PacketsOut:                        packetsOut.Load(),
+		RetransmitBytesOut:                retransmitBytes.Load(),
+		RetransmitPacketsOut:              retransmitPackets.Load(),
+		NackTotal:                         nackTotal.Load(),
+		ParticipantSignalConnected:        participantSignalConnected.Load(),
+		ParticipantSignalFailed:           participantSignalFailed.Load(),
+		ParticipantSignalValidationFailed: participantSignalValidationFailed.Load(),
+		ParticipantRtcInit:                participantRTCInit.Load(),
+		ParticipantRtcConnected:           participantRTCConnected.Load(),
+		ParticipantRtcCanceled:            participantRTCCanceled.Load(),
+		ParticipantRtcActive:              participantRTCActive.Load(),
+		ForwardLatency:                    forwardLatency.Load(),
+		ForwardJitter:                     forwardJitter.Load(),
+		NumCpus:                           uint32(cpuStats.NumCPU()), // this will round down to the nearest integer
+		CpuLoad:                           float32(cpuStats.GetCPULoad()),
+		MemoryTotal:                       memTotal,
+		MemoryUsed:                        memUsed,
+		LoadAvgLast1Min:                   float32(loadAvg.Loadavg1),
+		LoadAvgLast5Min:                   float32(loadAvg.Loadavg5),
+		LoadAvgLast15Min:                  float32(loadAvg.Loadavg15),
+		SysPacketsOut:                     sysPackets,
+		SysPacketsDropped:                 sysDroppedPackets,
 	}
 
 	for _, rateInterval := range rateIntervals {
@@ -222,29 +242,35 @@ func getNodeStatsRate(statsHistory []*livekit.NodeStats) *livekit.NodeStatsRate 
 	earlier := statsHistory[0]
 	later := statsHistory[len(statsHistory)-1]
 	rate := &livekit.NodeStatsRate{
-		StartedAt:                  earlier.UpdatedAt,
-		EndedAt:                    later.UpdatedAt,
-		Duration:                   elapsed,
-		BytesIn:                    perSec(earlier.BytesIn, later.BytesIn, elapsed),
-		BytesOut:                   perSec(earlier.BytesOut, later.BytesOut, elapsed),
-		PacketsIn:                  perSec(earlier.PacketsIn, later.PacketsIn, elapsed),
-		PacketsOut:                 perSec(earlier.PacketsOut, later.PacketsOut, elapsed),
-		RetransmitBytesOut:         perSec(earlier.RetransmitBytesOut, later.RetransmitBytesOut, elapsed),
-		RetransmitPacketsOut:       perSec(earlier.RetransmitPacketsOut, later.RetransmitPacketsOut, elapsed),
-		NackTotal:                  perSec(earlier.NackTotal, later.NackTotal, elapsed),
-		ParticipantSignalConnected: perSec(earlier.ParticipantSignalConnected, later.ParticipantSignalConnected, elapsed),
-		ParticipantRtcInit:         perSec(earlier.ParticipantRtcInit, later.ParticipantRtcInit, elapsed),
-		ParticipantRtcConnected:    perSec(earlier.ParticipantRtcConnected, later.ParticipantRtcConnected, elapsed),
-		SysPacketsOut:              perSec(uint64(earlier.SysPacketsOut), uint64(later.SysPacketsOut), elapsed),
-		SysPacketsDropped:          perSec(uint64(earlier.SysPacketsDropped), uint64(later.SysPacketsDropped), elapsed),
-		TrackPublishAttempts:       perSec(uint64(earlier.NumTrackPublishAttempts), uint64(later.NumTrackPublishAttempts), elapsed),
-		TrackPublishSuccess:        perSec(uint64(earlier.NumTrackPublishSuccess), uint64(later.NumTrackPublishSuccess), elapsed),
-		TrackSubscribeAttempts:     perSec(uint64(earlier.NumTrackSubscribeAttempts), uint64(later.NumTrackSubscribeAttempts), elapsed),
-		TrackSubscribeSuccess:      perSec(uint64(earlier.NumTrackSubscribeSuccess), uint64(later.NumTrackSubscribeSuccess), elapsed),
-		CpuLoad:                    cpuLoad / float32(elapsed),
-		MemoryLoad:                 memoryLoad / float32(elapsed),
-		MemoryUsed:                 memoryUsed / float32(elapsed),
-		MemoryTotal:                memoryTotal / float32(elapsed),
+		StartedAt:                         earlier.UpdatedAt,
+		EndedAt:                           later.UpdatedAt,
+		Duration:                          elapsed,
+		BytesIn:                           perSec(earlier.BytesIn, later.BytesIn, elapsed),
+		BytesOut:                          perSec(earlier.BytesOut, later.BytesOut, elapsed),
+		PacketsIn:                         perSec(earlier.PacketsIn, later.PacketsIn, elapsed),
+		PacketsOut:                        perSec(earlier.PacketsOut, later.PacketsOut, elapsed),
+		RetransmitBytesOut:                perSec(earlier.RetransmitBytesOut, later.RetransmitBytesOut, elapsed),
+		RetransmitPacketsOut:              perSec(earlier.RetransmitPacketsOut, later.RetransmitPacketsOut, elapsed),
+		NackTotal:                         perSec(earlier.NackTotal, later.NackTotal, elapsed),
+		ParticipantSignalConnected:        perSec(earlier.ParticipantSignalConnected, later.ParticipantSignalConnected, elapsed),
+		ParticipantSignalFailed:           perSec(earlier.ParticipantSignalFailed, later.ParticipantSignalFailed, elapsed),
+		ParticipantSignalValidationFailed: perSec(earlier.ParticipantSignalValidationFailed, later.ParticipantSignalValidationFailed, elapsed),
+		ParticipantRtcInit:                perSec(earlier.ParticipantRtcInit, later.ParticipantRtcInit, elapsed),
+		ParticipantRtcConnected:           perSec(earlier.ParticipantRtcConnected, later.ParticipantRtcConnected, elapsed),
+		ParticipantRtcCanceled:            perSec(earlier.ParticipantRtcCanceled, later.ParticipantRtcCanceled, elapsed),
+		ParticipantRtcActive:              perSec(earlier.ParticipantRtcActive, later.ParticipantRtcActive, elapsed),
+		SysPacketsOut:                     perSec(uint64(earlier.SysPacketsOut), uint64(later.SysPacketsOut), elapsed),
+		SysPacketsDropped:                 perSec(uint64(earlier.SysPacketsDropped), uint64(later.SysPacketsDropped), elapsed),
+		TrackPublishAttempts:              perSec(uint64(earlier.NumTrackPublishAttempts), uint64(later.NumTrackPublishAttempts), elapsed),
+		TrackPublishSuccess:               perSec(uint64(earlier.NumTrackPublishSuccess), uint64(later.NumTrackPublishSuccess), elapsed),
+		TrackPublishCancels:               perSec(uint64(earlier.NumTrackPublishCancels), uint64(later.NumTrackPublishCancels), elapsed),
+		TrackSubscribeAttempts:            perSec(uint64(earlier.NumTrackSubscribeAttempts), uint64(later.NumTrackSubscribeAttempts), elapsed),
+		TrackSubscribeSuccess:             perSec(uint64(earlier.NumTrackSubscribeSuccess), uint64(later.NumTrackSubscribeSuccess), elapsed),
+		TrackSubscribeCancels:             perSec(uint64(earlier.NumTrackSubscribeCancels), uint64(later.NumTrackSubscribeCancels), elapsed),
+		CpuLoad:                           cpuLoad / float32(elapsed),
+		MemoryLoad:                        memoryLoad / float32(elapsed),
+		MemoryUsed:                        memoryUsed / float32(elapsed),
+		MemoryTotal:                       memoryTotal / float32(elapsed),
 	}
 	return rate
 }
@@ -279,4 +305,8 @@ func RecordServiceOperationError(op string, error string) {
 
 func RecordTwirpRequestStatus(service string, method string, statusFamily string, code twirp.ErrorCode) {
 	promTwirpRequestStatusCounter.WithLabelValues(service, method, statusFamily, string(code)).Add(1)
+}
+
+func RecordTwirpRequestLatency(service, method string, duration time.Duration) {
+	promTwirpRequestLatency.WithLabelValues(service, method).Observe(float64(duration.Milliseconds()))
 }

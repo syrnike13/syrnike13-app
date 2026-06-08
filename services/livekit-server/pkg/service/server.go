@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pion/turn/v4"
+	"github.com/pion/turn/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	"github.com/twitchtv/twirp"
@@ -115,9 +115,10 @@ func NewLivekitServer(conf *config.Config,
 		middlewares = append(middlewares, NewAPIKeyAuthMiddleware(keyProvider))
 	}
 
-	serverOptions := []interface{}{
+	serverOptions := []any{
 		twirp.WithServerHooks(twirp.ChainHooks(
 			TwirpLogger(),
+			TwirpEgressID(),
 			TwirpRequestStatusReporter(),
 		)),
 	}
@@ -236,7 +237,7 @@ func (s *LivekitServer) Start() error {
 		}
 	}
 
-	values := []interface{}{
+	values := []any{
 		"portHttp", s.config.Port,
 		"nodeID", s.currentNode.NodeID(),
 		"nodeIP", s.currentNode.NodeIP(),
@@ -347,7 +348,7 @@ func (s *LivekitServer) debugGoroutines(w http.ResponseWriter, _ *http.Request) 
 
 func (s *LivekitServer) debugInfo(w http.ResponseWriter, _ *http.Request) {
 	s.roomManager.lock.RLock()
-	info := make([]map[string]interface{}, 0, len(s.roomManager.rooms))
+	info := make([]map[string]any, 0, len(s.roomManager.rooms))
 	for _, room := range s.roomManager.rooms {
 		info = append(info, room.DebugInfo())
 	}
@@ -377,7 +378,7 @@ func (s *LivekitServer) healthCheck(w http.ResponseWriter, _ *http.Request) {
 	}
 	if time.Since(updatedAt) > 4*time.Second {
 		w.WriteHeader(http.StatusNotAcceptable)
-		_, _ = w.Write([]byte(fmt.Sprintf("Not Ready\nNode Updated At %s", updatedAt)))
+		_, _ = fmt.Fprintf(w, "Not Ready\nNode Updated At %s", updatedAt)
 		return
 	}
 

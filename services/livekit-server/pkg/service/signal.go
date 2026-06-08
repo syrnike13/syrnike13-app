@@ -120,8 +120,8 @@ func (s *SignalServer) Start() error {
 	return s.server.RegisterAllNodeTopics(s.nodeID)
 }
 
-func (r *SignalServer) Stop() {
-	r.server.Kill()
+func (s *SignalServer) Stop() {
+	s.server.Kill()
 }
 
 type signalService struct {
@@ -168,8 +168,8 @@ func (r *signalService) RelaySignal(stream psrpc.ServerStream[*rpc.RelaySignalRe
 			reqChan,
 			signalRequestMessageReader{},
 			r.config,
-			prometheus.RecordSignalResponseSuccess,
-			prometheus.RecordSignalResponseFailure,
+			prometheus.RecordSignalRequestSuccess,
+			prometheus.RecordSignalRequestFailure,
 		)
 		l.Debugw("signal stream closed", "error", err)
 

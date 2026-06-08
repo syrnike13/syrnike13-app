@@ -22,16 +22,11 @@ import (
 	"os"
 
 	"github.com/google/wire"
-	"github.com/pion/turn/v4"
+	"github.com/pion/turn/v5"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
 	"gopkg.in/yaml.v3"
 
-	"github.com/syrnike13/livekit-server/pkg/agent"
-	"github.com/syrnike13/livekit-server/pkg/config"
-	"github.com/syrnike13/livekit-server/pkg/routing"
-	"github.com/syrnike13/livekit-server/pkg/sfu"
-	"github.com/syrnike13/livekit-server/pkg/telemetry"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
@@ -40,6 +35,13 @@ import (
 	"github.com/livekit/protocol/utils"
 	"github.com/livekit/protocol/webhook"
 	"github.com/livekit/psrpc"
+	"github.com/livekit/psrpc/pkg/middleware/otelpsrpc"
+
+	"github.com/syrnike13/livekit-server/pkg/agent"
+	"github.com/syrnike13/livekit-server/pkg/config"
+	"github.com/syrnike13/livekit-server/pkg/routing"
+	"github.com/syrnike13/livekit-server/pkg/sfu"
+	"github.com/syrnike13/livekit-server/pkg/telemetry"
 )
 
 func InitializeServer(conf *config.Config, currentNode routing.LocalNode) (*LivekitServer, error) {
@@ -54,11 +56,11 @@ func InitializeServer(conf *config.Config, currentNode routing.LocalNode) (*Live
 		getNodeStatsConfig,
 		routing.CreateRouter,
 		getLimitConf,
-		config.DefaultAPIConfig,
+		getAPIConf,
 		wire.Bind(new(routing.MessageRouter), new(routing.Router)),
 		wire.Bind(new(livekit.RoomService), new(*RoomService)),
 		telemetry.NewAnalyticsService,
-		telemetry.NewTelemetryService,
+		createTelemetryService,
 		getMessageBus,
 		NewIOInfoService,
 		wire.Bind(new(IOClient), new(*IOInfoService)),
@@ -70,7 +72,7 @@ func InitializeServer(conf *config.Config, currentNode routing.LocalNode) (*Live
 		getIngressStore,
 		getIngressConfig,
 		NewIngressService,
-		rpc.NewSIPClient,
+		newSIPClient,
 		getSIPStore,
 		getSIPConfig,
 		NewSIPService,
@@ -169,6 +171,14 @@ func createWebhookNotifier(conf *config.Config, provider auth.KeyProvider) (webh
 	return webhook.NewDefaultNotifier(wc, provider)
 }
 
+func createTelemetryService(notifier webhook.QueuedNotifier, analytics telemetry.AnalyticsService) telemetry.TelemetryService {
+	svc := telemetry.NewTelemetryService(notifier, analytics)
+	if notifier != nil {
+		notifier.RegisterProcessedHook(svc.Webhook)
+	}
+	return svc
+}
+
 func createRedisClient(conf *config.Config) (redis.UniversalClient, error) {
 	if !conf.Redis.IsConfigured() {
 		return nil, nil
@@ -223,6 +233,19 @@ func getIngressConfig(conf *config.Config) *config.IngressConfig {
 	return &conf.Ingress
 }
 
+func newSIPClient(p rpc.ClientParams) (rpc.SIPClient, error) {
+	// Do not pass parameters directly, as they set timeout that is too short,
+	// and might set retry policy that is not acceptable for SIP methods.
+	// Instead, set relevant parameters manually.
+	return rpc.NewSIPClientWithParams(rpc.ClientParams{
+		Bus: p.Bus,
+		ClientOptions: []psrpc.ClientOption{
+			rpc.WithClientLogger(p.Logger),
+			otelpsrpc.ClientOptions(otelpsrpc.Config{}),
+		},
+	})
+}
+
 func getSIPStore(s ObjectStore) SIPStore {
 	switch store := s.(type) {
 	case *RedisStore:
@@ -253,7 +276,9 @@ func getPSRPCConfig(config *config.Config) rpc.PSRPCConfig {
 }
 
 func getPSRPCClientParams(config rpc.PSRPCConfig, bus psrpc.MessageBus) rpc.ClientParams {
-	return rpc.NewClientParams(config, bus, logger.GetLogger(), rpc.PSRPCMetricsObserver{})
+	return rpc.NewClientParams(config, bus, logger.GetLogger(), rpc.PSRPCMetricsObserver{},
+		otelpsrpc.ClientOptions(otelpsrpc.Config{}),
+	)
 }
 
 func createForwardStats(conf *config.Config) *sfu.ForwardStats {
@@ -273,4 +298,8 @@ func getNodeStatsConfig(config *config.Config) config.NodeStatsConfig {
 
 func getAgentConfig(config *config.Config) agent.Config {
 	return config.Agents
+}
+
+func getAPIConf(config *config.Config) config.APIConfig {
+	return config.API
 }

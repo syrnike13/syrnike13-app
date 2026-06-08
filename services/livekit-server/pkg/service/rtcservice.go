@@ -15,14 +15,12 @@
 package service
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"maps"
 	"math/rand"
 	"net/http"
 	"os"
@@ -32,7 +30,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/atomic"
-	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/livekit/protocol/livekit"
@@ -90,13 +87,25 @@ func NewRTCService(
 }
 
 func (s *RTCService) SetupRoutes(mux *http.ServeMux) {
-	mux.Handle("/rtc", s)
-	mux.HandleFunc("/rtc/validate", s.validate)
+	mux.HandleFunc("/rtc", s.v0)
+	mux.HandleFunc("/rtc/validate", s.v0Validate)
+	mux.HandleFunc("/rtc/v1", s.v1)
+	mux.HandleFunc("/rtc/v1/validate", s.v1Validate)
 }
 
-func (s *RTCService) validate(w http.ResponseWriter, r *http.Request) {
+func (s *RTCService) v0Validate(w http.ResponseWriter, r *http.Request) {
 	lgr := utils.GetLogger(r.Context())
-	_, _, code, err := s.validateInternal(lgr, r, true)
+	_, _, code, err := s.validateInternal(lgr, r, false, true)
+	if err != nil {
+		HandleError(w, r, code, err)
+		return
+	}
+	_, _ = w.Write([]byte("success"))
+}
+
+func (s *RTCService) v1Validate(w http.ResponseWriter, r *http.Request) {
+	lgr := utils.GetLogger(r.Context())
+	_, _, code, err := s.validateInternal(lgr, r, true, true)
 	if err != nil {
 		HandleError(w, r, code, err)
 		return
@@ -116,17 +125,28 @@ func decodeAttributes(str string) (map[string]string, error) {
 	return attrs, nil
 }
 
-var gzipReaderPool = sync.Pool{
-	New: func() any { return &gzip.Reader{} },
-}
+var errJoinRequestTooLarge = errors.New("join request too large")
 
-func (s *RTCService) validateInternal(lgr logger.Logger, r *http.Request, strict bool) (livekit.RoomName, routing.ParticipantInit, int, error) {
+func (s *RTCService) validateInternal(
+	lgr logger.Logger,
+	r *http.Request,
+	needsJoinRequest bool,
+	strict bool,
+) (livekit.RoomName, routing.ParticipantInit, int, error) {
+	if claims := GetGrants(r.Context()); claims == nil || claims.Video == nil {
+		return "", routing.ParticipantInit{}, http.StatusUnauthorized, rtc.ErrPermissionDenied
+	}
+
 	var params ValidateConnectRequestParams
 	useSinglePeerConnection := false
 	joinRequest := &livekit.JoinRequest{}
 
 	wrappedJoinRequestBase64 := r.FormValue("join_request")
 	if wrappedJoinRequestBase64 == "" {
+		if needsJoinRequest {
+			return "", routing.ParticipantInit{}, http.StatusBadRequest, errors.New("join_request is required")
+		}
+
 		params.publish = r.FormValue("publish")
 
 		attributesStrParam := r.FormValue("attributes")
@@ -153,17 +173,23 @@ func (s *RTCService) validateInternal(lgr logger.Logger, r *http.Request, strict
 
 			switch wrappedJoinRequest.Compression {
 			case livekit.WrappedJoinRequest_NONE:
+				if len(wrappedJoinRequest.JoinRequest) > http.DefaultMaxHeaderBytes {
+					return "", routing.ParticipantInit{}, http.StatusBadRequest, errJoinRequestTooLarge
+				}
 				if err := proto.Unmarshal(wrappedJoinRequest.JoinRequest, joinRequest); err != nil {
 					return "", routing.ParticipantInit{}, http.StatusBadRequest, errors.New("cannot unmarshal join request")
 				}
 
 			case livekit.WrappedJoinRequest_GZIP:
-				reader := gzipReaderPool.Get().(*gzip.Reader)
-				defer gzipReaderPool.Put(reader)
-				reader.Reset(bytes.NewReader(wrappedJoinRequest.JoinRequest))
-				protoBytes, err := io.ReadAll(reader)
+				protoBytes, err := DecompressGzip(wrappedJoinRequest.JoinRequest)
 				if err != nil {
-					return "", routing.ParticipantInit{}, http.StatusBadRequest, errors.New("cannot read decompressed join request")
+					switch {
+					case errors.Is(err, ErrGzipTooLarge):
+						err = errJoinRequestTooLarge
+					case errors.Is(err, ErrGzipReadFailed):
+						err = errors.New("cannot read decompressed join request")
+					}
+					return "", routing.ParticipantInit{}, http.StatusBadRequest, err
 				}
 
 				if err := proto.Unmarshal(protoBytes, joinRequest); err != nil {
@@ -200,7 +226,17 @@ func (s *RTCService) validateInternal(lgr logger.Logger, r *http.Request, strict
 	if wrappedJoinRequestBase64 == "" {
 		pi.Reconnect = boolValue(r.FormValue("reconnect"))
 		pi.Client = ParseClientInfo(r)
+
 		pi.AutoSubscribe = true
+		if autoSubscribeParam := r.FormValue("auto_subscribe"); autoSubscribeParam != "" {
+			pi.AutoSubscribe = boolValue(autoSubscribeParam)
+		}
+
+		if autoSubscribeDataTrackParam := r.FormValue("auto_subscribe_data_track"); autoSubscribeDataTrackParam != "" {
+			autoSubscribeDataTrack := boolValue(autoSubscribeDataTrackParam)
+			pi.AutoSubscribeDataTrack = &autoSubscribeDataTrack
+		}
+
 		pi.AdaptiveStream = boolValue(r.FormValue("adaptive_stream"))
 		pi.DisableICELite = boolValue(r.FormValue("disable_ice_lite"))
 
@@ -211,22 +247,24 @@ func (s *RTCService) validateInternal(lgr logger.Logger, r *http.Request, strict
 			pi.ID = livekit.ParticipantID(r.FormValue("sid"))
 		}
 
-		if autoSubscribe := r.FormValue("auto_subscribe"); autoSubscribe != "" {
-			pi.AutoSubscribe = boolValue(autoSubscribe)
-		}
-
-		subscriberAllowPauseParam := r.FormValue("subscriber_allow_pause")
-		if subscriberAllowPauseParam != "" {
+		if subscriberAllowPauseParam := r.FormValue("subscriber_allow_pause"); subscriberAllowPauseParam != "" {
 			subscriberAllowPause := boolValue(subscriberAllowPauseParam)
 			pi.SubscriberAllowPause = &subscriberAllowPause
 		}
 	} else {
 		lgr.Debugw("processing join request", "joinRequest", logger.Proto(joinRequest))
 
+		if joinRequest.ClientInfo == nil {
+			joinRequest.ClientInfo = &livekit.ClientInfo{}
+		}
 		AugmentClientInfo(joinRequest.ClientInfo, r)
 		pi.Client = joinRequest.ClientInfo
 
 		pi.AutoSubscribe = joinRequest.GetConnectionSettings().GetAutoSubscribe()
+
+		autoSubscribeDataTrack := joinRequest.GetConnectionSettings().GetAutoSubscribeDataTrack()
+		pi.AutoSubscribeDataTrack = &autoSubscribeDataTrack
+
 		pi.AdaptiveStream = joinRequest.GetConnectionSettings().GetAdaptiveStream()
 		pi.DisableICELite = joinRequest.GetConnectionSettings().GetDisableIceLite()
 
@@ -244,18 +282,28 @@ func (s *RTCService) validateInternal(lgr logger.Logger, r *http.Request, strict
 	return res.roomName, pi, code, err
 }
 
-func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *RTCService) v0(w http.ResponseWriter, r *http.Request) {
+	s.serve(w, r, false)
+}
+
+func (s *RTCService) v1(w http.ResponseWriter, r *http.Request) {
+	s.serve(w, r, true)
+}
+
+func (s *RTCService) serve(w http.ResponseWriter, r *http.Request, needsJoinRequest bool) {
 	// reject non websocket requests
 	if !websocket.IsWebSocketUpgrade(r) {
 		w.WriteHeader(404)
 		return
 	}
 
+	startedAt := time.Now()
 	var (
 		roomName            livekit.RoomName
 		roomID              livekit.RoomID
 		participantIdentity livekit.ParticipantIdentity
 		pID                 livekit.ParticipantID
+		joinDuration        time.Duration
 		loggerResolved      bool
 
 		pi   routing.ParticipantInit
@@ -270,7 +318,8 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"room", roomName,
 			"roomID", roomID,
 			"participant", participantIdentity,
-			"pID", pID,
+			"participantID", pID,
+			"joinDuration", joinDuration,
 		}
 	}
 
@@ -279,7 +328,25 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if force || (roomName != "" && roomID != "" && participantIdentity != "" && pID != "") {
+		if force {
+			if roomName == "" {
+				roomName = "unresolved"
+			}
+			if roomID == "" {
+				roomID = "unresolved"
+			}
+			if participantIdentity == "" {
+				participantIdentity = "unresolved"
+			}
+			if pID == "" {
+				pID = "unresolved"
+			}
+			if joinDuration == 0 {
+				joinDuration = time.Since(startedAt)
+			}
+		}
+
+		if roomName != "" && roomID != "" && participantIdentity != "" && pID != "" {
 			loggerResolved = true
 			loggerResolver.Resolve(getLoggerFields()...)
 		}
@@ -295,9 +362,11 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		loggerResolved = false
 	}
 
-	roomName, pi, code, err = s.validateInternal(pLogger, r, false)
+	roomName, pi, code, err = s.validateInternal(pLogger, r, needsJoinRequest, false)
 	if err != nil {
-		HandleError(w, r, code, err)
+		prometheus.IncrementParticipantJoinValidationFail(1)
+		resolveLogger(true)
+		HandleError(w, r, code, err, getLoggerFields()...)
 		return
 	}
 
@@ -305,6 +374,7 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if pi.ID != "" {
 		pID = pi.ID
 	}
+	pLogger.Debugw("join request validated", append(getLoggerFields(), "participantInit", &pi)...)
 
 	// give it a few attempts to start session
 	var cr connectionResult
@@ -325,11 +395,13 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if errors.As(err, &psrpcErr) {
 			status = psrpcErr.ToHttp()
 		}
+		resolveLogger(true)
 		HandleError(w, r, status, err, getLoggerFields()...)
 		return
 	}
 
 	prometheus.IncrementParticipantJoin(1)
+	joinDuration = time.Since(startedAt)
 
 	pLogger = pLogger.WithValues("connID", cr.ConnectionID)
 	if !pi.Reconnect && initialResponse.GetJoin() != nil {
@@ -344,7 +416,7 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resolveLogger(false)
 	}
 
-	signalStats := telemetry.NewBytesSignalStats(r.Context(), s.telemetry)
+	signalStats := rtc.NewBytesSignalStats(r.Context(), s.telemetry)
 	if join := initialResponse.GetJoin(); join != nil {
 		signalStats.ResolveRoom(join.GetRoom())
 		signalStats.ResolveParticipant(join.GetParticipant())
@@ -360,6 +432,7 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	done := make(chan struct{})
 	// function exits when websocket terminates, it'll close the event reading off of request sink and response source as well
 	defer func() {
+		resolveLogger(true)
 		pLogger.Debugw("finishing WS connection", "closedByClient", closedByClient.Load())
 		cr.ResponseSource.Close()
 		cr.RequestSink.Close()
@@ -371,6 +444,7 @@ func (s *RTCService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// upgrade only once the basics are good to go
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		resolveLogger(true)
 		HandleError(w, r, http.StatusInternalServerError, err, getLoggerFields()...)
 		return
 	}

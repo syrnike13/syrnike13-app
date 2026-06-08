@@ -28,7 +28,7 @@ type ParticipantSignalHandler interface {
 }
 
 type ParticipantSignaller interface {
-	SetResponseSink(sink routing.MessageSink)
+	SwapResponseSink(sink routing.MessageSink, reason types.SignallingCloseReason)
 	GetResponseSink() routing.MessageSink
 	CloseSignalConnection(reason types.SignallingCloseReason)
 
@@ -59,4 +59,7 @@ type ParticipantSignalling interface {
 	SignalSubscriptionPermissionUpdate(subscriptionPermissionUpdate *livekit.SubscriptionPermissionUpdate) proto.Message
 	SignalMediaSectionsRequirement(mediaSectionsRequirement *livekit.MediaSectionsRequirement) proto.Message
 	SignalSubscribedAudioCodecUpdate(subscribedAudioCodecUpdate *livekit.SubscribedAudioCodecUpdate) proto.Message
+	SignalPublishDataTrackResponse(publishDataTrackResponse *livekit.PublishDataTrackResponse) proto.Message
+	SignalUnpublishDataTrackResponse(unpublishDataTrackResponse *livekit.UnpublishDataTrackResponse) proto.Message
+	SignalDataTrackSubscriberHandles(dataTrackSubscriberHandles *livekit.DataTrackSubscriberHandles) proto.Message
 }

@@ -8,6 +8,11 @@ package service
 
 import (
 	"fmt"
+	"github.com/syrnike13/livekit-server/pkg/agent"
+	"github.com/syrnike13/livekit-server/pkg/config"
+	"github.com/syrnike13/livekit-server/pkg/routing"
+	"github.com/syrnike13/livekit-server/pkg/sfu"
+	"github.com/syrnike13/livekit-server/pkg/telemetry"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
@@ -16,14 +21,10 @@ import (
 	"github.com/livekit/protocol/utils"
 	"github.com/livekit/protocol/webhook"
 	"github.com/livekit/psrpc"
-	"github.com/pion/turn/v4"
+	"github.com/livekit/psrpc/pkg/middleware/otelpsrpc"
+	"github.com/pion/turn/v5"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
-	"github.com/syrnike13/livekit-server/pkg/agent"
-	"github.com/syrnike13/livekit-server/pkg/config"
-	"github.com/syrnike13/livekit-server/pkg/routing"
-	"github.com/syrnike13/livekit-server/pkg/sfu"
-	"github.com/syrnike13/livekit-server/pkg/telemetry"
 	"gopkg.in/yaml.v3"
 	"os"
 )
@@ -36,7 +37,7 @@ import (
 
 func InitializeServer(conf *config.Config, currentNode routing.LocalNode) (*LivekitServer, error) {
 	limitConfig := getLimitConf(conf)
-	apiConfig := config.DefaultAPIConfig()
+	apiConfig := getAPIConf(conf)
 	universalClient, err := createRedisClient(conf)
 	if err != nil {
 		return nil, err
@@ -82,7 +83,7 @@ func InitializeServer(conf *config.Config, currentNode routing.LocalNode) (*Live
 		return nil, err
 	}
 	analyticsService := telemetry.NewAnalyticsService(conf, currentNode)
-	telemetryService := telemetry.NewTelemetryService(queuedNotifier, analyticsService)
+	telemetryService := createTelemetryService(queuedNotifier, analyticsService)
 	ioInfoService, err := NewIOInfoService(messageBus, egressStore, ingressStore, sipStore, telemetryService)
 	if err != nil {
 		return nil, err
@@ -114,7 +115,7 @@ func InitializeServer(conf *config.Config, currentNode routing.LocalNode) (*Live
 	}
 	ingressService := NewIngressService(ingressConfig, nodeID, messageBus, ingressClient, ingressStore, ioInfoService, telemetryService)
 	sipConfig := getSIPConfig(conf)
-	sipClient, err := rpc.NewSIPClient(messageBus)
+	sipClient, err := newSIPClient(clientParams)
 	if err != nil {
 		return nil, err
 	}
@@ -235,6 +236,14 @@ func createWebhookNotifier(conf *config.Config, provider auth.KeyProvider) (webh
 	return webhook.NewDefaultNotifier(wc, provider)
 }
 
+func createTelemetryService(notifier webhook.QueuedNotifier, analytics telemetry.AnalyticsService) telemetry.TelemetryService {
+	svc := telemetry.NewTelemetryService(notifier, analytics)
+	if notifier != nil {
+		notifier.RegisterProcessedHook(svc.Webhook)
+	}
+	return svc
+}
+
 func createRedisClient(conf *config.Config) (redis.UniversalClient, error) {
 	if !conf.Redis.IsConfigured() {
 		return nil, nil
@@ -289,6 +298,14 @@ func getIngressConfig(conf *config.Config) *config.IngressConfig {
 	return &conf.Ingress
 }
 
+func newSIPClient(p rpc.ClientParams) (rpc.SIPClient, error) {
+
+	return rpc.NewSIPClientWithParams(rpc.ClientParams{
+		Bus:           p.Bus,
+		ClientOptions: []psrpc.ClientOption{rpc.WithClientLogger(p.Logger), otelpsrpc.ClientOptions(otelpsrpc.Config{})},
+	})
+}
+
 func getSIPStore(s ObjectStore) SIPStore {
 	switch store := s.(type) {
 	case *RedisStore:
@@ -319,7 +336,7 @@ func getPSRPCConfig(config2 *config.Config) rpc.PSRPCConfig {
 }
 
 func getPSRPCClientParams(config2 rpc.PSRPCConfig, bus psrpc.MessageBus) rpc.ClientParams {
-	return rpc.NewClientParams(config2, bus, logger.GetLogger(), rpc.PSRPCMetricsObserver{})
+	return rpc.NewClientParams(config2, bus, logger.GetLogger(), rpc.PSRPCMetricsObserver{}, otelpsrpc.ClientOptions(otelpsrpc.Config{}))
 }
 
 func createForwardStats(conf *config.Config) *sfu.ForwardStats {
@@ -339,4 +356,8 @@ func getNodeStatsConfig(config2 *config.Config) config.NodeStatsConfig {
 
 func getAgentConfig(config2 *config.Config) agent.Config {
 	return config2.Agents
+}
+
+func getAPIConf(config2 *config.Config) config.APIConfig {
+	return config2.API
 }

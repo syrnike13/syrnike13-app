@@ -76,7 +76,7 @@ func Build() error {
 	return nil
 }
 
-// builds binary that runs on linux amd64
+// builds binary that runs on linux
 func BuildLinux() error {
 	mg.Deps(generateWire)
 	if !checksummer.IsChanged() {
@@ -88,10 +88,14 @@ func BuildLinux() error {
 	if err := os.MkdirAll("bin", 0755); err != nil {
 		return err
 	}
-	cmd := mageutil.CommandDir(context.Background(), "cmd/server", "go build -buildvcs=false -o ../../bin/livekit-server-amd64")
+	buildArch := os.Getenv("GOARCH")
+	if len(buildArch) == 0 {
+		buildArch = "amd64"
+	}
+	cmd := mageutil.CommandDir(context.Background(), "cmd/server", "go build -buildvcs=false -o ../../bin/livekit-server-" + buildArch)
 	cmd.Env = []string{
 		"GOOS=linux",
-		"GOARCH=amd64",
+		"GOARCH=" + buildArch,
 		"HOME=" + os.Getenv("HOME"),
 		"GOPATH=" + os.Getenv("GOPATH"),
 	}
@@ -171,6 +175,14 @@ func Test() error {
 func TestAll() error {
 	mg.Deps(generateWire, setULimit)
 	return mageutil.Run(context.Background(), "go test ./... -count=1 -timeout=4m -v")
+}
+
+// runs golangci-lint
+func Lint() error {
+	if _, err := exec.LookPath("golangci-lint"); err != nil {
+		return errors.New("golangci-lint is not installed, install instructions: https://golangci-lint.run/docs/welcome/install/")
+	}
+	return mageutil.Run(context.Background(), "golangci-lint run ./...")
 }
 
 // cleans up builds

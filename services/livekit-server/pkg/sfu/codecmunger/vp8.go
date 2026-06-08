@@ -15,8 +15,9 @@
 package codecmunger
 
 import (
-	"github.com/elliotchance/orderedmap/v2"
+	"github.com/elliotchance/orderedmap/v3"
 
+	"github.com/livekit/mediatransportutil/pkg/codec"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 
@@ -60,13 +61,18 @@ func NewVP8(logger logger.Logger) *VP8 {
 	}
 }
 
-func NewVP8FromNull(cm CodecMunger, logger logger.Logger) *VP8 {
+func NewVP8FromOther(cm CodecMunger, logger logger.Logger) *VP8 {
 	v := NewVP8(logger)
-	v.SeedState(cm.(*Null).GetSeededState())
+	switch cm := cm.(type) {
+	case *Null:
+		v.SeedState(cm.GetSeededState())
+	case *VP8:
+		v.SeedState(cm.GetState())
+	}
 	return v
 }
 
-func (v *VP8) GetState() interface{} {
+func (v *VP8) GetState() any {
 	return &livekit.VP8MungerState{
 		ExtLastPictureId: v.extLastPictureId,
 		PictureIdUsed:    v.pictureIdUsed,
@@ -78,10 +84,15 @@ func (v *VP8) GetState() interface{} {
 	}
 }
 
-func (v *VP8) SeedState(seed interface{}) {
+func (v *VP8) SeedState(seed any) {
+	var state *livekit.VP8MungerState
 	switch cm := seed.(type) {
 	case *livekit.RTPForwarderState_Vp8Munger:
-		state := cm.Vp8Munger
+		state = cm.Vp8Munger
+	case *livekit.VP8MungerState:
+		state = cm
+	}
+	if state != nil {
 		v.extLastPictureId = state.ExtLastPictureId
 		v.pictureIdUsed = state.PictureIdUsed
 		v.lastTl0PicIdx = uint8(state.LastTl0PicIdx)
@@ -93,7 +104,7 @@ func (v *VP8) SeedState(seed interface{}) {
 }
 
 func (v *VP8) SetLast(extPkt *buffer.ExtPacket) {
-	vp8, ok := extPkt.Payload.(buffer.VP8)
+	vp8, ok := extPkt.Payload.(codec.VP8)
 	if !ok {
 		return
 	}
@@ -118,7 +129,7 @@ func (v *VP8) SetLast(extPkt *buffer.ExtPacket) {
 }
 
 func (v *VP8) UpdateOffsets(extPkt *buffer.ExtPacket) {
-	vp8, ok := extPkt.Payload.(buffer.VP8)
+	vp8, ok := extPkt.Payload.(codec.VP8)
 	if !ok {
 		return
 	}
@@ -143,7 +154,7 @@ func (v *VP8) UpdateOffsets(extPkt *buffer.ExtPacket) {
 }
 
 func (v *VP8) UpdateAndGet(extPkt *buffer.ExtPacket, snOutOfOrder bool, snHasGap bool, maxTemporalLayer int32) (int, []byte, error) {
-	vp8, ok := extPkt.Payload.(buffer.VP8)
+	vp8, ok := extPkt.Payload.(codec.VP8)
 	if !ok {
 		return 0, nil, ErrNotVP8
 	}
@@ -164,7 +175,7 @@ func (v *VP8) UpdateAndGet(extPkt *buffer.ExtPacket, snOutOfOrder bool, snHasGap
 		// when it reaches a certain size.
 
 		mungedPictureId := uint16((extPictureId - pictureIdOffset) & 0x7fff)
-		vp8Packet := &buffer.VP8{
+		vp8Packet := codec.VP8{
 			FirstByte:  vp8.FirstByte,
 			I:          vp8.I,
 			M:          mungedPictureId > 127,
@@ -177,7 +188,7 @@ func (v *VP8) UpdateAndGet(extPkt *buffer.ExtPacket, snOutOfOrder bool, snHasGap
 			K:          vp8.K,
 			KEYIDX:     vp8.KEYIDX - v.keyIdxOffset,
 			IsKeyFrame: vp8.IsKeyFrame,
-			HeaderSize: vp8.HeaderSize + buffer.VPxPictureIdSizeDiff(mungedPictureId > 127, vp8.M),
+			HeaderSize: vp8.HeaderSize + codec.VPxPictureIdSizeDiff(mungedPictureId > 127, vp8.M),
 		}
 		vp8HeaderBytes, err := vp8Packet.Marshal()
 		if err != nil {
@@ -271,7 +282,7 @@ func (v *VP8) UpdateAndGet(extPkt *buffer.ExtPacket, snOutOfOrder bool, snHasGap
 	v.lastTl0PicIdx = mungedTl0PicIdx
 	v.lastKeyIdx = mungedKeyIdx
 
-	vp8Packet := &buffer.VP8{
+	vp8Packet := codec.VP8{
 		FirstByte:  vp8.FirstByte,
 		I:          vp8.I,
 		M:          mungedPictureId > 127,
@@ -284,7 +295,7 @@ func (v *VP8) UpdateAndGet(extPkt *buffer.ExtPacket, snOutOfOrder bool, snHasGap
 		K:          vp8.K,
 		KEYIDX:     mungedKeyIdx,
 		IsKeyFrame: vp8.IsKeyFrame,
-		HeaderSize: vp8.HeaderSize + buffer.VPxPictureIdSizeDiff(mungedPictureId > 127, vp8.M),
+		HeaderSize: vp8.HeaderSize + codec.VPxPictureIdSizeDiff(mungedPictureId > 127, vp8.M),
 	}
 	vp8HeaderBytes, err := vp8Packet.Marshal()
 	if err != nil {
@@ -336,7 +347,7 @@ func (v *VP8) UpdateAndGetPadding(newPicture bool) ([]byte, error) {
 		v.keyIdxOffset -= uint8(offset)
 	}
 
-	vp8Packet := &buffer.VP8{
+	vp8Packet := &codec.VP8{
 		FirstByte:  0x10, // partition 0, start of VP8 Partition, reference frame
 		I:          v.pictureIdUsed,
 		M:          pictureId > 127,

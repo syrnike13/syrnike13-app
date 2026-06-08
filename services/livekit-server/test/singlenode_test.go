@@ -19,13 +19,18 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/jxskiss/base62"
 	"github.com/pion/sdp/v3"
+	"github.com/pion/stun/v3"
+	"github.com/pion/turn/v5"
 	"github.com/pion/webrtc/v4"
 	"github.com/stretchr/testify/require"
 	"github.com/thoas/go-funk"
@@ -33,13 +38,16 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/livekit/protocol/auth"
+	"github.com/livekit/protocol/codecs/mime"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 
 	"github.com/syrnike13/livekit-server/pkg/config"
 	"github.com/syrnike13/livekit-server/pkg/rtc"
+	"github.com/syrnike13/livekit-server/pkg/rtc/types"
+	"github.com/syrnike13/livekit-server/pkg/service"
+	"github.com/syrnike13/livekit-server/pkg/sfu"
 	"github.com/syrnike13/livekit-server/pkg/sfu/datachannel"
-	"github.com/syrnike13/livekit-server/pkg/sfu/mime"
 	"github.com/syrnike13/livekit-server/pkg/testutils"
 	testclient "github.com/syrnike13/livekit-server/test/client"
 )
@@ -58,10 +66,10 @@ func TestClientCouldConnect(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestClientCouldConnect")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			c1 := createRTCClient("c1", defaultServerPort, useSinglePeerConnection, nil)
-			c2 := createRTCClient("c2", defaultServerPort, useSinglePeerConnection, nil)
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, nil)
+			c2 := createRTCClient("c2", defaultServerPort, testRTCServicePath, nil)
 			waitUntilConnected(t, c1, c2)
 
 			// ensure they both see each other
@@ -87,13 +95,13 @@ func TestClientConnectDuplicate(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestClientConnectDuplicate")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 			grant := &auth.VideoGrant{RoomJoin: true, Room: testRoom}
 			grant.SetCanPublish(true)
 			grant.SetCanSubscribe(true)
 			token := joinTokenWithGrant("c1", grant)
-			c1 := createRTCClientWithToken(token, defaultServerPort, useSinglePeerConnection, nil)
+			c1 := createRTCClientWithToken(token, defaultServerPort, testRTCServicePath, nil)
 
 			// publish 2 tracks
 			t1, err := c1.AddStaticTrack("audio/opus", "audio", "webcam")
@@ -103,7 +111,7 @@ func TestClientConnectDuplicate(t *testing.T) {
 			require.NoError(t, err)
 			defer t2.Stop()
 
-			c2 := createRTCClient("c2", defaultServerPort, useSinglePeerConnection, nil)
+			c2 := createRTCClient("c2", defaultServerPort, testRTCServicePath, nil)
 			waitUntilConnected(t, c1, c2)
 
 			opts := &testclient.Options{
@@ -128,7 +136,7 @@ func TestClientConnectDuplicate(t *testing.T) {
 				return ""
 			})
 
-			c1Dup := createRTCClientWithToken(token, defaultServerPort, useSinglePeerConnection, opts)
+			c1Dup := createRTCClientWithToken(token, defaultServerPort, testRTCServicePath, opts)
 
 			waitUntilConnected(t, c1Dup)
 
@@ -160,13 +168,13 @@ func TestSinglePublisher(t *testing.T) {
 	s, finish := setupSingleNodeTest("TestSinglePublisher")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			c1 := createRTCClient("c1", defaultServerPort, useSinglePeerConnection, nil)
-			c2 := createRTCClient("c2", defaultServerPort, useSinglePeerConnection, nil)
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, nil)
+			c2 := createRTCClient("c2", defaultServerPort, testRTCServicePath, nil)
 			waitUntilConnected(t, c1, c2)
 
-			// publish a track and ensure clients receive it ok
+			// publish an audio and video track and ensure clients receive it ok
 			t1, err := c1.AddStaticTrack("audio/OPUS", "audio", "webcamaudio")
 			require.NoError(t, err)
 			defer t1.Stop()
@@ -196,7 +204,7 @@ func TestSinglePublisher(t *testing.T) {
 			require.Equal(t, "audio/opus", audioTrack.MimeType)
 
 			// a new client joins and should get the initial stream
-			c3 := createRTCClient("c3", defaultServerPort, useSinglePeerConnection, nil)
+			c3 := createRTCClient("c3", defaultServerPort, testRTCServicePath, nil)
 
 			// ensure that new client that has joined also received tracks
 			waitUntilConnected(t, c3)
@@ -236,6 +244,217 @@ func TestSinglePublisher(t *testing.T) {
 	}
 }
 
+func TestConnectionStats(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+		return
+	}
+
+	s, finish := setupSingleNodeTest("TestConnectionStats")
+	defer finish()
+
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, nil)
+			c2 := createRTCClient("c2", defaultServerPort, testRTCServicePath, nil)
+			waitUntilConnected(t, c1, c2)
+			defer func() {
+				c1.Stop()
+				c2.Stop()
+			}()
+
+			// both clients publish audio + video
+			t1, err := c1.AddStaticTrack("audio/opus", "audio", "c1audio")
+			require.NoError(t, err)
+			defer t1.Stop()
+			t2, err := c1.AddStaticTrack("video/vp8", "video", "c1video")
+			require.NoError(t, err)
+			defer t2.Stop()
+
+			t3, err := c2.AddStaticTrack("audio/opus", "audio", "c2audio")
+			require.NoError(t, err)
+			defer t3.Stop()
+			t4, err := c2.AddStaticTrack("video/vp8", "video", "c2video")
+			require.NoError(t, err)
+			defer t4.Stop()
+
+			// wait for cross-subscriptions: each client should receive 2 tracks from the other
+			testutils.WithTimeout(t, func() string {
+				if len(c1.SubscribedTracks()[c2.ID()]) != 2 {
+					return "c1 did not subscribe to both tracks from c2"
+				}
+				if len(c2.SubscribedTracks()[c1.ID()]) != 2 {
+					return "c2 did not subscribe to both tracks from c1"
+				}
+				return ""
+			})
+
+			room := s.RoomManager().GetRoom(context.Background(), testRoom)
+			require.NotNil(t, room)
+
+			// hook the upstream WebRTCReceiver.OnStatsUpdate and downstream DownTrack.OnStatsUpdate
+			// callbacks so we can verify the AnalyticsStat delivered through each carries valid
+			// delta data. MediaTrack.Receivers() returns one entry per potential codec; only those
+			// matching the actually published codec are *sfu.WebRTCReceiver, the rest are
+			// placeholder *rtc.DummyReceiver instances that we skip.
+			type statCapture struct {
+				lock sync.Mutex
+				stat *livekit.AnalyticsStat
+			}
+			receiverCaptures := make(map[livekit.TrackID]*statCapture)
+			downTrackCaptures := make(map[livekit.ParticipantIdentity]map[livekit.TrackID]*statCapture)
+			for _, identity := range []livekit.ParticipantIdentity{"c1", "c2"} {
+				p := room.GetParticipant(identity)
+				require.NotNil(t, p, "participant %s not found", identity)
+				for _, mt := range p.GetPublishedTracks() {
+					rc := &statCapture{}
+					receiverCaptures[mt.ID()] = rc
+					var hooked int
+					for _, r := range mt.Receivers() {
+						if dr, ok := r.(*rtc.DummyReceiver); ok {
+							underlying := dr.Receiver()
+							if underlying == nil {
+								continue
+							}
+							r = underlying
+						}
+						wr, ok := r.(*sfu.WebRTCReceiver)
+						if !ok {
+							continue
+						}
+						wr.OnStatsUpdate(func(_ *sfu.WebRTCReceiver, stat *livekit.AnalyticsStat) {
+							rc.lock.Lock()
+							rc.stat = stat
+							rc.lock.Unlock()
+						})
+						hooked++
+					}
+					require.Greater(t, hooked, 0, "no live WebRTCReceiver found for published track %s", mt.ID())
+				}
+
+				dtCaps := make(map[livekit.TrackID]*statCapture)
+				downTrackCaptures[identity] = dtCaps
+				for _, st := range p.GetSubscribedTracks() {
+					dt := st.DownTrack()
+					require.NotNil(t, dt, "subscribed track %s has no DownTrack", st.ID())
+					dc := &statCapture{}
+					dtCaps[st.ID()] = dc
+					dt.OnStatsUpdate(func(_ *sfu.DownTrack, stat *livekit.AnalyticsStat) {
+						dc.lock.Lock()
+						dc.stat = stat
+						dc.lock.Unlock()
+					})
+				}
+			}
+
+			validateAnalyticsStat := func(stat *livekit.AnalyticsStat) string {
+				if stat == nil {
+					return "stat nil"
+				}
+				if len(stat.Streams) == 0 {
+					return "stat has no streams"
+				}
+				var totalPackets uint32
+				var totalBytes uint64
+				for _, s := range stat.Streams {
+					totalPackets += s.PrimaryPackets
+					totalBytes += s.PrimaryBytes
+				}
+				if totalPackets == 0 {
+					return "stat has no packets across streams"
+				}
+				if totalBytes == 0 {
+					return "stat has no bytes across streams"
+				}
+				return ""
+			}
+
+			// wait for cumulative + delta + OnStatsUpdate-derived stats. the
+			// connection-quality update interval is 5s, so allow plenty of time for
+			// the receiver OnStatsUpdate callback to fire at least once and for
+			// the downstream connection-quality scorer to compute a real score.
+			testutils.WithTimeout(t, func() string {
+				for _, identity := range []livekit.ParticipantIdentity{"c1", "c2"} {
+					p := room.GetParticipant(identity)
+					if p == nil {
+						return fmt.Sprintf("participant %s not found", identity)
+					}
+
+					// upstream (publisher) cumulative stats
+					published := p.GetPublishedTracks()
+					if len(published) != 2 {
+						return fmt.Sprintf("%s expected 2 published tracks, got %d", identity, len(published))
+					}
+					for _, mt := range published {
+						lmt, ok := mt.(types.LocalMediaTrack)
+						if !ok {
+							return fmt.Sprintf("%s published track %s is not a LocalMediaTrack", identity, mt.ID())
+						}
+						stats := lmt.GetTrackStats()
+						if stats == nil {
+							return fmt.Sprintf("%s upstream cumulative stats nil for track %s", identity, mt.ID())
+						}
+						if stats.Packets == 0 {
+							return fmt.Sprintf("%s upstream cumulative stats has no packets for track %s", identity, mt.ID())
+						}
+						if stats.Bytes == 0 {
+							return fmt.Sprintf("%s upstream cumulative stats has no bytes for track %s", identity, mt.ID())
+						}
+
+						// upstream delta stats fed into the receiver OnStatsUpdate path
+						rc, ok := receiverCaptures[mt.ID()]
+						if !ok {
+							return fmt.Sprintf("%s missing receiver capture for track %s", identity, mt.ID())
+						}
+						rc.lock.Lock()
+						stat := rc.stat
+						rc.lock.Unlock()
+						if msg := validateAnalyticsStat(stat); msg != "" {
+							return fmt.Sprintf("%s upstream OnStatsUpdate %s for track %s", identity, msg, mt.ID())
+						}
+					}
+
+					// downstream (subscriber) cumulative stats and DownTrack OnStatsUpdate
+					// delta stats captured from the listener path
+					subscribed := p.GetSubscribedTracks()
+					if len(subscribed) != 2 {
+						return fmt.Sprintf("%s expected 2 subscribed tracks, got %d", identity, len(subscribed))
+					}
+					for _, st := range subscribed {
+						dt := st.DownTrack()
+						if dt == nil {
+							return fmt.Sprintf("%s subscribed track %s has no DownTrack", identity, st.ID())
+						}
+						stats := dt.GetTrackStats()
+						if stats == nil {
+							return fmt.Sprintf("%s downstream cumulative stats nil for track %s", identity, st.ID())
+						}
+						if stats.Packets == 0 {
+							return fmt.Sprintf("%s downstream cumulative stats has no packets for track %s", identity, st.ID())
+						}
+						if stats.Bytes == 0 {
+							return fmt.Sprintf("%s downstream cumulative stats has no bytes for track %s", identity, st.ID())
+						}
+
+						// downstream delta stats fed into the DownTrack OnStatsUpdate path
+						dc, ok := downTrackCaptures[identity][st.ID()]
+						if !ok {
+							return fmt.Sprintf("%s missing DownTrack capture for track %s", identity, st.ID())
+						}
+						dc.lock.Lock()
+						stat := dc.stat
+						dc.lock.Unlock()
+						if msg := validateAnalyticsStat(stat); msg != "" {
+							return fmt.Sprintf("%s downstream OnStatsUpdate %s for track %s", identity, msg, st.ID())
+						}
+					}
+				}
+				return ""
+			}, 15*time.Second)
+		})
+	}
+}
+
 func Test_WhenAutoSubscriptionDisabled_ClientShouldNotReceiveAnyPublishedTracks(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -245,11 +464,11 @@ func Test_WhenAutoSubscriptionDisabled_ClientShouldNotReceiveAnyPublishedTracks(
 	_, finish := setupSingleNodeTest("Test_WhenAutoSubscriptionDisabled_ClientShouldNotReceiveAnyPublishedTracks")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 			opts := testclient.Options{AutoSubscribe: false}
-			publisher := createRTCClient("publisher", defaultServerPort, useSinglePeerConnection, &opts)
-			client := createRTCClient("client", defaultServerPort, useSinglePeerConnection, &opts)
+			publisher := createRTCClient("publisher", defaultServerPort, testRTCServicePath, &opts)
+			client := createRTCClient("client", defaultServerPort, testRTCServicePath, &opts)
 			defer publisher.Stop()
 			defer client.Stop()
 			waitUntilConnected(t, publisher, client)
@@ -274,10 +493,10 @@ func Test_RenegotiationWithDifferentCodecs(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestRenegotiationWithDifferentCodecs")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			c1 := createRTCClient("c1", defaultServerPort, useSinglePeerConnection, nil)
-			c2 := createRTCClient("c2", defaultServerPort, useSinglePeerConnection, nil)
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, nil)
+			c2 := createRTCClient("c2", defaultServerPort, testRTCServicePath, nil)
 			waitUntilConnected(t, c1, c2)
 
 			// publish a vp8 video track and ensure clients receive it ok
@@ -420,9 +639,9 @@ func TestPingPong(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestPingPong")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			c1 := createRTCClient("c1", defaultServerPort, useSinglePeerConnection, nil)
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, nil)
 			waitUntilConnected(t, c1)
 
 			require.NoError(t, c1.SendPing())
@@ -476,15 +695,25 @@ func TestAutoCreate(t *testing.T) {
 
 		waitForServerToStart(s)
 
-		for _, useSinglePeerConnection := range []bool{false, true} {
-			t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
+		for _, testRTCServicePath := range testRTCServicePaths {
+			t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 				token := joinToken(testRoom, "start-before-create", nil)
-				_, err := testclient.NewWebSocketConn(fmt.Sprintf("ws://localhost:%d", defaultServerPort), token, &testclient.Options{UseJoinRequestQueryParam: useSinglePeerConnection})
+				opts := &testclient.Options{}
+				testRTCServicePathToTestClientOptions(testRTCServicePath, opts)
+				_, err := testclient.NewWebSocketConn(
+					fmt.Sprintf("ws://localhost:%d", defaultServerPort),
+					token,
+					opts,
+				)
 				require.Error(t, err)
 
 				// second join should also fail
 				token = joinToken(testRoom, "start-before-create-2", nil)
-				_, err = testclient.NewWebSocketConn(fmt.Sprintf("ws://localhost:%d", defaultServerPort), token, &testclient.Options{UseJoinRequestQueryParam: useSinglePeerConnection})
+				_, err = testclient.NewWebSocketConn(
+					fmt.Sprintf("ws://localhost:%d", defaultServerPort),
+					token,
+					opts,
+				)
 				require.Error(t, err)
 			})
 		}
@@ -505,9 +734,9 @@ func TestAutoCreate(t *testing.T) {
 		_, err := roomClient.CreateRoom(contextWithToken(createRoomToken()), &livekit.CreateRoomRequest{Name: testRoom})
 		require.NoError(t, err)
 
-		for _, useSinglePeerConnection := range []bool{false, true} {
-			t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-				c1 := createRTCClient("join-after-create", defaultServerPort, useSinglePeerConnection, nil)
+		for _, testRTCServicePath := range testRTCServicePaths {
+			t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+				c1 := createRTCClient("join-after-create", defaultServerPort, testRTCServicePath, nil)
 				waitUntilConnected(t, c1)
 
 				c1.Stop()
@@ -525,9 +754,9 @@ func TestSingleNodeUpdateSubscriptionPermissions(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestSingleNodeUpdateSubscriptionPermissions")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			pub := createRTCClient("pub", defaultServerPort, useSinglePeerConnection, nil)
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			pub := createRTCClient("pub", defaultServerPort, testRTCServicePath, nil)
 
 			grant := &auth.VideoGrant{RoomJoin: true, Room: testRoom}
 			grant.SetCanSubscribe(false)
@@ -536,7 +765,7 @@ func TestSingleNodeUpdateSubscriptionPermissions(t *testing.T) {
 				SetIdentity("sub")
 			token, err := at.ToJWT()
 			require.NoError(t, err)
-			sub := createRTCClientWithToken(token, defaultServerPort, useSinglePeerConnection, nil)
+			sub := createRTCClientWithToken(token, defaultServerPort, testRTCServicePath, nil)
 
 			waitUntilConnected(t, pub, sub)
 
@@ -587,9 +816,9 @@ func TestSingleNodeAttributes(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestSingleNodeAttributes")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			pub := createRTCClient("pub", defaultServerPort, useSinglePeerConnection, &testclient.Options{
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			pub := createRTCClient("pub", defaultServerPort, testRTCServicePath, &testclient.Options{
 				Attributes: map[string]string{
 					"b": "2",
 					"c": "3",
@@ -611,7 +840,7 @@ func TestSingleNodeAttributes(t *testing.T) {
 				SetIdentity("sub")
 			token, err := at.ToJWT()
 			require.NoError(t, err)
-			sub := createRTCClientWithToken(token, defaultServerPort, useSinglePeerConnection, nil)
+			sub := createRTCClientWithToken(token, defaultServerPort, testRTCServicePath, nil)
 
 			waitUntilConnected(t, pub, sub)
 
@@ -646,10 +875,10 @@ func TestDeviceCodecOverride(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestDeviceCodecOverride")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 			// simulate device that isn't compatible with H.264
-			c1 := createRTCClient("c1", defaultServerPort, useSinglePeerConnection, &testclient.Options{
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, &testclient.Options{
 				ClientInfo: &livekit.ClientInfo{
 					Os:          "android",
 					DeviceModel: "Xiaomi 2201117TI",
@@ -688,11 +917,7 @@ func TestDeviceCodecOverride(t *testing.T) {
 						break
 					}
 				}
-				if desc == nil {
-					return false
-				}
-
-				return true
+				return desc != nil
 			}, waitTimeout, waitTick, "did not receive answer")
 
 			hasSeenVP8 := false
@@ -718,11 +943,11 @@ func TestSubscribeToCodecUnsupported(t *testing.T) {
 	_, finish := setupSingleNodeTest("TestSubscribeToCodecUnsupported")
 	defer finish()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			c1 := createRTCClient("c1", defaultServerPort, useSinglePeerConnection, nil)
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, nil)
 			// create a client that doesn't support H264
-			c2 := createRTCClient("c2", defaultServerPort, useSinglePeerConnection, &testclient.Options{
+			c2 := createRTCClient("c2", defaultServerPort, testRTCServicePath, &testclient.Options{
 				AutoSubscribe: true,
 				DisabledCodecs: []webrtc.RTPCodecCapability{
 					{MimeType: "video/H264"},
@@ -845,12 +1070,12 @@ func TestDataPublishSlowSubscriber(t *testing.T) {
 		logger.Infow("----------------FINISHING TEST----------------", "test", t.Name())
 	}()
 
-	for _, useSinglePeerConnection := range []bool{false, true} {
-		t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-			pub := createRTCClient("pub", defaultServerPort, useSinglePeerConnection, nil)
-			fastSub := createRTCClient("fastSub", defaultServerPort, useSinglePeerConnection, nil)
-			slowSubNotDrop := createRTCClient("slowSubNotDrop", defaultServerPort, useSinglePeerConnection, nil)
-			slowSubDrop := createRTCClient("slowSubDrop", defaultServerPort, useSinglePeerConnection, nil)
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			pub := createRTCClient("pub", defaultServerPort, testRTCServicePath, nil)
+			fastSub := createRTCClient("fastSub", defaultServerPort, testRTCServicePath, nil)
+			slowSubNotDrop := createRTCClient("slowSubNotDrop", defaultServerPort, testRTCServicePath, nil)
+			slowSubDrop := createRTCClient("slowSubDrop", defaultServerPort, testRTCServicePath, nil)
 			waitUntilConnected(t, pub, fastSub, slowSubDrop, slowSubNotDrop)
 			defer func() {
 				pub.Stop()
@@ -971,14 +1196,14 @@ func TestFireTrackBySdp(t *testing.T) {
 	for _, c := range cases {
 		codecs, sdk := c.codecs, c.pubSDK
 		t.Run(c.name, func(t *testing.T) {
-			for _, useSinglePeerConnection := range []bool{false, true} {
-				t.Run(fmt.Sprintf("singlePeerConnection=%+v", useSinglePeerConnection), func(t *testing.T) {
-					c1 := createRTCClient(c.name+"_c1", defaultServerPort, useSinglePeerConnection, &testclient.Options{
+			for _, testRTCServicePath := range testRTCServicePaths {
+				t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+					c1 := createRTCClient(c.name+"_c1", defaultServerPort, testRTCServicePath, &testclient.Options{
 						ClientInfo: &livekit.ClientInfo{
 							Sdk: sdk,
 						},
 					})
-					c2 := createRTCClient(c.name+"_c2", defaultServerPort, useSinglePeerConnection, &testclient.Options{
+					c2 := createRTCClient(c.name+"_c2", defaultServerPort, testRTCServicePath, &testclient.Options{
 						AutoSubscribe: true,
 						ClientInfo: &livekit.ClientInfo{
 							Sdk: livekit.ClientInfo_JS,
@@ -1015,6 +1240,275 @@ func TestFireTrackBySdp(t *testing.T) {
 					require.Equal(t, len(codecs), found)
 				})
 			}
+		})
+	}
+}
+
+func TestSinglePublisherDataTrack(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+		return
+	}
+
+	s, finish := setupSingleNodeTest("TestSinglePublisherDataTrack")
+	defer finish()
+
+	for _, testRTCServicePath := range testRTCServicePaths {
+		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
+			c1 := createRTCClient("c1", defaultServerPort, testRTCServicePath, &testclient.Options{AutoSubscribeDataTrack: true})
+			c2 := createRTCClient("c2", defaultServerPort, testRTCServicePath, &testclient.Options{AutoSubscribeDataTrack: true})
+			waitUntilConnected(t, c1, c2)
+
+			// publish a couple of data tracks and ensure clients receive it ok
+			dt1, err := c1.PublishDataTrack()
+			require.NoError(t, err)
+			defer dt1.Stop()
+
+			dt2, err := c1.PublishDataTrack()
+			require.NoError(t, err)
+			defer dt2.Stop()
+
+			testutils.WithTimeout(t, func() string {
+				if len(c2.SubscribedDataTracks()) == 0 {
+					return "c2 was not subscribed to any data tracks"
+				}
+				// should have received two data tracks
+				if len(c2.SubscribedDataTracks()[c1.ID()]) != 2 {
+					return "c2 didn't subscribe to both data tracks from c1"
+				}
+				return ""
+			})
+
+			// a new client joins and should get the initial stream
+			c3 := createRTCClient("c3", defaultServerPort, testRTCServicePath, &testclient.Options{AutoSubscribeDataTrack: true})
+
+			// ensure that new client that has joined also received data tracks
+			waitUntilConnected(t, c3)
+			testutils.WithTimeout(t, func() string {
+				if len(c3.SubscribedDataTracks()) == 0 {
+					return "c3 didn't subscribe to any data tracks"
+				}
+				// should have received two data tracks
+				if len(c3.SubscribedDataTracks()[c1.ID()]) != 2 {
+					return "c3 didn't subscribe to tracks from c1"
+				}
+				return ""
+			})
+
+			// ensure that the data track ids are generated by server
+			tracks := c3.SubscribedDataTracks()[c1.ID()]
+			for _, tr := range tracks {
+				require.True(t, strings.HasPrefix(string(tr.ID()), "DTR_"), "data track should begin with DTR")
+			}
+
+			// when c3 disconnects, ensure subscriber is cleaned up correctly
+			c3.Stop()
+
+			testutils.WithTimeout(t, func() string {
+				room := s.RoomManager().GetRoom(context.Background(), testRoom)
+				p := room.GetParticipant("c1")
+				require.NotNil(t, p)
+
+				for _, t := range p.GetPublishedDataTracks() {
+					if t.IsSubscriber(c3.ID()) {
+						return "c3 was not a subscriber of c1's data tracks"
+					}
+				}
+				return ""
+			})
+		})
+	}
+}
+
+func TestTurnRelay(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+		return
+	}
+
+	testCases := []struct {
+		name                     string
+		allowRestrictedPeerCIDRs []string
+		denyPeerCIDRs            []string
+		expectedToConnect        bool
+	}{
+		{
+			"allow",
+			[]string{"10.0.0.0/8", "192.168.0.0/16"},
+			nil,
+			true,
+		},
+		{
+			"not-allowed",
+			nil,
+			nil,
+			false,
+		},
+		{
+			"denied-overrides-allowed",
+			[]string{"10.0.0.0/8", "192.168.0.0/16"},
+			[]string{"10.0.0.0/8", "192.168.0.0/16"},
+			false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := createSingleNodeServer(func(c *config.Config) {
+				c.TURN.Enabled = true
+				c.TURN.UDPPort = 3478
+				c.TURN.AllowRestrictedPeerCIDRs = tc.allowRestrictedPeerCIDRs
+				c.TURN.DenyPeerCIDRs = tc.denyPeerCIDRs
+			})
+			go func() {
+				if err := s.Start(); err != nil {
+					logger.Errorw("server returned error", err)
+				}
+			}()
+			defer s.Stop(true)
+
+			waitForServerToStart(s)
+
+			c1 := createRTCClient("relay_c1", defaultServerPort, testRTCServicePathv0, &testclient.Options{
+				AutoSubscribe: true,
+				ForceRelay:    true,
+			})
+			defer c1.Stop()
+
+			if tc.expectedToConnect {
+				waitUntilConnected(t, c1)
+
+				testutils.WithTimeout(t, func() string {
+					if !c1.IsLocalCandidateRelaySelected() {
+						return "expected local candidate to be relay"
+					}
+					return ""
+				})
+			} else {
+				ensureNotConnected(t, c1)
+			}
+		})
+	}
+}
+
+func TestTurnAuthFailure(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+		return
+	}
+
+	const turnUDPPort = 3478
+
+	s := createSingleNodeServer(func(c *config.Config) {
+		c.TURN.Enabled = true
+		c.TURN.UDPPort = turnUDPPort
+	})
+	go func() {
+		if err := s.Start(); err != nil {
+			logger.Errorw("server returned error", err)
+		}
+	}()
+	defer s.Stop(true)
+
+	waitForServerToStart(s)
+
+	// build a known-good username/password pair so individual cases can mutate
+	// only the part they are exercising.
+	pID := livekit.ParticipantID("PA_authfail")
+	authHandler := service.NewTURNAuthHandler(auth.NewSimpleKeyProvider(testApiKey, testApiSecret))
+	validUsername, validExpiry := authHandler.CreateUsername(testApiKey, pID, 300)
+	validPassword, err := authHandler.CreatePassword(testApiKey, pID, validExpiry)
+	require.NoError(t, err)
+
+	// username encoded with an already-expired timestamp.
+	expiredUsername, _ := authHandler.CreateUsername(testApiKey, pID, -10)
+
+	// username encoded with an api key the server does not know about.
+	unknownAPIKeyUsername, _ := authHandler.CreateUsername("unknown-api-key", pID, 300)
+
+	// password whose hash was generated for an expiry that doesn't match the
+	// one encoded in the username. The server reconstructs the password using
+	// the username's expiry, so the integrity check fails.
+	mismatchedExpiryPassword, err := authHandler.CreatePassword(testApiKey, pID, validExpiry+60)
+	require.NoError(t, err)
+	require.NotEqual(t, validPassword, mismatchedExpiryPassword)
+
+	// username carrying expiry=0 must be rejected outright; constructed
+	// directly because CreateUsername always stamps a real expiry.
+	zeroExpiryUsername := base62.EncodeToString(fmt.Appendf(nil, "%s|%s|%d", testApiKey, pID, 0))
+
+	// username with only apiKey|pID (no expiry component) is the legacy
+	// pre-expiry form and must be rejected.
+	twoPartUsername := base62.EncodeToString(fmt.Appendf(nil, "%s|%s", testApiKey, pID))
+
+	testCases := []struct {
+		name     string
+		username string
+		password string
+	}{
+		{
+			name:     "unparseable-username",
+			username: "not-base62!!!",
+			password: validPassword,
+		},
+		{
+			name:     "wrong-password",
+			username: validUsername,
+			password: "wrongpassword",
+		},
+		{
+			name:     "expired-username",
+			username: expiredUsername,
+			password: validPassword,
+		},
+		{
+			name:     "unknown-api-key",
+			username: unknownAPIKeyUsername,
+			password: validPassword,
+		},
+		{
+			name:     "password-expiry-mismatch",
+			username: validUsername,
+			password: mismatchedExpiryPassword,
+		},
+		{
+			name:     "zero-expiry-username",
+			username: zeroExpiryUsername,
+			password: validPassword,
+		},
+		{
+			name:     "two-part-username",
+			username: twoPartUsername,
+			password: validPassword,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, err := net.ListenPacket("udp4", "0.0.0.0:0")
+			require.NoError(t, err)
+			defer conn.Close()
+
+			client, err := turn.NewClient(&turn.ClientConfig{
+				TURNServerAddr: fmt.Sprintf("127.0.0.1:%d", turnUDPPort),
+				Username:       tc.username,
+				Password:       tc.password,
+				Realm:          service.LivekitRealm,
+				Conn:           conn,
+			})
+			require.NoError(t, err)
+			defer client.Close()
+			require.NoError(t, client.Listen())
+
+			_, allocErr := client.Allocate()
+			require.Error(t, allocErr)
+
+			// pion's TURN server replies with 400 Bad Request for any
+			// authenticated-allocate failure (unknown user or integrity check
+			// mismatch); the initial unauthenticated probe is what returns 401.
+			var turnErr *stun.TurnError
+			require.ErrorAs(t, allocErr, &turnErr)
+			require.Equal(t, stun.CodeBadRequest, turnErr.ErrorCodeAttr.Code)
 		})
 	}
 }

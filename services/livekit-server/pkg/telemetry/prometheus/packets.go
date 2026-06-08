@@ -28,26 +28,30 @@ const (
 	Outgoing Direction = "outgoing"
 )
 
-type transmissionType string
+type TransmissionType string
 
 const (
-	transmissionInitial    transmissionType = "initial"
-	transmissionRetransmit transmissionType = "retransmit"
+	TransmissionInitial    TransmissionType = "initial"
+	TransmissionRetransmit TransmissionType = "retransmit"
 )
 
 var (
-	bytesIn                    atomic.Uint64
-	bytesOut                   atomic.Uint64
-	packetsIn                  atomic.Uint64
-	packetsOut                 atomic.Uint64
-	nackTotal                  atomic.Uint64
-	retransmitBytes            atomic.Uint64
-	retransmitPackets          atomic.Uint64
-	participantSignalConnected atomic.Uint64
-	participantRTCConnected    atomic.Uint64
-	participantRTCInit         atomic.Uint64
-	forwardLatency             atomic.Uint32
-	forwardJitter              atomic.Uint32
+	bytesIn                           atomic.Uint64
+	bytesOut                          atomic.Uint64
+	packetsIn                         atomic.Uint64
+	packetsOut                        atomic.Uint64
+	nackTotal                         atomic.Uint64
+	retransmitBytes                   atomic.Uint64
+	retransmitPackets                 atomic.Uint64
+	participantSignalConnected        atomic.Uint64
+	participantSignalFailed           atomic.Uint64
+	participantSignalValidationFailed atomic.Uint64
+	participantRTCConnected           atomic.Uint64
+	participantRTCInit                atomic.Uint64
+	participantRTCCanceled            atomic.Uint64
+	participantRTCActive              atomic.Uint64
+	forwardLatency                    atomic.Uint32
+	forwardJitter                     atomic.Uint32
 
 	promPacketLabels          = []string{"direction", "transmission", "country"}
 	promPacketTotal           *prometheus.CounterVec
@@ -67,15 +71,7 @@ var (
 	promConnections           *prometheus.GaugeVec
 	promForwardLatency        prometheus.Gauge
 	promForwardJitter         prometheus.Gauge
-
-	promPacketTotalIncomingInitial    prometheus.Counter
-	promPacketTotalIncomingRetransmit prometheus.Counter
-	promPacketTotalOutgoingInitial    prometheus.Counter
-	promPacketTotalOutgoingRetransmit prometheus.Counter
-	promPacketBytesIncomingInitial    prometheus.Counter
-	promPacketBytesIncomingRetransmit prometheus.Counter
-	promPacketBytesOutgoingInitial    prometheus.Counter
-	promPacketBytesOutgoingRetransmit prometheus.Counter
+	promForwardLatencyHist    prometheus.Histogram
 )
 
 func initPacketStats(nodeID string, nodeType livekit.NodeType) {
@@ -140,7 +136,6 @@ func initPacketStats(nodeID string, nodeType livekit.NodeType) {
 		Subsystem:   "jitter",
 		Name:        "us",
 		ConstLabels: prometheus.Labels{"node_id": nodeID, "node_type": nodeType.String()},
-
 		// 1ms, 10ms, 30ms, 50ms, 70ms, 100ms, 300ms, 600ms, 1s
 		Buckets: []float64{1000, 10000, 30000, 50000, 70000, 100000, 300000, 600000, 1000000},
 	}, promStreamLabels)
@@ -175,6 +170,25 @@ func initPacketStats(nodeID string, nodeType livekit.NodeType) {
 		Name:        "jitter",
 		ConstLabels: prometheus.Labels{"node_id": nodeID, "node_type": nodeType.String()},
 	})
+	promForwardLatencyHist = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace:   livekitNamespace,
+		Subsystem:   "forward_latency",
+		Name:        "ns",
+		ConstLabels: prometheus.Labels{"node_id": nodeID, "node_type": nodeType.String()},
+		// 50us, 100us, 250us, 500us, 1ms, 2ms, 3ms, 5ms, 10ms, 20ms
+		Buckets: []float64{
+			50 * 1000,
+			100 * 1000,
+			250 * 1000,
+			500 * 1000,
+			1 * 1000 * 1000,
+			2 * 1000 * 1000,
+			3 * 1000 * 1000,
+			5 * 1000 * 1000,
+			10 * 1000 * 1000,
+			20 * 1000 * 1000,
+		},
+	})
 
 	prometheus.MustRegister(promPacketTotal)
 	prometheus.MustRegister(promPacketBytes)
@@ -191,14 +205,15 @@ func initPacketStats(nodeID string, nodeType livekit.NodeType) {
 	prometheus.MustRegister(promConnections)
 	prometheus.MustRegister(promForwardLatency)
 	prometheus.MustRegister(promForwardJitter)
+	prometheus.MustRegister(promForwardLatencyHist)
 }
 
 func IncrementPackets(country string, direction Direction, count uint64, retransmit bool) {
-	var transmission transmissionType
+	var transmission TransmissionType
 	if retransmit {
-		transmission = transmissionRetransmit
+		transmission = TransmissionRetransmit
 	} else {
-		transmission = transmissionInitial
+		transmission = TransmissionInitial
 	}
 	promPacketTotal.WithLabelValues(string(direction), string(transmission), country).Add(float64(count))
 
@@ -213,11 +228,11 @@ func IncrementPackets(country string, direction Direction, count uint64, retrans
 }
 
 func IncrementBytes(country string, direction Direction, count uint64, retransmit bool) {
-	var transmission transmissionType
+	var transmission TransmissionType
 	if retransmit {
-		transmission = transmissionRetransmit
+		transmission = TransmissionRetransmit
 	} else {
-		transmission = transmissionInitial
+		transmission = TransmissionInitial
 	}
 	promPacketBytes.WithLabelValues(string(direction), string(transmission), country).Add(float64(count))
 
@@ -288,9 +303,17 @@ func IncrementParticipantJoin(join uint32) {
 	}
 }
 
-func IncrementParticipantJoinFail(join uint32) {
-	if join > 0 {
-		promParticipantJoin.WithLabelValues("signal_failed").Add(float64(join))
+func IncrementParticipantJoinFail(fail uint32) {
+	if fail > 0 {
+		participantSignalFailed.Add(uint64(fail))
+		promParticipantJoin.WithLabelValues("signal_failed").Add(float64(fail))
+	}
+}
+
+func IncrementParticipantJoinValidationFail(validationFail uint32) {
+	if validationFail > 0 {
+		participantSignalValidationFailed.Add(uint64(validationFail))
+		promParticipantJoin.WithLabelValues("signal_validation_failed").Add(float64(validationFail))
 	}
 }
 
@@ -308,6 +331,20 @@ func IncrementParticipantRtcConnected(join uint32) {
 	}
 }
 
+func IncrementParticipantRtcActive(active uint32) {
+	if active > 0 {
+		participantRTCActive.Add(uint64(active))
+		promParticipantJoin.WithLabelValues("rtc_active").Add(float64(active))
+	}
+}
+
+func IncrementParticipantRtcCanceled(numCancels uint64) {
+	if numCancels > 0 {
+		participantRTCCanceled.Add(numCancels)
+		promParticipantJoin.WithLabelValues("rtc_canceled").Add(float64(numCancels))
+	}
+}
+
 func AddConnection(direction Direction) {
 	promConnections.WithLabelValues(string(direction)).Add(1)
 }
@@ -316,12 +353,16 @@ func SubConnection(direction Direction) {
 	promConnections.WithLabelValues(string(direction)).Sub(1)
 }
 
-func RecordForwardLatency(_, latencyAvg uint32) {
-	forwardLatency.Store(latencyAvg)
-	promForwardLatency.Set(float64(latencyAvg))
+func RecordForwardLatencySample(forwardLatency int64) {
+	promForwardLatencyHist.Observe(float64(forwardLatency))
 }
 
-func RecordForwardJitter(_, jitterAvg uint32) {
-	forwardJitter.Store(jitterAvg)
-	promForwardJitter.Set(float64(jitterAvg))
+func RecordForwardLatency(longTermLatencyAvg uint32) {
+	forwardLatency.Store(longTermLatencyAvg)
+	promForwardLatency.Set(float64(longTermLatencyAvg))
+}
+
+func RecordForwardJitter(longTermJitterAvg uint32) {
+	forwardJitter.Store(longTermJitterAvg)
+	promForwardJitter.Set(float64(longTermJitterAvg))
 }

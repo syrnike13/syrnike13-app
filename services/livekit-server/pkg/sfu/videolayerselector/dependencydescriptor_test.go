@@ -15,7 +15,7 @@
 package videolayerselector
 
 import (
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/pion/rtp"
@@ -143,7 +143,7 @@ func TestDependencyDescriptor(t *testing.T) {
 
 	// non key frame, dropped
 	ret = ddSelector.Select(&buffer.ExtPacket{
-		KeyFrame: false,
+		IsKeyFrame: false,
 		DependencyDescriptor: &buffer.ExtDependencyDescriptor{
 			Descriptor: &dd.DependencyDescriptor{
 				FrameNumber: 1,
@@ -287,8 +287,14 @@ func createDDFrames(maxLayer buffer.VideoLayer, startFrameNumber uint16) []*buff
 			activeBitMask |= 1 << uint(i*int(maxLayer.Temporal+1)+j)
 		}
 	}
-	sort.Slice(decodeTargets, func(i, j int) bool {
-		return decodeTargets[i].Layer.GreaterThan(decodeTargets[j].Layer)
+	slices.SortFunc(decodeTargets, func(a, b buffer.DependencyDescriptorDecodeTarget) int {
+		if a.Layer.GreaterThan(b.Layer) {
+			return -1
+		}
+		if b.Layer.GreaterThan(a.Layer) {
+			return 1
+		}
+		return 0
 	})
 
 	chainDiffs := make([]int, int(maxLayer.Spatial)+1)
@@ -308,7 +314,7 @@ func createDDFrames(maxLayer buffer.VideoLayer, startFrameNumber uint16) []*buff
 		}
 	}
 	keyFrame := &buffer.ExtPacket{
-		KeyFrame: true,
+		IsKeyFrame: true,
 		DependencyDescriptor: &buffer.ExtDependencyDescriptor{
 			Descriptor: &dd.DependencyDescriptor{
 				FrameNumber: startFrameNumber,

@@ -26,8 +26,7 @@ import (
 )
 
 const (
-	tsStep    = uint32(48000 / 1000 * 10)
-	opusREDPT = 63
+	tsStep = uint32(48000 / 1000 * 10)
 )
 
 type dummyDowntrack struct {
@@ -36,24 +35,26 @@ type dummyDowntrack struct {
 	receivedPkts    []*rtp.Packet
 }
 
-func (dt *dummyDowntrack) WriteRTP(p *buffer.ExtPacket, _ int32) error {
+func (dt *dummyDowntrack) WriteRTP(p *buffer.ExtPacket, _ int32) int32 {
 	dt.lastReceivedPkt = p.Packet
 	dt.receivedPkts = append(dt.receivedPkts, p.Packet)
-	return nil
+	return 1
 }
-
-func (dt *dummyDowntrack) TrackInfoAvailable() {}
 
 func TestRedReceiver(t *testing.T) {
 	dt := &dummyDowntrack{TrackSender: &DownTrack{}}
 
 	t.Run("normal", func(t *testing.T) {
 		w := &WebRTCReceiver{
-			isRED:  true,
-			kind:   webrtc.RTPCodecTypeAudio,
-			logger: logger.GetLogger(),
+			ReceiverBase: &ReceiverBase{
+				params: ReceiverBaseParams{
+					Kind:   webrtc.RTPCodecTypeAudio,
+					Logger: logger.GetLogger(),
+				},
+				isRED: true,
+			},
 		}
-		require.Equal(t, w.GetRedReceiver(), w)
+		require.Equal(t, w.GetRedReceiver(), w.ReceiverBase)
 		w.isRED = false
 		red := w.GetRedReceiver().(*RedReceiver)
 		require.NotNil(t, red)
@@ -75,15 +76,19 @@ func TestRedReceiver(t *testing.T) {
 
 	t.Run("packet lost and jump", func(t *testing.T) {
 		w := &WebRTCReceiver{
-			kind:   webrtc.RTPCodecTypeAudio,
-			logger: logger.GetLogger(),
+			ReceiverBase: &ReceiverBase{
+				params: ReceiverBaseParams{
+					Kind:   webrtc.RTPCodecTypeAudio,
+					Logger: logger.GetLogger(),
+				},
+			},
 		}
 		red := w.GetRedReceiver().(*RedReceiver)
 		require.NoError(t, red.AddDownTrack(dt))
 
 		header := rtp.Header{SequenceNumber: 65534, Timestamp: (uint32(1) << 31) - 2*tsStep, PayloadType: 111}
 		expectPkt := make([]*rtp.Packet, 0, maxRedCount+1)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			if i%2 == 0 {
 				header.SequenceNumber++
 				header.Timestamp += tsStep
@@ -126,8 +131,12 @@ func TestRedReceiver(t *testing.T) {
 
 	t.Run("unorder and repeat", func(t *testing.T) {
 		w := &WebRTCReceiver{
-			kind:   webrtc.RTPCodecTypeAudio,
-			logger: logger.GetLogger(),
+			ReceiverBase: &ReceiverBase{
+				params: ReceiverBaseParams{
+					Kind:   webrtc.RTPCodecTypeAudio,
+					Logger: logger.GetLogger(),
+				},
+			},
 		}
 		red := w.GetRedReceiver().(*RedReceiver)
 		require.NoError(t, red.AddDownTrack(dt))
@@ -158,11 +167,15 @@ func TestRedReceiver(t *testing.T) {
 
 	t.Run("encoding exceed space", func(t *testing.T) {
 		w := &WebRTCReceiver{
-			isRED:  true,
-			kind:   webrtc.RTPCodecTypeAudio,
-			logger: logger.GetLogger(),
+			ReceiverBase: &ReceiverBase{
+				params: ReceiverBaseParams{
+					Kind:   webrtc.RTPCodecTypeAudio,
+					Logger: logger.GetLogger(),
+				},
+				isRED: true,
+			},
 		}
-		require.Equal(t, w.GetRedReceiver(), w)
+		require.Equal(t, w.GetRedReceiver(), w.ReceiverBase)
 		w.isRED = false
 		red := w.GetRedReceiver().(*RedReceiver)
 		require.NotNil(t, red)
@@ -183,11 +196,15 @@ func TestRedReceiver(t *testing.T) {
 
 	t.Run("large timestamp gap", func(t *testing.T) {
 		w := &WebRTCReceiver{
-			isRED:  true,
-			kind:   webrtc.RTPCodecTypeAudio,
-			logger: logger.GetLogger(),
+			ReceiverBase: &ReceiverBase{
+				params: ReceiverBaseParams{
+					Kind:   webrtc.RTPCodecTypeAudio,
+					Logger: logger.GetLogger(),
+				},
+				isRED: true,
+			},
 		}
-		require.Equal(t, w.GetRedReceiver(), w)
+		require.Equal(t, w.GetRedReceiver(), w.ReceiverBase)
 		w.isRED = false
 		red := w.GetRedReceiver().(*RedReceiver)
 		require.NotNil(t, red)
@@ -247,7 +264,7 @@ func verifyEncodingEqual(t *testing.T, p1, p2 *rtp.Packet) {
 
 func generatePkts(header rtp.Header, count int, tsStep uint32) []*rtp.Packet {
 	pkts := make([]*rtp.Packet, 0, count)
-	for i := 0; i < count; i++ {
+	for range count {
 		hbuf, _ := header.Marshal()
 		pkts = append(pkts, &rtp.Packet{
 			Header:  header,
@@ -271,7 +288,7 @@ func generateRedPkts(t *testing.T, pkts []*rtp.Packet, redCount int) []*rtp.Pack
 		}
 		buf := make([]byte, mtuSize)
 		redPkt := *pkt
-		redPkt.PayloadType = opusREDPT
+		redPkt.PayloadType = opusRedPT
 		encoded, err := encodeRedForPrimary(encodingPkts, pkt, buf)
 		require.NoError(t, err)
 		redPkt.Payload = buf[:encoded]
@@ -283,11 +300,15 @@ func generateRedPkts(t *testing.T, pkts []*rtp.Packet, redCount int) []*rtp.Pack
 func testRedRedPrimaryReceiver(t *testing.T, maxPktCount, redCount int, sendPktIdx, expectPktIdx []int) {
 	dt := &dummyDowntrack{TrackSender: &DownTrack{}}
 	w := &WebRTCReceiver{
-		kind:   webrtc.RTPCodecTypeAudio,
-		logger: logger.GetLogger(),
-		codec:  webrtc.RTPCodecParameters{PayloadType: opusREDPT, RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "audio/red"}},
+		ReceiverBase: &ReceiverBase{
+			params: ReceiverBaseParams{
+				Kind:   webrtc.RTPCodecTypeAudio,
+				Logger: logger.GetLogger(),
+				Codec:  webrtc.RTPCodecParameters{PayloadType: opusRedPT, RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "audio/red"}},
+			},
+		},
 	}
-	require.Equal(t, w.GetPrimaryReceiverForRed(), w)
+	require.Equal(t, w.GetPrimaryReceiverForRed(), w.ReceiverBase)
 	w.isRED = true
 	red := w.GetPrimaryReceiverForRed().(*RedPrimaryReceiver)
 	require.NotNil(t, red)
@@ -313,10 +334,14 @@ func testRedRedPrimaryReceiver(t *testing.T, maxPktCount, redCount int, sendPktI
 
 func TestRedPrimaryReceiver(t *testing.T) {
 	w := &WebRTCReceiver{
-		kind:   webrtc.RTPCodecTypeAudio,
-		logger: logger.GetLogger(),
+		ReceiverBase: &ReceiverBase{
+			params: ReceiverBaseParams{
+				Kind:   webrtc.RTPCodecTypeAudio,
+				Logger: logger.GetLogger(),
+			},
+		},
 	}
-	require.Equal(t, w.GetPrimaryReceiverForRed(), w)
+	require.Equal(t, w.GetPrimaryReceiverForRed(), w.ReceiverBase)
 	w.isRED = true
 	red := w.GetPrimaryReceiverForRed().(*RedPrimaryReceiver)
 	require.NotNil(t, red)
@@ -324,7 +349,7 @@ func TestRedPrimaryReceiver(t *testing.T) {
 	t.Run("packet should send only once", func(t *testing.T) {
 		maxPktCount := 19
 		var sendPktIndex []int
-		for i := 0; i < maxPktCount; i++ {
+		for i := range maxPktCount {
 			sendPktIndex = append(sendPktIndex, i)
 		}
 		testRedRedPrimaryReceiver(t, maxPktCount, maxRedCount, sendPktIndex, sendPktIndex)
@@ -333,7 +358,7 @@ func TestRedPrimaryReceiver(t *testing.T) {
 	t.Run("packet duplicate and unorder", func(t *testing.T) {
 		maxPktCount := 19
 		var sendPktIndex []int
-		for i := 0; i < maxPktCount; i++ {
+		for i := range maxPktCount {
 			sendPktIndex = append(sendPktIndex, i)
 			if i > 0 {
 				sendPktIndex = append(sendPktIndex, i-1)
@@ -346,7 +371,7 @@ func TestRedPrimaryReceiver(t *testing.T) {
 	t.Run("full recover", func(t *testing.T) {
 		maxPktCount := 19
 		var sendPktIndex, recvPktIndex []int
-		for i := 0; i < maxPktCount; i++ {
+		for i := range maxPktCount {
 			recvPktIndex = append(recvPktIndex, i)
 
 			// drop packets covered by red encoding
@@ -383,11 +408,15 @@ func TestRedPrimaryReceiver(t *testing.T) {
 	t.Run("mixed primary codec", func(t *testing.T) {
 		dt := &dummyDowntrack{TrackSender: &DownTrack{}}
 		w := &WebRTCReceiver{
-			kind:   webrtc.RTPCodecTypeAudio,
-			logger: logger.GetLogger(),
-			codec:  webrtc.RTPCodecParameters{PayloadType: opusREDPT, RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "audio/red"}},
+			ReceiverBase: &ReceiverBase{
+				params: ReceiverBaseParams{
+					Kind:   webrtc.RTPCodecTypeAudio,
+					Logger: logger.GetLogger(),
+					Codec:  webrtc.RTPCodecParameters{PayloadType: opusRedPT, RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "audio/red"}},
+				},
+			},
 		}
-		require.Equal(t, w.GetPrimaryReceiverForRed(), w)
+		require.Equal(t, w.GetPrimaryReceiverForRed(), w.ReceiverBase)
 		w.isRED = true
 		red := w.GetPrimaryReceiverForRed().(*RedPrimaryReceiver)
 		require.NotNil(t, red)
