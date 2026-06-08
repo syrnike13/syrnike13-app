@@ -37,7 +37,9 @@ pub async fn call(
         recipients,
     } = data.into_inner();
 
-    if user.bot.is_some() && force_disconnect == Some(true) {
+    let force_disconnect = should_disconnect_existing_voice_sessions(force_disconnect);
+
+    if user.bot.is_some() && force_disconnect {
         return Err(create_error!(IsBot));
     }
 
@@ -83,14 +85,18 @@ pub async fn call(
     if user.bot.is_none() {
         set_user_voice_join_intent(&user.id, &user_voice_channel).await?;
 
-        voice_client.remove_user_from_all_rooms(&user.id).await?;
+        if force_disconnect {
+            voice_client.remove_user_from_all_rooms(&user.id).await?;
+        }
 
         // Keep the target Redis voice state intact for same-channel reconnects.
-        for previous_channel in voice_channels_to_disconnect_on_join(
-            get_user_voice_channels(&user.id).await?,
-            &user_voice_channel,
-        ) {
-            remove_user_from_voice_channel(voice_client, &previous_channel, &user.id).await?;
+        if force_disconnect {
+            for previous_channel in voice_channels_to_disconnect_on_join(
+                get_user_voice_channels(&user.id).await?,
+                &user_voice_channel,
+            ) {
+                remove_user_from_voice_channel(voice_client, &previous_channel, &user.id).await?;
+            }
         }
     } else {
         raise_if_in_voice(&user, &user_voice_channel).await?;
@@ -153,6 +159,10 @@ fn voice_channels_to_disconnect_on_join(
         .collect()
 }
 
+fn should_disconnect_existing_voice_sessions(force_disconnect: Option<bool>) -> bool {
+    force_disconnect.unwrap_or(true)
+}
+
 #[cfg(test)]
 mod tests {
     use syrnike_database::voice::UserVoiceChannel;
@@ -191,5 +201,12 @@ mod tests {
             ),
             vec![other_channel],
         );
+    }
+
+    #[test]
+    fn native_token_refresh_does_not_disconnect_existing_livekit_session() {
+        assert!(!super::should_disconnect_existing_voice_sessions(Some(false)));
+        assert!(super::should_disconnect_existing_voice_sessions(Some(true)));
+        assert!(super::should_disconnect_existing_voice_sessions(None));
     }
 }
