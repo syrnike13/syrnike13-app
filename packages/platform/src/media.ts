@@ -20,6 +20,12 @@ export type NativeMediaAudioMode =
   | 'microphone'
   | 'none'
 
+export type NativeMediaEchoCancellationMode =
+  | 'disabled'
+  | 'windows'
+  | 'software'
+  | 'unavailable'
+
 export type NativeMediaTarget = {
   sourceId: string
 }
@@ -52,6 +58,23 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   channels: 1
   echoCancellation: boolean
   inputVolume: number
+  livekit: {
+    url: string
+    token: string
+    participantIdentity: string
+  }
+}
+
+export type NativeMicrophonePreviewStartOptions = {
+  deviceId?: string
+  sampleRate: 48_000
+  channels: 1
+  echoCancellation: boolean
+  inputVolume: number
+}
+
+export type NativeMicrophonePreviewSession = {
+  sessionId: string
 }
 
 export type NativeMediaSessionStartOptions =
@@ -75,10 +98,11 @@ export type NativeMediaMicrophoneSession = {
   sessionId: string
   audio: {
     mode: 'microphone'
-    port: number
     sampleRate: 48_000
     channels: 1
+    echoCancellation: NativeMediaEchoCancellationMode
   }
+  nativeParticipantIdentity: string
 }
 
 export type NativeMediaSession =
@@ -108,6 +132,7 @@ export type NativeMediaEngineSessionSummary = {
     port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
+    echoCancellation?: NativeMediaEchoCancellationMode
   }
 }
 
@@ -139,6 +164,7 @@ export type NativeMediaStateEvent = NativeMediaSessionStatus & {
     port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
+    echoCancellation?: NativeMediaEchoCancellationMode
   }
 }
 

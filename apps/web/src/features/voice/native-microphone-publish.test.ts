@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createNativeAudioTrack } from '#/features/voice/native-screen-share-audio-bridge'
 import { readVoicePreferences } from '#/features/voice/voice-preference-store'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
@@ -38,36 +37,8 @@ vi.mock('#/platform/runtime', () => ({
   getSyrnikeDesktop: vi.fn(() => null),
 }))
 
-vi.mock('#/features/voice/native-screen-share-audio-bridge', () => ({
-  createNativeAudioTrack: vi.fn(),
-}))
-
 vi.mock('#/features/voice/voice-preference-store', () => ({
   readVoicePreferences: vi.fn(),
-}))
-
-vi.mock('#/features/voice/voice-mic-processor', () => ({
-  createMicProcessorConfigFromPrefs: vi.fn((prefs) => ({
-    gateEnabled: true,
-    gateThresholdDb: prefs.voiceGateThresholdDb,
-    gateAutoThreshold: prefs.voiceGateAutoThreshold,
-    gateStageOptions: prefs.voiceGateAutoThreshold
-      ? { autoDynamic: true }
-      : { manualThresholdDb: prefs.voiceGateThresholdDb },
-    inputVolume: prefs.inputVolume,
-  })),
-  SyrnikeMicProcessor: vi.fn(function SyrnikeMicProcessor() {
-    return {
-      processedTrack: undefined,
-      init: vi.fn(async function init(
-        this: { processedTrack?: MediaStreamTrack },
-        options: { track: MediaStreamTrack },
-      ) {
-        this.processedTrack = options.track
-      }),
-      destroy: vi.fn(async () => {}),
-    }
-  }),
 }))
 
 function preferences() {
@@ -90,14 +61,6 @@ function preferences() {
   } as const
 }
 
-function mediaTrack() {
-  return {
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    stop: vi.fn(),
-  } as unknown as MediaStreamTrack
-}
-
 describe('native microphone publish', () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -110,17 +73,27 @@ describe('native microphone publish', () => {
     )
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
     vi.mocked(readVoicePreferences).mockReturnValue(preferences())
-    vi.mocked(createNativeAudioTrack).mockReset()
   })
 
   it('builds native microphone session options from voice preferences', () => {
-    expect(nativeMicrophoneSessionOptions(preferences())).toEqual({
+    expect(
+      nativeMicrophoneSessionOptions(preferences(), {
+        url: 'wss://livekit.example',
+        token: 'livekit-token',
+        participantIdentity: 'user-1:desktop-native',
+      }),
+    ).toEqual({
       kind: 'microphone',
       deviceId: 'mic-1',
       sampleRate: 48_000,
       channels: 1,
       echoCancellation: true,
       inputVolume: 0.75,
+      livekit: {
+        url: 'wss://livekit.example',
+        token: 'livekit-token',
+        participantIdentity: 'user-1:desktop-native',
+      },
     })
   })
 
@@ -132,9 +105,58 @@ describe('native microphone publish', () => {
     expect(shouldUseNativeMicrophone()).toBe(true)
   })
 
-  it('cleans up native session when LiveKit publish fails', async () => {
+  it('starts native microphone publisher without creating a renderer audio track', async () => {
     const stopSession = vi.fn(async () => {})
-    const track = mediaTrack()
+    const startSession = vi.fn(async () => ({
+      kind: 'microphone',
+      sessionId: 'native-mic-1',
+      audio: {
+        mode: 'microphone',
+        sampleRate: 48_000,
+        channels: 1,
+        echoCancellation: 'windows',
+      },
+      nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
+    }))
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startSession,
+        stopSession,
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const participant = {
+      identity: 'user-1',
+      publishTrack: vi.fn(),
+      unpublishTrack: vi.fn(),
+    }
+
+    const session = await publishNativeMicrophone(participant as never, undefined, {
+      url: 'wss://livekit.example',
+      token: 'native-livekit-token',
+      participantIdentity: 'user-1:desktop-native',
+    })
+
+    expect(session.nativeParticipantIdentity).toBe(
+      'user-1:desktop-native:native-mic-1',
+    )
+    expect(startSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'microphone',
+        livekit: {
+          url: 'wss://livekit.example',
+          token: 'native-livekit-token',
+          participantIdentity: 'user-1:desktop-native',
+        },
+      }),
+    )
+    expect(participant.publishTrack).not.toHaveBeenCalled()
+    expect(participant.unpublishTrack).not.toHaveBeenCalled()
+  })
+
+  it('stops native microphone publisher without touching local LiveKit tracks', async () => {
+    const stopSession = vi.fn(async () => {})
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
@@ -143,81 +165,38 @@ describe('native microphone publish', () => {
           sessionId: 'native-mic-1',
           audio: {
             mode: 'microphone',
-            port: 49152,
             sampleRate: 48_000,
             channels: 1,
+            echoCancellation: 'windows',
           },
+          nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
         })),
         stopSession,
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
-    vi.mocked(createNativeAudioTrack).mockResolvedValue({
-      track,
-      stop: vi.fn(),
-    })
 
     const participant = {
-      publishTrack: vi.fn(async () => {
-        throw new Error('publish failed')
-      }),
+      identity: 'user-1',
+      publishTrack: vi.fn(),
       unpublishTrack: vi.fn(),
     }
+    const onStopped = vi.fn()
 
-    await expect(
-      publishNativeMicrophone(participant as never),
-    ).rejects.toThrow('publish failed')
+    const session = await publishNativeMicrophone(participant as never, onStopped, {
+      url: 'wss://livekit.example',
+      token: 'native-livekit-token',
+      participantIdentity: 'user-1:desktop-native',
+    })
+    session.stop()
 
-    expect(track.stop).toHaveBeenCalledOnce()
     expect(stopSession).toHaveBeenCalledWith('native-mic-1')
-    expect(participant.unpublishTrack).toHaveBeenCalledOnce()
-  })
-
-  it('publishes the native audio track as the LiveKit microphone source', async () => {
-    const track = mediaTrack()
-    vi.mocked(getSyrnikeDesktop).mockReturnValue({
-      platform: { os: 'win32' },
-      media: {
-        startSession: vi.fn(async () => ({
-          kind: 'microphone',
-          sessionId: 'native-mic-1',
-          audio: {
-            mode: 'microphone',
-            port: 49152,
-            sampleRate: 48_000,
-            channels: 1,
-          },
-        })),
-        stopSession: vi.fn(async () => {}),
-      },
-    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
-    vi.mocked(createNativeAudioTrack).mockResolvedValue({
-      track,
-      stop: vi.fn(),
-    })
-
-    const participant = {
-      publishTrack: vi.fn(async () => ({ trackSid: 'TR_native_mic' })),
-      unpublishTrack: vi.fn(),
-    }
-
-    const session = await publishNativeMicrophone(participant as never)
-
-    expect(session.publicationId).toBe('TR_native_mic')
-    expect(participant.publishTrack).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mediaStreamTrack: track,
-      }),
-      expect.objectContaining({
-        source: 'microphone',
-        dtx: true,
-      }),
-    )
+    expect(participant.publishTrack).not.toHaveBeenCalled()
+    expect(participant.unpublishTrack).not.toHaveBeenCalled()
+    expect(onStopped).toHaveBeenCalledWith('native-mic-1')
   })
 
   it('notifies when the native microphone session stops after publishing', async () => {
     const stopSession = vi.fn(async () => {})
-    const bridgeStop = vi.fn()
-    const track = mediaTrack()
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
@@ -226,21 +205,19 @@ describe('native microphone publish', () => {
           sessionId: 'native-mic-1',
           audio: {
             mode: 'microphone',
-            port: 49152,
             sampleRate: 48_000,
             channels: 1,
+            echoCancellation: 'windows',
           },
+          nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
         })),
         stopSession,
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
-    vi.mocked(createNativeAudioTrack).mockResolvedValue({
-      track,
-      stop: bridgeStop,
-    })
 
     const participant = {
-      publishTrack: vi.fn(async () => ({ trackSid: 'TR_native_mic' })),
+      identity: 'user-1',
+      publishTrack: vi.fn(),
       unpublishTrack: vi.fn(),
     }
     const onStopped = vi.fn()
@@ -248,11 +225,14 @@ describe('native microphone publish', () => {
     const session = await publishNativeMicrophone(
       participant as never,
       onStopped,
+      {
+        url: 'wss://livekit.example',
+        token: 'native-livekit-token',
+        participantIdentity: 'user-1:desktop-native',
+      },
     )
     session.stop()
 
-    expect(bridgeStop).toHaveBeenCalledOnce()
-    expect(track.stop).toHaveBeenCalledOnce()
     expect(stopSession).toHaveBeenCalledWith('native-mic-1')
     expect(onStopped).toHaveBeenCalledWith('native-mic-1')
   })

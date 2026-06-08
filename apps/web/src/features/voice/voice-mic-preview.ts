@@ -1,9 +1,5 @@
 import { voiceAudioProcessingConstraints } from '#/features/voice/voice-capture'
 import {
-  shouldUseNativeMicrophone,
-  startNativeMicrophoneTrack,
-} from '#/features/voice/native-microphone-publish'
-import {
   createMicProcessorConfigFromPrefs,
   micProcessingNeeded,
   SyrnikeMicProcessor,
@@ -15,6 +11,7 @@ import {
   type VoiceGateMetrics,
 } from '#/features/voice/voice-gate-stage'
 import { rmsFromByteTimeDomain } from '#/features/voice/voice-gate-level'
+import { getSyrnikeDesktop } from '#/platform/runtime'
 
 export const MIC_PREVIEW_METER_BAR_COUNT = 32
 
@@ -87,21 +84,36 @@ export async function startMicPreview({
   onLevels,
   onGateMetrics,
 }: MicPreviewOptions) {
-  // #region agent log
-  console.info('[gate-preview-debug]', 'startMicPreview invoked', {
-    native: shouldUseNativeMicrophone(),
-    inputDeviceId: inputDeviceId ?? 'default',
-    hasGateMetricsCallback: Boolean(onGateMetrics),
-  })
-  // #endregion
-  if (shouldUseNativeMicrophone()) {
-    return startNativeMicPreview({
-      inputDeviceId,
-      outputDeviceId,
-      prefs,
-      onLevels,
-      onGateMetrics,
-    })
+  const desktop = getSyrnikeDesktop()
+  if (desktop?.platform.os === 'win32') {
+    const startNative = (nextPrefs: MicPreviewPreferences) =>
+      desktop.media.startMicrophonePreview({
+        deviceId: inputDeviceId,
+        sampleRate: 48_000,
+        channels: 1,
+        echoCancellation: nextPrefs.echoCancellation,
+        inputVolume: nextPrefs.inputVolume,
+      })
+
+    let session = await startNative(prefs)
+    let stopped = false
+    onLevels(meterLevelsFromRms(0.08, MIC_PREVIEW_METER_BAR_COUNT))
+
+    return {
+      setOutputVolume(_volume: number) {},
+      async setOutputDevice(_deviceId?: string) {},
+      updateGatePreferences(_nextPrefs: MicPreviewPreferences) {},
+      async restartProcessing(nextPrefs: MicPreviewPreferences) {
+        if (stopped) return
+        await desktop.media.stopMicrophonePreview(session.sessionId)
+        session = await startNative(nextPrefs)
+      },
+      stop() {
+        if (stopped) return
+        stopped = true
+        void desktop.media.stopMicrophonePreview(session.sessionId)
+      },
+    }
   }
 
   const captureConstraints = voiceAudioProcessingConstraints(prefs)
@@ -118,8 +130,8 @@ export async function startMicPreview({
     throw new Error('Microphone track is unavailable')
   }
 
-  const processContext = new AudioContext()
-  const playbackContext = new AudioContext()
+  const processContext = new AudioContext({ sampleRate: 48_000 })
+  const playbackContext = new AudioContext({ sampleRate: 48_000 })
   let processor: SyrnikeMicProcessor | null = null
   let playbackTrack: MediaStreamTrack = rawTrack
 
@@ -217,158 +229,6 @@ export async function startMicPreview({
       analyser.disconnect()
       void processor?.destroy()
       stream.getTracks().forEach((track) => track.stop())
-      void processContext.close()
-      void playbackContext.close()
-    },
-  }
-}
-
-async function startNativeMicPreview({
-  inputDeviceId,
-  outputDeviceId,
-  prefs,
-  onLevels,
-  onGateMetrics,
-}: MicPreviewOptions) {
-  // #region agent log
-  console.info('[gate-preview-debug]', 'native mic preview path selected', {
-    inputDeviceId: inputDeviceId ?? 'default',
-    hasGateMetricsCallback: Boolean(onGateMetrics),
-  })
-  // #endregion
-  let native = await startNativeMicrophoneTrack(
-    {
-      ...prefs,
-      preferredAudioInputDevice: inputDeviceId,
-      preferredAudioOutputDevice: outputDeviceId,
-      preferredVideoDevice: undefined,
-      micEnabled: true,
-      deafened: false,
-      cameraEnabled: false,
-      screenShareEnabled: false,
-      screenShareQuality: 'high',
-      screenShareCodec: 'auto',
-    },
-    inputDeviceId,
-  )
-  let playbackTrack = native.bridge.track
-  const processContext = new AudioContext()
-  const playbackContext = new AudioContext()
-  let gate: VoiceGateStage | null = null
-
-  const monitorGain = playbackContext.createGain()
-  const analyser = playbackContext.createAnalyser()
-
-  analyser.fftSize = 512
-  monitorGain.gain.value = prefs.outputVolume
-
-  const rebuildGateTrack = async (track: MediaStreamTrack, nextPrefs: MicPreviewPreferences) => {
-    gate?.destroy()
-    gate = new VoiceGateStage(nextPrefs.voiceGateThresholdDb)
-    const gatedTrack = gate.start(processContext, track, {
-      ...resolveVoiceGateStageOptions(nextPrefs),
-      onMetrics: onGateMetrics,
-    })
-    await processContext.resume()
-    return gatedTrack ?? track
-  }
-
-  playbackTrack = await rebuildGateTrack(native.bridge.track, prefs)
-
-  let sourceNode = playbackContext.createMediaStreamSource(
-    new MediaStream([playbackTrack]),
-  )
-  sourceNode.connect(monitorGain)
-  monitorGain.connect(analyser)
-  monitorGain.connect(playbackContext.destination)
-
-  await applyPlaybackSink(playbackContext, outputDeviceId)
-  await playbackContext.resume()
-
-  const samples = new Uint8Array(analyser.fftSize)
-  let frame = 0
-  let stopped = false
-  let previousLevels = Array.from(
-    { length: MIC_PREVIEW_METER_BAR_COUNT },
-    () => 0,
-  )
-
-  let nativeStopped = false
-  const stopNative = () => {
-    if (nativeStopped) return
-    nativeStopped = true
-    native.bridge.stop()
-    native.bridge.track.stop()
-    void native.desktop.media.stopSession(native.session.sessionId)
-  }
-
-  const tick = () => {
-    if (stopped) return
-    analyser.getByteTimeDomainData(samples)
-    const targets = meterLevelsFromRms(
-      rmsFromByteTimeDomain(samples),
-      MIC_PREVIEW_METER_BAR_COUNT,
-    )
-    previousLevels = previousLevels.map((previous, index) => {
-      const target = targets[index] ?? 0
-      return previous * 0.45 + target * 0.55
-    })
-    onLevels(previousLevels)
-    frame = requestAnimationFrame(tick)
-  }
-
-  frame = requestAnimationFrame(tick)
-
-  return {
-    setOutputVolume(volume: number) {
-      monitorGain.gain.value = volume
-    },
-    async setOutputDevice(deviceId?: string) {
-      await applyPlaybackSink(playbackContext, deviceId)
-    },
-    updateGatePreferences(nextPrefs: MicPreviewPreferences) {
-      gate?.updateOptions({
-        ...resolveVoiceGateStageOptions(nextPrefs),
-        onMetrics: onGateMetrics,
-      })
-    },
-    async restartProcessing(nextPrefs: MicPreviewPreferences) {
-      sourceNode.disconnect()
-      stopNative()
-      gate?.destroy()
-      gate = null
-
-      native = await startNativeMicrophoneTrack(
-        {
-          ...nextPrefs,
-          preferredAudioInputDevice: inputDeviceId,
-          preferredAudioOutputDevice: outputDeviceId,
-          preferredVideoDevice: undefined,
-          micEnabled: true,
-          deafened: false,
-          cameraEnabled: false,
-          screenShareEnabled: false,
-          screenShareQuality: 'high',
-          screenShareCodec: 'auto',
-        },
-        inputDeviceId,
-      )
-      nativeStopped = false
-      playbackTrack = await rebuildGateTrack(native.bridge.track, nextPrefs)
-      sourceNode = playbackContext.createMediaStreamSource(
-        new MediaStream([playbackTrack]),
-      )
-      sourceNode.connect(monitorGain)
-    },
-    stop() {
-      if (stopped) return
-      stopped = true
-      cancelAnimationFrame(frame)
-      sourceNode.disconnect()
-      monitorGain.disconnect()
-      analyser.disconnect()
-      gate?.destroy()
-      stopNative()
       void processContext.close()
       void playbackContext.close()
     },

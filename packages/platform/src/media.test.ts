@@ -52,6 +52,11 @@ describe('native media session contract', () => {
           channels: 1
           echoCancellation: boolean
           inputVolume: number
+          livekit: {
+            url: string
+            token: string
+            participantIdentity: string
+          }
         }
     >()
 
@@ -64,10 +69,11 @@ describe('native media session contract', () => {
           sessionId: string
           audio: {
             mode: 'microphone'
-            port: number
             sampleRate: 48000
             channels: 1
+            echoCancellation: 'disabled' | 'windows' | 'software' | 'unavailable'
           }
+          nativeParticipantIdentity: string
         }
     >()
   })

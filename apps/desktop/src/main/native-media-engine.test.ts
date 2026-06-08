@@ -68,6 +68,38 @@ describe('native media engine entrypoint', () => {
     })
   })
 
+  it('reports microphone capability when only the native voice helper exists', async () => {
+    const { buildNativeMediaEngineSnapshot } = await import('./native-media-engine')
+
+    expect(
+      buildNativeMediaEngineSnapshot({
+        platform: 'win32',
+        helperAvailable: false,
+        microphoneHelperAvailable: true,
+        helperRunning: false,
+        activeSession: null,
+        lastError: null,
+      }),
+    ).toEqual({
+      status: 'idle',
+      engine: {
+        available: true,
+        helper: {
+          available: true,
+          running: false,
+        },
+        capabilities: {
+          screen: false,
+          systemAudio: false,
+          microphone: true,
+          camera: false,
+        },
+        activeSessions: [],
+        lastError: null,
+      },
+    })
+  })
+
   it('includes active session and last error in the media engine snapshot', async () => {
     const { buildNativeMediaEngineSnapshot } = await import('./native-media-engine')
 
@@ -152,6 +184,11 @@ describe('native media engine entrypoint', () => {
           channels: 1,
           echoCancellation: true,
           inputVolume: 1.25,
+          livekit: {
+            url: 'wss://livekit.example',
+            token: 'native-livekit-token',
+            participantIdentity: 'user-1:desktop-native',
+          },
         },
         'mic-session-1',
         () => null,
@@ -165,6 +202,11 @@ describe('native media engine entrypoint', () => {
       channels: 1,
       echoCancellation: true,
       inputVolume: 1.25,
+      livekit: {
+        url: 'wss://livekit.example',
+        token: 'native-livekit-token',
+        participantIdentity: 'user-1:desktop-native',
+      },
     })
   })
 
@@ -181,18 +223,17 @@ describe('native media engine entrypoint', () => {
     expect(reconnectBody).not.toContain("status: 'running'")
   })
 
-  it('treats microphone audio relay end as a native media failure', () => {
+  it('does not route microphone audio through the main-process relay', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
       'utf8',
     )
     const relayBody = source.match(
-      /function attachAudioStreamRelay[\s\S]*?\r?\n}\r?\n\r?\nfunction stopMediaEngineHelper/,
+      /function forwardStreamAudioPayload[\s\S]*?\r?\n}\r?\n\r?\nfunction processAudioStreamBuffer/,
     )?.[0]
 
     expect(relayBody).toBeDefined()
-    expect(relayBody).toContain("session.startOptions.kind === 'microphone'")
-    expect(relayBody).toContain('Native microphone audio stream ended')
-    expect(relayBody).toContain('handleSidecarFailure')
+    expect(relayBody).toContain("if (session.startOptions.kind === 'microphone') return")
+    expect(relayBody).not.toContain('writePcmAudioRing')
   })
 })

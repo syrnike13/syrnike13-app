@@ -1,5 +1,7 @@
 import type {
   NativeMediaDeviceInfo,
+  NativeMicrophonePreviewSession,
+  NativeMicrophonePreviewStartOptions,
   NativeMediaSession,
   NativeMediaSessionStartOptions,
   NativeMediaState,
@@ -157,6 +159,8 @@ export type {
   NativeMediaSidecarLostEvent,
   NativeMediaSessionKind,
   NativeMediaSessionStartOptions,
+  NativeMicrophonePreviewSession,
+  NativeMicrophonePreviewStartOptions,
   NativeMediaScreenSessionStartOptions,
   NativeMediaState,
   NativeMediaStateEvent,
@@ -216,6 +220,10 @@ export interface SyrnikeDesktopApi {
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
     listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
+    startMicrophonePreview(
+      options: NativeMicrophonePreviewStartOptions,
+    ): Promise<NativeMicrophonePreviewSession>
+    stopMicrophonePreview(sessionId?: string): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: { requestId: string; sourceId: string }) => void,

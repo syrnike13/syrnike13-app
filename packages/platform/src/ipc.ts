@@ -32,6 +32,8 @@ export const IPC = {
   mediaCancelRequest: 'syrnike-desktop:media:cancel-request',
   mediaOpenDisplayPicker: 'syrnike-desktop:media:open-display-picker',
   mediaListDevices: 'syrnike-desktop:media:list-devices',
+  mediaStartMicrophonePreview: 'syrnike-desktop:media:start-microphone-preview',
+  mediaStopMicrophonePreview: 'syrnike-desktop:media:stop-microphone-preview',
   mediaStartSession: 'syrnike-desktop:media:start-session',
   mediaStopSession: 'syrnike-desktop:media:stop-session',
   mediaGetState: 'syrnike-desktop:media:get-state',

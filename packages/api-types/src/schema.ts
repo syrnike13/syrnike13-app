@@ -1993,6 +1993,10 @@ export interface components {
     CreateVoiceUserResponse: {
       /** @description Token for authenticating with the voice server */
       token: string;
+      /** @description Token for native desktop microphone publishing */
+      native_token: string;
+      /** @description LiveKit identity for native desktop microphone publishing */
+      native_identity: string;
       /** @description Url of the livekit server to connect to */
       url: string;
     };

@@ -12,6 +12,8 @@ import type {
   HotkeyAction,
   HotkeyBinding,
   NativeMediaDeviceInfo,
+  NativeMicrophonePreviewSession,
+  NativeMicrophonePreviewStartOptions,
   NativeMediaSession,
   NativeMediaSidecarLostEvent,
   NativeMediaSessionStartOptions,
@@ -174,6 +176,15 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         IPC.mediaListDevices,
         kind,
       ) as Promise<NativeMediaDeviceInfo[]>
+    },
+    startMicrophonePreview(options: NativeMicrophonePreviewStartOptions) {
+      return ipcRenderer.invoke(
+        IPC.mediaStartMicrophonePreview,
+        options,
+      ) as Promise<NativeMicrophonePreviewSession>
+    },
+    stopMicrophonePreview(sessionId?: string) {
+      return ipcRenderer.invoke(IPC.mediaStopMicrophonePreview, sessionId)
     },
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void) {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {

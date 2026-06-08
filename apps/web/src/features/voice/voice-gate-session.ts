@@ -4,14 +4,21 @@ import type { VoiceGateStageOptions } from '#/features/voice/voice-gate-stage'
 export function resolveVoiceGateStageOptions(
   prefs: Pick<
     VoicePreferenceState,
-    'voiceGateThresholdDb' | 'voiceGateAutoThreshold'
+    'voiceGateEnabled' | 'voiceGateThresholdDb' | 'voiceGateAutoThreshold'
   >,
 ): VoiceGateStageOptions {
-  if (prefs.voiceGateAutoThreshold) {
-    return { autoDynamic: true }
+  if (!prefs.voiceGateEnabled) {
+    return {
+      enabled: false,
+      manualThresholdDb: prefs.voiceGateThresholdDb,
+    }
   }
 
-  return { manualThresholdDb: prefs.voiceGateThresholdDb }
+  if (prefs.voiceGateAutoThreshold) {
+    return { enabled: true, autoDynamic: true }
+  }
+
+  return { enabled: true, manualThresholdDb: prefs.voiceGateThresholdDb }
 }
 
 export function effectiveVoiceGateStageOptions(

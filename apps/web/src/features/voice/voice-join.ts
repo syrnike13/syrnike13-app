@@ -33,6 +33,11 @@ export type VoiceJoinRunnerDeps = {
   ) => void
   setActiveRoom: (room: Room) => void
   attachRoomHandlers: (room: Room) => void
+  setLiveKitCredentials: (credentials: {
+    url: string
+    token: string
+    participantIdentity: string
+  }) => void
   onRoomConnected: (room: Room, channelId: string) => void
   onJoinSuccess: () => void
   abortJoin: () => void
@@ -101,8 +106,18 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         return false
       }
 
-      const { url, token: livekitToken } = credentials
+      const {
+        url,
+        token: livekitToken,
+        native_token: nativeToken,
+        native_identity: nativeIdentity,
+      } = credentials
       const room = new Room(createVoiceRoomOptions())
+      deps.setLiveKitCredentials({
+        url,
+        token: nativeToken,
+        participantIdentity: nativeIdentity,
+      })
       deps.setActiveRoom(room)
       deps.attachRoomHandlers(room)
 

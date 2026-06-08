@@ -76,13 +76,6 @@ export function useMicPreviewLoopback(
           },
           onGateMetrics: gateMetricsRef
             ? (metrics) => {
-                // #region agent log
-                console.info('[gate-preview-debug]', 'mic preview loopback received gate metrics', {
-                  inputDb: metrics.inputDb,
-                  thresholdDb: metrics.thresholdDb,
-                  open: metrics.open,
-                })
-                // #endregion
                 gateMetricsRef.current = metrics
               }
             : undefined,

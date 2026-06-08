@@ -281,6 +281,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const roomRef = useRef<Room | null>(null)
   const nativeScreenShareRef = useRef<NativeScreenShareSession | null>(null)
   const nativeMicrophoneRef = useRef<NativeMicrophoneSession | null>(null)
+  const liveKitCredentialsRef = useRef<{
+    url: string
+    token: string
+    participantIdentity: string
+  } | null>(null)
   const audioElementsRef = useRef<HTMLAudioElement[]>([])
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
@@ -304,6 +309,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ) => {},
     setActiveRoom: (_room: Room) => {},
     attachRoomHandlers: (_room: Room) => {},
+    setLiveKitCredentials: (_credentials: {
+      url: string
+      token: string
+      participantIdentity: string
+    }) => {},
     onRoomConnected: (_room: Room, _channelId: string) => {},
     onJoinSuccess: () => {},
     abortJoin: () => {},
@@ -323,6 +333,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setActiveRoom: (room) => voiceJoinDepsRef.current.setActiveRoom(room),
       attachRoomHandlers: (room) =>
         voiceJoinDepsRef.current.attachRoomHandlers(room),
+      setLiveKitCredentials: (credentials) =>
+        voiceJoinDepsRef.current.setLiveKitCredentials(credentials),
       onRoomConnected: (room, channelId) =>
         voiceJoinDepsRef.current.onRoomConnected(room, channelId),
       onJoinSuccess: () => voiceJoinDepsRef.current.onJoinSuccess(),
@@ -518,15 +530,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     (room: Room, issue?: VoiceMicIssue | null) => {
       const wantsMic = voicePreferenceStore.getMicEnabled()
       const publishing = participantMicPublishing(room.localParticipant)
+      const effectivePublishing =
+        shouldUseNativeMicrophone() && nativeMicrophoneRef.current
+          ? true
+          : publishing
       const activeChannelId = channelIdRef.current
       const userId = auth.user?._id
 
-      setMicPublishing(publishing)
+      setMicPublishing(effectivePublishing)
 
       if (
         shouldResetMicPreferenceOnIssue({
           wantsMic,
-          micPublishing: publishing,
+          micPublishing: effectivePublishing,
           micIssue: issue ?? null,
         })
       ) {
@@ -536,14 +552,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       if (issue !== undefined) {
         setCurrentMicIssue(issue, issue != null)
-      } else if (publishing) {
+      } else if (effectivePublishing) {
         setCurrentMicIssue(null)
       } else if (wantsMic) {
         const fallbackIssue = micIssueRef.current ?? MIC_BLOCKED_WITHOUT_ERROR
         if (
           shouldResetMicPreferenceOnIssue({
             wantsMic,
-            micPublishing: publishing,
+            micPublishing: effectivePublishing,
             micIssue: fallbackIssue,
           })
         ) {
@@ -556,7 +572,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
 
       if (activeChannelId && userId) {
-        patchLocalVoiceMic(activeChannelId, userId, publishing)
+        patchLocalVoiceMic(activeChannelId, userId, effectivePublishing)
       }
     },
     [auth.user?._id, setCurrentMicIssue],
@@ -672,25 +688,31 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!active) return
     nativeMicrophoneRef.current = null
     active.stop()
+    setMicPublishing(false)
   }, [])
 
   const startNativeMicrophone = useCallback(
     async (room: Room) => {
       stopNativeMicrophone()
+      const livekit = liveKitCredentialsRef.current
+      if (!livekit) {
+        throw new Error('LiveKit credentials are not available for native microphone')
+      }
       const session = await publishNativeMicrophone(
         room.localParticipant,
         (sessionId) => {
           if (nativeMicrophoneRef.current?.sessionId !== sessionId) return
           nativeMicrophoneRef.current = null
-          syncMicFromRoom(room)
+          setMicPublishing(false)
           syncRoomParticipants()
         },
+        livekit,
       )
       nativeMicrophoneRef.current = session
-      syncMicFromRoom(room)
+      setMicPublishing(true)
       syncRoomParticipants()
     },
-    [stopNativeMicrophone, syncMicFromRoom, syncRoomParticipants],
+    [stopNativeMicrophone, syncRoomParticipants],
   )
 
   const finishLocalVoiceSetup = useCallback(
@@ -737,7 +759,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         patchLocalVoiceDeafen(targetChannelId, userId, prefs.deafened)
         void syncVoiceStateToServer(targetChannelId, {
           is_receiving: !prefs.deafened,
-          is_publishing: participantMicPublishing(room.localParticipant),
+          is_publishing:
+            shouldUseNativeMicrophone() && nativeMicrophoneRef.current
+              ? true
+              : participantMicPublishing(room.localParticipant),
         })
       }
     },
@@ -901,6 +926,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         roomRef.current = room
       },
       attachRoomHandlers: (room) => attachAudio(room),
+      setLiveKitCredentials: (credentials) => {
+        liveKitCredentialsRef.current = credentials
+      },
       onRoomConnected: (room, targetChannelId) => {
         setStatus('connected')
         syncRoomParticipants()
@@ -1496,19 +1524,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const getNativeMicrophonePreviewTrack = useCallback(
     () => {
-      const nativeTrack = nativeMicrophoneRef.current?.track
-      if (nativeTrack?.readyState === 'live') {
-        console.info('[gate-preview-debug]', 'preview track from native microphone ref', {
-          readyState: nativeTrack.readyState,
-          enabled: nativeTrack.enabled,
-          muted: nativeTrack.muted,
-        })
-        return nativeTrack
-      }
-
-      console.info('[gate-preview-debug]', 'no live native microphone preview track', {
-        hasNativeRef: Boolean(nativeMicrophoneRef.current),
-      })
       return null
     },
     [],

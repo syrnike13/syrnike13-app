@@ -6,8 +6,8 @@
   "main": "./out/main/index.js",
   "scripts": {
     "build:hotkey-helper": "node scripts/build-hotkey-helper-win.mjs",
-    "build:capture-helper": "node scripts/build-capture-helper-win.mjs",
-    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper && pnpm run build:capture-helper",
+    "build:native-voice": "node scripts/build-native-voice-win.mjs",
+    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper && pnpm run build:native-voice",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",

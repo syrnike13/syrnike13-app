@@ -42,7 +42,7 @@ export function createMicProcessorConfigFromPrefs(
   },
 ): SyrnikeMicProcessorConfig {
   return {
-    gateEnabled: true,
+    gateEnabled: prefs.voiceGateEnabled,
     gateThresholdDb: prefs.voiceGateThresholdDb,
     gateAutoThreshold: prefs.voiceGateAutoThreshold,
     gateStageOptions: resolveVoiceGateStageOptions(prefs),

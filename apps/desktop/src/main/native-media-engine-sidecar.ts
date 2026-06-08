@@ -3,6 +3,7 @@ import { open } from 'node:fs/promises'
 
 import type {
   NativeMediaAudioMode,
+  NativeMediaEchoCancellationMode,
   NativeMediaDeviceInfo,
   NativeMediaEncoderBackend,
   NativeMediaFrameMethod,
@@ -21,6 +22,8 @@ export type SidecarEvent =
       audio_mode?: string
       audio_sample_rate?: number
       audio_channels?: number
+      echo_cancellation?: string
+      native_participant_identity?: string
     }
   | {
       type: 'frame_method'
@@ -45,6 +48,7 @@ export type SidecarEvent =
       audio_mode?: string
       audio_sample_rate?: number
       audio_channels?: number
+      echo_cancellation?: string
       message?: string
     }
 
@@ -92,6 +96,16 @@ export function mapAudioMode(value: string | undefined): NativeMediaAudioMode {
   return 'none'
 }
 
+export function mapEchoCancellationMode(
+  value: string | undefined,
+): NativeMediaEchoCancellationMode | undefined {
+  if (value === 'disabled') return 'disabled'
+  if (value === 'windows') return 'windows'
+  if (value === 'software') return 'software'
+  if (value === 'unavailable') return 'unavailable'
+  return undefined
+}
+
 export function mapLifecycleState(
   event: Extract<SidecarEvent, { type: 'session_lifecycle' }>,
 ): NativeMediaStateEvent {
@@ -114,6 +128,7 @@ export function mapLifecycleState(
                   event.audio_channels === 1 || event.audio_channels === 2
                     ? event.audio_channels
                     : undefined,
+                echoCancellation: mapEchoCancellationMode(event.echo_cancellation),
               }
             : undefined,
       }

@@ -96,7 +96,18 @@ pub async fn call(
     }
 
     let token = voice_client
-        .create_token(&node, db, &user, current_permissions, &channel)
+        .create_token_for_identity(&node, db, &user, &user.id, current_permissions, &channel)
+        .await?;
+    let native_identity = format!("{}:desktop-native", user.id);
+    let native_token = voice_client
+        .create_token_for_identity(
+            &node,
+            db,
+            &user,
+            &native_identity,
+            current_permissions,
+            &channel,
+        )
         .await?;
 
     let room = voice_client.create_room(&node, &channel).await?;
@@ -115,6 +126,8 @@ pub async fn call(
 
     Ok(Json(v0::CreateVoiceUserResponse {
         token,
+        native_token,
+        native_identity,
         url: node_host.clone(),
     }))
 }

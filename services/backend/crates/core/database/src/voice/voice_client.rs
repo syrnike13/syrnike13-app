@@ -64,11 +64,12 @@ impl VoiceClient {
             .ok_or_else(|| create_error!(UnknownNode))
     }
 
-    pub async fn create_token(
+    pub async fn create_token_for_identity(
         &self,
         node: &str,
         db: &Database,
         user: &User,
+        identity: &str,
         permissions: PermissionValue,
         channel: &Channel,
     ) -> Result<String> {
@@ -79,7 +80,7 @@ impl VoiceClient {
 
         AccessToken::with_api_key(&room.node.key, &room.node.secret)
             .with_name(&format!("{}#{}", user.username, user.discriminator))
-            .with_identity(&user.id)
+            .with_identity(identity)
             .with_metadata(
                 &serde_json::to_string(&user.clone().into(db, None).await).to_internal_error()?,
             )

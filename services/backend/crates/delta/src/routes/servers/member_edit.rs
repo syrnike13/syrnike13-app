@@ -250,7 +250,14 @@ pub async fn edit(
                 .create_room(&new_node, &new_voice_channel)
                 .await?;
             let token = voice_client
-                .create_token(&new_node, db, &target_user, permissions, &new_voice_channel)
+                .create_token_for_identity(
+                    &new_node,
+                    db,
+                    &target_user,
+                    &target_user.id,
+                    permissions,
+                    &new_voice_channel,
+                )
                 .await?;
 
             voice_client

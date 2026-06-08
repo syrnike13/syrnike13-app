@@ -7,7 +7,7 @@ import {
 } from './voice-gate-level'
 import { voiceGateOpenDb } from './voice-gate'
 
-const OPEN_HOLD_MS = 40
+const OPEN_HOLD_MS = 0
 const CLOSE_HOLD_MS = 180
 const QUIET_HISTORY_SIZE = 60
 const MIN_QUIET_SAMPLES = 16
@@ -21,6 +21,7 @@ export type VoiceGateMetrics = {
 }
 
 export type VoiceGateStageOptions = {
+  enabled?: boolean
   autoDynamic?: boolean
   manualThresholdDb?: number
   onMetrics?: (metrics: VoiceGateMetrics) => void
@@ -28,6 +29,7 @@ export type VoiceGateStageOptions = {
 
 export class VoiceGateStage {
   #manualThresholdDb: number
+  #enabled = true
   #autoDynamic = false
   #thresholdDb = DEFAULT_VOICE_GATE_THRESHOLD_DB
   #noiseFloorDb = DEFAULT_VOICE_GATE_THRESHOLD_DB - VOICE_GATE_AUTO_MARGIN_DB
@@ -76,6 +78,7 @@ export class VoiceGateStage {
     this.#outputTrack = destination.stream.getAudioTracks()[0] ?? null
     this.#open = true
     this.#lastGateChangeAt = Date.now()
+    this.#enabled = options?.enabled ?? true
     this.#autoDynamic = options?.autoDynamic ?? false
     this.#onMetrics = options?.onMetrics ?? null
     this.#quietLevelHistory = []
@@ -104,6 +107,7 @@ export class VoiceGateStage {
   }
 
   updateOptions(options: VoiceGateStageOptions) {
+    this.#enabled = options.enabled ?? true
     if (options.autoDynamic) {
       this.#autoDynamic = true
       this.#quietLevelHistory = []
@@ -194,14 +198,14 @@ export class VoiceGateStage {
     this.#analyser.getByteTimeDomainData(this.#samples)
     const inputDb = rmsToDb(rmsFromByteTimeDomain(this.#samples))
 
-    if (this.#autoDynamic) {
+    if (this.#enabled && this.#autoDynamic) {
       const quiet = !voiceGateOpenDb(inputDb, this.#thresholdDb, true)
       this.#updateAutoThreshold(inputDb, quiet)
     } else {
       this.#thresholdDb = this.#manualThresholdDb
     }
 
-    const shouldOpen = voiceGateOpenDb(inputDb, this.#thresholdDb, true)
+    const shouldOpen = voiceGateOpenDb(inputDb, this.#thresholdDb, this.#enabled)
     const now = Date.now()
     const holdMs = shouldOpen ? OPEN_HOLD_MS : CLOSE_HOLD_MS
 

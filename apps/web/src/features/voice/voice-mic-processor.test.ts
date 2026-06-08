@@ -63,9 +63,30 @@ describe('createMicProcessorConfigFromPrefs', () => {
       gateThresholdDb: -22,
       gateAutoThreshold: true,
       gateStageOptions: {
+        enabled: true,
         autoDynamic: true,
       },
       inputVolume: 2,
+    })
+  })
+
+  it('keeps the gate disabled when preferences disable it', () => {
+    expect(
+      createMicProcessorConfigFromPrefs({
+        voiceGateEnabled: false,
+        voiceGateThresholdDb: -22,
+        voiceGateAutoThreshold: true,
+        inputVolume: 1,
+      }),
+    ).toEqual({
+      gateEnabled: false,
+      gateThresholdDb: -22,
+      gateAutoThreshold: true,
+      gateStageOptions: {
+        enabled: false,
+        manualThresholdDb: -22,
+      },
+      inputVolume: 1,
     })
   })
 })

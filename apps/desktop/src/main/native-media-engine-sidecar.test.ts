@@ -166,19 +166,19 @@ describe('native media engine sidecar protocol', () => {
         session_id: 'mic-session-1',
         kind: 'microphone',
         status: 'running',
-        audio_port: 55200,
         audio_mode: 'microphone',
         audio_sample_rate: 48_000,
         audio_channels: 1,
+        echo_cancellation: 'software',
       }),
     ).toEqual({
       status: 'running',
       sessionId: 'mic-session-1',
       audio: {
         mode: 'microphone',
-        port: 55200,
         sampleRate: 48_000,
         channels: 1,
+        echoCancellation: 'software',
       },
     })
   })

@@ -40,6 +40,8 @@ function installContentSecurityPolicy() {
       responseHeaders: {
         ...responseHeaders,
         'Content-Security-Policy': [desktopContentSecurityPolicy],
+        'Cross-Origin-Opener-Policy': ['same-origin'],
+        'Cross-Origin-Embedder-Policy': ['credentialless'],
       },
     })
   })
