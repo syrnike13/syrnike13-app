@@ -78,6 +78,7 @@ import {
   shouldUseNativeMicrophone,
   type NativeMicrophoneSession,
 } from '#/features/voice/native-microphone-publish'
+import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
 import {
   clearNativePickerSelection,
@@ -451,7 +452,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const subscribed = publication.isSubscribed !== false
         if (source === 'camera' && (!track || !subscribed)) return
         tracks.push({
-          userId,
+          userId: baseVoiceIdentity(userId),
           source,
           track,
           publication,
@@ -466,7 +467,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       for (const participant of room.remoteParticipants.values()) {
         for (const publication of participant.trackPublications.values()) {
-          ingest(participant.identity, publication)
+          ingest(baseVoiceIdentity(participant.identity), publication)
         }
       }
 
@@ -800,7 +801,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const audioSource =
           publication.source === Track.Source.ScreenShareAudio ? 'stream' : 'mic'
         element.dataset.livekit = 'remote'
-        element.dataset.livekitUserId = participant.identity
+        element.dataset.livekitUserId = baseVoiceIdentity(participant.identity)
         element.dataset.livekitAudioSource = audioSource
         element.dataset.livekitAudioLevel = String(participant.audioLevel ?? 0)
         document.body.appendChild(element)
@@ -813,14 +814,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       const syncSpeakers = () => {
         const nextSpeakers = new Set(
-          room.activeSpeakers.map((speaker) => speaker.identity),
+          room.activeSpeakers.map((speaker) => baseVoiceIdentity(speaker.identity)),
         )
         setSpeakingUserIds((current) =>
           stringSetEquals(current, nextSpeakers) ? current : nextSpeakers,
         )
         const levels = new Map<string, number>()
         for (const participant of room.remoteParticipants.values()) {
-          levels.set(participant.identity, participant.audioLevel ?? 0)
+          const userId = baseVoiceIdentity(participant.identity)
+          levels.set(
+            userId,
+            Math.max(levels.get(userId) ?? 0, participant.audioLevel ?? 0),
+          )
         }
         for (const element of audioElementsRef.current) {
           const userId = element.dataset.livekitUserId
@@ -1385,12 +1390,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const effects = voicePreferenceEffectFlags(previous, next)
       if (effects.devicesChanged) {
         void applyVoiceDevices(room).then(() => {
-          if (
-            shouldUseNativeMicrophone() &&
-            voicePreferenceStore.getMicEnabled()
-          ) {
-            void startNativeMicrophone(room)
-          } else {
+          if (!shouldUseNativeMicrophone()) {
             void refreshMicProcessing(room)
           }
         })
@@ -1398,12 +1398,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         applyAllRemoteAudio(deafenedRef.current)
       }
       if (effects.micProcessingChanged) {
-        if (
-          shouldUseNativeMicrophone() &&
-          voicePreferenceStore.getMicEnabled()
-        ) {
-          void startNativeMicrophone(room)
-        } else {
+        if (!shouldUseNativeMicrophone()) {
           void refreshMicProcessing(room)
         }
       }

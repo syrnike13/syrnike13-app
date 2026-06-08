@@ -207,4 +207,32 @@ describe('syncLiveKitRoomParticipants', () => {
       server_deafened: true,
     })
   })
+
+  it('merges desktop native microphone participant into the base user', () => {
+    syncStore.reset()
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: false,
+        track: undefined,
+      }),
+      remoteParticipants: new Map([
+        [
+          `${LOCAL_USER_ID}:desktop-native`,
+          participant(`${LOCAL_USER_ID}:desktop-native`),
+        ],
+      ]),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(Object.keys(syncStore.getState().voiceParticipants[CHANNEL_ID] ?? {}))
+      .toEqual([LOCAL_USER_ID])
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[LOCAL_USER_ID],
+    ).toMatchObject({
+      id: LOCAL_USER_ID,
+      is_publishing: true,
+    })
+  })
 })
