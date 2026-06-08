@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "livekit/livekit.h"
+#include "livekit/local_video_track.h"
 #include "livekit/room_delegate.h"
 
 #include "protocol.hpp"
@@ -75,6 +76,13 @@ void startStopCommandThread() {
   }).detach();
 }
 
+int chooseScreenShareBitratePreset(int requested_bitrate) {
+  if (requested_bitrate <= 625'000) return 625'000;
+  if (requested_bitrate <= 2'500'000) return 2'500'000;
+  if (requested_bitrate <= 4'000'000) return 4'000'000;
+  return 8'000'000;
+}
+
 }  // namespace
 
 void runScreenPublisher(const StartCommand& command) {
@@ -97,10 +105,11 @@ void runScreenPublisher(const StartCommand& command) {
         width,
         height);
     const int fps = command.fps > 0 ? command.fps : 60;
-    const int bitrate = command.bitrate > 0 ? command.bitrate : 8'000'000;
+    const int requested_bitrate = command.bitrate > 0 ? command.bitrate : 8'000'000;
+    const int bitrate = chooseScreenShareBitratePreset(requested_bitrate);
     const auto frame_interval = std::chrono::microseconds(1000000 / fps);
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-         "\",\"kind\":\"screen\",\"status\":\"starting\"}");
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"capture_target_resolved\"}");
 
     livekit::initialize(livekit::LogLevel::Info);
     auto room = std::make_unique<livekit::Room>();
@@ -110,6 +119,8 @@ void runScreenPublisher(const StartCommand& command) {
     room_options.auto_subscribe = false;
     room_options.single_peer_connection = false;
 
+    emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"livekit_connecting\"}");
     bool connected = false;
     try {
       connected = room->connect(command.livekit_url, command.livekit_token, room_options);
@@ -129,11 +140,35 @@ void runScreenPublisher(const StartCommand& command) {
       emitError("livekit_connect_failed", "LiveKit native screen share did not reach connected state");
       return;
     }
+    emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"livekit_connected\"}");
 
     auto video_source = std::make_shared<livekit::VideoSource>(
         static_cast<int>(width),
         static_cast<int>(height));
     auto video_capturer = ScreenVideoCapturer::create(target, width, height);
+    ScreenVideoFrame primed_frame;
+    bool primed_video_frame = false;
+    const auto prime_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+    while (std::chrono::steady_clock::now() < prime_deadline) {
+      if (video_capturer->capture(primed_frame)) {
+        livekit::VideoFrame frame(
+            static_cast<int>(width),
+            static_cast<int>(height),
+            livekit::VideoBufferType::BGRA,
+            std::move(primed_frame.bgra));
+        video_source->captureFrame(frame, 0);
+        primed_video_frame = true;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"video_source_ready\",\"width\":" +
+         std::to_string(width) + ",\"height\":" + std::to_string(height) +
+         ",\"fps\":" + std::to_string(fps) +
+         ",\"bitrate\":" + std::to_string(bitrate) +
+         ",\"requested_bitrate\":" + std::to_string(requested_bitrate) + "}");
     std::shared_ptr<livekit::AudioSource> audio_source;
     const bool publish_audio =
         command.audio_requested && (!target.window || target.process_id != 0);
@@ -152,13 +187,17 @@ void runScreenPublisher(const StartCommand& command) {
             : 0;
     try {
       if (auto participant = room->localParticipant().lock()) {
+        emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+             "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"publishing_video_track\"}");
         auto video_track = livekit::LocalVideoTrack::createLocalVideoTrack("screen", video_source);
         livekit::TrackPublishOptions video_publish_options;
         video_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE;
+        video_publish_options.stream = "screen";
         video_publish_options.simulcast = false;
         video_publish_options.video_encoding = livekit::VideoEncodingOptions{
             static_cast<std::uint64_t>(bitrate),
-            static_cast<double>(fps)};
+            static_cast<double>(fps),
+        };
         participant->publishTrack(video_track, video_publish_options);
         emit("{\"type\":\"track_published\",\"session_id\":\"" +
              jsonEscape(command.session_id) +
@@ -169,6 +208,8 @@ void runScreenPublisher(const StartCommand& command) {
              ",\"bitrate\":" + std::to_string(bitrate) + "}");
         if (publish_audio) {
           audio_source = std::make_shared<livekit::AudioSource>(48000, 2);
+          emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+               "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"publishing_audio_track\"}");
           participant->publishAudioTrack(
               "screen-audio",
               audio_source,
@@ -237,7 +278,11 @@ void runScreenPublisher(const StartCommand& command) {
     uint32_t interval_frame_count = 0;
     uint32_t interval_late_count = 0;
     std::chrono::microseconds interval_capture_time{0};
-    std::int64_t timestamp_us = 0;
+    std::int64_t timestamp_us = primed_video_frame ? 1000000 / fps : 0;
+    if (primed_video_frame) {
+      frame_count = 1;
+      interval_frame_count = 1;
+    }
     while (g_running.load()) {
       const auto capture_started_at = std::chrono::steady_clock::now();
       if (video_capturer->capture(captured_frame)) {

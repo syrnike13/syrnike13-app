@@ -445,6 +445,44 @@ describe('native media engine entrypoint', () => {
     expect(source).not.toContain('let pendingStartResolver')
   })
 
+  it('prewarms one idle native helper for the first media session', () => {
+    const engineSource = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const indexSource = readFileSync(
+      fileURLToPath(new URL('./index.ts', import.meta.url)),
+      'utf8',
+    )
+
+    expect(engineSource).toContain('export function prewarmNativeMediaEngineHelper')
+    expect(engineSource).toContain('takePrewarmedMediaEngineHelper()')
+    expect(engineSource).toContain(
+      'takePrewarmedMediaEngineHelper() ?? spawnNativeMediaEngineProcess(kind)',
+    )
+    expect(indexSource).toContain('prewarmNativeMediaEngineHelper()')
+    expect(indexSource).toContain('disposePrewarmedNativeMediaEngineHelper()')
+  })
+
+  it('primes screen video source before publishing the LiveKit screen track', () => {
+    const source = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/screen_publisher.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+    const primeIndex = source.indexOf('video_source->captureFrame(frame, 0)')
+    const publishIndex = source.indexOf('participant->publishTrack(video_track')
+
+    expect(primeIndex).toBeGreaterThanOrEqual(0)
+    expect(publishIndex).toBeGreaterThan(primeIndex)
+    expect(source).toContain('\\"message\\":\\"publishing_video_track\\"')
+    expect(source).toContain('LocalVideoTrack::createLocalVideoTrack("screen", video_source)')
+    expect(source).toContain('video_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE')
+    expect(source).toContain('video_publish_options.simulcast = false')
+    expect(source).toContain('chooseScreenShareBitratePreset')
+  })
+
   it('passes the desktop window handle when listing native display sources', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),

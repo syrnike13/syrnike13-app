@@ -95,6 +95,7 @@ let getWindowRef: (() => BrowserWindow | null) | null = null
 let startSessionQueue: Promise<unknown> = Promise.resolve()
 let microphonePreviewHelper: ChildProcessWithoutNullStreams | null = null
 let microphonePreviewSessionId: string | null = null
+let prewarmedMediaEngineHelper: ChildProcessWithoutNullStreams | null = null
 
 function isTrustedSender(
   event: IpcMainInvokeEvent,
@@ -338,7 +339,8 @@ function getNativeMediaEngineState(): NativeMediaState {
     platform: process.platform,
     helperAvailable: Boolean(resolveMediaEngineHelperPath()),
     microphoneHelperAvailable: Boolean(resolveMediaEngineHelperPath('microphone')),
-    helperRunning: activeSessions.size > 0,
+    helperRunning:
+      activeSessions.size > 0 || isHelperWritable(prewarmedMediaEngineHelper),
     activeSession,
     activeSessions: activeSessions.values(),
     lastError: lastMediaEngineError,
@@ -413,6 +415,73 @@ function writeHelperCommand(
     }
     return false
   }
+}
+
+function isHelperWritable(helper: ChildProcessWithoutNullStreams | null) {
+  return Boolean(
+    helper &&
+      !helper.killed &&
+      helper.exitCode === null &&
+      helper.stdin.writable,
+  )
+}
+
+function spawnNativeMediaEngineProcess(
+  kind: NativeMediaSessionStartOptions['kind'],
+) {
+  const helperPath = resolveMediaEngineHelperPath(kind)
+  if (!helperPath) {
+    throw new Error('Native media engine is not available')
+  }
+
+  return spawn(helperPath, [], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+  })
+}
+
+function takePrewarmedMediaEngineHelper() {
+  if (!isHelperWritable(prewarmedMediaEngineHelper)) {
+    prewarmedMediaEngineHelper = null
+    return null
+  }
+
+  const helper = prewarmedMediaEngineHelper
+  prewarmedMediaEngineHelper = null
+  return helper
+}
+
+export function prewarmNativeMediaEngineHelper() {
+  if (process.platform !== 'win32') return
+  if (isHelperWritable(prewarmedMediaEngineHelper)) return
+  if (!resolveMediaEngineHelperPath('microphone')) return
+
+  try {
+    const helper = spawnNativeMediaEngineProcess('microphone')
+    prewarmedMediaEngineHelper = helper
+    helper.stderr.on('data', (chunk) => {
+      console.error('[media-engine-helper:warm]', chunk.toString())
+    })
+    helper.stdin.on('error', (error) => {
+      if ((error as NodeJS.ErrnoException).code === 'EPIPE') return
+      console.error('[media-engine-helper:warm] stdin error', error)
+    })
+    helper.on('exit', () => {
+      if (prewarmedMediaEngineHelper === helper) {
+        prewarmedMediaEngineHelper = null
+      }
+    })
+  } catch (error) {
+    console.warn('[media-engine-helper] failed to prewarm helper', error)
+  }
+}
+
+export function disposePrewarmedNativeMediaEngineHelper() {
+  const helper = prewarmedMediaEngineHelper
+  prewarmedMediaEngineHelper = null
+  if (!helper) return
+  writeHelperCommand(helper, { cmd: 'stop' })
+  helper.kill()
 }
 
 export function getPendingNativePicker() {
@@ -732,15 +801,7 @@ function spawnMediaEngineHelper(
   kind: NativeMediaSessionStartOptions['kind'],
   sessionId: string,
 ) {
-  const helperPath = resolveMediaEngineHelperPath(kind)
-  if (!helperPath) {
-    throw new Error('Native media engine is not available')
-  }
-
-  const helper = spawn(helperPath, [], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
+  const helper = takePrewarmedMediaEngineHelper() ?? spawnNativeMediaEngineProcess(kind)
 
   const reader = readline.createInterface({ input: helper.stdout })
   reader.on('line', (line) => {
@@ -753,6 +814,7 @@ function spawnMediaEngineHelper(
     const session = activeSessions.get(eventSessionId)
 
     if (event.type === 'session_lifecycle') {
+      console.info('[media-engine-helper] lifecycle', event)
       if (getWindowRef) {
         emitMediaEngineState(getWindowRef, mapLifecycleState(event))
       } else {
@@ -768,8 +830,12 @@ function spawnMediaEngineHelper(
           activeSession =
             Array.from(activeSessions.values()).find(
               (active) => active.startOptions.kind === 'screen',
-            ) ?? Array.from(activeSessions.values())[0] ?? null
+          ) ?? Array.from(activeSessions.values())[0] ?? null
         }
+      }
+      if (event.status === 'error') {
+        pendingStartResolvers.get(event.session_id)?.(event)
+        pendingStartResolvers.delete(event.session_id)
       }
       return
     }
@@ -1146,6 +1212,10 @@ async function waitForSidecarReady(sessionId: string, timeoutMs = 15_000) {
       clearTimeout(timer)
       if (event.type === 'error') {
         reject(new Error(event.message))
+        return
+      }
+      if (event.type === 'session_lifecycle' && event.status === 'error') {
+        reject(new Error(event.message ?? 'Native media engine failed to start'))
         return
       }
       resolve(event)

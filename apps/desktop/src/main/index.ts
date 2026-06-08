@@ -16,6 +16,10 @@ import {
 } from './auto-update'
 import { registerDesktopIpc } from './ipc'
 import { disposeHotkeys } from './hotkeys'
+import {
+  disposePrewarmedNativeMediaEngineHelper,
+  prewarmNativeMediaEngineHelper,
+} from './native-media-engine'
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
 import { startEmbeddedWebServer, type EmbeddedWebServer } from './web-server'
@@ -281,6 +285,7 @@ if (setupSingleInstance()) {
   app.whenReady().then(async () => {
     desktopPreferences = await loadDesktopPreferences(desktopPreferencesPath())
     applyLoginItemSettings(desktopPreferences.openAtLogin)
+    prewarmNativeMediaEngineHelper()
     if (initialDeepLinkRoute) {
       void navigateToDeepLink(initialDeepLinkRoute).catch(reportStartupFailure)
     } else {
@@ -305,6 +310,7 @@ if (setupSingleInstance()) {
     quitting = true
     disposeDesktopAutoUpdate()
     disposeHotkeys()
+    disposePrewarmedNativeMediaEngineHelper()
     tray?.destroy()
     tray = null
     void embeddedServer?.close()
