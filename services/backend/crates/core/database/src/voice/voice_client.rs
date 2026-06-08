@@ -13,7 +13,7 @@ use syrnike_config::{config, LiveKitNode};
 use syrnike_permissions::{ChannelPermission, PermissionValue};
 use syrnike_result::{create_error, Result, ToSyrnikeError};
 
-use super::{desktop_native_voice_identity, get_allowed_sources};
+use super::{desktop_native_voice_identities, get_allowed_sources};
 
 #[derive(Debug)]
 pub struct RoomClient {
@@ -177,7 +177,9 @@ impl VoiceClient {
                     })
                     .to_internal_error()?;
 
-                for identity in [user_id.to_string(), desktop_native_voice_identity(user_id)] {
+                for identity in std::iter::once(user_id.to_string())
+                    .chain(desktop_native_voice_identities(user_id))
+                {
                     if !participants
                         .iter()
                         .any(|participant| participant.identity == identity)
