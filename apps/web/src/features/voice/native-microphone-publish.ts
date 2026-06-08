@@ -40,9 +40,9 @@ export function nativeMicrophoneSessionOptions(
     channels: 1 as const,
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,
-    voiceGateEnabled: prefs.voiceGateEnabled,
+    voiceGateEnabled: false,
     voiceGateThresholdDb: prefs.voiceGateThresholdDb,
-    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
+    voiceGateAutoThreshold: false,
     livekit,
   }
 }
@@ -105,8 +105,8 @@ export function configureNativeMicrophoneSession(
   configureNativeMicrophoneRuntime(session?.sessionId, {
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,
-    voiceGateEnabled: prefs.voiceGateEnabled,
+    voiceGateEnabled: false,
     voiceGateThresholdDb: prefs.voiceGateThresholdDb,
-    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
+    voiceGateAutoThreshold: false,
   })
 }

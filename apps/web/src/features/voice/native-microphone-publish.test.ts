@@ -91,7 +91,7 @@ describe('native microphone publish', () => {
       channels: 1,
       echoCancellation: true,
       inputVolume: 0.75,
-      voiceGateEnabled: true,
+      voiceGateEnabled: false,
       voiceGateThresholdDb: -45,
       voiceGateAutoThreshold: false,
       livekit: {
@@ -296,7 +296,7 @@ describe('native microphone provider boundary', () => {
 
     const nativeBranchIndex = source.indexOf('if (shouldUseNativeMicrophone())')
     const liveKitCaptureIndex = source.indexOf(
-      '.setMicrophoneEnabled(nextMic, undefined, voiceMicPublishOptions())',
+      '.setMicrophoneEnabled(\n          nextMic && !selfMonitoringRef.current.active',
     )
 
     expect(nativeBranchIndex).toBeGreaterThanOrEqual(0)
@@ -305,5 +305,34 @@ describe('native microphone provider boundary', () => {
     expect(source).toContain('stopNativeMicrophone()')
     expect(source).toContain('!shouldUseNativeMicrophone()')
     expect(source).toContain('await applyMicProcessing(room.localParticipant)')
+  })
+
+  it('temporarily suspends voice publishing while settings self-monitoring is active', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+    const settingsSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/components/settings/settings-voice-panel.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toContain(
+      'setSelfMonitoringActive: (active: boolean) => void',
+    )
+    expect(providerSource).toContain(
+      'selfMonitoringRef.current.active && prefs.micEnabled',
+    )
+    expect(providerSource).toContain(
+      'selfMonitoringRef.current.restorePublishing = wantsMic',
+    )
+    expect(providerSource).toContain('stopNativeMicrophone()')
+    expect(providerSource).toContain('is_publishing: false')
+    expect(settingsSource).toContain(
+      'setSelfMonitoringActiveRef.current(micTestActive)',
+    )
   })
 })

@@ -31,6 +31,7 @@ import {
 import { formatUserVolumeLabel } from '#/features/voice/voice-listener-store'
 import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
 import { useMicPreviewLoopback } from '#/features/voice/use-mic-preview-loopback'
+import { useVoice } from '#/features/voice/voice-provider'
 import { useVoiceGateMeter } from '#/features/voice/use-voice-gate-meter'
 import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
 import {
@@ -141,6 +142,8 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
   const { capabilities } = usePlatform()
+  const { setSelfMonitoringActive } = useVoice()
+  const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
   const [micTestActive, setMicTestActive] = useState(false)
@@ -155,6 +158,17 @@ export function SettingsVoicePanel() {
       voicePreferenceStore.setScreenShareCodec('auto')
     }
   }, [av1Supported, prefs.screenShareCodec])
+
+  useEffect(() => {
+    setSelfMonitoringActiveRef.current = setSelfMonitoringActive
+  }, [setSelfMonitoringActive])
+
+  useEffect(() => {
+    setSelfMonitoringActiveRef.current(micTestActive)
+    return () => {
+      setSelfMonitoringActiveRef.current(false)
+    }
+  }, [micTestActive])
 
   const inputValue = prefs.preferredAudioInputDevice ?? 'default'
   const outputValue = prefs.preferredAudioOutputDevice ?? 'default'

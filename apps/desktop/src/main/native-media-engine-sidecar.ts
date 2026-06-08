@@ -87,6 +87,22 @@ export type SidecarEvent =
       open: boolean
     }
   | {
+      type: 'microphone_diagnostics'
+      session_id: string
+      mode: 'publish' | 'preview'
+      frames: number
+      interval_frames: number
+      input_db: number
+      output_peak: number
+      clipped_samples: number
+      gated_frames: number
+      max_frame_gap_ms: number
+      max_capture_frame_us: number
+      input_volume: number
+      voice_gate_enabled: boolean
+      voice_gate_threshold_db: number
+    }
+  | {
       type: 'session_lifecycle'
       session_id: string
       kind: 'screen' | 'microphone'

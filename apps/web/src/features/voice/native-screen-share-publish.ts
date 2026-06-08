@@ -13,6 +13,20 @@ export type NativeScreenShareSession = {
   stop: () => void
 }
 
+function nativeScreenShareBitrateFloor(quality: ScreenShareQualityName) {
+  switch (quality) {
+    case 'high60':
+      return 16_000_000
+    case 'high':
+      return 10_000_000
+    case 'text':
+      return 6_000_000
+    case 'low':
+    default:
+      return 5_000_000
+  }
+}
+
 export async function publishNativeScreenShare(
   _room: Room,
   _participant: LocalParticipant,
@@ -39,7 +53,10 @@ export async function publishNativeScreenShare(
     width: capture.capture.resolution.width,
     height: capture.capture.resolution.height,
     fps: capture.capture.resolution.frameRate ?? 30,
-    bitrate: encoding?.maxBitrate ?? 4_000_000,
+    bitrate: Math.max(
+      encoding?.maxBitrate ?? 0,
+      nativeScreenShareBitrateFloor(quality),
+    ),
     audio: {
       requested: withAudio,
     },

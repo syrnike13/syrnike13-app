@@ -98,9 +98,9 @@ export async function startMicPreview({
         channels: 1,
         echoCancellation: nextPrefs.echoCancellation,
         inputVolume: nextPrefs.inputVolume,
-        voiceGateEnabled: nextPrefs.voiceGateEnabled,
+        voiceGateEnabled: false,
         voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
-        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
+        voiceGateAutoThreshold: false,
       })
 
     let session = await startNative(prefs)
@@ -112,9 +112,9 @@ export async function startMicPreview({
       configureNativeMicrophoneRuntime(session.sessionId, {
         echoCancellation: nextPrefs.echoCancellation,
         inputVolume: nextPrefs.inputVolume,
-        voiceGateEnabled: nextPrefs.voiceGateEnabled,
+        voiceGateEnabled: false,
         voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
-        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
+        voiceGateAutoThreshold: false,
       })
     }
 

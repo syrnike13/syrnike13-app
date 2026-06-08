@@ -39,7 +39,7 @@ describe('native screen share publish', () => {
       width: 1920,
       height: 1038,
       fps: 60,
-      bitrate: 8_000_000,
+      bitrate: 16_000_000,
       audio: {
         mode: 'process',
         loopbackMode: 'include_target_process_tree',
@@ -91,7 +91,7 @@ describe('native screen share publish', () => {
         height: 1080,
         fps: 60,
         audio: { requested: true },
-        bitrate: 8_000_000,
+        bitrate: 16_000_000,
         livekit: {
           url: 'wss://livekit.example',
           token: 'native-screen-token',
@@ -130,7 +130,7 @@ describe('native screen share publish', () => {
       width: 1920,
       height: 1038,
       fps: 60,
-      bitrate: 8_000_000,
+      bitrate: 16_000_000,
       publishedVideo: true,
       publishedAudio: true,
       audioFrames: 96_000,

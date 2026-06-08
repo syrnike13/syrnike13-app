@@ -47,4 +47,33 @@ void emitMicrophoneMetrics(
        ",\"open\":" + (open ? "true" : "false") + "}");
 }
 
+void emitMicrophoneDiagnostics(
+  const std::string& session_id,
+  const std::string& mode,
+  std::uint64_t frames,
+  std::uint32_t interval_frames,
+  float input_db,
+  float output_peak,
+  std::uint32_t clipped_samples,
+  std::uint32_t gated_frames,
+  std::uint32_t max_frame_gap_ms,
+  std::uint32_t max_capture_frame_us,
+  const RuntimeConfig& config
+) {
+  emit("{\"type\":\"microphone_diagnostics\",\"session_id\":\"" + jsonEscape(session_id) +
+       "\",\"mode\":\"" + jsonEscape(mode) +
+       "\",\"frames\":" + std::to_string(frames) +
+       ",\"interval_frames\":" + std::to_string(interval_frames) +
+       ",\"input_db\":" + std::to_string(input_db) +
+       ",\"output_peak\":" + std::to_string(output_peak) +
+       ",\"clipped_samples\":" + std::to_string(clipped_samples) +
+       ",\"gated_frames\":" + std::to_string(gated_frames) +
+       ",\"max_frame_gap_ms\":" + std::to_string(max_frame_gap_ms) +
+       ",\"max_capture_frame_us\":" + std::to_string(max_capture_frame_us) +
+       ",\"input_volume\":" + std::to_string(config.input_volume) +
+       ",\"voice_gate_enabled\":" + (config.voice_gate_enabled ? "true" : "false") +
+       ",\"voice_gate_threshold_db\":" + std::to_string(config.voice_gate_threshold_db) +
+       "}");
+}
+
 }  // namespace syrnike::voice

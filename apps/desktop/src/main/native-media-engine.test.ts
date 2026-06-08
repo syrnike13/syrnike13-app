@@ -172,6 +172,54 @@ describe('native media engine entrypoint', () => {
     })
   })
 
+  it('includes microphone and screen sessions in one media engine snapshot', async () => {
+    const { buildNativeMediaEngineSnapshot } = await import('./native-media-engine')
+
+    expect(
+      buildNativeMediaEngineSnapshot({
+        platform: 'win32',
+        helperAvailable: true,
+        microphoneHelperAvailable: true,
+        helperRunning: true,
+        activeSession: null,
+        activeSessions: [
+          {
+            sessionId: 'mic-session-1',
+            audio: { mode: 'microphone', sampleRate: 48_000, channels: 1 },
+            startOptions: { kind: 'microphone' },
+          },
+          {
+            sessionId: 'screen-session-1',
+            width: 1920,
+            height: 1080,
+            fps: 60,
+            bitrate: 16_000_000,
+            startOptions: { kind: 'screen' },
+          },
+        ] as never,
+        lastError: null,
+        status: { status: 'running', sessionId: 'screen-session-1' },
+      }),
+    ).toMatchObject({
+      engine: {
+        activeSessions: [
+          {
+            kind: 'microphone',
+            sessionId: 'mic-session-1',
+          },
+          {
+            kind: 'screen',
+            sessionId: 'screen-session-1',
+            width: 1920,
+            height: 1080,
+            fps: 60,
+            bitrate: 16_000_000,
+          },
+        ],
+      },
+    })
+  })
+
   it('builds microphone start command from session options', async () => {
     const { buildNativeMediaStartCommand } = await import('./native-media-engine')
 

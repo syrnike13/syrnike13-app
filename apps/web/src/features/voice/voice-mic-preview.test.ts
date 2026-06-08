@@ -103,6 +103,7 @@ describe('native microphone processing boundary', () => {
       'preview-1',
       expect.objectContaining({
         voiceGateEnabled: false,
+        voiceGateAutoThreshold: false,
         inputVolume: 1.5,
       }),
     )

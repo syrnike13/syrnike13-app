@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -102,6 +103,16 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
     std::vector<float> raw_frame;
     raw_frame.reserve(kSamplesPer10Ms);
     auto last_metrics_at = std::chrono::steady_clock::now();
+    auto last_diagnostics_at = last_metrics_at;
+    auto last_frame_at = last_metrics_at;
+    std::uint64_t total_frames = 0;
+    std::uint32_t interval_frames = 0;
+    std::uint32_t gated_frames = 0;
+    std::uint32_t clipped_samples = 0;
+    std::uint32_t max_frame_gap_ms = 0;
+    std::uint32_t max_capture_frame_us = 0;
+    float last_input_db = -60.0f;
+    float max_output_peak = 0.0f;
 
     while (g_running.load()) {
       UINT32 packet_frames = 0;
@@ -135,23 +146,67 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
             frame_square_sum / static_cast<float>(raw_frame.size())
           ));
           const bool open = gateOpen(input_db, config);
+          last_input_db = input_db;
+          if (!open) gated_frames += 1;
 
           std::vector<std::int16_t> pcm_frame;
           pcm_frame.reserve(kSamplesPer10Ms);
           for (float sample : raw_frame) {
             const float amplified_sample = sample * config.input_volume;
             const float processed = open ? softLimitSample(amplified_sample) : 0.0f;
+            if (std::abs(amplified_sample) > 1.0f) clipped_samples += 1;
+            max_output_peak = std::max(max_output_peak, std::abs(processed));
             pcm_frame.push_back(clampToPcm16(processed));
           }
 
           livekit::AudioFrame audio_frame(std::move(pcm_frame), kSampleRate, kChannels, kSamplesPer10Ms);
+          const auto capture_started_at = std::chrono::steady_clock::now();
           audio_source->captureFrame(audio_frame);
+          const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - capture_started_at
+          );
+          max_capture_frame_us = std::max(
+            max_capture_frame_us,
+            static_cast<std::uint32_t>(std::max<std::int64_t>(0, capture_elapsed.count()))
+          );
+          const auto frame_gap = std::chrono::duration_cast<std::chrono::milliseconds>(
+            capture_started_at - last_frame_at
+          );
+          max_frame_gap_ms = std::max(
+            max_frame_gap_ms,
+            static_cast<std::uint32_t>(std::max<std::int64_t>(0, frame_gap.count()))
+          );
+          last_frame_at = capture_started_at;
+          total_frames += 1;
+          interval_frames += 1;
           raw_frame.clear();
 
           const auto now = std::chrono::steady_clock::now();
           if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
             emitMicrophoneMetrics(command.session_id, input_db, config.voice_gate_threshold_db, open);
             last_metrics_at = now;
+          }
+          if (now - last_diagnostics_at >= std::chrono::seconds(1)) {
+            emitMicrophoneDiagnostics(
+              command.session_id,
+              "publish",
+              total_frames,
+              interval_frames,
+              last_input_db,
+              max_output_peak,
+              clipped_samples,
+              gated_frames,
+              max_frame_gap_ms,
+              max_capture_frame_us,
+              config
+            );
+            interval_frames = 0;
+            gated_frames = 0;
+            clipped_samples = 0;
+            max_frame_gap_ms = 0;
+            max_capture_frame_us = 0;
+            max_output_peak = 0.0f;
+            last_diagnostics_at = now;
           }
         }
       }
