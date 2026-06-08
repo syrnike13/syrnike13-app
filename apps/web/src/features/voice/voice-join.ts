@@ -1,5 +1,6 @@
 import { Room } from 'livekit-client'
 import { toast } from 'sonner'
+import type { CreateVoiceUserResponse } from '@syrnike13/api-types'
 
 import { joinChannelCall } from '#/features/api/voice-api'
 import { syncStore } from '#/features/sync/sync-store'
@@ -20,6 +21,39 @@ export type VoiceJoinOptions = {
   rejoin?: boolean
 }
 
+export type LiveKitNativeMediaKind = 'microphone' | 'screen' | 'camera'
+export type LiveKitNativePublisherCredentials = {
+  url: string
+  token: string
+  participantIdentity: string
+}
+export type LiveKitNativeCredentials = Record<
+  LiveKitNativeMediaKind,
+  LiveKitNativePublisherCredentials
+>
+
+export function nativeCredentialsFromJoinResponse(
+  credentials: CreateVoiceUserResponse,
+): LiveKitNativeCredentials {
+  return {
+    microphone: {
+      url: credentials.url,
+      token: credentials.native_microphone.token,
+      participantIdentity: credentials.native_microphone.identity,
+    },
+    screen: {
+      url: credentials.url,
+      token: credentials.native_screen.token,
+      participantIdentity: credentials.native_screen.identity,
+    },
+    camera: {
+      url: credentials.url,
+      token: credentials.native_camera.token,
+      participantIdentity: credentials.native_camera.identity,
+    },
+  }
+}
+
 export type VoiceJoinRunnerDeps = {
   getToken: () => string | undefined
   getLocalUserId: () => string | undefined
@@ -33,11 +67,7 @@ export type VoiceJoinRunnerDeps = {
   ) => void
   setActiveRoom: (room: Room) => void
   attachRoomHandlers: (room: Room) => void
-  setLiveKitCredentials: (credentials: {
-    url: string
-    token: string
-    participantIdentity: string
-  }) => void
+  setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
   onRoomConnected: (room: Room, channelId: string) => void
   onJoinSuccess: () => void
   abortJoin: () => void
@@ -106,18 +136,9 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         return false
       }
 
-      const {
-        url,
-        token: livekitToken,
-        native_token: nativeToken,
-        native_identity: nativeIdentity,
-      } = credentials
+      const { url, token: livekitToken } = credentials
       const room = new Room(createVoiceRoomOptions())
-      deps.setLiveKitCredentials({
-        url,
-        token: nativeToken,
-        participantIdentity: nativeIdentity,
-      })
+      deps.setLiveKitCredentials(nativeCredentialsFromJoinResponse(credentials))
       deps.setActiveRoom(room)
       deps.attachRoomHandlers(room)
 

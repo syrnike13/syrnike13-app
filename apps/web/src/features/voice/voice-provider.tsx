@@ -24,6 +24,9 @@ import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
 import {
   createVoiceJoinRunner,
+  type LiveKitNativeCredentials,
+  type LiveKitNativeMediaKind,
+  type LiveKitNativePublisherCredentials,
   type VoiceJoinRunnerDeps,
 } from '#/features/voice/voice-join'
 import {
@@ -150,11 +153,6 @@ type StageMediaPublication = {
   }
 }
 
-type LiveKitNativeCredentials = {
-  url: string
-  token: string
-  participantIdentity: string
-}
 export type VoiceStageMediaItem = StageMediaItem<
   VideoTrack,
   StageMediaPublication
@@ -301,7 +299,7 @@ function liveKitTokenExpMs(token: string) {
   }
 }
 
-function shouldRefreshLiveKitToken(credentials: LiveKitNativeCredentials) {
+function shouldRefreshLiveKitToken(credentials: LiveKitNativePublisherCredentials) {
   const expMs = liveKitTokenExpMs(credentials.token)
   return expMs == null || expMs - Date.now() < 60_000
 }
@@ -388,11 +386,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ) => {},
     setActiveRoom: (_room: Room) => {},
     attachRoomHandlers: (_room: Room) => {},
-    setLiveKitCredentials: (_credentials: {
-      url: string
-      token: string
-      participantIdentity: string
-    }) => {},
+    setLiveKitCredentials: (_credentials: LiveKitNativeCredentials) => {},
     onRoomConnected: (_room: Room, _channelId: string) => {},
     onJoinSuccess: () => {},
     abortJoin: () => {},
@@ -680,10 +674,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const refreshNativeLiveKitCredentials = useCallback(
-    async (force = false): Promise<LiveKitNativeCredentials> => {
+    async (
+      mediaKind: LiveKitNativeMediaKind,
+      force = false,
+    ): Promise<LiveKitNativePublisherCredentials> => {
       const current = liveKitCredentialsRef.current
-      if (!force && current && !shouldRefreshLiveKitToken(current)) {
-        return current
+      if (
+        !force &&
+        current &&
+        !shouldRefreshLiveKitToken(current[mediaKind])
+      ) {
+        return current[mediaKind]
       }
 
       const token = auth.session?.token
@@ -704,13 +705,25 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         throw new Error('Не удалось обновить LiveKit token')
       }
 
-      const next = {
-        url: credentials.url,
-        token: credentials.native_token,
-        participantIdentity: credentials.native_identity,
+      const next: LiveKitNativeCredentials = {
+        microphone: {
+          url: credentials.url,
+          token: credentials.native_microphone.token,
+          participantIdentity: credentials.native_microphone.identity,
+        },
+        screen: {
+          url: credentials.url,
+          token: credentials.native_screen.token,
+          participantIdentity: credentials.native_screen.identity,
+        },
+        camera: {
+          url: credentials.url,
+          token: credentials.native_camera.token,
+          participantIdentity: credentials.native_camera.identity,
+        },
       }
       liveKitCredentialsRef.current = next
-      return next
+      return next[mediaKind]
     },
     [auth.session?.token],
   )
@@ -823,7 +836,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           setMicPublishing(false)
           syncRoomParticipants()
         },
-        await refreshNativeLiveKitCredentials(),
+        await refreshNativeLiveKitCredentials('microphone'),
       )
       nativeMicrophoneRef.current = session
       setMicPublishing(true)
@@ -1481,7 +1494,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               quality,
               selection.audioRequested,
               handleSidecarLost,
-              await refreshNativeLiveKitCredentials(forceRefresh),
+              await refreshNativeLiveKitCredentials('screen', forceRefresh),
             )
 
           let session: NativeScreenShareSession

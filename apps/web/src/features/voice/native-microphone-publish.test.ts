@@ -296,7 +296,7 @@ describe('native microphone provider boundary', () => {
 
     const nativeBranchIndex = source.indexOf('if (shouldUseNativeMicrophone())')
     const liveKitCaptureIndex = source.indexOf(
-      '.setMicrophoneEnabled(\n          nextMic && !selfMonitoringRef.current.active',
+      'await room.localParticipant.setMicrophoneEnabled(',
     )
 
     expect(nativeBranchIndex).toBeGreaterThanOrEqual(0)

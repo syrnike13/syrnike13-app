@@ -87,7 +87,7 @@ type ActiveMediaEngineSession = {
 let mediaEngineIpcRegistered = false
 let activeSession: ActiveMediaEngineSession | null = null
 const activeSessions = new Map<string, ActiveMediaEngineSession>()
-let pendingStartResolver: ((event: SidecarEvent) => void) | null = null
+const pendingStartResolvers = new Map<string, (event: SidecarEvent) => void>()
 let mediaEngineStatus: NativeMediaSessionStatus = { status: 'idle' }
 let lastMediaEngineError: string | null = null
 let pendingNativePicker: PendingNativePicker | null = null
@@ -473,7 +473,7 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     session.reader?.close()
 
     const helper = spawnMediaEngineHelper('screen', session.sessionId)
-    const readyPromise = waitForSidecarReady()
+    const readyPromise = waitForSidecarReady(session.sessionId)
     writeHelperCommand(
       helper,
       buildScreenShareStartCommand(
@@ -581,14 +581,14 @@ function stopMediaEngineSession(sessionId: string, force = false) {
     mediaEngineStatus = { status: 'idle' }
   }
 
-  pendingStartResolver = null
+  pendingStartResolvers.delete(sessionId)
 }
 
 function stopMediaEngineHelper(force = false) {
   for (const sessionId of Array.from(activeSessions.keys())) {
     stopMediaEngineSession(sessionId, force)
   }
-  pendingStartResolver = null
+  pendingStartResolvers.clear()
 }
 
 function stopMicrophonePreviewHelper() {
@@ -896,8 +896,8 @@ function spawnMediaEngineHelper(
         mediaEngineStatus = errorState
         lastMediaEngineError = event.message
       }
-      pendingStartResolver?.(event)
-      pendingStartResolver = null
+      pendingStartResolvers.get(eventSessionId)?.(event)
+      pendingStartResolvers.delete(eventSessionId)
       return
     }
 
@@ -912,8 +912,8 @@ function spawnMediaEngineHelper(
       return
     }
 
-    pendingStartResolver?.(event)
-    pendingStartResolver = null
+    pendingStartResolvers.get(eventSessionId)?.(event)
+    pendingStartResolvers.delete(eventSessionId)
   })
 
   helper.stderr.on('data', (chunk) => {
@@ -1134,22 +1134,22 @@ export async function listNativeDisplaySources(
   })
 }
 
-async function waitForSidecarReady(timeoutMs = 15_000) {
+async function waitForSidecarReady(sessionId: string, timeoutMs = 15_000) {
   return new Promise<SidecarEvent>((resolve, reject) => {
     const timer = setTimeout(() => {
-      pendingStartResolver = null
+      pendingStartResolvers.delete(sessionId)
       lastMediaEngineError = 'Native media engine timed out'
       reject(new Error('Native media engine timed out'))
     }, timeoutMs)
 
-    pendingStartResolver = (event) => {
+    pendingStartResolvers.set(sessionId, (event) => {
       clearTimeout(timer)
       if (event.type === 'error') {
         reject(new Error(event.message))
         return
       }
       resolve(event)
-    }
+    })
   })
 }
 
@@ -1243,7 +1243,7 @@ async function startNativeMediaSession(
   activeSessions.set(sessionId, session)
   activeSession = options.kind === 'screen' || !activeSession ? session : activeSession
 
-  const readyPromise = waitForSidecarReady()
+  const readyPromise = waitForSidecarReady(sessionId)
   const startCommand = buildNativeMediaStartCommand(options, sessionId, getWindow)
 
   if (!writeHelperCommand(helper, startCommand)) {

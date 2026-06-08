@@ -422,12 +422,27 @@ describe('native media engine entrypoint', () => {
       'utf8',
     )
     const errorBranch = source.match(
-      /if \(event\.type === 'error'\) \{[\s\S]*?pendingStartResolver = null[\s\S]*?return\s*\}/,
+      /if \(event\.type === 'error'\) \{[\s\S]*?pendingStartResolvers\.delete\(eventSessionId\)[\s\S]*?return\s*\}/,
     )?.[0]
 
     expect(errorBranch).toBeDefined()
     expect(errorBranch).toContain('emitMediaEngineState')
     expect(errorBranch).toContain("status: 'error'")
+  })
+
+  it('keeps native session startup resolvers scoped by session id', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+
+    expect(source).toContain(
+      'const pendingStartResolvers = new Map<string, (event: SidecarEvent) => void>()',
+    )
+    expect(source).toContain('waitForSidecarReady(sessionId: string')
+    expect(source).toContain('pendingStartResolvers.set(sessionId')
+    expect(source).toContain('pendingStartResolvers.get(eventSessionId)?.(event)')
+    expect(source).not.toContain('let pendingStartResolver')
   })
 
   it('passes the desktop window handle when listing native display sources', () => {
