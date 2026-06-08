@@ -23,18 +23,27 @@ pub use voice_client::VoiceClient;
 
 const DESKTOP_NATIVE_IDENTITY_SUFFIX: &str = ":desktop-native";
 
-pub fn desktop_native_voice_identity(user_id: &str) -> String {
-    format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}")
+pub fn desktop_native_voice_identity(user_id: &str, media_kind: &str) -> String {
+    format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}:{media_kind}")
+}
+
+pub fn desktop_native_voice_identities(user_id: &str) -> [String; 3] {
+    [
+        desktop_native_voice_identity(user_id, "microphone"),
+        desktop_native_voice_identity(user_id, "screen"),
+        desktop_native_voice_identity(user_id, "camera"),
+    ]
 }
 
 pub fn base_voice_identity(identity: &str) -> &str {
     identity
-        .strip_suffix(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+        .find(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+        .map(|suffix_index| &identity[..suffix_index])
         .unwrap_or(identity)
 }
 
 pub fn is_desktop_native_voice_identity(identity: &str) -> bool {
-    identity.ends_with(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+    identity.contains(DESKTOP_NATIVE_IDENTITY_SUFFIX)
 }
 
 async fn get_connection() -> Result<Conn> {
@@ -993,17 +1002,27 @@ mod tests {
     #[test]
     fn desktop_native_voice_identity_maps_to_base_user() {
         assert_eq!(
-            super::desktop_native_voice_identity("user-a"),
-            "user-a:desktop-native"
+            super::desktop_native_voice_identity("user-a", "microphone"),
+            "user-a:desktop-native:microphone"
         );
         assert_eq!(
-            super::base_voice_identity("user-a:desktop-native"),
+            super::desktop_native_voice_identities("user-a"),
+            [
+                "user-a:desktop-native:microphone".to_string(),
+                "user-a:desktop-native:screen".to_string(),
+                "user-a:desktop-native:camera".to_string()
+            ]
+        );
+        assert_eq!(
+            super::base_voice_identity("user-a:desktop-native:microphone"),
             "user-a"
         );
+        assert_eq!(super::base_voice_identity("user-a:desktop-native"), "user-a");
         assert_eq!(super::base_voice_identity("user-a"), "user-a");
         assert!(super::is_desktop_native_voice_identity(
-            "user-a:desktop-native"
+            "user-a:desktop-native:screen"
         ));
+        assert!(super::is_desktop_native_voice_identity("user-a:desktop-native"));
         assert!(!super::is_desktop_native_voice_identity("user-a"));
     }
 }

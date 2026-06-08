@@ -286,14 +286,24 @@ auto_derived!(
         pub leave_silently: Option<bool>,
     }
 
+    /// LiveKit credentials for a native desktop media publisher
+    pub struct NativeVoiceCredentials {
+        /// Token for authenticating this native media publisher with LiveKit
+        pub token: String,
+        /// LiveKit identity for this native media publisher
+        pub identity: String,
+    }
+
     /// Voice server token response
     pub struct CreateVoiceUserResponse {
         /// Token for authenticating with the voice server
         pub token: String,
-        /// Token for native desktop microphone publishing
-        pub native_token: String,
-        /// LiveKit identity for native desktop microphone publishing
-        pub native_identity: String,
+        /// Credentials for native desktop microphone publishing
+        pub native_microphone: NativeVoiceCredentials,
+        /// Credentials for native desktop screen share publishing
+        pub native_screen: NativeVoiceCredentials,
+        /// Credentials for native desktop camera publishing
+        pub native_camera: NativeVoiceCredentials,
         /// Url of the livekit server to connect to
         pub url: String,
     }

@@ -1989,14 +1989,23 @@ export interface components {
       /** @description Whether this group is age-restricted */
       nsfw?: boolean | null;
     };
+    /** @description LiveKit credentials for a native desktop media publisher */
+    NativeVoiceCredentials: {
+      /** @description LiveKit identity for this native media publisher */
+      identity: string;
+      /** @description Token for authenticating this native media publisher with LiveKit */
+      token: string;
+    };
     /** @description Voice server token response */
     CreateVoiceUserResponse: {
+      /** @description Credentials for native desktop camera publishing */
+      native_camera: components["schemas"]["NativeVoiceCredentials"];
+      /** @description Credentials for native desktop microphone publishing */
+      native_microphone: components["schemas"]["NativeVoiceCredentials"];
+      /** @description Credentials for native desktop screen share publishing */
+      native_screen: components["schemas"]["NativeVoiceCredentials"];
       /** @description Token for authenticating with the voice server */
       token: string;
-      /** @description Token for native desktop microphone publishing */
-      native_token: string;
-      /** @description LiveKit identity for native desktop microphone publishing */
-      native_identity: string;
       /** @description Url of the livekit server to connect to */
       url: string;
     };

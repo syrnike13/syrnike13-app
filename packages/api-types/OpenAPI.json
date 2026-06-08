@@ -10417,23 +10417,58 @@
           }
         }
       },
+      "NativeVoiceCredentials": {
+        "description": "LiveKit credentials for a native desktop media publisher",
+        "type": "object",
+        "required": [
+          "identity",
+          "token"
+        ],
+        "properties": {
+          "identity": {
+            "description": "LiveKit identity for this native media publisher",
+            "type": "string"
+          },
+          "token": {
+            "description": "Token for authenticating this native media publisher with LiveKit",
+            "type": "string"
+          }
+        }
+      },
       "CreateVoiceUserResponse": {
         "description": "Voice server token response",
         "type": "object",
         "required": [
-          "native_identity",
-          "native_token",
+          "native_camera",
+          "native_microphone",
+          "native_screen",
           "token",
           "url"
         ],
         "properties": {
-          "native_identity": {
-            "description": "LiveKit identity for native desktop microphone publishing",
-            "type": "string"
+          "native_camera": {
+            "description": "Credentials for native desktop camera publishing",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NativeVoiceCredentials"
+              }
+            ]
           },
-          "native_token": {
-            "description": "Token for native desktop microphone publishing",
-            "type": "string"
+          "native_microphone": {
+            "description": "Credentials for native desktop microphone publishing",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NativeVoiceCredentials"
+              }
+            ]
+          },
+          "native_screen": {
+            "description": "Credentials for native desktop screen share publishing",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NativeVoiceCredentials"
+              }
+            ]
           },
           "token": {
             "description": "Token for authenticating with the voice server",
