@@ -1,18 +1,19 @@
 use syrnike_config::config;
 use syrnike_database::{
-    Database, User,
     util::{permissions::perms, reference::Reference},
     voice::{
-        UserVoiceChannel, VoiceClient, get_channel_node, get_user_voice_channels,
+        desktop_native_voice_identity, get_channel_node, get_user_voice_channels,
         get_voice_channel_members, raise_if_in_voice, remove_user_from_voice_channel,
         set_call_notification_recipients, set_channel_node, set_user_voice_join_intent,
+        UserVoiceChannel, VoiceClient,
     },
+    Database, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
+use syrnike_result::{create_error, Result};
 
-use rocket::{State, serde::json::Json};
+use rocket::{serde::json::Json, State};
 
 /// # Join Call
 ///
@@ -98,7 +99,7 @@ pub async fn call(
     let token = voice_client
         .create_token_for_identity(&node, db, &user, &user.id, current_permissions, &channel)
         .await?;
-    let native_identity = format!("{}:desktop-native", user.id);
+    let native_identity = desktop_native_voice_identity(&user.id);
     let native_token = voice_client
         .create_token_for_identity(
             &node,

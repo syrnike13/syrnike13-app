@@ -21,6 +21,22 @@ use syrnike_result::{create_error, Result, ToSyrnikeError};
 mod voice_client;
 pub use voice_client::VoiceClient;
 
+const DESKTOP_NATIVE_IDENTITY_SUFFIX: &str = ":desktop-native";
+
+pub fn desktop_native_voice_identity(user_id: &str) -> String {
+    format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}")
+}
+
+pub fn base_voice_identity(identity: &str) -> &str {
+    identity
+        .strip_suffix(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+        .unwrap_or(identity)
+}
+
+pub fn is_desktop_native_voice_identity(identity: &str) -> bool {
+    identity.ends_with(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+}
+
 async fn get_connection() -> Result<Conn> {
     _get_connection()
         .await
@@ -972,5 +988,22 @@ mod tests {
         assert_eq!(partial.is_receiving, None);
         assert_eq!(partial.server_muted, None);
         assert_eq!(partial.server_deafened, None);
+    }
+
+    #[test]
+    fn desktop_native_voice_identity_maps_to_base_user() {
+        assert_eq!(
+            super::desktop_native_voice_identity("user-a"),
+            "user-a:desktop-native"
+        );
+        assert_eq!(
+            super::base_voice_identity("user-a:desktop-native"),
+            "user-a"
+        );
+        assert_eq!(super::base_voice_identity("user-a"), "user-a");
+        assert!(super::is_desktop_native_voice_identity(
+            "user-a:desktop-native"
+        ));
+        assert!(!super::is_desktop_native_voice_identity("user-a"));
     }
 }
