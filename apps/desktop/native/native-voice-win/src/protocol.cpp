@@ -106,6 +106,7 @@ StartCommand parseStartCommand(const std::string& json) {
   command.input_volume = numberField(json, "inputVolume", 1.0f);
   command.voice_gate_enabled = boolField(json, "voiceGateEnabled", true);
   command.voice_gate_threshold_db = numberField(json, "voiceGateThresholdDb", -28.0f);
+  command.muted = boolField(json, "muted");
   return command;
 }
 

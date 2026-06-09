@@ -13,6 +13,7 @@ import type {
 export type SidecarEvent =
   | {
       type: 'ready'
+      session_id?: string
       port: number
       stream_mode?: string
       encoder?: string

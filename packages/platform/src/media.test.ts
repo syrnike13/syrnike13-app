@@ -52,6 +52,7 @@ describe('native media session contract', () => {
           channels: 1
           echoCancellation: boolean
           inputVolume: number
+          muted?: boolean
           livekit: {
             url: string
             token: string

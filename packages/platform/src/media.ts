@@ -68,6 +68,7 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   voiceGateEnabled?: boolean
   voiceGateThresholdDb?: number
   voiceGateAutoThreshold?: boolean
+  muted?: boolean
   livekit: {
     url: string
     token: string

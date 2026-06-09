@@ -14,7 +14,8 @@ import {
 export type NativeMicrophoneSession = {
   sessionId: string
   nativeParticipantIdentity: string
-  stop: () => void
+  setMuted: (muted: boolean) => Promise<void>
+  disconnect: () => void
 }
 
 export type NativeMicrophoneStoppedHandler = (sessionId: string) => void
@@ -32,6 +33,7 @@ export function nativeMicrophoneSessionOptions(
   prefs: VoicePreferenceState,
   livekit: NativeMicrophoneLiveKitCredentials,
   deviceId = prefs.preferredAudioInputDevice,
+  muted = false,
 ) {
   return {
     kind: 'microphone' as const,
@@ -43,6 +45,7 @@ export function nativeMicrophoneSessionOptions(
     voiceGateEnabled: false,
     voiceGateThresholdDb: prefs.voiceGateThresholdDb,
     voiceGateAutoThreshold: false,
+    muted,
     livekit,
   }
 }
@@ -51,6 +54,7 @@ export async function startNativeMicrophonePublisher(
   prefs: VoicePreferenceState,
   livekit: NativeMicrophoneLiveKitCredentials,
   deviceId?: string,
+  muted = false,
 ) {
   const desktop = getSyrnikeDesktop()
   if (!desktop) {
@@ -58,7 +62,7 @@ export async function startNativeMicrophonePublisher(
   }
 
   const session = await desktop.media.startSession(
-    nativeMicrophoneSessionOptions(prefs, livekit, deviceId),
+    nativeMicrophoneSessionOptions(prefs, livekit, deviceId, muted),
   )
 
   if (session.kind !== 'microphone') {
@@ -72,6 +76,7 @@ export async function publishNativeMicrophone(
   _participant: LocalParticipant,
   onStopped?: NativeMicrophoneStoppedHandler,
   livekit?: NativeMicrophoneLiveKitCredentials,
+  muted = false,
 ): Promise<NativeMicrophoneSession> {
   if (!livekit) {
     throw new Error('LiveKit credentials are required for native microphone publishing')
@@ -80,10 +85,12 @@ export async function publishNativeMicrophone(
   const { desktop, session } = await startNativeMicrophonePublisher(
     prefs,
     livekit,
+    undefined,
+    muted,
   )
 
   let stopped = false
-  const stop = () => {
+  const disconnect = () => {
     if (stopped) return
     stopped = true
     clearNativeMicrophoneRuntimeConfig(session.sessionId)
@@ -94,7 +101,8 @@ export async function publishNativeMicrophone(
   return {
     sessionId: session.sessionId,
     nativeParticipantIdentity: session.nativeParticipantIdentity,
-    stop,
+    setMuted: (muted) => desktop.media.setMicrophoneMuted(session.sessionId, muted),
+    disconnect,
   }
 }
 

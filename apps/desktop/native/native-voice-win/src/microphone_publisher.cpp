@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <wrl/client.h>
 
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -18,6 +19,7 @@
 #include <vector>
 
 #include "livekit/livekit.h"
+#include "livekit/local_audio_track.h"
 #include "livekit/room_delegate.h"
 
 #include "audio_constants.hpp"
@@ -69,7 +71,38 @@ private:
   bool disconnected_ = false;
 };
 
-void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit::AudioSource>& audio_source) {
+struct MicrophoneCaptureState {
+  std::atomic_bool publishing{false};
+  std::mutex mutex;
+  std::string session_id;
+};
+
+struct ConnectedMicrophoneRoom {
+  std::string session_id;
+  std::string native_identity;
+  std::unique_ptr<livekit::Room> room;
+  std::unique_ptr<NativeRoomDelegate> delegate;
+  std::shared_ptr<livekit::LocalAudioTrack> audio_track;
+};
+
+std::string captureSessionId(const std::shared_ptr<MicrophoneCaptureState>& state) {
+  std::lock_guard<std::mutex> lock(state->mutex);
+  return state->session_id;
+}
+
+void setCaptureSessionId(
+  const std::shared_ptr<MicrophoneCaptureState>& state,
+  const std::string& session_id
+) {
+  std::lock_guard<std::mutex> lock(state->mutex);
+  state->session_id = session_id;
+}
+
+void captureMicrophone(
+  const StartCommand command,
+  const std::shared_ptr<livekit::AudioSource>& audio_source,
+  const std::shared_ptr<MicrophoneCaptureState>& state
+) {
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   const bool com_initialized = SUCCEEDED(hr);
 
@@ -159,16 +192,18 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
             pcm_frame.push_back(clampToPcm16(processed));
           }
 
-          livekit::AudioFrame audio_frame(std::move(pcm_frame), kSampleRate, kChannels, kSamplesPer10Ms);
           const auto capture_started_at = std::chrono::steady_clock::now();
-          audio_source->captureFrame(audio_frame);
-          const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - capture_started_at
-          );
-          max_capture_frame_us = std::max(
-            max_capture_frame_us,
-            static_cast<std::uint32_t>(std::max<std::int64_t>(0, capture_elapsed.count()))
-          );
+          if (state->publishing.load()) {
+            livekit::AudioFrame audio_frame(std::move(pcm_frame), kSampleRate, kChannels, kSamplesPer10Ms);
+            audio_source->captureFrame(audio_frame);
+            const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+              std::chrono::steady_clock::now() - capture_started_at
+            );
+            max_capture_frame_us = std::max(
+              max_capture_frame_us,
+              static_cast<std::uint32_t>(std::max<std::int64_t>(0, capture_elapsed.count()))
+            );
+          }
           const auto frame_gap = std::chrono::duration_cast<std::chrono::milliseconds>(
             capture_started_at - last_frame_at
           );
@@ -183,13 +218,13 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
 
           const auto now = std::chrono::steady_clock::now();
           if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
-            emitMicrophoneMetrics(command.session_id, input_db, config.voice_gate_threshold_db, open);
+            emitMicrophoneMetrics(captureSessionId(state), input_db, config.voice_gate_threshold_db, open);
             last_metrics_at = now;
           }
           if (now - last_diagnostics_at >= std::chrono::seconds(1)) {
             emitMicrophoneDiagnostics(
-              command.session_id,
-              "publish",
+              captureSessionId(state),
+              state->publishing.load() ? "publish" : "warmup",
               total_frames,
               interval_frames,
               last_input_db,
@@ -223,102 +258,148 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
   if (com_initialized) CoUninitialize();
 }
 
-}  // namespace
+void emitMicrophoneMuteState(const std::string& session_id, bool muted) {
+  emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(session_id) +
+       "\",\"kind\":\"microphone\",\"status\":\"running\",\"message\":\"" +
+       (muted ? "microphone_muted" : "microphone_unmuted") + "\"}");
+}
 
-void runMicrophonePublisher(const StartCommand& command) {
-  g_running.store(true);
-  updateRuntimeConfig(command);
+void emitMicrophoneReady(
+  const StartCommand& command,
+  const std::string& native_identity
+) {
+  emit("{\"type\":\"ready\",\"session_id\":\"" + jsonEscape(command.session_id) +
+       "\",\"port\":0,\"stream_mode\":\"audio\",\"audio_mode\":\"microphone\","
+       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\","
+       "\"native_participant_identity\":\"" + jsonEscape(native_identity) + "\"}");
+}
+
+void disconnectMicrophoneRoom(
+  ConnectedMicrophoneRoom& connected,
+  const std::shared_ptr<MicrophoneCaptureState>& state
+) {
+  if (connected.audio_track) {
+    connected.audio_track.reset();
+  }
+  state->publishing.store(false);
+  connected.room.reset();
+  connected.delegate.reset();
+  if (!connected.session_id.empty()) {
+    emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(connected.session_id) +
+         "\",\"kind\":\"microphone\",\"status\":\"stopped\"}");
+  }
+  connected.session_id.clear();
+  connected.native_identity.clear();
+}
+
+bool connectMicrophoneRoom(
+  const StartCommand& command,
+  const std::shared_ptr<livekit::AudioSource>& audio_source,
+  const std::shared_ptr<MicrophoneCaptureState>& state,
+  ConnectedMicrophoneRoom& connected
+) {
   const auto started_at = std::chrono::steady_clock::now();
   auto elapsedMs = [&]() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - started_at
     ).count();
   };
+
   if (command.session_id.empty() || command.livekit_url.empty() || command.livekit_token.empty()) {
     emitError("invalid_start_command", "missing sessionId or LiveKit credentials");
-    return;
+    return false;
   }
 
+  disconnectMicrophoneRoom(connected, state);
+  setCaptureSessionId(state, command.session_id);
   const std::string native_identity = command.participant_identity;
-
-  emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-       "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"capture_starting\",\"elapsed_ms\":" +
-       std::to_string(elapsedMs()) + "}");
-
-  livekit::initialize(livekit::LogLevel::Info);
-  auto audio_source = std::make_shared<livekit::AudioSource>(kSampleRate, kChannels);
-  std::thread capture_thread(captureMicrophone, command, audio_source);
 
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"livekit_connecting\",\"elapsed_ms\":" +
        std::to_string(elapsedMs()) + "}");
 
   auto room = std::make_unique<livekit::Room>();
-  NativeRoomDelegate delegate;
-  room->setDelegate(&delegate);
+  auto delegate = std::make_unique<NativeRoomDelegate>();
+  room->setDelegate(delegate.get());
   livekit::RoomOptions room_options;
   room_options.auto_subscribe = false;
   room_options.single_peer_connection = false;
 
-  bool connected = false;
+  bool room_connected = false;
   try {
-    connected = room->connect(command.livekit_url, command.livekit_token, room_options);
+    room_connected = room->connect(command.livekit_url, command.livekit_token, room_options);
   } catch (const std::exception& error) {
-    g_running.store(false);
-    if (capture_thread.joinable()) capture_thread.join();
-    livekit::shutdown();
     emitError("livekit_connect_failed", error.what());
-    return;
+    return false;
   }
-  if (!connected) {
-    g_running.store(false);
-    if (capture_thread.joinable()) capture_thread.join();
-    livekit::shutdown();
+  if (!room_connected) {
     emitError("livekit_connect_failed", "LiveKit native microphone connect returned false");
-    return;
+    return false;
   }
-  if (!delegate.waitConnected(std::chrono::milliseconds(10'000))) {
-    g_running.store(false);
-    if (capture_thread.joinable()) capture_thread.join();
+  if (!delegate->waitConnected(std::chrono::milliseconds(10'000))) {
     room.reset();
-    livekit::shutdown();
     emitError("livekit_connect_failed", "LiveKit native microphone did not reach connected state");
-    return;
+    return false;
   }
 
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"livekit_connected\",\"elapsed_ms\":" +
        std::to_string(elapsedMs()) + "}");
 
+  std::shared_ptr<livekit::LocalAudioTrack> audio_track;
   try {
     if (auto participant = room->localParticipant().lock()) {
       emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
            "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"publishing_audio_track\",\"elapsed_ms\":" +
            std::to_string(elapsedMs()) + "}");
-      participant->publishAudioTrack(
+      audio_track = participant->publishAudioTrack(
         "microphone",
         audio_source,
         livekit::TrackSource::SOURCE_MICROPHONE
       );
+      if (command.muted && audio_track) {
+        audio_track->mute();
+        emitMicrophoneMuteState(command.session_id, true);
+      }
     } else {
       throw std::runtime_error("local participant is unavailable");
     }
   } catch (const std::exception& error) {
-    g_running.store(false);
-    if (capture_thread.joinable()) capture_thread.join();
     room.reset();
-    livekit::shutdown();
     emitError("livekit_publish_failed", error.what());
-    return;
+    return false;
   }
 
-  emit("{\"type\":\"ready\",\"port\":0,\"stream_mode\":\"audio\",\"audio_mode\":\"microphone\","
-       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\","
-       "\"native_participant_identity\":\"" + jsonEscape(native_identity) + "\"}");
+  connected.session_id = command.session_id;
+  connected.native_identity = native_identity;
+  connected.room = std::move(room);
+  connected.delegate = std::move(delegate);
+  connected.audio_track = audio_track;
+  state->publishing.store(true);
+
+  emitMicrophoneReady(command, native_identity);
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"kind\":\"microphone\",\"status\":\"running\",\"audio_mode\":\"microphone\","
        "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\","
        "\"elapsed_ms\":" + std::to_string(elapsedMs()) + "}");
+  return true;
+}
+
+}  // namespace
+
+void runMicrophonePublisher(const StartCommand& command) {
+  g_running.store(true);
+  updateRuntimeConfig(command);
+  livekit::initialize(livekit::LogLevel::Info);
+  auto audio_source = std::make_shared<livekit::AudioSource>(kSampleRate, kChannels);
+  auto state = std::make_shared<MicrophoneCaptureState>();
+  setCaptureSessionId(state, command.session_id);
+  std::thread capture_thread(captureMicrophone, command, audio_source, state);
+  ConnectedMicrophoneRoom connected;
+
+  if (!command.livekit_url.empty() || !command.livekit_token.empty()) {
+    connectMicrophoneRoom(command, audio_source, state, connected);
+  }
 
   std::string line;
   while (g_running.load() && std::getline(std::cin, line)) {
@@ -326,18 +407,40 @@ void runMicrophonePublisher(const StartCommand& command) {
       g_running.store(false);
       break;
     }
+    if (commandMatches(line, "connect_microphone") || commandMatches(line, "start")) {
+      const auto connect_command = parseStartCommand(line);
+      updateRuntimeConfig(connect_command);
+      connectMicrophoneRoom(connect_command, audio_source, state, connected);
+      continue;
+    }
+    if (commandMatches(line, "disconnect_microphone")) {
+      disconnectMicrophoneRoom(connected, state);
+      setCaptureSessionId(state, command.session_id);
+      continue;
+    }
+    if (commandMatches(line, "set_microphone_muted")) {
+      if (connected.audio_track) {
+        const bool muted = parseStartCommand(line).muted;
+        if (muted) {
+          connected.audio_track->mute();
+        } else {
+          connected.audio_track->unmute();
+        }
+        emitMicrophoneMuteState(connected.session_id, muted);
+      }
+      continue;
+    }
     if (commandMatches(line, "configure")) {
       updateRuntimeConfig(parseStartCommand(line));
       continue;
     }
   }
 
+  disconnectMicrophoneRoom(connected, state);
+  g_running.store(false);
   if (capture_thread.joinable()) capture_thread.join();
-  room.reset();
   livekit::shutdown();
 
-  emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-       "\",\"kind\":\"microphone\",\"status\":\"stopped\"}");
   emit("{\"type\":\"stopped\"}");
 }
 

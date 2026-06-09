@@ -227,6 +227,13 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         config,
       )
     },
+    setMicrophoneMuted(sessionId: string, muted: boolean) {
+      return ipcRenderer.invoke(
+        IPC.mediaSetMicrophoneMuted,
+        sessionId,
+        muted,
+      )
+    },
     stopSession(sessionId?: string) {
       return ipcRenderer.invoke(IPC.mediaStopSession, sessionId)
     },

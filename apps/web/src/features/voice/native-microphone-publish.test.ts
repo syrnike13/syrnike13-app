@@ -94,6 +94,7 @@ describe('native microphone publish', () => {
       voiceGateEnabled: false,
       voiceGateThresholdDb: -45,
       voiceGateAutoThreshold: false,
+      muted: false,
       livekit: {
         url: 'wss://livekit.example',
         token: 'livekit-token',
@@ -128,6 +129,7 @@ describe('native microphone publish', () => {
       media: {
         startSession,
         stopSession,
+        setMicrophoneMuted: vi.fn(async () => {}),
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
@@ -160,7 +162,7 @@ describe('native microphone publish', () => {
     expect(participant.unpublishTrack).not.toHaveBeenCalled()
   })
 
-  it('stops native microphone publisher without touching local LiveKit tracks', async () => {
+  it('disconnects native microphone publisher without touching local LiveKit tracks', async () => {
     const stopSession = vi.fn(async () => {})
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
@@ -177,6 +179,7 @@ describe('native microphone publish', () => {
           nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
         })),
         stopSession,
+        setMicrophoneMuted: vi.fn(async () => {}),
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
@@ -192,7 +195,7 @@ describe('native microphone publish', () => {
       token: 'native-livekit-token',
       participantIdentity: 'user-1:desktop-native',
     })
-    session.stop()
+    session.disconnect()
 
     expect(stopSession).toHaveBeenCalledWith('native-mic-1')
     expect(participant.publishTrack).not.toHaveBeenCalled()
@@ -200,7 +203,7 @@ describe('native microphone publish', () => {
     expect(onStopped).toHaveBeenCalledWith('native-mic-1')
   })
 
-  it('notifies when the native microphone session stops after publishing', async () => {
+  it('notifies when the native microphone session disconnects after publishing', async () => {
     const stopSession = vi.fn(async () => {})
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
@@ -217,6 +220,7 @@ describe('native microphone publish', () => {
           nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
         })),
         stopSession,
+        setMicrophoneMuted: vi.fn(async () => {}),
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
@@ -236,10 +240,54 @@ describe('native microphone publish', () => {
         participantIdentity: 'user-1:desktop-native',
       },
     )
-    session.stop()
+    session.disconnect()
 
     expect(stopSession).toHaveBeenCalledWith('native-mic-1')
     expect(onStopped).toHaveBeenCalledWith('native-mic-1')
+  })
+
+  it('mutes native microphone publisher without stopping capture', async () => {
+    const stopSession = vi.fn(async () => {})
+    const setMicrophoneMuted = vi.fn(async () => {})
+    const startSession = vi.fn(async () => ({
+      kind: 'microphone',
+      sessionId: 'native-mic-1',
+      audio: {
+        mode: 'microphone',
+        sampleRate: 48_000,
+        channels: 1,
+        echoCancellation: 'windows',
+      },
+      nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
+    }))
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startSession,
+        stopSession,
+        setMicrophoneMuted,
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const session = await publishNativeMicrophone(
+      { identity: 'user-1' } as never,
+      undefined,
+      {
+        url: 'wss://livekit.example',
+        token: 'native-livekit-token',
+        participantIdentity: 'user-1:desktop-native',
+      },
+      true,
+    )
+
+    expect(startSession).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'microphone', muted: true }),
+    )
+
+    await session.setMuted(false)
+
+    expect(setMicrophoneMuted).toHaveBeenCalledWith('native-mic-1', false)
+    expect(stopSession).not.toHaveBeenCalled()
   })
 
   it('debounces runtime config updates for native microphone publishing', async () => {
@@ -255,7 +303,8 @@ describe('native microphone publish', () => {
     const session = {
       sessionId: 'native-mic-1',
       nativeParticipantIdentity: 'user-1:desktop-native',
-      stop: vi.fn(),
+      setMuted: vi.fn(async () => {}),
+      disconnect: vi.fn(),
     }
 
     configureNativeMicrophoneSession(session, {
@@ -301,8 +350,9 @@ describe('native microphone provider boundary', () => {
 
     expect(nativeBranchIndex).toBeGreaterThanOrEqual(0)
     expect(liveKitCaptureIndex).toBeGreaterThan(nativeBranchIndex)
-    expect(source).toContain('await startNativeMicrophone(room)')
-    expect(source).toContain('stopNativeMicrophone()')
+    expect(source).toContain('await startNativeMicrophone(')
+    expect(source).toContain('setNativeMicrophoneMuted')
+    expect(source).toContain('nativeMicrophoneMutedRef.current')
     expect(source).toContain('!shouldUseNativeMicrophone()')
     expect(source).toContain('await applyMicProcessing(room.localParticipant)')
   })
@@ -329,7 +379,8 @@ describe('native microphone provider boundary', () => {
     expect(providerSource).toContain(
       'selfMonitoringRef.current.restorePublishing = wantsMic',
     )
-    expect(providerSource).toContain('stopNativeMicrophone()')
+    expect(providerSource).toContain('void setNativeMicrophoneMuted(true)')
+    expect(providerSource).toContain('void startNativeMicrophone(room, true)')
     expect(providerSource).toContain('is_publishing: false')
     expect(settingsSource).toContain(
       'setSelfMonitoringActiveRef.current(micTestActive)',

@@ -15,6 +15,7 @@ import {
   isRateLimitedError,
   runVoiceRequest,
 } from '#/features/voice/voice-request-gate'
+import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
 import { ApiError } from '#/lib/api/client'
 
 export type VoiceJoinOptions = {
@@ -68,6 +69,7 @@ export type VoiceJoinRunnerDeps = {
   setActiveRoom: (room: Room) => void
   attachRoomHandlers: (room: Room) => void
   setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
+  setConnectionPhase: (phase: VoiceConnectionPhase) => void
   onRoomConnected: (room: Room, channelId: string) => void
   onJoinSuccess: () => void
   abortJoin: () => void
@@ -123,9 +125,11 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         ]
       : []
 
+    deps.setConnectionPhase('joining_channel')
     deps.beginConnecting(targetChannelId, preview)
 
     try {
+      deps.setConnectionPhase('fetching_rtc_token')
       const credentials = await runVoiceRequest(
         `join_call:${targetChannelId}`,
         () => joinChannelCall(token, targetChannelId),
@@ -142,12 +146,15 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       deps.setActiveRoom(room)
       deps.attachRoomHandlers(room)
 
+      deps.setConnectionPhase('connecting_rtc')
       await room.connect(url, livekitToken)
 
+      deps.setConnectionPhase('connecting_microphone')
       deps.onRoomConnected(room, targetChannelId)
       deps.onJoinSuccess()
       return true
     } catch (error) {
+      deps.setConnectionPhase('failed')
       if (!options.rejoin) {
         deps.abortJoin()
         handleVoiceApiError(targetChannelId, error)

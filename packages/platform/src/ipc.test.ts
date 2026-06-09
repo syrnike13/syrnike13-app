@@ -12,6 +12,12 @@ describe('desktop media IPC contract', () => {
     expect(IPC.mediaListDevices).toBe('syrnike-desktop:media:list-devices')
   })
 
+  it('exposes native microphone mute through the media namespace', () => {
+    expect(IPC.mediaSetMicrophoneMuted).toBe(
+      'syrnike-desktop:media:set-microphone-muted',
+    )
+  })
+
   it('does not expose out-of-band media audio preparation channels', () => {
     expect('mediaPrepareSystemAudio' in IPC).toBe(false)
     expect('mediaClearSystemAudio' in IPC).toBe(false)

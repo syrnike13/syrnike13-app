@@ -98,6 +98,9 @@ let microphonePreviewHelper: ChildProcessWithoutNullStreams | null = null
 let microphonePreviewSessionId: string | null = null
 let prewarmedMediaEngineHelper: ChildProcessWithoutNullStreams | null = null
 let prewarmedMediaEngineReader: readline.Interface | null = null
+let microphoneWarmupEnabled = false
+let microphoneWarmupRestartTimer: NodeJS.Timeout | null = null
+const microphoneWarmExitHandlers = new WeakSet<ChildProcessWithoutNullStreams>()
 
 function isTrustedSender(
   event: IpcMainInvokeEvent,
@@ -160,7 +163,7 @@ export function buildNativeMediaStartCommand(
 ) {
   if (options.kind === 'microphone') {
     return {
-      cmd: 'start',
+      cmd: 'connect_microphone',
       sessionId,
       sessionKind: options.kind,
       deviceId: options.deviceId,
@@ -171,6 +174,7 @@ export function buildNativeMediaStartCommand(
       voiceGateEnabled: options.voiceGateEnabled,
       voiceGateThresholdDb: options.voiceGateThresholdDb,
       voiceGateAutoThreshold: options.voiceGateAutoThreshold,
+      muted: options.muted,
       url: options.livekit.url,
       token: options.livekit.token,
       participantIdentity: options.livekit.participantIdentity,
@@ -459,29 +463,86 @@ function takePrewarmedMediaEngineHelper() {
   return helper
 }
 
-export function prewarmNativeMediaEngineHelper() {
+function clearMicrophoneWarmupRestartTimer() {
+  if (!microphoneWarmupRestartTimer) return
+  clearTimeout(microphoneWarmupRestartTimer)
+  microphoneWarmupRestartTimer = null
+}
+
+function queueMicrophoneWarmupRestart() {
+  if (!microphoneWarmupEnabled) return
+  if (microphoneWarmupRestartTimer) return
+  microphoneWarmupRestartTimer = setTimeout(() => {
+    microphoneWarmupRestartTimer = null
+    prewarmNativeMediaEngineHelper()
+  }, 250)
+}
+
+function attachPrewarmedMicrophoneReader(helper: ChildProcessWithoutNullStreams) {
+  prewarmedMediaEngineReader?.close()
+  const reader = readline.createInterface({ input: helper.stdout })
+  prewarmedMediaEngineReader = reader
+  reader.on('line', (line) => {
+    const event = parseSidecarEvent(line)
+    if (!event) return
+    if (event.type === 'microphone_metrics') {
+      if (getWindowRef) {
+        emitMicrophoneMetrics(getWindowRef, mapMicrophoneMetrics(event))
+      }
+      return
+    }
+    if (event.type === 'microphone_diagnostics') {
+      console.info('[media-engine-helper:warm] microphone diagnostics', event)
+    }
+  })
+}
+
+function attachPrewarmedMicrophoneExitHandler(
+  helper: ChildProcessWithoutNullStreams,
+) {
+  if (microphoneWarmExitHandlers.has(helper)) return
+  microphoneWarmExitHandlers.add(helper)
+  helper.on('exit', () => {
+    if (prewarmedMediaEngineHelper === helper) {
+      prewarmedMediaEngineHelper = null
+      prewarmedMediaEngineReader?.close()
+      prewarmedMediaEngineReader = null
+      queueMicrophoneWarmupRestart()
+    }
+  })
+}
+
+function keepMicrophoneHelperWarmed(helper: ChildProcessWithoutNullStreams) {
+  if (!isHelperWritable(helper)) {
+    queueMicrophoneWarmupRestart()
+    return
+  }
+  prewarmedMediaEngineHelper = helper
+  attachPrewarmedMicrophoneReader(helper)
+  attachPrewarmedMicrophoneExitHandler(helper)
+}
+
+export function prewarmNativeMediaEngineHelper(
+  options: { allowDuringMicrophoneSession?: boolean } = {},
+) {
   if (process.platform !== 'win32') return
+  microphoneWarmupEnabled = true
+  clearMicrophoneWarmupRestartTimer()
   if (isHelperWritable(prewarmedMediaEngineHelper)) return
+  if (
+    !options.allowDuringMicrophoneSession &&
+    Array.from(activeSessions.values()).some(
+      (session) => session.startOptions.kind === 'microphone',
+    )
+  ) {
+    return
+  }
   if (!resolveMediaEngineHelperPath('microphone')) return
 
   try {
     const helper = spawnNativeMediaEngineProcess('microphone')
-    const reader = readline.createInterface({ input: helper.stdout })
     prewarmedMediaEngineHelper = helper
-    prewarmedMediaEngineReader = reader
-    reader.on('line', (line) => {
-      const event = parseSidecarEvent(line)
-      if (!event) return
-      if (event.type === 'microphone_metrics') {
-        if (getWindowRef) {
-          emitMicrophoneMetrics(getWindowRef, mapMicrophoneMetrics(event))
-        }
-        return
-      }
-      if (event.type === 'microphone_diagnostics') {
-        console.info('[media-engine-helper:warm] microphone diagnostics', event)
-      }
-    })
+    attachPrewarmedMicrophoneReader(helper)
     helper.stderr.on('data', (chunk) => {
       console.error('[media-engine-helper:warm]', chunk.toString())
     })
@@ -489,13 +550,7 @@ export function prewarmNativeMediaEngineHelper() {
       if ((error as NodeJS.ErrnoException).code === 'EPIPE') return
       console.error('[media-engine-helper:warm] stdin error', error)
     })
-    helper.on('exit', () => {
-      if (prewarmedMediaEngineHelper === helper) {
-        prewarmedMediaEngineHelper = null
-        prewarmedMediaEngineReader?.close()
-        prewarmedMediaEngineReader = null
-      }
-    })
+    attachPrewarmedMicrophoneExitHandler(helper)
     writeHelperCommand(helper, {
       cmd: 'warm_microphone',
       sessionId: WARMED_MICROPHONE_SESSION_ID,
@@ -506,6 +561,8 @@ export function prewarmNativeMediaEngineHelper() {
 }
 
 export function disposePrewarmedNativeMediaEngineHelper() {
+  microphoneWarmupEnabled = false
+  clearMicrophoneWarmupRestartTimer()
   const helper = prewarmedMediaEngineHelper
   prewarmedMediaEngineHelper = null
   prewarmedMediaEngineReader?.close()
@@ -642,6 +699,9 @@ async function handleSidecarFailure(
   }
   mediaEngineStatus = { status: 'idle' }
   lastMediaEngineError = message
+  if (session.startOptions.kind === 'microphone') {
+    prewarmNativeMediaEngineHelper()
+  }
 }
 
 function handleHelperExit(
@@ -664,12 +724,19 @@ function stopMediaEngineSession(sessionId: string, force = false) {
   const session = activeSessions.get(sessionId)
   if (!session) return
 
-  const stopped = writeHelperCommand(session.helper, { cmd: 'stop' })
+  const isMicrophone = session.startOptions.kind === 'microphone'
+  const stopped = writeHelperCommand(session.helper, {
+    cmd: isMicrophone && !force ? 'disconnect_microphone' : 'stop',
+    sessionId,
+  })
   if (force || !stopped) {
     session.helper.kill()
   }
   session.reader?.close()
   activeSessions.delete(sessionId)
+  if (isMicrophone && !force && stopped) {
+    keepMicrophoneHelperWarmed(session.helper)
+  }
 
   if (activeSession?.sessionId === sessionId) {
     activeSession =
@@ -750,6 +817,22 @@ function configureNativeMicrophoneRuntime(
   }
 
   throw new Error('Native microphone runtime is not active')
+}
+
+function setNativeMicrophoneMuted(sessionId: string, muted: boolean) {
+  const session = activeSessions.get(sessionId)
+  if (session?.startOptions.kind !== 'microphone') {
+    throw new Error('Native microphone runtime is not active')
+  }
+
+  const written = writeHelperCommand(session.helper, {
+    cmd: 'set_microphone_muted',
+    sessionId,
+    muted,
+  })
+  if (!written) {
+    throw new Error('Native media helper is not writable')
+  }
 }
 
 async function startNativeMicrophonePreview(
@@ -1489,6 +1572,16 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
         throw new Error('Untrusted media engine configure request')
       }
       configureNativeMicrophoneRuntime(sessionId, config)
+    },
+  )
+
+  ipcMain.handle(
+    IPC.mediaSetMicrophoneMuted,
+    async (event, sessionId: string, muted: boolean) => {
+      if (!isTrustedSender(event, getWindow)) {
+        throw new Error('Untrusted media engine mute request')
+      }
+      setNativeMicrophoneMuted(sessionId, Boolean(muted))
     },
   )
 

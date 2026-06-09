@@ -249,6 +249,7 @@ export interface SyrnikeDesktopApi {
       sessionId: string,
       config: NativeMicrophoneRuntimeConfig,
     ): Promise<void>
+    setMicrophoneMuted(sessionId: string, muted: boolean): Promise<void>
     stopSession(sessionId?: string): Promise<void>
     getState(): Promise<NativeMediaState>
     onStats(handler: (event: NativeMediaStatsEvent) => void): () => void

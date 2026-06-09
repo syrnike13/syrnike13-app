@@ -25,8 +25,8 @@ int main() {
     if (commandMatches(line, "warm_microphone")) {
       const auto command = parseStartCommand(line);
       updateRuntimeConfig(command);
-      startMicrophoneWarmup(command.device_id, command.session_id);
-      continue;
+      runMicrophonePublisher(command);
+      return 0;
     }
     if (commandMatches(line, "configure")) {
       updateRuntimeConfig(parseStartCommand(line));
@@ -48,10 +48,16 @@ int main() {
       emitScreenSharePreflight(parseStartCommand(line));
       continue;
     }
+    if (commandMatches(line, "connect_microphone")) {
+      const auto command = parseStartCommand(line);
+      updateRuntimeConfig(command);
+      runMicrophonePublisher(command);
+      return 0;
+    }
     if (commandMatches(line, "start")) {
       const auto command = parseStartCommand(line);
-      stopMicrophoneWarmup();
       if (command.session_kind == "screen") {
+        stopMicrophoneWarmup();
         runScreenPublisher(command);
       } else {
         runMicrophonePublisher(command);

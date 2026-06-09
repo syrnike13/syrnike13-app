@@ -112,6 +112,7 @@ import {
   describeMicDeviceError,
   MIC_BLOCKED_WITHOUT_ERROR,
   shouldResetMicPreferenceOnIssue,
+  type VoiceConnectionPhase,
   type VoiceMicIssue,
 } from '#/features/voice/voice-mic-status'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
@@ -161,6 +162,9 @@ export type VoiceStageMediaItem = StageMediaItem<
 type VoiceContextValue = {
   channelId: string | null
   status: VoiceStatus
+  connectionPhase: VoiceConnectionPhase
+  /** LiveKit room connected and local media setup finished. */
+  localVoiceReady: boolean
   /** Намерение пользователя: микрофон включён. */
   micEnabled: boolean
   /** Фактическая публикация микрофона в LiveKit. */
@@ -316,30 +320,6 @@ function isLiveKitTokenFailure(error: unknown) {
   )
 }
 
-// #region debug log
-function logNativeAudioDebug(
-  hypothesisId: string,
-  location: string,
-  message: string,
-  data: Record<string, unknown>,
-) {
-  if (!import.meta.env.DEV) return
-  fetch('http://127.0.0.1:62714/ingest/964ae4', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: '964ae4',
-      runId: 'native-audio-self-monitoring',
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-}
-// #endregion
-
 async function switchDeviceWithTimeout(
   room: Room,
   kind: 'audioinput' | 'audiooutput',
@@ -358,6 +338,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const roomRef = useRef<Room | null>(null)
   const nativeScreenShareRef = useRef<NativeScreenShareSession | null>(null)
   const nativeMicrophoneRef = useRef<NativeMicrophoneSession | null>(null)
+  const nativeMicrophoneMutedRef = useRef(false)
   const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
   const audioElementsRef = useRef<HTMLAudioElement[]>([])
   const channelIdRef = useRef<string | null>(null)
@@ -388,6 +369,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setActiveRoom: (_room: Room) => {},
     attachRoomHandlers: (_room: Room) => {},
     setLiveKitCredentials: (_credentials: LiveKitNativeCredentials) => {},
+    setConnectionPhase: (_phase: VoiceConnectionPhase) => {},
     onRoomConnected: (_room: Room, _channelId: string) => {},
     onJoinSuccess: () => {},
     abortJoin: () => {},
@@ -409,6 +391,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         voiceJoinDepsRef.current.attachRoomHandlers(room),
       setLiveKitCredentials: (credentials) =>
         voiceJoinDepsRef.current.setLiveKitCredentials(credentials),
+      setConnectionPhase: (phase) =>
+        voiceJoinDepsRef.current.setConnectionPhase(phase),
       onRoomConnected: (room, channelId) =>
         voiceJoinDepsRef.current.onRoomConnected(room, channelId),
       onJoinSuccess: () => voiceJoinDepsRef.current.onJoinSuccess(),
@@ -436,6 +420,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const [channelId, setChannelId] = useState<string | null>(null)
   const [status, setStatus] = useState<VoiceStatus>('idle')
+  const [connectionPhase, setConnectionPhase] =
+    useState<VoiceConnectionPhase>('idle')
+  const [localVoiceReady, setLocalVoiceReady] = useState(false)
   const [micEnabled, setMicEnabled] = useState(
     () => readVoicePreferences().micEnabled,
   )
@@ -611,7 +598,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const publishing = participantMicPublishing(room.localParticipant)
       const effectivePublishing =
         shouldUseNativeMicrophone() && nativeMicrophoneRef.current
-          ? true
+          ? !nativeMicrophoneMutedRef.current
           : publishing
       const activeChannelId = channelIdRef.current
       const userId = auth.user?._id
@@ -732,9 +719,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const resetVoiceState = useCallback(() => {
     if (nativeMicrophoneRef.current) {
-      nativeMicrophoneRef.current.stop()
+      nativeMicrophoneRef.current.disconnect()
       nativeMicrophoneRef.current = null
     }
+    nativeMicrophoneMutedRef.current = false
     selfMonitoringRef.current.restorePublishing = false
     selfMonitoringRef.current.sequence += 1
     if (nativeScreenShareRef.current) {
@@ -744,6 +732,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
     setChannelId(null)
     setStatus('idle')
+    setConnectionPhase('idle')
+    setLocalVoiceReady(false)
     restoreVoicePreferences()
     setCurrentMicIssue(null)
     setParticipantCount(0)
@@ -824,28 +814,59 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const active = nativeMicrophoneRef.current
     if (!active) return
     nativeMicrophoneRef.current = null
-    active.stop()
+    nativeMicrophoneMutedRef.current = false
+    active.disconnect()
     setMicPublishing(false)
   }, [])
 
+  const setNativeMicrophoneMuted = useCallback(
+    async (muted: boolean) => {
+      const previousMuted = nativeMicrophoneMutedRef.current
+      nativeMicrophoneMutedRef.current = muted
+      const active = nativeMicrophoneRef.current
+      setMicPublishing(Boolean(active) && !muted)
+      if (!active) return
+      try {
+        await active.setMuted(muted)
+        syncRoomParticipants()
+      } catch (error) {
+        nativeMicrophoneMutedRef.current = previousMuted
+        setMicPublishing(Boolean(nativeMicrophoneRef.current) && !previousMuted)
+        throw error
+      }
+    },
+    [syncRoomParticipants],
+  )
+
   const startNativeMicrophone = useCallback(
-    async (room: Room) => {
-      stopNativeMicrophone()
+    async (room: Room, muted = false) => {
+      const active = nativeMicrophoneRef.current
+      if (active) {
+        await setNativeMicrophoneMuted(muted)
+        return
+      }
+      nativeMicrophoneMutedRef.current = muted
       const session = await publishNativeMicrophone(
         room.localParticipant,
         (sessionId) => {
           if (nativeMicrophoneRef.current?.sessionId !== sessionId) return
           nativeMicrophoneRef.current = null
+          nativeMicrophoneMutedRef.current = false
           setMicPublishing(false)
           syncRoomParticipants()
         },
         await refreshNativeLiveKitCredentials('microphone'),
+        muted,
       )
       nativeMicrophoneRef.current = session
-      setMicPublishing(true)
+      setMicPublishing(!muted)
       syncRoomParticipants()
     },
-    [refreshNativeLiveKitCredentials, stopNativeMicrophone, syncRoomParticipants],
+    [
+      refreshNativeLiveKitCredentials,
+      setNativeMicrophoneMuted,
+      syncRoomParticipants,
+    ],
   )
 
   const finishLocalVoiceSetup = useCallback(
@@ -856,11 +877,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       let micSetupFailed = false
       try {
         if (shouldUseNativeMicrophone()) {
-          if (prefs.micEnabled && !suppressedBySelfMonitoring) {
-            await startNativeMicrophone(room)
-          } else {
-            stopNativeMicrophone()
-          }
+          await startNativeMicrophone(
+            room,
+            !prefs.micEnabled || suppressedBySelfMonitoring || prefs.deafened,
+          )
         } else {
           await room.localParticipant.setMicrophoneEnabled(
             prefs.micEnabled && !suppressedBySelfMonitoring,
@@ -870,6 +890,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         micSetupFailed = true
+        setConnectionPhase('failed')
         syncMicFromRoom(room, describeMicDeviceError(error))
       }
       setMicEnabled(voicePreferenceStore.getMicEnabled())
@@ -896,16 +917,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       const userId = auth.user?._id
       if (userId) {
+        const nextMicPublishing = suppressedBySelfMonitoring
+          ? false
+          : shouldUseNativeMicrophone()
+            ? Boolean(
+                nativeMicrophoneRef.current &&
+                  !nativeMicrophoneMutedRef.current,
+              )
+            : participantMicPublishing(room.localParticipant)
         patchLocalVoiceDeafen(targetChannelId, userId, prefs.deafened)
         void syncVoiceStateToServer(targetChannelId, {
           is_receiving: !prefs.deafened,
-          is_publishing:
-            suppressedBySelfMonitoring
-              ? false
-              : shouldUseNativeMicrophone() && nativeMicrophoneRef.current
-                ? true
-                : participantMicPublishing(room.localParticipant),
+          is_publishing: nextMicPublishing,
         })
+      }
+      setLocalVoiceReady(true)
+      if (!micSetupFailed) {
+        setConnectionPhase('connected')
       }
     },
     [
@@ -913,7 +941,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       auth.user?._id,
       setCurrentMicIssue,
       startNativeMicrophone,
-      stopNativeMicrophone,
       syncMicFromRoom,
       syncRoomParticipants,
       syncVoiceStateToServer,
@@ -930,45 +957,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       selfMonitoringRef.current.sequence = sequence
       selfMonitoringRef.current.active = active
 
-      const logState = (
-        message: string,
-        extra: Record<string, unknown> = {},
-      ) => {
-        logNativeAudioDebug(
-          'A',
-          'apps/web/src/features/voice/voice-provider.tsx:setSelfMonitoringActive',
-          message,
-          {
-            active,
-            status,
-            hasRoom: Boolean(room),
-            hasChannel: Boolean(activeChannelId),
-            wantsMic: voicePreferenceStore.getMicEnabled(),
-            restorePublishing: selfMonitoringRef.current.restorePublishing,
-            nativePublishing: Boolean(nativeMicrophoneRef.current),
-            ...extra,
-          },
-        )
-      }
-
       if (!room || !activeChannelId) {
         if (!active) {
           selfMonitoringRef.current.restorePublishing = false
         }
-        logState('self-monitoring changed without active room')
         return
       }
 
       const wantsMic = voicePreferenceStore.getMicEnabled()
       const publishing = shouldUseNativeMicrophone()
-        ? Boolean(nativeMicrophoneRef.current)
+        ? Boolean(nativeMicrophoneRef.current && !nativeMicrophoneMutedRef.current)
         : participantMicPublishing(room.localParticipant)
 
       if (active) {
         selfMonitoringRef.current.restorePublishing = wantsMic
         if (publishing) {
           if (shouldUseNativeMicrophone()) {
-            stopNativeMicrophone()
+            void setNativeMicrophoneMuted(true).catch(() => {})
           } else {
             void room.localParticipant.setMicrophoneEnabled(false)
           }
@@ -982,7 +987,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           })
         }
         syncRoomParticipants()
-        logState('self-monitoring muted voice publishing', { publishing })
         return
       }
 
@@ -993,6 +997,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       selfMonitoringRef.current.restorePublishing = false
 
       if (!shouldRestorePublishing) {
+        if (shouldUseNativeMicrophone()) {
+          void startNativeMicrophone(room, true).catch(() => {})
+        }
         setMicPublishing(false)
         if (userId) patchLocalVoiceMic(activeChannelId, userId, false)
         if (status === 'connected') {
@@ -1001,20 +1008,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           })
         }
         syncRoomParticipants()
-        logState('self-monitoring stopped without restoring microphone', {
-          shouldRestorePublishing,
-        })
         return
       }
 
       if (shouldUseNativeMicrophone()) {
-        void startNativeMicrophone(room)
+        void startNativeMicrophone(room, false)
           .then(() => {
             if (
               selfMonitoringRef.current.active ||
               selfMonitoringRef.current.sequence !== sequence
             ) {
-              stopNativeMicrophone()
+              void setNativeMicrophoneMuted(true).catch(() => {})
               return
             }
             setCurrentMicIssue(null)
@@ -1025,14 +1029,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 is_publishing: true,
               })
             }
-            logState('self-monitoring restored native microphone publishing')
           })
           .catch((error) => {
             syncMicFromRoom(room, describeMicDeviceError(error))
             syncRoomParticipants()
-            logState('self-monitoring native microphone restore failed', {
-              error: error instanceof Error ? error.message : String(error),
-            })
           })
         return
       }
@@ -1056,14 +1056,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               is_publishing: participantMicPublishing(room.localParticipant),
             })
           }
-          logState('self-monitoring restored browser microphone publishing')
         })
         .catch((error) => {
           syncMicFromRoom(room, describeMicDeviceError(error))
           syncRoomParticipants()
-          logState('self-monitoring browser microphone restore failed', {
-            error: error instanceof Error ? error.message : String(error),
-          })
         })
     },
     [
@@ -1071,7 +1067,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setCurrentMicIssue,
       startNativeMicrophone,
       status,
-      stopNativeMicrophone,
+      setNativeMicrophoneMuted,
       syncMicFromRoom,
       syncRoomParticipants,
       syncVoiceStateToServer,
@@ -1204,6 +1200,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
         cleanupAudio()
         setStatus('connecting')
+        setConnectionPhase('reconnecting')
+        setLocalVoiceReady(false)
         voiceRejoinRef.current.onUnexpectedDisconnect(targetChannelId)
       })
 
@@ -1234,6 +1232,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       leaveBeforeJoin: () => leaveVoiceSession('switch'),
       beginConnecting: (targetChannelId, preview) => {
         setStatus('connecting')
+        setLocalVoiceReady(false)
         setChannelId(targetChannelId)
         restoreVoicePreferences()
         setLiveChannelParticipants((current) =>
@@ -1247,7 +1246,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setLiveKitCredentials: (credentials) => {
         liveKitCredentialsRef.current = credentials
       },
+      setConnectionPhase,
       onRoomConnected: (room, targetChannelId) => {
+        setLocalVoiceReady(false)
         setStatus('connected')
         syncRoomParticipants()
         void finishLocalVoiceSetup(room, targetChannelId)
@@ -1621,6 +1622,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         if (nextMic) {
           if (selfMonitoringRef.current.active) {
             selfMonitoringRef.current.restorePublishing = true
+            void startNativeMicrophone(room, true).catch((error) => {
+              syncMicFromRoom(room, describeMicDeviceError(error))
+              syncRoomParticipants()
+            })
             setMicPublishing(false)
             setCurrentMicIssue(null)
             if (activeChannelId && userId) {
@@ -1634,7 +1639,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             syncRoomParticipants()
             return
           }
-          void startNativeMicrophone(room)
+          void startNativeMicrophone(room, false)
             .then(() => {
               syncMicFromRoom(room)
               syncRoomParticipants()
@@ -1645,7 +1650,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             })
         } else {
           selfMonitoringRef.current.restorePublishing = false
-          stopNativeMicrophone()
+          void startNativeMicrophone(room, true).catch((error) => {
+            syncMicFromRoom(room, describeMicDeviceError(error))
+            syncRoomParticipants()
+          })
           syncMicFromRoom(room)
           syncRoomParticipants()
         }
@@ -1695,7 +1703,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setCurrentMicIssue,
     startNativeMicrophone,
     status,
-    stopNativeMicrophone,
     syncMicFromRoom,
     syncRoomParticipants,
     syncVoiceStateToServer,
@@ -1718,7 +1725,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setCurrentMicIssue(null)
       if (room) {
         if (shouldUseNativeMicrophone()) {
-          stopNativeMicrophone()
+          void startNativeMicrophone(room, true).catch((error) => {
+            syncMicFromRoom(room, describeMicDeviceError(error))
+            syncRoomParticipants()
+          })
         } else {
           void room.localParticipant.setMicrophoneEnabled(false)
         }
@@ -1743,8 +1753,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [
     auth.user?._id,
     setCurrentMicIssue,
+    startNativeMicrophone,
     status,
-    stopNativeMicrophone,
     syncRoomParticipants,
     syncVoiceStateToServer,
   ])
@@ -1916,6 +1926,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => ({
       channelId,
       status,
+      connectionPhase,
+      localVoiceReady,
       micEnabled,
       micPublishing,
       micIssue,
@@ -1952,11 +1964,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [
       cameraEnabled,
       channelId,
+      connectionPhase,
       deafened,
       focusedMediaId,
       join,
       leave,
       liveChannelParticipants,
+      localVoiceReady,
       micEnabled,
       micIssue,
       micPublishing,

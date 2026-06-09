@@ -25,6 +25,7 @@ struct StartCommand {
   float input_volume = 1.0f;
   bool voice_gate_enabled = true;
   float voice_gate_threshold_db = -28.0f;
+  bool muted = false;
 };
 
 std::string jsonEscape(const std::string& value);

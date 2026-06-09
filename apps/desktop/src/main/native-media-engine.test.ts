@@ -31,6 +31,10 @@ describe('native media engine entrypoint', () => {
       IPC.mediaStartSession,
       expect.any(Function),
     )
+    expect(ipcMain.handle).toHaveBeenCalledWith(
+      IPC.mediaSetMicrophoneMuted,
+      expect.any(Function),
+    )
     expect(ipcMain.handle).not.toHaveBeenCalledWith(
       expect.stringContaining('start-screen-share'),
       expect.any(Function),
@@ -220,7 +224,7 @@ describe('native media engine entrypoint', () => {
     })
   })
 
-  it('builds microphone start command from session options', async () => {
+  it('builds microphone connect command from session options', async () => {
     const { buildNativeMediaStartCommand } = await import('./native-media-engine')
 
     expect(
@@ -242,7 +246,7 @@ describe('native media engine entrypoint', () => {
         () => null,
       ),
     ).toMatchObject({
-      cmd: 'start',
+      cmd: 'connect_microphone',
       sessionId: 'mic-session-1',
       sessionKind: 'microphone',
       deviceId: 'default',
@@ -458,11 +462,33 @@ describe('native media engine entrypoint', () => {
     expect(engineSource).toContain('export function prewarmNativeMediaEngineHelper')
     expect(engineSource).toContain("cmd: 'warm_microphone'")
     expect(engineSource).toContain('takePrewarmedMediaEngineHelper()')
+    expect(engineSource).toContain('queueMicrophoneWarmupRestart()')
+    expect(engineSource).toContain('microphoneWarmupEnabled = false')
     expect(engineSource).toContain(
       "kind === 'microphone'",
     )
     expect(indexSource).toContain('prewarmNativeMediaEngineHelper()')
     expect(indexSource).toContain('disposePrewarmedNativeMediaEngineHelper()')
+  })
+
+  it('disconnects native microphone publishing without stopping the persistent capture helper', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const stopBody = source.match(
+      /function stopMediaEngineSession[\s\S]*?function stopMediaEngineHelper/,
+    )?.[0]
+
+    expect(stopBody).toBeDefined()
+    expect(stopBody).toContain("'disconnect_microphone'")
+    expect(stopBody).toContain('keepMicrophoneHelperWarmed(session.helper)')
+    expect(stopBody).not.toContain(
+      "const shouldResumeMicrophoneWarmup = session.startOptions.kind === 'microphone'",
+    )
+    expect(stopBody).not.toContain(
+      'prewarmNativeMediaEngineHelper({ allowDuringMicrophoneSession: true })',
+    )
   })
 
   it('does not reuse the prewarmed microphone helper for screen sessions', () => {
@@ -478,6 +504,48 @@ describe('native media engine entrypoint', () => {
     expect(spawnBody).toContain("kind === 'microphone'")
     expect(spawnBody).toContain('takePrewarmedMediaEngineHelper()')
     expect(spawnBody).toContain(': spawnNativeMediaEngineProcess(kind)')
+  })
+
+  it('routes native microphone mute through a helper command without stopping the session', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const nativeSource = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/microphone_publisher.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    expect(source).toContain('function setNativeMicrophoneMuted')
+    expect(source).toContain("cmd: 'set_microphone_muted'")
+    expect(source).toContain('IPC.mediaSetMicrophoneMuted')
+    expect(nativeSource).toContain('commandMatches(line, "set_microphone_muted")')
+    expect(nativeSource).toContain('audio_track->mute()')
+    expect(nativeSource).toContain('audio_track->unmute()')
+  })
+
+  it('keeps the native microphone engine alive across warm, connect, and disconnect commands', () => {
+    const mainSource = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/main.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+    const nativeSource = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/microphone_publisher.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    expect(mainSource).toContain('runMicrophonePublisher(command)')
+    expect(mainSource).not.toContain('stopMicrophoneWarmup();\n        runMicrophonePublisher(command)')
+    expect(nativeSource).toContain('commandMatches(line, "connect_microphone")')
+    expect(nativeSource).toContain('commandMatches(line, "disconnect_microphone")')
+    expect(nativeSource).toContain('disconnectMicrophoneRoom')
+    expect(nativeSource).not.toContain('g_running.store(false);\n      break;\n    }\n    if (commandMatches(line, "set_microphone_muted"))')
   })
 
   it('starts screen video capture before publishing the LiveKit screen track', () => {
