@@ -48,6 +48,7 @@ target_link_libraries(syrnike-native-voice-win PRIVATE
   Shell32
   Mmdevapi
   avrt
+  runtimeobject
 )
 
 target_compile_definitions(syrnike-native-voice-win PRIVATE

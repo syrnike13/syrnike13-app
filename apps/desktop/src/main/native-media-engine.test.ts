@@ -651,6 +651,33 @@ describe('native media engine entrypoint', () => {
     expect(source).toContain('session.IsBorderRequired(false)')
   })
 
+  it('links WinRT runtime libraries required by Windows Graphics Capture', () => {
+    const source = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/CMakeLists.txt', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    expect(source).toContain('runtimeobject')
+  })
+
+  it('runs native C++ tests in the Windows PR workflow after building the helper', () => {
+    const workflow = readFileSync(
+      fileURLToPath(
+        new URL('../../../../.github/workflows/native-media-windows.yml', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    const buildIndex = workflow.indexOf('Build native voice helper')
+    const testIndex = workflow.indexOf('ctest --test-dir apps/desktop/native/native-voice-win/build')
+
+    expect(buildIndex).toBeGreaterThanOrEqual(0)
+    expect(testIndex).toBeGreaterThan(buildIndex)
+    expect(workflow).toContain('--output-on-failure')
+  })
+
   it('passes the desktop window handle when listing native display sources', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
