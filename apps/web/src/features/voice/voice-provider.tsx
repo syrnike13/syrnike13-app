@@ -132,8 +132,13 @@ import {
   type StageMediaItem,
   type StageMediaTrackEntry,
   type StageMediaTrackSource,
+  stageMediaItemId,
 } from '#/features/voice/voice-stage-media'
-import { setStageScreenSubscription } from '#/features/voice/voice-stage-subscription'
+import {
+  applyStageScreenPublicationSubscription,
+  setStageScreenSubscription,
+  shouldSubscribeStageScreen,
+} from '#/features/voice/voice-stage-subscription'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected'
@@ -341,6 +346,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const nativeMicrophoneRef = useRef<NativeMicrophoneSession | null>(null)
   const nativeMicrophoneMutedRef = useRef(false)
   const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
+  const watchedRemoteScreenIdsRef = useRef<Set<string>>(new Set())
   const audioElementsRef = useRef<HTMLAudioElement[]>([])
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
@@ -492,6 +498,29 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const applyRemoteScreenParticipantSubscription = useCallback(
+    (participant: RemoteParticipant, subscribed?: boolean) => {
+      const mediaId = stageMediaItemId(
+        baseVoiceIdentity(participant.identity),
+        'screen',
+      )
+      const nextSubscribed =
+        subscribed ??
+        shouldSubscribeStageScreen({
+          isLocal: false,
+          mediaId,
+          watchedRemoteScreenIds: watchedRemoteScreenIdsRef.current,
+        })
+
+      for (const publication of participant.trackPublications.values()) {
+        applyStageScreenPublicationSubscription(publication, nextSubscribed)
+      }
+
+      return nextSubscribed
+    },
+    [],
+  )
+
   const syncStageMediaItems = useCallback(
     (room: Room) => {
       const excludedNativeScreenIdentity = stoppedNativeScreenIdentityRef.current
@@ -510,18 +539,31 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const ingest = (
         userId: string,
         publication: StageMediaPublication | null | undefined,
+        isLocalPublication: boolean,
       ) => {
         if (!publication) return
         const source = stageMediaTrackSource(publication.source)
         if (!source) return
+        const normalizedUserId = baseVoiceIdentity(userId)
+        const mediaId = stageMediaItemId(normalizedUserId, source)
+        const subscribed =
+          source === 'screen'
+            ? shouldSubscribeStageScreen({
+                isLocal: isLocalPublication,
+                mediaId,
+                watchedRemoteScreenIds: watchedRemoteScreenIdsRef.current,
+              })
+            : publication.isSubscribed !== false
+        if (!isLocalPublication && source === 'screen') {
+          applyStageScreenPublicationSubscription(publication, subscribed)
+        }
         const track =
           publication.track?.kind === Track.Kind.Video
             ? (publication.track as VideoTrack)
             : null
-        const subscribed = publication.isSubscribed !== false
         if (source === 'camera' && (!track || !subscribed)) return
         tracks.push({
-          userId: baseVoiceIdentity(userId),
+          userId: normalizedUserId,
           source,
           track,
           publication,
@@ -531,13 +573,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
 
       for (const publication of room.localParticipant.trackPublications.values()) {
-        ingest(room.localParticipant.identity, publication)
+        ingest(room.localParticipant.identity, publication, true)
       }
 
       for (const participant of room.remoteParticipants.values()) {
         if (participant.identity === excludedNativeScreenIdentity) continue
+        applyRemoteScreenParticipantSubscription(participant)
         for (const publication of participant.trackPublications.values()) {
-          ingest(baseVoiceIdentity(participant.identity), publication)
+          ingest(participant.identity, publication, false)
         }
       }
 
@@ -553,9 +596,25 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isLocal: isVoiceLocalUserId(item.userId, authUserId, liveKitIdentity),
       }))
 
+      const visibleRemoteScreenIds = new Set(
+        items
+          .filter((item) => item.kind === 'screen' && !item.isLocal)
+          .map((item) => item.id),
+      )
+      for (const mediaId of Array.from(watchedRemoteScreenIdsRef.current)) {
+        if (!visibleRemoteScreenIds.has(mediaId)) {
+          watchedRemoteScreenIdsRef.current.delete(mediaId)
+        }
+      }
+
       setStageMediaItems(items)
     },
-    [auth.user?._id, setStageMediaItems, stageMediaFilters],
+    [
+      applyRemoteScreenParticipantSubscription,
+      auth.user?._id,
+      setStageMediaItems,
+      stageMediaFilters,
+    ],
   )
 
   const syncRoomParticipants = useCallback(() => {
@@ -761,6 +820,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       nativeMediaEngineStatsStore.reset()
     }
     stoppedNativeScreenIdentityRef.current = null
+    watchedRemoteScreenIdsRef.current.clear()
     const desktop = getSyrnikeDesktop()
     if (desktop?.platform.os === 'win32') {
       void desktop.media.disconnectPreparedScreenSession().catch(() => {})
@@ -1182,6 +1242,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (participant.isLocal) return
+        if (
+          publication.source === Track.Source.ScreenShare ||
+          publication.source === Track.Source.ScreenShareAudio
+        ) {
+          const subscribed = applyRemoteScreenParticipantSubscription(participant)
+          if (!subscribed) {
+            publication.setSubscribed?.(false)
+            track.detach().forEach(removeRemoteAudioElement)
+            onParticipantsChanged()
+            return
+          }
+        }
         if (track.kind === Track.Kind.Audio) {
           playTrack(track, publication, participant)
           return
@@ -1198,7 +1270,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
       room.on(RoomEvent.LocalTrackPublished, onParticipantsChanged)
       room.on(RoomEvent.LocalTrackUnpublished, onParticipantsChanged)
-      room.on(RoomEvent.TrackPublished, onParticipantsChanged)
+      room.on(RoomEvent.TrackPublished, (publication, participant) => {
+        if (!participant.isLocal) {
+          applyRemoteScreenParticipantSubscription(participant)
+        }
+        onParticipantsChanged()
+      })
       room.on(RoomEvent.TrackUnpublished, onParticipantsChanged)
       room.on(RoomEvent.TrackMuted, onParticipantsChanged)
       room.on(RoomEvent.TrackUnmuted, onParticipantsChanged)
@@ -1247,6 +1324,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       abortJoinAttempt,
       auth.user?._id,
       cleanupAudio,
+      applyRemoteScreenParticipantSubscription,
       syncMicFromRoom,
       syncRoomParticipants,
     ],
@@ -1406,6 +1484,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       )
       const action = setStageScreenSubscription(item, subscribed)
 
+      if (item?.kind === 'screen' && !item.isLocal) {
+        if (subscribed) {
+          watchedRemoteScreenIdsRef.current.add(mediaId)
+        } else {
+          watchedRemoteScreenIdsRef.current.delete(mediaId)
+        }
+
+        for (const participant of room.remoteParticipants.values()) {
+          if (baseVoiceIdentity(participant.identity) !== item.userId) continue
+          applyRemoteScreenParticipantSubscription(participant, subscribed)
+        }
+
+        syncStageMediaItems(room)
+        return
+      }
+
       if (action === 'stop-local-screen') {
         if (nativeScreenShareRef.current) {
           void stopNativeScreenShare()
@@ -1443,7 +1537,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         syncStageMediaItems(room)
       }
     },
-    [stopNativeScreenShare, syncRoomParticipants, syncStageMediaItems],
+    [
+      applyRemoteScreenParticipantSubscription,
+      stopNativeScreenShare,
+      syncRoomParticipants,
+      syncStageMediaItems,
+    ],
   )
 
   const toggleCamera = useCallback(() => {

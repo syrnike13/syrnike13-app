@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { setStageScreenSubscription } from '#/features/voice/voice-stage-subscription'
+import { Track } from 'livekit-client'
+
+import {
+  applyStageScreenPublicationSubscription,
+  setStageScreenSubscription,
+  shouldSubscribeStageScreen,
+} from '#/features/voice/voice-stage-subscription'
 import type { StageMediaItem } from '#/features/voice/voice-stage-media'
 
 function screenItem(
@@ -54,5 +60,84 @@ describe('setStageScreenSubscription', () => {
     )
 
     expect(action).toBe('none')
+  })
+})
+
+describe('shouldSubscribeStageScreen', () => {
+  it('keeps remote screen shares unsubscribed until the user opts in', () => {
+    expect(
+      shouldSubscribeStageScreen({
+        isLocal: false,
+        mediaId: 'remote-user:screen',
+        watchedRemoteScreenIds: new Set(),
+      }),
+    ).toBe(false)
+  })
+
+  it('keeps local screen shares subscribed', () => {
+    expect(
+      shouldSubscribeStageScreen({
+        isLocal: true,
+        mediaId: 'local-user:screen',
+        watchedRemoteScreenIds: new Set(),
+      }),
+    ).toBe(true)
+  })
+
+  it('subscribes remote screen shares after the user opts in', () => {
+    expect(
+      shouldSubscribeStageScreen({
+        isLocal: false,
+        mediaId: 'remote-user:screen',
+        watchedRemoteScreenIds: new Set(['remote-user:screen']),
+      }),
+    ).toBe(true)
+  })
+})
+
+describe('applyStageScreenPublicationSubscription', () => {
+  it('unsubscribes remote screen video publication', () => {
+    const setSubscribed = vi.fn()
+
+    applyStageScreenPublicationSubscription(
+      {
+        source: Track.Source.ScreenShare,
+        isSubscribed: true,
+        setSubscribed,
+      },
+      false,
+    )
+
+    expect(setSubscribed).toHaveBeenCalledWith(false)
+  })
+
+  it('unsubscribes remote screen audio publication', () => {
+    const setSubscribed = vi.fn()
+
+    applyStageScreenPublicationSubscription(
+      {
+        source: Track.Source.ScreenShareAudio,
+        isSubscribed: true,
+        setSubscribed,
+      },
+      false,
+    )
+
+    expect(setSubscribed).toHaveBeenCalledWith(false)
+  })
+
+  it('does not touch microphone publications', () => {
+    const setSubscribed = vi.fn()
+
+    applyStageScreenPublicationSubscription(
+      {
+        source: Track.Source.Microphone,
+        isSubscribed: true,
+        setSubscribed,
+      },
+      false,
+    )
+
+    expect(setSubscribed).not.toHaveBeenCalled()
   })
 })
