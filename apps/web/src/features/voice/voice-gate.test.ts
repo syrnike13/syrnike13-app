@@ -1,25 +1,46 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeVoiceGateThreshold, voiceGateOpen } from './voice-gate'
+import {
+  dbToRms,
+  gateDbToPosition,
+  normalizeVoiceGateThresholdDb,
+  positionToGateDb,
+  rmsToDb,
+} from './voice-gate-level'
+import { normalizeVoiceGateThreshold, voiceGateOpenDb } from './voice-gate'
 
-describe('normalizeVoiceGateThreshold', () => {
-  it('clamps threshold into the unit interval', () => {
-    expect(normalizeVoiceGateThreshold(2)).toBe(1)
-    expect(normalizeVoiceGateThreshold(-1)).toBe(0)
+describe('voiceGateOpenDb', () => {
+  it('is always open when gate is disabled', () => {
+    expect(voiceGateOpenDb(-40, -28, false)).toBe(true)
   })
 
-  it('uses the fallback for invalid values', () => {
-    expect(normalizeVoiceGateThreshold('bad', 0.04)).toBe(0.04)
+  it('opens when input level is at or above threshold', () => {
+    expect(voiceGateOpenDb(-28, -28, true)).toBe(true)
+    expect(voiceGateOpenDb(-29, -28, true)).toBe(false)
   })
 })
 
-describe('voiceGateOpen', () => {
-  it('stays open when the gate is disabled', () => {
-    expect(voiceGateOpen(0, 0.5, false)).toBe(true)
+describe('normalizeVoiceGateThreshold', () => {
+  it('clamps legacy linear thresholds', () => {
+    expect(normalizeVoiceGateThreshold(2)).toBe(1)
+    expect(normalizeVoiceGateThreshold(-1)).toBe(0)
+  })
+})
+
+describe('voice gate dB helpers', () => {
+  it('converts between rms and dB', () => {
+    const db = -28
+    expect(rmsToDb(dbToRms(db))).toBeCloseTo(db, 1)
   })
 
-  it('opens when level reaches the threshold', () => {
-    expect(voiceGateOpen(0.04, 0.04, true)).toBe(true)
-    expect(voiceGateOpen(0.039, 0.04, true)).toBe(false)
+  it('maps dB to bar positions', () => {
+    expect(gateDbToPosition(-60)).toBe(0)
+    expect(gateDbToPosition(0)).toBe(1)
+    expect(positionToGateDb(gateDbToPosition(-18))).toBe(-18)
+  })
+
+  it('normalizes threshold dB', () => {
+    expect(normalizeVoiceGateThresholdDb(-120)).toBe(-60)
+    expect(normalizeVoiceGateThresholdDb(12)).toBe(0)
   })
 })

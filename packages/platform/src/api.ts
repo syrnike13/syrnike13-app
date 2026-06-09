@@ -1,3 +1,17 @@
+import type {
+  NativeMediaDeviceInfo,
+  NativeMicrophoneRuntimeConfig,
+  NativeMicrophonePreviewSession,
+  NativeMicrophonePreviewStartOptions,
+  NativeMicrophoneMetricsEvent,
+  NativeMediaScreenSessionPrepareOptions,
+  NativeMediaSession,
+  NativeMediaSessionStartOptions,
+  NativeMediaState,
+  NativeMediaStateEvent,
+  NativeMediaStatsEvent,
+} from './media'
+
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
 
@@ -122,7 +136,7 @@ export type HotkeyActivationEvent = {
   phase: 'pressed' | 'released'
 }
 
-export type DesktopDisplayMediaSourceType = 'screen' | 'window'
+export type DesktopDisplayMediaSourceType = 'screen' | 'window' | 'game'
 
 export type DesktopDisplayMediaSource = {
   id: string
@@ -130,12 +144,45 @@ export type DesktopDisplayMediaSource = {
   type: DesktopDisplayMediaSourceType
   thumbnailDataUrl: string | null
   appIconDataUrl: string | null
+  processId?: number
+  processPath?: string
+  classification?: string
+  audioAvailable?: boolean
+  audioMode?: 'system_exclude' | 'process' | 'none'
 }
 
 export type DesktopDisplayMediaRequest = {
   id: string
   audioRequested: boolean
+  /** Видео идёт через нативный sidecar, не через desktopCapturer. */
+  nativeVideo?: boolean
 }
+
+export type DesktopDisplayMediaSelection = {
+  requestId: string
+  sourceId: string
+  audioRequested: boolean
+}
+
+export type {
+  NativeMediaEncoderBackend,
+  NativeMediaDeviceInfo,
+  NativeMediaFrameMethod,
+  NativeMediaFrameStats,
+  NativeMediaLoopbackMode,
+  NativeMediaSession,
+  NativeMediaSidecarLostEvent,
+  NativeMediaScreenSessionPrepareOptions,
+  NativeMediaSessionKind,
+  NativeMediaSessionStartOptions,
+  NativeMicrophonePreviewSession,
+  NativeMicrophonePreviewStartOptions,
+  NativeMediaScreenSessionStartOptions,
+  NativeMediaState,
+  NativeMediaStateEvent,
+  NativeMediaStatsEvent,
+  NativeMediaTarget,
+} from './media'
 
 /**
  * API, который preload пробрасывает в `window.syrnikeDesktop`.
@@ -182,10 +229,47 @@ export interface SyrnikeDesktopApi {
     onRecordedInput(handler: (event: NativeInputEvent) => void): () => void
     onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
   }
-  screenShare: {
-    getSources(requestId: string): Promise<DesktopDisplayMediaSource[]>
-    selectSource(requestId: string, sourceId: string): Promise<boolean>
+  media: {
+    getDisplaySources(requestId: string): Promise<DesktopDisplayMediaSource[]>
+    selectDisplaySource(
+      requestId: string,
+      sourceId: string,
+      audioRequested?: boolean,
+    ): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
+    openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
+    listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
+    startMicrophonePreview(
+      options: NativeMicrophonePreviewStartOptions,
+    ): Promise<NativeMicrophonePreviewSession>
+    stopMicrophonePreview(sessionId?: string): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
+    onDisplayPickerResolved(
+      handler: (payload: DesktopDisplayMediaSelection) => void,
+    ): () => void
+    prepareScreenSession(
+      options: NativeMediaScreenSessionPrepareOptions,
+    ): Promise<void>
+    disconnectPreparedScreenSession(): Promise<void>
+    startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
+    configureMicrophoneRuntime(
+      sessionId: string,
+      config: NativeMicrophoneRuntimeConfig,
+    ): Promise<void>
+    setMicrophoneMuted(sessionId: string, muted: boolean): Promise<void>
+    stopSession(sessionId?: string): Promise<void>
+    getState(): Promise<NativeMediaState>
+    onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
+    onMicrophoneMetrics(
+      handler: (event: NativeMicrophoneMetricsEvent) => void,
+    ): () => void
+    onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
+    onStreamEnded(handler: (sessionId: string) => void): () => void
+    onStreamError(
+      handler: (event: { sessionId: string; message: string }) => void,
+    ): () => void
+    onSidecarLost(
+      handler: (event: import('./media').NativeMediaSidecarLostEvent) => void,
+    ): () => void
   }
 }

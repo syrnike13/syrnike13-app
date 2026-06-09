@@ -1,5 +1,6 @@
 import { Room } from 'livekit-client'
 import { toast } from 'sonner'
+import type { CreateVoiceUserResponse } from '@syrnike13/api-types'
 
 import { joinChannelCall } from '#/features/api/voice-api'
 import { syncStore } from '#/features/sync/sync-store'
@@ -14,10 +15,44 @@ import {
   isRateLimitedError,
   runVoiceRequest,
 } from '#/features/voice/voice-request-gate'
+import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
 import { ApiError } from '#/lib/api/client'
 
 export type VoiceJoinOptions = {
   rejoin?: boolean
+}
+
+export type LiveKitNativeMediaKind = 'microphone' | 'screen' | 'camera'
+export type LiveKitNativePublisherCredentials = {
+  url: string
+  token: string
+  participantIdentity: string
+}
+export type LiveKitNativeCredentials = Record<
+  LiveKitNativeMediaKind,
+  LiveKitNativePublisherCredentials
+>
+
+export function nativeCredentialsFromJoinResponse(
+  credentials: CreateVoiceUserResponse,
+): LiveKitNativeCredentials {
+  return {
+    microphone: {
+      url: credentials.url,
+      token: credentials.native_microphone.token,
+      participantIdentity: credentials.native_microphone.identity,
+    },
+    screen: {
+      url: credentials.url,
+      token: credentials.native_screen.token,
+      participantIdentity: credentials.native_screen.identity,
+    },
+    camera: {
+      url: credentials.url,
+      token: credentials.native_camera.token,
+      participantIdentity: credentials.native_camera.identity,
+    },
+  }
 }
 
 export type VoiceJoinRunnerDeps = {
@@ -33,6 +68,8 @@ export type VoiceJoinRunnerDeps = {
   ) => void
   setActiveRoom: (room: Room) => void
   attachRoomHandlers: (room: Room) => void
+  setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
+  setConnectionPhase: (phase: VoiceConnectionPhase) => void
   onRoomConnected: (room: Room, channelId: string) => void
   onJoinSuccess: () => void
   abortJoin: () => void
@@ -88,9 +125,11 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         ]
       : []
 
+    deps.setConnectionPhase('joining_channel')
     deps.beginConnecting(targetChannelId, preview)
 
     try {
+      deps.setConnectionPhase('fetching_rtc_token')
       const credentials = await runVoiceRequest(
         `join_call:${targetChannelId}`,
         () => joinChannelCall(token, targetChannelId),
@@ -103,15 +142,19 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
 
       const { url, token: livekitToken } = credentials
       const room = new Room(createVoiceRoomOptions())
+      deps.setLiveKitCredentials(nativeCredentialsFromJoinResponse(credentials))
       deps.setActiveRoom(room)
       deps.attachRoomHandlers(room)
 
+      deps.setConnectionPhase('connecting_rtc')
       await room.connect(url, livekitToken)
 
+      deps.setConnectionPhase('connecting_microphone')
       deps.onRoomConnected(room, targetChannelId)
       deps.onJoinSuccess()
       return true
     } catch (error) {
+      deps.setConnectionPhase('failed')
       if (!options.rejoin) {
         deps.abortJoin()
         handleVoiceApiError(targetChannelId, error)

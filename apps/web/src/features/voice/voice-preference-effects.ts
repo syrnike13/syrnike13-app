@@ -16,10 +16,10 @@ export function voicePreferenceEffectFlags(
       previous.preferredAudioOutputDevice !== next.preferredAudioOutputDevice,
     micProcessingChanged:
       previous.echoCancellation !== next.echoCancellation ||
-      previous.noiseSuppression !== next.noiseSuppression ||
-      previous.autoGainControl !== next.autoGainControl ||
       previous.voiceGateEnabled !== next.voiceGateEnabled ||
-      previous.voiceGateThreshold !== next.voiceGateThreshold,
+      previous.voiceGateThresholdDb !== next.voiceGateThresholdDb ||
+      previous.voiceGateAutoThreshold !== next.voiceGateAutoThreshold ||
+      previous.inputVolume !== next.inputVolume,
     remoteAudioChanged:
       previous.outputVolume !== next.outputVolume ||
       previous.autoBalanceEnabled !== next.autoBalanceEnabled ||

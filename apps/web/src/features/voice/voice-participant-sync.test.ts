@@ -75,6 +75,35 @@ describe('liveKitChannelParticipants', () => {
 
     expect(liveKitChannelParticipants(room as never, true)).toEqual([])
   })
+
+  it('ignores explicitly excluded native screen participants after local stop', () => {
+    const nativeIdentity = `${LOCAL_USER_ID}:desktop-native:native-screen-1`
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: false,
+        track: undefined,
+      }),
+      remoteParticipants: new Map([
+        [
+          nativeIdentity,
+          participant(nativeIdentity, {
+            screenShareTrack: {},
+          }),
+        ],
+      ]),
+    }
+
+    expect(
+      liveKitChannelParticipants(room as never, true, {
+        excludedParticipantIdentities: new Set([nativeIdentity]),
+      }),
+    ).toMatchObject([
+      {
+        id: LOCAL_USER_ID,
+        screensharing: false,
+      },
+    ])
+  })
 })
 
 describe('syncLiveKitRoomParticipants', () => {
@@ -205,6 +234,93 @@ describe('syncLiveKitRoomParticipants', () => {
     ).toMatchObject({
       server_muted: true,
       server_deafened: true,
+    })
+  })
+
+  it('merges desktop native microphone participant into the base user', () => {
+    syncStore.reset()
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: false,
+        track: undefined,
+      }),
+      remoteParticipants: new Map([
+        [
+          `${LOCAL_USER_ID}:desktop-native`,
+          participant(`${LOCAL_USER_ID}:desktop-native`),
+        ],
+      ]),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(Object.keys(syncStore.getState().voiceParticipants[CHANNEL_ID] ?? {}))
+      .toEqual([LOCAL_USER_ID])
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[LOCAL_USER_ID],
+    ).toMatchObject({
+      id: LOCAL_USER_ID,
+      is_publishing: true,
+    })
+  })
+
+  it('merges session-scoped desktop native participant into the base user', () => {
+    syncStore.reset()
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: false,
+        track: undefined,
+      }),
+      remoteParticipants: new Map([
+        [
+          `${LOCAL_USER_ID}:desktop-native:native-screen-1`,
+          participant(`${LOCAL_USER_ID}:desktop-native:native-screen-1`, {
+            screenShareTrack: {},
+          }),
+        ],
+      ]),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(Object.keys(syncStore.getState().voiceParticipants[CHANNEL_ID] ?? {}))
+      .toEqual([LOCAL_USER_ID])
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[LOCAL_USER_ID],
+    ).toMatchObject({
+      id: LOCAL_USER_ID,
+      screensharing: true,
+    })
+  })
+
+  it('keeps native screen share enabled before the remote track is attached', () => {
+    syncStore.reset()
+
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: false,
+        track: undefined,
+      }),
+      remoteParticipants: new Map([
+        [
+          `${LOCAL_USER_ID}:desktop-native:native-screen-1`,
+          participant(`${LOCAL_USER_ID}:desktop-native:native-screen-1`, {
+            isScreenShareEnabled: true,
+            screenShareTrack: null,
+          }),
+        ],
+      ]),
+    }
+
+    syncLiveKitRoomParticipants(CHANNEL_ID, room as never, true)
+
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[LOCAL_USER_ID],
+    ).toMatchObject({
+      id: LOCAL_USER_ID,
+      screensharing: true,
     })
   })
 })

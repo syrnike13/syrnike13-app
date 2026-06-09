@@ -1,8 +1,13 @@
 import type {
-  NoiseSuppressionMode,
+  ScreenShareCaptureMode,
   ScreenShareCodec,
   ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
+import {
+  DEFAULT_VOICE_GATE_THRESHOLD_DB,
+  linearThresholdToDb,
+  normalizeVoiceGateThresholdDb,
+} from '#/features/voice/voice-gate-level'
 
 const STORAGE_KEY = 'syrnike13-voice-preferences'
 
@@ -17,15 +22,15 @@ export type VoicePreferenceState = {
   inputVolume: number
   outputVolume: number
   echoCancellation: boolean
-  noiseSuppression: NoiseSuppressionMode
-  autoGainControl: boolean
   voiceGateEnabled: boolean
-  voiceGateThreshold: number
+  voiceGateThresholdDb: number
+  voiceGateAutoThreshold: boolean
   autoBalanceEnabled: boolean
   autoBalanceStrength: number
   screenShareQuality: ScreenShareQualityName
   screenShareCodec: ScreenShareCodec
   screenShareAudio: boolean
+  screenShareCaptureMode: ScreenShareCaptureMode
 }
 
 export type VoiceJoinPreferences = Pick<
@@ -33,21 +38,31 @@ export type VoiceJoinPreferences = Pick<
   'micEnabled' | 'deafened'
 >
 
+export function defaultScreenShareQuality(): ScreenShareQualityName {
+  if (
+    typeof window !== 'undefined' &&
+    window.syrnikeDesktop?.platform.os === 'win32'
+  ) {
+    return 'high60'
+  }
+  return 'low'
+}
+
 const DEFAULT_STATE: VoicePreferenceState = {
   micEnabled: true,
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
   echoCancellation: true,
-  noiseSuppression: 'browser',
-  autoGainControl: true,
-  voiceGateEnabled: false,
-  voiceGateThreshold: 0.04,
+  voiceGateEnabled: true,
+  voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
+  voiceGateAutoThreshold: true,
   autoBalanceEnabled: false,
   autoBalanceStrength: 0.5,
-  screenShareQuality: 'low',
+  screenShareQuality: defaultScreenShareQuality(),
   screenShareCodec: 'auto',
   screenShareAudio: true,
+  screenShareCaptureMode: 'auto',
 }
 
 export function effectiveVoiceJoinPreferences(
@@ -59,15 +74,6 @@ export function effectiveVoiceJoinPreferences(
   }
 }
 
-function parseNoiseSuppression(value: unknown): NoiseSuppressionMode {
-  if (value === 'disabled' || value === 'browser' || value === 'enhanced') {
-    return value
-  }
-  if (value === true) return 'browser'
-  if (value === false) return 'disabled'
-  return DEFAULT_STATE.noiseSuppression
-}
-
 function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
   if (
     value === 'low' ||
@@ -77,7 +83,7 @@ function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
   ) {
     return value
   }
-  return DEFAULT_STATE.screenShareQuality
+  return defaultScreenShareQuality()
 }
 
 function parseScreenShareCodec(value: unknown): ScreenShareCodec {
@@ -85,19 +91,39 @@ function parseScreenShareCodec(value: unknown): ScreenShareCodec {
   return DEFAULT_STATE.screenShareCodec
 }
 
+export function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureMode {
+  if (value === 'native' || value === 'auto') {
+    return value
+  }
+  return DEFAULT_STATE.screenShareCaptureMode
+}
+
 function clampUnitInterval(value: unknown, fallback: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(1, Math.max(0, Number(value.toFixed(3))))
+}
+
+function parseVoiceGateThresholdDb(parsed: Record<string, unknown>) {
+  if (typeof parsed.voiceGateThresholdDb === 'number') {
+    return normalizeVoiceGateThresholdDb(parsed.voiceGateThresholdDb)
+  }
+  if (typeof parsed.voiceGateThreshold === 'number') {
+    return linearThresholdToDb(parsed.voiceGateThreshold)
+  }
+  return DEFAULT_STATE.voiceGateThresholdDb
 }
 
 function loadState(): VoicePreferenceState {
   if (typeof window === 'undefined') return DEFAULT_STATE
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return DEFAULT_STATE
-    const parsed = JSON.parse(raw) as Partial<VoicePreferenceState> & {
-      noiseSupression?: unknown
+    if (!raw) {
+      return {
+        ...DEFAULT_STATE,
+        screenShareQuality: defaultScreenShareQuality(),
+      }
     }
+    const parsed = JSON.parse(raw) as Partial<VoicePreferenceState>
     return {
       micEnabled:
         typeof parsed.micEnabled === 'boolean'
@@ -135,21 +161,12 @@ function loadState(): VoicePreferenceState {
         typeof parsed.echoCancellation === 'boolean'
           ? parsed.echoCancellation
           : DEFAULT_STATE.echoCancellation,
-      noiseSuppression: parseNoiseSuppression(
-        parsed.noiseSuppression ?? parsed.noiseSupression,
-      ),
-      autoGainControl:
-        typeof parsed.autoGainControl === 'boolean'
-          ? parsed.autoGainControl
-          : DEFAULT_STATE.autoGainControl,
-      voiceGateEnabled:
-        typeof parsed.voiceGateEnabled === 'boolean'
-          ? parsed.voiceGateEnabled
-          : DEFAULT_STATE.voiceGateEnabled,
-      voiceGateThreshold: clampUnitInterval(
-        parsed.voiceGateThreshold,
-        DEFAULT_STATE.voiceGateThreshold,
-      ),
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: parseVoiceGateThresholdDb(parsed),
+      voiceGateAutoThreshold:
+        typeof parsed.voiceGateAutoThreshold === 'boolean'
+          ? parsed.voiceGateAutoThreshold
+          : DEFAULT_STATE.voiceGateAutoThreshold,
       autoBalanceEnabled:
         typeof parsed.autoBalanceEnabled === 'boolean'
           ? parsed.autoBalanceEnabled
@@ -164,6 +181,9 @@ function loadState(): VoicePreferenceState {
         typeof parsed.screenShareAudio === 'boolean'
           ? parsed.screenShareAudio
           : DEFAULT_STATE.screenShareAudio,
+      screenShareCaptureMode: parseScreenShareCaptureMode(
+        parsed.screenShareCaptureMode,
+      ),
     }
   } catch {
     return DEFAULT_STATE
@@ -250,25 +270,20 @@ export const voicePreferenceStore = {
     if (state.echoCancellation === echoCancellation) return
     patch({ echoCancellation })
   },
-  setNoiseSuppression: (noiseSuppression: NoiseSuppressionMode) => {
-    if (state.noiseSuppression === noiseSuppression) return
-    patch({ noiseSuppression })
-  },
-  setAutoGainControl: (autoGainControl: boolean) => {
-    if (state.autoGainControl === autoGainControl) return
-    patch({ autoGainControl })
-  },
   setVoiceGateEnabled: (voiceGateEnabled: boolean) => {
     if (state.voiceGateEnabled === voiceGateEnabled) return
     patch({ voiceGateEnabled })
   },
-  setVoiceGateThreshold: (voiceGateThreshold: number) => {
-    const next = clampUnitInterval(
-      voiceGateThreshold,
-      DEFAULT_STATE.voiceGateThreshold,
-    )
-    if (state.voiceGateThreshold === next) return
-    patch({ voiceGateThreshold: next })
+  setVoiceGateThresholdDb: (voiceGateThresholdDb: number) => {
+    const next = normalizeVoiceGateThresholdDb(voiceGateThresholdDb)
+    if (state.voiceGateThresholdDb === next && !state.voiceGateAutoThreshold) {
+      return
+    }
+    patch({ voiceGateThresholdDb: next, voiceGateAutoThreshold: false })
+  },
+  setVoiceGateAutoThreshold: (voiceGateAutoThreshold: boolean) => {
+    if (state.voiceGateAutoThreshold === voiceGateAutoThreshold) return
+    patch({ voiceGateAutoThreshold })
   },
   setAutoBalanceEnabled: (autoBalanceEnabled: boolean) => {
     if (state.autoBalanceEnabled === autoBalanceEnabled) return
@@ -293,6 +308,10 @@ export const voicePreferenceStore = {
   setScreenShareAudio: (screenShareAudio: boolean) => {
     if (state.screenShareAudio === screenShareAudio) return
     patch({ screenShareAudio })
+  },
+  setScreenShareCaptureMode: (screenShareCaptureMode: ScreenShareCaptureMode) => {
+    if (state.screenShareCaptureMode === screenShareCaptureMode) return
+    patch({ screenShareCaptureMode })
   },
 }
 

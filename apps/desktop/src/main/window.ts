@@ -17,7 +17,7 @@ const desktopContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline' https://js.hcaptcha.com https://*.hcaptcha.com",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://js.hcaptcha.com https://*.hcaptcha.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' https: data: blob:",
@@ -40,6 +40,8 @@ function installContentSecurityPolicy() {
       responseHeaders: {
         ...responseHeaders,
         'Content-Security-Policy': [desktopContentSecurityPolicy],
+        'Cross-Origin-Opener-Policy': ['same-origin'],
+        'Cross-Origin-Embedder-Policy': ['credentialless'],
       },
     })
   })

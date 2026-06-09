@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
 import { Button } from '#/components/ui/button'
 import { Label } from '#/components/ui/label'
+import { Switch } from '#/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -15,10 +17,12 @@ import {
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import {
+  SCREEN_SHARE_CAPTURE_MODE_LABELS,
   SCREEN_SHARE_QUALITY_LABELS,
-  type NoiseSuppressionMode,
+  type ScreenShareCaptureMode,
   type ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
+import { usePlatform } from '#/platform/use-platform'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import {
   VOICE_OUTPUT_VOLUME_MAX,
@@ -26,9 +30,15 @@ import {
 } from '#/features/voice/voice-preference-store'
 import { formatUserVolumeLabel } from '#/features/voice/voice-listener-store'
 import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
+import { useMicPreviewLoopback } from '#/features/voice/use-mic-preview-loopback'
+import { useVoice } from '#/features/voice/voice-provider'
+import { useVoiceGateMeter } from '#/features/voice/use-voice-gate-meter'
+import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
+import {
+  DEFAULT_VOICE_GATE_THRESHOLD_DB,
+  VOICE_GATE_DB_MIN,
+} from '#/features/voice/voice-gate-level'
 import { cn } from '#/lib/utils'
-
-const METER_BAR_COUNT = 32
 
 function volumeToSlider(volume: number) {
   return Math.round((volume / VOICE_OUTPUT_VOLUME_MAX) * 100)
@@ -129,116 +139,18 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
   )
 }
 
-function useMicTestMeter(
-  active: boolean,
-  deviceId: string | undefined,
-  inputVolume: number,
-) {
-  const [levels, setLevels] = useState(() =>
-    Array.from({ length: METER_BAR_COUNT }, () => 0),
-  )
-  const streamRef = useRef<MediaStream | null>(null)
-  const contextRef = useRef<AudioContext | null>(null)
-  const gainRef = useRef<GainNode | null>(null)
-  const frameRef = useRef(0)
-
-  useEffect(() => {
-    if (gainRef.current) {
-      gainRef.current.gain.value = inputVolume
-    }
-  }, [inputVolume])
-
-  useEffect(() => {
-    if (!active) {
-      setLevels(Array.from({ length: METER_BAR_COUNT }, () => 0))
-      return
-    }
-
-    let cancelled = false
-    const samples = new Uint8Array(512)
-
-    void (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: deviceId ? { exact: deviceId } : undefined,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-        })
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop())
-          return
-        }
-
-        const context = new AudioContext()
-        const source = context.createMediaStreamSource(stream)
-        const gain = context.createGain()
-        const analyser = context.createAnalyser()
-        analyser.fftSize = 512
-        gain.gain.value = inputVolume
-        source.connect(gain)
-        gain.connect(analyser)
-
-        streamRef.current = stream
-        contextRef.current = context
-        gainRef.current = gain
-
-        const tick = () => {
-          if (cancelled) return
-          analyser.getByteTimeDomainData(samples)
-          let sum = 0
-          for (const sample of samples) {
-            const centered = (sample - 128) / 128
-            sum += centered * centered
-          }
-          const rms = Math.sqrt(sum / samples.length)
-          const level = Math.min(1, rms * 6)
-
-          setLevels((current) =>
-            current.map((previous, index) => {
-              const wave = 0.65 + ((index % 7) + 1) / 14
-              const target = level * wave
-              return previous * 0.45 + target * 0.55
-            }),
-          )
-          frameRef.current = requestAnimationFrame(tick)
-        }
-
-        frameRef.current = requestAnimationFrame(tick)
-      } catch {
-        if (!cancelled) {
-          setLevels(Array.from({ length: METER_BAR_COUNT }, () => 0))
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(frameRef.current)
-      gainRef.current = null
-      streamRef.current?.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
-      void contextRef.current?.close()
-      contextRef.current = null
-    }
-  }, [active, deviceId])
-
-  return levels
-}
-
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
+  const { capabilities } = usePlatform()
+  const { setSelfMonitoringActive } = useVoice()
+  const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
-  const videoDevices = useMediaDevices('videoinput')
   const [micTestActive, setMicTestActive] = useState(false)
   const av1Supported = isAv1ScreenShareSupported()
 
   useEffect(() => {
     void ensureMediaDevicePermission('audio')
-    void ensureMediaDevicePermission('video')
   }, [])
 
   useEffect(() => {
@@ -247,20 +159,43 @@ export function SettingsVoicePanel() {
     }
   }, [av1Supported, prefs.screenShareCodec])
 
+  useEffect(() => {
+    setSelfMonitoringActiveRef.current = setSelfMonitoringActive
+  }, [setSelfMonitoringActive])
+
+  useEffect(() => {
+    setSelfMonitoringActiveRef.current(micTestActive)
+    return () => {
+      setSelfMonitoringActiveRef.current(false)
+    }
+  }, [micTestActive])
+
   const inputValue = prefs.preferredAudioInputDevice ?? 'default'
   const outputValue = prefs.preferredAudioOutputDevice ?? 'default'
-  const videoValue = prefs.preferredVideoDevice ?? 'default'
   const micTestDeviceId =
     inputValue === 'default' ? undefined : inputValue
-  const meterLevels = useMicTestMeter(
+  const micTestOutputDeviceId =
+    outputValue === 'default' ? undefined : outputValue
+  const gateMetricsRef = useRef<VoiceGateMetrics>({
+    inputDb: VOICE_GATE_DB_MIN,
+    thresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
+    open: false,
+  })
+  const meterLevels = useMicPreviewLoopback(
     micTestActive,
     micTestDeviceId,
-    prefs.inputVolume,
+    micTestOutputDeviceId,
+    gateMetricsRef,
+  )
+  useVoiceGateMeter(
+    !micTestActive,
+    micTestDeviceId,
+    gateMetricsRef,
   )
 
   return (
     <div className="space-y-8">
-      <section className="space-y-4">
+      <section className="space-y-4 border-b border-border/60 pb-8">
         <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Устройства
         </h3>
@@ -309,55 +244,61 @@ export function SettingsVoicePanel() {
           </div>
         </div>
 
-        <DeviceSelect
-          label="Камера"
-          devices={videoDevices}
-          value={videoValue}
-          onChange={(deviceId) => {
-            voicePreferenceStore.setPreferredVideoDevice(
-              deviceId === 'default' ? undefined : deviceId,
-            )
-          }}
-        />
-
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            size="sm"
-            variant={micTestActive ? 'secondary' : 'default'}
-            className="shrink-0"
-            onClick={() => setMicTestActive((value) => !value)}
-          >
-            {micTestActive ? 'Остановить' : 'Проверка микрофона'}
-          </Button>
-          <MicInputMeter levels={meterLevels} />
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              variant={micTestActive ? 'secondary' : 'default'}
+              className="shrink-0"
+              onClick={() => setMicTestActive((value) => !value)}
+            >
+              {micTestActive ? 'Остановить' : 'Проверка микрофона'}
+            </Button>
+            <MicInputMeter levels={meterLevels} />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {micTestActive
+              ? 'Слышите обработанный сигнал с выбранного микрофона — как в голосовом канале. Лучше в наушниках.'
+              : 'Воспроизведёт обработанный сигнал через выбранный вывод.'}
+          </p>
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="space-y-4 border-b border-border/60 pb-8">
         <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Обработка звука
         </h3>
-        <div className="space-y-2">
-          <Label>Шумоподавление</Label>
-          <Select
-            value={prefs.noiseSuppression}
-            onValueChange={(value) =>
-              voicePreferenceStore.setNoiseSuppression(
-                value as NoiseSuppressionMode,
-              )
+
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                Автоматическая чувствительность
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Регулирует, сколько звука передаётся с микрофона. Порог
+                подстраивается по тишине, а не по голосу.
+              </p>
+            </div>
+            <Switch
+              checked={prefs.voiceGateAutoThreshold}
+              onCheckedChange={(checked) =>
+                voicePreferenceStore.setVoiceGateAutoThreshold(checked)
+              }
+            />
+          </div>
+
+          <VoiceGateSensitivityBar
+            metricsRef={gateMetricsRef}
+            thresholdDb={prefs.voiceGateThresholdDb}
+            auto={prefs.voiceGateAutoThreshold}
+            onThresholdChange={(thresholdDb) =>
+              voicePreferenceStore.setVoiceGateThresholdDb(thresholdDb)
             }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="disabled">Выключено</SelectItem>
-              <SelectItem value="browser">Браузер</SelectItem>
-              <SelectItem value="enhanced">Усиленное (RNNoise)</SelectItem>
-            </SelectContent>
-          </Select>
+          />
         </div>
+
         <label className="flex cursor-pointer items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -367,50 +308,8 @@ export function SettingsVoicePanel() {
               voicePreferenceStore.setEchoCancellation(event.target.checked)
             }
           />
-          Эхоподавление браузера
+          Эхоподавление
         </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-input accent-primary"
-            checked={prefs.autoGainControl}
-            onChange={(event) =>
-              voicePreferenceStore.setAutoGainControl(event.target.checked)
-            }
-          />
-          Автоматическая регулировка усиления (AGC)
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-input accent-primary"
-            checked={prefs.voiceGateEnabled}
-            onChange={(event) =>
-              voicePreferenceStore.setVoiceGateEnabled(event.target.checked)
-            }
-          />
-          Гейт микрофона
-        </label>
-        <div className="space-y-2">
-          <Label htmlFor="voice-gate-threshold">Порог гейта</Label>
-          <input
-            id="voice-gate-threshold"
-            type="range"
-            min={0}
-            max={0.2}
-            step={0.005}
-            value={prefs.voiceGateThreshold}
-            onChange={(event) => {
-              voicePreferenceStore.setVoiceGateThreshold(
-                Number(event.target.value),
-              )
-            }}
-            className="w-full accent-primary"
-          />
-          <p className="text-sm text-muted-foreground">
-            {formatUserVolumeLabel(prefs.voiceGateThreshold)}
-          </p>
-        </div>
       </section>
 
       <section className="space-y-4">
@@ -441,6 +340,34 @@ export function SettingsVoicePanel() {
             </SelectContent>
           </Select>
         </div>
+        {capabilities.nativeScreenShare ? (
+          <div className="space-y-2">
+            <Label>Захват экрана</Label>
+            <Select
+              value={prefs.screenShareCaptureMode}
+              onValueChange={(value) =>
+                voicePreferenceStore.setScreenShareCaptureMode(
+                  value as ScreenShareCaptureMode,
+                )
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(
+                  Object.keys(
+                    SCREEN_SHARE_CAPTURE_MODE_LABELS,
+                  ) as ScreenShareCaptureMode[]
+                ).map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {SCREEN_SHARE_CAPTURE_MODE_LABELS[name]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <label
           className={cn(
             'flex items-center gap-2 text-sm',
@@ -474,6 +401,13 @@ export function SettingsVoicePanel() {
           />
           Передавать звук с экрана по умолчанию
         </label>
+        {!capabilities.nativeScreenShare ? (
+          <p className="text-xs text-muted-foreground">
+            В браузере звук экрана может дублировать голоса участников. В
+            desktop-приложении Windows захват исключает звук Syrnike и
+            передаётся в стерео.
+          </p>
+        ) : null}
       </section>
 
       <section className="space-y-3">

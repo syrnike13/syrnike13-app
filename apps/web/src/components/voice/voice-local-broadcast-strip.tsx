@@ -1,6 +1,6 @@
 import { MonitorXIcon, VideoOffIcon } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 
 import { Button } from '#/components/ui/button'
 import {
@@ -15,9 +15,25 @@ import {
   readScreenShareBroadcastSource,
   screenShareBroadcastIcon,
 } from '#/features/voice/voice-broadcast-source'
+import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { useVoice } from '#/features/voice/voice-provider'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
+
+function captureMethodLabel(method: string | undefined) {
+  switch (method) {
+    case 'wgc':
+      return 'WGC'
+    case 'dxgi':
+      return 'DXGI'
+    case 'gdi_blt':
+      return 'GDI BitBlt'
+    case 'gdi_print':
+      return 'GDI PrintWindow'
+    default:
+      return method
+  }
+}
 
 function BroadcastStrip({
   sourceLabel,
@@ -78,6 +94,11 @@ function BroadcastStrip({
 
 function useLocalScreenShareSource() {
   const voice = useVoice()
+  const nativeStats = useSyncExternalStore(
+    nativeMediaEngineStatsStore.subscribe,
+    nativeMediaEngineStatsStore.getState,
+    nativeMediaEngineStatsStore.getState,
+  )
 
   return useMemo(() => {
     if (!voice.screenShareEnabled) return null
@@ -86,8 +107,22 @@ function useLocalScreenShareSource() {
       (entry) => entry.isLocal && entry.kind === 'screen',
     )
 
-    return readScreenShareBroadcastSource(item?.track?.mediaStreamTrack)
-  }, [voice.screenShareEnabled, voice.stageMediaItems])
+    const source = readScreenShareBroadcastSource(item?.track?.mediaStreamTrack)
+    if (nativeStats.backend !== 'native') {
+      return {
+        ...source,
+        label: `${source.label} · Браузерный`,
+      }
+    }
+
+    const methodSuffix = nativeStats.activeMethod
+      ? ` · ${captureMethodLabel(nativeStats.activeMethod)}`
+      : ''
+    return {
+      ...source,
+      label: `${source.label} · Нативный${methodSuffix}`,
+    }
+  }, [voice.screenShareEnabled, voice.stageMediaItems, nativeStats])
 }
 
 function useLocalCameraSourceLabel() {

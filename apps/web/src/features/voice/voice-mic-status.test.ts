@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
   describeMicDeviceError,
+  isVoiceConnectionReady,
   isMicVisuallyMuted,
   MIC_BLOCKED_WITHOUT_ERROR,
   shouldResetMicPreferenceOnIssue,
+  voiceConnectionPhaseLabel,
 } from '#/features/voice/voice-mic-status'
 
 describe('describeMicDeviceError', () => {
@@ -42,6 +44,44 @@ describe('isMicVisuallyMuted', () => {
         micPublishing: false,
       }),
     ).toBe(false)
+  })
+})
+
+describe('isVoiceConnectionReady', () => {
+  it('waits for local voice setup after the LiveKit room connects', () => {
+    expect(
+      isVoiceConnectionReady({
+        status: 'connected',
+        localVoiceReady: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('reports ready when the room and local voice setup are both ready', () => {
+    expect(
+      isVoiceConnectionReady({
+        status: 'connected',
+        localVoiceReady: true,
+      }),
+    ).toBe(true)
+  })
+})
+
+describe('voiceConnectionPhaseLabel', () => {
+  it('uses specific connection stage labels', () => {
+    expect(voiceConnectionPhaseLabel('joining_channel')).toBe(
+      'Подключение к каналу…',
+    )
+    expect(voiceConnectionPhaseLabel('fetching_rtc_token')).toBe(
+      'Получение RTC-сессии…',
+    )
+    expect(voiceConnectionPhaseLabel('connecting_rtc')).toBe(
+      'Подключение к RTC…',
+    )
+    expect(voiceConnectionPhaseLabel('connecting_microphone')).toBe(
+      'Подключение голосового потока…',
+    )
+    expect(voiceConnectionPhaseLabel('connected')).toBe('Голос подключён')
   })
 })
 

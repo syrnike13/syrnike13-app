@@ -1,0 +1,37 @@
+name: Native Media Windows
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/native-media-windows.yml
+      - apps/desktop/native/native-voice-win/**
+      - apps/desktop/src/main/native-media-engine*
+      - apps/web/src/features/voice/**
+      - packages/platform/src/media*
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-voice:
+    name: Native voice helper
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test desktop media TypeScript contract
+        run: pnpm desktop:typecheck
+      - name: Test web voice native media boundary
+        run: pnpm --filter @syrnike13/web exec vitest run --root ../.. apps/web/src/features/voice/native-screen-share-audio-bridge.test.ts apps/web/src/features/voice/native-microphone-publish.test.ts apps/web/src/features/voice/use-media-devices.test.ts apps/web/src/features/voice/voice-mic-preview.test.ts apps/web/src/features/voice/voice-mic-processor.test.ts apps/web/src/features/voice/voice-mic-processing.test.ts apps/web/src/features/voice/voice-capture.test.ts apps/desktop/src/main/native-media-engine.test.ts apps/desktop/src/main/native-media-engine-sidecar.test.ts packages/platform/src/media.test.ts packages/platform/src/ipc.test.ts
+      - name: Build native voice helper
+        run: pnpm --filter @syrnike13/desktop run build:native-voice
+      - name: Test native voice helper
+        run: ctest --test-dir apps/desktop/native/native-voice-win/build -C Release --output-on-failure

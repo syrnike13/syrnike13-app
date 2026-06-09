@@ -6,38 +6,16 @@ import {
 } from 'livekit-client'
 
 import { voiceAudioProcessingConstraints } from '#/features/voice/voice-capture'
-import { applyVoiceGateProcessor } from '#/features/voice/voice-gate-runtime'
+import {
+  createMicProcessorConfigFromPrefs,
+  micProcessingNeeded,
+  SYRNIKE_MIC_PROCESSOR_NAME,
+  SyrnikeMicProcessor,
+} from '#/features/voice/voice-mic-processor'
 import {
   readVoicePreferences,
   type VoicePreferenceState,
 } from '#/features/voice/voice-preference-store'
-
-type DenoiseProcessor = Awaited<
-  ReturnType<typeof createDenoiseProcessor>
->
-
-let processor: DenoiseProcessor | null = null
-let processorLoad: Promise<DenoiseProcessor | null> | null = null
-
-async function createDenoiseProcessor() {
-  const { DenoiseTrackProcessor } = await import('livekit-rnnoise-processor')
-  return new DenoiseTrackProcessor()
-}
-
-/** RNNoise только в браузере — пакет ломает Node SSR (ESM без расширений). */
-async function loadDenoiseProcessor() {
-  if (typeof window === 'undefined') return null
-  if (processor) return processor
-  if (!processorLoad) {
-    processorLoad = createDenoiseProcessor()
-      .then((instance) => {
-        processor = instance
-        return instance
-      })
-      .catch(() => null)
-  }
-  return processorLoad
-}
 
 async function applyMicCaptureConstraints(
   audioTrack: LocalAudioTrack,
@@ -64,28 +42,32 @@ export async function applyMicProcessing(participant: LocalParticipant) {
 
   await applyMicCaptureConstraints(audioTrack, prefs)
 
-  const gateApplied = await applyVoiceGateProcessor(
-    audioTrack,
-    prefs.voiceGateEnabled,
-    prefs.voiceGateThreshold,
-  )
-  if (gateApplied) return
+  const config = createMicProcessorConfigFromPrefs(prefs, 'live')
+  const current = audioTrack.getProcessor()
 
-  if (prefs.noiseSuppression === 'enhanced') {
-    const denoise = await loadDenoiseProcessor()
-    if (denoise) {
+  if (!micProcessingNeeded(config)) {
+    if (current?.name === SYRNIKE_MIC_PROCESSOR_NAME) {
       try {
-        await audioTrack.setProcessor(denoise)
+        await audioTrack.stopProcessor()
       } catch {
-        // fallback: leave browser constraints only
+        // no processor attached
       }
     }
-  } else {
+    return
+  }
+
+  if (current?.name === SYRNIKE_MIC_PROCESSOR_NAME) {
     try {
       await audioTrack.stopProcessor()
     } catch {
       // no processor attached
     }
+  }
+
+  try {
+    await audioTrack.setProcessor(new SyrnikeMicProcessor(config))
+  } catch (error) {
+    console.warn('[voice] setProcessor failed', error)
   }
 }
 

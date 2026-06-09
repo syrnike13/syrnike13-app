@@ -11,6 +11,7 @@ import {
   participantMicPublishing,
   remoteParticipantVoiceFlags,
 } from '#/features/voice/voice-participant-media'
+import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 
 function participantState(
   userId: string,
@@ -50,7 +51,7 @@ function localVoiceState(
 
 function remoteVoiceState(participant: RemoteParticipant): UserVoiceState {
   const media = remoteParticipantVoiceFlags(participant)
-  return participantState(participant.identity, {
+  return participantState(baseVoiceIdentity(participant.identity), {
     isPublishing: participantMicPublishing(participant),
     isReceiving: true,
     camera: media.camera,
@@ -63,6 +64,9 @@ function remoteVoiceState(participant: RemoteParticipant): UserVoiceState {
 export function liveKitChannelParticipants(
   room: Room,
   isReceiving: boolean,
+  options: {
+    excludedParticipantIdentities?: ReadonlySet<string>
+  } = {},
 ): UserVoiceState[] {
   const merged = new Map<string, UserVoiceState>()
 
@@ -73,9 +77,19 @@ export function liveKitChannelParticipants(
   }
 
   for (const remote of room.remoteParticipants.values()) {
-    if (!isValidVoiceUserId(remote.identity)) continue
+    if (options.excludedParticipantIdentities?.has(remote.identity)) continue
+    const userId = baseVoiceIdentity(remote.identity)
+    if (!isValidVoiceUserId(userId)) continue
     const state = remoteVoiceState(remote)
-    merged.set(state.id, state)
+    const current = merged.get(state.id)
+    merged.set(state.id, {
+      ...current,
+      ...state,
+      is_publishing: Boolean(current?.is_publishing || state.is_publishing),
+      is_receiving: current?.is_receiving ?? state.is_receiving,
+      camera: Boolean(current?.camera || state.camera),
+      screensharing: Boolean(current?.screensharing || state.screensharing),
+    })
   }
 
   return [...merged.values()]
@@ -86,8 +100,11 @@ export function syncLiveKitRoomParticipants(
   channelId: string,
   room: Room,
   isReceiving: boolean,
+  options: {
+    excludedParticipantIdentities?: ReadonlySet<string>
+  } = {},
 ) {
-  const fromRoom = liveKitChannelParticipants(room, isReceiving)
+  const fromRoom = liveKitChannelParticipants(room, isReceiving, options)
   const syncState = syncStore.getState()
   const localUserId = isValidVoiceUserId(room.localParticipant.identity)
     ? room.localParticipant.identity

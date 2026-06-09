@@ -1292,8 +1292,13 @@ export interface components {
       /**
        * Format: uint
        * @description Maximium amount of users allowed in the voice channel at once
-       */
+      */
       max_users?: number | null;
+      /**
+       * Format: uint32
+       * @description Opus audio bitrate used by microphone and screen share audio in this channel, in kbps
+       */
+      audio_bitrate_kbps?: number | null;
     };
     /** @description Mutual friends, servers, groups and DMs response */
     MutualResponse: {

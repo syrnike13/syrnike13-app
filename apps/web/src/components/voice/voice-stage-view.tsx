@@ -291,7 +291,11 @@ export function VoiceStageView({
             auth.user,
           )}
           dimmed={connecting && isLocal}
-          speaking={inThisVoiceCall && voice.speakingUserIds.has(item.userId)}
+          speaking={
+            inThisVoiceCall &&
+            item.kind !== 'screen' &&
+            voice.speakingUserIds.has(item.userId)
+          }
           variant={variant}
           onFocus={focusMedia}
           onSetSubscribed={voice.setStageMediaSubscribed}

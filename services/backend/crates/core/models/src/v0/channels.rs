@@ -3,6 +3,8 @@ use super::{File, UserVoiceState};
 
 use std::collections::{HashMap, HashSet};
 use syrnike_permissions::{Override, OverrideField};
+#[cfg(feature = "validator")]
+use validator::Validate;
 
 #[cfg(feature = "rocket")]
 use rocket::FromForm;
@@ -127,6 +129,11 @@ auto_derived!(
         #[cfg_attr(feature = "validator", validate(range(min = 1)))]
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub max_users: Option<usize>,
+
+        /// Opus audio bitrate used by microphone and screen share audio in this channel, in kbps
+        #[cfg_attr(feature = "validator", validate(range(min = 8, max = 96)))]
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub audio_bitrate_kbps: Option<u32>,
     }
 
     /// Partial representation of a channel
@@ -193,6 +200,7 @@ auto_derived!(
         pub archived: Option<bool>,
 
         /// Voice Information for voice channels
+        #[cfg_attr(feature = "validator", validate)]
         pub voice: Option<VoiceInformation>,
 
         /// The channel's slow mode delay in seconds, up to 6 hours
@@ -256,6 +264,7 @@ auto_derived!(
         pub nsfw: Option<bool>,
 
         /// Voice Information for when this channel is also a voice channel
+        #[cfg_attr(feature = "validator", validate)]
         #[serde(skip_serializing_if = "Option::is_none")]
         pub voice: Option<VoiceInformation>,
     }
@@ -357,5 +366,74 @@ impl Channel {
             Channel::SavedMessages { .. } => Some("Saved Messages"),
             Channel::TextChannel { name, .. } | Channel::Group { name, .. } => Some(name),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use validator::Validate;
+
+    use super::{DataEditChannel, VoiceInformation};
+
+    #[test]
+    fn voice_audio_bitrate_accepts_discord_like_range() {
+        assert!(
+            VoiceInformation {
+                max_users: None,
+                audio_bitrate_kbps: Some(8),
+            }
+            .validate()
+            .is_ok()
+        );
+        assert!(
+            VoiceInformation {
+                max_users: None,
+                audio_bitrate_kbps: Some(96),
+            }
+            .validate()
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn voice_audio_bitrate_rejects_values_outside_range() {
+        assert!(
+            VoiceInformation {
+                max_users: None,
+                audio_bitrate_kbps: Some(7),
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            VoiceInformation {
+                max_users: None,
+                audio_bitrate_kbps: Some(97),
+            }
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn channel_edit_validates_nested_voice_audio_bitrate() {
+        assert!(
+            DataEditChannel {
+                name: None,
+                description: None,
+                owner: None,
+                icon: None,
+                nsfw: None,
+                archived: None,
+                voice: Some(VoiceInformation {
+                    max_users: None,
+                    audio_bitrate_kbps: Some(97),
+                }),
+                slowmode: None,
+                remove: Vec::new(),
+            }
+            .validate()
+            .is_err()
+        );
     }
 }

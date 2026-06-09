@@ -8,22 +8,30 @@ import { formatVoicePingLabel } from '#/features/voice/voice-ping'
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { useSyncStore } from '#/features/sync/sync-store'
+import {
+  isVoiceConnectionReady,
+  voiceConnectionPhaseLabel,
+} from '#/features/voice/voice-mic-status'
 import { useVoice } from '#/features/voice/voice-provider'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 const VOICE_STATUS_CONNECTED = {
-  label: 'Голос подключён',
   accent: 'text-[#23a559]',
   icon: 'text-[#23a559]',
   iconBg: 'bg-[#23a559]/15',
 } as const
 
 const VOICE_STATUS_CONNECTING = {
-  label: 'Подключение…',
   accent: 'text-[#f0b232]',
   icon: 'text-[#f0b232]',
   iconBg: 'bg-[#f0b232]/15',
+} as const
+
+const VOICE_STATUS_FAILED = {
+  accent: 'text-[#ed4245]',
+  icon: 'text-[#ed4245]',
+  iconBg: 'bg-[#ed4245]/15',
 } as const
 
 export function VoiceConnectionStrip() {
@@ -55,8 +63,17 @@ export function VoiceConnectionStrip() {
     ? `${server.name} / ${channelLabel}`
     : channelLabel
 
-  const connected = voice.status === 'connected'
-  const status = connected ? VOICE_STATUS_CONNECTED : VOICE_STATUS_CONNECTING
+  const connected = isVoiceConnectionReady({
+    status: voice.status,
+    localVoiceReady: voice.localVoiceReady,
+  })
+  const status =
+    voice.connectionPhase === 'failed'
+      ? VOICE_STATUS_FAILED
+      : connected
+        ? VOICE_STATUS_CONNECTED
+        : VOICE_STATUS_CONNECTING
+  const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase)
   const pingLabel = formatVoicePingLabel(voice.voicePingMs, connected)
 
   return (
@@ -101,7 +118,7 @@ export function VoiceConnectionStrip() {
 
         <div className="min-w-0 flex-1">
           <p className={cn('text-xs font-semibold leading-4', status.accent)}>
-            {status.label}
+            {statusLabel}
           </p>
           <Link
             to="/app/c/$channelId"

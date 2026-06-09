@@ -123,6 +123,9 @@ auto_derived!(
         /// Maximium amount of users allowed in the voice channel at once
         #[serde(skip_serializing_if = "Option::is_none")]
         pub max_users: Option<usize>,
+        /// Opus audio bitrate used by microphone and screen share audio in this channel, in kbps
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub audio_bitrate_kbps: Option<u32>,
     }
 );
 

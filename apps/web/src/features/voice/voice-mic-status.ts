@@ -1,4 +1,28 @@
 export type VoiceStatus = 'idle' | 'connecting' | 'connected'
+export type VoiceConnectionPhase =
+  | 'idle'
+  | 'joining_channel'
+  | 'fetching_rtc_token'
+  | 'connecting_rtc'
+  | 'connecting_microphone'
+  | 'connected'
+  | 'reconnecting'
+  | 'failed'
+
+const voiceConnectionPhaseLabels = {
+  idle: 'Не подключён',
+  joining_channel: 'Подключение к каналу…',
+  fetching_rtc_token: 'Получение RTC-сессии…',
+  connecting_rtc: 'Подключение к RTC…',
+  connecting_microphone: 'Подключение голосового потока…',
+  connected: 'Голос подключён',
+  reconnecting: 'Переподключение к голосу…',
+  failed: 'Ошибка подключения',
+} as const satisfies Record<VoiceConnectionPhase, string>
+
+export function voiceConnectionPhaseLabel(phase: VoiceConnectionPhase) {
+  return voiceConnectionPhaseLabels[phase]
+}
 
 export function isVoiceSessionInChannel(
   voice: { channelId: string | null; status: VoiceStatus },
@@ -8,6 +32,13 @@ export function isVoiceSessionInChannel(
     voice.channelId === channelId &&
     (voice.status === 'connected' || voice.status === 'connecting')
   )
+}
+
+export function isVoiceConnectionReady(options: {
+  status: VoiceStatus
+  localVoiceReady: boolean
+}) {
+  return options.status === 'connected' && options.localVoiceReady
 }
 
 export type VoiceMicIssue = {

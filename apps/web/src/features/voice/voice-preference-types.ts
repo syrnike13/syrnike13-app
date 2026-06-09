@@ -1,8 +1,16 @@
-export type NoiseSuppressionMode = 'disabled' | 'browser' | 'enhanced'
-
 export type ScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
 
 export type ScreenShareCodec = 'auto' | 'av1'
+
+export type ScreenShareCaptureMode = 'auto' | 'native'
+
+export const SCREEN_SHARE_CAPTURE_MODE_LABELS: Record<
+  ScreenShareCaptureMode,
+  string
+> = {
+  auto: 'Авто (нативный на Windows)',
+  native: 'Нативный (Windows)',
+}
 
 export const SCREEN_SHARE_QUALITY_LABELS: Record<
   ScreenShareQualityName,

@@ -4,7 +4,7 @@
 
 **Goal:** Add conservative, testable voice quality controls for microphone gate and listener-side auto balance.
 
-**Architecture:** Keep processing client-side. Store new preferences in the existing voice preference store, expose controls in the existing voice settings panel, and make audio math deterministic before any runtime DSP wiring.
+**Architecture:** Keep web fallback processing client-side. Windows desktop microphone capture and enhanced denoise are owned by the native Rust media engine with DeepFilterNet3. Store new preferences in the existing voice preference store, expose controls in the existing voice settings panel, and make audio math deterministic before any runtime DSP wiring.
 
 **Tech Stack:** React, TypeScript, Vitest, LiveKit client, browser audio element volume controls.
 
@@ -46,7 +46,7 @@
 - [ ] When gate is enabled and RMS remains below threshold, call `audioTrack.mute()`.
 - [ ] When RMS rises above threshold, call `audioTrack.unmute()`.
 - [ ] Stop the controller when microphone is disabled, track is missing, or gate is disabled.
-- [ ] Keep RNNoise/browser processing behavior unchanged.
+- [x] Do not reintroduce RNNoise; Windows desktop enhanced denoise must remain DeepFilterNet3 in the native media engine.
 - [ ] Run `pnpm --filter @syrnike13/web build`.
 
 ### Task 4: Remote Auto Balance Math

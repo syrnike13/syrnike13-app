@@ -14,6 +14,13 @@ import {
   type DesktopDisplayMediaSourceType,
 } from '@syrnike13/platform'
 
+import {
+  clearPendingNativePicker,
+  getPendingNativePicker,
+  listNativeDisplaySources,
+  setPendingNativePicker,
+} from './native-media-engine'
+
 type DisplayMediaHandler = NonNullable<
   Parameters<Session['setDisplayMediaRequestHandler']>[0]
 >
@@ -33,6 +40,10 @@ const DISPLAY_MEDIA_THUMBNAIL_SIZE = { width: 320, height: 180 }
 let mediaPermissionsInstalledForOrigin: string | null = null
 let displayMediaIpcRegistered = false
 let pendingDisplayMediaRequest: PendingDisplayMediaRequest | null = null
+
+function isScreenCaptureSource(sourceId: string) {
+  return sourceId.startsWith('screen:')
+}
 
 function originFromUrl(value: string | null | undefined) {
   if (!value) return null
@@ -63,7 +74,14 @@ export function shouldGrantDesktopMediaPermission(
 export function displayMediaSourceTypeFromId(
   id: string,
 ): DesktopDisplayMediaSourceType {
+  if (id.startsWith('game:')) return 'game'
   return id.startsWith('screen:') ? 'screen' : 'window'
+}
+
+export function shouldAllowBrowserDisplayMediaFallback(
+  platform: NodeJS.Platform,
+) {
+  return platform !== 'win32'
 }
 
 function requestOrigin(details: {
@@ -73,7 +91,7 @@ function requestOrigin(details: {
   return details.securityOrigin || details.requestingUrl
 }
 
-function isTrustedSender(
+export function isTrustedSender(
   event: IpcMainInvokeEvent,
   getWindow: () => BrowserWindow | null,
 ) {
@@ -94,7 +112,7 @@ function cancelPendingDisplayMediaRequest() {
   pending.callback({})
 }
 
-function serializeDisplayMediaSource(
+export function serializeDisplayMediaSource(
   source: DesktopCapturerSource,
 ): DesktopDisplayMediaSource {
   return {
@@ -111,20 +129,41 @@ function serializeDisplayMediaSource(
   }
 }
 
-async function refreshPendingDisplayMediaSources(requestId: string) {
-  const pending = pendingDisplayMediaRequest
-  if (!pending || pending.id !== requestId) return []
-
+async function loadSourcesForRequest(
+  requestId: string,
+  sourcesRef: { sources: DesktopCapturerSource[] },
+) {
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
     thumbnailSize: DISPLAY_MEDIA_THUMBNAIL_SIZE,
     fetchWindowIcons: true,
   })
-  pending.sources = sources
+  sourcesRef.sources = sources
   return sources.map(serializeDisplayMediaSource)
 }
 
-function selectPendingDisplayMediaSource(requestId: string, sourceId: string) {
+async function refreshPendingDisplayMediaSources(requestId: string) {
+  const pending = pendingDisplayMediaRequest
+  if (!pending || pending.id !== requestId) return []
+  return loadSourcesForRequest(requestId, pending)
+}
+
+async function refreshPendingNativePickerSources(
+  requestId: string,
+  getWindow: () => BrowserWindow | null,
+) {
+  const pending = getPendingNativePicker()
+  if (!pending || pending.id !== requestId) return []
+  const sources = await listNativeDisplaySources(getWindow)
+  pending.sources = sources
+  return sources
+}
+
+function selectPendingDisplayMediaSource(
+  requestId: string,
+  sourceId: string,
+  nativeVideoOnly = false,
+) {
   const pending = pendingDisplayMediaRequest
   if (!pending || pending.id !== requestId) return false
 
@@ -133,9 +172,11 @@ function selectPendingDisplayMediaSource(requestId: string, sourceId: string) {
 
   clearPendingDisplayMediaRequest()
   pending.callback({
-    video: source,
+    video: nativeVideoOnly ? undefined : source,
     audio:
-      pending.audioRequested && process.platform === 'win32'
+      pending.audioRequested &&
+      process.platform === 'win32' &&
+      isScreenCaptureSource(sourceId)
         ? 'loopback'
         : undefined,
   })
@@ -146,21 +187,64 @@ export function registerDisplayMediaIpc(getWindow: () => BrowserWindow | null) {
   if (displayMediaIpcRegistered) return
   displayMediaIpcRegistered = true
 
-  ipcMain.handle(IPC.screenShareGetSources, (event, requestId: string) => {
+  ipcMain.handle(IPC.mediaGetDisplaySources, async (event, requestId: string) => {
     if (!isTrustedSender(event, getWindow)) return []
+    const nativePending = getPendingNativePicker()
+    if (nativePending?.id === requestId) {
+      return refreshPendingNativePickerSources(requestId, getWindow)
+    }
     return refreshPendingDisplayMediaSources(requestId)
   })
 
   ipcMain.handle(
-    IPC.screenShareSelectSource,
-    (event, requestId: string, sourceId: string) => {
+    IPC.mediaSelectDisplaySource,
+    async (
+      event,
+      requestId: string,
+      sourceId: string,
+      audioRequested?: boolean,
+    ) => {
       if (!isTrustedSender(event, getWindow)) return false
+
+      const nativePending = getPendingNativePicker()
+      if (nativePending?.id === requestId) {
+        const source = nativePending.sources.find(
+          (candidate) => candidate.id === sourceId,
+        )
+        if (!source) return false
+
+        clearPendingNativePicker()
+
+        const win = getWindow()
+        if (!win || win.isDestroyed()) return false
+
+        const selectedAudioRequested =
+          (typeof audioRequested === 'boolean'
+            ? audioRequested
+            : nativePending.audioRequested) &&
+          source.audioAvailable !== false
+
+        win.webContents.send(IPC.mediaDisplayPickerResolved, {
+          requestId,
+          sourceId,
+          audioRequested: selectedAudioRequested,
+        })
+        return true
+      }
+
       return selectPendingDisplayMediaSource(requestId, sourceId)
     },
   )
 
-  ipcMain.handle(IPC.screenShareCancelRequest, (event, requestId: string) => {
+  ipcMain.handle(IPC.mediaCancelRequest, async (event, requestId: string) => {
     if (!isTrustedSender(event, getWindow)) return
+
+    const nativePending = getPendingNativePicker()
+    if (nativePending?.id === requestId) {
+      clearPendingNativePicker()
+      return
+    }
+
     const pending = pendingDisplayMediaRequest
     if (!pending || pending.id !== requestId) return
     cancelPendingDisplayMediaRequest()
@@ -193,6 +277,11 @@ export function installMediaPermissions(
   )
 
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (!shouldAllowBrowserDisplayMediaFallback(process.platform)) {
+      callback({})
+      return
+    }
+
     if (!isAllowedMediaOrigin(loadUrl, request.securityOrigin)) {
       callback({})
       return
@@ -209,6 +298,7 @@ export function installMediaPermissions(
     const displayRequest: DesktopDisplayMediaRequest = {
       id: crypto.randomUUID(),
       audioRequested: Boolean(request.audioRequested),
+      nativeVideo: false,
     }
 
     pendingDisplayMediaRequest = {
@@ -221,6 +311,6 @@ export function installMediaPermissions(
       ),
     }
 
-    win.webContents.send(IPC.screenShareRequest, displayRequest)
+    win.webContents.send(IPC.mediaRequest, displayRequest)
   })
 }

@@ -22,6 +22,13 @@ import {
   editChannel,
 } from '#/features/api/channels-api'
 import { getChannelDescription } from '#/lib/channel-meta'
+import {
+  buildVoiceChannelAudioBitratePatch,
+  channelAudioBitrateKbps,
+  MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+  MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+} from '#/lib/channel-audio-bitrate'
+import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { pickDefaultChannelId } from '#/features/sync/selectors'
 import { syncStore } from '#/features/sync/sync-store'
 
@@ -50,13 +57,18 @@ export function ChannelSettingsDialog({
   const [description, setDescription] = useState(
     getChannelDescription(channel) ?? '',
   )
+  const [audioBitrateKbps, setAudioBitrateKbps] = useState(() =>
+    channelAudioBitrateKbps(channel),
+  )
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const voiceChannel = isServerVoiceChannel(channel)
 
   useEffect(() => {
     if (open) {
       setName(channel.name)
       setDescription(getChannelDescription(channel) ?? '')
+      setAudioBitrateKbps(channelAudioBitrateKbps(channel))
     }
   }, [channel, open])
 
@@ -69,8 +81,10 @@ export function ChannelSettingsDialog({
     const currentDescription = getChannelDescription(channel) ?? ''
     const nameChanged = trimmedName !== channel.name
     const descriptionChanged = trimmedDescription !== currentDescription
+    const audioBitrateChanged =
+      voiceChannel && audioBitrateKbps !== channelAudioBitrateKbps(channel)
 
-    if (!nameChanged && !descriptionChanged) {
+    if (!nameChanged && !descriptionChanged && !audioBitrateChanged) {
       setOpen(false)
       return
     }
@@ -81,6 +95,9 @@ export function ChannelSettingsDialog({
         ...(nameChanged ? { name: trimmedName } : {}),
         ...(descriptionChanged
           ? { description: trimmedDescription || null }
+          : {}),
+        ...(audioBitrateChanged
+          ? buildVoiceChannelAudioBitratePatch(channel, audioBitrateKbps)
           : {}),
       })
       syncStore.patchChannel(channel._id, updated)
@@ -181,6 +198,29 @@ export function ChannelSettingsDialog({
                 maxLength={1024}
                 placeholder="О чём этот канал"
                 onChange={(event) => setDescription(event.target.value)}
+              />
+            </div>
+          ) : null}
+          {voiceChannel ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="channel-audio-bitrate">
+                  Битрейт голосового канала
+                </Label>
+                <span className="text-muted-foreground text-sm tabular-nums">
+                  {audioBitrateKbps} kbps
+                </span>
+              </div>
+              <Input
+                id="channel-audio-bitrate"
+                type="range"
+                min={MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
+                max={MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS}
+                step={1}
+                value={audioBitrateKbps}
+                onChange={(event) =>
+                  setAudioBitrateKbps(Number(event.target.value))
+                }
               />
             </div>
           ) : null}

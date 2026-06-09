@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   appendRtcDebugSample,
@@ -6,6 +6,7 @@ import {
   deriveRtcRates,
   RTC_DEBUG_BROWSER_UNAVAILABLE,
 } from './voice-rtc-debug'
+import { nativeMediaEngineStatsStore } from './native-media-engine-stats'
 
 function statsReport(records: Array<Record<string, unknown>>) {
   const map = new Map(records.map((record) => [record.id as string, record]))
@@ -54,6 +55,10 @@ function roomWithPublisherAndSubscriberStats({
 }
 
 describe('voice rtc debug', () => {
+  beforeEach(() => {
+    nativeMediaEngineStatsStore.reset()
+  })
+
   it('collects transport, outbound, inbound, and screen share diagnostics from RTC stats', async () => {
     const snapshot = await collectVoiceRtcDebugSnapshot(
       roomWithStats([
@@ -197,6 +202,82 @@ describe('voice rtc debug', () => {
       captureWidth: 1920,
       captureHeight: 1080,
       hybridDxgiFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+    })
+  })
+
+  it('uses native helper dimensions for local native screen share diagnostics', async () => {
+    nativeMediaEngineStatsStore.setNative(
+      { wgc: 60, dxgi: 0, gdi_blt: 0, gdi_print: 0 },
+      'wgc',
+      {
+        mode: 'process',
+        loopbackMode: 'include_target_process_tree',
+        targetProcessId: 777,
+      },
+      {
+        width: 1920,
+        height: 1038,
+        fps: 60,
+        bitrate: 8_000_000,
+        publishedVideo: true,
+        publishedAudio: true,
+        audioFrames: 96_000,
+        audioPackets: 100,
+        audioPeakDb: -6.5,
+        audioRmsDb: -18.25,
+        videoFrames: 120,
+        videoIntervalFrames: 60,
+        videoLateFrames: 0,
+        videoAvgCaptureUs: 3200,
+      },
+    )
+
+    const snapshot = await collectVoiceRtcDebugSnapshot(
+      roomWithStats([]),
+      [
+        {
+          id: 'user:screen',
+          userId: 'user',
+          kind: 'screen',
+          source: 'screen',
+          isLocal: true,
+          subscribed: true,
+          live: true,
+          track: {
+            mediaStreamTrack: {
+              getSettings: () => ({
+                width: 1920,
+                height: 1080,
+                frameRate: 30,
+              }),
+            },
+          },
+        },
+      ] as never,
+      1_000,
+    )
+
+    expect(snapshot.screenShares[0]).toMatchObject({
+      captureBackend: 'native',
+      captureMethod: 'wgc',
+      captureVideoPublished: true,
+      captureAudioPublished: true,
+      captureWidth: 1920,
+      captureHeight: 1038,
+      captureFrameRate: 60,
+      captureBitrate: 8_000_000,
+      captureVideoFrames: 120,
+      captureVideoIntervalFrames: 60,
+      captureVideoLateFrames: 0,
+      captureVideoAvgCaptureUs: 3200,
+      captureAudioMode: 'process',
+      captureAudioLoopbackMode: 'include_target_process_tree',
+      captureAudioTargetProcessId: 777,
+      captureAudioFrames: 96_000,
+      captureAudioPackets: 100,
+      captureAudioPeakDb: -6.5,
+      captureAudioRmsDb: -18.25,
+      hybridGraphicsCaptureFrames: 60,
     })
   })
 

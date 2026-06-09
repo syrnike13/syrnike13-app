@@ -1415,6 +1415,7 @@ impl From<VoiceInformation> for crate::VoiceInformation {
     fn from(value: VoiceInformation) -> Self {
         crate::VoiceInformation {
             max_users: value.max_users,
+            audio_bitrate_kbps: value.audio_bitrate_kbps,
         }
     }
 }
@@ -1423,6 +1424,7 @@ impl From<crate::VoiceInformation> for VoiceInformation {
     fn from(value: crate::VoiceInformation) -> Self {
         VoiceInformation {
             max_users: value.max_users,
+            audio_bitrate_kbps: value.audio_bitrate_kbps,
         }
     }
 }

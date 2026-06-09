@@ -31,7 +31,7 @@ export function UserContextMenuVoiceControls({
         onClick={(event) => event.stopPropagation()}
       >
         <ContextMenuLabel className="px-0 pb-2 text-xs text-muted-foreground">
-          Громкость пользователя
+          Громкость голоса
         </ContextMenuLabel>
         <div className="flex items-center gap-2">
           <Slider
@@ -57,7 +57,7 @@ export function UserContextMenuVoiceControls({
         }}
       >
         <VolumeXIcon />
-        Заглушить для меня
+        Заглушить голос
       </ContextMenuCheckboxItem>
       <ContextMenuSeparator />
     </>

@@ -375,10 +375,23 @@ function ScreenShareSection({
               <MetricRow label="Max Framerate" value={formatRtcFps(share.maxFramerate)} />
               <MetricRow label="Simulcast" value={formatRtcValue(share.simulcast)} />
               <MetricRow label="Degradation Preference" value={share.degradationPreference ?? '—'} />
-              <MetricRow label="Hybrid DXGI Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
-              <MetricRow label="Hybrid GDI BitBlt Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
-              <MetricRow label="Hybrid GDI PrintWindow Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
-              <MetricRow label="Hybrid Graphics Capture Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
+              <MetricRow label="Capture Backend" value={share.captureBackend ?? '—'} />
+              <MetricRow
+                label="Hybrid DXGI Frames"
+                value={formatHybridFrameCount(share.hybridDxgiFrames)}
+              />
+              <MetricRow
+                label="Hybrid GDI BitBlt Frames"
+                value={formatHybridFrameCount(share.hybridGdiBitBltFrames)}
+              />
+              <MetricRow
+                label="Hybrid GDI PrintWindow Frames"
+                value={formatHybridFrameCount(share.hybridGdiPrintWindowFrames)}
+              />
+              <MetricRow
+                label="Hybrid Graphics Capture Frames"
+                value={formatHybridFrameCount(share.hybridGraphicsCaptureFrames)}
+              />
               <MetricRow label="Hybrid Videohook Frames" value={RTC_DEBUG_BROWSER_UNAVAILABLE} />
               <ScreenShareBitrateRows
                 shareId={share.id}
@@ -531,6 +544,12 @@ function DebugEmptyState() {
       </p>
     </div>
   )
+}
+
+function formatHybridFrameCount(
+  value: number | typeof RTC_DEBUG_BROWSER_UNAVAILABLE,
+) {
+  return typeof value === 'number' ? String(value) : value
 }
 
 function formatFrameSize(width?: number, height?: number) {
