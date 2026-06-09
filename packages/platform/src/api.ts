@@ -3,6 +3,7 @@ import type {
   NativeMicrophoneRuntimeConfig,
   NativeMicrophonePreviewSession,
   NativeMicrophonePreviewStartOptions,
+  NativeMediaScreenSessionPrepareOptions,
   NativeMediaSession,
   NativeMediaSessionStartOptions,
   NativeMediaState,
@@ -170,6 +171,7 @@ export type {
   NativeMediaLoopbackMode,
   NativeMediaSession,
   NativeMediaSidecarLostEvent,
+  NativeMediaScreenSessionPrepareOptions,
   NativeMediaSessionKind,
   NativeMediaSessionStartOptions,
   NativeMicrophonePreviewSession,
@@ -244,6 +246,10 @@ export interface SyrnikeDesktopApi {
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,
     ): () => void
+    prepareScreenSession(
+      options: NativeMediaScreenSessionPrepareOptions,
+    ): Promise<void>
+    disconnectPreparedScreenSession(): Promise<void>
     startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
     configureMicrophoneRuntime(
       sessionId: string,

@@ -567,6 +567,35 @@ describe('native media engine entrypoint', () => {
     expect(source).toContain('chooseScreenShareBitratePreset')
   })
 
+  it('unpublishes native screen tracks by stored publication SID instead of raw track SID', () => {
+    const source = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/screen_publisher.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    expect(source).toContain('#include "livekit/local_track_publication.h"')
+    expect(source).toContain('video_publication_sid')
+    expect(source).toContain('audio_publication_sid')
+    expect(source).toContain('video_track->publication()')
+    expect(source).toContain('audio_track->publication()')
+    expect(source).toContain('participant->unpublishTrack(track_sid)')
+    expect(source).not.toContain('participant->unpublishTrack(track->sid())')
+  })
+
+  it('waits for native screen stop acknowledgement before resolving stop IPC', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+
+    expect(source).toContain('const pendingStopResolvers')
+    expect(source).toContain('waitForMediaEngineSessionStopped(sessionId)')
+    expect(source).toContain('resolvePendingStop(event.session_id)')
+    expect(source).toContain('await stopPromise')
+  })
+
   it('requests borderless Windows Graphics Capture for window sessions when allowed', () => {
     const source = readFileSync(
       fileURLToPath(

@@ -75,6 +75,35 @@ describe('liveKitChannelParticipants', () => {
 
     expect(liveKitChannelParticipants(room as never, true)).toEqual([])
   })
+
+  it('ignores explicitly excluded native screen participants after local stop', () => {
+    const nativeIdentity = `${LOCAL_USER_ID}:desktop-native:native-screen-1`
+    const room = {
+      localParticipant: participant(LOCAL_USER_ID, {
+        isMicrophoneEnabled: false,
+        track: undefined,
+      }),
+      remoteParticipants: new Map([
+        [
+          nativeIdentity,
+          participant(nativeIdentity, {
+            screenShareTrack: {},
+          }),
+        ],
+      ]),
+    }
+
+    expect(
+      liveKitChannelParticipants(room as never, true, {
+        excludedParticipantIdentities: new Set([nativeIdentity]),
+      }),
+    ).toMatchObject([
+      {
+        id: LOCAL_USER_ID,
+        screensharing: false,
+      },
+    ])
+  })
 })
 
 describe('syncLiveKitRoomParticipants', () => {

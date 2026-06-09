@@ -17,6 +17,7 @@ import type {
   NativeMicrophonePreviewStartOptions,
   NativeMediaSession,
   NativeMediaSidecarLostEvent,
+  NativeMediaScreenSessionPrepareOptions,
   NativeMediaSessionStartOptions,
   NativeMediaState,
   NativeMediaStateEvent,
@@ -213,6 +214,12 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       return () => {
         ipcRenderer.removeListener(IPC.mediaDisplayPickerResolved, listener)
       }
+    },
+    prepareScreenSession(options: NativeMediaScreenSessionPrepareOptions) {
+      return ipcRenderer.invoke(IPC.mediaPrepareScreenSession, options)
+    },
+    disconnectPreparedScreenSession() {
+      return ipcRenderer.invoke(IPC.mediaDisconnectPreparedScreenSession)
     },
     startSession(options: NativeMediaSessionStartOptions) {
       return ipcRenderer.invoke(IPC.mediaStartSession, options) as Promise<NativeMediaSession>

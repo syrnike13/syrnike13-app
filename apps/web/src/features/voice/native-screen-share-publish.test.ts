@@ -143,7 +143,7 @@ describe('native screen share publish', () => {
       videoAvgCaptureUs: 3200,
     })
 
-    session.stop()
+    await expect(session.stop()).resolves.toBeUndefined()
     expect(stopSession).toHaveBeenCalledWith('native-screen-1')
   })
 

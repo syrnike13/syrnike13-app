@@ -337,6 +337,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const roomRef = useRef<Room | null>(null)
   const nativeScreenShareRef = useRef<NativeScreenShareSession | null>(null)
+  const stoppedNativeScreenIdentityRef = useRef<string | null>(null)
   const nativeMicrophoneRef = useRef<NativeMicrophoneSession | null>(null)
   const nativeMicrophoneMutedRef = useRef(false)
   const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
@@ -493,9 +494,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const syncStageMediaItems = useCallback(
     (room: Room) => {
+      const excludedNativeScreenIdentity = stoppedNativeScreenIdentityRef.current
+      const excludedParticipantIdentities = excludedNativeScreenIdentity
+        ? new Set([excludedNativeScreenIdentity])
+        : undefined
       const participants = liveKitChannelParticipants(
         room,
         !deafenedRef.current,
+        { excludedParticipantIdentities },
       )
       const tracks: StageMediaTrackEntry<
         VideoTrack,
@@ -529,6 +535,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
 
       for (const participant of room.remoteParticipants.values()) {
+        if (participant.identity === excludedNativeScreenIdentity) continue
         for (const publication of participant.trackPublications.values()) {
           ingest(baseVoiceIdentity(participant.identity), publication)
         }
@@ -556,7 +563,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const activeChannelId = channelIdRef.current
     if (!room || !activeChannelId) return
     const receiving = !deafenedRef.current
-    const participants = liveKitChannelParticipants(room, receiving)
+    const excludedNativeScreenIdentity = stoppedNativeScreenIdentityRef.current
+    const excludedParticipantIdentities = excludedNativeScreenIdentity
+      ? new Set([excludedNativeScreenIdentity])
+      : undefined
+    const participants = liveKitChannelParticipants(room, receiving, {
+      excludedParticipantIdentities,
+    })
     const liveKitIdentity = room.localParticipant.identity
     if (
       participants.length === 0 &&
@@ -567,7 +580,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setLiveChannelParticipants((current) =>
       voiceStateListEquals(current, participants) ? current : participants,
     )
-    syncLiveKitRoomParticipants(activeChannelId, room, receiving)
+    syncLiveKitRoomParticipants(activeChannelId, room, receiving, {
+      excludedParticipantIdentities,
+    })
     const localMedia = localParticipantVoiceFlags(room.localParticipant)
     setCameraEnabled(localMedia.camera)
     setScreenShareEnabled(
@@ -723,6 +738,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         },
       }
       liveKitCredentialsRef.current = next
+      const desktop = getSyrnikeDesktop()
+      if (desktop?.platform.os === 'win32') {
+        void desktop.media.prepareScreenSession({ livekit: next.screen }).catch(() => {})
+      }
       return next[mediaKind]
     },
     [auth.session?.token],
@@ -737,9 +756,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     selfMonitoringRef.current.restorePublishing = false
     selfMonitoringRef.current.sequence += 1
     if (nativeScreenShareRef.current) {
-      nativeScreenShareRef.current.stop()
+      void nativeScreenShareRef.current.stop().catch(() => {})
       nativeScreenShareRef.current = null
       nativeMediaEngineStatsStore.reset()
+    }
+    stoppedNativeScreenIdentityRef.current = null
+    const desktop = getSyrnikeDesktop()
+    if (desktop?.platform.os === 'win32') {
+      void desktop.media.disconnectPreparedScreenSession().catch(() => {})
     }
     setChannelId(null)
     setStatus('idle')
@@ -1256,6 +1280,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       attachRoomHandlers: (room) => attachAudio(room),
       setLiveKitCredentials: (credentials) => {
         liveKitCredentialsRef.current = credentials
+        const desktop = getSyrnikeDesktop()
+        if (desktop?.platform.os === 'win32') {
+          void desktop.media.prepareScreenSession({ livekit: credentials.screen }).catch(() => {})
+        }
       },
       setConnectionPhase,
       onRoomConnected: (room, targetChannelId) => {
@@ -1359,12 +1387,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     )
   }, [stageMediaItems])
 
-  const stopNativeScreenShare = useCallback(() => {
+  const stopNativeScreenShare = useCallback(async () => {
     const active = nativeScreenShareRef.current
     if (!active) return
-    active.stop()
     nativeScreenShareRef.current = null
+    stoppedNativeScreenIdentityRef.current =
+      active.nativeParticipantIdentity ?? null
     nativeMediaEngineStatsStore.reset()
+    await active.stop()
   }, [])
 
   const setStageMediaSubscribed = useCallback(
@@ -1378,9 +1408,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       if (action === 'stop-local-screen') {
         if (nativeScreenShareRef.current) {
-          stopNativeScreenShare()
-          setScreenShareEnabled(false)
-          syncRoomParticipants()
+          void stopNativeScreenShare()
+            .then(() => {
+              setScreenShareEnabled(false)
+              syncRoomParticipants()
+            })
+            .catch((error) => {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : 'Не удалось остановить демонстрацию',
+              )
+            })
           return
         }
 
@@ -1492,6 +1531,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       try {
         if (useNative && desktop) {
+          stoppedNativeScreenIdentityRef.current = null
           const pickerPromise = waitForNativePickerSelection()
           // #region debug log
           fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'A-picker', location: 'voice-provider.tsx:startLocalScreenShare', message: 'native display picker opening', data: { quality, withAudio, elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
@@ -1505,7 +1545,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           const handleSidecarLost = (message: string) => {
             console.warn('[voice] native media engine lost', message)
             toast.error('Нативный захват прерван')
-            stopNativeScreenShare()
+            void stopNativeScreenShare().catch(() => {})
             setScreenShareEnabled(false)
             syncRoomParticipants()
           }
@@ -1525,7 +1565,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             session = await startNative(false)
           } catch (error) {
             if (!isLiveKitTokenFailure(error)) throw error
-            stopNativeScreenShare()
+            await stopNativeScreenShare()
             session = await startNative(true)
           }
           nativeScreenShareRef.current = session
@@ -1548,7 +1588,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         setScreenShareStarting(false)
         if (desktop?.platform.os === 'win32') {
-          stopNativeScreenShare()
+          await stopNativeScreenShare().catch(() => {})
           clearNativePickerSelection()
         }
         rejectNativePickerSelection(
@@ -1578,9 +1618,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     if (room.localParticipant.isScreenShareEnabled || nativeScreenShareRef.current) {
       if (nativeScreenShareRef.current) {
-        stopNativeScreenShare()
-        setScreenShareEnabled(false)
-        syncRoomParticipants()
+        void stopNativeScreenShare()
+          .then(() => {
+            setScreenShareEnabled(false)
+            syncRoomParticipants()
+          })
+          .catch((error) => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Не удалось остановить демонстрацию',
+            )
+          })
         return
       }
 

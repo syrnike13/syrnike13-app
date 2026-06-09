@@ -18,6 +18,8 @@ import {
   type NativeMicrophonePreviewSession,
   type NativeMicrophonePreviewStartOptions,
   type NativeMicrophoneRuntimeConfig,
+  type NativeMediaLiveKitCredentials,
+  type NativeMediaScreenSessionPrepareOptions,
   type NativeMediaSession,
   type NativeMediaSidecarLostEvent,
   type NativeMediaSessionStartOptions,
@@ -43,6 +45,7 @@ import {
 const NATIVE_PICKER_TIMEOUT_MS = 120_000
 const MAX_SIDECAR_RECONNECT_ATTEMPTS = 1
 const WARMED_MICROPHONE_SESSION_ID = 'native-microphone-monitor'
+const NATIVE_MEDIA_STOP_TIMEOUT_MS = 5_000
 
 export type PendingNativePicker = {
   id: string
@@ -85,10 +88,17 @@ type ActiveMediaEngineSession = {
   reader?: readline.Interface
 }
 
+type PendingStopResolver = {
+  resolve: () => void
+  reject: (error: Error) => void
+  timeout: ReturnType<typeof setTimeout>
+}
+
 let mediaEngineIpcRegistered = false
 let activeSession: ActiveMediaEngineSession | null = null
 const activeSessions = new Map<string, ActiveMediaEngineSession>()
 const pendingStartResolvers = new Map<string, (event: SidecarEvent) => void>()
+const pendingStopResolvers = new Map<string, PendingStopResolver>()
 let mediaEngineStatus: NativeMediaSessionStatus = { status: 'idle' }
 let lastMediaEngineError: string | null = null
 let pendingNativePicker: PendingNativePicker | null = null
@@ -98,6 +108,12 @@ let microphonePreviewHelper: ChildProcessWithoutNullStreams | null = null
 let microphonePreviewSessionId: string | null = null
 let prewarmedMediaEngineHelper: ChildProcessWithoutNullStreams | null = null
 let prewarmedMediaEngineReader: readline.Interface | null = null
+let preconnectedScreenSession: {
+  sessionId: string
+  helper: ChildProcessWithoutNullStreams
+  livekitKey: string
+  ready: Promise<void>
+} | null = null
 let microphoneWarmupEnabled = false
 let microphoneWarmupRestartTimer: NodeJS.Timeout | null = null
 const microphoneWarmExitHandlers = new WeakSet<ChildProcessWithoutNullStreams>()
@@ -434,6 +450,25 @@ function isHelperWritable(
   )
 }
 
+function nativeScreenLiveKitKey(livekit: NativeMediaLiveKitCredentials) {
+  return `${livekit.url}\n${livekit.participantIdentity}`
+}
+
+function clearPreconnectedScreenSession(force = false) {
+  const prepared = preconnectedScreenSession
+  preconnectedScreenSession = null
+  if (!prepared) return
+  if (isHelperWritable(prepared.helper)) {
+    writeHelperCommand(prepared.helper, {
+      cmd: force ? 'stop' : 'disconnect_screen',
+      sessionId: prepared.sessionId,
+    })
+  }
+  if (force) {
+    prepared.helper.kill()
+  }
+}
+
 function spawnNativeMediaEngineProcess(
   kind: NativeMediaSessionStartOptions['kind'],
 ) {
@@ -699,6 +734,7 @@ async function handleSidecarFailure(
   }
   mediaEngineStatus = { status: 'idle' }
   lastMediaEngineError = message
+  rejectPendingStop(session.sessionId, new Error(message))
   if (session.startOptions.kind === 'microphone') {
     prewarmNativeMediaEngineHelper()
   }
@@ -722,20 +758,33 @@ function handleHelperExit(
 
 function stopMediaEngineSession(sessionId: string, force = false) {
   const session = activeSessions.get(sessionId)
-  if (!session) return
+  if (!session) return false
 
   const isMicrophone = session.startOptions.kind === 'microphone'
+  const isPreparedScreen =
+    session.startOptions.kind === 'screen' &&
+    preconnectedScreenSession?.helper === session.helper
   const stopped = writeHelperCommand(session.helper, {
-    cmd: isMicrophone && !force ? 'disconnect_microphone' : 'stop',
+    cmd:
+      isMicrophone && !force
+        ? 'disconnect_microphone'
+        : isPreparedScreen && !force
+          ? 'stop_screen_capture'
+          : 'stop',
     sessionId,
   })
-  if (force || !stopped) {
+  if ((force || !stopped) && (!isPreparedScreen || force)) {
     session.helper.kill()
+  } else if (!stopped && isPreparedScreen) {
+    clearPreconnectedScreenSession(true)
   }
   session.reader?.close()
   activeSessions.delete(sessionId)
   if (isMicrophone && !force && stopped) {
     keepMicrophoneHelperWarmed(session.helper)
+  }
+  if (isPreparedScreen && force) {
+    clearPreconnectedScreenSession(true)
   }
 
   if (activeSession?.sessionId === sessionId) {
@@ -749,12 +798,17 @@ function stopMediaEngineSession(sessionId: string, force = false) {
   }
 
   pendingStartResolvers.delete(sessionId)
+  if (!stopped) {
+    rejectPendingStop(sessionId, new Error('Native media helper is not writable'))
+  }
+  return stopped
 }
 
 function stopMediaEngineHelper(force = false) {
   for (const sessionId of Array.from(activeSessions.keys())) {
     stopMediaEngineSession(sessionId, force)
   }
+  clearPreconnectedScreenSession(force)
   pendingStartResolvers.clear()
 }
 
@@ -935,11 +989,15 @@ async function startNativeMicrophonePreview(
 function spawnMediaEngineHelper(
   kind: NativeMediaSessionStartOptions['kind'],
   sessionId: string,
+  existingHelper?: ChildProcessWithoutNullStreams,
 ) {
   const helper =
-    kind === 'microphone'
+    existingHelper ??
+    (kind === 'microphone'
       ? takePrewarmedMediaEngineHelper() ?? spawnNativeMediaEngineProcess(kind)
-      : spawnNativeMediaEngineProcess(kind)
+      : spawnNativeMediaEngineProcess(kind))
+
+  if (existingHelper) return helper
 
   const reader = readline.createInterface({ input: helper.stdout })
   reader.on('line', (line) => {
@@ -967,6 +1025,7 @@ function spawnMediaEngineHelper(
       }
 
       if (event.status === 'stopped') {
+        resolvePendingStop(event.session_id)
         activeSessions.delete(event.session_id)
         if (activeSession?.sessionId === event.session_id) {
           activeSession =
@@ -976,6 +1035,10 @@ function spawnMediaEngineHelper(
         }
       }
       if (event.status === 'error') {
+        rejectPendingStop(
+          event.session_id,
+          new Error(event.message ?? 'Native media engine failed'),
+        )
         pendingStartResolvers.get(event.session_id)?.(event)
         pendingStartResolvers.delete(event.session_id)
       }
@@ -1039,6 +1102,11 @@ function spawnMediaEngineHelper(
         '[media-engine-helper] track published',
         event,
       )
+      return
+    }
+
+    if (event.type === 'track_unpublished') {
+      console.info('[media-engine-helper] track unpublished', event)
       return
     }
 
@@ -1118,11 +1186,13 @@ function spawnMediaEngineHelper(
       }
       pendingStartResolvers.get(eventSessionId)?.(event)
       pendingStartResolvers.delete(eventSessionId)
+      rejectPendingStop(eventSessionId, new Error(event.message))
       return
     }
 
     if (event.type === 'stopped') {
       activeSessions.delete(sessionId)
+      rejectPendingStop(sessionId, new Error('Native media engine stopped'))
       if (activeSession?.sessionId === sessionId) {
         activeSession =
           Array.from(activeSessions.values()).find(
@@ -1146,9 +1216,18 @@ function spawnMediaEngineHelper(
   })
 
   helper.on('exit', (code, signal) => {
-    if (activeSessions.has(sessionId)) {
+    const sessions = Array.from(activeSessions.values()).filter(
+      (session) => session.helper === helper,
+    )
+    if (sessions.length > 0) {
+      for (const session of sessions) {
+        handleHelperExit(session.sessionId, code, signal)
+      }
+    } else if (activeSessions.has(sessionId)) {
       handleHelperExit(sessionId, code, signal)
-      return
+    }
+    if (preconnectedScreenSession?.helper === helper) {
+      preconnectedScreenSession = null
     }
     mediaEngineStatus = { status: 'idle' }
   })
@@ -1377,6 +1456,105 @@ async function waitForSidecarReady(sessionId: string, timeoutMs = 15_000) {
   })
 }
 
+function resolvePendingStop(sessionId: string) {
+  const pending = pendingStopResolvers.get(sessionId)
+  if (!pending) return
+  pendingStopResolvers.delete(sessionId)
+  clearTimeout(pending.timeout)
+  pending.resolve()
+}
+
+function rejectPendingStop(sessionId: string, error: Error) {
+  const pending = pendingStopResolvers.get(sessionId)
+  if (!pending) return
+  pendingStopResolvers.delete(sessionId)
+  clearTimeout(pending.timeout)
+  pending.reject(error)
+}
+
+async function waitForMediaEngineSessionStopped(sessionId: string) {
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingStopResolvers.delete(sessionId)
+      reject(new Error('Native media engine stop timed out'))
+    }, NATIVE_MEDIA_STOP_TIMEOUT_MS)
+
+    pendingStopResolvers.set(sessionId, {
+      resolve,
+      reject,
+      timeout,
+    })
+  })
+}
+
+async function prepareNativeScreenSession(
+  getWindow: () => BrowserWindow | null,
+  options: NativeMediaScreenSessionPrepareOptions,
+) {
+  if (process.platform !== 'win32') return
+  getWindowRef = getWindow
+
+  const livekitKey = nativeScreenLiveKitKey(options.livekit)
+  const current = preconnectedScreenSession
+  if (current && current.livekitKey === livekitKey && isHelperWritable(current.helper)) {
+    await current.ready
+    return
+  }
+
+  clearPreconnectedScreenSession(true)
+
+  const sessionId = crypto.randomUUID()
+  const helper = spawnMediaEngineHelper('screen', sessionId)
+  const ready = waitForSidecarReady(sessionId).then((event) => {
+    if (event.type !== 'ready') {
+      throw new Error('Native screen session did not preconnect')
+    }
+  })
+
+  preconnectedScreenSession = {
+    sessionId,
+    helper,
+    livekitKey,
+    ready,
+  }
+
+  if (
+    !writeHelperCommand(helper, {
+      cmd: 'connect_screen',
+      sessionId,
+      sessionKind: 'screen',
+      url: options.livekit.url,
+      token: options.livekit.token,
+      participantIdentity: options.livekit.participantIdentity,
+      livekit: options.livekit,
+    })
+  ) {
+    clearPreconnectedScreenSession(true)
+    throw new Error('Native screen helper is not writable')
+  }
+
+  try {
+    await ready
+  } catch (error) {
+    clearPreconnectedScreenSession(true)
+    throw error
+  }
+}
+
+async function getPreconnectedScreenHelper(
+  livekit: NativeMediaLiveKitCredentials,
+) {
+  const current = preconnectedScreenSession
+  if (!current) return null
+  if (current.livekitKey !== nativeScreenLiveKitKey(livekit)) return null
+  if (!isHelperWritable(current.helper)) {
+    preconnectedScreenSession = null
+    return null
+  }
+  await current.ready
+  return current.helper
+}
+
 function mapSidecarAudioMetadata(event: {
   audio_sample_rate?: number
   audio_channels?: number
@@ -1427,7 +1605,15 @@ async function startNativeMediaSession(
   }
   // #endregion
 
-  const helper = spawnMediaEngineHelper(options.kind, sessionId)
+  const preparedScreenHelper =
+    options.kind === 'screen'
+      ? await getPreconnectedScreenHelper(options.livekit)
+      : null
+  const helper = spawnMediaEngineHelper(
+    options.kind,
+    sessionId,
+    preparedScreenHelper ?? undefined,
+  )
   const session: ActiveMediaEngineSession = {
     sessionId,
     port: undefined,
@@ -1554,6 +1740,25 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
   getWindowRef = getWindow
 
   ipcMain.handle(
+    IPC.mediaPrepareScreenSession,
+    async (event, options: NativeMediaScreenSessionPrepareOptions) => {
+      if (!isTrustedSender(event, getWindow)) {
+        throw new Error('Untrusted media engine prepare request')
+      }
+      const prepare = startSessionQueue.then(() =>
+        prepareNativeScreenSession(getWindow, options),
+      )
+      startSessionQueue = prepare.catch(() => undefined)
+      return prepare
+    },
+  )
+
+  ipcMain.handle(IPC.mediaDisconnectPreparedScreenSession, async (event) => {
+    if (!isTrustedSender(event, getWindow)) return
+    clearPreconnectedScreenSession(false)
+  })
+
+  ipcMain.handle(
     IPC.mediaStartSession,
     async (event, options: NativeMediaSessionStartOptions) => {
       if (!isTrustedSender(event, getWindow)) {
@@ -1570,7 +1775,15 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
   ipcMain.handle(IPC.mediaStopSession, async (event, sessionId?: string) => {
     if (!isTrustedSender(event, getWindow)) return
     if (sessionId) {
-      stopMediaEngineSession(sessionId)
+      const session = activeSessions.get(sessionId)
+      const stopPromise =
+        session?.startOptions.kind === 'screen'
+          ? waitForMediaEngineSessionStopped(sessionId)
+          : Promise.resolve()
+      if (!stopMediaEngineSession(sessionId)) {
+        throw new Error('Native media session is not active')
+      }
+      await stopPromise
       return
     }
     stopMediaEngineHelper()

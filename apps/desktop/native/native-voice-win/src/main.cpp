@@ -54,6 +54,10 @@ int main() {
       runMicrophonePublisher(command);
       return 0;
     }
+    if (commandMatches(line, "connect_screen")) {
+      runScreenPublisher(parseStartCommand(line));
+      return 0;
+    }
     if (commandMatches(line, "start")) {
       const auto command = parseStartCommand(line);
       if (command.session_kind == "screen") {

@@ -9,6 +9,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cmath>
@@ -180,7 +181,8 @@ void captureLoopbackAudio(
     PROCESS_LOOPBACK_MODE loopback_mode,
     const std::string& session_id,
     const char* audio_mode,
-    const char* loopback_mode_name) {
+    const char* loopback_mode_name,
+    const std::shared_ptr<std::atomic_bool>& running) {
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   const bool com_initialized = SUCCEEDED(hr);
 
@@ -221,7 +223,7 @@ void captureLoopbackAudio(
     std::uint64_t interval_sample_count = 0;
     auto next_stats_at = std::chrono::steady_clock::now();
 
-    while (g_running.load()) {
+    while (g_running.load() && running->load()) {
       UINT32 packet_frames = 0;
       hr = capture_client->GetNextPacketSize(&packet_frames);
       if (FAILED(hr)) break;
@@ -294,10 +296,10 @@ void captureLoopbackAudio(
   } catch (const std::exception& error) {
     emit("{\"type\":\"error\",\"code\":\"screen_audio_capture_failed\",\"message\":\"" +
          jsonEscape(error.what()) + "\"}");
-    g_running.store(false);
+    running->store(false);
   } catch (...) {
     emit("{\"type\":\"error\",\"code\":\"screen_audio_capture_failed\",\"message\":\"unknown screen audio capture failure\"}");
-    g_running.store(false);
+    running->store(false);
   }
 
   if (avrt) AvRevertMmThreadCharacteristics(avrt);
@@ -389,27 +391,31 @@ ScreenAudioProbeResult probeLoopbackClient(
 void captureSystemLoopbackAudio(
     DWORD excluded_process_id,
     const std::string& session_id,
-    const std::shared_ptr<livekit::AudioSource>& audio_source) {
+    const std::shared_ptr<livekit::AudioSource>& audio_source,
+    const std::shared_ptr<std::atomic_bool>& running) {
   captureLoopbackAudio(
       audio_source,
       excluded_process_id,
       PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE,
       session_id,
       "system_exclude",
-      "exclude_target_process_tree");
+      "exclude_target_process_tree",
+      running);
 }
 
 void captureProcessLoopbackAudio(
     DWORD process_id,
     const std::string& session_id,
-    const std::shared_ptr<livekit::AudioSource>& audio_source) {
+    const std::shared_ptr<livekit::AudioSource>& audio_source,
+    const std::shared_ptr<std::atomic_bool>& running) {
   captureLoopbackAudio(
       audio_source,
       process_id,
       PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
       session_id,
       "process",
-      "include_target_process_tree");
+      "include_target_process_tree",
+      running);
 }
 
 void validateScreenLoopbackAudio(

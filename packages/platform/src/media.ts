@@ -41,6 +41,12 @@ export type NativeMediaDeviceInfo = {
   label: string
 }
 
+export type NativeMediaLiveKitCredentials = {
+  url: string
+  token: string
+  participantIdentity: string
+}
+
 export type NativeMediaScreenSessionStartOptions = {
   kind: 'screen'
   sourceId: string
@@ -51,11 +57,11 @@ export type NativeMediaScreenSessionStartOptions = {
   audio?: {
     requested: boolean
   }
-  livekit: {
-    url: string
-    token: string
-    participantIdentity: string
-  }
+  livekit: NativeMediaLiveKitCredentials
+}
+
+export type NativeMediaScreenSessionPrepareOptions = {
+  livekit: NativeMediaLiveKitCredentials
 }
 
 export type NativeMediaMicrophoneSessionStartOptions = {
@@ -69,11 +75,7 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   voiceGateThresholdDb?: number
   voiceGateAutoThreshold?: boolean
   muted?: boolean
-  livekit: {
-    url: string
-    token: string
-    participantIdentity: string
-  }
+  livekit: NativeMediaLiveKitCredentials
 }
 
 export type NativeMicrophoneRuntimeConfig = {

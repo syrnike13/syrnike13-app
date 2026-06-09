@@ -10,7 +10,7 @@ import { getSyrnikeDesktop } from '#/platform/runtime'
 export type NativeScreenShareSession = {
   publicationId?: string
   nativeParticipantIdentity?: string
-  stop: () => void
+  stop: () => Promise<void>
 }
 
 function nativeScreenShareBitrateFloor(quality: ScreenShareQualityName) {
@@ -111,7 +111,7 @@ export async function publishNativeScreenShare(
     unsubscribeStats()
     unsubscribeSidecarLost()
     nativeMediaEngineStatsStore.reset()
-    void desktop.media.stopSession(session.sessionId)
+    return desktop.media.stopSession(session.sessionId)
   }
 
   return {

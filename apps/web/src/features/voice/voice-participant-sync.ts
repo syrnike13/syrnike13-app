@@ -64,6 +64,9 @@ function remoteVoiceState(participant: RemoteParticipant): UserVoiceState {
 export function liveKitChannelParticipants(
   room: Room,
   isReceiving: boolean,
+  options: {
+    excludedParticipantIdentities?: ReadonlySet<string>
+  } = {},
 ): UserVoiceState[] {
   const merged = new Map<string, UserVoiceState>()
 
@@ -74,6 +77,7 @@ export function liveKitChannelParticipants(
   }
 
   for (const remote of room.remoteParticipants.values()) {
+    if (options.excludedParticipantIdentities?.has(remote.identity)) continue
     const userId = baseVoiceIdentity(remote.identity)
     if (!isValidVoiceUserId(userId)) continue
     const state = remoteVoiceState(remote)
@@ -96,8 +100,11 @@ export function syncLiveKitRoomParticipants(
   channelId: string,
   room: Room,
   isReceiving: boolean,
+  options: {
+    excludedParticipantIdentities?: ReadonlySet<string>
+  } = {},
 ) {
-  const fromRoom = liveKitChannelParticipants(room, isReceiving)
+  const fromRoom = liveKitChannelParticipants(room, isReceiving, options)
   const syncState = syncStore.getState()
   const localUserId = isValidVoiceUserId(room.localParticipant.identity)
     ? room.localParticipant.identity

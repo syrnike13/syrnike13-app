@@ -134,6 +134,12 @@ export type SidecarEvent =
       audio_loopback_mode?: string
     }
   | {
+      type: 'track_unpublished'
+      session_id: string
+      kind: 'audio' | 'video'
+      track_sid: string
+    }
+  | {
       type: 'screen_audio_frame'
       session_id: string
       frames: number

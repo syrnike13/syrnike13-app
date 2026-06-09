@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <windows.h>
@@ -20,11 +21,13 @@ struct ScreenAudioProbeResult {
 void captureSystemLoopbackAudio(
     DWORD excluded_process_id,
     const std::string& session_id,
-    const std::shared_ptr<livekit::AudioSource>& audio_source);
+    const std::shared_ptr<livekit::AudioSource>& audio_source,
+    const std::shared_ptr<std::atomic_bool>& running);
 void captureProcessLoopbackAudio(
     DWORD process_id,
     const std::string& session_id,
-    const std::shared_ptr<livekit::AudioSource>& audio_source);
+    const std::shared_ptr<livekit::AudioSource>& audio_source,
+    const std::shared_ptr<std::atomic_bool>& running);
 void validateScreenLoopbackAudio(
     const ScreenCaptureTarget& target,
     DWORD excluded_process_id);
