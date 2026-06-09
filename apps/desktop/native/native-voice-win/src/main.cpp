@@ -4,7 +4,9 @@
 #include "audio_devices.hpp"
 #include "microphone_preview.hpp"
 #include "microphone_publisher.hpp"
+#include "microphone_warmup.hpp"
 #include "protocol.hpp"
+#include "runtime_config.hpp"
 #include "screen_audio_capture.hpp"
 #include "screen_publisher.hpp"
 #include "screen_preflight.hpp"
@@ -18,6 +20,16 @@ int main() {
   while (std::getline(std::cin, line)) {
     if (commandMatches(line, "list_devices")) {
       emitDeviceList();
+      continue;
+    }
+    if (commandMatches(line, "warm_microphone")) {
+      const auto command = parseStartCommand(line);
+      updateRuntimeConfig(command);
+      startMicrophoneWarmup(command.device_id, command.session_id);
+      continue;
+    }
+    if (commandMatches(line, "configure")) {
+      updateRuntimeConfig(parseStartCommand(line));
       continue;
     }
     if (commandMatches(line, "list_screen_sources")) {
@@ -38,6 +50,7 @@ int main() {
     }
     if (commandMatches(line, "start")) {
       const auto command = parseStartCommand(line);
+      stopMicrophoneWarmup();
       if (command.session_kind == "screen") {
         runScreenPublisher(command);
       } else {
@@ -46,13 +59,17 @@ int main() {
       return 0;
     }
     if (commandMatches(line, "start_preview")) {
+      stopMicrophoneWarmup();
       runMicrophonePreview(parseStartCommand(line));
       return 0;
     }
     if (commandMatches(line, "stop")) {
+      stopMicrophoneWarmup();
       return 0;
     }
   }
+
+  stopMicrophoneWarmup();
 
   return 0;
 }

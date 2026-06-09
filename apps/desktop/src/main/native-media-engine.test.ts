@@ -456,6 +456,7 @@ describe('native media engine entrypoint', () => {
     )
 
     expect(engineSource).toContain('export function prewarmNativeMediaEngineHelper')
+    expect(engineSource).toContain("cmd: 'warm_microphone'")
     expect(engineSource).toContain('takePrewarmedMediaEngineHelper()')
     expect(engineSource).toContain(
       'takePrewarmedMediaEngineHelper() ?? spawnNativeMediaEngineProcess(kind)',
@@ -464,18 +465,19 @@ describe('native media engine entrypoint', () => {
     expect(indexSource).toContain('disposePrewarmedNativeMediaEngineHelper()')
   })
 
-  it('primes screen video source before publishing the LiveKit screen track', () => {
+  it('starts screen video capture before publishing the LiveKit screen track', () => {
     const source = readFileSync(
       fileURLToPath(
         new URL('../../native/native-voice-win/src/screen_publisher.cpp', import.meta.url),
       ),
       'utf8',
     )
-    const primeIndex = source.indexOf('video_source->captureFrame(frame, 0)')
+    const captureIndex = source.indexOf('video_thread = std::thread')
     const publishIndex = source.indexOf('participant->publishTrack(video_track')
 
-    expect(primeIndex).toBeGreaterThanOrEqual(0)
-    expect(publishIndex).toBeGreaterThan(primeIndex)
+    expect(captureIndex).toBeGreaterThanOrEqual(0)
+    expect(publishIndex).toBeGreaterThan(captureIndex)
+    expect(source).toContain('video_source->captureFrame(frame, timestamp_us)')
     expect(source).toContain('\\"message\\":\\"publishing_video_track\\"')
     expect(source).toContain('LocalVideoTrack::createLocalVideoTrack("screen", video_source)')
     expect(source).toContain('video_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE')

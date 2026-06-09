@@ -42,6 +42,7 @@ import {
 
 const NATIVE_PICKER_TIMEOUT_MS = 120_000
 const MAX_SIDECAR_RECONNECT_ATTEMPTS = 1
+const WARMED_MICROPHONE_SESSION_ID = 'native-microphone-monitor'
 
 export type PendingNativePicker = {
   id: string
@@ -96,6 +97,7 @@ let startSessionQueue: Promise<unknown> = Promise.resolve()
 let microphonePreviewHelper: ChildProcessWithoutNullStreams | null = null
 let microphonePreviewSessionId: string | null = null
 let prewarmedMediaEngineHelper: ChildProcessWithoutNullStreams | null = null
+let prewarmedMediaEngineReader: readline.Interface | null = null
 
 function isTrustedSender(
   event: IpcMainInvokeEvent,
@@ -417,7 +419,9 @@ function writeHelperCommand(
   }
 }
 
-function isHelperWritable(helper: ChildProcessWithoutNullStreams | null) {
+function isHelperWritable(
+  helper: ChildProcessWithoutNullStreams | null,
+): helper is ChildProcessWithoutNullStreams {
   return Boolean(
     helper &&
       !helper.killed &&
@@ -443,11 +447,15 @@ function spawnNativeMediaEngineProcess(
 function takePrewarmedMediaEngineHelper() {
   if (!isHelperWritable(prewarmedMediaEngineHelper)) {
     prewarmedMediaEngineHelper = null
+    prewarmedMediaEngineReader?.close()
+    prewarmedMediaEngineReader = null
     return null
   }
 
   const helper = prewarmedMediaEngineHelper
   prewarmedMediaEngineHelper = null
+  prewarmedMediaEngineReader?.close()
+  prewarmedMediaEngineReader = null
   return helper
 }
 
@@ -458,7 +466,22 @@ export function prewarmNativeMediaEngineHelper() {
 
   try {
     const helper = spawnNativeMediaEngineProcess('microphone')
+    const reader = readline.createInterface({ input: helper.stdout })
     prewarmedMediaEngineHelper = helper
+    prewarmedMediaEngineReader = reader
+    reader.on('line', (line) => {
+      const event = parseSidecarEvent(line)
+      if (!event) return
+      if (event.type === 'microphone_metrics') {
+        if (getWindowRef) {
+          emitMicrophoneMetrics(getWindowRef, mapMicrophoneMetrics(event))
+        }
+        return
+      }
+      if (event.type === 'microphone_diagnostics') {
+        console.info('[media-engine-helper:warm] microphone diagnostics', event)
+      }
+    })
     helper.stderr.on('data', (chunk) => {
       console.error('[media-engine-helper:warm]', chunk.toString())
     })
@@ -469,7 +492,13 @@ export function prewarmNativeMediaEngineHelper() {
     helper.on('exit', () => {
       if (prewarmedMediaEngineHelper === helper) {
         prewarmedMediaEngineHelper = null
+        prewarmedMediaEngineReader?.close()
+        prewarmedMediaEngineReader = null
       }
+    })
+    writeHelperCommand(helper, {
+      cmd: 'warm_microphone',
+      sessionId: WARMED_MICROPHONE_SESSION_ID,
     })
   } catch (error) {
     console.warn('[media-engine-helper] failed to prewarm helper', error)
@@ -479,6 +508,8 @@ export function prewarmNativeMediaEngineHelper() {
 export function disposePrewarmedNativeMediaEngineHelper() {
   const helper = prewarmedMediaEngineHelper
   prewarmedMediaEngineHelper = null
+  prewarmedMediaEngineReader?.close()
+  prewarmedMediaEngineReader = null
   if (!helper) return
   writeHelperCommand(helper, { cmd: 'stop' })
   helper.kill()
@@ -693,6 +724,23 @@ function configureNativeMicrophoneRuntime(
     })
     if (!written) {
       throw new Error('Native media helper is not writable')
+    }
+    return
+  }
+
+  const warmedHelper = prewarmedMediaEngineHelper
+  if (
+    sessionId === WARMED_MICROPHONE_SESSION_ID &&
+    isHelperWritable(warmedHelper)
+  ) {
+    const helper = warmedHelper
+    const written = writeHelperCommand(helper, {
+      cmd: 'configure',
+      sessionId,
+      ...config,
+    })
+    if (!written) {
+      throw new Error('Native microphone monitor helper is not writable')
     }
     return
   }

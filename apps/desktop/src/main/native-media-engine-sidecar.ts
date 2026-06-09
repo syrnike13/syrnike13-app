@@ -89,7 +89,7 @@ export type SidecarEvent =
   | {
       type: 'microphone_diagnostics'
       session_id: string
-      mode: 'publish' | 'preview'
+      mode: 'publish' | 'preview' | 'warmup'
       frames: number
       interval_frames: number
       input_db: number

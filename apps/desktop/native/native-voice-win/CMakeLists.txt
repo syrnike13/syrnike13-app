@@ -27,6 +27,7 @@ add_executable(syrnike-native-voice-win
   src/main.cpp
   src/microphone_preview.cpp
   src/microphone_publisher.cpp
+  src/microphone_warmup.cpp
   src/protocol.cpp
   src/runtime_config.cpp
   src/screen_audio_capture.cpp

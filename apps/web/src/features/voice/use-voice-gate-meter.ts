@@ -14,6 +14,11 @@ import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import { shouldUseNativeMicrophone } from '#/features/voice/native-microphone-publish'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
+import {
+  configureNativeMicrophoneRuntime,
+  NATIVE_MICROPHONE_MONITOR_SESSION_ID,
+} from './native-microphone-runtime-config'
+
 const DEFAULT_METRICS: VoiceGateMetrics = {
   inputDb: VOICE_GATE_DB_MIN,
   thresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
@@ -42,6 +47,26 @@ export function useVoiceGateMeter(
     active,
     prefs.voiceGateAutoThreshold,
     prefs.voiceGateThresholdDb,
+  ])
+
+  useEffect(() => {
+    if (!active) return
+    if (!shouldUseNativeMicrophone()) return
+
+    configureNativeMicrophoneRuntime(NATIVE_MICROPHONE_MONITOR_SESSION_ID, {
+      echoCancellation: prefs.echoCancellation,
+      inputVolume: prefs.inputVolume,
+      voiceGateEnabled: prefs.voiceGateEnabled,
+      voiceGateThresholdDb: prefs.voiceGateThresholdDb,
+      voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
+    })
+  }, [
+    active,
+    prefs.echoCancellation,
+    prefs.inputVolume,
+    prefs.voiceGateEnabled,
+    prefs.voiceGateThresholdDb,
+    prefs.voiceGateAutoThreshold,
   ])
 
   useEffect(() => {

@@ -228,6 +228,12 @@ void captureMicrophone(const StartCommand command, const std::shared_ptr<livekit
 void runMicrophonePublisher(const StartCommand& command) {
   g_running.store(true);
   updateRuntimeConfig(command);
+  const auto started_at = std::chrono::steady_clock::now();
+  auto elapsedMs = [&]() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - started_at
+    ).count();
+  };
   if (command.session_id.empty() || command.livekit_url.empty() || command.livekit_token.empty()) {
     emitError("invalid_start_command", "missing sessionId or LiveKit credentials");
     return;
@@ -236,9 +242,17 @@ void runMicrophonePublisher(const StartCommand& command) {
   const std::string native_identity = command.participant_identity;
 
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-       "\",\"kind\":\"microphone\",\"status\":\"starting\"}");
+       "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"capture_starting\",\"elapsed_ms\":" +
+       std::to_string(elapsedMs()) + "}");
 
   livekit::initialize(livekit::LogLevel::Info);
+  auto audio_source = std::make_shared<livekit::AudioSource>(kSampleRate, kChannels);
+  std::thread capture_thread(captureMicrophone, command, audio_source);
+
+  emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+       "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"livekit_connecting\",\"elapsed_ms\":" +
+       std::to_string(elapsedMs()) + "}");
+
   auto room = std::make_unique<livekit::Room>();
   NativeRoomDelegate delegate;
   room->setDelegate(&delegate);
@@ -250,26 +264,37 @@ void runMicrophonePublisher(const StartCommand& command) {
   try {
     connected = room->connect(command.livekit_url, command.livekit_token, room_options);
   } catch (const std::exception& error) {
+    g_running.store(false);
+    if (capture_thread.joinable()) capture_thread.join();
     livekit::shutdown();
     emitError("livekit_connect_failed", error.what());
     return;
   }
   if (!connected) {
+    g_running.store(false);
+    if (capture_thread.joinable()) capture_thread.join();
     livekit::shutdown();
     emitError("livekit_connect_failed", "LiveKit native microphone connect returned false");
     return;
   }
   if (!delegate.waitConnected(std::chrono::milliseconds(10'000))) {
+    g_running.store(false);
+    if (capture_thread.joinable()) capture_thread.join();
     room.reset();
     livekit::shutdown();
     emitError("livekit_connect_failed", "LiveKit native microphone did not reach connected state");
     return;
   }
 
-  auto audio_source = std::make_shared<livekit::AudioSource>(kSampleRate, kChannels);
+  emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+       "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"livekit_connected\",\"elapsed_ms\":" +
+       std::to_string(elapsedMs()) + "}");
 
   try {
     if (auto participant = room->localParticipant().lock()) {
+      emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+           "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"publishing_audio_track\",\"elapsed_ms\":" +
+           std::to_string(elapsedMs()) + "}");
       participant->publishAudioTrack(
         "microphone",
         audio_source,
@@ -279,6 +304,8 @@ void runMicrophonePublisher(const StartCommand& command) {
       throw std::runtime_error("local participant is unavailable");
     }
   } catch (const std::exception& error) {
+    g_running.store(false);
+    if (capture_thread.joinable()) capture_thread.join();
     room.reset();
     livekit::shutdown();
     emitError("livekit_publish_failed", error.what());
@@ -290,9 +317,8 @@ void runMicrophonePublisher(const StartCommand& command) {
        "\"native_participant_identity\":\"" + jsonEscape(native_identity) + "\"}");
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"kind\":\"microphone\",\"status\":\"running\",\"audio_mode\":\"microphone\","
-       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\"}");
-
-  std::thread capture_thread(captureMicrophone, command, audio_source);
+       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\","
+       "\"elapsed_ms\":" + std::to_string(elapsedMs()) + "}");
 
   std::string line;
   while (g_running.load() && std::getline(std::cin, line)) {

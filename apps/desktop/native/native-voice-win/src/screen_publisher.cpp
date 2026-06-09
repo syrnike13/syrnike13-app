@@ -88,6 +88,19 @@ int chooseScreenShareBitratePreset(int requested_bitrate) {
 void runScreenPublisher(const StartCommand& command) {
   g_running.store(true);
   startStopCommandThread();
+  const auto started_at = std::chrono::steady_clock::now();
+  auto elapsedMs = [&]() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - started_at
+    ).count();
+  };
+  std::thread video_thread;
+  std::thread audio_thread;
+  auto stopCaptureThreads = [&]() {
+    g_running.store(false);
+    if (video_thread.joinable()) video_thread.join();
+    if (audio_thread.joinable()) audio_thread.join();
+  };
 
   try {
     if (command.session_id.empty() || command.livekit_url.empty() || command.livekit_token.empty()) {
@@ -109,9 +122,91 @@ void runScreenPublisher(const StartCommand& command) {
     const int bitrate = chooseScreenShareBitratePreset(requested_bitrate);
     const auto frame_interval = std::chrono::microseconds(1000000 / fps);
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"capture_target_resolved\"}");
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"capture_target_resolved\",\"elapsed_ms\":" +
+         std::to_string(elapsedMs()) + "}");
 
     livekit::initialize(livekit::LogLevel::Info);
+    auto video_source = std::make_shared<livekit::VideoSource>(
+        static_cast<int>(width),
+        static_cast<int>(height));
+    auto video_capturer = ScreenVideoCapturer::create(target, width, height);
+    video_thread = std::thread(
+      [
+        session_id = command.session_id,
+        width,
+        height,
+        fps,
+        frame_interval,
+        video_source,
+        video_capturer = std::move(video_capturer)
+      ]() mutable {
+        uint32_t frame_count = 0;
+        ScreenVideoFrame captured_frame;
+        auto next_frame_at = std::chrono::steady_clock::now();
+        auto next_video_stats_at = next_frame_at + std::chrono::seconds(1);
+        uint32_t interval_frame_count = 0;
+        uint32_t interval_late_count = 0;
+        std::chrono::microseconds interval_capture_time{0};
+        std::int64_t timestamp_us = 0;
+
+        while (g_running.load()) {
+          const auto capture_started_at = std::chrono::steady_clock::now();
+          if (video_capturer->capture(captured_frame)) {
+            const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - capture_started_at);
+            livekit::VideoFrame frame(
+                static_cast<int>(width),
+                static_cast<int>(height),
+                livekit::VideoBufferType::BGRA,
+                std::move(captured_frame.bgra));
+            video_source->captureFrame(frame, timestamp_us);
+            frame_count += 1;
+            interval_frame_count += 1;
+            interval_capture_time += capture_elapsed;
+            timestamp_us += 1000000 / fps;
+            if (frame_count % static_cast<uint32_t>(fps) == 0) {
+              emit("{\"type\":\"frame_method\",\"method\":\"" + jsonEscape(captured_frame.method) +
+                   "\",\"active_method\":\"" + jsonEscape(captured_frame.method) + "\",\"count\":" +
+                   std::to_string(frame_count) + "}");
+            }
+          }
+
+          next_frame_at += frame_interval;
+          const auto now = std::chrono::steady_clock::now();
+          if (now > next_frame_at + frame_interval) {
+            interval_late_count += 1;
+            next_frame_at = now;
+          } else {
+            std::this_thread::sleep_until(next_frame_at);
+          }
+          const auto stats_now = std::chrono::steady_clock::now();
+          if (stats_now >= next_video_stats_at) {
+            const auto avg_capture_us = interval_frame_count > 0
+                ? interval_capture_time.count() / interval_frame_count
+                : 0;
+            emit("{\"type\":\"screen_video_frame\",\"session_id\":\"" +
+                 jsonEscape(session_id) +
+                 "\",\"frames\":" + std::to_string(frame_count) +
+                 ",\"interval_frames\":" + std::to_string(interval_frame_count) +
+                 ",\"target_fps\":" + std::to_string(fps) +
+                 ",\"late_frames\":" + std::to_string(interval_late_count) +
+                 ",\"avg_capture_us\":" + std::to_string(avg_capture_us) +
+                 ",\"method\":\"" + jsonEscape(captured_frame.method) + "\"}");
+            interval_frame_count = 0;
+            interval_late_count = 0;
+            interval_capture_time = std::chrono::microseconds{0};
+            next_video_stats_at = stats_now + std::chrono::seconds(1);
+          }
+        }
+      });
+    emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"video_source_ready\",\"width\":" +
+         std::to_string(width) + ",\"height\":" + std::to_string(height) +
+         ",\"fps\":" + std::to_string(fps) +
+         ",\"bitrate\":" + std::to_string(bitrate) +
+         ",\"requested_bitrate\":" + std::to_string(requested_bitrate) +
+         ",\"elapsed_ms\":" + std::to_string(elapsedMs()) + "}");
+
     auto room = std::make_unique<livekit::Room>();
     NativeRoomDelegate delegate;
     room->setDelegate(&delegate);
@@ -120,55 +215,33 @@ void runScreenPublisher(const StartCommand& command) {
     room_options.single_peer_connection = false;
 
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"livekit_connecting\"}");
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"livekit_connecting\",\"elapsed_ms\":" +
+         std::to_string(elapsedMs()) + "}");
     bool connected = false;
     try {
       connected = room->connect(command.livekit_url, command.livekit_token, room_options);
     } catch (const std::exception& error) {
+      stopCaptureThreads();
       livekit::shutdown();
       emitError("livekit_connect_failed", error.what());
       return;
     }
     if (!connected) {
+      stopCaptureThreads();
       livekit::shutdown();
       emitError("livekit_connect_failed", "LiveKit native screen share connect returned false");
       return;
     }
     if (!delegate.waitConnected(std::chrono::milliseconds(10'000))) {
+      stopCaptureThreads();
       room.reset();
       livekit::shutdown();
       emitError("livekit_connect_failed", "LiveKit native screen share did not reach connected state");
       return;
     }
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"livekit_connected\"}");
-
-    auto video_source = std::make_shared<livekit::VideoSource>(
-        static_cast<int>(width),
-        static_cast<int>(height));
-    auto video_capturer = ScreenVideoCapturer::create(target, width, height);
-    ScreenVideoFrame primed_frame;
-    bool primed_video_frame = false;
-    const auto prime_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
-    while (std::chrono::steady_clock::now() < prime_deadline) {
-      if (video_capturer->capture(primed_frame)) {
-        livekit::VideoFrame frame(
-            static_cast<int>(width),
-            static_cast<int>(height),
-            livekit::VideoBufferType::BGRA,
-            std::move(primed_frame.bgra));
-        video_source->captureFrame(frame, 0);
-        primed_video_frame = true;
-        break;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    }
-    emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"video_source_ready\",\"width\":" +
-         std::to_string(width) + ",\"height\":" + std::to_string(height) +
-         ",\"fps\":" + std::to_string(fps) +
-         ",\"bitrate\":" + std::to_string(bitrate) +
-         ",\"requested_bitrate\":" + std::to_string(requested_bitrate) + "}");
+         "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"livekit_connected\",\"elapsed_ms\":" +
+         std::to_string(elapsedMs()) + "}");
     std::shared_ptr<livekit::AudioSource> audio_source;
     const bool publish_audio =
         command.audio_requested && (!target.window || target.process_id != 0);
@@ -188,7 +261,8 @@ void runScreenPublisher(const StartCommand& command) {
     try {
       if (auto participant = room->localParticipant().lock()) {
         emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-             "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"publishing_video_track\"}");
+             "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"publishing_video_track\",\"elapsed_ms\":" +
+             std::to_string(elapsedMs()) + "}");
         auto video_track = livekit::LocalVideoTrack::createLocalVideoTrack("screen", video_source);
         livekit::TrackPublishOptions video_publish_options;
         video_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE;
@@ -209,7 +283,8 @@ void runScreenPublisher(const StartCommand& command) {
         if (publish_audio) {
           audio_source = std::make_shared<livekit::AudioSource>(48000, 2);
           emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
-               "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"publishing_audio_track\"}");
+               "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"publishing_audio_track\",\"elapsed_ms\":" +
+               std::to_string(elapsedMs()) + "}");
           participant->publishAudioTrack(
               "screen-audio",
               audio_source,
@@ -226,6 +301,7 @@ void runScreenPublisher(const StartCommand& command) {
         throw std::runtime_error("local participant is unavailable");
       }
     } catch (const std::exception& error) {
+      stopCaptureThreads();
       room.reset();
       livekit::shutdown();
       emitError("livekit_publish_failed", error.what());
@@ -252,11 +328,9 @@ void runScreenPublisher(const StartCommand& command) {
          "\"width\":" + std::to_string(width) +
          ",\"height\":" + std::to_string(height) +
          ",\"fps\":" + std::to_string(fps) +
-         ",\"bitrate\":" + std::to_string(bitrate) + "}");
+         ",\"bitrate\":" + std::to_string(bitrate) +
+         ",\"elapsed_ms\":" + std::to_string(elapsedMs()) + "}");
 
-    uint32_t frame_count = 0;
-    ScreenVideoFrame captured_frame;
-    std::thread audio_thread;
     if (audio_source) {
       if (target.window) {
         audio_thread = std::thread(
@@ -273,66 +347,11 @@ void runScreenPublisher(const StartCommand& command) {
       }
     }
 
-    auto next_frame_at = std::chrono::steady_clock::now();
-    auto next_video_stats_at = next_frame_at + std::chrono::seconds(1);
-    uint32_t interval_frame_count = 0;
-    uint32_t interval_late_count = 0;
-    std::chrono::microseconds interval_capture_time{0};
-    std::int64_t timestamp_us = primed_video_frame ? 1000000 / fps : 0;
-    if (primed_video_frame) {
-      frame_count = 1;
-      interval_frame_count = 1;
-    }
     while (g_running.load()) {
-      const auto capture_started_at = std::chrono::steady_clock::now();
-      if (video_capturer->capture(captured_frame)) {
-        const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - capture_started_at);
-        livekit::VideoFrame frame(
-            static_cast<int>(width),
-            static_cast<int>(height),
-            livekit::VideoBufferType::BGRA,
-            std::move(captured_frame.bgra));
-        video_source->captureFrame(frame, timestamp_us);
-        frame_count += 1;
-        interval_frame_count += 1;
-        interval_capture_time += capture_elapsed;
-        timestamp_us += 1000000 / fps;
-        if (frame_count % static_cast<uint32_t>(fps) == 0) {
-          emit("{\"type\":\"frame_method\",\"method\":\"" + jsonEscape(captured_frame.method) +
-               "\",\"active_method\":\"" + jsonEscape(captured_frame.method) + "\",\"count\":" +
-               std::to_string(frame_count) + "}");
-        }
-      }
-
-      next_frame_at += frame_interval;
-      const auto now = std::chrono::steady_clock::now();
-      if (now > next_frame_at + frame_interval) {
-        interval_late_count += 1;
-        next_frame_at = now;
-      } else {
-        std::this_thread::sleep_until(next_frame_at);
-      }
-      const auto stats_now = std::chrono::steady_clock::now();
-      if (stats_now >= next_video_stats_at) {
-        const auto avg_capture_us = interval_frame_count > 0
-            ? interval_capture_time.count() / interval_frame_count
-            : 0;
-        emit("{\"type\":\"screen_video_frame\",\"session_id\":\"" +
-             jsonEscape(command.session_id) +
-             "\",\"frames\":" + std::to_string(frame_count) +
-             ",\"interval_frames\":" + std::to_string(interval_frame_count) +
-             ",\"target_fps\":" + std::to_string(fps) +
-             ",\"late_frames\":" + std::to_string(interval_late_count) +
-             ",\"avg_capture_us\":" + std::to_string(avg_capture_us) +
-             ",\"method\":\"" + jsonEscape(captured_frame.method) + "\"}");
-        interval_frame_count = 0;
-        interval_late_count = 0;
-        interval_capture_time = std::chrono::microseconds{0};
-        next_video_stats_at = stats_now + std::chrono::seconds(1);
-      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }
 
+    if (video_thread.joinable()) video_thread.join();
     emit("{\"type\":\"stopped\"}");
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
          "\",\"kind\":\"screen\",\"status\":\"stopped\"}");
@@ -340,6 +359,7 @@ void runScreenPublisher(const StartCommand& command) {
     room.reset();
     livekit::shutdown();
   } catch (const std::exception& error) {
+    stopCaptureThreads();
     livekit::shutdown();
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
          "\",\"kind\":\"screen\",\"status\":\"error\",\"message\":\"" + jsonEscape(error.what()) + "\"}");

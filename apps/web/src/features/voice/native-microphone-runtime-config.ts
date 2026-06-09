@@ -3,6 +3,7 @@ import type { NativeMicrophoneRuntimeConfig } from '@syrnike13/platform'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 const CONFIGURE_DEBOUNCE_MS = 40
+export const NATIVE_MICROPHONE_MONITOR_SESSION_ID = 'native-microphone-monitor'
 const pendingConfigs = new Map<
   string,
   {
