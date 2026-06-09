@@ -14,7 +14,7 @@ const voiceConnectionPhaseLabels = {
   joining_channel: 'Подключение к каналу…',
   fetching_rtc_token: 'Получение RTC-сессии…',
   connecting_rtc: 'Подключение к RTC…',
-  connecting_microphone: 'Подключение микрофона…',
+  connecting_microphone: 'Подключение голосового потока…',
   connected: 'Голос подключён',
   reconnecting: 'Переподключение к голосу…',
   failed: 'Ошибка подключения',

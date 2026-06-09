@@ -79,7 +79,7 @@ describe('voiceConnectionPhaseLabel', () => {
       'Подключение к RTC…',
     )
     expect(voiceConnectionPhaseLabel('connecting_microphone')).toBe(
-      'Подключение микрофона…',
+      'Подключение голосового потока…',
     )
     expect(voiceConnectionPhaseLabel('connected')).toBe('Голос подключён')
   })
