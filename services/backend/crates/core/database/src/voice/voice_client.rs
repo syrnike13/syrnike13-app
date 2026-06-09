@@ -1,7 +1,7 @@
 use crate::{
+    Database,
     models::{Channel, User},
     voice::RoomMetadata,
-    Database,
 };
 use livekit_api::{
     access_token::{AccessToken, VideoGrants},
@@ -9,11 +9,13 @@ use livekit_api::{
 };
 use livekit_protocol::{ParticipantInfo, ParticipantPermission, Room};
 use std::{collections::HashMap, time::Duration};
-use syrnike_config::{config, LiveKitNode};
+use syrnike_config::{LiveKitNode, config};
 use syrnike_permissions::{ChannelPermission, PermissionValue};
-use syrnike_result::{create_error, Result, ToSyrnikeError};
+use syrnike_result::{Result, ToSyrnikeError, create_error};
 
 use super::{desktop_native_voice_identities, get_allowed_sources};
+
+const NATIVE_VOICE_TOKEN_TTL: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug)]
 pub struct RoomClient {
@@ -84,7 +86,7 @@ impl VoiceClient {
             .with_metadata(
                 &serde_json::to_string(&user.clone().into(db, None).await).to_internal_error()?,
             )
-            .with_ttl(Duration::from_secs(10))
+            .with_ttl(NATIVE_VOICE_TOKEN_TTL)
             .with_grants(VideoGrants {
                 room_join: true,
                 can_publish: true,
