@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircleIcon, Trash2Icon } from 'lucide-react'
 import type {
   HotkeyBinding,
+  NativeInputEvent,
   HotkeyRegistrationResult,
   HotkeyRegistrationStatus,
 } from '@syrnike13/platform'
@@ -24,7 +25,7 @@ import {
   HOTKEY_ACTIONS,
   canRegisterHotkeyAction,
   comboDisplayLabel,
-  comboFromNativeInputEvent,
+  comboFromRecordedInputs,
   findDuplicateCombos,
   getHotkeyAction,
   shouldCaptureRecordedInput,
@@ -40,6 +41,7 @@ export function SettingsHotkeysPanel() {
   const [recordingId, setRecordingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const bindingsRef = useRef<HotkeyBinding[]>([])
+  const recordingEventsRef = useRef<NativeInputEvent[]>([])
 
   useEffect(() => {
     bindingsRef.current = bindings
@@ -60,8 +62,12 @@ export function SettingsHotkeysPanel() {
     const unsubscribe = desktop.hotkeys.onRecordedInput((event) => {
       setRecordingId((currentId) => {
         if (!currentId) return currentId
+        recordingEventsRef.current = [...recordingEventsRef.current, event]
         if (!shouldCaptureRecordedInput(event)) return currentId
-        const combo = comboFromNativeInputEvent(event)
+
+        const combo = comboFromRecordedInputs(recordingEventsRef.current)
+        if (!combo) return currentId
+
         updateBindings(
           bindingsRef.current.map((binding) =>
             binding.id === currentId ? { ...binding, combo } : binding,
@@ -132,6 +138,7 @@ export function SettingsHotkeysPanel() {
   }
 
   async function startRecording(id: string) {
+    recordingEventsRef.current = []
     setRecordingId(id)
     await desktop.hotkeys.startRecording()
   }

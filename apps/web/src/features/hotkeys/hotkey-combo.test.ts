@@ -5,114 +5,111 @@ import {
   canRegisterHotkeyAction,
   comboDisplayLabel,
   comboFromNativeInputEvent,
+  comboFromRecordedInputs,
   findDuplicateCombos,
   hotkeyMatchesNativeInput,
   shouldCaptureRecordedInput,
 } from './hotkey-combo'
 
 describe('hotkey combo helpers', () => {
-  it('formats mouse and modifier combos for the settings UI', () => {
+  it('formats physical combos for the settings UI', () => {
     expect(
       comboDisplayLabel({
-        trigger: { type: 'mouse', button: 'Mouse5' },
-        modifiers: { ctrl: false, alt: true, shift: false, meta: false },
+        codes: ['AltLeft', 'Mouse5'],
       }),
-    ).toBe('Alt+Mouse5')
+    ).toBe('Left Alt+Mouse5')
   })
 
-  it('formats modifier-only combos', () => {
+  it('formats left and right modifiers separately', () => {
     expect(
       comboDisplayLabel({
-        trigger: { type: 'modifier', modifier: 'alt' },
-        modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+        codes: ['ControlLeft', 'ControlRight'],
       }),
-    ).toBe('Alt')
+    ).toBe('Left Ctrl+Right Ctrl')
   })
 
-  it('builds combos from native input events', () => {
+  it('builds combos from native pressed codes', () => {
     expect(
       comboFromNativeInputEvent({
-        type: 'mouseDown',
-        button: 'Mouse5',
-        modifiers: { ctrl: true, alt: false, shift: false, meta: false },
+        type: 'inputDown',
+        source: 'mouse',
+        code: 'Mouse5',
+        label: 'Mouse5',
+        pressedCodes: ['ControlRight', 'Mouse5'],
       }),
     ).toEqual({
-      trigger: { type: 'mouse', button: 'Mouse5' },
-      modifiers: { ctrl: true, alt: false, shift: false, meta: false },
+      codes: ['ControlRight', 'Mouse5'],
     })
   })
 
-  it('normalizes generic modifier codes from the native helper', () => {
-    expect(
-      comboFromNativeInputEvent({
-        type: 'keyUp',
-        code: 'Control',
-        key: 'Control',
-        modifiers: { ctrl: false, alt: false, shift: false, meta: false },
-      }),
-    ).toEqual({
-      trigger: { type: 'modifier', modifier: 'ctrl' },
-      modifiers: { ctrl: false, alt: false, shift: false, meta: false },
-    })
-  })
-
-  it('waits for the non-modifier trigger while recording modifier combos', () => {
+  it('captures modifier-only hotkeys on release', () => {
     expect(
       shouldCaptureRecordedInput({
-        type: 'keyDown',
-        code: 'Control',
-        key: 'Control',
-        modifiers: { ctrl: true, alt: false, shift: false, meta: false },
-      }),
-    ).toBe(false)
-
-    expect(
-      shouldCaptureRecordedInput({
-        type: 'keyDown',
-        code: 'KeyM',
-        key: 'M',
-        modifiers: { ctrl: true, alt: false, shift: false, meta: false },
+        type: 'inputUp',
+        source: 'keyboard',
+        code: 'ControlRight',
+        label: 'Right Ctrl',
+        pressedCodes: [],
       }),
     ).toBe(true)
   })
 
-  it('captures modifier-only hotkeys on modifier release', () => {
-    expect(
-      shouldCaptureRecordedInput({
-        type: 'keyUp',
-        code: 'Alt',
-        key: 'Alt',
-        modifiers: { ctrl: false, alt: false, shift: false, meta: false },
-      }),
-    ).toBe(true)
-  })
-
-  it('matches exact trigger and modifier state', () => {
+  it('matches exact physical code set', () => {
     const combo = {
-      trigger: { type: 'mouse' as const, button: 'Mouse5' as const },
-      modifiers: { ctrl: false, alt: true, shift: false, meta: false },
+      codes: ['AltLeft', 'Mouse5'],
     }
 
     expect(
       hotkeyMatchesNativeInput(combo, {
-        type: 'mouseDown',
-        button: 'Mouse5',
-        modifiers: { ctrl: false, alt: true, shift: false, meta: false },
+        type: 'inputDown',
+        source: 'mouse',
+        code: 'Mouse5',
+        label: 'Mouse5',
+        pressedCodes: ['AltLeft', 'Mouse5'],
       }),
     ).toBe(true)
     expect(
       hotkeyMatchesNativeInput(combo, {
-        type: 'mouseDown',
-        button: 'Mouse5',
-        modifiers: { ctrl: true, alt: true, shift: false, meta: false },
+        type: 'inputDown',
+        source: 'mouse',
+        code: 'Mouse5',
+        label: 'Mouse5',
+        pressedCodes: ['AltLeft', 'ControlRight', 'Mouse5'],
       }),
     ).toBe(false)
   })
 
+  it('records the last non-empty chord when the first key is released', () => {
+    expect(
+      comboFromRecordedInputs([
+        {
+          type: 'inputDown',
+          source: 'keyboard',
+          code: 'ControlRight',
+          label: 'Right Ctrl',
+          pressedCodes: ['ControlRight'],
+        },
+        {
+          type: 'inputDown',
+          source: 'keyboard',
+          code: 'KeyM',
+          label: 'M',
+          pressedCodes: ['ControlRight', 'KeyM'],
+        },
+        {
+          type: 'inputUp',
+          source: 'keyboard',
+          code: 'KeyM',
+          label: 'M',
+          pressedCodes: ['ControlRight'],
+        },
+      ]),
+    ).toEqual({ codes: ['ControlRight', 'KeyM'] })
+  })
+
   it('finds duplicate enabled combos', () => {
     const combo = {
-      trigger: { type: 'keyboard' as const, code: 'KeyM', key: 'M' },
-      modifiers: { ctrl: true, alt: false, shift: true, meta: false },
+      codes: ['ControlLeft', 'KeyM'],
     }
 
     expect(
@@ -122,6 +119,25 @@ describe('hotkey combo helpers', () => {
         { id: 'c', action: 'toggle-camera', combo, enabled: false },
       ]),
     ).toEqual(new Set(['a', 'b']))
+  })
+
+  it('does not treat left and right control combos as duplicates', () => {
+    expect(
+      findDuplicateCombos([
+        {
+          id: 'left',
+          action: 'toggle-mic',
+          combo: { codes: ['ControlLeft', 'KeyM'] },
+          enabled: true,
+        },
+        {
+          id: 'right',
+          action: 'toggle-deafen',
+          combo: { codes: ['ControlRight', 'KeyM'] },
+          enabled: true,
+        },
+      ]),
+    ).toEqual(new Set())
   })
 
   it('enables hold actions once native down/up events exist', () => {
