@@ -107,6 +107,8 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
         .await
         .ok();
 
+    let worker_user = user.clone();
+
     // Create local state.
     let mut state = State::from(user, session_id);
     let user_id = state.cache.user_id.clone();
@@ -173,7 +175,7 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
         // Read from WebSocket stream.
         let worker = worker_with_kill_signal(
             db,
-            user.clone(),
+            worker_user,
             addr,
             subscribed,
             active_servers,
