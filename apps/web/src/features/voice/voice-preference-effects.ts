@@ -20,9 +20,6 @@ export function voicePreferenceEffectFlags(
       previous.voiceGateThresholdDb !== next.voiceGateThresholdDb ||
       previous.voiceGateAutoThreshold !== next.voiceGateAutoThreshold ||
       previous.inputVolume !== next.inputVolume,
-    remoteAudioChanged:
-      previous.outputVolume !== next.outputVolume ||
-      previous.autoBalanceEnabled !== next.autoBalanceEnabled ||
-      previous.autoBalanceStrength !== next.autoBalanceStrength,
+    remoteAudioChanged: previous.outputVolume !== next.outputVolume,
   }
 }

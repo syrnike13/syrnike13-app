@@ -12,8 +12,6 @@ const base: VoicePreferenceState = {
   voiceGateEnabled: true,
   voiceGateThresholdDb: -28,
   voiceGateAutoThreshold: true,
-  autoBalanceEnabled: false,
-  autoBalanceStrength: 0.5,
   screenShareQuality: 'low',
   screenShareCodec: 'auto',
   screenShareAudio: true,
@@ -34,11 +32,11 @@ describe('voicePreferenceEffectFlags', () => {
     })
   })
 
-  it('does not treat auto-balance changes as mic processing changes', () => {
+  it('tracks output volume changes as remote audio changes', () => {
     expect(
       voicePreferenceEffectFlags(base, {
         ...base,
-        autoBalanceEnabled: true,
+        outputVolume: 1.5,
       }),
     ).toMatchObject({
       devicesChanged: false,

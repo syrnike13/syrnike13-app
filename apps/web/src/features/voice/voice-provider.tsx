@@ -45,8 +45,11 @@ import {
   handleVoiceApiError,
 } from '#/features/voice/voice-api-capability'
 import { syncStore } from '#/features/sync/sync-store'
-import { applyAllRemoteAudio, applyRemoteAudioElement } from '#/features/voice/remote-audio-settings'
-import { releaseRemoteAudioGain } from '#/features/voice/remote-audio-gain'
+import {
+  createRemoteAudioMixer,
+  type RemoteAudioMixer,
+  type RemoteAudioSource,
+} from '#/features/voice/remote-audio-mixer'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import {
   liveKitChannelParticipants,
@@ -339,6 +342,31 @@ async function switchDeviceWithTimeout(
   ])
 }
 
+type AudioTrackWithMedia = Track & {
+  mediaStreamTrack?: MediaStreamTrack
+  sid?: string
+}
+
+function audioSourceFromPublication(
+  publication: RemoteTrackPublication,
+): RemoteAudioSource {
+  return publication.source === Track.Source.ScreenShareAudio ? 'stream' : 'mic'
+}
+
+function remoteAudioTrackId(
+  track: Track,
+  publication: RemoteTrackPublication,
+) {
+  const audioTrack = track as AudioTrackWithMedia
+  return (
+    publication.trackSid ??
+    publication.sid ??
+    audioTrack.sid ??
+    audioTrack.mediaStreamTrack?.id ??
+    crypto.randomUUID()
+  )
+}
+
 export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const roomRef = useRef<Room | null>(null)
@@ -348,7 +376,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const nativeMicrophoneMutedRef = useRef(false)
   const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
   const watchedRemoteScreenIdsRef = useRef<Set<string>>(new Set())
-  const audioElementsRef = useRef<HTMLAudioElement[]>([])
+  const remoteAudioMixerRef = useRef<RemoteAudioMixer | null>(null)
+  if (!remoteAudioMixerRef.current) {
+    remoteAudioMixerRef.current = createRemoteAudioMixer()
+  }
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
   const micIssueRef = useRef<VoiceMicIssue | null>(null)
@@ -652,10 +683,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [syncStageMediaItems])
 
   const cleanupAudio = useCallback(() => {
-    for (const element of audioElementsRef.current) {
+    remoteAudioMixerRef.current?.clear()
+    for (const element of document.querySelectorAll(
+      'audio[data-syrnike-remote-audio-mixer="source"]',
+    )) {
       element.remove()
     }
-    audioElementsRef.current = []
+  }, [])
+
+  const applyRemoteAudio = useCallback((deafened = deafenedRef.current) => {
+    remoteAudioMixerRef.current?.applyVolumes(deafened)
   }, [])
 
   const restoreVoicePreferences = useCallback(() => {
@@ -902,8 +939,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         prefs.preferredAudioOutputDevice,
       )
     }
-    applyAllRemoteAudio(deafenedRef.current)
-  }, [])
+    remoteAudioMixerRef.current?.setOutputDevice(prefs.preferredAudioOutputDevice)
+    applyRemoteAudio(deafenedRef.current)
+  }, [applyRemoteAudio])
 
   const stopNativeMicrophone = useCallback(() => {
     const active = nativeMicrophoneRef.current
@@ -1000,7 +1038,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       setDeafened(prefs.deafened)
       deafenedRef.current = prefs.deafened
-      applyAllRemoteAudio(prefs.deafened)
+      remoteAudioMixerRef.current?.setOutputDevice(prefs.preferredAudioOutputDevice)
+      applyRemoteAudio(prefs.deafened)
       await applyVoiceDevices(room)
       if (
         prefs.micEnabled &&
@@ -1179,13 +1218,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const attachAudio = useCallback(
     (room: Room) => {
-      const removeRemoteAudioElement = (element: Element) => {
-        if (element instanceof HTMLAudioElement) {
-          releaseRemoteAudioGain(element)
-          audioElementsRef.current = audioElementsRef.current.filter(
-            (audioElement) => audioElement !== element,
-          )
-        }
+      const removeDetachedElement = (element: Element) => {
         element.remove()
       }
 
@@ -1195,27 +1228,47 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         participant: RemoteParticipant,
       ) => {
         if (track.kind !== Track.Kind.Audio) return
+        const audioTrack = track as AudioTrackWithMedia
         if (
           isDesktopNativeVoiceIdentity(participant.identity) &&
           baseVoiceIdentity(participant.identity) === auth.user?._id
         ) {
-          track.detach().forEach(removeRemoteAudioElement)
+          track.detach().forEach(removeDetachedElement)
           return
         }
-        track.detach().forEach(removeRemoteAudioElement)
-        const element = track.attach() as HTMLAudioElement
-        const audioSource =
-          publication.source === Track.Source.ScreenShareAudio ? 'stream' : 'mic'
-        element.dataset.livekit = 'remote'
-        element.dataset.livekitUserId = baseVoiceIdentity(participant.identity)
-        element.dataset.livekitAudioSource = audioSource
-        element.dataset.livekitAudioLevel = String(participant.audioLevel ?? 0)
-        document.body.appendChild(element)
-        audioElementsRef.current.push(element)
-        applyRemoteAudioElement(element, deafenedRef.current)
-        void element.play().catch(() => {
-          // autoplay policy
+        track.detach().forEach(removeDetachedElement)
+        const sourceElement = track.attach() as HTMLAudioElement
+        sourceElement.dataset.syrnikeRemoteAudioMixer = 'source'
+        sourceElement.muted = true
+        sourceElement.volume = 0
+        sourceElement.autoplay = true
+        sourceElement.style.display = 'none'
+        document.body.appendChild(sourceElement)
+        void sourceElement.play().catch(() => {})
+        const mediaStreamTrack = audioTrack.mediaStreamTrack
+        if (!mediaStreamTrack) {
+          console.error('[voice-audio-mixer] missing remote audio media track', {
+            userId: baseVoiceIdentity(participant.identity),
+            publicationSid: publication.sid,
+            publicationTrackSid: publication.trackSid,
+          })
+          return
+        }
+        const added = remoteAudioMixerRef.current?.addTrack({
+          trackId: remoteAudioTrackId(track, publication),
+          userId: baseVoiceIdentity(participant.identity),
+          source: audioSourceFromPublication(publication),
+          mediaStreamTrack,
         })
+        if (!added) {
+          console.error('[voice-audio-mixer] failed to add remote audio track', {
+            userId: baseVoiceIdentity(participant.identity),
+            publicationSid: publication.sid,
+            publicationTrackSid: publication.trackSid,
+            mediaStreamTrackId: mediaStreamTrack.id,
+          })
+        }
+        applyRemoteAudio(deafenedRef.current)
       }
 
       const syncSpeakers = () => {
@@ -1225,22 +1278,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setSpeakingUserIds((current) =>
           stringSetEquals(current, nextSpeakers) ? current : nextSpeakers,
         )
-        const levels = new Map<string, number>()
-        for (const participant of room.remoteParticipants.values()) {
-          const userId = baseVoiceIdentity(participant.identity)
-          levels.set(
-            userId,
-            Math.max(levels.get(userId) ?? 0, participant.audioLevel ?? 0),
-          )
-        }
-        for (const element of audioElementsRef.current) {
-          const userId = element.dataset.livekitUserId
-          if (!userId) continue
-          if (element.dataset.livekitAudioSource !== 'stream') {
-            element.dataset.livekitAudioLevel = String(levels.get(userId) ?? 0)
-          }
-          applyRemoteAudioElement(element, deafenedRef.current)
-        }
       }
 
       const onParticipantsChanged = () => {
@@ -1257,7 +1294,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           const subscribed = applyRemoteScreenParticipantSubscription(participant)
           if (!subscribed) {
             publication.setSubscribed?.(false)
-            track.detach().forEach(removeRemoteAudioElement)
+            track.detach().forEach(removeDetachedElement)
             onParticipantsChanged()
             return
           }
@@ -1269,8 +1306,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         onParticipantsChanged()
       })
 
-      room.on(RoomEvent.TrackUnsubscribed, (track) => {
-        track.detach().forEach(removeRemoteAudioElement)
+      room.on(RoomEvent.TrackUnsubscribed, (track, publication) => {
+        if (track.kind === Track.Kind.Audio) {
+          remoteAudioMixerRef.current?.removeTrack(
+            remoteAudioTrackId(track, publication),
+          )
+          const mediaStreamTrack = (track as AudioTrackWithMedia).mediaStreamTrack
+          if (mediaStreamTrack) {
+            remoteAudioMixerRef.current?.removeMediaStreamTrack(mediaStreamTrack)
+          }
+        }
+        track.detach().forEach(removeDetachedElement)
         onParticipantsChanged()
       })
 
@@ -1783,7 +1829,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       voicePreferenceStore.setDeafened(false)
       setDeafened(false)
       deafenedRef.current = false
-      applyAllRemoteAudio(false)
+      applyRemoteAudio(false)
       if (activeChannelId && userId) {
         patchLocalVoiceDeafen(activeChannelId, userId, false)
       }
@@ -1889,7 +1935,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     voicePreferenceStore.setDeafened(nextDeafened)
     setDeafened(nextDeafened)
     deafenedRef.current = nextDeafened
-    applyAllRemoteAudio(nextDeafened)
+    applyRemoteAudio(nextDeafened)
 
     if (nextDeafened) {
       voicePreferenceStore.setMicEnabled(false)
@@ -1934,14 +1980,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (status === 'connected') {
-      applyAllRemoteAudio(deafened)
+      applyRemoteAudio(deafened)
     }
   }, [deafened, status])
 
   useEffect(() => {
     return voiceListenerStore.subscribe(() => {
       if (status === 'connected') {
-        applyAllRemoteAudio(deafenedRef.current)
+        applyRemoteAudio(deafenedRef.current)
       }
     })
   }, [status])
@@ -1964,7 +2010,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
         })
       } else if (effects.remoteAudioChanged) {
-        applyAllRemoteAudio(deafenedRef.current)
+        applyRemoteAudio(deafenedRef.current)
       }
       if (effects.micProcessingChanged) {
         if (shouldUseNativeMicrophone()) {

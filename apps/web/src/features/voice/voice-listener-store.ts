@@ -61,10 +61,6 @@ function persist() {
   }
 }
 
-export function effectiveElementVolume(userVolume: number) {
-  return Math.min(1, Math.max(0, userVolume))
-}
-
 export function formatUserVolumeLabel(userVolume: number) {
   return `${Math.round(userVolume * 100)}%`
 }

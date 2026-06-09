@@ -13,8 +13,6 @@ describe('voicePreferenceStore', () => {
     voicePreferenceStore.setDeafened(false)
     voicePreferenceStore.setVoiceGateEnabled(true)
     voicePreferenceStore.setVoiceGateAutoThreshold(true)
-    voicePreferenceStore.setAutoBalanceEnabled(false)
-    voicePreferenceStore.setAutoBalanceStrength(0.5)
   })
 
   it('persists mic preference', () => {
@@ -42,17 +40,13 @@ describe('voicePreferenceStore', () => {
       voiceGateEnabled: true,
       voiceGateAutoThreshold: true,
       voiceGateThresholdDb: -28,
-      autoBalanceEnabled: false,
-      autoBalanceStrength: 0.5,
     })
   })
 
-  it('clamps voice gate threshold and auto balance strength', () => {
+  it('clamps voice gate threshold', () => {
     voicePreferenceStore.setVoiceGateThresholdDb(12)
-    voicePreferenceStore.setAutoBalanceStrength(-1)
 
     expect(voicePreferenceStore.getState().voiceGateThresholdDb).toBe(0)
-    expect(voicePreferenceStore.getState().autoBalanceStrength).toBe(0)
   })
 
   it('does not preserve legacy browser screen share capture mode', () => {
@@ -90,11 +84,9 @@ describe('voicePreferenceStore', () => {
     })
   })
 
-  it('persists voice gate and auto balance toggles', () => {
+  it('persists voice gate toggle', () => {
     voicePreferenceStore.setVoiceGateEnabled(true)
-    voicePreferenceStore.setAutoBalanceEnabled(true)
 
     expect(voicePreferenceStore.getState().voiceGateEnabled).toBe(true)
-    expect(voicePreferenceStore.getState().autoBalanceEnabled).toBe(true)
   })
 })

@@ -28,7 +28,6 @@ import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
-import { formatUserVolumeLabel } from '#/features/voice/voice-listener-store'
 import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
 import { useMicPreviewLoopback } from '#/features/voice/use-mic-preview-loopback'
 import { useVoice } from '#/features/voice/voice-provider'
@@ -408,40 +407,6 @@ export function SettingsVoicePanel() {
             передаётся в стерео.
           </p>
         ) : null}
-      </section>
-
-      <section className="space-y-3">
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-input accent-primary"
-            checked={prefs.autoBalanceEnabled}
-            onChange={(event) =>
-              voicePreferenceStore.setAutoBalanceEnabled(event.target.checked)
-            }
-          />
-          Авто-баланс участников
-        </label>
-        <div className="space-y-2">
-          <Label htmlFor="voice-auto-balance-strength">Сила авто-баланса</Label>
-          <input
-            id="voice-auto-balance-strength"
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={prefs.autoBalanceStrength}
-            onChange={(event) => {
-              voicePreferenceStore.setAutoBalanceStrength(
-                Number(event.target.value),
-              )
-            }}
-            className="w-full accent-primary"
-          />
-          <p className="text-sm text-muted-foreground">
-            {formatUserVolumeLabel(prefs.autoBalanceStrength)}
-          </p>
-        </div>
       </section>
     </div>
   )

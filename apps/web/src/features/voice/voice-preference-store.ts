@@ -25,8 +25,6 @@ export type VoicePreferenceState = {
   voiceGateEnabled: boolean
   voiceGateThresholdDb: number
   voiceGateAutoThreshold: boolean
-  autoBalanceEnabled: boolean
-  autoBalanceStrength: number
   screenShareQuality: ScreenShareQualityName
   screenShareCodec: ScreenShareCodec
   screenShareAudio: boolean
@@ -57,8 +55,6 @@ const DEFAULT_STATE: VoicePreferenceState = {
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
-  autoBalanceEnabled: false,
-  autoBalanceStrength: 0.5,
   screenShareQuality: defaultScreenShareQuality(),
   screenShareCodec: 'auto',
   screenShareAudio: true,
@@ -96,11 +92,6 @@ export function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureM
     return value
   }
   return DEFAULT_STATE.screenShareCaptureMode
-}
-
-function clampUnitInterval(value: unknown, fallback: number) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
-  return Math.min(1, Math.max(0, Number(value.toFixed(3))))
 }
 
 function parseVoiceGateThresholdDb(parsed: Record<string, unknown>) {
@@ -167,14 +158,6 @@ function loadState(): VoicePreferenceState {
         typeof parsed.voiceGateAutoThreshold === 'boolean'
           ? parsed.voiceGateAutoThreshold
           : DEFAULT_STATE.voiceGateAutoThreshold,
-      autoBalanceEnabled:
-        typeof parsed.autoBalanceEnabled === 'boolean'
-          ? parsed.autoBalanceEnabled
-          : DEFAULT_STATE.autoBalanceEnabled,
-      autoBalanceStrength: clampUnitInterval(
-        parsed.autoBalanceStrength,
-        DEFAULT_STATE.autoBalanceStrength,
-      ),
       screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
       screenShareCodec: parseScreenShareCodec(parsed.screenShareCodec),
       screenShareAudio:
@@ -284,18 +267,6 @@ export const voicePreferenceStore = {
   setVoiceGateAutoThreshold: (voiceGateAutoThreshold: boolean) => {
     if (state.voiceGateAutoThreshold === voiceGateAutoThreshold) return
     patch({ voiceGateAutoThreshold })
-  },
-  setAutoBalanceEnabled: (autoBalanceEnabled: boolean) => {
-    if (state.autoBalanceEnabled === autoBalanceEnabled) return
-    patch({ autoBalanceEnabled })
-  },
-  setAutoBalanceStrength: (autoBalanceStrength: number) => {
-    const next = clampUnitInterval(
-      autoBalanceStrength,
-      DEFAULT_STATE.autoBalanceStrength,
-    )
-    if (state.autoBalanceStrength === next) return
-    patch({ autoBalanceStrength: next })
   },
   setScreenShareQuality: (screenShareQuality: ScreenShareQualityName) => {
     if (state.screenShareQuality === screenShareQuality) return
