@@ -39,14 +39,16 @@ export class HotkeyState {
     for (const binding of bindings) {
       if (!binding.enabled || !binding.combo) continue
       if (!REGISTERABLE_ACTIONS.has(binding.action)) continue
-      if (!comboMatchesPressedCodes(binding.combo, pressedCodes)) continue
 
-      const key = comboKey(binding.combo)
+      const bindingCodes = normalizeCodes(binding.combo.codes)
+      if (!comboCodesMatchPressedCodes(bindingCodes, pressedCodes)) continue
+
+      const key = comboKeyFromCodes(bindingCodes)
       if (this.activeCombos.has(key)) continue
 
       this.activeCombos.set(key, {
         action: binding.action,
-        codes: normalizeCodes(binding.combo.codes),
+        codes: bindingCodes,
       })
       events.push({ action: binding.action, phase: 'pressed' })
     }
@@ -83,11 +85,15 @@ export class HotkeyState {
 }
 
 export function comboKey(combo: HotkeyCombo) {
-  return JSON.stringify({ codes: normalizeCodes(combo.codes) }).toLowerCase()
+  return comboKeyFromCodes(normalizeCodes(combo.codes))
 }
 
-function comboMatchesPressedCodes(combo: HotkeyCombo, pressedCodes: string[]) {
-  return comboKey(combo) === JSON.stringify({ codes: pressedCodes }).toLowerCase()
+function comboKeyFromCodes(codes: string[]) {
+  return JSON.stringify({ codes }).toLowerCase()
+}
+
+function comboCodesMatchPressedCodes(comboCodes: string[], pressedCodes: string[]) {
+  return comboKeyFromCodes(comboCodes) === comboKeyFromCodes(pressedCodes)
 }
 
 function normalizeCodes(codes: string[]) {

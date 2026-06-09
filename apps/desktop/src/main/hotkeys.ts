@@ -159,7 +159,8 @@ export function sanitizeHotkeyBindings(value: unknown): HotkeyBinding[] {
     if (
       typeof binding.id !== 'string' ||
       typeof binding.action !== 'string' ||
-      typeof binding.enabled !== 'boolean'
+      typeof binding.enabled !== 'boolean' ||
+      !REGISTERABLE_ACTIONS.has(binding.action as HotkeyAction)
     ) {
       return []
     }
@@ -177,10 +178,14 @@ export function sanitizeHotkeyBindings(value: unknown): HotkeyBinding[] {
 
 function sanitizeCombo(value: unknown): HotkeyCombo | null {
   if (!value || typeof value !== 'object') return null
-  const combo = value as Partial<HotkeyCombo>
-  if (!Array.isArray(combo.codes)) return null
+  const combo = value as { codes?: unknown }
+  const rawCodes = combo.codes
+  if (!Array.isArray(rawCodes)) return null
+  if (!rawCodes.every((code): code is string => typeof code === 'string')) {
+    return null
+  }
 
-  const codes = normalizeCodes(combo.codes)
+  const codes = normalizeCodes(rawCodes)
   return codes.length > 0 ? { codes } : null
 }
 

@@ -111,7 +111,14 @@ int main() {
   }
 
   MSG message;
-  while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+  while (true) {
+    const BOOL status = GetMessageW(&message, nullptr, 0, 0);
+    if (status == -1) {
+      std::cerr << "GetMessageW failed: " << GetLastError() << std::endl;
+      return 1;
+    }
+    if (status == 0) break;
+
     TranslateMessage(&message);
     DispatchMessageW(&message);
   }
