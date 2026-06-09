@@ -317,6 +317,8 @@ pub async fn create_voice_state(
         .filter(|intent| intent.channel == *channel)
         .map(|intent| (intent.self_mute, intent.self_deaf));
 
+    // Join intent is only authoritative for the first tracked join; repeated
+    // LiveKit joins preserve the persisted flags and version to avoid races.
     let voice_state = UserVoiceState {
         joined_at,
         id: user_id.to_string(),
@@ -339,14 +341,14 @@ pub async fn create_voice_state(
         server_muted: server_muted.unwrap_or(false),
         server_deafened: server_deafened.unwrap_or(false),
         screensharing: if pending_track_state {
-            screensharing.unwrap_or(false)
-        } else {
             false
+        } else {
+            screensharing.unwrap_or(false)
         },
         camera: if pending_track_state {
-            camera.unwrap_or(false)
-        } else {
             false
+        } else {
+            camera.unwrap_or(false)
         },
         version: if pending_track_state {
             1
@@ -548,12 +550,13 @@ pub async fn update_client_voice_flags(
         .ok_or_else(|| create_error!(NotConnected))?;
 
     let mut pipeline = Pipeline::new();
+    let mut conn = get_connection().await?.into_inner();
     pipeline
         .atomic()
         .set(format!("self_mute:{unique_key}"), self_mute)
         .set(format!("self_deaf:{unique_key}"), self_deaf)
         .incr(format!("version:{unique_key}"), 1)
-        .query_async(&mut get_connection().await?.into_inner())
+        .query_async::<_, ()>(&mut conn)
         .await
         .to_internal_error()?;
 
@@ -616,7 +619,7 @@ async fn bump_voice_state_version(channel: &UserVoiceChannel, user_id: &str) -> 
 
     get_connection()
         .await?
-        .incr::<_, u64>(&version_key, 1)
+        .incr::<_, _, u64>(&version_key, 1)
         .await
         .to_internal_error()
 }
@@ -1014,7 +1017,7 @@ pub struct RoomMetadata {
     pub server: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserVoiceChannel {
     pub id: String,
     pub server_id: Option<String>,
@@ -1139,12 +1142,17 @@ mod tests {
             super::base_voice_identity("user-a:desktop-native:microphone"),
             "user-a"
         );
-        assert_eq!(super::base_voice_identity("user-a:desktop-native"), "user-a");
+        assert_eq!(
+            super::base_voice_identity("user-a:desktop-native"),
+            "user-a"
+        );
         assert_eq!(super::base_voice_identity("user-a"), "user-a");
         assert!(super::is_desktop_native_voice_identity(
             "user-a:desktop-native:screen"
         ));
-        assert!(super::is_desktop_native_voice_identity("user-a:desktop-native"));
+        assert!(super::is_desktop_native_voice_identity(
+            "user-a:desktop-native"
+        ));
         assert!(!super::is_desktop_native_voice_identity("user-a"));
     }
 }

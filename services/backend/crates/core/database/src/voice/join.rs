@@ -103,9 +103,6 @@ pub async fn join_voice_channel(
 
         if force_disconnect {
             voice_client.remove_user_from_all_rooms(&user.id).await?;
-        }
-
-        if force_disconnect {
             for previous_channel in voice_channels_to_disconnect_on_join(
                 get_user_voice_channels(&user.id).await?,
                 &user_voice_channel,
@@ -211,42 +208,45 @@ pub async fn refresh_voice_credentials(
     let token = voice_client
         .create_token_for_identity(&node, db, user, &user.id, current_permissions, &channel)
         .await?;
+    let native_microphone = create_native_credentials(
+        voice_client,
+        &node,
+        db,
+        user,
+        "microphone",
+        current_permissions,
+        &channel,
+    )
+    .await?;
+    let native_screen = create_native_credentials(
+        voice_client,
+        &node,
+        db,
+        user,
+        "screen",
+        current_permissions,
+        &channel,
+    )
+    .await?;
+    let native_camera = create_native_credentials(
+        voice_client,
+        &node,
+        db,
+        user,
+        "camera",
+        current_permissions,
+        &channel,
+    )
+    .await?;
 
     Ok(VoiceJoinCredentials {
         channel_id: channel.id().to_string(),
         node,
         url: node_host,
         token,
-        native_microphone: create_native_credentials(
-            voice_client,
-            &node,
-            db,
-            user,
-            "microphone",
-            current_permissions,
-            &channel,
-        )
-        .await?,
-        native_screen: create_native_credentials(
-            voice_client,
-            &node,
-            db,
-            user,
-            "screen",
-            current_permissions,
-            &channel,
-        )
-        .await?,
-        native_camera: create_native_credentials(
-            voice_client,
-            &node,
-            db,
-            user,
-            "camera",
-            current_permissions,
-            &channel,
-        )
-        .await?,
+        native_microphone,
+        native_screen,
+        native_camera,
     })
 }
 

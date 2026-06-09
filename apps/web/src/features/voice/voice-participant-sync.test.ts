@@ -19,7 +19,7 @@ describe('liveKitRoomParticipantIds', () => {
       ]),
     }
 
-    expect(liveKitRoomParticipantIds(room as never)).toEqual([
+    expect(liveKitRoomParticipantIds(room)).toEqual([
       LOCAL_USER_ID,
       REMOTE_USER_ID,
     ])
@@ -33,10 +33,22 @@ describe('liveKitRoomParticipantIds', () => {
     }
 
     expect(
-      liveKitRoomParticipantIds(room as never, {
+      liveKitRoomParticipantIds(room, {
         excludedParticipantIdentities: new Set([nativeIdentity]),
       }),
     ).toEqual([LOCAL_USER_ID])
+  })
+
+  it('deduplicates browser and native participants for the same user', () => {
+    const room = {
+      localParticipant: { identity: LOCAL_USER_ID },
+      remoteParticipants: new Map([
+        ['native-mic', { identity: `${LOCAL_USER_ID}:desktop-native:microphone` }],
+        ['native-screen', { identity: `${LOCAL_USER_ID}:desktop-native:screen` }],
+      ]),
+    }
+
+    expect(liveKitRoomParticipantIds(room)).toEqual([LOCAL_USER_ID])
   })
 })
 

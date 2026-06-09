@@ -18,7 +18,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
-        version: 1,
+        version: 3,
       },
     ]
     syncStore.setChannelVoiceParticipants(CHANNEL_ID, participants)
@@ -197,25 +197,11 @@ describe('syncStore voice events', () => {
     })
   })
 
-  it('removes stale channel copies when a move event arrives', () => {
+  it('removes stale channel copies when a newer move event arrives', () => {
     syncStore.reset()
+    const fromChannelId = '01KT7DEM3B0T4B0BXGBXWDJ6AH'
 
-    syncStore.handleGatewayEvent({
-      type: 'VoiceChannelJoin',
-      id: '01KT7DEM3B0T4B0BXGBXWDJ6AG',
-      state: {
-        id: USER_ID,
-        joined_at: 1,
-        self_mute: false,
-        self_deaf: false,
-        server_muted: false,
-        server_deafened: false,
-        camera: false,
-        screensharing: false,
-        version: 1,
-      },
-    })
-    syncStore.addVoiceParticipant('01KT7DEM3B0T4B0BXGBXWDJ6AH', {
+    syncStore.addVoiceParticipant(fromChannelId, {
       id: USER_ID,
       joined_at: 2,
       self_mute: false,
@@ -229,7 +215,7 @@ describe('syncStore voice events', () => {
     syncStore.handleGatewayEvent({
       type: 'VoiceChannelMove',
       user: USER_ID,
-      from: '01KT7DEM3B0T4B0BXGBXWDJ6AG',
+      from: fromChannelId,
       to: CHANNEL_ID,
       state: {
         id: USER_ID,
@@ -240,7 +226,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
-        version: 1,
+        version: 3,
       },
     })
 
@@ -249,6 +235,51 @@ describe('syncStore voice events', () => {
         [USER_ID]: expect.objectContaining({
           id: USER_ID,
           joined_at: 3,
+          version: 3,
+        }),
+      },
+    })
+  })
+
+  it('ignores stale move events across voice channels', () => {
+    syncStore.reset()
+    const newerChannelId = '01KT7DEM3B0T4B0BXGBXWDJ6AH'
+
+    syncStore.addVoiceParticipant(newerChannelId, {
+      id: USER_ID,
+      joined_at: 2,
+      self_mute: false,
+      self_deaf: false,
+      server_muted: false,
+      server_deafened: false,
+      camera: false,
+      screensharing: false,
+      version: 2,
+    })
+    syncStore.handleGatewayEvent({
+      type: 'VoiceChannelMove',
+      user: USER_ID,
+      from: newerChannelId,
+      to: CHANNEL_ID,
+      state: {
+        id: USER_ID,
+        joined_at: 3,
+        self_mute: true,
+        self_deaf: false,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+        version: 1,
+      },
+    })
+
+    expect(syncStore.getState().voiceParticipants).toEqual({
+      [newerChannelId]: {
+        [USER_ID]: expect.objectContaining({
+          id: USER_ID,
+          self_mute: false,
+          version: 2,
         }),
       },
     })
@@ -316,6 +347,47 @@ describe('syncStore voice events', () => {
     expect(
       syncStore.getState().voiceParticipants[CHANNEL_ID]?.[USER_ID]?.self_mute,
     ).toBe(false)
+  })
+
+  it('ignores stale VoiceStateUpdate from another channel', () => {
+    syncStore.reset()
+    const newerChannelId = '01KT7DEM3B0T4B0BXGBXWDJ6AH'
+
+    syncStore.addVoiceParticipant(newerChannelId, {
+      id: USER_ID,
+      joined_at: 2,
+      self_mute: false,
+      self_deaf: false,
+      server_muted: false,
+      server_deafened: false,
+      camera: false,
+      screensharing: false,
+      version: 5,
+    })
+    syncStore.handleGatewayEvent({
+      type: 'VoiceStateUpdate',
+      channel_id: CHANNEL_ID,
+      state: {
+        id: USER_ID,
+        joined_at: 3,
+        self_mute: true,
+        self_deaf: false,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+        version: 4,
+      },
+    })
+
+    expect(syncStore.getState().voiceParticipants).toEqual({
+      [newerChannelId]: {
+        [USER_ID]: expect.objectContaining({
+          self_mute: false,
+          version: 5,
+        }),
+      },
+    })
   })
 
   it('keeps local optimistic patches ahead of same-version snapshots', () => {

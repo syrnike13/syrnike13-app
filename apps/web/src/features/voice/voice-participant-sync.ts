@@ -1,8 +1,11 @@
-import type { Room } from 'livekit-client'
-
 import { syncStore } from '#/features/sync/sync-store'
 import { isValidVoiceUserId } from '#/features/sync/voice-participant-resolve'
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
+
+type LiveKitRoomParticipantSource = {
+  localParticipant: { identity: string }
+  remoteParticipants: { values(): Iterable<{ identity: string }> }
+}
 
 export function removeLocalVoiceParticipant(channelId: string, userId: string) {
   syncStore.removeVoiceParticipant(channelId, userId)
@@ -36,24 +39,21 @@ export function patchLocalVoiceDeafen(
 
 /** Только id участников комнаты — для stage media, не для mute/deafen. */
 export function liveKitRoomParticipantIds(
-  room: Room,
+  room: LiveKitRoomParticipantSource,
   options: {
     excludedParticipantIdentities?: ReadonlySet<string>
   } = {},
 ) {
-  const ids: string[] = []
-  const localId = baseVoiceIdentity(room.localParticipant.identity)
-  if (
-    isValidVoiceUserId(localId) &&
-    !options.excludedParticipantIdentities?.has(room.localParticipant.identity)
-  ) {
-    ids.push(localId)
+  const ids = new Set<string>()
+  const addIdentity = (identity: string) => {
+    if (options.excludedParticipantIdentities?.has(identity)) return
+    const userId = baseVoiceIdentity(identity)
+    if (isValidVoiceUserId(userId)) ids.add(userId)
   }
+
+  addIdentity(room.localParticipant.identity)
   for (const remote of room.remoteParticipants.values()) {
-    if (options.excludedParticipantIdentities?.has(remote.identity)) continue
-    const userId = baseVoiceIdentity(remote.identity)
-    if (!isValidVoiceUserId(userId)) continue
-    ids.push(userId)
+    addIdentity(remote.identity)
   }
-  return ids
+  return Array.from(ids)
 }

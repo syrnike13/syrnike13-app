@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { eventsGateway } from '#/features/events/gateway'
+import { resolveVoiceNodeName } from '#/features/voice/voice-node'
 import {
   createVoiceJoinRunner,
   nativeCredentialsFromJoinResponse,
@@ -354,6 +355,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
+  const micPublishingRef = useRef(readVoicePreferences().micEnabled)
   const micIssueRef = useRef<VoiceMicIssue | null>(null)
   const joinBlockedUntilRef = useRef(0)
   const joinInFlightRef = useRef<{
@@ -470,6 +472,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   channelIdRef.current = channelId
   deafenedRef.current = deafened
+  micPublishingRef.current = micPublishing
 
   const setCurrentMicIssue = useCallback(
     (issue: VoiceMicIssue | null, notify = false) => {
@@ -709,6 +712,26 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [auth.gatewayState],
   )
 
+  const readCurrentVoiceFlags = useCallback((room = roomRef.current) => {
+    const selfDeaf = deafenedRef.current
+    if (selfDeaf || selfMonitoringRef.current.active) {
+      return { selfMute: true, selfDeaf }
+    }
+    if (room) {
+      if (shouldUseNativeMicrophone()) {
+        return {
+          selfMute: !nativeMicrophoneRef.current || nativeMicrophoneMutedRef.current,
+          selfDeaf,
+        }
+      }
+      return {
+        selfMute: !participantMicPublishing(room.localParticipant),
+        selfDeaf,
+      }
+    }
+    return { selfMute: !micPublishingRef.current, selfDeaf }
+  }, [])
+
   const refreshNativeLiveKitCredentials = useCallback(
     async (
       mediaKind: LiveKitNativeMediaKind,
@@ -728,14 +751,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         throw new Error('LiveKit credentials are not available')
       }
 
-      const prefs = readVoicePreferences()
+      const { selfMute, selfDeaf } = readCurrentVoiceFlags()
       const credentials = await runVoiceRequest(
         `voice_refresh:${activeChannelId}:native`,
         () =>
           requestVoiceCredentialsRefresh(
             activeChannelId,
-            !prefs.micEnabled,
-            prefs.deafened,
+            selfMute,
+            selfDeaf,
           ),
         10_000,
       )
@@ -751,7 +774,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       return next[mediaKind]
     },
-    [auth.gatewayState],
+    [auth.gatewayState, readCurrentVoiceFlags],
   )
 
   const activeChannelAudioBitrateKbps = useCallback(() => {
@@ -1385,17 +1408,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       const activeChannelId = channelIdRef.current
       if (status !== 'connected' || !activeChannelId) return
-      const prefs = readVoicePreferences()
+      const { selfMute, selfDeaf } = readCurrentVoiceFlags()
       requestVoiceFlagsUpdate(
         activeChannelId,
-        !prefs.micEnabled,
-        prefs.deafened,
+        selfMute,
+        selfDeaf,
       )
     })
     return () => {
       void unsubscribe()
     }
-  }, [status])
+  }, [readCurrentVoiceFlags, status])
 
   const join = useCallback(
     async (targetChannelId: string) => {
@@ -1798,10 +1821,21 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             .then(() => {
               syncMicFromRoom(room)
               syncRoomParticipants()
+              if (activeChannelId && userId && status === 'connected') {
+                const { selfMute, selfDeaf } = readCurrentVoiceFlags(room)
+                syncVoiceFlagsToGateway(activeChannelId, selfMute, selfDeaf)
+              }
             })
             .catch((error) => {
               syncMicFromRoom(room, describeMicDeviceError(error))
               syncRoomParticipants()
+              if (activeChannelId && userId && status === 'connected') {
+                syncVoiceFlagsToGateway(
+                  activeChannelId,
+                  true,
+                  deafenedRef.current,
+                )
+              }
             })
         } else {
           selfMonitoringRef.current.restorePublishing = false
@@ -1811,6 +1845,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           })
           syncMicFromRoom(room)
           syncRoomParticipants()
+          if (activeChannelId && userId && status === 'connected') {
+            syncVoiceFlagsToGateway(activeChannelId, true, deafenedRef.current)
+          }
         }
         return
       }
@@ -1836,13 +1873,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             syncMicFromRoom(room)
           }
           syncRoomParticipants()
-          if (nextMic && selfMonitoringRef.current.active && activeChannelId) {
-            syncVoiceFlagsToGateway(activeChannelId, true, deafenedRef.current)
+          if (activeChannelId && userId && status === 'connected') {
+            const selfMute =
+              nextMic && selfMonitoringRef.current.active
+                ? true
+                : !participantMicPublishing(room.localParticipant)
+            syncVoiceFlagsToGateway(activeChannelId, selfMute, deafenedRef.current)
           }
         })
         .catch((error) => {
           syncMicFromRoom(room, describeMicDeviceError(error))
           syncRoomParticipants()
+          if (activeChannelId && userId && status === 'connected') {
+            syncVoiceFlagsToGateway(activeChannelId, true, deafenedRef.current)
+          }
         })
       return
     }
@@ -1862,6 +1906,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     auth.user?._id,
     activeChannelAudioBitrateKbps,
     setCurrentMicIssue,
+    readCurrentVoiceFlags,
     startNativeMicrophone,
     status,
     syncMicFromRoom,

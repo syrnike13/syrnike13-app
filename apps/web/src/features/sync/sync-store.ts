@@ -128,6 +128,14 @@ function removeVoiceParticipantFromOtherChannels(
   return changed
 }
 
+function findVoiceParticipantInAnyChannel(userId: string) {
+  for (const channelMap of Object.values(state.voiceParticipants)) {
+    const participant = channelMap?.[userId]
+    if (participant) return participant
+  }
+  return undefined
+}
+
 function voiceStateEquals(
   left: UserVoiceState | undefined,
   right: UserVoiceState | undefined,
@@ -253,7 +261,9 @@ export const syncStore = {
 
   addVoiceParticipant(channelId: string, participant: UserVoiceState) {
     if (!isValidVoiceUserId(participant.id)) return
-    const existing = state.voiceParticipants[channelId]?.[participant.id]
+    const existing = userCanAppearInMultipleVoiceChannels(participant.id)
+      ? state.voiceParticipants[channelId]?.[participant.id]
+      : findVoiceParticipantInAnyChannel(participant.id)
     if (!shouldApplyVoiceState(existing, participant)) return
     if (voiceStateEquals(existing, participant)) return
     const voiceParticipants = { ...state.voiceParticipants }
@@ -369,6 +379,12 @@ export const syncStore = {
     toChannelId: string,
     participant: UserVoiceState,
   ) {
+    const existing = userCanAppearInMultipleVoiceChannels(userId)
+      ? state.voiceParticipants[fromChannelId]?.[userId] ??
+        state.voiceParticipants[toChannelId]?.[userId]
+      : findVoiceParticipantInAnyChannel(userId)
+    if (!shouldApplyVoiceState(existing, participant)) return
+
     const voiceParticipants = { ...state.voiceParticipants }
     if (!userCanAppearInMultipleVoiceChannels(userId)) {
       removeVoiceParticipantFromOtherChannels(
@@ -788,10 +804,7 @@ export const syncStore = {
         break
       }
       case 'VoiceStateUpdate': {
-        const { channel_id, state: voiceState } = event as {
-          channel_id: string
-          state?: UserVoiceState & { user?: string; user_id?: string }
-        }
+        const { channel_id, state: voiceState } = event
         const normalized = normalizeUserVoiceState(voiceState ?? {})
         if (channel_id && normalized) {
           this.addVoiceParticipant(channel_id, normalized)
