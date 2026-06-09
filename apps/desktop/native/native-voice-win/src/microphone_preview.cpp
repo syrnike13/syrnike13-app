@@ -14,6 +14,8 @@
 #include <thread>
 #include <vector>
 
+#include "livekit/livekit.h"
+
 #include "audio_constants.hpp"
 #include "audio_devices.hpp"
 #include "audio_processing.hpp"
@@ -42,6 +44,7 @@ MicrophoneProcessingStatus initialPreviewProcessingStatus(
 void runMicrophonePreview(const StartCommand& command) {
   g_running.store(true);
   updateRuntimeConfig(command);
+  livekit::initialize(livekit::LogLevel::Info);
 
   std::thread([]() {
     std::string line;
@@ -268,6 +271,7 @@ void runMicrophonePreview(const StartCommand& command) {
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"kind\":\"microphone\",\"status\":\"stopped\"}");
   emit("{\"type\":\"stopped\"}");
+  livekit::shutdown();
 }
 
 }  // namespace syrnike::voice

@@ -53,6 +53,27 @@ describe('native microphone processing boundary', () => {
     }
   })
 
+  it('initializes LiveKit before native preview uses the audio processor', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const source = readFileSync(
+      resolve(
+        repoRoot,
+        'apps/desktop/native/native-voice-win/src/microphone_preview.cpp',
+      ),
+      'utf8',
+    )
+
+    const initializeIndex = source.indexOf('livekit::initialize')
+    const processorIndex = source.indexOf('MicrophoneAudioProcessor processor')
+    const shutdownIndex = source.indexOf('livekit::shutdown')
+
+    expect(initializeIndex).toBeGreaterThanOrEqual(0)
+    expect(processorIndex).toBeGreaterThan(initializeIndex)
+    expect(shutdownIndex).toBeGreaterThan(processorIndex)
+  })
+
   it('configures native preview gate and input gain without restarting preview', async () => {
     vi.useFakeTimers()
     const startMicrophonePreview = vi.fn(async () => ({ sessionId: 'preview-1' }))
