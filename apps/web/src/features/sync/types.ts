@@ -8,10 +8,16 @@ import type {
   User,
 } from '@syrnike13/api-types'
 
-import type { ChannelVoiceState, VoiceParticipantsByChannel } from './voice-types'
+import type {
+  ChannelVoiceState,
+  UserVoiceState,
+  VoiceParticipantsByChannel,
+} from './voice-types'
 
 export type GatewayServerEvent = {
   type: string
+  channel_id?: string
+  state?: Partial<UserVoiceState> & { user?: string; user_id?: string }
   [key: string]: unknown
 }
 

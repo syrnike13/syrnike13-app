@@ -26,10 +26,9 @@ import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popo
 import { useAuth } from '#/features/auth/auth-context'
 import {
   getChannelVoiceParticipants,
-  useMergedChannelVoiceParticipants,
+  useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useChannelVoiceState } from '#/features/voice/use-channel-voice-state'
 import {
   nextStageLayoutModeForMediaClick,
   resolveStageLayoutMode,
@@ -78,7 +77,6 @@ export function VoiceStageView({
   const auth = useAuth()
   const voice = useVoice()
   const channelId = channel._id
-  useChannelVoiceState(channelId)
   const users = useSyncStore((s) => s.users)
   const server = useSyncStore((s) =>
     channel.channel_type === 'TextChannel'
@@ -134,11 +132,9 @@ export function VoiceStageView({
     }
   }, [])
 
-  const participants = useMergedChannelVoiceParticipants(
+  const participants = useChannelVoiceParticipantsWithLocalOverride(
     channelId,
     storeParticipants,
-    voice.liveChannelParticipants,
-    inVoiceSession,
     inVoiceSession ? auth.user?._id : undefined,
     inVoiceSession ? voice.micPublishing : undefined,
     inVoiceSession ? voice.deafened : undefined,

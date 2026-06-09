@@ -303,39 +303,11 @@ auto_derived!(
         pub identity: String,
     }
 
-    /// Voice server token response
-    pub struct CreateVoiceUserResponse {
-        /// Token for authenticating with the voice server
-        pub token: String,
-        /// Credentials for native desktop microphone publishing
-        pub native_microphone: NativeVoiceCredentials,
-        /// Credentials for native desktop screen share publishing
-        pub native_screen: NativeVoiceCredentials,
-        /// Credentials for native desktop camera publishing
-        pub native_camera: NativeVoiceCredentials,
-        /// Url of the livekit server to connect to
-        pub url: String,
-    }
-
     /// Voice state for a channel
     pub struct ChannelVoiceState {
         pub id: String,
         /// The states of the users who are connected to the channel
         pub participants: Vec<UserVoiceState>,
-    }
-
-    /// Join a voice channel
-    pub struct DataJoinCall {
-        /// Name of the node to join
-        pub node: Option<String>,
-        /// Whether to force disconnect any other existing voice connections
-        ///
-        /// Useful for disconnecting on another device and joining on a new.
-        pub force_disconnect: Option<bool>,
-        /// Users which should be notified of the call starting
-        ///
-        /// Only used when the user is the first one connected.
-        pub recipients: Option<Vec<String>>,
     }
 
     pub struct ChannelSlowmode {

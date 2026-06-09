@@ -10,4 +10,13 @@ pub enum ClientMessage {
     EndTyping { channel: String },
     Subscribe { server_id: String },
     Ping { data: Ping, responded: Option<()> },
+    VoiceStateUpdate {
+        channel_id: Option<String>,
+        self_mute: bool,
+        self_deaf: bool,
+        node: Option<String>,
+        force_disconnect: Option<bool>,
+        recipients: Option<Vec<String>>,
+        refresh_credentials: Option<bool>,
+    },
 }

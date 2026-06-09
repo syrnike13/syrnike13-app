@@ -164,10 +164,6 @@ export interface paths {
     /** Removes a user from the group. */
     delete: operations["group_remove_member_remove_member"];
   };
-  "/channels/{target}/join_call": {
-    /** Asks the voice server for a token to join the call. */
-    post: operations["voice_join_call"];
-  };
   "/channels/{target}/end_ring/{target_user}": {
     /** Stops ringing a specific user in a dm call. You must be in the call to use this endpoint, returns NotConnected otherwise. Only valid in DM/Group channels, will return NoEffect in servers. Returns NotFound if the user is not in the dm/group channel */
     put: operations["voice_stop_ring_stop_ring"];
@@ -1292,7 +1288,7 @@ export interface components {
       /**
        * Format: uint
        * @description Maximium amount of users allowed in the voice channel at once
-      */
+       */
       max_users?: number | null;
       /**
        * Format: uint32
@@ -1993,43 +1989,6 @@ export interface components {
       users?: string[];
       /** @description Whether this group is age-restricted */
       nsfw?: boolean | null;
-    };
-    /** @description LiveKit credentials for a native desktop media publisher */
-    NativeVoiceCredentials: {
-      /** @description LiveKit identity for this native media publisher */
-      identity: string;
-      /** @description Token for authenticating this native media publisher with LiveKit */
-      token: string;
-    };
-    /** @description Voice server token response */
-    CreateVoiceUserResponse: {
-      /** @description Credentials for native desktop camera publishing */
-      native_camera: components["schemas"]["NativeVoiceCredentials"];
-      /** @description Credentials for native desktop microphone publishing */
-      native_microphone: components["schemas"]["NativeVoiceCredentials"];
-      /** @description Credentials for native desktop screen share publishing */
-      native_screen: components["schemas"]["NativeVoiceCredentials"];
-      /** @description Token for authenticating with the voice server */
-      token: string;
-      /** @description Url of the livekit server to connect to */
-      url: string;
-    };
-    /** @description Join a voice channel */
-    DataJoinCall: {
-      /** @description Name of the node to join */
-      node?: string | null;
-      /**
-       * @description Whether to force disconnect any other existing voice connections
-       *
-       * Useful for disconnecting on another device and joining on a new.
-       */
-      force_disconnect?: boolean | null;
-      /**
-       * @description Users which should be notified of the call starting
-       *
-       * Only used when the user is the first one connected.
-       */
-      recipients?: string[] | null;
     };
     /** @description New role permissions */
     DataSetRolePermissions: {
@@ -3874,32 +3833,6 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["Error"];
         };
-      };
-    };
-  };
-  /** Asks the voice server for a token to join the call. */
-  voice_join_call: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["CreateVoiceUserResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataJoinCall"];
       };
     };
   };

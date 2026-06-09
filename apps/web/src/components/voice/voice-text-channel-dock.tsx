@@ -7,7 +7,7 @@ import { VoiceStageTile } from '#/components/voice/voice-stage-tile'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   getChannelVoiceParticipants,
-  useMergedChannelVoiceParticipants,
+  useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useVoice } from '#/features/voice/voice-provider'
@@ -33,11 +33,9 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   const connecting =
     voice.status === 'connecting' && inThisChannel
 
-  const participants = useMergedChannelVoiceParticipants(
+  const participants = useChannelVoiceParticipantsWithLocalOverride(
     channelId,
     storeParticipants,
-    voice.liveChannelParticipants,
-    inThisChannel,
     inThisChannel ? auth.user?._id : undefined,
     inThisChannel ? voice.micPublishing : undefined,
     inThisChannel ? voice.deafened : undefined,

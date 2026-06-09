@@ -14,6 +14,15 @@ function parseJoinedAt(value: unknown) {
   return Date.now()
 }
 
+function parseVersion(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return 0
+}
+
 /** API/WS иногда отдают 0/1 или строки — не через `Boolean("false")`. */
 export function parseVoiceFlag(value: unknown, defaultValue: boolean) {
   if (value === true || value === 1) return true
@@ -39,12 +48,13 @@ export function normalizeUserVoiceState(
   return {
     id,
     joined_at: parseJoinedAt(raw.joined_at),
-    is_receiving: parseVoiceFlag(raw.is_receiving, true),
-    is_publishing: parseVoiceFlag(raw.is_publishing, true),
+    self_mute: parseVoiceFlag(raw.self_mute, false),
+    self_deaf: parseVoiceFlag(raw.self_deaf, false),
     server_muted: parseVoiceFlag(raw.server_muted, false),
     server_deafened: parseVoiceFlag(raw.server_deafened, false),
     screensharing: Boolean(raw.screensharing ?? false),
     camera: Boolean(raw.camera ?? false),
+    version: parseVersion(raw.version),
   }
 }
 
@@ -54,7 +64,7 @@ export function channelIdFromVoiceStateEntry(
   return entry.id ?? entry.channel_id ?? entry.channel
 }
 
-/** Не затираем store при `Ready` с пустым `voice_states: []`. */
+/** `Ready.voice_states` — авторитетный снимок всех голосовых каналов. */
 export function mergeVoiceStatesFromReady(
   existing: VoiceParticipantsByChannel,
   voiceStates:
@@ -62,13 +72,7 @@ export function mergeVoiceStatesFromReady(
     | undefined,
 ): VoiceParticipantsByChannel {
   if (voiceStates === undefined) return existing
-
-  const next = { ...existing }
-  const incoming = voiceMapFromChannelStates(voiceStates)
-  for (const [channelId, channelMap] of Object.entries(incoming)) {
-    next[channelId] = channelMap
-  }
-  return next
+  return voiceMapFromChannelStates(voiceStates)
 }
 
 export function voiceMapFromChannelStates(
@@ -101,4 +105,14 @@ export function voiceMapFromChannelStates(
     map[channelId] = channelMap
   }
   return map
+}
+
+export function shouldApplyVoiceState(
+  existing: UserVoiceState | undefined,
+  incoming: UserVoiceState,
+) {
+  if (!existing) return true
+  if (incoming.version > existing.version) return true
+  if (incoming.version < existing.version) return false
+  return incoming.joined_at > existing.joined_at
 }

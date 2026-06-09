@@ -10,7 +10,7 @@ use syrnike_database::{
         base_voice_identity, create_voice_state, delete_channel_voice_state_for_room,
         delete_voice_state_for_session, get_user_moved_from_voice, get_user_moved_to_voice,
         get_user_voice_channels, get_voice_channel_members, is_desktop_native_voice_identity,
-        remove_user_from_voice_channel, update_voice_state_tracks,
+        publish_voice_state_snapshot, remove_user_from_voice_channel, update_voice_state_tracks,
         update_voice_state_tracks_for_session, user_voice_join_intent_matches, RoomMetadata,
         UserVoiceChannel, VoiceClient,
     },
@@ -213,19 +213,6 @@ pub async fn ingress(
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             if is_desktop_native_voice_identity(participant_identity) {
-                let partial = update_voice_state_tracks(
-                    &channel, user_id, false, /* TrackSource::Microphone */ 2,
-                )
-                .await?;
-
-                EventV1::UserVoiceStateUpdate {
-                    id: user_id.to_string(),
-                    channel_id: channel_id.clone(),
-                    data: partial,
-                }
-                .p(channel_id.clone())
-                .await;
-
                 return Ok(EmptyResponse);
             }
 
@@ -354,10 +341,10 @@ pub async fn ingress(
             };
 
             let added = event.event == "track_published" || event.event == "track_unmuted";
-            let partial = if is_desktop_native_voice_identity(participant_identity) {
+            let state = if is_desktop_native_voice_identity(participant_identity) {
                 update_voice_state_tracks(&channel, user_id, added, track.source).await?
             } else {
-                let Some(partial) = update_voice_state_tracks_for_session(
+                update_voice_state_tracks_for_session(
                     &channel,
                     user_id,
                     added,
@@ -365,23 +352,17 @@ pub async fn ingress(
                     participant_id,
                 )
                 .await?
-                else {
-                    log::debug!(
-                        "Ignoring stale {} for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}.",
-                        event.event
-                    );
-                    return Ok(EmptyResponse);
-                };
-                partial
             };
 
-            EventV1::UserVoiceStateUpdate {
-                id: user_id.to_string(),
-                channel_id: channel_id.clone(),
-                data: partial,
-            }
-            .p(channel_id.clone())
-            .await;
+            let Some(state) = state else {
+                log::debug!(
+                    "Ignoring stale {} for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}.",
+                    event.event
+                );
+                return Ok(EmptyResponse);
+            };
+
+            publish_voice_state_snapshot(channel_id, &state).await;
         }
         "room_finished" => {
             let channel_id = channel_id.to_internal_error()?;

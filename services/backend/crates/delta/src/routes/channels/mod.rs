@@ -24,8 +24,6 @@ mod message_unpin;
 mod message_unreact;
 mod permissions_set;
 mod permissions_set_default;
-mod voice_join;
-mod voice_state;
 mod voice_stop_ring;
 mod webhook_create;
 mod webhook_fetch_all;
@@ -50,9 +48,6 @@ pub fn routes() -> (Vec<Route>, OpenApi) {
         group_create::create_group,
         group_add_member::add_member,
         group_remove_member::remove_member,
-        voice_join::call,
-        voice_state::fetch,
-        voice_state::update,
         voice_stop_ring::stop_ring,
         permissions_set::set_role_permissions,
         permissions_set_default::set_default_channel_permissions,
@@ -62,20 +57,4 @@ pub fn routes() -> (Vec<Route>, OpenApi) {
         webhook_create::create_webhook,
         webhook_fetch_all::fetch_webhooks,
     ]
-}
-
-#[cfg(test)]
-mod test {
-    use super::routes;
-
-    #[test]
-    fn voice_state_route_is_registered() {
-        let (routes, _) = routes();
-        assert!(
-            routes
-                .iter()
-                .any(|route| route.uri.to_string() == "/<target>/voice_state"),
-            "voice_state route must be registered for realtime repair snapshots"
-        );
-    }
 }

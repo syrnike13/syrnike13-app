@@ -383,7 +383,7 @@ describe('native microphone provider boundary', () => {
     )
     expect(providerSource).toContain('void setNativeMicrophoneMuted(true)')
     expect(providerSource).toContain('void startNativeMicrophone(room, true)')
-    expect(providerSource).toContain('is_publishing: false')
+    expect(providerSource).toContain('syncVoiceFlagsToGateway(activeChannelId, true')
     expect(settingsSource).toContain(
       'setSelfMonitoringActiveRef.current(micTestActive)',
     )

@@ -15,6 +15,7 @@ import type { UserVoiceState, VoiceParticipantsByChannel } from './voice-types'
 import {
   mergeVoiceStatesFromReady,
   normalizeUserVoiceState,
+  shouldApplyVoiceState,
 } from './voice-event-utils'
 import { isValidVoiceUserId } from './voice-participant-resolve'
 
@@ -127,6 +128,14 @@ function removeVoiceParticipantFromOtherChannels(
   return changed
 }
 
+function findVoiceParticipantInAnyChannel(userId: string) {
+  for (const channelMap of Object.values(state.voiceParticipants)) {
+    const participant = channelMap?.[userId]
+    if (participant) return participant
+  }
+  return undefined
+}
+
 function voiceStateEquals(
   left: UserVoiceState | undefined,
   right: UserVoiceState | undefined,
@@ -136,12 +145,13 @@ function voiceStateEquals(
   return (
     left.id === right.id &&
     left.joined_at === right.joined_at &&
-    left.is_publishing === right.is_publishing &&
-    left.is_receiving === right.is_receiving &&
+    left.self_mute === right.self_mute &&
+    left.self_deaf === right.self_deaf &&
     left.server_muted === right.server_muted &&
     left.server_deafened === right.server_deafened &&
     left.camera === right.camera &&
-    left.screensharing === right.screensharing
+    left.screensharing === right.screensharing &&
+    left.version === right.version
   )
 }
 
@@ -251,7 +261,10 @@ export const syncStore = {
 
   addVoiceParticipant(channelId: string, participant: UserVoiceState) {
     if (!isValidVoiceUserId(participant.id)) return
-    const existing = state.voiceParticipants[channelId]?.[participant.id]
+    const existing = userCanAppearInMultipleVoiceChannels(participant.id)
+      ? state.voiceParticipants[channelId]?.[participant.id]
+      : findVoiceParticipantInAnyChannel(participant.id)
+    if (!shouldApplyVoiceState(existing, participant)) return
     if (voiceStateEquals(existing, participant)) return
     const voiceParticipants = { ...state.voiceParticipants }
     if (!userCanAppearInMultipleVoiceChannels(participant.id)) {
@@ -338,7 +351,26 @@ export const syncStore = {
         : { id: userId, ...patch },
     )
     if (!normalized) return
-    this.addVoiceParticipant(channelId, normalized)
+    if (voiceStateEquals(existing, normalized)) return
+
+    const voiceParticipants = { ...state.voiceParticipants }
+    if (!userCanAppearInMultipleVoiceChannels(userId)) {
+      removeVoiceParticipantFromOtherChannels(
+        voiceParticipants,
+        userId,
+        channelId,
+      )
+    }
+
+    setState({
+      voiceParticipants: {
+        ...voiceParticipants,
+        [channelId]: {
+          ...(voiceParticipants[channelId] ?? {}),
+          [userId]: normalized,
+        },
+      },
+    })
   },
 
   moveVoiceParticipant(
@@ -347,6 +379,12 @@ export const syncStore = {
     toChannelId: string,
     participant: UserVoiceState,
   ) {
+    const existing = userCanAppearInMultipleVoiceChannels(userId)
+      ? state.voiceParticipants[fromChannelId]?.[userId] ??
+        state.voiceParticipants[toChannelId]?.[userId]
+      : findVoiceParticipantInAnyChannel(userId)
+    if (!shouldApplyVoiceState(existing, participant)) return
+
     const voiceParticipants = { ...state.voiceParticipants }
     if (!userCanAppearInMultipleVoiceChannels(userId)) {
       removeVoiceParticipantFromOtherChannels(
@@ -765,13 +803,12 @@ export const syncStore = {
         }
         break
       }
-      case 'UserVoiceStateUpdate': {
-        const { id, channel_id, data } = event as {
-          id: string
-          channel_id: string
-          data: Partial<UserVoiceState>
+      case 'VoiceStateUpdate': {
+        const { channel_id, state: voiceState } = event
+        const normalized = normalizeUserVoiceState(voiceState ?? {})
+        if (channel_id && normalized) {
+          this.addVoiceParticipant(channel_id, normalized)
         }
-        this.patchVoiceParticipant(channel_id, id, data)
         break
       }
       case 'MessageReact': {

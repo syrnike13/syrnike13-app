@@ -1,5 +1,7 @@
 use std::fmt::{Display, Write};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     events::client::EventV1,
     models::{Channel, User},
@@ -18,8 +20,18 @@ use syrnike_models::v0::{self, PartialUserVoiceState, UserVoiceState};
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, PermissionValue};
 use syrnike_result::{create_error, Result, ToSyrnikeError};
 
+mod join;
 mod voice_client;
+pub use join::*;
 pub use voice_client::VoiceClient;
+
+/// Client join intent stored until LiveKit `participant_joined` webhook confirms membership.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VoiceJoinIntent {
+    pub channel: UserVoiceChannel,
+    pub self_mute: bool,
+    pub self_deaf: bool,
+}
 
 const DESKTOP_NATIVE_IDENTITY_SUFFIX: &str = ":desktop-native";
 
@@ -108,10 +120,29 @@ pub async fn get_user_voice_channels(user_id: &str) -> Result<Vec<UserVoiceChann
         .to_internal_error()
 }
 
-pub async fn set_user_voice_join_intent(user_id: &str, channel: &UserVoiceChannel) -> Result<()> {
+pub async fn set_user_voice_join_intent(
+    user_id: &str,
+    channel: &UserVoiceChannel,
+    self_mute: bool,
+    self_deaf: bool,
+) -> Result<()> {
+    let intent = VoiceJoinIntent {
+        channel: channel.clone(),
+        self_mute,
+        self_deaf,
+    };
+
     get_connection()
         .await?
-        .set_ex(format!("voice_join_intent:{user_id}"), channel, 30)
+        .set_ex(format!("voice_join_intent:{user_id}"), intent, 30)
+        .await
+        .to_internal_error()
+}
+
+pub async fn get_user_voice_join_intent(user_id: &str) -> Result<Option<VoiceJoinIntent>> {
+    get_connection()
+        .await?
+        .get(format!("voice_join_intent:{user_id}"))
         .await
         .to_internal_error()
 }
@@ -120,14 +151,10 @@ pub async fn user_voice_join_intent_matches(
     user_id: &str,
     channel: &UserVoiceChannel,
 ) -> Result<bool> {
-    let latest = get_connection()
-        .await?
-        .get::<_, Option<UserVoiceChannel>>(format!("voice_join_intent:{user_id}"))
-        .await
-        .to_internal_error()?;
+    let latest = get_user_voice_join_intent(user_id).await?;
 
     match latest {
-        Some(latest) => Ok(latest == *channel),
+        Some(latest) => Ok(latest.channel == *channel),
         None => is_in_voice_channel(user_id, channel).await,
     }
 }
@@ -137,13 +164,12 @@ pub async fn clear_user_voice_join_intent_if_matches(
     channel: &UserVoiceChannel,
 ) -> Result<()> {
     let key = format!("voice_join_intent:{user_id}");
-    let latest = get_connection()
-        .await?
-        .get::<_, Option<UserVoiceChannel>>(&key)
-        .await
-        .to_internal_error()?;
+    let latest = get_user_voice_join_intent(user_id).await?;
 
-    if latest.as_ref().is_some_and(|latest| latest == channel) {
+    if latest
+        .as_ref()
+        .is_some_and(|latest| latest.channel == *channel)
+    {
         get_connection()
             .await?
             .del::<_, ()>(key)
@@ -250,15 +276,18 @@ pub async fn create_voice_state(
 ) -> Result<UserVoiceState> {
     let unique_key = voice_state_unique_key(channel, user_id);
 
+    let join_intent = get_user_voice_join_intent(user_id).await?;
+
     let mut conn = get_connection().await?;
     let (
         existing_joined_at,
-        is_publishing,
-        is_receiving,
+        self_mute,
+        self_deaf,
         server_muted,
         server_deafened,
         screensharing,
         camera,
+        version,
     ): (
         Option<i64>,
         Option<bool>,
@@ -267,44 +296,64 @@ pub async fn create_voice_state(
         Option<bool>,
         Option<bool>,
         Option<bool>,
+        Option<u64>,
     ) = conn
         .mget(&[
             format!("joined_at:{unique_key}"),
-            format!("is_publishing:{unique_key}"),
-            format!("is_receiving:{unique_key}"),
+            format!("self_mute:{unique_key}"),
+            format!("self_deaf:{unique_key}"),
             format!("server_muted:{unique_key}"),
             format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
+            format!("version:{unique_key}"),
         ])
         .await
         .to_internal_error()?;
 
     let pending_track_state = existing_joined_at.is_none();
+    let intent_flags = join_intent
+        .as_ref()
+        .filter(|intent| intent.channel == *channel)
+        .map(|intent| (intent.self_mute, intent.self_deaf));
+
+    // Join intent is only authoritative for the first tracked join; repeated
+    // LiveKit joins preserve the persisted flags and version to avoid races.
     let voice_state = UserVoiceState {
         joined_at,
         id: user_id.to_string(),
-        is_receiving: if pending_track_state {
-            is_receiving.unwrap_or(true)
+        self_mute: if pending_track_state {
+            intent_flags
+                .map(|(mute, _)| mute)
+                .or(self_mute)
+                .unwrap_or(false)
         } else {
-            true
+            self_mute.unwrap_or(false)
         },
-        is_publishing: if pending_track_state {
-            is_publishing.unwrap_or(false)
+        self_deaf: if pending_track_state {
+            intent_flags
+                .map(|(_, deaf)| deaf)
+                .or(self_deaf)
+                .unwrap_or(false)
         } else {
-            false
+            self_deaf.unwrap_or(false)
         },
         server_muted: server_muted.unwrap_or(false),
         server_deafened: server_deafened.unwrap_or(false),
         screensharing: if pending_track_state {
-            screensharing.unwrap_or(false)
-        } else {
             false
+        } else {
+            screensharing.unwrap_or(false)
         },
         camera: if pending_track_state {
-            camera.unwrap_or(false)
-        } else {
             false
+        } else {
+            camera.unwrap_or(false)
+        },
+        version: if pending_track_state {
+            1
+        } else {
+            version.unwrap_or(1)
         },
     };
 
@@ -319,14 +368,8 @@ pub async fn create_voice_state(
                 .duration_since(Timestamp::UNIX_EPOCH)
                 .whole_milliseconds() as i64,
         )
-        .set(
-            format!("is_publishing:{unique_key}"),
-            voice_state.is_publishing,
-        )
-        .set(
-            format!("is_receiving:{unique_key}"),
-            voice_state.is_receiving,
-        )
+        .set(format!("self_mute:{unique_key}"), voice_state.self_mute)
+        .set(format!("self_deaf:{unique_key}"), voice_state.self_deaf)
         .set(
             format!("server_muted:{unique_key}"),
             voice_state.server_muted,
@@ -339,7 +382,8 @@ pub async fn create_voice_state(
             format!("screensharing:{unique_key}"),
             voice_state.screensharing,
         )
-        .set(format!("camera:{unique_key}"), voice_state.camera);
+        .set(format!("camera:{unique_key}"), voice_state.camera)
+        .set(format!("version:{unique_key}"), voice_state.version);
 
     if let Some(session_id) = session_id.filter(|session_id| !session_id.is_empty()) {
         pipeline.set(voice_session_key(&unique_key), session_id);
@@ -365,12 +409,13 @@ pub async fn delete_voice_state(channel: &UserVoiceChannel, user_id: &str) -> Re
         .srem(format!("vc:{user_id}"), channel)
         .del(&[
             format!("joined_at:{unique_key}"),
-            format!("is_publishing:{unique_key}"),
-            format!("is_receiving:{unique_key}"),
+            format!("self_mute:{unique_key}"),
+            format!("self_deaf:{unique_key}"),
             format!("server_muted:{unique_key}"),
             format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
+            format!("version:{unique_key}"),
             voice_session_key(&unique_key),
             unique_key.clone(),
         ])
@@ -410,12 +455,13 @@ pub async fn delete_channel_voice_state(
 
         pipeline.srem(format!("vc:{user_id}"), channel).del(&[
             format!("joined_at:{unique_key}"),
-            format!("is_publishing:{unique_key}"),
-            format!("is_receiving:{unique_key}"),
+            format!("self_mute:{unique_key}"),
+            format!("self_deaf:{unique_key}"),
             format!("server_muted:{unique_key}"),
             format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
+            format!("version:{unique_key}"),
             voice_session_key(&unique_key),
             unique_key.clone(),
         ]);
@@ -445,12 +491,15 @@ pub async fn update_voice_state_tracks(
     user_id: &str,
     added: bool,
     track: i32,
-) -> Result<PartialUserVoiceState> {
+) -> Result<Option<UserVoiceState>> {
     let partial = partial_voice_state_for_track(added, track);
+    if partial == PartialUserVoiceState::default() {
+        return Ok(None);
+    }
 
     update_voice_state(channel, user_id, &partial).await?;
-
-    Ok(partial)
+    bump_voice_state_version(channel, user_id).await?;
+    get_voice_state(channel, user_id).await
 }
 
 pub async fn update_voice_state_tracks_for_session(
@@ -459,14 +508,12 @@ pub async fn update_voice_state_tracks_for_session(
     added: bool,
     track: i32,
     session_id: &str,
-) -> Result<Option<PartialUserVoiceState>> {
+) -> Result<Option<UserVoiceState>> {
     if !voice_session_matches(channel, user_id, session_id).await? {
         return Ok(None);
     }
 
-    update_voice_state_tracks(channel, user_id, added, track)
-        .await
-        .map(Some)
+    update_voice_state_tracks(channel, user_id, added, track).await
 }
 
 fn partial_voice_state_for_track(added: bool, track: i32) -> PartialUserVoiceState {
@@ -478,10 +525,7 @@ fn partial_voice_state_for_track(added: bool, track: i32) -> PartialUserVoiceSta
             ..Default::default()
         },
         /* TrackSource::Microphone */
-        2 => PartialUserVoiceState {
-            is_publishing: Some(added),
-            ..Default::default()
-        },
+        2 => PartialUserVoiceState::default(),
         /* TrackSource::ScreenShare */
         3 => PartialUserVoiceState {
             screensharing: Some(added),
@@ -491,6 +535,43 @@ fn partial_voice_state_for_track(added: bool, track: i32) -> PartialUserVoiceSta
         4 => PartialUserVoiceState::default(),
         _ => unreachable!(),
     }
+}
+
+pub async fn update_client_voice_flags(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    self_mute: bool,
+    self_deaf: bool,
+) -> Result<UserVoiceState> {
+    let unique_key = voice_state_unique_key(channel, user_id);
+
+    get_voice_state(channel, user_id)
+        .await?
+        .ok_or_else(|| create_error!(NotConnected))?;
+
+    let mut pipeline = Pipeline::new();
+    let mut conn = get_connection().await?.into_inner();
+    pipeline
+        .atomic()
+        .set(format!("self_mute:{unique_key}"), self_mute)
+        .set(format!("self_deaf:{unique_key}"), self_deaf)
+        .incr(format!("version:{unique_key}"), 1)
+        .query_async::<_, ()>(&mut conn)
+        .await
+        .to_internal_error()?;
+
+    get_voice_state(channel, user_id)
+        .await?
+        .ok_or_else(|| create_error!(InternalError))
+}
+
+pub async fn publish_voice_state_snapshot(channel_id: &str, state: &UserVoiceState) {
+    EventV1::VoiceStateUpdate {
+        channel_id: channel_id.to_string(),
+        state: state.clone(),
+    }
+    .p(channel_id.to_string())
+    .await;
 }
 
 pub async fn update_voice_state(
@@ -506,12 +587,12 @@ pub async fn update_voice_state(
         pipeline.set(format!("camera:{unique_key}"), camera);
     };
 
-    if let Some(is_publishing) = &partial.is_publishing {
-        pipeline.set(format!("is_publishing:{unique_key}"), is_publishing);
+    if let Some(self_mute) = &partial.self_mute {
+        pipeline.set(format!("self_mute:{unique_key}"), self_mute);
     }
 
-    if let Some(is_receiving) = &partial.is_receiving {
-        pipeline.set(format!("is_receiving:{unique_key}"), is_receiving);
+    if let Some(self_deaf) = &partial.self_deaf {
+        pipeline.set(format!("self_deaf:{unique_key}"), self_deaf);
     }
 
     if let Some(server_muted) = &partial.server_muted {
@@ -528,6 +609,17 @@ pub async fn update_voice_state(
 
     pipeline
         .query_async(&mut get_connection().await?.into_inner())
+        .await
+        .to_internal_error()
+}
+
+async fn bump_voice_state_version(channel: &UserVoiceChannel, user_id: &str) -> Result<u64> {
+    let unique_key = voice_state_unique_key(channel, user_id);
+    let version_key = format!("version:{unique_key}");
+
+    get_connection()
+        .await?
+        .incr::<_, _, u64>(&version_key, 1)
         .await
         .to_internal_error()
 }
@@ -549,12 +641,13 @@ pub async fn get_voice_state(
 
     let (
         joined_at,
-        is_publishing,
-        is_receiving,
+        self_mute,
+        self_deaf,
         server_muted,
         server_deafened,
         screensharing,
         camera,
+        version,
     ): (
         Option<i64>,
         Option<bool>,
@@ -563,48 +656,53 @@ pub async fn get_voice_state(
         Option<bool>,
         Option<bool>,
         Option<bool>,
+        Option<u64>,
     ) = get_connection()
         .await?
         .mget(&[
             format!("joined_at:{unique_key}"),
-            format!("is_publishing:{unique_key}"),
-            format!("is_receiving:{unique_key}"),
+            format!("self_mute:{unique_key}"),
+            format!("self_deaf:{unique_key}"),
             format!("server_muted:{unique_key}"),
             format!("server_deafened:{unique_key}"),
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
+            format!("version:{unique_key}"),
         ])
         .await
         .to_internal_error()?;
 
     match (
         joined_at,
-        is_publishing,
-        is_receiving,
+        self_mute,
+        self_deaf,
         server_muted,
         server_deafened,
         screensharing,
         camera,
+        version,
     ) {
         (
             Some(joined_at),
-            Some(is_publishing),
-            Some(is_receiving),
+            Some(self_mute),
+            Some(self_deaf),
             server_muted,
             server_deafened,
             Some(screensharing),
             Some(camera),
+            version,
         ) => Ok(Some(v0::UserVoiceState {
             joined_at: Timestamp::UNIX_EPOCH
                 .checked_add(Duration::milliseconds(joined_at))
                 .unwrap(),
             id: user_id.to_string(),
-            is_receiving,
-            is_publishing,
+            self_mute,
+            self_deaf,
             server_muted: server_muted.unwrap_or(false),
             server_deafened: server_deafened.unwrap_or(false),
             screensharing,
             camera,
+            version: version.unwrap_or(1),
         })),
         _ => Ok(None),
     }
@@ -779,7 +877,6 @@ pub async fn sync_user_voice_permissions(
 
         update_event.camera = voice_state.camera.then_some(can_video);
         update_event.screensharing = voice_state.screensharing.then_some(can_video);
-        update_event.is_publishing = voice_state.is_publishing.then_some(can_speak);
         update_event.server_muted = (voice_state.server_muted != !can_speak).then_some(!can_speak);
         update_event.server_deafened =
             (voice_state.server_deafened != !can_listen).then_some(!can_listen);
@@ -801,13 +898,11 @@ pub async fn sync_user_voice_permissions(
             .await?;
 
         if update_event != before {
-            EventV1::UserVoiceStateUpdate {
-                id: user.id.clone(),
-                channel_id: channel_id.to_string(),
-                data: update_event,
+            bump_voice_state_version(&user_voice_channel, &user.id).await?;
+
+            if let Some(state) = get_voice_state(&user_voice_channel, &user.id).await? {
+                publish_voice_state_snapshot(channel_id, &state).await;
             }
-            .p(channel_id.to_string())
-            .await;
         };
     };
 
@@ -922,7 +1017,7 @@ pub struct RoomMetadata {
     pub server: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserVoiceChannel {
     pub id: String,
     pub server_id: Option<String>,
@@ -971,6 +1066,29 @@ impl FromRedisValue for UserVoiceChannel {
     }
 }
 
+impl ToRedisArgs for VoiceJoinIntent {
+    fn write_redis_args<W: ?Sized + RedisWrite>(&self, out: &mut W) {
+        out.write_arg(
+            serde_json::to_string(self)
+                .expect("VoiceJoinIntent serializes to JSON")
+                .as_bytes(),
+        );
+    }
+}
+
+impl FromRedisValue for VoiceJoinIntent {
+    fn from_redis_value(v: &Value) -> Result<Self, RedisError> {
+        let raw = String::from_redis_value(v)?;
+        serde_json::from_str(&raw).map_err(|error| {
+            RedisError::from((
+                redis_kiss::redis::ErrorKind::TypeError,
+                "VoiceJoinIntent",
+                error.to_string(),
+            ))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::partial_voice_state_for_track;
@@ -981,10 +1099,17 @@ mod tests {
 
         assert_eq!(partial.screensharing, Some(true));
         assert_eq!(partial.camera, None);
-        assert_eq!(partial.is_publishing, None);
-        assert_eq!(partial.is_receiving, None);
+        assert_eq!(partial.self_mute, None);
+        assert_eq!(partial.self_deaf, None);
         assert_eq!(partial.server_muted, None);
         assert_eq!(partial.server_deafened, None);
+    }
+
+    #[test]
+    fn microphone_track_does_not_affect_voice_flags() {
+        let partial = partial_voice_state_for_track(true, 2);
+
+        assert_eq!(partial, PartialUserVoiceState::default());
     }
 
     #[test]
@@ -993,8 +1118,8 @@ mod tests {
 
         assert_eq!(partial.screensharing, None);
         assert_eq!(partial.camera, None);
-        assert_eq!(partial.is_publishing, None);
-        assert_eq!(partial.is_receiving, None);
+        assert_eq!(partial.self_mute, None);
+        assert_eq!(partial.self_deaf, None);
         assert_eq!(partial.server_muted, None);
         assert_eq!(partial.server_deafened, None);
     }
@@ -1017,12 +1142,17 @@ mod tests {
             super::base_voice_identity("user-a:desktop-native:microphone"),
             "user-a"
         );
-        assert_eq!(super::base_voice_identity("user-a:desktop-native"), "user-a");
+        assert_eq!(
+            super::base_voice_identity("user-a:desktop-native"),
+            "user-a"
+        );
         assert_eq!(super::base_voice_identity("user-a"), "user-a");
         assert!(super::is_desktop_native_voice_identity(
             "user-a:desktop-native:screen"
         ));
-        assert!(super::is_desktop_native_voice_identity("user-a:desktop-native"));
+        assert!(super::is_desktop_native_voice_identity(
+            "user-a:desktop-native"
+        ));
         assert!(!super::is_desktop_native_voice_identity("user-a"));
     }
 }

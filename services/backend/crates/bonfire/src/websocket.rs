@@ -35,7 +35,8 @@ use crate::events::state::{State, SubscriptionStateChange};
 use syrnike_models::v0;
 
 type WsReader = SplitStream<WebSocketStream<TcpStream>>;
-type WsWriter = SplitSink<WebSocketStream<TcpStream>, async_tungstenite::tungstenite::Message>;
+pub(crate) type WsWriter =
+    SplitSink<WebSocketStream<TcpStream>, async_tungstenite::tungstenite::Message>;
 
 /// Start a new WebSocket client worker given access to the database,
 /// the relevant TCP stream and the remote address of the client.
@@ -106,6 +107,8 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
         .await
         .ok();
 
+    let worker_user = user.clone();
+
     // Create local state.
     let mut state = State::from(user, session_id);
     let user_id = state.cache.user_id.clone();
@@ -171,6 +174,8 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
 
         // Read from WebSocket stream.
         let worker = worker_with_kill_signal(
+            db,
+            worker_user,
             addr,
             subscribed,
             active_servers,
@@ -404,6 +409,8 @@ async fn listener(
 
 #[allow(clippy::too_many_arguments)]
 async fn worker_with_kill_signal(
+    db: &'static Database,
+    user: User,
     addr: SocketAddr,
     subscribed: Arc<RwLock<HashSet<String>>>,
     active_servers: Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
@@ -416,6 +423,8 @@ async fn worker_with_kill_signal(
     kill_signal_s: async_channel::Sender<()>,
 ) {
     worker(
+        db,
+        user,
         addr,
         subscribed,
         active_servers,
@@ -432,6 +441,8 @@ async fn worker_with_kill_signal(
 
 #[allow(clippy::too_many_arguments)]
 async fn worker(
+    db: &'static Database,
+    user: User,
     addr: SocketAddr,
     subscribed: Arc<RwLock<HashSet<String>>>,
     active_servers: Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
@@ -529,6 +540,38 @@ async fn worker(
                                 .send(config.encode(&EventV1::Pong { data }))
                                 .await
                                 .ok();
+                        }
+                    }
+                    ClientMessage::VoiceStateUpdate {
+                        channel_id,
+                        self_mute,
+                        self_deaf,
+                        node,
+                        force_disconnect,
+                        recipients,
+                        refresh_credentials,
+                    } => {
+                        match crate::voice::handle_voice_state_update(
+                            db,
+                            crate::voice_client::get(),
+                            &user,
+                            channel_id,
+                            self_mute,
+                            self_deaf,
+                            node,
+                            force_disconnect,
+                            recipients,
+                            refresh_credentials.unwrap_or(false),
+                        )
+                        .await
+                        {
+                            Ok(Some(event)) => {
+                                crate::voice::send_voice_server_update(write, config, event).await;
+                            }
+                            Ok(None) => {}
+                            Err(error) => {
+                                crate::voice::send_voice_error(write, config, error).await;
+                            }
                         }
                     }
                     _ => {}
