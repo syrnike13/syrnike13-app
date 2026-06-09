@@ -2,8 +2,6 @@ import type {
   HotkeyAction,
   HotkeyBinding,
   HotkeyCombo,
-  HotkeyModifier,
-  HotkeyModifiers,
   NativeInputEvent,
 } from '@syrnike13/platform'
 
@@ -12,13 +10,6 @@ export type HotkeyActionDefinition = {
   label: string
   description: string
   available: boolean
-}
-
-export const EMPTY_MODIFIERS: HotkeyModifiers = {
-  ctrl: false,
-  alt: false,
-  shift: false,
-  meta: false,
 }
 
 export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
@@ -96,11 +87,20 @@ export const HOTKEY_ACTIONS: HotkeyActionDefinition[] = [
   },
 ]
 
-const MODIFIER_LABELS: Record<HotkeyModifier, string> = {
-  ctrl: 'Ctrl',
-  alt: 'Alt',
-  shift: 'Shift',
-  meta: 'Meta',
+const CODE_LABELS: Record<string, string> = {
+  ControlLeft: 'Left Ctrl',
+  ControlRight: 'Right Ctrl',
+  AltLeft: 'Left Alt',
+  AltRight: 'Right Alt',
+  ShiftLeft: 'Left Shift',
+  ShiftRight: 'Right Shift',
+  MetaLeft: 'Left Meta',
+  MetaRight: 'Right Meta',
+  Escape: 'Esc',
+  Space: 'Space',
+  Mouse3: 'Mouse3',
+  Mouse4: 'Mouse4',
+  Mouse5: 'Mouse5',
 }
 
 export function canRegisterHotkeyAction(action: HotkeyAction) {
@@ -114,26 +114,22 @@ export function getHotkeyAction(action: HotkeyAction) {
 export function comboFromNativeInputEvent(
   event: NativeInputEvent,
 ): HotkeyCombo {
-  if (event.type === 'mouseDown' || event.type === 'mouseUp') {
-    return {
-      trigger: { type: 'mouse', button: event.button },
-      modifiers: { ...event.modifiers },
-    }
+  return { codes: normalizeCodes(event.pressedCodes) }
+}
+
+export function comboFromRecordedInputs(
+  events: NativeInputEvent[],
+): HotkeyCombo | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const codes = normalizeCodes(
+      events[index].type === 'inputDown'
+        ? events[index].pressedCodes
+        : [...events[index].pressedCodes, events[index].code],
+    )
+    if (codes.length > 0) return { codes }
   }
 
-  const modifier = modifierFromCode(event.code)
-  if (modifier) {
-    const modifiers = { ...event.modifiers, [modifier]: false }
-    return {
-      trigger: { type: 'modifier', modifier },
-      modifiers,
-    }
-  }
-
-  return {
-    trigger: { type: 'keyboard', code: event.code, key: event.key },
-    modifiers: { ...event.modifiers },
-  }
+  return null
 }
 
 export function hotkeyMatchesNativeInput(
@@ -145,38 +141,18 @@ export function hotkeyMatchesNativeInput(
 }
 
 export function shouldCaptureRecordedInput(event: NativeInputEvent) {
-  if (event.type === 'mouseDown') return true
-  if (event.type === 'mouseUp') return false
-  const modifier = modifierFromCode(event.code)
-  if (!modifier) return event.type === 'keyDown'
-  return event.type === 'keyUp'
+  return event.type === 'inputUp'
 }
 
 export function comboDisplayLabel(combo: HotkeyCombo | null) {
   if (!combo) return 'Не назначено'
 
-  const parts: string[] = []
-  for (const modifier of ['ctrl', 'alt', 'shift', 'meta'] as const) {
-    if (combo.modifiers[modifier]) parts.push(MODIFIER_LABELS[modifier])
-  }
-
-  if (combo.trigger.type === 'keyboard') {
-    parts.push(normalizeKeyLabel(combo.trigger.key, combo.trigger.code))
-  } else if (combo.trigger.type === 'mouse') {
-    parts.push(combo.trigger.button)
-  } else {
-    parts.push(MODIFIER_LABELS[combo.trigger.modifier])
-  }
-
-  return parts.join('+')
+  return normalizeCodes(combo.codes).map(labelForCode).join('+')
 }
 
 export function comboKey(combo: HotkeyCombo | null) {
   if (!combo) return ''
-  return JSON.stringify({
-    trigger: combo.trigger,
-    modifiers: combo.modifiers,
-  }).toLowerCase()
+  return JSON.stringify({ codes: normalizeCodes(combo.codes) }).toLowerCase()
 }
 
 export function findDuplicateCombos(bindings: HotkeyBinding[]) {
@@ -197,17 +173,13 @@ export function findDuplicateCombos(bindings: HotkeyBinding[]) {
   return duplicateIds
 }
 
-function normalizeKeyLabel(key: string, code: string) {
-  if (key.length === 1) return key.toUpperCase()
+function labelForCode(code: string) {
+  if (CODE_LABELS[code]) return CODE_LABELS[code]
   if (code.startsWith('Key')) return code.slice(3).toUpperCase()
   if (code.startsWith('Digit')) return code.slice(5)
-  return key || code
+  return code
 }
 
-function modifierFromCode(code: string): HotkeyModifier | null {
-  if (code === 'ControlLeft' || code === 'ControlRight' || code === 'Control') return 'ctrl'
-  if (code === 'AltLeft' || code === 'AltRight' || code === 'Alt') return 'alt'
-  if (code === 'ShiftLeft' || code === 'ShiftRight' || code === 'Shift') return 'shift'
-  if (code === 'MetaLeft' || code === 'MetaRight' || code === 'Meta') return 'meta'
-  return null
+function normalizeCodes(codes: string[]) {
+  return Array.from(new Set(codes.filter((code) => code.length > 0))).sort()
 }

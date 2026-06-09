@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  HotkeyBinding,
-  HotkeyModifiers,
-  NativeInputEvent,
-} from '@syrnike13/platform'
+import type { HotkeyBinding, NativeInputEvent } from '@syrnike13/platform'
 
 import { HotkeyState } from './hotkey-state'
 
@@ -12,33 +8,95 @@ const ctrlM: HotkeyBinding = {
   action: 'push-to-talk',
   enabled: true,
   combo: {
-    trigger: { type: 'keyboard', code: 'KeyM', key: 'M' },
-    modifiers: { ctrl: true, alt: false, shift: false, meta: false },
+    codes: ['ControlRight', 'KeyM'],
   },
 }
 
 describe('desktop hotkey state', () => {
-  it('releases a held combo after the modifier was released first', () => {
+  it('matches exact physical combo codes', () => {
     const state = new HotkeyState()
 
-    expect(state.handleInput(keyDown('KeyM', 'M', { ctrl: true }), [ctrlM])).toEqual([
-      { action: 'push-to-talk', phase: 'pressed' },
-    ])
+    expect(
+      state.handleInput(inputDown('KeyM', 'M', ['ControlLeft', 'KeyM']), [ctrlM]),
+    ).toEqual([])
 
-    expect(state.handleInput(keyUp('Control', 'Control'), [ctrlM])).toEqual([])
-    expect(state.handleInput(keyUp('KeyM', 'M'), [ctrlM])).toEqual([
-      { action: 'push-to-talk', phase: 'released' },
-    ])
+    expect(
+      state.handleInput(inputDown('KeyM', 'M', ['ControlRight', 'KeyM']), [ctrlM]),
+    ).toEqual([{ action: 'push-to-talk', phase: 'pressed' }])
+  })
 
-    expect(state.handleInput(keyDown('KeyM', 'M', { ctrl: true }), [ctrlM])).toEqual([
-      { action: 'push-to-talk', phase: 'pressed' },
-    ])
+  it('blocks a combo when extra keys were pressed before activation', () => {
+    const state = new HotkeyState()
+
+    expect(
+      state.handleInput(
+        inputDown('KeyM', 'M', ['ControlRight', 'KeyM', 'ShiftLeft']),
+        [ctrlM],
+      ),
+    ).toEqual([])
+  })
+
+  it('keeps an active hold while extra keys are pressed after activation', () => {
+    const state = new HotkeyState()
+
+    expect(
+      state.handleInput(inputDown('KeyM', 'M', ['ControlRight', 'KeyM']), [ctrlM]),
+    ).toEqual([{ action: 'push-to-talk', phase: 'pressed' }])
+
+    expect(
+      state.handleInput(
+        inputDown('ShiftLeft', 'Shift', ['ControlRight', 'KeyM', 'ShiftLeft']),
+        [ctrlM],
+      ),
+    ).toEqual([])
+
+    expect(
+      state.handleInput(inputUp('ShiftLeft', 'Shift', ['ControlRight', 'KeyM']), [
+        ctrlM,
+      ]),
+    ).toEqual([])
+
+    expect(
+      state.handleInput(inputUp('KeyM', 'M', ['ControlRight']), [ctrlM]),
+    ).toEqual([{ action: 'push-to-talk', phase: 'released' }])
+  })
+
+  it('fires toggle actions once until the combo is released', () => {
+    const state = new HotkeyState()
+    const binding: HotkeyBinding = {
+      id: 'toggle-camera',
+      action: 'toggle-camera',
+      enabled: true,
+      combo: { codes: ['ControlRight', 'KeyC'] },
+    }
+
+    expect(
+      state.handleInput(inputDown('KeyC', 'C', ['ControlRight', 'KeyC']), [
+        binding,
+      ]),
+    ).toEqual([{ action: 'toggle-camera', phase: 'pressed' }])
+
+    expect(
+      state.handleInput(inputDown('KeyC', 'C', ['ControlRight', 'KeyC']), [
+        binding,
+      ]),
+    ).toEqual([])
+
+    expect(
+      state.handleInput(inputUp('KeyC', 'C', ['ControlRight']), [binding]),
+    ).toEqual([])
+
+    expect(
+      state.handleInput(inputDown('KeyC', 'C', ['ControlRight', 'KeyC']), [
+        binding,
+      ]),
+    ).toEqual([{ action: 'toggle-camera', phase: 'pressed' }])
   })
 
   it('releases held hold-actions when suspended', () => {
     const state = new HotkeyState()
 
-    state.handleInput(keyDown('KeyM', 'M', { ctrl: true }), [ctrlM])
+    state.handleInput(inputDown('KeyM', 'M', ['ControlRight', 'KeyM']), [ctrlM])
 
     expect(state.releaseHeldActions()).toEqual([
       { action: 'push-to-talk', phase: 'released' },
@@ -47,40 +105,30 @@ describe('desktop hotkey state', () => {
   })
 })
 
-function keyDown(
+function inputDown(
   code: string,
-  key: string,
-  modifiers: Partial<HotkeyModifiers> = {},
+  label: string,
+  pressedCodes: string[],
 ): NativeInputEvent {
   return {
-    type: 'keyDown',
+    type: 'inputDown',
+    source: code.startsWith('Mouse') ? 'mouse' : 'keyboard',
     code,
-    key,
-    modifiers: {
-      ctrl: false,
-      alt: false,
-      shift: false,
-      meta: false,
-      ...modifiers,
-    },
+    label,
+    pressedCodes,
   }
 }
 
-function keyUp(
+function inputUp(
   code: string,
-  key: string,
-  modifiers: Partial<HotkeyModifiers> = {},
+  label: string,
+  pressedCodes: string[],
 ): NativeInputEvent {
   return {
-    type: 'keyUp',
+    type: 'inputUp',
+    source: code.startsWith('Mouse') ? 'mouse' : 'keyboard',
     code,
-    key,
-    modifiers: {
-      ctrl: false,
-      alt: false,
-      shift: false,
-      meta: false,
-      ...modifiers,
-    },
+    label,
+    pressedCodes,
   }
 }

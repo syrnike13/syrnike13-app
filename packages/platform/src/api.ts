@@ -69,28 +69,8 @@ export type HotkeyAction =
   | 'priority-push-to-talk'
   | 'toggle-vad'
 
-export type HotkeyModifier = 'ctrl' | 'alt' | 'shift' | 'meta'
-
-export type HotkeyModifiers = Record<HotkeyModifier, boolean>
-
-export type HotkeyTrigger =
-  | {
-      type: 'keyboard'
-      code: string
-      key: string
-    }
-  | {
-      type: 'mouse'
-      button: 'Mouse4' | 'Mouse5'
-    }
-  | {
-      type: 'modifier'
-      modifier: HotkeyModifier
-    }
-
 export type HotkeyCombo = {
-  trigger: HotkeyTrigger
-  modifiers: HotkeyModifiers
+  codes: string[]
 }
 
 export type HotkeyBinding = {
@@ -108,17 +88,13 @@ export type HotkeyRegistrationStatus =
   | 'unsupported'
 
 export type NativeInputEvent =
-  | {
-      type: 'keyDown' | 'keyUp'
-      code: string
-      key: string
-      modifiers: HotkeyModifiers
-    }
-  | {
-      type: 'mouseDown' | 'mouseUp'
-      button: 'Mouse4' | 'Mouse5'
-      modifiers: HotkeyModifiers
-    }
+  {
+    type: 'inputDown' | 'inputUp'
+    source: 'keyboard' | 'mouse'
+    code: string
+    label: string
+    pressedCodes: string[]
+  }
 
 export type HotkeyRuntimeStatus =
   | 'running'

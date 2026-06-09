@@ -3,7 +3,6 @@ import type {
   HotkeyActivationEvent,
   HotkeyBinding,
   HotkeyCombo,
-  HotkeyModifier,
   NativeInputEvent,
 } from '@syrnike13/platform'
 
@@ -20,42 +19,37 @@ export const REGISTERABLE_ACTIONS = new Set<HotkeyAction>([
   'push-to-mute',
 ])
 
+type ActiveCombo = {
+  action: HotkeyAction
+  codes: string[]
+}
+
 export class HotkeyState {
-  private readonly heldComboKeys = new Set<string>()
-  private readonly heldActions = new Map<string, HotkeyAction>()
-  private readonly heldComboKeyByTrigger = new Map<string, string>()
+  private readonly activeCombos = new Map<string, ActiveCombo>()
 
   handleInput(
     event: NativeInputEvent,
     bindings: HotkeyBinding[],
   ): HotkeyActivationEvent[] {
-    if (event.type === 'keyUp' || event.type === 'mouseUp') {
-      const triggerKey = triggerKeyFromNativeInputEvent(event)
-      const key = this.heldComboKeyByTrigger.get(triggerKey)
-      if (!key) return []
+    const pressedCodes = normalizeCodes(event.pressedCodes)
+    const events = this.releaseMissingCombos(pressedCodes)
 
-      const action = this.heldActions.get(key)
-      this.heldComboKeys.delete(key)
-      this.heldActions.delete(key)
-      this.heldComboKeyByTrigger.delete(triggerKey)
+    if (event.type !== 'inputDown') return events
 
-      return action && isHoldAction(action)
-        ? [{ action, phase: 'released' }]
-        : []
-    }
-
-    const events: HotkeyActivationEvent[] = []
     for (const binding of bindings) {
       if (!binding.enabled || !binding.combo) continue
       if (!REGISTERABLE_ACTIONS.has(binding.action)) continue
-      if (!comboMatchesNativeInput(binding.combo, event)) continue
 
-      const key = comboKey(binding.combo)
-      if (this.heldComboKeys.has(key)) continue
+      const bindingCodes = normalizeCodes(binding.combo.codes)
+      if (!comboCodesMatchPressedCodes(bindingCodes, pressedCodes)) continue
 
-      this.heldComboKeys.add(key)
-      this.heldActions.set(key, binding.action)
-      this.heldComboKeyByTrigger.set(triggerKeyFromCombo(binding.combo), key)
+      const key = comboKeyFromCodes(bindingCodes)
+      if (this.activeCombos.has(key)) continue
+
+      this.activeCombos.set(key, {
+        action: binding.action,
+        codes: bindingCodes,
+      })
       events.push({ action: binding.action, phase: 'pressed' })
     }
 
@@ -64,64 +58,46 @@ export class HotkeyState {
 
   releaseHeldActions(): HotkeyActivationEvent[] {
     const events: HotkeyActivationEvent[] = []
-    for (const action of this.heldActions.values()) {
-      if (isHoldAction(action)) events.push({ action, phase: 'released' })
+    for (const combo of this.activeCombos.values()) {
+      if (isHoldAction(combo.action)) {
+        events.push({ action: combo.action, phase: 'released' })
+      }
     }
-    this.heldComboKeys.clear()
-    this.heldActions.clear()
-    this.heldComboKeyByTrigger.clear()
+    this.activeCombos.clear()
+    return events
+  }
+
+  private releaseMissingCombos(pressedCodes: string[]) {
+    const pressed = new Set(pressedCodes)
+    const events: HotkeyActivationEvent[] = []
+
+    for (const [key, combo] of this.activeCombos) {
+      if (combo.codes.every((code) => pressed.has(code))) continue
+
+      this.activeCombos.delete(key)
+      if (isHoldAction(combo.action)) {
+        events.push({ action: combo.action, phase: 'released' })
+      }
+    }
+
     return events
   }
 }
 
 export function comboKey(combo: HotkeyCombo) {
-  return JSON.stringify(combo).toLowerCase()
+  return comboKeyFromCodes(normalizeCodes(combo.codes))
 }
 
-function comboMatchesNativeInput(combo: HotkeyCombo, event: NativeInputEvent) {
-  return comboKey(combo) === comboKey(comboFromNativeInputEvent(event))
+function comboKeyFromCodes(codes: string[]) {
+  return JSON.stringify({ codes }).toLowerCase()
 }
 
-function comboFromNativeInputEvent(event: NativeInputEvent): HotkeyCombo {
-  if (event.type === 'mouseDown' || event.type === 'mouseUp') {
-    return {
-      trigger: { type: 'mouse', button: event.button },
-      modifiers: { ...event.modifiers },
-    }
-  }
-
-  if (event.type === 'keyDown' || event.type === 'keyUp') {
-    const modifier = modifierFromCode(event.code)
-    if (modifier) {
-      return {
-        trigger: { type: 'modifier', modifier },
-        modifiers: { ...event.modifiers, [modifier]: false },
-      }
-    }
-
-    return {
-      trigger: { type: 'keyboard', code: event.code, key: event.key },
-      modifiers: { ...event.modifiers },
-    }
-  }
-
-  throw new Error(`Unsupported native input event: ${JSON.stringify(event)}`)
+function comboCodesMatchPressedCodes(comboCodes: string[], pressedCodes: string[]) {
+  return comboKeyFromCodes(comboCodes) === comboKeyFromCodes(pressedCodes)
 }
 
-function triggerKeyFromNativeInputEvent(event: NativeInputEvent) {
-  return triggerKeyFromCombo(comboFromNativeInputEvent(event))
-}
-
-function triggerKeyFromCombo(combo: HotkeyCombo) {
-  return JSON.stringify(combo.trigger).toLowerCase()
-}
-
-function modifierFromCode(code: string): HotkeyModifier | null {
-  if (code === 'ControlLeft' || code === 'ControlRight' || code === 'Control') return 'ctrl'
-  if (code === 'AltLeft' || code === 'AltRight' || code === 'Alt') return 'alt'
-  if (code === 'ShiftLeft' || code === 'ShiftRight' || code === 'Shift') return 'shift'
-  if (code === 'MetaLeft' || code === 'MetaRight' || code === 'Meta') return 'meta'
-  return null
+function normalizeCodes(codes: string[]) {
+  return Array.from(new Set(codes.filter((code) => code.length > 0))).sort()
 }
 
 function isHoldAction(action: HotkeyAction) {

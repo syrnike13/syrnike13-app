@@ -32,10 +32,8 @@ function copyHelperOrWarn(source, dest) {
 
 const desktopRoot = resolve(import.meta.dirname, '..')
 const helperRoot = resolve(desktopRoot, 'native/hotkey-helper-win')
-const releaseExe = resolve(
-  helperRoot,
-  'target/release/syrnike-hotkey-helper-win.exe',
-)
+const buildDir = resolve(helperRoot, 'build')
+const releaseExe = resolve(buildDir, 'Release/syrnike-hotkey-helper-win.exe')
 const outExe = resolve(
   desktopRoot,
   'out/native/syrnike-hotkey-helper-win.exe',
@@ -47,13 +45,19 @@ if (process.platform !== 'win32') {
   process.exit(0)
 }
 
-const result = spawnSync(
-  'cargo',
-  ['build', '--release', '--manifest-path', resolve(helperRoot, 'Cargo.toml')],
-  {
-    stdio: 'inherit',
-  },
-)
+mkdirSync(buildDir, { recursive: true })
+
+const configure = spawnSync('cmake', ['-S', helperRoot, '-B', buildDir, '-A', 'x64'], {
+  stdio: 'inherit',
+})
+
+if (configure.status !== 0) {
+  process.exit(configure.status ?? 1)
+}
+
+const result = spawnSync('cmake', ['--build', buildDir, '--config', 'Release'], {
+  stdio: 'inherit',
+})
 
 if (result.status !== 0) {
   process.exit(result.status ?? 1)

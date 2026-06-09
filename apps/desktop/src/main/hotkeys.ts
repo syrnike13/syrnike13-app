@@ -11,8 +11,6 @@ import {
   type HotkeyActivationEvent,
   type HotkeyBinding,
   type HotkeyCombo,
-  type HotkeyModifier,
-  type HotkeyModifiers,
   type HotkeyRegistrationResult,
   type HotkeyRuntimeStatus,
   type NativeInputEvent,
@@ -20,7 +18,7 @@ import {
 
 import { HotkeyState, REGISTERABLE_ACTIONS, comboKey } from './hotkey-state'
 
-const HOTKEYS_FILE = 'hotkeys.json'
+const HOTKEYS_FILE = 'hotkeys-v2.json'
 
 let bindings: HotkeyBinding[] = []
 let registrationResults: HotkeyRegistrationResult[] = []
@@ -43,7 +41,7 @@ export function getHotkeyBindings() {
 }
 
 export function setHotkeyBindings(nextBindings: HotkeyBinding[]) {
-  bindings = sanitizeBindings(nextBindings)
+  bindings = sanitizeHotkeyBindings(nextBindings)
   writeHotkeyBindings(bindings)
   registrationResults = validateBindings(bindings)
   return [...registrationResults]
@@ -152,7 +150,7 @@ function canSendToRenderer(
   return Boolean(webContents && !webContents.isDestroyed())
 }
 
-function sanitizeBindings(value: unknown): HotkeyBinding[] {
+export function sanitizeHotkeyBindings(value: unknown): HotkeyBinding[] {
   if (!Array.isArray(value)) return []
 
   return value.flatMap((item) => {
@@ -161,7 +159,8 @@ function sanitizeBindings(value: unknown): HotkeyBinding[] {
     if (
       typeof binding.id !== 'string' ||
       typeof binding.action !== 'string' ||
-      typeof binding.enabled !== 'boolean'
+      typeof binding.enabled !== 'boolean' ||
+      !REGISTERABLE_ACTIONS.has(binding.action as HotkeyAction)
     ) {
       return []
     }
@@ -179,66 +178,21 @@ function sanitizeBindings(value: unknown): HotkeyBinding[] {
 
 function sanitizeCombo(value: unknown): HotkeyCombo | null {
   if (!value || typeof value !== 'object') return null
-  const combo = value as Partial<HotkeyCombo>
-  if (!combo.trigger || !combo.modifiers) return null
-  if (!isHotkeyModifiers(combo.modifiers)) return null
-
-  if (combo.trigger.type === 'keyboard') {
-    if (
-      typeof combo.trigger.code !== 'string' ||
-      typeof combo.trigger.key !== 'string'
-    ) {
-      return null
-    }
-    return {
-      trigger: {
-        type: 'keyboard',
-        code: combo.trigger.code,
-        key: combo.trigger.key,
-      },
-      modifiers: combo.modifiers,
-    }
+  const combo = value as { codes?: unknown }
+  const rawCodes = combo.codes
+  if (!Array.isArray(rawCodes)) return null
+  if (!rawCodes.every((code): code is string => typeof code === 'string')) {
+    return null
   }
 
-  if (
-    combo.trigger.type === 'mouse' &&
-    (combo.trigger.button === 'Mouse4' || combo.trigger.button === 'Mouse5')
-  ) {
-    return {
-      trigger: { type: 'mouse', button: combo.trigger.button },
-      modifiers: combo.modifiers,
-    }
-  }
-
-  if (
-    combo.trigger.type === 'modifier' &&
-    isHotkeyModifier(combo.trigger.modifier)
-  ) {
-    return {
-      trigger: { type: 'modifier', modifier: combo.trigger.modifier },
-      modifiers: combo.modifiers,
-    }
-  }
-
-  return null
-}
-
-function isHotkeyModifiers(value: unknown): value is HotkeyModifiers {
-  if (!value || typeof value !== 'object') return false
-  const modifiers = value as HotkeyModifiers
-  return ['ctrl', 'alt', 'shift', 'meta'].every(
-    (modifier) => typeof modifiers[modifier as HotkeyModifier] === 'boolean',
-  )
-}
-
-function isHotkeyModifier(value: unknown): value is HotkeyModifier {
-  return value === 'ctrl' || value === 'alt' || value === 'shift' || value === 'meta'
+  const codes = normalizeCodes(rawCodes)
+  return codes.length > 0 ? { codes } : null
 }
 
 function readHotkeyBindings() {
   try {
     const raw = fs.readFileSync(resolveHotkeysPath(), 'utf8')
-    return sanitizeBindings(JSON.parse(raw))
+    return sanitizeHotkeyBindings(JSON.parse(raw))
   } catch {
     return []
   }
@@ -262,12 +216,12 @@ function resolveHelperPath() {
         path.resolve(app.getAppPath(), 'out/native', helperName),
         path.resolve(
           app.getAppPath(),
-          'native/hotkey-helper-win/target/release',
+          'native/hotkey-helper-win/build/Release',
           helperName,
         ),
         path.resolve(
           app.getAppPath(),
-          'native/hotkey-helper-win/target/debug',
+          'native/hotkey-helper-win/build/Debug',
           helperName,
         ),
       ]
@@ -279,22 +233,27 @@ function parseNativeInputEvent(line: string): NativeInputEvent | null {
   try {
     const parsed = JSON.parse(line) as NativeInputEvent
     if (
-      (parsed.type === 'keyDown' || parsed.type === 'keyUp') &&
+      (parsed.type === 'inputDown' || parsed.type === 'inputUp') &&
+      (parsed.source === 'keyboard' || parsed.source === 'mouse') &&
       typeof parsed.code === 'string' &&
-      typeof parsed.key === 'string' &&
-      isHotkeyModifiers(parsed.modifiers)
+      typeof parsed.label === 'string' &&
+      Array.isArray(parsed.pressedCodes) &&
+      parsed.pressedCodes.every((code) => typeof code === 'string')
     ) {
-      return parsed
-    }
-    if (
-      (parsed.type === 'mouseDown' || parsed.type === 'mouseUp') &&
-      (parsed.button === 'Mouse4' || parsed.button === 'Mouse5') &&
-      isHotkeyModifiers(parsed.modifiers)
-    ) {
-      return parsed
+      return {
+        type: parsed.type,
+        source: parsed.source,
+        code: parsed.code,
+        label: parsed.label,
+        pressedCodes: normalizeCodes(parsed.pressedCodes),
+      }
     }
   } catch {
     return null
   }
   return null
+}
+
+function normalizeCodes(codes: string[]) {
+  return Array.from(new Set(codes.filter((code) => code.length > 0))).sort()
 }
