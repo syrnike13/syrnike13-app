@@ -4,6 +4,7 @@ import {
   ExternalLinkIcon,
   HeadphoneOffIcon,
   HeadphonesIcon,
+  Loader2Icon,
   Maximize2Icon,
   MicIcon,
   MicOffIcon,
@@ -226,6 +227,7 @@ export function VoiceStageControls({
   const soundOff = voice.deafened
   const cameraOn = voice.cameraEnabled
   const sharingScreen = voice.screenShareEnabled
+  const screenShareStarting = voice.screenShareStarting
 
   const controlBar = overlay ? (
     <VoiceStageOverlayControlBar
@@ -236,6 +238,7 @@ export function VoiceStageControls({
       soundOff={soundOff}
       cameraOn={cameraOn}
       sharingScreen={sharingScreen}
+      screenShareStarting={screenShareStarting}
       micIssue={voice.micIssue}
       onToggleMic={voice.toggleMic}
       onToggleDeafen={voice.toggleDeafen}
@@ -253,6 +256,7 @@ export function VoiceStageControls({
       soundOff={soundOff}
       cameraOn={cameraOn}
       sharingScreen={sharingScreen}
+      screenShareStarting={screenShareStarting}
       micIssue={voice.micIssue}
       onToggleMic={voice.toggleMic}
       onToggleDeafen={voice.toggleDeafen}
@@ -303,6 +307,7 @@ type ControlBarStateProps = {
   soundOff: boolean
   cameraOn: boolean
   sharingScreen: boolean
+  screenShareStarting: boolean
   micIssue: { label: string } | null | undefined
   onToggleMic: () => void
   onToggleDeafen: () => void
@@ -318,6 +323,7 @@ function VoiceStageOverlayControlBar({
   soundOff,
   cameraOn,
   sharingScreen,
+  screenShareStarting,
   micIssue,
   onToggleMic,
   onToggleDeafen,
@@ -357,13 +363,21 @@ function VoiceStageOverlayControlBar({
       <div className={stageControlGroupClass}>
         <StageIconButton
           title={
-            sharingScreen ? 'Остановить демонстрацию' : 'Демонстрация экрана'
+            screenShareStarting
+              ? 'Демонстрация запускается'
+              : sharingScreen
+                ? 'Остановить демонстрацию'
+                : 'Демонстрация экрана'
           }
-          highlight={sharingScreen}
-          disabled={connecting}
+          highlight={sharingScreen || screenShareStarting}
+          disabled={connecting || screenShareStarting}
           onClick={onToggleScreenShare}
         >
-          <MonitorUpIcon className="size-5" />
+          {screenShareStarting ? (
+            <Loader2Icon className="size-5 animate-spin" />
+          ) : (
+            <MonitorUpIcon className="size-5" />
+          )}
         </StageIconButton>
 
         <StageIconButton
@@ -481,6 +495,7 @@ function LegacyControlBar({
   soundOff,
   cameraOn,
   sharingScreen,
+  screenShareStarting,
   micIssue,
   onToggleMic,
   onToggleDeafen,
@@ -531,14 +546,22 @@ function LegacyControlBar({
 
       <LegacyControlButton
         title={
-          sharingScreen ? 'Остановить демонстрацию' : 'Демонстрация экрана'
+          screenShareStarting
+            ? 'Демонстрация запускается'
+            : sharingScreen
+              ? 'Остановить демонстрацию'
+              : 'Демонстрация экрана'
         }
-        active={sharingScreen}
-        disabled={connecting}
+        active={sharingScreen || screenShareStarting}
+        disabled={connecting || screenShareStarting}
         compact={compact}
         onClick={onToggleScreenShare}
       >
-        <MonitorUpIcon className="size-5" />
+        {screenShareStarting ? (
+          <Loader2Icon className="size-5 animate-spin" />
+        ) : (
+          <MonitorUpIcon className="size-5" />
+        )}
       </LegacyControlButton>
 
       <StageViewSettings compact={compact} trigger="settings" />

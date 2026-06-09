@@ -459,10 +459,25 @@ describe('native media engine entrypoint', () => {
     expect(engineSource).toContain("cmd: 'warm_microphone'")
     expect(engineSource).toContain('takePrewarmedMediaEngineHelper()')
     expect(engineSource).toContain(
-      'takePrewarmedMediaEngineHelper() ?? spawnNativeMediaEngineProcess(kind)',
+      "kind === 'microphone'",
     )
     expect(indexSource).toContain('prewarmNativeMediaEngineHelper()')
     expect(indexSource).toContain('disposePrewarmedNativeMediaEngineHelper()')
+  })
+
+  it('does not reuse the prewarmed microphone helper for screen sessions', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const spawnBody = source.match(
+      /function spawnMediaEngineHelper[\s\S]*?\r?\n\r?\n  const reader = readline\.createInterface/,
+    )?.[0]
+
+    expect(spawnBody).toBeDefined()
+    expect(spawnBody).toContain("kind === 'microphone'")
+    expect(spawnBody).toContain('takePrewarmedMediaEngineHelper()')
+    expect(spawnBody).toContain(': spawnNativeMediaEngineProcess(kind)')
   })
 
   it('starts screen video capture before publishing the LiveKit screen track', () => {
@@ -483,6 +498,19 @@ describe('native media engine entrypoint', () => {
     expect(source).toContain('video_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE')
     expect(source).toContain('video_publish_options.simulcast = false')
     expect(source).toContain('chooseScreenShareBitratePreset')
+  })
+
+  it('requests borderless Windows Graphics Capture for window sessions when allowed', () => {
+    const source = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/screen_video_capture.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    expect(source).toContain('GraphicsCaptureAccessKind::Borderless')
+    expect(source).toContain('AppCapabilityAccessStatus::Allowed')
+    expect(source).toContain('session.IsBorderRequired(false)')
   })
 
   it('passes the desktop window handle when listing native display sources', () => {

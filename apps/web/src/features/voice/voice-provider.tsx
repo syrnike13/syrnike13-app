@@ -182,6 +182,7 @@ type VoiceContextValue = {
   rtcDebugHistory: readonly RtcDebugSnapshot[]
   cameraEnabled: boolean
   screenShareEnabled: boolean
+  screenShareStarting: boolean
   stageMediaItems: readonly VoiceStageMediaItem[]
   focusedMediaId: string | null
   setFocusedMediaId: (mediaId: string | null) => void
@@ -468,6 +469,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
   const [cameraEnabled, setCameraEnabled] = useState(false)
   const [screenShareEnabled, setScreenShareEnabled] = useState(false)
+  const [screenShareStarting, setScreenShareStarting] = useState(false)
   const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null)
   const [stageFullscreen, setStageFullscreen] = useState(false)
 
@@ -755,6 +757,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setStageMediaItems([])
     setCameraEnabled(false)
     setScreenShareEnabled(false)
+    setScreenShareStarting(false)
     setFocusedMediaId(null)
     setStageFullscreen(false)
   }, [restoreVoicePreferences, setCurrentMicIssue, setStageMediaItems])
@@ -1468,6 +1471,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       voicePreferenceStore.setScreenShareQuality(quality)
       voicePreferenceStore.setScreenShareAudio(withAudio)
+      setScreenShareStarting(true)
 
       const prefs = readVoicePreferences()
       const desktop = getSyrnikeDesktop()
@@ -1507,6 +1511,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
           nativeScreenShareRef.current = session
           setScreenShareEnabled(true)
+          setScreenShareStarting(false)
           syncRoomParticipants()
           return
         }
@@ -1519,8 +1524,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setScreenShareEnabled(
           localParticipantVoiceFlags(room.localParticipant).screensharing,
         )
+        setScreenShareStarting(false)
         syncRoomParticipants()
       } catch (error) {
+        setScreenShareStarting(false)
         if (desktop?.platform.os === 'win32') {
           stopNativeScreenShare()
           clearNativePickerSelection()
@@ -1548,6 +1555,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const toggleScreenShare = useCallback(() => {
     const room = roomRef.current
     if (!room) return
+    if (screenShareStarting) return
 
     if (room.localParticipant.isScreenShareEnabled || nativeScreenShareRef.current) {
       if (nativeScreenShareRef.current) {
@@ -1575,7 +1583,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     const prefs = readVoicePreferences()
     void startLocalScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
-  }, [startLocalScreenShare, stopNativeScreenShare, syncRoomParticipants])
+  }, [
+    screenShareStarting,
+    startLocalScreenShare,
+    stopNativeScreenShare,
+    syncRoomParticipants,
+  ])
 
   const toggleStageFullscreen = useCallback(() => {
     setStageFullscreen((value) => !value)
@@ -1918,6 +1931,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       rtcDebugHistory,
       cameraEnabled,
       screenShareEnabled,
+      screenShareStarting,
       stageMediaItems: stageMediaItemsForUi,
       focusedMediaId,
       join,
@@ -1948,6 +1962,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       micPublishing,
       participantCount,
       screenShareEnabled,
+      screenShareStarting,
       speakingUserIds,
       stageMediaFilters,
       stageMediaItemsForUi,

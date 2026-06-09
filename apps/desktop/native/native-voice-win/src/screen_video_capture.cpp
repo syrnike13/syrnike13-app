@@ -14,6 +14,7 @@
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+#include <winrt/Windows.Security.Authorization.AppCapabilityAccess.h>
 
 #include <algorithm>
 #include <chrono>
@@ -25,6 +26,7 @@ using Microsoft::WRL::ComPtr;
 namespace capture = winrt::Windows::Graphics::Capture;
 namespace directx = winrt::Windows::Graphics::DirectX;
 namespace d3dwinrt = winrt::Windows::Graphics::DirectX::Direct3D11;
+namespace appcap = winrt::Windows::Security::Authorization::AppCapabilityAccess;
 
 namespace syrnike::voice {
 namespace {
@@ -106,6 +108,17 @@ HWND parseWindowHandle(const std::string& source_id) {
     return reinterpret_cast<HWND>(raw);
   } catch (...) {
     return nullptr;
+  }
+}
+
+void disableCaptureBorderIfAllowed(capture::GraphicsCaptureSession& session) {
+  try {
+    const auto status = capture::GraphicsCaptureAccess::RequestAccessAsync(
+        capture::GraphicsCaptureAccessKind::Borderless).get();
+    if (status == appcap::AppCapabilityAccessStatus::Allowed) {
+      session.IsBorderRequired(false);
+    }
+  } catch (...) {
   }
 }
 
@@ -403,6 +416,7 @@ private:
         size);
     session_ = frame_pool_.CreateCaptureSession(item_);
     session_.IsCursorCaptureEnabled(true);
+    disableCaptureBorderIfAllowed(session_);
     session_.StartCapture();
 
     D3D11_TEXTURE2D_DESC desc{};

@@ -745,6 +745,10 @@ function configureNativeMicrophoneRuntime(
     return
   }
 
+  if (sessionId === WARMED_MICROPHONE_SESSION_ID) {
+    return
+  }
+
   throw new Error('Native microphone runtime is not active')
 }
 
@@ -849,7 +853,10 @@ function spawnMediaEngineHelper(
   kind: NativeMediaSessionStartOptions['kind'],
   sessionId: string,
 ) {
-  const helper = takePrewarmedMediaEngineHelper() ?? spawnNativeMediaEngineProcess(kind)
+  const helper =
+    kind === 'microphone'
+      ? takePrewarmedMediaEngineHelper() ?? spawnNativeMediaEngineProcess(kind)
+      : spawnNativeMediaEngineProcess(kind)
 
   const reader = readline.createInterface({ input: helper.stdout })
   reader.on('line', (line) => {
