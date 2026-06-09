@@ -5,26 +5,32 @@ type NativePickerResolver = {
   reject: (error: Error) => void
 }
 
-let pendingPicker: NativePickerResolver | null = null
+let pendingPickers: NativePickerResolver[] = []
 
 export function waitForNativePickerSelection() {
   return new Promise<DesktopDisplayMediaSelection>((resolve, reject) => {
-    pendingPicker = { resolve, reject }
+    pendingPickers.push({ resolve, reject })
   })
 }
 
 export function resolveNativePickerSelection(
   selection: DesktopDisplayMediaSelection,
 ) {
-  pendingPicker?.resolve(selection)
-  pendingPicker = null
+  const pickers = pendingPickers
+  pendingPickers = []
+  for (const picker of pickers) {
+    picker.resolve(selection)
+  }
 }
 
 export function rejectNativePickerSelection(error: Error) {
-  pendingPicker?.reject(error)
-  pendingPicker = null
+  const pickers = pendingPickers
+  pendingPickers = []
+  for (const picker of pickers) {
+    picker.reject(error)
+  }
 }
 
 export function clearNativePickerSelection() {
-  pendingPicker = null
+  rejectNativePickerSelection(new Error('Screen share picker cleared'))
 }

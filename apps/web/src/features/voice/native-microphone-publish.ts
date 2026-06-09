@@ -87,8 +87,8 @@ export async function startNativeMicrophonePublisher(
 
 export async function publishNativeMicrophone(
   _participant: LocalParticipant,
-  onStopped?: NativeMicrophoneStoppedHandler,
-  livekit?: NativeMicrophoneLiveKitCredentials,
+  onStopped: NativeMicrophoneStoppedHandler | undefined,
+  livekit: NativeMicrophoneLiveKitCredentials,
   muted = false,
   audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ): Promise<NativeMicrophoneSession> {

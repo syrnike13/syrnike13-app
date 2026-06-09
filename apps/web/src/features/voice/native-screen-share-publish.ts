@@ -7,7 +7,6 @@ import type { NativeMicrophoneLiveKitCredentials } from '#/features/voice/native
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
   clampVoiceChannelAudioBitrateKbps,
-  DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 } from '#/lib/channel-audio-bitrate'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
@@ -37,9 +36,9 @@ export async function publishNativeScreenShare(
   sourceId: string,
   quality: ScreenShareQualityName,
   withAudio: boolean,
-  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
-  onSidecarLost?: (message: string) => void,
-  livekit?: NativeMicrophoneLiveKitCredentials,
+  audioBitrateKbps: number,
+  onSidecarLost: ((message: string) => void) | undefined,
+  livekit: NativeMicrophoneLiveKitCredentials,
 ): Promise<NativeScreenShareSession> {
   const desktop = getSyrnikeDesktop()
   if (!desktop) {
@@ -52,10 +51,6 @@ export async function publishNativeScreenShare(
   const capture = screenShareCaptureOptions(quality)
   const encoding = capture.publish.screenShareEncoding
 
-  const debugStartedAt = Date.now()
-  // #region debug log
-  fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'A-ipc', location: 'native-screen-share-publish.ts:publishNativeScreenShare', message: 'desktop media startSession requested', data: { quality, withAudio, width: capture.capture.resolution.width, height: capture.capture.resolution.height, fps: capture.capture.resolution.frameRate ?? 30, bitrate: Math.max(encoding?.maxBitrate ?? 0, nativeScreenShareBitrateFloor(quality)), sourceKind: sourceId.split(':')[0] }, timestamp: Date.now() }) }).catch(() => {})
-  // #endregion
   const session = await desktop.media.startSession({
     kind: 'screen',
     sourceId,
@@ -75,9 +70,6 @@ export async function publishNativeScreenShare(
   if (session.kind !== 'screen') {
     throw new Error('Native screen share did not start')
   }
-  // #region debug log
-  fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'A-ipc', location: 'native-screen-share-publish.ts:publishNativeScreenShare', message: 'desktop media startSession resolved', data: { nativeSessionId: session.sessionId, width: session.width, height: session.height, fps: session.fps, bitrate: session.bitrate, audioMode: session.audio?.mode, elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
-  // #endregion
 
   const unsubscribeStats = desktop.media.onStats((event) => {
     if (event.sessionId !== session.sessionId) return

@@ -10,7 +10,10 @@ import {
   VoiceGateStage,
   type VoiceGateMetrics,
 } from '#/features/voice/voice-gate-stage'
-import { rmsFromByteTimeDomain } from '#/features/voice/voice-gate-level'
+import {
+  dbToRms,
+  rmsFromByteTimeDomain,
+} from '#/features/voice/voice-gate-level'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
@@ -105,7 +108,15 @@ export async function startMicPreview({
 
     let session = await startNative(prefs)
     let stopped = false
-    onLevels(meterLevelsFromRms(0.08, MIC_PREVIEW_METER_BAR_COUNT))
+    const unsubscribeMetrics = desktop.media.onMicrophoneMetrics((event) => {
+      if (event.sessionId !== session.sessionId) return
+      onLevels(meterLevelsFromRms(dbToRms(event.inputDb), MIC_PREVIEW_METER_BAR_COUNT))
+      onGateMetrics?.({
+        inputDb: event.inputDb,
+        thresholdDb: event.thresholdDb,
+        open: event.open,
+      })
+    })
 
     const configureNative = (nextPrefs: MicPreviewPreferences) => {
       if (stopped) return
@@ -130,6 +141,7 @@ export async function startMicPreview({
       stop() {
         if (stopped) return
         stopped = true
+        unsubscribeMetrics()
         clearNativeMicrophoneRuntimeConfig(session.sessionId)
         void desktop.media.stopMicrophonePreview(session.sessionId)
       },

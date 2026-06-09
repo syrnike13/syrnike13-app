@@ -25,8 +25,8 @@ int main() {
     if (commandMatches(line, "warm_microphone")) {
       const auto command = parseStartCommand(line);
       updateRuntimeConfig(command);
-      runMicrophonePublisher(command);
-      return 0;
+      startMicrophoneWarmup(command.device_id, command.session_id);
+      continue;
     }
     if (commandMatches(line, "configure")) {
       updateRuntimeConfig(parseStartCommand(line));
@@ -55,6 +55,7 @@ int main() {
       return 0;
     }
     if (commandMatches(line, "connect_screen")) {
+      stopMicrophoneWarmup();
       runScreenPublisher(parseStartCommand(line));
       return 0;
     }

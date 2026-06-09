@@ -58,12 +58,22 @@ describe('native microphone processing boundary', () => {
     const startMicrophonePreview = vi.fn(async () => ({ sessionId: 'preview-1' }))
     const configureMicrophoneRuntime = vi.fn(async () => {})
     const stopMicrophonePreview = vi.fn(async () => {})
+    const unsubscribeMetrics = vi.fn()
+    let microphoneMetricsHandler:
+      | Parameters<
+          NonNullable<ReturnType<typeof getSyrnikeDesktop>>['media']['onMicrophoneMetrics']
+        >[0]
+      | null = null
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
         startMicrophonePreview,
         configureMicrophoneRuntime,
         stopMicrophonePreview,
+        onMicrophoneMetrics: vi.fn((handler) => {
+          microphoneMetricsHandler = handler
+          return unsubscribeMetrics
+        }),
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
@@ -76,9 +86,24 @@ describe('native microphone processing boundary', () => {
       outputVolume: 1,
     }
 
+    const onLevels = vi.fn()
+    const onGateMetrics = vi.fn()
     const session = await startMicPreview({
       prefs,
-      onLevels: vi.fn(),
+      onLevels,
+      onGateMetrics,
+    })
+    microphoneMetricsHandler?.({
+      sessionId: 'preview-1',
+      inputDb: -24,
+      thresholdDb: -28,
+      open: true,
+    })
+    microphoneMetricsHandler?.({
+      sessionId: 'other-preview',
+      inputDb: -6,
+      thresholdDb: -28,
+      open: true,
     })
 
     session.updateGatePreferences({
@@ -95,6 +120,12 @@ describe('native microphone processing boundary', () => {
     expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
     expect(stopMicrophonePreview).not.toHaveBeenCalled()
     expect(configureMicrophoneRuntime).not.toHaveBeenCalled()
+    expect(onLevels).toHaveBeenCalledTimes(1)
+    expect(onGateMetrics).toHaveBeenCalledWith({
+      inputDb: -24,
+      thresholdDb: -28,
+      open: true,
+    })
 
     await vi.advanceTimersByTimeAsync(1)
 
@@ -110,5 +141,6 @@ describe('native microphone processing boundary', () => {
 
     session.stop()
     expect(stopMicrophonePreview).toHaveBeenCalledWith('preview-1')
+    expect(unsubscribeMetrics).toHaveBeenCalled()
   })
 })

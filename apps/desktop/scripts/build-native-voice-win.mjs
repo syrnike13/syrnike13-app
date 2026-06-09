@@ -20,7 +20,13 @@ const buildDir = resolve(helperRoot, 'build')
 const releaseExe = resolve(buildDir, 'Release/syrnike-native-voice-win.exe')
 const outExe = resolve(desktopRoot, 'out/native/syrnike-native-voice-win.exe')
 const staleCaptureExe = resolve(desktopRoot, 'out/native/syrnike-capture-helper-win.exe')
-const sdkVersion = process.env.LIVEKIT_CPP_SDK_VERSION || 'v1.0.0'
+const defaultSdkVersion = 'v1.0.0'
+const sdkVersion = process.env.LIVEKIT_CPP_SDK_VERSION || defaultSdkVersion
+const sdkSha256 =
+  process.env.LIVEKIT_CPP_SDK_SHA256 ||
+  (sdkVersion === defaultSdkVersion
+    ? 'd13838194129f64f819000d5109a5702655b8c298e04d83f3041aca36de0739c'
+    : null)
 
 if (process.platform !== 'win32') {
   mkdirSync(dirname(outExe), { recursive: true })
@@ -30,12 +36,18 @@ if (process.platform !== 'win32') {
 
 mkdirSync(buildDir, { recursive: true })
 
+if (!sdkSha256) {
+  console.error('[desktop] set LIVEKIT_CPP_SDK_SHA256 when overriding LIVEKIT_CPP_SDK_VERSION')
+  process.exit(1)
+}
+
 run('cmake', [
   '-S',
   helperRoot,
   '-B',
   buildDir,
   `-DLIVEKIT_SDK_VERSION=${sdkVersion}`,
+  `-DLIVEKIT_SDK_SHA256=${sdkSha256}`,
   '-A',
   'x64',
 ])

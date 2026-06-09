@@ -3,6 +3,7 @@ import type {
   NativeMicrophoneRuntimeConfig,
   NativeMicrophonePreviewSession,
   NativeMicrophonePreviewStartOptions,
+  NativeMicrophoneMetricsEvent,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaSession,
   NativeMediaSessionStartOptions,
@@ -260,7 +261,7 @@ export interface SyrnikeDesktopApi {
     getState(): Promise<NativeMediaState>
     onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
     onMicrophoneMetrics(
-      handler: (event: import('./media').NativeMicrophoneMetricsEvent) => void,
+      handler: (event: NativeMicrophoneMetricsEvent) => void,
     ): () => void
     onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
     onStreamEnded(handler: (sessionId: string) => void): () => void

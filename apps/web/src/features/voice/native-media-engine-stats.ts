@@ -51,7 +51,10 @@ export const nativeMediaEngineStatsStore = {
     listeners.add(listener)
     return () => listeners.delete(listener)
   },
-  getState: () => state,
+  getState: () => ({
+    ...state,
+    methods: { ...state.methods },
+  }),
   setNative(
     methods: NativeMediaFrameStats,
     activeMethod?: NativeMediaFrameMethod,

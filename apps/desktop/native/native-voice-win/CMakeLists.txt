@@ -15,6 +15,7 @@ else()
   livekit_sdk_setup(
     VERSION "${LIVEKIT_SDK_VERSION}"
     SDK_DIR "${CMAKE_BINARY_DIR}/_deps/livekit-sdk"
+    SDK_SHA256 "${LIVEKIT_SDK_SHA256}"
     GITHUB_TOKEN "$ENV{GITHUB_TOKEN}"
   )
 endif()

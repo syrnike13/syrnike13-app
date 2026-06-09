@@ -65,11 +65,38 @@ uintptr_t uintptrField(const std::string& json, const std::string& key, uintptr_
 std::string jsonEscape(const std::string& value) {
   std::string out;
   out.reserve(value.size() + 8);
-  for (char ch : value) {
-    if (ch == '\\' || ch == '"') {
-      out.push_back('\\');
+  for (unsigned char ch : value) {
+    switch (ch) {
+      case '\\':
+      case '"':
+        out.push_back('\\');
+        out.push_back(static_cast<char>(ch));
+        break;
+      case '\b':
+        out += "\\b";
+        break;
+      case '\f':
+        out += "\\f";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (ch < 0x20) {
+          constexpr char hex[] = "0123456789abcdef";
+          out += "\\u00";
+          out.push_back(hex[ch >> 4]);
+          out.push_back(hex[ch & 0x0f]);
+        } else {
+          out.push_back(static_cast<char>(ch));
+        }
     }
-    out.push_back(ch);
   }
   return out;
 }

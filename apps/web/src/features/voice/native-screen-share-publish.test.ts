@@ -156,7 +156,16 @@ describe('native screen share publish', () => {
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     await expect(
-      publishNativeScreenShare({} as never, {} as never, 'screen:1', 'high', false, 64),
+      publishNativeScreenShare(
+        {} as never,
+        {} as never,
+        'screen:1',
+        'high',
+        false,
+        64,
+        undefined,
+        undefined as unknown as Parameters<typeof publishNativeScreenShare>[7],
+      ),
     ).rejects.toThrow('LiveKit credentials are required')
   })
 })

@@ -366,7 +366,12 @@ function isNativePickerResolved(
 function isNativeMediaStatsEvent(value: unknown): value is NativeMediaStatsEvent {
   if (!value || typeof value !== 'object') return false
   const event = value as NativeMediaStatsEvent
-  return typeof event.sessionId === 'string' && typeof event.methods === 'object'
+  return (
+    typeof event.sessionId === 'string' &&
+    event.methods !== null &&
+    typeof event.methods === 'object' &&
+    !Array.isArray(event.methods)
+  )
 }
 
 function isNativeMicrophoneMetricsEvent(

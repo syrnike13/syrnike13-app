@@ -742,18 +742,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       mediaKind: LiveKitNativeMediaKind,
       force = false,
     ): Promise<LiveKitNativePublisherCredentials> => {
-      const debugStartedAt = Date.now()
       const current = liveKitCredentialsRef.current
       if (
         !force &&
         current &&
         !shouldRefreshLiveKitToken(current[mediaKind])
       ) {
-        if (mediaKind === 'screen') {
-          // #region debug log
-          fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'A-token', location: 'voice-provider.tsx:refreshNativeLiveKitCredentials', message: 'screen native credentials cache hit', data: { force, elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
-          // #endregion
-        }
         return current[mediaKind]
       }
 
@@ -771,11 +765,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }),
         10_000,
       )
-      if (mediaKind === 'screen') {
-        // #region debug log
-        fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'A-token', location: 'voice-provider.tsx:refreshNativeLiveKitCredentials', message: 'screen native credentials refreshed', data: { force, ok: Boolean(credentials), elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
-        // #endregion
-      }
       if (!credentials) {
         throw new Error('Не удалось обновить LiveKit token')
       }
@@ -1648,20 +1637,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const prefs = readVoicePreferences()
       const desktop = getSyrnikeDesktop()
       const useNative = shouldUseNativeScreenShare(prefs.screenShareCaptureMode)
-      const debugStartedAt = Date.now()
 
       try {
         if (useNative && desktop) {
           stoppedNativeScreenIdentityRef.current = null
           const pickerPromise = waitForNativePickerSelection()
-          // #region debug log
-          fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'A-picker', location: 'voice-provider.tsx:startLocalScreenShare', message: 'native display picker opening', data: { quality, withAudio, elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
-          // #endregion
           await desktop.media.openDisplayPicker(withAudio)
           const selection = await pickerPromise
-          // #region debug log
-          fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'A-picker', location: 'voice-provider.tsx:startLocalScreenShare', message: 'native display picker selected', data: { quality, audioRequested: selection.audioRequested, sourceKind: selection.sourceId.split(':')[0], elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
-          // #endregion
           voicePreferenceStore.setScreenShareAudio(selection.audioRequested)
           const handleSidecarLost = (message: string) => {
             console.warn('[voice] native media engine lost', message)

@@ -146,7 +146,7 @@ class NativePcmJitterBufferProcessor extends AudioWorkletProcessor {
         for (let channel = 0; channel < output.length; channel += 1) {
           output[channel][frame] = 0
         }
-        break
+        continue
       }
 
       const sourceFrame = packet.offsetFrames
