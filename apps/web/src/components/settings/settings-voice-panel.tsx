@@ -298,17 +298,31 @@ export function SettingsVoicePanel() {
           />
         </div>
 
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-input accent-primary"
-            checked={prefs.echoCancellation}
-            onChange={(event) =>
-              voicePreferenceStore.setEchoCancellation(event.target.checked)
-            }
-          />
-          Эхоподавление
-        </label>
+        <div className="space-y-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 rounded border-input accent-primary"
+              checked={prefs.noiseSuppression}
+              onChange={(event) =>
+                voicePreferenceStore.setNoiseSuppression(event.target.checked)
+              }
+            />
+            Шумоподавление
+          </label>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-4 rounded border-input accent-primary"
+              checked={prefs.echoCancellation}
+              onChange={(event) =>
+                voicePreferenceStore.setEchoCancellation(event.target.checked)
+              }
+            />
+            Эхоподавление
+          </label>
+        </div>
       </section>
 
       <section className="space-y-4">

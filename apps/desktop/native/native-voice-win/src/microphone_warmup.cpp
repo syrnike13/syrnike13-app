@@ -29,6 +29,15 @@ std::mutex g_warmup_mutex;
 std::thread g_warmup_thread;
 std::atomic_bool g_warmup_running{false};
 
+MicrophoneProcessingStatus warmupProcessingStatus(const RuntimeConfig& config) {
+  MicrophoneProcessingStatus status;
+  status.noise_suppression =
+    config.noise_suppression_enabled ? "unavailable" : "disabled";
+  status.echo_cancellation =
+    config.echo_cancellation_enabled ? "unavailable" : "disabled";
+  return status;
+}
+
 void runMicrophoneWarmup(std::string device_id, std::string session_id) {
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   const bool com_initialized = SUCCEEDED(hr);
@@ -150,7 +159,8 @@ void runMicrophoneWarmup(std::string device_id, std::string session_id) {
                 gated_frames,
                 max_frame_gap_ms,
                 0,
-                config
+                config,
+                warmupProcessingStatus(config)
               );
               interval_frames = 0;
               gated_frames = 0;

@@ -78,6 +78,7 @@ describe('native microphone processing boundary', () => {
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     const prefs: MicPreviewPreferences = {
+      noiseSuppression: true,
       echoCancellation: true,
       voiceGateEnabled: true,
       voiceGateThresholdDb: -28,
@@ -112,6 +113,7 @@ describe('native microphone processing boundary', () => {
     })
     await session.restartProcessing({
       ...prefs,
+      noiseSuppression: false,
       voiceGateEnabled: false,
       inputVolume: 1.5,
     })
@@ -135,6 +137,7 @@ describe('native microphone processing boundary', () => {
       expect.objectContaining({
         voiceGateEnabled: false,
         voiceGateAutoThreshold: false,
+        noiseSuppression: false,
         inputVolume: 1.5,
       }),
     )

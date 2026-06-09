@@ -17,11 +17,27 @@
 #include "audio_constants.hpp"
 #include "audio_devices.hpp"
 #include "audio_processing.hpp"
+#include "microphone_audio_processor.hpp"
 #include "runtime_config.hpp"
 
 using Microsoft::WRL::ComPtr;
 
 namespace syrnike::voice {
+namespace {
+
+MicrophoneProcessingStatus initialPreviewProcessingStatus(
+  bool noise_suppression_enabled,
+  bool echo_cancellation_enabled
+) {
+  MicrophoneProcessingStatus status;
+  status.noise_suppression =
+    noise_suppression_enabled ? "software" : "disabled";
+  status.echo_cancellation =
+    echo_cancellation_enabled ? "unavailable" : "disabled";
+  return status;
+}
+
+}  // namespace
 
 void runMicrophonePreview(const StartCommand& command) {
   g_running.store(true);
@@ -97,22 +113,30 @@ void runMicrophonePreview(const StartCommand& command) {
     hr = render_client->Start();
     if (FAILED(hr)) throw std::runtime_error("failed to start preview render stream");
 
+    const MicrophoneProcessingStatus initial_status =
+      initialPreviewProcessingStatus(
+        command.noise_suppression,
+        command.echo_cancellation
+      );
     emit("{\"type\":\"ready\",\"port\":0,\"stream_mode\":\"audio\",\"audio_mode\":\"microphone\","
-         "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\"}");
+         "\"audio_sample_rate\":48000,\"audio_channels\":1,"
+         "\"noise_suppression\":\"" + jsonEscape(initial_status.noise_suppression) + "\","
+         "\"echo_cancellation\":\"" + jsonEscape(initial_status.echo_cancellation) + "\"}");
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
          "\",\"kind\":\"microphone\",\"status\":\"running\",\"audio_mode\":\"microphone\","
-         "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\"}");
+         "\"audio_sample_rate\":48000,\"audio_channels\":1,"
+         "\"noise_suppression\":\"" + jsonEscape(initial_status.noise_suppression) + "\","
+         "\"echo_cancellation\":\"" + jsonEscape(initial_status.echo_cancellation) + "\"}");
 
     std::vector<float> queued_samples;
     queued_samples.reserve(static_cast<size_t>(render_buffer_frames));
-    VoiceGateProcessor gate(kSampleRate);
+    MicrophoneAudioProcessor processor;
     std::vector<float> raw_frame;
     raw_frame.reserve(kSamplesPer10Ms);
-    std::vector<float> processed_frame;
-    processed_frame.reserve(kSamplesPer10Ms);
     auto last_metrics_at = std::chrono::steady_clock::now();
     auto last_diagnostics_at = last_metrics_at;
     auto last_frame_at = last_metrics_at;
+    MicrophoneProcessingStatus last_processing_status = initial_status;
     std::uint64_t total_frames = 0;
     std::uint32_t interval_frames = 0;
     std::uint32_t gated_frames = 0;
@@ -140,24 +164,22 @@ void runMicrophonePreview(const StartCommand& command) {
 
           if (raw_frame.size() == kSamplesPer10Ms) {
             const RuntimeConfig config = readRuntimeConfig();
-            gate.updateConfig(voiceGateConfigFromRuntimeConfig(config));
+            RuntimeConfig preview_config = config;
+            preview_config.echo_cancellation_enabled = false;
+            auto processed = processor.processFrame(raw_frame, preview_config, nullptr);
+            processed.status.echo_cancellation =
+              config.echo_cancellation_enabled ? "unavailable" : "disabled";
 
-            processed_frame.clear();
-            for (float sample : raw_frame) {
-              processed_frame.push_back(sample * config.input_volume);
-            }
-
-            const VoiceGateFrameMetrics gate_metrics = gate.processFrame(processed_frame);
-            const float input_db = gate_metrics.input_db;
-            const bool open = gate_metrics.open;
+            const float input_db = processed.gate_metrics.input_db;
+            const bool open = processed.gate_metrics.open;
             last_input_db = input_db;
             if (!open) gated_frames += 1;
 
-            for (float sample : processed_frame) {
-              if (std::abs(sample) > 1.0f) clipped_samples += 1;
-              const float processed = softLimitSample(sample);
-              max_output_peak = std::max(max_output_peak, std::abs(processed));
-              queued_samples.push_back(processed);
+            clipped_samples += processed.clipped_samples;
+            max_output_peak = std::max(max_output_peak, processed.output_peak);
+            last_processing_status = processed.status;
+            for (std::int16_t sample : processed.pcm) {
+              queued_samples.push_back(static_cast<float>(sample) / 32768.0f);
             }
             const auto frame_at = std::chrono::steady_clock::now();
             const auto frame_gap = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -188,7 +210,8 @@ void runMicrophonePreview(const StartCommand& command) {
                 gated_frames,
                 max_frame_gap_ms,
                 0,
-                config
+                config,
+                last_processing_status
               );
               interval_frames = 0;
               gated_frames = 0;

@@ -15,6 +15,7 @@ export function voicePreferenceEffectFlags(
       previous.preferredAudioInputDevice !== next.preferredAudioInputDevice ||
       previous.preferredAudioOutputDevice !== next.preferredAudioOutputDevice,
     micProcessingChanged:
+      previous.noiseSuppression !== next.noiseSuppression ||
       previous.echoCancellation !== next.echoCancellation ||
       previous.voiceGateEnabled !== next.voiceGateEnabled ||
       previous.voiceGateThresholdDb !== next.voiceGateThresholdDb ||

@@ -65,7 +65,8 @@ void emitMicrophoneDiagnostics(
   std::uint32_t gated_frames,
   std::uint32_t max_frame_gap_ms,
   std::uint32_t max_capture_frame_us,
-  const RuntimeConfig& config
+  const RuntimeConfig& config,
+  const MicrophoneProcessingStatus& processing_status
 ) {
   emit("{\"type\":\"microphone_diagnostics\",\"session_id\":\"" + jsonEscape(session_id) +
        "\",\"mode\":\"" + jsonEscape(mode) +
@@ -80,6 +81,8 @@ void emitMicrophoneDiagnostics(
        ",\"input_volume\":" + std::to_string(config.input_volume) +
        ",\"voice_gate_enabled\":" + (config.voice_gate_enabled ? "true" : "false") +
        ",\"voice_gate_threshold_db\":" + std::to_string(config.voice_gate_threshold_db) +
+       ",\"noise_suppression\":\"" + jsonEscape(processing_status.noise_suppression) + "\"" +
+       ",\"echo_cancellation\":\"" + jsonEscape(processing_status.echo_cancellation) + "\"" +
        "}");
 }
 

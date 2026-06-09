@@ -15,6 +15,7 @@ import {
   type NativeMediaEngineSessionSummary,
   type NativeMediaFrameMethod,
   type NativeMediaFrameStats,
+  type NativeMediaNoiseSuppressionMode,
   type NativeMicrophonePreviewSession,
   type NativeMicrophonePreviewStartOptions,
   type NativeMicrophoneRuntimeConfig,
@@ -38,6 +39,7 @@ import {
   mapLifecycleState,
   mapLoopbackMode,
   mapMicrophoneMetrics,
+  mapNoiseSuppressionMode,
   parseSidecarEvent,
   type SidecarEvent,
 } from './native-media-engine-sidecar'
@@ -67,6 +69,7 @@ type ActiveMediaEngineSession = {
     mode: NativeMediaAudioMode
     sampleRate?: 48_000
     channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
     echoCancellation?: NativeMediaEchoCancellationMode
   }
   helper: ChildProcessWithoutNullStreams
@@ -146,6 +149,7 @@ function buildSessionAudio(
   metadata?: {
     sampleRate?: 48_000
     channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
     echoCancellation?: NativeMediaEchoCancellationMode
     targetProcessId?: number
     loopbackMode?: import('@syrnike13/platform').NativeMediaLoopbackMode
@@ -158,6 +162,7 @@ function buildSessionAudio(
       port,
       sampleRate: metadata?.sampleRate ?? 48_000,
       channels: 1,
+      noiseSuppression: metadata?.noiseSuppression ?? 'disabled',
       echoCancellation: metadata?.echoCancellation ?? 'disabled',
     }
   }
@@ -190,6 +195,7 @@ export function buildNativeMediaStartCommand(
       sampleRate: options.sampleRate,
       channels: options.channels,
       audioBitrate: options.audioBitrate,
+      noiseSuppression: options.noiseSuppression,
       echoCancellation: options.echoCancellation,
       inputVolume: options.inputVolume,
       voiceGateEnabled: options.voiceGateEnabled,
@@ -1021,6 +1027,7 @@ async function startNativeMicrophonePreview(
       deviceId: options.deviceId,
       sampleRate: options.sampleRate,
       channels: options.channels,
+      noiseSuppression: options.noiseSuppression,
       echoCancellation: options.echoCancellation,
       inputVolume: options.inputVolume,
       voiceGateEnabled: options.voiceGateEnabled,
@@ -1584,6 +1591,7 @@ async function getPreconnectedScreenHelper(
 function mapSidecarAudioMetadata(event: {
   audio_sample_rate?: number
   audio_channels?: number
+  noise_suppression?: string
   echo_cancellation?: string
   audio_target_process_id?: number
   audio_loopback_mode?: string
@@ -1594,6 +1602,7 @@ function mapSidecarAudioMetadata(event: {
       event.audio_channels === 1 || event.audio_channels === 2
         ? event.audio_channels
         : undefined,
+    noiseSuppression: mapNoiseSuppressionMode(event.noise_suppression),
     echoCancellation: mapEchoCancellationMode(event.echo_cancellation),
     targetProcessId:
       typeof event.audio_target_process_id === 'number'
@@ -1603,6 +1612,7 @@ function mapSidecarAudioMetadata(event: {
   } satisfies {
     sampleRate?: 48_000
     channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
     echoCancellation?: NativeMediaEchoCancellationMode
     targetProcessId?: number
     loopbackMode?: import('@syrnike13/platform').NativeMediaLoopbackMode
@@ -1717,6 +1727,7 @@ async function startNativeMediaSession(
         mode: 'microphone',
         sampleRate: audioMetadata.sampleRate ?? 48_000,
         channels: 1,
+        noiseSuppression: audioMetadata.noiseSuppression ?? 'disabled',
         echoCancellation: audioMetadata.echoCancellation ?? 'disabled',
       },
       nativeParticipantIdentity:

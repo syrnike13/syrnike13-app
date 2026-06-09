@@ -30,7 +30,7 @@ describe('createVoiceRoomOptions', () => {
     expect(options.audioCaptureDefaults?.channelCount).toBe(1)
   })
 
-  it('never enables browser noise suppression or AGC for voice capture', () => {
+  it('keeps browser noise suppression and AGC disabled for voice capture', () => {
     const options = createVoiceRoomOptions()
 
     expect(options.audioCaptureDefaults?.noiseSuppression).toBe(false)

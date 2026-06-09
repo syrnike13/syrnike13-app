@@ -54,6 +54,7 @@ export function useVoiceGateMeter(
     if (!shouldUseNativeMicrophone()) return
 
     configureNativeMicrophoneRuntime(NATIVE_MICROPHONE_MONITOR_SESSION_ID, {
+      noiseSuppression: prefs.noiseSuppression,
       echoCancellation: prefs.echoCancellation,
       inputVolume: prefs.inputVolume,
       voiceGateEnabled: prefs.voiceGateEnabled,
@@ -62,6 +63,7 @@ export function useVoiceGateMeter(
     })
   }, [
     active,
+    prefs.noiseSuppression,
     prefs.echoCancellation,
     prefs.inputVolume,
     prefs.voiceGateEnabled,

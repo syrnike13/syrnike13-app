@@ -24,6 +24,7 @@ function nonGateProcessingChanged(
   next: MicPreviewPreferences,
 ) {
   return (
+    previous.noiseSuppression !== next.noiseSuppression ||
     previous.echoCancellation !== next.echoCancellation ||
     previous.voiceGateEnabled !== next.voiceGateEnabled ||
     previous.inputVolume !== next.inputVolume
@@ -44,6 +45,7 @@ export function useMicPreviewLoopback(
   const processingPrefsRef = useRef<MicPreviewPreferences | null>(null)
 
   const previewPrefs: MicPreviewPreferences = {
+    noiseSuppression: prefs.noiseSuppression,
     echoCancellation: prefs.echoCancellation,
     voiceGateEnabled: prefs.voiceGateEnabled,
     voiceGateThresholdDb: prefs.voiceGateThresholdDb,
@@ -135,6 +137,7 @@ export function useMicPreviewLoopback(
     })
   }, [
     active,
+    previewPrefs.noiseSuppression,
     previewPrefs.echoCancellation,
     previewPrefs.voiceGateEnabled,
     previewPrefs.voiceGateThresholdDb,

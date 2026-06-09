@@ -8,6 +8,11 @@
 
 namespace syrnike::voice {
 
+struct MicrophoneProcessingStatus {
+  std::string noise_suppression = "disabled";
+  std::string echo_cancellation = "disabled";
+};
+
 std::int16_t clampToPcm16(float sample);
 float softLimitSample(float sample);
 float rmsToDb(float rms);
@@ -29,7 +34,8 @@ void emitMicrophoneDiagnostics(
   std::uint32_t gated_frames,
   std::uint32_t max_frame_gap_ms,
   std::uint32_t max_capture_frame_us,
-  const RuntimeConfig& config
+  const RuntimeConfig& config,
+  const MicrophoneProcessingStatus& processing_status
 );
 
 }  // namespace syrnike::voice

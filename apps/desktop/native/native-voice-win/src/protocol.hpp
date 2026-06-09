@@ -22,7 +22,8 @@ struct StartCommand {
   int exclude_process_id = 0;
   uintptr_t self_window_hwnd = 0;
   bool audio_requested = false;
-  bool echo_cancellation = false;
+  bool noise_suppression = true;
+  bool echo_cancellation = true;
   float input_volume = 1.0f;
   bool voice_gate_enabled = true;
   float voice_gate_threshold_db = -28.0f;

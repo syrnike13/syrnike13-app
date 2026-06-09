@@ -8,6 +8,7 @@ const base: VoicePreferenceState = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
+  noiseSuppression: true,
   echoCancellation: true,
   voiceGateEnabled: true,
   voiceGateThresholdDb: -28,
@@ -63,6 +64,19 @@ describe('voicePreferenceEffectFlags', () => {
       voicePreferenceEffectFlags(base, {
         ...base,
         inputVolume: 1.5,
+      }),
+    ).toMatchObject({
+      devicesChanged: false,
+      micProcessingChanged: true,
+      remoteAudioChanged: false,
+    })
+  })
+
+  it('tracks noise suppression changes as mic processing changes', () => {
+    expect(
+      voicePreferenceEffectFlags(base, {
+        ...base,
+        noiseSuppression: false,
       }),
     ).toMatchObject({
       devicesChanged: false,

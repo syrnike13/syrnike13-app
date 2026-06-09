@@ -26,6 +26,7 @@ export const MIC_PREVIEW_METER_BAR_COUNT = 32
 export type MicPreviewPreferences = Pick<
   VoicePreferenceState,
   | 'echoCancellation'
+  | 'noiseSuppression'
   | 'voiceGateEnabled'
   | 'voiceGateThresholdDb'
   | 'voiceGateAutoThreshold'
@@ -99,6 +100,7 @@ export async function startMicPreview({
         deviceId: inputDeviceId,
         sampleRate: 48_000,
         channels: 1,
+        noiseSuppression: nextPrefs.noiseSuppression,
         echoCancellation: nextPrefs.echoCancellation,
         inputVolume: nextPrefs.inputVolume,
         voiceGateEnabled: nextPrefs.voiceGateEnabled,
@@ -121,6 +123,7 @@ export async function startMicPreview({
     const configureNative = (nextPrefs: MicPreviewPreferences) => {
       if (stopped) return
       configureNativeMicrophoneRuntime(session.sessionId, {
+        noiseSuppression: nextPrefs.noiseSuppression,
         echoCancellation: nextPrefs.echoCancellation,
         inputVolume: nextPrefs.inputVolume,
         voiceGateEnabled: nextPrefs.voiceGateEnabled,

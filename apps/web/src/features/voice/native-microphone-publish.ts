@@ -46,6 +46,7 @@ export function nativeMicrophoneSessionOptions(
     sampleRate: 48_000 as const,
     channels: 1 as const,
     audioBitrate: clampVoiceChannelAudioBitrateKbps(audioBitrateKbps) * 1000,
+    noiseSuppression: prefs.noiseSuppression,
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,
     voiceGateEnabled: prefs.voiceGateEnabled,
@@ -126,6 +127,7 @@ export function configureNativeMicrophoneSession(
   prefs: VoicePreferenceState,
 ) {
   configureNativeMicrophoneRuntime(session?.sessionId, {
+    noiseSuppression: prefs.noiseSuppression,
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,
     voiceGateEnabled: prefs.voiceGateEnabled,
