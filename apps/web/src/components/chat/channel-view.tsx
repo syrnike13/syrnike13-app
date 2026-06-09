@@ -89,8 +89,12 @@ export function ChannelView({
   const title = getChannelLabel(channel, users, auth.user?._id)
   const channelDescription = getChannelDescription(channel)
   const hasVoice = channelHasVoice(channel)
+  const inThisVoiceSession =
+    voice.channelId === channelId &&
+    (voice.status === 'connected' || voice.status === 'connecting')
   const inThisVoiceCall =
-    voice.channelId === channelId && voice.status === 'connected'
+    voice.channelId === channelId &&
+    voice.status === 'connected'
   const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
 
@@ -116,17 +120,15 @@ export function ChannelView({
           {historyQuery.isFetching ? (
             <span className="text-xs text-muted-foreground">загрузка…</span>
           ) : null}
-          {hasVoice ? (
+          {hasVoice && !inThisVoiceSession ? (
             <Button
               type="button"
               size="sm"
-              variant={inThisVoiceCall ? 'secondary' : 'outline'}
-              onClick={() =>
-                inThisVoiceCall ? voice.leave() : void voice.join(channelId)
-              }
+              variant="outline"
+              onClick={() => void voice.join(channelId)}
             >
               <HeadphonesIcon className="size-4" />
-              {inThisVoiceCall ? 'В голосе' : 'Голос'}
+              Голос
             </Button>
           ) : null}
           {isServerChannel ? (
