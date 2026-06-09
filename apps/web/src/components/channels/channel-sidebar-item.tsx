@@ -36,6 +36,7 @@ import {
 } from '#/features/sync/sync-store'
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
+import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { inviteUrl } from '#/lib/invite-link'
@@ -119,10 +120,6 @@ export function ChannelSidebarItem({
     }
   }
 
-  const inThisVoiceSession =
-    voice.channelId === channel._id &&
-    (voice.status === 'connected' || voice.status === 'connecting')
-
   function handleVoiceChannelClick(event: MouseEvent<HTMLAnchorElement>) {
     if (!serverVoice || !canJoinVoiceChannel(channel)) return
     if (
@@ -135,16 +132,25 @@ export function ChannelSidebarItem({
       return
     }
 
-    if (!active) {
-      if (inThisVoiceSession) {
-        return
-      }
+    const action = resolveVoiceChannelClickAction({
+      clickedChannelId: channel._id,
+      currentRouteChannelId: activeChannelId,
+      voiceChannelId: voice.channelId,
+      voiceStatus: voice.status,
+    })
+
+    if (action === 'none') {
+      event.preventDefault()
+      return
+    }
+
+    if (action === 'join') {
       event.preventDefault()
       void voice.join(channel._id)
       return
     }
 
-    if (!inThisVoiceSession) {
+    if (action === 'join-and-open') {
       void voice.join(channel._id)
     }
   }
