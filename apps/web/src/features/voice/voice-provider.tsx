@@ -140,6 +140,7 @@ import {
   shouldSubscribeStageScreen,
 } from '#/features/voice/voice-stage-subscription'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
+import { channelAudioBitrateKbps } from '#/lib/channel-audio-bitrate'
 
 type VoiceStatus = 'idle' | 'connecting' | 'connected'
 type StageMediaPublication = {
@@ -806,6 +807,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [auth.session?.token],
   )
 
+  const activeChannelAudioBitrateKbps = useCallback(() => {
+    const activeChannelId = channelIdRef.current
+    const channel = activeChannelId
+      ? syncStore.getState().channels[activeChannelId]
+      : null
+    return channelAudioBitrateKbps(
+      channel && 'voice' in channel ? channel : {},
+    )
+  }, [])
+
   const resetVoiceState = useCallback(() => {
     if (nativeMicrophoneRef.current) {
       nativeMicrophoneRef.current.disconnect()
@@ -952,6 +963,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         },
         await refreshNativeLiveKitCredentials('microphone'),
         muted,
+        activeChannelAudioBitrateKbps(),
       )
       nativeMicrophoneRef.current = session
       setMicPublishing(!muted)
@@ -959,6 +971,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     },
     [
       refreshNativeLiveKitCredentials,
+      activeChannelAudioBitrateKbps,
       setNativeMicrophoneMuted,
       syncRoomParticipants,
     ],
@@ -980,7 +993,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           await room.localParticipant.setMicrophoneEnabled(
             prefs.micEnabled && !suppressedBySelfMonitoring,
             undefined,
-            voiceMicPublishOptions(),
+            voiceMicPublishOptions(activeChannelAudioBitrateKbps()),
           )
         }
       } catch (error) {
@@ -1036,6 +1049,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       auth.user?._id,
       setCurrentMicIssue,
       startNativeMicrophone,
+      activeChannelAudioBitrateKbps,
       syncMicFromRoom,
       syncRoomParticipants,
       syncVoiceStateToServer,
@@ -1133,7 +1147,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
 
       void room.localParticipant
-        .setMicrophoneEnabled(true, undefined, voiceMicPublishOptions())
+        .setMicrophoneEnabled(
+          true,
+          undefined,
+          voiceMicPublishOptions(activeChannelAudioBitrateKbps()),
+        )
         .then(() => {
           if (
             selfMonitoringRef.current.active ||
@@ -1159,6 +1177,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     },
     [
       auth.user?._id,
+      activeChannelAudioBitrateKbps,
       setCurrentMicIssue,
       startNativeMicrophone,
       status,
@@ -1578,7 +1597,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           audio: screenShareAudioCaptureOptions(withAudio),
         },
         withAudio
-          ? screenShareCombinedPublishOptions(quality)
+          ? screenShareCombinedPublishOptions(
+              quality,
+              activeChannelAudioBitrateKbps(),
+            )
           : capture.publish,
       )
       if (publication) {
@@ -1611,7 +1633,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         })
       })
     },
-    [syncRoomParticipants],
+    [activeChannelAudioBitrateKbps, syncRoomParticipants],
   )
 
   const startLocalScreenShare = useCallback(
@@ -1655,6 +1677,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               selection.sourceId,
               quality,
               selection.audioRequested,
+              activeChannelAudioBitrateKbps(),
               handleSidecarLost,
               await refreshNativeLiveKitCredentials('screen', forceRefresh),
             )
@@ -1704,6 +1727,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     },
     [
       refreshNativeLiveKitCredentials,
+      activeChannelAudioBitrateKbps,
       startBrowserScreenShare,
       stopNativeScreenShare,
       syncRoomParticipants,
@@ -1832,7 +1856,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         .setMicrophoneEnabled(
           nextMic && !selfMonitoringRef.current.active,
           undefined,
-          voiceMicPublishOptions(),
+          voiceMicPublishOptions(activeChannelAudioBitrateKbps()),
         )
         .then(() => {
           if (nextMic && selfMonitoringRef.current.active) {
@@ -1866,6 +1890,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [
     auth.user?._id,
+    activeChannelAudioBitrateKbps,
     setCurrentMicIssue,
     startNativeMicrophone,
     status,

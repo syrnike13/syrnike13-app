@@ -236,6 +236,7 @@ describe('native media engine entrypoint', () => {
           channels: 1,
           echoCancellation: true,
           inputVolume: 1.25,
+          audioBitrate: 48_000,
           livekit: {
             url: 'wss://livekit.example',
             token: 'native-livekit-token',
@@ -254,6 +255,7 @@ describe('native media engine entrypoint', () => {
       channels: 1,
       echoCancellation: true,
       inputVolume: 1.25,
+      audioBitrate: 48_000,
       livekit: {
         url: 'wss://livekit.example',
         token: 'native-livekit-token',
@@ -274,6 +276,7 @@ describe('native media engine entrypoint', () => {
           height: 1080,
           fps: 60,
           bitrate: 8_000_000,
+          audioBitrate: 48_000,
           audio: { requested: true },
           livekit: {
             url: 'wss://livekit.example',
@@ -293,6 +296,7 @@ describe('native media engine entrypoint', () => {
       height: 1080,
       fps: 60,
       bitrate: 8_000_000,
+      audioBitrate: 48_000,
       audio: true,
       excludeProcessId: process.pid,
       livekit: {
@@ -322,6 +326,7 @@ describe('native media engine entrypoint', () => {
           height: 1080,
           fps: 60,
           bitrate: 8_000_000,
+          audioBitrate: 48_000,
           audio: { requested: true },
           livekit: {
             url: 'wss://livekit.example',
@@ -344,6 +349,7 @@ describe('native media engine entrypoint', () => {
       height: 1080,
       fps: 60,
       bitrate: 8_000_000,
+      audioBitrate: 48_000,
       durationMs: 1000,
       audio: true,
       excludeProcessId: process.pid,
@@ -557,7 +563,8 @@ describe('native media engine entrypoint', () => {
 
     expect(nativeSource).toContain('LocalAudioTrack::createLocalAudioTrack("microphone", audio_source)')
     expect(nativeSource).toContain('livekit::TrackPublishOptions publish_options')
-    expect(nativeSource).toContain('audio_encoding.max_bitrate = 64000')
+    expect(nativeSource).toContain('audio_encoding.max_bitrate = command.audio_bitrate')
+    expect(nativeSource).not.toContain('audio_encoding.max_bitrate = 64000')
     expect(nativeSource).toContain('publish_options.dtx = true')
     expect(nativeSource).toContain('publish_options.source = livekit::TrackSource::SOURCE_MICROPHONE')
     expect(nativeSource).toContain('participant->publishTrack(audio_track, publish_options)')
@@ -582,6 +589,24 @@ describe('native media engine entrypoint', () => {
     expect(source).toContain('video_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE')
     expect(source).toContain('video_publish_options.simulcast = false')
     expect(source).toContain('chooseScreenShareBitratePreset')
+  })
+
+  it('publishes native screen audio as stereo music without dtx', () => {
+    const source = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/screen_publisher.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    expect(source).toContain('std::make_shared<livekit::AudioSource>(48000, 2)')
+    expect(source).toContain('LocalAudioTrack::createLocalAudioTrack("screen-audio", active.audio_source)')
+    expect(source).toContain('audio_encoding.max_bitrate = command.audio_bitrate')
+    expect(source).not.toContain('audio_encoding.max_bitrate = 128000')
+    expect(source).toContain('audio_publish_options.dtx = false')
+    expect(source).toContain('audio_publish_options.red = false')
+    expect(source).toContain('audio_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO')
+    expect(source).toContain('participant->publishTrack(active.audio_track, audio_publish_options)')
   })
 
   it('unpublishes native screen tracks by stored publication SID instead of raw track SID', () => {

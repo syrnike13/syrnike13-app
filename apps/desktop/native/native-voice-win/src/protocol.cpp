@@ -42,6 +42,12 @@ int intField(const std::string& json, const std::string& key, int fallback) {
   }
 }
 
+int clampAudioBitrate(int value) {
+  if (value < 8000) return 8000;
+  if (value > 96000) return 96000;
+  return value;
+}
+
 uintptr_t uintptrField(const std::string& json, const std::string& key, uintptr_t fallback) {
   const std::regex pattern("\"" + key + "\"\\s*:\\s*(?:\"([0-9]+)\"|([0-9]+))");
   std::smatch match;
@@ -98,6 +104,7 @@ StartCommand parseStartCommand(const std::string& json) {
   command.height = intField(json, "height", 1080);
   command.fps = intField(json, "fps", 60);
   command.bitrate = intField(json, "bitrate", 8000000);
+  command.audio_bitrate = clampAudioBitrate(intField(json, "audioBitrate", 64000));
   command.duration_ms = intField(json, "durationMs", 1000);
   command.exclude_process_id = intField(json, "excludeProcessId", 0);
   command.self_window_hwnd = uintptrField(json, "selfWindowHwnd", 0);

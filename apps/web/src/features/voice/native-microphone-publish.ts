@@ -4,6 +4,10 @@ import {
   readVoicePreferences,
   type VoicePreferenceState,
 } from '#/features/voice/voice-preference-store'
+import {
+  clampVoiceChannelAudioBitrateKbps,
+  DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+} from '#/lib/channel-audio-bitrate'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
@@ -34,12 +38,14 @@ export function nativeMicrophoneSessionOptions(
   livekit: NativeMicrophoneLiveKitCredentials,
   deviceId = prefs.preferredAudioInputDevice,
   muted = false,
+  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ) {
   return {
     kind: 'microphone' as const,
     deviceId,
     sampleRate: 48_000 as const,
     channels: 1 as const,
+    audioBitrate: clampVoiceChannelAudioBitrateKbps(audioBitrateKbps) * 1000,
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,
     voiceGateEnabled: prefs.voiceGateEnabled,
@@ -55,6 +61,7 @@ export async function startNativeMicrophonePublisher(
   livekit: NativeMicrophoneLiveKitCredentials,
   deviceId?: string,
   muted = false,
+  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ) {
   const desktop = getSyrnikeDesktop()
   if (!desktop) {
@@ -62,7 +69,13 @@ export async function startNativeMicrophonePublisher(
   }
 
   const session = await desktop.media.startSession(
-    nativeMicrophoneSessionOptions(prefs, livekit, deviceId, muted),
+    nativeMicrophoneSessionOptions(
+      prefs,
+      livekit,
+      deviceId,
+      muted,
+      audioBitrateKbps,
+    ),
   )
 
   if (session.kind !== 'microphone') {
@@ -77,6 +90,7 @@ export async function publishNativeMicrophone(
   onStopped?: NativeMicrophoneStoppedHandler,
   livekit?: NativeMicrophoneLiveKitCredentials,
   muted = false,
+  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ): Promise<NativeMicrophoneSession> {
   if (!livekit) {
     throw new Error('LiveKit credentials are required for native microphone publishing')
@@ -87,6 +101,7 @@ export async function publishNativeMicrophone(
     livekit,
     undefined,
     muted,
+    audioBitrateKbps,
   )
 
   let stopped = false

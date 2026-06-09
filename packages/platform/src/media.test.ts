@@ -11,6 +11,7 @@ describe('native media session contract', () => {
     expectTypeOf<NativeMediaSessionStartOptions>().toMatchTypeOf<{
       kind: 'screen'
       sourceId: string
+      audioBitrate?: number
       audio?: {
         requested: boolean
       }
@@ -52,6 +53,7 @@ describe('native media session contract', () => {
           channels: 1
           echoCancellation: boolean
           inputVolume: number
+          audioBitrate?: number
           muted?: boolean
           livekit: {
             url: string

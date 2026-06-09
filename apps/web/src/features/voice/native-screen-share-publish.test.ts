@@ -75,6 +75,7 @@ describe('native screen share publish', () => {
       'game:1234',
       'high60',
       true,
+      48,
       undefined,
       {
         url: 'wss://livekit.example',
@@ -91,6 +92,7 @@ describe('native screen share publish', () => {
         height: 1080,
         fps: 60,
         audio: { requested: true },
+        audioBitrate: 48_000,
         bitrate: 16_000_000,
         livekit: {
           url: 'wss://livekit.example',
@@ -154,7 +156,7 @@ describe('native screen share publish', () => {
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     await expect(
-      publishNativeScreenShare({} as never, {} as never, 'screen:1', 'high', false),
+      publishNativeScreenShare({} as never, {} as never, 'screen:1', 'high', false, 64),
     ).rejects.toThrow('LiveKit credentials are required')
   })
 })

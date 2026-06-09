@@ -5,6 +5,10 @@ import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import type { NativeMicrophoneLiveKitCredentials } from '#/features/voice/native-microphone-publish'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
+import {
+  clampVoiceChannelAudioBitrateKbps,
+  DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+} from '#/lib/channel-audio-bitrate'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 export type NativeScreenShareSession = {
@@ -33,6 +37,7 @@ export async function publishNativeScreenShare(
   sourceId: string,
   quality: ScreenShareQualityName,
   withAudio: boolean,
+  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
   onSidecarLost?: (message: string) => void,
   livekit?: NativeMicrophoneLiveKitCredentials,
 ): Promise<NativeScreenShareSession> {
@@ -61,6 +66,7 @@ export async function publishNativeScreenShare(
       encoding?.maxBitrate ?? 0,
       nativeScreenShareBitrateFloor(quality),
     ),
+    audioBitrate: clampVoiceChannelAudioBitrateKbps(audioBitrateKbps) * 1000,
     audio: {
       requested: withAudio,
     },

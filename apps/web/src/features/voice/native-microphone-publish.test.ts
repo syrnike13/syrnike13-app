@@ -83,12 +83,13 @@ describe('native microphone publish', () => {
         url: 'wss://livekit.example',
         token: 'livekit-token',
         participantIdentity: 'user-1:desktop-native',
-      }),
+      }, undefined, false, 48),
     ).toEqual({
       kind: 'microphone',
       deviceId: 'mic-1',
       sampleRate: 48_000,
       channels: 1,
+      audioBitrate: 48_000,
       echoCancellation: true,
       inputVolume: 0.75,
       voiceGateEnabled: true,
@@ -143,7 +144,7 @@ describe('native microphone publish', () => {
       url: 'wss://livekit.example',
       token: 'native-livekit-token',
       participantIdentity: 'user-1:desktop-native',
-    })
+    }, false, 32)
 
     expect(session.nativeParticipantIdentity).toBe(
       'user-1:desktop-native:native-mic-1',
@@ -151,6 +152,7 @@ describe('native microphone publish', () => {
     expect(startSession).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'microphone',
+        audioBitrate: 32_000,
         livekit: {
           url: 'wss://livekit.example',
           token: 'native-livekit-token',

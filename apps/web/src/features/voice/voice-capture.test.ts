@@ -51,9 +51,9 @@ describe('createVoiceRoomOptions', () => {
 
 describe('voiceMicPublishOptions', () => {
   it('publishes microphone audio with the speech preset and dtx', () => {
-    expect(voiceMicPublishOptions()).toEqual({
+    expect(voiceMicPublishOptions(32)).toEqual({
       source: Track.Source.Microphone,
-      audioPreset: AudioPresets.speech,
+      audioPreset: { ...AudioPresets.speech, maxBitrate: 32_000 },
       dtx: true,
     })
   })
@@ -73,12 +73,12 @@ describe('screenShareAudioCaptureOptions', () => {
 
 describe('screenShareAudioPublishOptions', () => {
   it('publishes screen share audio as stereo music without dtx', () => {
-    expect(screenShareAudioPublishOptions()).toEqual({
+    expect(screenShareAudioPublishOptions(48)).toEqual({
       source: Track.Source.ScreenShareAudio,
       forceStereo: true,
       dtx: false,
       red: false,
-      audioPreset: AudioPresets.musicStereo,
+      audioPreset: { ...AudioPresets.musicStereo, maxBitrate: 48_000 },
     })
   })
 })
@@ -218,12 +218,15 @@ describe('screenShareCombinedPublishOptions', () => {
   it('merges video publish defaults with stereo music audio settings', () => {
     vi.stubGlobal('RTCRtpSender', undefined)
 
-    const options = screenShareCombinedPublishOptions('high')
+    const options = screenShareCombinedPublishOptions('high', 96)
 
     expect(options.forceStereo).toBe(true)
     expect(options.dtx).toBe(false)
     expect(options.red).toBe(false)
-    expect(options.audioPreset).toBe(AudioPresets.musicStereo)
+    expect(options.audioPreset).toEqual({
+      ...AudioPresets.musicStereo,
+      maxBitrate: 96_000,
+    })
     expect(options.screenShareEncoding?.maxBitrate).toBe(4_000_000)
   })
 })

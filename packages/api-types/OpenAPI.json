@@ -8470,6 +8470,14 @@
             "format": "uint",
             "minimum": 1.0,
             "nullable": true
+          },
+          "audio_bitrate_kbps": {
+            "description": "Opus audio bitrate used by microphone and screen share audio in this channel, in kbps",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 8.0,
+            "maximum": 96.0,
+            "nullable": true
           }
         }
       },

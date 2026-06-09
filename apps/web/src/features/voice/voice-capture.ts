@@ -13,15 +13,31 @@ import type {
   ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
 import {
+  clampVoiceChannelAudioBitrateKbps,
+  DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+} from '#/lib/channel-audio-bitrate'
+import {
   readVoicePreferences,
   type VoicePreferenceState,
 } from '#/features/voice/voice-preference-store'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
-export function voiceMicPublishOptions(): TrackPublishOptions {
+function audioPresetWithBitrate<T extends { maxBitrate?: number }>(
+  preset: T,
+  bitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+) {
+  return {
+    ...preset,
+    maxBitrate: clampVoiceChannelAudioBitrateKbps(bitrateKbps) * 1000,
+  }
+}
+
+export function voiceMicPublishOptions(
+  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+): TrackPublishOptions {
   return {
     source: Track.Source.Microphone,
-    audioPreset: AudioPresets.speech,
+    audioPreset: audioPresetWithBitrate(AudioPresets.speech, audioBitrateKbps),
     dtx: true,
   }
 }
@@ -38,18 +54,24 @@ export function screenShareAudioCaptureOptions(
   }
 }
 
-export function screenShareAudioPublishOptions(): TrackPublishOptions {
+export function screenShareAudioPublishOptions(
+  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+): TrackPublishOptions {
   return {
     source: Track.Source.ScreenShareAudio,
     forceStereo: true,
     dtx: false,
     red: false,
-    audioPreset: AudioPresets.musicStereo,
+    audioPreset: audioPresetWithBitrate(
+      AudioPresets.musicStereo,
+      audioBitrateKbps,
+    ),
   }
 }
 
 export function screenShareCombinedPublishOptions(
   quality: ScreenShareQualityName,
+  audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ): TrackPublishOptions {
   const capture = screenShareCaptureOptions(quality)
   return {
@@ -57,7 +79,10 @@ export function screenShareCombinedPublishOptions(
     forceStereo: true,
     dtx: false,
     red: false,
-    audioPreset: AudioPresets.musicStereo,
+    audioPreset: audioPresetWithBitrate(
+      AudioPresets.musicStereo,
+      audioBitrateKbps,
+    ),
   }
 }
 

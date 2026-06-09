@@ -358,7 +358,7 @@ bool connectMicrophoneRoom(
            std::to_string(elapsedMs()) + "}");
       audio_track = livekit::LocalAudioTrack::createLocalAudioTrack("microphone", audio_source);
       livekit::AudioEncodingOptions audio_encoding;
-      audio_encoding.max_bitrate = 64000;
+      audio_encoding.max_bitrate = command.audio_bitrate;
       livekit::TrackPublishOptions publish_options;
       publish_options.audio_encoding = audio_encoding;
       publish_options.dtx = true;

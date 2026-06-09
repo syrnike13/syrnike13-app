@@ -17,6 +17,7 @@ struct StartCommand {
   int height = 1080;
   int fps = 60;
   int bitrate = 8000000;
+  int audio_bitrate = 64000;
   int duration_ms = 1000;
   int exclude_process_id = 0;
   uintptr_t self_window_hwnd = 0;

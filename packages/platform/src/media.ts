@@ -54,6 +54,7 @@ export type NativeMediaScreenSessionStartOptions = {
   height: number
   fps: number
   bitrate: number
+  audioBitrate?: number
   audio?: {
     requested: boolean
   }
@@ -71,6 +72,7 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   channels: 1
   echoCancellation: boolean
   inputVolume: number
+  audioBitrate?: number
   voiceGateEnabled?: boolean
   voiceGateThresholdDb?: number
   voiceGateAutoThreshold?: boolean

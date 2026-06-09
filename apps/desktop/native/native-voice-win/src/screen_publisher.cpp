@@ -447,10 +447,16 @@ bool startScreenCapture(
         emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
              "\",\"kind\":\"screen\",\"status\":\"starting\",\"message\":\"publishing_audio_track\",\"elapsed_ms\":" +
              std::to_string(elapsedMs()) + "}");
-        active.audio_track = participant->publishAudioTrack(
-            "screen-audio",
-            active.audio_source,
-            livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO);
+        active.audio_track =
+            livekit::LocalAudioTrack::createLocalAudioTrack("screen-audio", active.audio_source);
+        livekit::AudioEncodingOptions audio_encoding;
+        audio_encoding.max_bitrate = command.audio_bitrate;
+        livekit::TrackPublishOptions audio_publish_options;
+        audio_publish_options.audio_encoding = audio_encoding;
+        audio_publish_options.dtx = false;
+        audio_publish_options.red = false;
+        audio_publish_options.source = livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
+        participant->publishTrack(active.audio_track, audio_publish_options);
         if (const auto publication = active.audio_track ? active.audio_track->publication() : nullptr) {
           active.audio_publication_sid = publication->sid();
         }
