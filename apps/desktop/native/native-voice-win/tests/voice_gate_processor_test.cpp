@@ -20,6 +20,27 @@ std::vector<float> toneFrame(float db) {
   return std::vector<float>(kFrameSamples, dbToLinear(db));
 }
 
+std::vector<float> sineFrame(float frequency_hz, float db, int samples = kSampleRate / 5) {
+  std::vector<float> frame;
+  frame.reserve(static_cast<size_t>(samples));
+  const float amplitude = dbToLinear(db);
+  constexpr float pi = 3.14159265358979323846f;
+  for (int index = 0; index < samples; ++index) {
+    const float phase = 2.0f * pi * frequency_hz *
+      static_cast<float>(index) / static_cast<float>(kSampleRate);
+    frame.push_back(std::sin(phase) * amplitude);
+  }
+  return frame;
+}
+
+float rms(const std::vector<float>& samples) {
+  float square_sum = 0.0f;
+  for (float sample : samples) {
+    square_sum += sample * sample;
+  }
+  return std::sqrt(square_sum / static_cast<float>(samples.size()));
+}
+
 float peak(const std::vector<float>& samples) {
   float value = 0.0f;
   for (float sample : samples) {
@@ -101,6 +122,27 @@ void disabling_gate_recovers_smoothly_from_closed_state() {
   auto recovered = toneFrame(-20.0f);
   gate.processFrame(recovered);
   expectNear(peak(recovered), input_peak, 0.001f, "disabled gate should return to unity after attack");
+}
+
+void open_gate_is_frequency_neutral() {
+  syrnike::voice::VoiceGateProcessor gate(kSampleRate);
+  gate.updateConfig(testConfig());
+
+  auto low = sineFrame(120.0f, -20.0f);
+  const float low_before = rms(low);
+  const auto low_metrics = gate.processFrame(low);
+  const float low_gain = rms(low) / low_before;
+
+  auto high = sineFrame(2000.0f, -20.0f);
+  const float high_before = rms(high);
+  const auto high_metrics = gate.processFrame(high);
+  const float high_gain = rms(high) / high_before;
+
+  expect(low_metrics.open, "low frequency tone should keep gate open");
+  expect(high_metrics.open, "high frequency tone should keep gate open");
+  expectNear(low_gain, 1.0f, 0.001f, "open gate should not attenuate low frequency content");
+  expectNear(high_gain, 1.0f, 0.001f, "open gate should not attenuate high frequency content");
+  expectNear(low_gain, high_gain, 0.001f, "open gate should be frequency neutral");
 }
 
 void gate_uses_hold_before_release() {
@@ -187,6 +229,7 @@ int main() {
   TestFn tests[] = {
     disabled_gate_leaves_audio_and_reports_open,
     disabling_gate_recovers_smoothly_from_closed_state,
+    open_gate_is_frequency_neutral,
     gate_uses_hold_before_release,
     gate_releases_smoothly_instead_of_zeroing_a_frame,
     closed_gate_requires_open_threshold_to_reopen,

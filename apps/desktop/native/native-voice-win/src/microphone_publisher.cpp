@@ -356,11 +356,14 @@ bool connectMicrophoneRoom(
       emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
            "\",\"kind\":\"microphone\",\"status\":\"starting\",\"message\":\"publishing_audio_track\",\"elapsed_ms\":" +
            std::to_string(elapsedMs()) + "}");
-      audio_track = participant->publishAudioTrack(
-        "microphone",
-        audio_source,
-        livekit::TrackSource::SOURCE_MICROPHONE
-      );
+      audio_track = livekit::LocalAudioTrack::createLocalAudioTrack("microphone", audio_source);
+      livekit::AudioEncodingOptions audio_encoding;
+      audio_encoding.max_bitrate = 64000;
+      livekit::TrackPublishOptions publish_options;
+      publish_options.audio_encoding = audio_encoding;
+      publish_options.dtx = true;
+      publish_options.source = livekit::TrackSource::SOURCE_MICROPHONE;
+      participant->publishTrack(audio_track, publish_options);
       if (command.muted && audio_track) {
         audio_track->mute();
         emitMicrophoneMuteState(command.session_id, true);

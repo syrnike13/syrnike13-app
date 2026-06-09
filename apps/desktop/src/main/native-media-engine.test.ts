@@ -547,6 +547,23 @@ describe('native media engine entrypoint', () => {
     expect(nativeSource).not.toContain('g_running.store(false);\n      break;\n    }\n    if (commandMatches(line, "set_microphone_muted"))')
   })
 
+  it('publishes native microphone audio with explicit Opus voice options', () => {
+    const nativeSource = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/microphone_publisher.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+
+    expect(nativeSource).toContain('LocalAudioTrack::createLocalAudioTrack("microphone", audio_source)')
+    expect(nativeSource).toContain('livekit::TrackPublishOptions publish_options')
+    expect(nativeSource).toContain('audio_encoding.max_bitrate = 64000')
+    expect(nativeSource).toContain('publish_options.dtx = true')
+    expect(nativeSource).toContain('publish_options.source = livekit::TrackSource::SOURCE_MICROPHONE')
+    expect(nativeSource).toContain('participant->publishTrack(audio_track, publish_options)')
+    expect(nativeSource).not.toContain('participant->publishAudioTrack(')
+  })
+
   it('starts screen video capture before publishing the LiveKit screen track', () => {
     const source = readFileSync(
       fileURLToPath(
