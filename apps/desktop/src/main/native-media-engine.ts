@@ -953,6 +953,10 @@ function spawnMediaEngineHelper(
 
     if (event.type === 'session_lifecycle') {
       console.info('[media-engine-helper] lifecycle', event)
+      const debugEvent = event as typeof event & { elapsed_ms?: number }
+      // #region debug log
+      fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'D-sidecar', location: 'native-media-engine.ts:spawnMediaEngineHelper:session_lifecycle', message: 'screen sidecar lifecycle event', data: { nativeSessionId: event.session_id, kind: event.kind, status: event.status, sidecarMessage: event.message, elapsedMs: debugEvent.elapsed_ms, audioMode: event.audio_mode, width: event.width, height: event.height, fps: event.fps, bitrate: event.bitrate }, timestamp: Date.now() }) }).catch(() => {})
+      // #endregion
       if (getWindowRef) {
         emitMediaEngineState(getWindowRef, mapLifecycleState(event))
       } else {
@@ -1004,6 +1008,15 @@ function spawnMediaEngineHelper(
     }
 
     if (event.type === 'track_published') {
+      const debugEvent = event as typeof event & {
+        width?: number
+        height?: number
+        fps?: number
+        bitrate?: number
+      }
+      // #region debug log
+      fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'D-publish', location: 'native-media-engine.ts:spawnMediaEngineHelper:track_published', message: 'screen sidecar track published', data: { nativeSessionId: event.session_id, kind: event.kind, source: event.source, width: debugEvent.width, height: debugEvent.height, fps: debugEvent.fps, bitrate: debugEvent.bitrate, audioMode: event.audio_mode }, timestamp: Date.now() }) }).catch(() => {})
+      // #endregion
       const publishedSession = activeSessions.get(event.session_id)
       if (publishedSession) {
         if (event.kind === 'video') publishedSession.publishedVideo = true
@@ -1058,6 +1071,9 @@ function spawnMediaEngineHelper(
     }
 
     if (event.type === 'screen_video_frame') {
+      // #region debug log
+      fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'E-first-frame', location: 'native-media-engine.ts:spawnMediaEngineHelper:screen_video_frame', message: 'screen sidecar video frame stats', data: { nativeSessionId: event.session_id, frames: event.frames, intervalFrames: event.interval_frames, lateFrames: event.late_frames, avgCaptureUs: event.avg_capture_us, method: event.method }, timestamp: Date.now() }) }).catch(() => {})
+      // #endregion
       const videoSession = activeSessions.get(event.session_id)
       if (videoSession) {
         const method = event.method ? mapFrameMethod(event.method) : null
@@ -1404,23 +1420,12 @@ async function startNativeMediaSession(
   getWindowRef = getWindow
 
   const sessionId = crypto.randomUUID()
-
+  const debugStartedAt = Date.now()
+  // #region debug log
   if (options.kind === 'screen') {
-    try {
-      await runNativeScreenSharePreflight(options, getWindow)
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Native screen share preflight failed'
-      emitMediaEngineState(getWindow, {
-        status: 'error',
-        sessionId,
-        message,
-      })
-      throw error
-    }
+    fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'B-main', location: 'native-media-engine.ts:startNativeMediaSession', message: 'screen native session entered main process', data: { nativeSessionId: sessionId, width: options.width, height: options.height, fps: options.fps, bitrate: options.bitrate, audioRequested: Boolean(options.audio?.requested), sourceKind: options.sourceId.split(':')[0] }, timestamp: Date.now() }) }).catch(() => {})
   }
+  // #endregion
 
   const helper = spawnMediaEngineHelper(options.kind, sessionId)
   const session: ActiveMediaEngineSession = {
@@ -1458,6 +1463,11 @@ async function startNativeMediaSession(
     stopMediaEngineSession(sessionId, true)
     throw new Error('Native media helper is not writable')
   }
+  // #region debug log
+  if (options.kind === 'screen') {
+    fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'C-spawn-write', location: 'native-media-engine.ts:startNativeMediaSession', message: 'screen helper start command written', data: { nativeSessionId: sessionId, elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
+  }
+  // #endregion
 
   let readyEvent: SidecarEvent
   try {
@@ -1474,6 +1484,11 @@ async function startNativeMediaSession(
     })
     throw error
   }
+  // #region debug log
+  if (options.kind === 'screen') {
+    fetch('http://127.0.0.1:64953/ingest/ac639b', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'ac639b', runId: 'screen-share-startup', hypothesisId: 'D-ready', location: 'native-media-engine.ts:startNativeMediaSession', message: 'screen helper ready resolved', data: { nativeSessionId: sessionId, readyType: readyEvent.type, elapsedMs: Date.now() - debugStartedAt }, timestamp: Date.now() }) }).catch(() => {})
+  }
+  // #endregion
   if (readyEvent.type !== 'ready') {
     stopMediaEngineSession(sessionId, true)
     throw new Error('Native media engine failed to start')

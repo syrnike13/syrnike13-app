@@ -351,7 +351,7 @@ describe('native media engine entrypoint', () => {
     })
   })
 
-  it('preflights native screen share before starting LiveKit publishing', () => {
+  it('keeps screen preflight as an explicit diagnostic command only', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
       'utf8',
@@ -359,9 +359,8 @@ describe('native media engine entrypoint', () => {
 
     expect(source).toContain('buildScreenSharePreflightCommand')
     expect(source).toContain("cmd: 'probe_screen_share'")
-    expect(source).toContain('await runNativeScreenSharePreflight(options, getWindow)')
-    expect(source).toContain("status: 'error'")
-    expect(source).toContain('Native screen share preflight failed')
+    expect(source).not.toContain('await runNativeScreenSharePreflight(options, getWindow)')
+    expect(source).toContain('function buildScreenSharePreflightCommand')
   })
 
   it('does not synthesize running lifecycle state during sidecar reconnect', () => {
