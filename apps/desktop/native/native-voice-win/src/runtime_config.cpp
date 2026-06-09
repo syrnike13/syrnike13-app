@@ -20,8 +20,7 @@ RuntimeConfig readRuntimeConfig() {
 void updateRuntimeConfig(const StartCommand& command) {
   std::lock_guard<std::mutex> lock(g_config_mutex);
   g_config.input_volume = command.input_volume;
-  // Temporarily disabled while the native gate is being reworked.
-  g_config.voice_gate_enabled = false;
+  g_config.voice_gate_enabled = command.voice_gate_enabled;
   g_config.voice_gate_threshold_db = command.voice_gate_threshold_db;
 }
 

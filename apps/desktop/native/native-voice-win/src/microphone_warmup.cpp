@@ -65,8 +65,11 @@ void runMicrophoneWarmup(std::string device_id, std::string session_id) {
     hr = audio_client->Start();
     if (FAILED(hr)) throw std::runtime_error("failed to start warm microphone stream");
 
+    VoiceGateProcessor gate(kSampleRate);
     std::vector<float> raw_frame;
     raw_frame.reserve(kSamplesPer10Ms);
+    std::vector<float> processed_frame;
+    processed_frame.reserve(kSamplesPer10Ms);
     auto last_metrics_at = std::chrono::steady_clock::now();
     auto last_diagnostics_at = last_metrics_at;
     auto last_frame_at = last_metrics_at;
@@ -96,17 +99,20 @@ void runMicrophoneWarmup(std::string device_id, std::string session_id) {
 
           if (raw_frame.size() == kSamplesPer10Ms) {
             const RuntimeConfig config = readRuntimeConfig();
-            float frame_square_sum = 0.0f;
+            gate.updateConfig(voiceGateConfigFromRuntimeConfig(config));
+
+            processed_frame.clear();
             for (float sample : raw_frame) {
-              const float amplified_sample = sample * config.input_volume;
-              frame_square_sum += amplified_sample * amplified_sample;
-              if (std::abs(amplified_sample) > 1.0f) clipped_samples += 1;
-              max_output_peak = std::max(max_output_peak, std::abs(softLimitSample(amplified_sample)));
+              processed_frame.push_back(sample * config.input_volume);
             }
-            const float input_db = rmsToDb(std::sqrt(
-              frame_square_sum / static_cast<float>(raw_frame.size())
-            ));
-            const bool open = gateOpen(input_db, config);
+
+            const VoiceGateFrameMetrics gate_metrics = gate.processFrame(processed_frame);
+            const float input_db = gate_metrics.input_db;
+            const bool open = gate_metrics.open;
+            for (float sample : processed_frame) {
+              if (std::abs(sample) > 1.0f) clipped_samples += 1;
+              max_output_peak = std::max(max_output_peak, std::abs(softLimitSample(sample)));
+            }
             last_input_db = input_db;
             if (!open) gated_frames += 1;
 

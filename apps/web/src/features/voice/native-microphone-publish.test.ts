@@ -91,7 +91,7 @@ describe('native microphone publish', () => {
       channels: 1,
       echoCancellation: true,
       inputVolume: 0.75,
-      voiceGateEnabled: false,
+      voiceGateEnabled: true,
       voiceGateThresholdDb: -45,
       voiceGateAutoThreshold: false,
       muted: false,

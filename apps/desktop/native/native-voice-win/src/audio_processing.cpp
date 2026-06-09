@@ -30,9 +30,16 @@ float rmsToDb(float rms) {
   return std::max(-60.0f, std::min(0.0f, 20.0f * std::log10(rms)));
 }
 
-bool gateOpen(float input_db, const RuntimeConfig& config) {
-  if (!config.voice_gate_enabled) return true;
-  return input_db >= config.voice_gate_threshold_db;
+VoiceGateConfig voiceGateConfigFromRuntimeConfig(const RuntimeConfig& config) {
+  VoiceGateConfig gate_config;
+  gate_config.enabled = config.voice_gate_enabled;
+  gate_config.open_threshold_db = config.voice_gate_threshold_db;
+  gate_config.close_threshold_db = config.voice_gate_threshold_db - 6.0f;
+  gate_config.attack_ms = 8;
+  gate_config.hold_ms = 180;
+  gate_config.release_ms = 140;
+  gate_config.floor_gain = 0.0f;
+  return gate_config;
 }
 
 void emitMicrophoneMetrics(

@@ -35,6 +35,7 @@ add_executable(syrnike-native-voice-win
   src/screen_publisher.cpp
   src/screen_sources.cpp
   src/screen_video_capture.cpp
+  src/voice_gate.cpp
 )
 
 target_link_libraries(syrnike-native-voice-win PRIVATE
@@ -53,4 +54,20 @@ target_compile_definitions(syrnike-native-voice-win PRIVATE
   WIN32_LEAN_AND_MEAN
   NOMINMAX
   _WIN32_WINNT=0x0A00
+)
+
+enable_testing()
+
+add_executable(syrnike-native-voice-win-tests
+  tests/voice_gate_processor_test.cpp
+  src/voice_gate.cpp
+)
+
+target_include_directories(syrnike-native-voice-win-tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+add_test(
+  NAME syrnike-native-voice-win-tests
+  COMMAND syrnike-native-voice-win-tests
 )
