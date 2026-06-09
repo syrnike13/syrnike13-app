@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use syrnike_models::v0::{
     AppendMessage, Channel, ChannelSlowmode, ChannelUnread, ChannelVoiceState, Emoji,
     FieldsChannel, FieldsMember, FieldsMessage, FieldsRole, FieldsServer, FieldsUser,
-    FieldsWebhook, Member, MemberCompositeKey, Message, PartialChannel, PartialEmoji,
-    PartialMember, PartialMessage, PartialRole, PartialServer, PartialUser, PartialUserVoiceState,
-    PartialWebhook, PolicyChange, RemovalIntention, Report, Server, User, UserSettings,
-    UserVoiceState, Webhook,
+    FieldsWebhook, Member, MemberCompositeKey, Message, NativeVoiceCredentials, PartialChannel,
+    PartialEmoji, PartialMember, PartialMessage, PartialRole, PartialServer, PartialUser,
+    PartialUserVoiceState, PartialWebhook, PolicyChange, RemovalIntention, Report, Server, User,
+    UserSettings, UserVoiceState, Webhook,
 };
 
 use crate::Database;
@@ -346,10 +346,18 @@ pub enum EventV1 {
         to: String,
         state: UserVoiceState,
     },
-    UserVoiceStateUpdate {
-        id: String,
+    VoiceStateUpdate {
         channel_id: String,
-        data: PartialUserVoiceState,
+        state: UserVoiceState,
+    },
+    VoiceServerUpdate {
+        channel_id: String,
+        node: String,
+        url: String,
+        token: String,
+        native_microphone: NativeVoiceCredentials,
+        native_screen: NativeVoiceCredentials,
+        native_camera: NativeVoiceCredentials,
     },
     UserMoveVoiceChannel {
         node: String,

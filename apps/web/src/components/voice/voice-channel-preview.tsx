@@ -1,11 +1,10 @@
 import { useAuth } from '#/features/auth/auth-context'
 import {
   getChannelVoiceParticipants,
-  useMergedChannelVoiceParticipants,
+  useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useChannelVoiceState } from '#/features/voice/use-channel-voice-state'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
@@ -21,7 +20,6 @@ type VoiceChannelPreviewProps = {
 export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
   const auth = useAuth()
   const voice = useVoice()
-  useChannelVoiceState(channelId)
   const users = useSyncStore((s) => s.users)
   const channel = useSyncStore((s) => s.channels[channelId])
   const serverId =
@@ -39,11 +37,9 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
   const inThisChannel = isVoiceSessionInChannel(voice, channelId)
   const connecting =
     voice.status === 'connecting' && inThisChannel
-  const participants = useMergedChannelVoiceParticipants(
+  const participants = useChannelVoiceParticipantsWithLocalOverride(
     channelId,
     storeParticipants,
-    voice.liveChannelParticipants,
-    inThisChannel,
     inThisChannel ? auth.user?._id : undefined,
     inThisChannel ? voice.micPublishing : undefined,
     inThisChannel ? voice.deafened : undefined,

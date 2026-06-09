@@ -85,8 +85,9 @@ describe('StageMediaTile', () => {
         participant={{
           id: 'remote-user',
           joined_at: 1,
-          is_publishing: true,
-          is_receiving: true,
+          self_mute: false,
+          self_deaf: false,
+          version: 1,
           server_muted: false,
           server_deafened: false,
           camera: false,

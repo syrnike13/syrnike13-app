@@ -20,7 +20,6 @@ function nodeFromRoot(root: unknown) {
   return nodes[0]?.name || FALLBACK_VOICE_NODE
 }
 
-/** Имя LiveKit-ноды для `POST .../join_call` (как в официальном клиенте: `joinCall("worldwide")`). */
 export function resolveVoiceNodeName() {
   if (env.VITE_VOICE_NODE) {
     return Promise.resolve(env.VITE_VOICE_NODE)

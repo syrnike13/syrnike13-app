@@ -35,7 +35,7 @@ import {
   syncStore,
 } from '#/features/sync/sync-store'
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
-import { canUseVoiceRestApi } from '#/features/voice/voice-api-capability'
+import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { useVoice } from '#/features/voice/voice-provider'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { inviteUrl } from '#/lib/invite-link'
@@ -124,7 +124,7 @@ export function ChannelSidebarItem({
     (voice.status === 'connected' || voice.status === 'connecting')
 
   function handleVoiceChannelClick(event: MouseEvent<HTMLAnchorElement>) {
-    if (!serverVoice || !canUseVoiceRestApi(channel)) return
+    if (!serverVoice || !canJoinVoiceChannel(channel)) return
     if (
       event.button !== 0 ||
       event.metaKey ||

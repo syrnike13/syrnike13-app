@@ -10,6 +10,8 @@ pub mod config;
 pub mod events;
 
 mod database;
+mod voice;
+mod voice_client;
 mod websocket;
 
 #[async_std::main]
@@ -17,6 +19,7 @@ async fn main() {
     // Configure requirements for Bonfire.
     syrnike_config::configure!(events);
     database::connect().await;
+    voice_client::init().await;
 
     // Clean up the current region information.
     let no_clear_region = env::var("NO_CLEAR_PRESENCE").unwrap_or_else(|_| "0".into()) == "1";

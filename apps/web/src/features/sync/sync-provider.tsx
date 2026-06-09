@@ -115,9 +115,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         ensureVoiceUsersLoaded([move.user], token)
       }
 
-      if (event.type === 'UserVoiceStateUpdate') {
-        const update = event as { id: string }
-        ensureVoiceUsersLoaded([update.id], token)
+      if (event.type === 'VoiceStateUpdate') {
+        const update = event as { state?: { id?: string } }
+        const userId = update.state?.id
+        if (userId) ensureVoiceUsersLoaded([userId], token)
       }
 
       if (event.type === 'VoiceChannelLeave') {

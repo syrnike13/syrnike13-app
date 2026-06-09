@@ -1,22 +1,20 @@
 import { Room } from 'livekit-client'
 import { toast } from 'sonner'
-import type { CreateVoiceUserResponse } from '@syrnike13/api-types'
 
-import { joinChannelCall } from '#/features/api/voice-api'
 import { syncStore } from '#/features/sync/sync-store'
-import {
-  canUseVoiceRestApi,
-  handleVoiceApiError,
-} from '#/features/voice/voice-api-capability'
+import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { createVoiceRoomOptions } from '#/features/voice/voice-capture'
 import { createConnectingLocalVoiceState } from '#/features/voice/voice-connecting-preview'
+import {
+  requestVoiceJoin,
+  type VoiceServerUpdateEvent,
+} from '#/features/voice/voice-gateway'
 import { readVoicePreferences } from '#/features/voice/voice-preference-store'
 import {
   isRateLimitedError,
   runVoiceRequest,
 } from '#/features/voice/voice-request-gate'
 import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
-import { ApiError } from '#/lib/api/client'
 
 export type VoiceJoinOptions = {
   rejoin?: boolean
@@ -34,7 +32,7 @@ export type LiveKitNativeCredentials = Record<
 >
 
 export function nativeCredentialsFromJoinResponse(
-  credentials: CreateVoiceUserResponse,
+  credentials: VoiceServerUpdateEvent,
 ): LiveKitNativeCredentials {
   return {
     microphone: {
@@ -76,12 +74,6 @@ export type VoiceJoinRunnerDeps = {
 }
 
 export function voiceJoinErrorMessage(error: unknown) {
-  if (error instanceof ApiError && error.status === 429) {
-    return 'Слишком много запросов. Подождите минуту и попробуйте снова.'
-  }
-  if (error instanceof ApiError && error.status === 400) {
-    return 'Голос недоступен в этом канале'
-  }
   if (error instanceof Error) {
     return error.message
   }
@@ -104,7 +96,7 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
     }
 
     const targetChannel = syncStore.getState().channels[targetChannelId]
-    if (!canUseVoiceRestApi(targetChannel)) {
+    if (!canJoinVoiceChannel(targetChannel)) {
       if (!options.rejoin) {
         toast.error('Голос недоступен в этом канале')
       }
@@ -115,12 +107,13 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       await deps.leaveBeforeJoin()
     }
 
+    const prefs = readVoicePreferences()
     const localUserId = deps.getLocalUserId()
     const preview = localUserId
       ? [
           createConnectingLocalVoiceState(localUserId, {
-            micEnabled: readVoicePreferences().micEnabled,
-            deafened: readVoicePreferences().deafened,
+            micEnabled: prefs.micEnabled,
+            deafened: prefs.deafened,
           }),
         ]
       : []
@@ -131,8 +124,13 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
     try {
       deps.setConnectionPhase('fetching_rtc_token')
       const credentials = await runVoiceRequest(
-        `join_call:${targetChannelId}`,
-        () => joinChannelCall(token, targetChannelId),
+        `voice_join:${targetChannelId}`,
+        () =>
+          requestVoiceJoin(
+            targetChannelId,
+            !prefs.micEnabled,
+            prefs.deafened,
+          ),
         10_000,
       )
       if (!credentials) {
@@ -157,7 +155,6 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       deps.setConnectionPhase('failed')
       if (!options.rejoin) {
         deps.abortJoin()
-        handleVoiceApiError(targetChannelId, error)
         toast.error(voiceJoinErrorMessage(error))
       }
       deps.setJoinBlockedUntil(

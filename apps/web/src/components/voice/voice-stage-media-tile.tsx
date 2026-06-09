@@ -231,9 +231,9 @@ export function StageMediaTile({
             >
               {participant ? (
                 <VoiceParticipantIcons
-                  muted={participant.server_muted || !participant.is_publishing}
+                  muted={participant.server_muted || participant.self_mute}
                   deafened={
-                    participant.server_deafened || !participant.is_receiving
+                    participant.server_deafened || participant.self_deaf
                   }
                   serverMuted={participant.server_muted}
                   serverDeafened={participant.server_deafened}

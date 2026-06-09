@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CreateVoiceUserResponse } from '@syrnike13/api-types'
 
 import {
   createVoiceJoinRunner,
   nativeCredentialsFromJoinResponse,
   voiceJoinErrorMessage,
 } from './voice-join'
-import { ApiError } from '#/lib/api/client'
-import { joinChannelCall } from '#/features/api/voice-api'
 import { syncStore } from '#/features/sync/sync-store'
+import { requestVoiceJoin } from '#/features/voice/voice-gateway'
 
 vi.mock('livekit-client', () => ({
   Room: vi.fn(function Room() {
@@ -18,8 +16,8 @@ vi.mock('livekit-client', () => ({
   }),
 }))
 
-vi.mock('#/features/api/voice-api', () => ({
-  joinChannelCall: vi.fn(),
+vi.mock('#/features/voice/voice-gateway', () => ({
+  requestVoiceJoin: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
@@ -46,7 +44,10 @@ beforeEach(() => {
     channel_type: 'VoiceChannel',
     server: 'server-1',
   } as never)
-  vi.mocked(joinChannelCall).mockResolvedValue({
+  vi.mocked(requestVoiceJoin).mockResolvedValue({
+    type: 'VoiceServerUpdate',
+    channel_id: 'channel-1',
+    node: 'node-1',
     token: 'browser-token',
     url: 'wss://livekit.example',
     native_microphone: {
@@ -65,15 +66,9 @@ beforeEach(() => {
 })
 
 describe('voiceJoinErrorMessage', () => {
-  it('maps rate limit errors', () => {
-    expect(voiceJoinErrorMessage(new ApiError('rate', 429))).toContain(
-      'Слишком много запросов',
-    )
-  })
-
-  it('maps unavailable channel errors', () => {
-    expect(voiceJoinErrorMessage(new ApiError('bad', 400))).toBe(
-      'Голос недоступен в этом канале',
+  it('uses error message when available', () => {
+    expect(voiceJoinErrorMessage(new Error('Voice join timed out'))).toBe(
+      'Voice join timed out',
     )
   })
 
@@ -112,12 +107,16 @@ describe('createVoiceJoinRunner', () => {
       'connecting_rtc',
       'connecting_microphone',
     ])
+    expect(requestVoiceJoin).toHaveBeenCalledWith('channel-1', false, false)
   })
 })
 
 describe('nativeCredentialsFromJoinResponse', () => {
   it('keeps native microphone, screen, and camera publishers on separate identities', () => {
-    const response: CreateVoiceUserResponse = {
+    const response = {
+      type: 'VoiceServerUpdate' as const,
+      channel_id: 'channel-1',
+      node: 'node-1',
       token: 'browser-token',
       url: 'wss://livekit.example',
       native_microphone: {

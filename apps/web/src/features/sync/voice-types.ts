@@ -2,12 +2,13 @@
 export type UserVoiceState = {
   id: string
   joined_at: number
-  is_receiving: boolean
-  is_publishing: boolean
+  self_mute: boolean
+  self_deaf: boolean
   server_muted: boolean
   server_deafened: boolean
   screensharing: boolean
   camera: boolean
+  version: number
 }
 
 export type ChannelVoiceState = {

@@ -37,8 +37,8 @@ export function VoiceParticipantRow({
   serverName,
   roles,
 }: VoiceParticipantRowProps) {
-  const muted = participant.server_muted || !participant.is_publishing
-  const deafened = participant.server_deafened || !participant.is_receiving
+  const muted = participant.server_muted || participant.self_mute
+  const deafened = participant.server_deafened || participant.self_deaf
 
   const isSpeaking = speaking && !voiceElsewhere
 

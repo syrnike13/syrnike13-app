@@ -9,7 +9,7 @@ use syrnike_database::{
     },
     voice::{
         UserVoiceChannel, VoiceClient, get_channel_node, get_user_voice_channel_in_server,
-        remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
+        get_voice_state, remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
         set_user_moved_to_voice, set_user_voice_join_intent, sync_user_voice_permissions,
     },
 };
@@ -241,7 +241,21 @@ pub async fn edit(
                 &target_user.id,
             )
             .await?;
-            set_user_voice_join_intent(&target_user.id, &new_user_voice_channel).await?;
+            let existing_voice_state =
+                get_voice_state(&old_user_voice_channel, &target_user.id).await?;
+            set_user_voice_join_intent(
+                &target_user.id,
+                &new_user_voice_channel,
+                existing_voice_state
+                    .as_ref()
+                    .map(|state| state.self_mute)
+                    .unwrap_or(false),
+                existing_voice_state
+                    .as_ref()
+                    .map(|state| state.self_deaf)
+                    .unwrap_or(false),
+            )
+            .await?;
 
             let mut query = perms(db, &target_user).channel(&new_voice_channel);
             let permissions = calculate_channel_permissions(&mut query).await;

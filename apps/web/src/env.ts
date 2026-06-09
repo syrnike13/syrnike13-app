@@ -33,7 +33,7 @@ export const env = createEnv({
       .optional()
       .default('https://api.gifbox.me'),
     VITE_HCAPTCHA_SITEKEY: z.string().optional(),
-    /** LiveKit-нода для `join_call` (по умолчанию — первая из `GET /`). */
+    /** LiveKit-нода для gateway voice join (по умолчанию — первая из `GET /`). */
     VITE_VOICE_NODE: z.string().min(1).optional(),
   },
 

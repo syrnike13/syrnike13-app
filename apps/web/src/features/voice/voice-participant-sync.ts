@@ -1,149 +1,8 @@
-import type { LocalParticipant, RemoteParticipant, Room } from 'livekit-client'
+import type { Room } from 'livekit-client'
 
 import { syncStore } from '#/features/sync/sync-store'
-import {
-  isResolvableVoiceParticipant,
-  isValidVoiceUserId,
-} from '#/features/sync/voice-participant-resolve'
-import type { UserVoiceState } from '#/features/sync/voice-types'
-import {
-  localParticipantVoiceFlags,
-  participantMicPublishing,
-  remoteParticipantVoiceFlags,
-} from '#/features/voice/voice-participant-media'
+import { isValidVoiceUserId } from '#/features/sync/voice-participant-resolve'
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
-
-function participantState(
-  userId: string,
-  options: {
-    isPublishing: boolean
-    isReceiving: boolean
-    camera?: boolean
-    screensharing?: boolean
-    joinedAt?: number
-  },
-): UserVoiceState {
-  return {
-    id: userId,
-    joined_at: options.joinedAt ?? Date.now(),
-    is_publishing: options.isPublishing,
-    is_receiving: options.isReceiving,
-    server_muted: false,
-    server_deafened: false,
-    camera: options.camera ?? false,
-    screensharing: options.screensharing ?? false,
-  }
-}
-
-function localVoiceState(
-  participant: LocalParticipant,
-  isReceiving: boolean,
-): UserVoiceState {
-  const media = localParticipantVoiceFlags(participant)
-  return participantState(participant.identity, {
-    isPublishing: participantMicPublishing(participant),
-    isReceiving,
-    camera: media.camera,
-    screensharing: media.screensharing,
-    joinedAt: participant.joinedAt?.getTime(),
-  })
-}
-
-function remoteVoiceState(participant: RemoteParticipant): UserVoiceState {
-  const media = remoteParticipantVoiceFlags(participant)
-  return participantState(baseVoiceIdentity(participant.identity), {
-    isPublishing: participantMicPublishing(participant),
-    isReceiving: true,
-    camera: media.camera,
-    screensharing: media.screensharing,
-    joinedAt: participant.joinedAt?.getTime(),
-  })
-}
-
-/** Участники комнаты LiveKit (identity = user id). */
-export function liveKitChannelParticipants(
-  room: Room,
-  isReceiving: boolean,
-  options: {
-    excludedParticipantIdentities?: ReadonlySet<string>
-  } = {},
-): UserVoiceState[] {
-  const merged = new Map<string, UserVoiceState>()
-
-  const localIdentity = room.localParticipant.identity
-  if (isValidVoiceUserId(localIdentity)) {
-    const local = localVoiceState(room.localParticipant, isReceiving)
-    merged.set(local.id, local)
-  }
-
-  for (const remote of room.remoteParticipants.values()) {
-    if (options.excludedParticipantIdentities?.has(remote.identity)) continue
-    const userId = baseVoiceIdentity(remote.identity)
-    if (!isValidVoiceUserId(userId)) continue
-    const state = remoteVoiceState(remote)
-    const current = merged.get(state.id)
-    merged.set(state.id, {
-      ...current,
-      ...state,
-      is_publishing: Boolean(current?.is_publishing || state.is_publishing),
-      is_receiving: current?.is_receiving ?? state.is_receiving,
-      camera: Boolean(current?.camera || state.camera),
-      screensharing: Boolean(current?.screensharing || state.screensharing),
-    })
-  }
-
-  return [...merged.values()]
-}
-
-/** Синхронизирует LiveKit в store; «призраков» без user в sync не сохраняем. */
-export function syncLiveKitRoomParticipants(
-  channelId: string,
-  room: Room,
-  isReceiving: boolean,
-  options: {
-    excludedParticipantIdentities?: ReadonlySet<string>
-  } = {},
-) {
-  const fromRoom = liveKitChannelParticipants(room, isReceiving, options)
-  const syncState = syncStore.getState()
-  const localUserId = isValidVoiceUserId(room.localParticipant.identity)
-    ? room.localParticipant.identity
-    : undefined
-  const liveIds = new Set(fromRoom.map((participant) => participant.id))
-  const existing = syncState.voiceParticipants[channelId] ?? {}
-
-  const byId = new Map<string, UserVoiceState>()
-  for (const participant of fromRoom) {
-    if (participant.id === localUserId) {
-      byId.set(participant.id, participant)
-      continue
-    }
-
-    const existingParticipant = existing[participant.id]
-    byId.set(
-      participant.id,
-      existingParticipant
-        ? {
-            ...participant,
-            is_receiving: existingParticipant.is_receiving,
-            server_muted: existingParticipant.server_muted,
-            server_deafened: existingParticipant.server_deafened,
-          }
-        : participant,
-    )
-  }
-
-  for (const [id, participant] of Object.entries(existing)) {
-    if (liveIds.has(id)) continue
-    if (
-      isResolvableVoiceParticipant(syncState, id, localUserId)
-    ) {
-      byId.set(id, participant)
-    }
-  }
-
-  syncStore.setChannelVoiceParticipants(channelId, [...byId.values()])
-}
 
 export function removeLocalVoiceParticipant(channelId: string, userId: string) {
   syncStore.removeVoiceParticipant(channelId, userId)
@@ -160,7 +19,7 @@ export function patchLocalVoiceMic(
   micEnabled: boolean,
 ) {
   syncStore.patchVoiceParticipant(channelId, userId, {
-    is_publishing: micEnabled,
+    self_mute: !micEnabled,
   })
 }
 
@@ -170,6 +29,31 @@ export function patchLocalVoiceDeafen(
   deafened: boolean,
 ) {
   syncStore.patchVoiceParticipant(channelId, userId, {
-    is_receiving: !deafened,
+    self_deaf: deafened,
+    ...(deafened ? { self_mute: true } : {}),
   })
+}
+
+/** Только id участников комнаты — для stage media, не для mute/deafen. */
+export function liveKitRoomParticipantIds(
+  room: Room,
+  options: {
+    excludedParticipantIdentities?: ReadonlySet<string>
+  } = {},
+) {
+  const ids: string[] = []
+  const localId = baseVoiceIdentity(room.localParticipant.identity)
+  if (
+    isValidVoiceUserId(localId) &&
+    !options.excludedParticipantIdentities?.has(room.localParticipant.identity)
+  ) {
+    ids.push(localId)
+  }
+  for (const remote of room.remoteParticipants.values()) {
+    if (options.excludedParticipantIdentities?.has(remote.identity)) continue
+    const userId = baseVoiceIdentity(remote.identity)
+    if (!isValidVoiceUserId(userId)) continue
+    ids.push(userId)
+  }
+  return ids
 }

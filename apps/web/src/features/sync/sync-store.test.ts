@@ -12,12 +12,13 @@ describe('syncStore voice events', () => {
       {
         id: USER_ID,
         joined_at: 1,
-        is_publishing: true,
-        is_receiving: true,
+        self_mute: false,
+        self_deaf: false,
         server_muted: false,
         server_deafened: false,
         camera: false,
         screensharing: false,
+        version: 1,
       },
     ]
     syncStore.setChannelVoiceParticipants(CHANNEL_ID, participants)
@@ -161,12 +162,13 @@ describe('syncStore voice events', () => {
       state: {
         id: USER_ID,
         joined_at: 1,
-        is_publishing: true,
-        is_receiving: true,
+        self_mute: false,
+        self_deaf: false,
         server_muted: false,
         server_deafened: false,
         camera: false,
         screensharing: false,
+        version: 1,
       },
     })
     syncStore.handleGatewayEvent({
@@ -175,12 +177,13 @@ describe('syncStore voice events', () => {
       state: {
         id: USER_ID,
         joined_at: 2,
-        is_publishing: true,
-        is_receiving: true,
+        self_mute: false,
+        self_deaf: false,
         server_muted: false,
         server_deafened: false,
         camera: false,
         screensharing: false,
+        version: 1,
       },
     })
 
@@ -203,23 +206,25 @@ describe('syncStore voice events', () => {
       state: {
         id: USER_ID,
         joined_at: 1,
-        is_publishing: true,
-        is_receiving: true,
+        self_mute: false,
+        self_deaf: false,
         server_muted: false,
         server_deafened: false,
         camera: false,
         screensharing: false,
+        version: 1,
       },
     })
     syncStore.addVoiceParticipant('01KT7DEM3B0T4B0BXGBXWDJ6AH', {
       id: USER_ID,
       joined_at: 2,
-      is_publishing: true,
-      is_receiving: true,
+      self_mute: false,
+      self_deaf: false,
       server_muted: false,
       server_deafened: false,
       camera: false,
       screensharing: false,
+      version: 2,
     })
     syncStore.handleGatewayEvent({
       type: 'VoiceChannelMove',
@@ -229,12 +234,13 @@ describe('syncStore voice events', () => {
       state: {
         id: USER_ID,
         joined_at: 3,
-        is_publishing: true,
-        is_receiving: true,
+        self_mute: false,
+        self_deaf: false,
         server_muted: false,
         server_deafened: false,
         camera: false,
         screensharing: false,
+        version: 1,
       },
     })
 
@@ -248,22 +254,105 @@ describe('syncStore voice events', () => {
     })
   })
 
-  it('applies UserVoiceStateUpdate even when the join snapshot was missed', () => {
+  it('applies VoiceStateUpdate even when the join snapshot was missed', () => {
     syncStore.reset()
 
     syncStore.handleGatewayEvent({
-      type: 'UserVoiceStateUpdate',
-      id: USER_ID,
+      type: 'VoiceStateUpdate',
       channel_id: CHANNEL_ID,
-      data: { is_publishing: true },
+      state: {
+        id: USER_ID,
+        joined_at: 1,
+        self_mute: false,
+        self_deaf: false,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+        version: 2,
+      },
     })
 
     expect(
       syncStore.getState().voiceParticipants[CHANNEL_ID]?.[USER_ID],
     ).toMatchObject({
       id: USER_ID,
-      is_publishing: true,
-      is_receiving: true,
+      self_mute: false,
+      self_deaf: false,
+      version: 2,
     })
+  })
+
+  it('ignores stale VoiceStateUpdate with lower version', () => {
+    syncStore.reset()
+    syncStore.addVoiceParticipant(CHANNEL_ID, {
+      id: USER_ID,
+      joined_at: 1,
+      self_mute: false,
+      self_deaf: false,
+      server_muted: false,
+      server_deafened: false,
+      camera: false,
+      screensharing: false,
+      version: 5,
+    })
+
+    syncStore.handleGatewayEvent({
+      type: 'VoiceStateUpdate',
+      channel_id: CHANNEL_ID,
+      state: {
+        id: USER_ID,
+        joined_at: 1,
+        self_mute: true,
+        self_deaf: false,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+        version: 3,
+      },
+    })
+
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[USER_ID]?.self_mute,
+    ).toBe(false)
+  })
+
+  it('keeps local optimistic patches ahead of same-version snapshots', () => {
+    syncStore.reset()
+    syncStore.addVoiceParticipant(CHANNEL_ID, {
+      id: USER_ID,
+      joined_at: 1,
+      self_mute: false,
+      self_deaf: false,
+      server_muted: false,
+      server_deafened: false,
+      camera: false,
+      screensharing: false,
+      version: 5,
+    })
+
+    syncStore.patchVoiceParticipant(CHANNEL_ID, USER_ID, {
+      self_mute: true,
+    })
+    syncStore.handleGatewayEvent({
+      type: 'VoiceStateUpdate',
+      channel_id: CHANNEL_ID,
+      state: {
+        id: USER_ID,
+        joined_at: 1,
+        self_mute: false,
+        self_deaf: false,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        screensharing: false,
+        version: 5,
+      },
+    })
+
+    expect(
+      syncStore.getState().voiceParticipants[CHANNEL_ID]?.[USER_ID]?.self_mute,
+    ).toBe(true)
   })
 })
