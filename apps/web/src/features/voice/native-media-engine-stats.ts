@@ -35,10 +35,19 @@ const emptyMethods = (): NativeMediaFrameStats => ({
   gdi_print: 0,
 })
 
-let state: NativeMediaEngineDebugState = {
+function snapshot(
+  next: NativeMediaEngineDebugState,
+): NativeMediaEngineDebugState {
+  return Object.freeze({
+    ...next,
+    methods: Object.freeze({ ...next.methods }),
+  })
+}
+
+let state: NativeMediaEngineDebugState = snapshot({
   backend: 'chromium',
   methods: emptyMethods(),
-}
+})
 
 const listeners = new Set<() => void>()
 
@@ -51,10 +60,7 @@ export const nativeMediaEngineStatsStore = {
     listeners.add(listener)
     return () => listeners.delete(listener)
   },
-  getState: () => ({
-    ...state,
-    methods: { ...state.methods },
-  }),
+  getState: () => state,
   setNative(
     methods: NativeMediaFrameStats,
     activeMethod?: NativeMediaFrameMethod,
@@ -80,7 +86,7 @@ export const nativeMediaEngineStatsStore = {
       videoAvgCaptureUs?: number
     },
   ) {
-    state = {
+    state = snapshot({
       backend: 'native',
       methods: { ...methods },
       activeMethod,
@@ -101,15 +107,15 @@ export const nativeMediaEngineStatsStore = {
       videoIntervalFrames: video?.videoIntervalFrames,
       videoLateFrames: video?.videoLateFrames,
       videoAvgCaptureUs: video?.videoAvgCaptureUs,
-    }
+    })
     emit()
   },
   setChromium() {
-    state = { backend: 'chromium', methods: emptyMethods() }
+    state = snapshot({ backend: 'chromium', methods: emptyMethods() })
     emit()
   },
   reset() {
-    state = { backend: 'chromium', methods: emptyMethods() }
+    state = snapshot({ backend: 'chromium', methods: emptyMethods() })
     emit()
   },
 }
