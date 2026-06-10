@@ -38,8 +38,6 @@ const config = defineConfig({
   },
   optimizeDeps: {
     include: [
-      '@syrnike13/api-types',
-      '@syrnike13/platform',
       '@remixicon/react',
       'iconoir-react',
       'iconoir-react/solid',
