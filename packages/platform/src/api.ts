@@ -11,6 +11,10 @@ import type {
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
 } from './media'
+import type {
+  DesktopLocalSettings,
+  DesktopLocalSettingsPatch,
+} from './settings'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -186,6 +190,10 @@ export interface SyrnikeDesktopApi {
     loadSession(): Promise<DesktopStoredSession | null>
     saveSession(session: DesktopStoredSession): Promise<void>
     clearSession(): Promise<void>
+  }
+  settings: {
+    load(): Promise<DesktopLocalSettings>
+    update(patch: DesktopLocalSettingsPatch): Promise<DesktopLocalSettings>
   }
   updates: {
     getState(): Promise<DesktopUpdateState>

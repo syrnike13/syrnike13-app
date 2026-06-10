@@ -1,5 +1,11 @@
 import { useRef, useSyncExternalStore } from 'react'
 
+import {
+  loadDesktopLocalSettings,
+  updateDesktopLocalSettings,
+} from '#/features/settings/desktop-local-settings-client'
+import { getSyrnikeDesktop } from '#/platform/runtime'
+
 const STORAGE_KEY = 'syrnike13-voice-listener'
 const DEFAULT_USER_VOLUME = 1
 /** 0–3 (до 300% в UI, в браузере cap 100%). */
@@ -16,36 +22,41 @@ function emptyState(): VoiceListenerState {
   return { userVolumes: {}, userMutes: {}, streamVolumes: {}, streamMutes: {} }
 }
 
+function normalizeVoiceListenerState(value: unknown): VoiceListenerState {
+  if (!value || typeof value !== 'object') return emptyState()
+  const parsed = value as Partial<VoiceListenerState>
+  return {
+    userVolumes:
+      parsed.userVolumes && typeof parsed.userVolumes === 'object'
+        ? parsed.userVolumes
+        : {},
+    userMutes:
+      parsed.userMutes && typeof parsed.userMutes === 'object'
+        ? parsed.userMutes
+        : {},
+    streamVolumes:
+      parsed.streamVolumes && typeof parsed.streamVolumes === 'object'
+        ? parsed.streamVolumes
+        : {},
+    streamMutes:
+      parsed.streamMutes && typeof parsed.streamMutes === 'object'
+        ? parsed.streamMutes
+        : {},
+  }
+}
+
 function loadState(): VoiceListenerState {
-  if (typeof window === 'undefined') return emptyState()
+  if (typeof window === 'undefined' || getSyrnikeDesktop()) return emptyState()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return emptyState()
-    const parsed = JSON.parse(raw) as Partial<VoiceListenerState>
-    return {
-      userVolumes:
-        parsed.userVolumes && typeof parsed.userVolumes === 'object'
-          ? parsed.userVolumes
-          : {},
-      userMutes:
-        parsed.userMutes && typeof parsed.userMutes === 'object'
-          ? parsed.userMutes
-          : {},
-      streamVolumes:
-        parsed.streamVolumes && typeof parsed.streamVolumes === 'object'
-          ? parsed.streamVolumes
-          : {},
-      streamMutes:
-        parsed.streamMutes && typeof parsed.streamMutes === 'object'
-          ? parsed.streamMutes
-          : {},
-    }
+    return normalizeVoiceListenerState(raw ? JSON.parse(raw) : null)
   } catch {
     return emptyState()
   }
 }
 
 let state = loadState()
+let stateRevision = 0
 const listeners = new Set<() => void>()
 
 function emit() {
@@ -54,11 +65,30 @@ function emit() {
 
 function persist() {
   if (typeof window === 'undefined') return
+  if (getSyrnikeDesktop()) {
+    void updateDesktopLocalSettings({ voiceListener: state })
+    return
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   } catch {
     // quota / private mode
   }
+}
+
+function replaceState(next: VoiceListenerState) {
+  state = next
+  stateRevision += 1
+  persist()
+  emit()
+}
+
+export async function hydrateVoiceListenerSettingsFromDesktop() {
+  const revision = stateRevision
+  const settings = await loadDesktopLocalSettings()
+  if (!settings || revision !== stateRevision) return
+  state = normalizeVoiceListenerState(settings.voiceListener)
+  emit()
 }
 
 export function formatUserVolumeLabel(userVolume: number) {
@@ -85,12 +115,10 @@ export const voiceListenerStore = {
       Math.max(0, Number(volume.toFixed(2))),
     )
     if (state.userVolumes[userId] === next) return
-    state = {
+    replaceState({
       ...state,
       userVolumes: { ...state.userVolumes, [userId]: next },
-    }
-    persist()
-    emit()
+    })
   },
 
   getUserMuted(userId: string) {
@@ -105,9 +133,7 @@ export const voiceListenerStore = {
     } else {
       delete userMutes[userId]
     }
-    state = { ...state, userMutes }
-    persist()
-    emit()
+    replaceState({ ...state, userMutes })
   },
 
   getStreamVolume(userId: string) {
@@ -120,12 +146,10 @@ export const voiceListenerStore = {
       Math.max(0, Number(volume.toFixed(2))),
     )
     if (state.streamVolumes[userId] === next) return
-    state = {
+    replaceState({
       ...state,
       streamVolumes: { ...state.streamVolumes, [userId]: next },
-    }
-    persist()
-    emit()
+    })
   },
 
   getStreamMuted(userId: string) {
@@ -140,9 +164,7 @@ export const voiceListenerStore = {
     } else {
       delete streamMutes[userId]
     }
-    state = { ...state, streamMutes }
-    persist()
-    emit()
+    replaceState({ ...state, streamMutes })
   },
 }
 
@@ -169,3 +191,5 @@ export function useVoiceListenerStore<T>(
     getSnapshot,
   )
 }
+
+void hydrateVoiceListenerSettingsFromDesktop()

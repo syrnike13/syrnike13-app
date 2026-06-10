@@ -29,6 +29,7 @@ import {
   saveDesktopPreferences,
   type DesktopPreferences,
 } from './desktop-preferences'
+import { desktopLocalSettingsDefaults } from './desktop-local-settings'
 import { desktopSessionPath } from './desktop-session'
 import { routeFromDeepLink } from './deep-links'
 import { applyLoginItemSettings } from './login-item'
@@ -86,6 +87,10 @@ function desktopPreferencesPath() {
 
 function currentDesktopSessionPath() {
   return desktopSessionPath(app.getPath('userData'))
+}
+
+function desktopLocalSettingsPath() {
+  return path.join(app.getPath('userData'), 'local-settings.json')
 }
 
 function getDesktopPreferences() {
@@ -220,6 +225,8 @@ async function createApp() {
       setCloseToTray,
       setOpenAtLogin,
       showWindow: showMainWindow,
+      localSettingsPath: desktopLocalSettingsPath(),
+      localSettingsDefaults: desktopLocalSettingsDefaults(),
       sessionPath: currentDesktopSessionPath(),
     })
   }

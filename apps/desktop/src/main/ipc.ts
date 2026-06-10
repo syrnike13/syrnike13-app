@@ -2,6 +2,7 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
+  type DesktopLocalSettingsPatch,
   type DesktopStoredSession,
   type DesktopWindowPreferences,
   type HotkeyBinding,
@@ -26,6 +27,11 @@ import {
   loadDesktopSession,
   saveDesktopSession,
 } from './desktop-session'
+import {
+  desktopLocalSettingsDefaults,
+  loadDesktopLocalSettings,
+  updateDesktopLocalSettings,
+} from './desktop-local-settings'
 import { registerNativeMediaEngineIpc } from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
 
@@ -38,6 +44,8 @@ export function registerDesktopIpc(
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
     showWindow: () => void
+    localSettingsPath: string
+    localSettingsDefaults?: ReturnType<typeof desktopLocalSettingsDefaults>
     sessionPath: string
   },
 ) {
@@ -116,6 +124,21 @@ export function registerDesktopIpc(
 
   ipcMain.handle(IPC.authClearSession, () =>
     clearDesktopSession(options.sessionPath),
+  )
+
+  ipcMain.handle(IPC.settingsLoad, () =>
+    loadDesktopLocalSettings(
+      options.localSettingsPath,
+      options.localSettingsDefaults,
+    ),
+  )
+
+  ipcMain.handle(IPC.settingsUpdate, (_event, patch: DesktopLocalSettingsPatch) =>
+    updateDesktopLocalSettings(
+      options.localSettingsPath,
+      patch,
+      options.localSettingsDefaults,
+    ),
   )
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
