@@ -2,6 +2,8 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
+  type DesktopOverlayPreferences,
+  type DesktopOverlaySnapshot,
   type DesktopStoredSession,
   type DesktopWindowPreferences,
   type HotkeyBinding,
@@ -28,6 +30,15 @@ import {
 } from './desktop-session'
 import { registerNativeMediaEngineIpc } from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
+import {
+  canSetDesktopOverlaySnapshot,
+  canUseDesktopOverlaySender,
+  getDesktopOverlayPreferences,
+  getDesktopOverlayState,
+  setDesktopOverlayPreferences,
+  setDesktopOverlayEnabled,
+  setDesktopOverlaySnapshot,
+} from './overlay-manager'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -37,6 +48,9 @@ export function registerDesktopIpc(
     getWindowPreferences: () => DesktopWindowPreferences
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
+    setOverlayPreferences: (
+      preferences: DesktopOverlayPreferences,
+    ) => Promise<DesktopOverlayPreferences>
     showWindow: () => void
     sessionPath: string
   },
@@ -137,6 +151,49 @@ export function registerDesktopIpc(
   })
 
   ipcMain.handle(IPC.hotkeysGetRuntimeStatus, () => getHotkeyRuntimeStatus())
+
+  ipcMain.handle(IPC.overlayGetState, (event) => {
+    if (!canUseDesktopOverlaySender(event.sender)) {
+      throw new Error('Untrusted overlay state request')
+    }
+    return getDesktopOverlayState()
+  })
+
+  ipcMain.handle(IPC.overlayGetPreferences, (event) => {
+    if (!canSetDesktopOverlaySnapshot(event.sender)) {
+      throw new Error('Untrusted overlay preferences request')
+    }
+    return getDesktopOverlayPreferences()
+  })
+
+  ipcMain.handle(
+    IPC.overlaySetPreferences,
+    async (event, preferences: DesktopOverlayPreferences) => {
+      if (!canSetDesktopOverlaySnapshot(event.sender)) {
+        throw new Error('Untrusted overlay preferences update')
+      }
+      const saved = await options.setOverlayPreferences(preferences)
+      setDesktopOverlayPreferences(saved)
+      return saved
+    },
+  )
+
+  ipcMain.handle(IPC.overlaySetEnabled, (event, enabled: boolean) => {
+    if (!canSetDesktopOverlaySnapshot(event.sender)) {
+      throw new Error('Untrusted overlay settings request')
+    }
+    return setDesktopOverlayEnabled(Boolean(enabled))
+  })
+
+  ipcMain.handle(
+    IPC.overlaySetSnapshot,
+    (event, snapshot: DesktopOverlaySnapshot) => {
+      if (!canSetDesktopOverlaySnapshot(event.sender)) {
+        throw new Error('Untrusted overlay snapshot request')
+      }
+      return setDesktopOverlaySnapshot(snapshot)
+    },
+  )
 
   return () => {
     lastActivity = null

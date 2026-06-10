@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@syrnike13/platform'
 
 import type {
+  DesktopOverlayPreferences,
+  DesktopOverlaySnapshot,
+  DesktopOverlayState,
   DesktopOs,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
@@ -149,6 +152,43 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.hotkeysPressed, listener)
       return () => {
         ipcRenderer.removeListener(IPC.hotkeysPressed, listener)
+      }
+    },
+  },
+  overlay: {
+    getPreferences() {
+      return ipcRenderer.invoke(
+        IPC.overlayGetPreferences,
+      ) as Promise<DesktopOverlayPreferences>
+    },
+    setPreferences(preferences: DesktopOverlayPreferences) {
+      return ipcRenderer.invoke(
+        IPC.overlaySetPreferences,
+        preferences,
+      ) as Promise<DesktopOverlayPreferences>
+    },
+    getState() {
+      return ipcRenderer.invoke(IPC.overlayGetState) as Promise<DesktopOverlayState>
+    },
+    setEnabled(enabled: boolean) {
+      return ipcRenderer.invoke(
+        IPC.overlaySetEnabled,
+        enabled,
+      ) as Promise<DesktopOverlayState>
+    },
+    setSnapshot(snapshot: DesktopOverlaySnapshot) {
+      return ipcRenderer.invoke(
+        IPC.overlaySetSnapshot,
+        snapshot,
+      ) as Promise<DesktopOverlayState>
+    },
+    onStateChange(handler: (state: DesktopOverlayState) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isDesktopOverlayState(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.overlayStateChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.overlayStateChanged, listener)
       }
     },
   },
@@ -360,6 +400,51 @@ function isNativePickerResolved(
     typeof payload.requestId === 'string' &&
     typeof payload.sourceId === 'string' &&
     typeof payload.audioRequested === 'boolean'
+  )
+}
+
+function isDesktopOverlayState(value: unknown): value is DesktopOverlayState {
+  if (!value || typeof value !== 'object') return false
+  const state = value as DesktopOverlayState
+  return (
+    typeof state.available === 'boolean' &&
+    typeof state.enabled === 'boolean' &&
+    typeof state.visible === 'boolean' &&
+    (state.target === null ||
+      (typeof state.target === 'object' &&
+        typeof state.target.gameId === 'string' &&
+        typeof state.target.processName === 'string' &&
+        (typeof state.target.processPath === 'string' ||
+          state.target.processPath === null) &&
+        typeof state.target.title === 'string' &&
+        state.target.bounds !== null &&
+        typeof state.target.bounds === 'object')) &&
+    isDesktopOverlaySnapshot(state.snapshot)
+  )
+}
+
+function isDesktopOverlaySnapshot(
+  value: unknown,
+): value is DesktopOverlaySnapshot {
+  if (!value || typeof value !== 'object') return false
+  const snapshot = value as DesktopOverlaySnapshot
+  return (
+    typeof snapshot.active === 'boolean' &&
+    (typeof snapshot.channelId === 'string' || snapshot.channelId === null) &&
+    (typeof snapshot.channelLabel === 'string' || snapshot.channelLabel === null) &&
+    Array.isArray(snapshot.participants) &&
+    snapshot.participants.every((participant) => {
+      if (!participant || typeof participant !== 'object') return false
+      const item = participant as DesktopOverlaySnapshot['participants'][number]
+      return (
+        typeof item.userId === 'string' &&
+        typeof item.displayName === 'string' &&
+        (typeof item.avatarUrl === 'string' || item.avatarUrl === null) &&
+        typeof item.speaking === 'boolean' &&
+        typeof item.muted === 'boolean' &&
+        typeof item.deafened === 'boolean'
+      )
+    })
   )
 }
 

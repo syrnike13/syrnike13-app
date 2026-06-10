@@ -17,6 +17,10 @@ import {
 import { registerDesktopIpc } from './ipc'
 import { disposeHotkeys } from './hotkeys'
 import {
+  configureDesktopOverlay,
+  disposeDesktopOverlay,
+} from './overlay-manager'
+import {
   disposePrewarmedNativeMediaEngineHelper,
   prewarmNativeMediaEngineHelper,
 } from './native-media-engine'
@@ -106,6 +110,13 @@ async function setOpenAtLogin(openAtLogin: boolean) {
   desktopPreferences = nextPreferences
   applyLoginItemSettings(openAtLogin)
   return desktopPreferences
+}
+
+async function setOverlayPreferences(overlay: DesktopPreferences['overlay']) {
+  const nextPreferences = { ...desktopPreferences, overlay }
+  await saveDesktopPreferences(desktopPreferencesPath(), nextPreferences)
+  desktopPreferences = nextPreferences
+  return desktopPreferences.overlay
 }
 
 async function ensureAppCreated() {
@@ -213,12 +224,21 @@ function setupTray() {
 
 async function createApp() {
   const loadUrl = await resolveAppUrl()
+  configureDesktopOverlay(loadUrl, () => mainWindow, {
+    preferences: desktopPreferences.overlay,
+    persistPreferences: async (overlay) => {
+      const nextPreferences = { ...desktopPreferences, overlay }
+      await saveDesktopPreferences(desktopPreferencesPath(), nextPreferences)
+      desktopPreferences = nextPreferences
+    },
+  })
   if (!desktopIpcRegistered) {
     desktopIpcRegistered = true
     registerDesktopIpc(() => mainWindow, {
       getWindowPreferences: getDesktopPreferences,
       setCloseToTray,
       setOpenAtLogin,
+      setOverlayPreferences,
       showWindow: showMainWindow,
       sessionPath: currentDesktopSessionPath(),
     })
@@ -310,6 +330,7 @@ if (setupSingleInstance()) {
     quitting = true
     disposeDesktopAutoUpdate()
     disposeHotkeys()
+    disposeDesktopOverlay()
     disposePrewarmedNativeMediaEngineHelper()
     tray?.destroy()
     tray = null

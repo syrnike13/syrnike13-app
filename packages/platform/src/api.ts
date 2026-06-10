@@ -11,6 +11,11 @@ import type {
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
 } from './media'
+import type {
+  DesktopOverlayPreferences,
+  DesktopOverlaySnapshot,
+  DesktopOverlayState,
+} from './overlay'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -39,6 +44,7 @@ export interface ActivityDetails {
 export interface DesktopWindowPreferences {
   closeToTray: boolean
   openAtLogin: boolean
+  overlay: DesktopOverlayPreferences
 }
 
 export interface DesktopStoredSession {
@@ -204,6 +210,16 @@ export interface SyrnikeDesktopApi {
     getRuntimeStatus(): Promise<HotkeyRuntimeStatus>
     onRecordedInput(handler: (event: NativeInputEvent) => void): () => void
     onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
+  }
+  overlay: {
+    getPreferences(): Promise<DesktopOverlayPreferences>
+    setPreferences(
+      preferences: DesktopOverlayPreferences,
+    ): Promise<DesktopOverlayPreferences>
+    getState(): Promise<DesktopOverlayState>
+    setEnabled(enabled: boolean): Promise<DesktopOverlayState>
+    setSnapshot(snapshot: DesktopOverlaySnapshot): Promise<DesktopOverlayState>
+    onStateChange(handler: (state: DesktopOverlayState) => void): () => void
   }
   media: {
     getDisplaySources(requestId: string): Promise<DesktopDisplayMediaSource[]>

@@ -32,6 +32,21 @@ export type {
   NativeMediaTarget,
 } from './media'
 export type {
+  DesktopOverlayBounds,
+  DesktopOverlayGamePreference,
+  DesktopOverlayGameTarget,
+  DesktopOverlayParticipant,
+  DesktopOverlayPreferences,
+  DesktopOverlaySnapshot,
+  DesktopOverlayState,
+} from './overlay'
+export {
+  DEFAULT_DESKTOP_OVERLAY_PREFERENCES,
+  EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
+  normalizeDesktopOverlayPreferences,
+  normalizeDesktopOverlaySnapshot,
+} from './overlay'
+export type {
   ActivityDetails,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,

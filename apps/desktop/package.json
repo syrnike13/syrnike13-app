@@ -6,8 +6,9 @@
   "main": "./out/main/index.js",
   "scripts": {
     "build:hotkey-helper": "node scripts/build-hotkey-helper-win.mjs",
+    "build:overlay-detector": "node scripts/build-overlay-detector-win.mjs",
     "build:native-voice": "node scripts/build-native-voice-win.mjs",
-    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper && pnpm run build:native-voice",
+    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper && pnpm run build:overlay-detector && pnpm run build:native-voice",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",

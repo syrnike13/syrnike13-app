@@ -6,10 +6,22 @@ import { Button } from '#/components/ui/button'
 import { Switch } from '#/components/ui/switch'
 import { usePlatform } from '#/platform/use-platform'
 import type {
+  DesktopOverlayPreferences,
   DesktopUpdateState,
   DesktopVersions,
   DesktopWindowPreferences,
 } from '@syrnike13/platform'
+
+const DEFAULT_OVERLAY_PREFERENCES: DesktopOverlayPreferences = {
+  enabled: true,
+  games: [],
+}
+
+const DEFAULT_WINDOW_PREFERENCES: DesktopWindowPreferences = {
+  closeToTray: true,
+  openAtLogin: true,
+  overlay: DEFAULT_OVERLAY_PREFERENCES,
+}
 
 export function SettingsDesktopPanel() {
   const { desktop } = usePlatform()
@@ -115,7 +127,7 @@ export function SettingsDesktopPanel() {
               if (!desktop || savingOpenAtLogin) return
               const previous = windowPreferences
               setWindowPreferences((current) => ({
-                ...(current ?? { closeToTray: true, openAtLogin: true }),
+                ...(current ?? DEFAULT_WINDOW_PREFERENCES),
                 openAtLogin: checked,
               }))
               setSavingOpenAtLogin(true)
@@ -147,7 +159,7 @@ export function SettingsDesktopPanel() {
               if (!desktop || savingCloseToTray) return
               const previous = windowPreferences
               setWindowPreferences((current) => ({
-                ...(current ?? { closeToTray: true, openAtLogin: true }),
+                ...(current ?? DEFAULT_WINDOW_PREFERENCES),
                 closeToTray: checked,
               }))
               setSavingCloseToTray(true)

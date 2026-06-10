@@ -20,6 +20,7 @@ import { Route as LoginRegisterRouteImport } from './routes/login/register'
 import { Route as LoginOnboardRouteImport } from './routes/login/onboard'
 import { Route as LoginCheckRouteImport } from './routes/login/check'
 import { Route as InviteCodeRouteImport } from './routes/invite/$code'
+import { Route as DesktopOverlayRouteImport } from './routes/desktop/overlay'
 import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
@@ -82,6 +83,11 @@ const InviteCodeRoute = InviteCodeRouteImport.update({
   path: '/invite/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DesktopOverlayRoute = DesktopOverlayRouteImport.update({
+  id: '/desktop/overlay',
+  path: '/desktop/overlay',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppVoiceDebugRoute = AppVoiceDebugRouteImport.update({
   id: '/voice-debug',
   path: '/voice-debug',
@@ -120,6 +126,7 @@ export interface FileRoutesByFullPath {
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
+  '/desktop/overlay': typeof DesktopOverlayRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
+  '/desktop/overlay': typeof DesktopOverlayRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -158,6 +166,7 @@ export interface FileRoutesById {
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
+  '/desktop/overlay': typeof DesktopOverlayRoute
   '/invite/$code': typeof InviteCodeRoute
   '/login/check': typeof LoginCheckRoute
   '/login/onboard': typeof LoginOnboardRoute
@@ -179,6 +188,7 @@ export interface FileRouteTypes {
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
+    | '/desktop/overlay'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
+    | '/desktop/overlay'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
+    | '/desktop/overlay'
     | '/invite/$code'
     | '/login/check'
     | '/login/onboard'
@@ -233,6 +245,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  DesktopOverlayRoute: typeof DesktopOverlayRoute
   InviteCodeRoute: typeof InviteCodeRoute
   LoginCheckRoute: typeof LoginCheckRoute
   LoginOnboardRoute: typeof LoginOnboardRoute
@@ -322,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/desktop/overlay': {
+      id: '/desktop/overlay'
+      path: '/desktop/overlay'
+      fullPath: '/desktop/overlay'
+      preLoaderRoute: typeof DesktopOverlayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app/voice-debug': {
       id: '/app/voice-debug'
       path: '/voice-debug'
@@ -404,6 +424,7 @@ const LoginResetRouteWithChildren = LoginResetRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
+  DesktopOverlayRoute: DesktopOverlayRoute,
   InviteCodeRoute: InviteCodeRoute,
   LoginCheckRoute: LoginCheckRoute,
   LoginOnboardRoute: LoginOnboardRoute,
