@@ -26,7 +26,11 @@ import {
 } from '#/features/api/servers-api'
 import { blockUser, openDirectMessage } from '#/features/api/users-api'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import {
+  canBanServerMember,
+  canKickServerMember,
+} from '#/lib/permissions'
 export type UserProfileCardProps = {
   user: User
   hideMessage?: boolean
@@ -53,7 +57,24 @@ export function UserProfileCard({
 
   const isSelf = profile._id === auth.user?._id
   const canMessage = !hideMessage && !isSelf
-  const canModerate = Boolean(serverId) && !isSelf
+  const server = useSyncStore((s) =>
+    serverId ? s.servers[serverId] : undefined,
+  )
+  const actorMember = useSyncStore((s) =>
+    serverId && auth.user?._id
+      ? s.members[`${serverId}:${auth.user._id}`]
+      : undefined,
+  )
+  const targetMember = useSyncStore((s) =>
+    serverId ? s.members[`${serverId}:${profile._id}`] : undefined,
+  )
+  const canKick =
+    server &&
+    canKickServerMember(server, actorMember, auth.user?._id, targetMember)
+  const canBan =
+    server &&
+    canBanServerMember(server, actorMember, auth.user?._id, targetMember)
+  const showProfileActions = canKick || canBan || !isSelf
 
   function dismiss() {
     onClose?.()
@@ -151,7 +172,7 @@ export function UserProfileCard({
   }
 
   const bannerActions =
-    canModerate || !isSelf ? (
+    showProfileActions ? (
       <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -170,27 +191,27 @@ export function UserProfileCard({
           className="z-[250] w-auto min-w-[11rem] p-1"
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          {canModerate ? (
-            <>
-              <FloatingMenuItem
-                onClick={() => {
-                  setActionsOpen(false)
-                  void handleKick()
-                }}
-              >
-                <UserMinusIcon className="size-3.5" />
-                Исключить
-              </FloatingMenuItem>
-              <FloatingMenuItem
-                onClick={() => {
-                  setActionsOpen(false)
-                  void handleBan()
-                }}
-              >
-                <BanIcon className="size-3.5" />
-                Бан на сервере
-              </FloatingMenuItem>
-            </>
+          {canKick ? (
+            <FloatingMenuItem
+              onClick={() => {
+                setActionsOpen(false)
+                void handleKick()
+              }}
+            >
+              <UserMinusIcon className="size-3.5" />
+              Исключить
+            </FloatingMenuItem>
+          ) : null}
+          {canBan ? (
+            <FloatingMenuItem
+              onClick={() => {
+                setActionsOpen(false)
+                void handleBan()
+              }}
+            >
+              <BanIcon className="size-3.5" />
+              Бан на сервере
+            </FloatingMenuItem>
           ) : null}
           {!isSelf ? (
             <FloatingMenuItem

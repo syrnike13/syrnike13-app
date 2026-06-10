@@ -1,5 +1,3 @@
-import { VolumeXIcon } from '#/components/icons'
-
 import {
   ContextMenuCheckboxItem,
   ContextMenuLabel,
@@ -50,13 +48,13 @@ export function UserContextMenuVoiceControls({
         </div>
       </div>
       <ContextMenuCheckboxItem
+        indicatorPosition="end"
         checked={muted}
         onSelect={(event) => event.preventDefault()}
         onCheckedChange={(checked) => {
           voiceListenerStore.setUserMuted(userId, checked === true)
         }}
       >
-        <VolumeXIcon />
         Заглушить голос
       </ContextMenuCheckboxItem>
       <ContextMenuSeparator />

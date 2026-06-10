@@ -22,8 +22,12 @@ import {
 } from '#/features/api/servers-api'
 import { blockUser, openDirectMessage } from '#/features/api/users-api'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
+import {
+  canBanServerMember,
+  canKickServerMember,
+} from '#/lib/permissions'
 
 type UserContextMenuContentProps = {
   user: User
@@ -45,7 +49,26 @@ export function UserContextMenuContent({
   const navigate = useNavigate()
   const { openSettings } = useSettingsModal()
 
-  const canModerate = Boolean(serverId) && !isSelf
+  const server = useSyncStore((s) =>
+    serverId ? s.servers[serverId] : undefined,
+  )
+  const actorMember = useSyncStore((s) =>
+    serverId && auth.user?._id
+      ? s.members[`${serverId}:${auth.user._id}`]
+      : undefined,
+  )
+  const targetMember = useSyncStore((s) =>
+    serverId ? s.members[`${serverId}:${user._id}`] : undefined,
+  )
+
+  const canKick =
+    server &&
+    canKickServerMember(server, actorMember, auth.user?._id, targetMember)
+  const canBan =
+    server &&
+    canBanServerMember(server, actorMember, auth.user?._id, targetMember)
+  const canBlock = !isSelf
+
   const token = auth.session?.token
 
   async function openDm() {
@@ -123,6 +146,7 @@ export function UserContextMenuContent({
   }
 
   const showVoiceControls = inVoice && !isSelf
+  const showModeration = canKick || canBan
 
   return (
     <ContextMenuContent className="z-[200] w-56">
@@ -148,26 +172,30 @@ export function UserContextMenuContent({
         <CopyIcon />
         Копировать ID
       </ContextMenuItem>
-      {canModerate ? (
+      {showModeration ? (
         <>
           <ContextMenuSeparator />
-          <ContextMenuItem
-            variant="destructive"
-            onSelect={() => void handleKick()}
-          >
-            <UserMinusIcon />
-            Исключить с сервера
-          </ContextMenuItem>
-          <ContextMenuItem
-            variant="destructive"
-            onSelect={() => void handleBan()}
-          >
-            <BanIcon />
-            Забанить на сервере
-          </ContextMenuItem>
+          {canKick ? (
+            <ContextMenuItem
+              variant="destructive"
+              onSelect={() => void handleKick()}
+            >
+              <UserMinusIcon />
+              Исключить с сервера
+            </ContextMenuItem>
+          ) : null}
+          {canBan ? (
+            <ContextMenuItem
+              variant="destructive"
+              onSelect={() => void handleBan()}
+            >
+              <BanIcon />
+              Забанить на сервере
+            </ContextMenuItem>
+          ) : null}
         </>
       ) : null}
-      {!isSelf ? (
+      {canBlock ? (
         <>
           <ContextMenuSeparator />
           <ContextMenuItem

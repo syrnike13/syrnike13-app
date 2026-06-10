@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Maximize2Icon, MonitorXIcon, VolumeXIcon } from '#/components/icons'
+import { Maximize2Icon, MonitorXIcon } from '#/components/icons'
 import type { User } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'
@@ -266,6 +266,7 @@ export function StageMediaTile({
         ) : null}
         <ContextMenuSeparator />
         <ContextMenuCheckboxItem
+          indicatorPosition="end"
           checked={muted}
           onSelect={(event) => event.preventDefault()}
           onCheckedChange={(checked) => {
@@ -276,7 +277,6 @@ export function StageMediaTile({
             }
           }}
         >
-          <VolumeXIcon />
           {isScreen ? 'Заглушить стрим' : 'Заглушить голос'}
         </ContextMenuCheckboxItem>
         <div

@@ -144,24 +144,38 @@ function ContextMenuCheckboxItem({
   className,
   children,
   checked,
+  indicatorPosition = "start",
   ...props
-}: React.ComponentProps<typeof ContextMenuPrimitive.CheckboxItem>) {
+}: React.ComponentProps<typeof ContextMenuPrimitive.CheckboxItem> & {
+  indicatorPosition?: "start" | "end"
+}) {
+  const indicator = (
+    <span
+      className={cn(
+        "pointer-events-none absolute flex size-3.5 items-center justify-center",
+        indicatorPosition === "end" ? "right-2" : "left-2",
+      )}
+    >
+      <ContextMenuPrimitive.ItemIndicator>
+        <CheckIcon className="size-4" />
+      </ContextMenuPrimitive.ItemIndicator>
+    </span>
+  )
+
   return (
     <ContextMenuPrimitive.CheckboxItem
       data-slot="context-menu-checkbox-item"
+      data-indicator-position={indicatorPosition}
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[indicator-position=end]:px-2 data-[indicator-position=end]:pr-8 data-[indicator-position=start]:pr-2 data-[indicator-position=start]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}
       {...props}
     >
-      <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        <ContextMenuPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
-        </ContextMenuPrimitive.ItemIndicator>
-      </span>
+      {indicatorPosition === "start" ? indicator : null}
       {children}
+      {indicatorPosition === "end" ? indicator : null}
     </ContextMenuPrimitive.CheckboxItem>
   )
 }

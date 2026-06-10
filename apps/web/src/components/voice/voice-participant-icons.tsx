@@ -21,6 +21,8 @@ type VoiceParticipantIconsProps = {
   deafened?: boolean
   serverMuted?: boolean
   serverDeafened?: boolean
+  /** Локально заглушен только у текущего слушателя. */
+  listenerMuted?: boolean
   camera?: boolean
   className?: string
 }
@@ -30,14 +32,21 @@ export function VoiceParticipantIcons({
   deafened,
   serverMuted,
   serverDeafened,
+  listenerMuted,
   camera,
   className,
 }: VoiceParticipantIconsProps) {
-  if (!muted && !deafened && !camera) return null
+  if (!muted && !deafened && !camera && !listenerMuted) return null
 
   return (
     <span className={cn('flex shrink-0 items-center gap-0.5', className)}>
-      {muted ? (
+      {listenerMuted ? (
+        <MicOffIcon
+          className="size-3.5 text-[#ed4245]"
+          aria-label="Вы заглушили этого участника"
+        />
+      ) : null}
+      {muted && !listenerMuted ? (
         <MicOffIcon
           className={cn(
             'size-3.5',

@@ -4,8 +4,10 @@ import {
   ChannelPermission,
   calculateChannelPermissions,
   calculateServerPermissions,
+  canBanServerMember,
   canEditMember,
   canInviteToChannel,
+  canKickServerMember,
   getMemberRank,
   getServerMenuPermissions,
   hasChannelPermission,
@@ -238,6 +240,83 @@ describe('canEditMember', () => {
     })
 
     expect(canEditMember(server, actor, 'user-1', target)).toBe(true)
+  })
+})
+
+describe('canKickServerMember', () => {
+  it('requires kick permission and higher role rank than the target', () => {
+    const server = makeServer({
+      roles: {
+        mod: {
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: ChannelPermission.KickMembers, d: 0 },
+          rank: 2,
+        },
+        member: {
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canKickServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(
+      canKickServerMember(
+        server,
+        makeMember({ roles: ['member'] }),
+        'user-2',
+        actor,
+      ),
+    ).toBe(false)
+  })
+
+  it('does not allow kicking the server owner', () => {
+    const server = makeServer({ owner: 'owner-1' })
+    const actor = makeMember({
+      roles: ['mod'],
+    })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'owner-1' },
+    })
+
+    expect(canKickServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
+})
+
+describe('canBanServerMember', () => {
+  it('requires ban permission', () => {
+    const server = makeServer({
+      roles: {
+        mod: {
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: ChannelPermission.BanMembers, d: 0 },
+          rank: 2,
+        },
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+    })
+
+    expect(canBanServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(
+      canBanServerMember(
+        server,
+        makeMember(),
+        'user-1',
+        target,
+      ),
+    ).toBe(false)
   })
 })
 

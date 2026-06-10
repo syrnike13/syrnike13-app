@@ -8,6 +8,8 @@ import {
 } from '#/components/voice/voice-participant-icons'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import type { UserVoiceState } from '#/features/sync/voice-types'
+import { useAuth } from '#/features/auth/auth-context'
+import { useVoiceListenerStore } from '#/features/voice/voice-listener-store'
 import { cn } from '#/lib/utils'
 
 type VoiceParticipantRowProps = {
@@ -37,8 +39,13 @@ export function VoiceParticipantRow({
   serverName,
   roles,
 }: VoiceParticipantRowProps) {
+  const auth = useAuth()
   const muted = participant.server_muted || participant.self_mute
   const deafened = participant.server_deafened || participant.self_deaf
+  const listenerMuted = useVoiceListenerStore((s) => {
+    if (participant.id === auth.user?._id) return false
+    return s.getUserMuted(participant.id)
+  })
 
   const isSpeaking = speaking && !voiceElsewhere
 
@@ -86,6 +93,7 @@ export function VoiceParticipantRow({
           deafened={deafened}
           serverMuted={participant.server_muted}
           serverDeafened={participant.server_deafened}
+          listenerMuted={listenerMuted}
           camera={participant.camera}
         />
       </span>

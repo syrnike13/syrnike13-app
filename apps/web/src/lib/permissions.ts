@@ -164,6 +164,60 @@ export function canAssignRole(
   return roleRank > getMemberRank(server, member)
 }
 
+function canModerateServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+  permission: number,
+): boolean {
+  if (!actorUserId || !targetMember) return false
+  if (actorUserId === targetMember._id.user) return false
+  if (server.owner === targetMember._id.user) return false
+  if (server.owner === actorUserId) return true
+
+  const serverPermissions = calculateServerPermissions(
+    server,
+    actorMember,
+    actorUserId,
+  )
+  if (!hasChannelPermission(serverPermissions, permission)) {
+    return false
+  }
+
+  return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
+}
+
+export function canKickServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.KickMembers,
+  )
+}
+
+export function canBanServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.BanMembers,
+  )
+}
+
 export function canEditMember(
   server: Server,
   actorMember: Member | undefined,
