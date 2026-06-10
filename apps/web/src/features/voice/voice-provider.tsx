@@ -560,6 +560,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       )
       pruneWatchedRemoteScreenIds(
         watchedRemoteScreenIdsRef.current,
+        pendingScreenWatchIdsRef.current,
         visibleRemoteScreenIds,
         remoteParticipantUserIds,
       )

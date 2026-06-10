@@ -3,16 +3,28 @@ import { describe, expectTypeOf, it } from 'vitest'
 import type {
   NativeMediaEngineSessionSummary,
   NativeMediaEchoCancellationMode,
+  NativeMediaMicrophoneSession,
   NativeMediaNoiseSuppressionMode,
   NativeMicrophoneRuntimeConfig,
   NativeMediaSession,
   NativeMediaMicrophoneSessionStartOptions,
+  NativeMediaScreenSession,
+  NativeMediaScreenSessionStartOptions,
   NativeMediaSessionStartOptions,
 } from './media'
 
 describe('native media session contract', () => {
   it('models screen audio as part of the session request and response', () => {
-    expectTypeOf<NativeMediaSessionStartOptions>().toMatchTypeOf<{
+    type ScreenStartOptions = Extract<
+      NativeMediaSessionStartOptions,
+      { kind: 'screen' }
+    >
+    type ScreenSession = Extract<NativeMediaSession, { kind: 'screen' }>
+
+    expectTypeOf<ScreenStartOptions>().toEqualTypeOf<
+      NativeMediaScreenSessionStartOptions
+    >()
+    expectTypeOf<ScreenStartOptions>().toMatchTypeOf<{
       kind: 'screen'
       sourceId: string
       audioBitrate?: number
@@ -21,7 +33,8 @@ describe('native media session contract', () => {
       }
     }>()
 
-    expectTypeOf<NativeMediaSession>().toMatchTypeOf<{
+    expectTypeOf<ScreenSession>().toEqualTypeOf<NativeMediaScreenSession>()
+    expectTypeOf<ScreenSession>().toMatchTypeOf<{
       kind: 'screen'
       audio?: {
         mode: 'process' | 'system_exclude' | 'none'
@@ -35,7 +48,12 @@ describe('native media session contract', () => {
   })
 
   it('models active session audio in the engine snapshot contract', () => {
-    expectTypeOf<NativeMediaEngineSessionSummary>().toMatchTypeOf<{
+    type ScreenSummary = Extract<
+      NativeMediaEngineSessionSummary,
+      { kind: 'screen' }
+    >
+
+    expectTypeOf<ScreenSummary>().toMatchTypeOf<{
       kind: 'screen'
       sessionId: string
       audio?: {
@@ -46,44 +64,56 @@ describe('native media session contract', () => {
   })
 
   it('models microphone capture as a native media session', () => {
+    type MicrophoneStartOptions = Extract<
+      NativeMediaSessionStartOptions,
+      { kind: 'microphone' }
+    >
+    type MicrophoneSession = Extract<
+      NativeMediaSession,
+      { kind: 'microphone' }
+    >
+
+    expectTypeOf<MicrophoneStartOptions>().toEqualTypeOf<
+      NativeMediaMicrophoneSessionStartOptions
+    >()
+    expectTypeOf<MicrophoneStartOptions>().toMatchTypeOf<{
+      kind: 'microphone'
+      deviceId?: string
+      sampleRate: 48000
+      channels: 1
+      noiseSuppression: boolean
+      echoCancellation: boolean
+      inputVolume: number
+      audioBitrate?: number
+      voiceGateAutoThreshold?: boolean
+      muted?: boolean
+      livekit: {
+        url: string
+        token: string
+        participantIdentity: string
+      }
+    }>()
+
+    expectTypeOf<MicrophoneSession>().toEqualTypeOf<NativeMediaMicrophoneSession>()
+    expectTypeOf<MicrophoneSession>().toMatchTypeOf<{
+      kind: 'microphone'
+      sessionId: string
+      audio: {
+        mode: 'microphone'
+        sampleRate: 48000
+        channels: 1
+        noiseSuppression: 'disabled' | 'software' | 'unavailable'
+        echoCancellation: 'disabled' | 'software' | 'unavailable'
+      }
+      nativeParticipantIdentity: string
+    }>()
+
     expectTypeOf<NativeMediaSessionStartOptions>().toMatchTypeOf<
       | {
           kind: 'screen'
         }
       | {
           kind: 'microphone'
-          deviceId?: string
-          sampleRate: 48000
-          channels: 1
-          noiseSuppression: boolean
-          echoCancellation: boolean
-          inputVolume: number
-          audioBitrate?: number
-          voiceGateAutoThreshold?: boolean
-          muted?: boolean
-          livekit: {
-            url: string
-            token: string
-            participantIdentity: string
-          }
-        }
-    >()
-
-    expectTypeOf<NativeMediaSession>().toMatchTypeOf<
-      | {
-          kind: 'screen'
-        }
-      | {
-          kind: 'microphone'
-          sessionId: string
-          audio: {
-            mode: 'microphone'
-            sampleRate: 48000
-            channels: 1
-            noiseSuppression: 'disabled' | 'software' | 'unavailable'
-            echoCancellation: 'disabled' | 'software' | 'unavailable'
-          }
-          nativeParticipantIdentity: string
         }
     >()
   })
@@ -113,11 +143,25 @@ describe('native media session contract', () => {
     const noiseStatus: NativeMediaNoiseSuppressionMode = 'software'
     const echoStatus: NativeMediaEchoCancellationMode = 'unavailable'
 
-    expectTypeOf(microphoneStart.noiseSuppression).toEqualTypeOf<boolean>()
-    expectTypeOf(microphoneStart.voiceGateAutoThreshold).toEqualTypeOf<true>()
-    expectTypeOf(runtimeConfig.echoCancellation).toEqualTypeOf<boolean | undefined>()
-    expectTypeOf(runtimeConfig.voiceGateAutoThreshold).toEqualTypeOf<boolean | undefined>()
-    expectTypeOf(noiseStatus).toEqualTypeOf<NativeMediaNoiseSuppressionMode>()
-    expectTypeOf(echoStatus).toEqualTypeOf<NativeMediaEchoCancellationMode>()
+    expectTypeOf<
+      NativeMediaMicrophoneSessionStartOptions['noiseSuppression']
+    >().toEqualTypeOf<boolean>()
+    expectTypeOf<
+      NativeMediaMicrophoneSessionStartOptions['voiceGateAutoThreshold']
+    >().toEqualTypeOf<boolean | undefined>()
+    expectTypeOf<
+      NativeMicrophoneRuntimeConfig['echoCancellation']
+    >().toEqualTypeOf<boolean | undefined>()
+    expectTypeOf<
+      NativeMicrophoneRuntimeConfig['voiceGateAutoThreshold']
+    >().toEqualTypeOf<boolean | undefined>()
+    expectTypeOf<NativeMediaNoiseSuppressionMode>().toEqualTypeOf<
+      'disabled' | 'software' | 'unavailable'
+    >()
+    expectTypeOf<NativeMediaEchoCancellationMode>().toEqualTypeOf<
+      'disabled' | 'software' | 'unavailable'
+    >()
+    expectTypeOf(noiseStatus).toMatchTypeOf<NativeMediaNoiseSuppressionMode>()
+    expectTypeOf(echoStatus).toMatchTypeOf<NativeMediaEchoCancellationMode>()
   })
 })

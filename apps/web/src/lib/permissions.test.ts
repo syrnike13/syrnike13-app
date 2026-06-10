@@ -318,6 +318,44 @@ describe('canBanServerMember', () => {
       ),
     ).toBe(false)
   })
+
+  it('does not allow banning the server owner', () => {
+    const server = makeServer({ owner: 'owner-1' })
+    const actor = makeMember({
+      roles: ['mod'],
+    })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'owner-1' },
+    })
+
+    expect(canBanServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
+
+  it('requires higher role rank than the target', () => {
+    const server = makeServer({
+      roles: {
+        mod: {
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: ChannelPermission.BanMembers, d: 0 },
+          rank: 2,
+        },
+        admin: {
+          _id: 'admin',
+          name: 'Admin',
+          permissions: { a: ChannelPermission.BanMembers, d: 0 },
+          rank: 1,
+        },
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['admin'],
+    })
+
+    expect(canBanServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
 })
 
 describe('getServerMenuPermissions', () => {

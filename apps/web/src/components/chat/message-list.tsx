@@ -33,6 +33,10 @@ function isNearBottom(element: HTMLDivElement, threshold = STICKY_BOTTOM_THRESHO
   )
 }
 
+function isScrollable(element: HTMLDivElement) {
+  return element.scrollHeight > element.clientHeight
+}
+
 function scrollContainerToBottom(
   element: HTMLDivElement,
   behavior: ScrollBehavior = 'auto',
@@ -308,10 +312,11 @@ export function MessageList({
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0]
+        const canFillViewport = !isScrollable(root)
         if (
           entry?.isIntersecting &&
           !loadingOlder &&
-          canLoadOlderRef.current
+          (canLoadOlderRef.current || canFillViewport)
         ) {
           onLoadOlderRef.current?.()
         }

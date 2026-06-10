@@ -276,7 +276,7 @@ export function UserGlobalProfileSidebar({
         ) : null}
 
         {/* Member since (server context) */}
-        {showServerSection && member ? (
+        {showServerSection && member?.joined_at ? (
           <div className="mt-4">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               На сервере с

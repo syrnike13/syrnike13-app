@@ -42,11 +42,29 @@ export function listServerTextChannelIds(
     .map((channel) => channel._id)
 }
 
+const serverChannelsListCache = new Map<
+  string,
+  {
+    server: Server | undefined
+    channels: SyncState['channels']
+    list: Channel[]
+  }
+>()
+
 export function listServerChannels(
   state: SyncState,
   serverId: string,
 ): Channel[] {
   const server = state.servers[serverId]
+  const cached = serverChannelsListCache.get(serverId)
+  if (
+    cached &&
+    cached.server === server &&
+    cached.channels === state.channels
+  ) {
+    return cached.list
+  }
+
   const channels = Object.values(state.channels).filter(
     (
       channel,
@@ -56,16 +74,22 @@ export function listServerChannels(
   )
 
   if (!server?.channels?.length) {
-    return channels.sort((a, b) => {
+    const list = channels.sort((a, b) => {
       const aVoice = isServerVoiceChannel(a)
       const bVoice = isServerVoiceChannel(b)
       if (aVoice !== bVoice) return aVoice ? 1 : -1
       return a.name.localeCompare(b.name)
     })
+    serverChannelsListCache.set(serverId, {
+      server,
+      channels: state.channels,
+      list,
+    })
+    return list
   }
 
   const order = new Map(server.channels.map((id, index) => [id, index]))
-  return channels.sort((a, b) => {
+  const list = channels.sort((a, b) => {
     const aVoice = isServerVoiceChannel(a)
     const bVoice = isServerVoiceChannel(b)
     if (aVoice !== bVoice) return aVoice ? 1 : -1
@@ -74,6 +98,12 @@ export function listServerChannels(
     if (aIndex !== bIndex) return aIndex - bIndex
     return a.name.localeCompare(b.name)
   })
+  serverChannelsListCache.set(serverId, {
+    server,
+    channels: state.channels,
+    list,
+  })
+  return list
 }
 
 const channelMessagesListCache = new Map<

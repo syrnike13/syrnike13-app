@@ -342,6 +342,54 @@ describe('RemoteAudioMixer', () => {
     expect(changes.at(-1)).toEqual([])
   })
 
+  it('clears remote mic speaking when globally deafened', () => {
+    const changes: string[][] = []
+    mixer.dispose()
+    mixer = createRemoteAudioMixer({
+      onSpeakingUserIdsChange: (userIds) => {
+        changes.push(Array.from(userIds))
+      },
+    })
+    audioContext.setAnalyserFloatSample(0.002)
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(false)
+    animationFrame.runFrame()
+
+    mixer.applyVolumes(true)
+
+    expect(changes.at(-1)).toEqual([])
+  })
+
+  it('clears remote mic speaking when the speaking track is removed', () => {
+    const changes: string[][] = []
+    mixer.dispose()
+    mixer = createRemoteAudioMixer({
+      onSpeakingUserIdsChange: (userIds) => {
+        changes.push(Array.from(userIds))
+      },
+    })
+    audioContext.setAnalyserFloatSample(0.002)
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(false)
+    animationFrame.runFrame()
+
+    mixer.removeTrack('pub-mic')
+
+    expect(changes.at(-1)).toEqual([])
+  })
+
   it('does not report stream audio as participant speech', () => {
     const changes: string[][] = []
     mixer.dispose()

@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react'
+import type { MouseEvent, PointerEvent } from 'react'
 
 import { HeadphoneOffIcon, MicOffIcon, VideoIcon } from '#/components/icons'
 
@@ -13,6 +13,14 @@ export function VoiceOnAirBadge({
   className,
   onDoubleClick,
 }: VoiceOnAirBadgeProps) {
+  const stopActionPropagation = (
+    event: MouseEvent<HTMLSpanElement> | PointerEvent<HTMLSpanElement>,
+  ) => {
+    if (onDoubleClick) {
+      event.stopPropagation()
+    }
+  }
+
   return (
     <span
       className={cn(
@@ -21,7 +29,9 @@ export function VoiceOnAirBadge({
         className,
       )}
       aria-label="В эфире"
+      onClick={stopActionPropagation}
       onDoubleClick={onDoubleClick}
+      onPointerDown={stopActionPropagation}
     >
       В ЭФИРЕ
     </span>

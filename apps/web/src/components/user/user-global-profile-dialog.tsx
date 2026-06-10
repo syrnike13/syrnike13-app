@@ -104,6 +104,7 @@ export function UserGlobalProfileDialog({
     void navigate({
       to: '/app/c/$channelId',
       params: { channelId },
+      search: { m: undefined },
     })
   }
 

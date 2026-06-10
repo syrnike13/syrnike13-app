@@ -111,6 +111,19 @@ describe('ChannelSidebarItem voice navigation', () => {
     })
   })
 
+  it('reopens the current voice screen without rejoining', () => {
+    renderVoiceItem('voice-main')
+
+    fireEvent.click(screen.getByRole('link', { name: 'main' }))
+
+    expect(mocks.join).not.toHaveBeenCalled()
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/app/c/$channelId',
+      params: { channelId: 'voice-main' },
+      search: { m: undefined },
+    })
+  })
+
   it('opens the voice channel while starting a new voice session', () => {
     mocks.voice.channelId = null
     mocks.voice.status = 'idle'
@@ -124,5 +137,18 @@ describe('ChannelSidebarItem voice navigation', () => {
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })
+  })
+
+  it('keeps modifier-click navigation native', () => {
+    renderVoiceItem('text-general')
+    const link = screen.getByRole('link', { name: 'main' })
+    link.addEventListener('click', (event) => event.preventDefault())
+
+    fireEvent.click(link, {
+      ctrlKey: true,
+    })
+
+    expect(mocks.join).not.toHaveBeenCalled()
+    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 })

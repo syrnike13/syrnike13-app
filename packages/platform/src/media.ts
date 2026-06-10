@@ -19,6 +19,11 @@ export type NativeMediaAudioMode =
   | 'microphone'
   | 'none'
 
+export type NativeMediaScreenAudioMode = Exclude<
+  NativeMediaAudioMode,
+  'microphone'
+>
+
 export type NativeMediaLoopbackMode =
   | 'include_target_process_tree'
   | 'exclude_target_process_tree'
@@ -124,7 +129,7 @@ export type NativeMediaScreenSession = {
   fps?: number
   bitrate?: number
   audio?: {
-    mode: NativeMediaAudioMode
+    mode: NativeMediaScreenAudioMode
     port?: number
     targetProcessId?: number
     loopbackMode?: NativeMediaLoopbackMode
@@ -170,8 +175,7 @@ export type NativeMediaEngineCapabilities = {
   camera: boolean
 }
 
-export type NativeMediaEngineSessionSummary = {
-  kind: NativeMediaSessionKind
+type NativeMediaEngineSessionSummaryBase = {
   sessionId: string
   status: 'starting' | 'running' | 'error'
   port?: number
@@ -179,17 +183,35 @@ export type NativeMediaEngineSessionSummary = {
   height?: number
   fps?: number
   bitrate?: number
-  audio?: {
-    mode: NativeMediaAudioMode
-    port?: number
-    sampleRate?: 48_000
-    channels?: 1 | 2
-    noiseSuppression?: NativeMediaNoiseSuppressionMode
-    echoCancellation?: NativeMediaEchoCancellationMode
-    targetProcessId?: number
-    loopbackMode?: NativeMediaLoopbackMode
-  }
 }
+
+export type NativeMediaScreenEngineSessionSummary =
+  NativeMediaEngineSessionSummaryBase & {
+    kind: 'screen'
+    audio?: {
+      mode: NativeMediaScreenAudioMode
+      port?: number
+      targetProcessId?: number
+      loopbackMode?: NativeMediaLoopbackMode
+    }
+  }
+
+export type NativeMediaMicrophoneEngineSessionSummary =
+  NativeMediaEngineSessionSummaryBase & {
+    kind: 'microphone'
+    audio?: {
+      mode: 'microphone'
+      port?: number
+      sampleRate?: 48_000
+      channels?: 1 | 2
+      noiseSuppression?: NativeMediaNoiseSuppressionMode
+      echoCancellation?: NativeMediaEchoCancellationMode
+    }
+  }
+
+export type NativeMediaEngineSessionSummary =
+  | NativeMediaScreenEngineSessionSummary
+  | NativeMediaMicrophoneEngineSessionSummary
 
 export type NativeMediaEngineSnapshot = {
   available: boolean

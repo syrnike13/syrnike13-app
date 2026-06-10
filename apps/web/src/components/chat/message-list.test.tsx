@@ -91,7 +91,12 @@ describe('MessageList older history loading', () => {
 
   it('does not load older messages before the user scrolls away from the tail', () => {
     const onLoadOlder = vi.fn()
-    renderMessageList(onLoadOlder)
+    const view = renderMessageList(onLoadOlder)
+    const root = view.container.firstElementChild as HTMLDivElement
+    Object.defineProperties(root, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    })
 
     act(() => {
       vi.runOnlyPendingTimers()
@@ -99,6 +104,22 @@ describe('MessageList older history loading', () => {
     })
 
     expect(onLoadOlder).not.toHaveBeenCalled()
+  })
+
+  it('loads older messages when the initial history does not fill the viewport', () => {
+    const onLoadOlder = vi.fn()
+    const view = renderMessageList(onLoadOlder)
+    const root = view.container.firstElementChild as HTMLDivElement
+    Object.defineProperties(root, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 300 },
+    })
+
+    act(() => {
+      intersectionObservers.at(-1)?.trigger(true)
+    })
+
+    expect(onLoadOlder).toHaveBeenCalledOnce()
   })
 
   it('loads older messages after the user scrolls away from the tail', () => {

@@ -1,5 +1,6 @@
 export type {
   NativeMediaAudioMode,
+  NativeMediaScreenAudioMode,
   NativeMediaEncoderBackend,
   NativeMediaDeviceInfo,
   NativeMediaEchoCancellationMode,
@@ -10,7 +11,9 @@ export type {
   NativeMediaLiveKitCredentials,
   NativeMediaEngineCapabilities,
   NativeMediaEngineSessionSummary,
+  NativeMediaMicrophoneEngineSessionSummary,
   NativeMediaEngineSnapshot,
+  NativeMediaScreenEngineSessionSummary,
   NativeMediaMicrophoneSessionStartOptions,
   NativeMicrophoneMetricsEvent,
   NativeMicrophoneRuntimeConfig,

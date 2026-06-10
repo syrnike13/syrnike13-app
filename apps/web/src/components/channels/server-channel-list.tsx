@@ -453,7 +453,7 @@ export function ServerChannelList({
   useEffect(() => {
     if (optimisticSections === null) return
     setOptimisticSections(null)
-  }, [computedSections, optimisticSections])
+  }, [computedSections])
 
   const [reordering, setReordering] = useState(false)
   const pointerYRef = useRef(0)

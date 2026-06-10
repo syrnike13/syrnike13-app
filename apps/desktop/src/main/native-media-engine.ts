@@ -15,7 +15,9 @@ import {
   type NativeMediaEngineSessionSummary,
   type NativeMediaFrameMethod,
   type NativeMediaFrameStats,
+  type NativeMediaLoopbackMode,
   type NativeMediaNoiseSuppressionMode,
+  type NativeMediaScreenAudioMode,
   type NativeMicrophonePreviewSession,
   type NativeMicrophonePreviewStartOptions,
   type NativeMicrophoneRuntimeConfig,
@@ -56,6 +58,17 @@ export type PendingNativePicker = {
   timeout: ReturnType<typeof setTimeout>
 }
 
+type ActiveMediaEngineSessionAudio = {
+  port?: number
+  mode: NativeMediaAudioMode
+  sampleRate?: 48_000
+  channels?: 1 | 2
+  noiseSuppression?: NativeMediaNoiseSuppressionMode
+  echoCancellation?: NativeMediaEchoCancellationMode
+  targetProcessId?: number
+  loopbackMode?: NativeMediaLoopbackMode
+}
+
 type ActiveMediaEngineSession = {
   sessionId: string
   port?: number
@@ -64,14 +77,7 @@ type ActiveMediaEngineSession = {
   height?: number
   fps?: number
   bitrate?: number
-  audio?: {
-    port?: number
-    mode: NativeMediaAudioMode
-    sampleRate?: 48_000
-    channels?: 1 | 2
-    noiseSuppression?: NativeMediaNoiseSuppressionMode
-    echoCancellation?: NativeMediaEchoCancellationMode
-  }
+  audio?: ActiveMediaEngineSessionAudio
   helper: ChildProcessWithoutNullStreams
   stats: NativeMediaFrameStats
   activeMethod?: NativeMediaFrameMethod
@@ -152,9 +158,9 @@ function buildSessionAudio(
     noiseSuppression?: NativeMediaNoiseSuppressionMode
     echoCancellation?: NativeMediaEchoCancellationMode
     targetProcessId?: number
-    loopbackMode?: import('@syrnike13/platform').NativeMediaLoopbackMode
+    loopbackMode?: NativeMediaLoopbackMode
   },
-): NativeMediaSession['audio'] {
+): ActiveMediaEngineSessionAudio | undefined {
   if (!requested && mode === 'none' && !port) return undefined
   if (mode === 'microphone') {
     return {
@@ -306,44 +312,68 @@ type NativeMediaEngineSnapshotInput = {
   status?: NativeMediaSessionStatus
 }
 
+function buildNativeMediaEngineSessionSummary(
+  session: ActiveMediaEngineSession,
+): NativeMediaEngineSessionSummary {
+  const audio = session.audio
+  const common = {
+    sessionId: session.sessionId,
+    status: 'running' as const,
+    port: session.port,
+    width: session.width,
+    height: session.height,
+    fps: session.fps,
+    bitrate: session.bitrate,
+  }
+
+  if (
+    session.startOptions?.kind === 'microphone' ||
+    audio?.mode === 'microphone'
+  ) {
+    return {
+      ...common,
+      kind: 'microphone',
+      audio:
+        audio?.mode === 'microphone' ?
+          {
+            mode: 'microphone',
+            port: audio.port,
+            sampleRate: audio.sampleRate,
+            channels: audio.channels,
+            noiseSuppression: audio.noiseSuppression,
+            echoCancellation: audio.echoCancellation,
+          }
+        : undefined,
+    }
+  }
+
+  return {
+    ...common,
+    kind: 'screen',
+    audio: audio ?
+      {
+        mode: audio.mode as NativeMediaScreenAudioMode,
+        port: audio.port,
+        targetProcessId: audio.targetProcessId,
+        loopbackMode: audio.loopbackMode,
+      }
+    : undefined,
+  }
+}
+
 export function buildNativeMediaEngineSnapshot(
   input: NativeMediaEngineSnapshotInput,
 ): NativeMediaState {
   const supportsNativeMedia = input.platform === 'win32'
   const microphoneHelperAvailable = input.microphoneHelperAvailable ?? false
   const anyHelperAvailable = input.helperAvailable || microphoneHelperAvailable
-  const statusSessionId =
-    input.status && 'sessionId' in input.status
-      ? input.status.sessionId
-      : undefined
   const sessions = input.activeSessions
     ? Array.from(input.activeSessions)
     : input.activeSession
       ? [input.activeSession]
       : []
   const activeSessions: NativeMediaEngineSessionSummary[] = sessions.map(
-    (session) => ({
-      kind:
-        session.startOptions?.kind === 'microphone' ||
-        session.audio?.mode === 'microphone'
-          ? 'microphone'
-          : 'screen',
-      sessionId: session.sessionId,
-      status:
-        statusSessionId === session.sessionId &&
-        input.status?.status === 'error'
-          ? 'error'
-        : statusSessionId === session.sessionId &&
-              input.status?.status === 'starting'
-            ? 'starting'
-            : 'running',
-      port: session.port,
-      width: session.width,
-      height: session.height,
-      fps: session.fps,
-      bitrate: session.bitrate,
-      audio: session.audio,
-    }),
+    (session) => buildNativeMediaEngineSessionSummary(session),
   )
 
   return {
@@ -1738,6 +1768,19 @@ async function startNativeMediaSession(
 
   const encoder = mapEncoderBackend(readyEvent.encoder)
 
+  if (audio?.mode === 'microphone') {
+    stopMediaEngineSession(sessionId, true)
+    throw new Error('Native screen session reported microphone audio')
+  }
+  const screenAudio = audio ?
+    {
+      mode: audio.mode as NativeMediaScreenAudioMode,
+      port: audio.port,
+      targetProcessId: audio.targetProcessId,
+      loopbackMode: audio.loopbackMode,
+    }
+  : undefined
+
   const screenSession: NativeMediaSession = {
     kind: 'screen',
     sessionId,
@@ -1747,7 +1790,7 @@ async function startNativeMediaSession(
     height: readyEvent.height,
     fps: readyEvent.fps,
     bitrate: readyEvent.bitrate,
-    audio,
+    audio: screenAudio,
     nativeParticipantIdentity: readyEvent.native_participant_identity,
   }
 

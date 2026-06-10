@@ -50,16 +50,22 @@ export function stageScreenMediaUserId(mediaId: string) {
 
 export function pruneWatchedRemoteScreenIds(
   watchedRemoteScreenIds: Set<string>,
+  pendingScreenWatchIds: Set<string>,
   visibleRemoteScreenIds: ReadonlySet<string>,
   remoteParticipantUserIds: ReadonlySet<string>,
 ) {
-  for (const mediaId of Array.from(watchedRemoteScreenIds)) {
+  const mediaIds = new Set([
+    ...watchedRemoteScreenIds,
+    ...pendingScreenWatchIds,
+  ])
+  for (const mediaId of mediaIds) {
     if (visibleRemoteScreenIds.has(mediaId)) continue
 
     const userId = stageScreenMediaUserId(mediaId)
     if (userId && remoteParticipantUserIds.has(userId)) continue
 
     watchedRemoteScreenIds.delete(mediaId)
+    pendingScreenWatchIds.delete(mediaId)
   }
 }
 

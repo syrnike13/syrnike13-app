@@ -110,29 +110,50 @@ describe('shouldSubscribeStageScreen', () => {
 describe('pruneWatchedRemoteScreenIds', () => {
   it('keeps pending watch intent while the participant is still in the room', () => {
     const watched = new Set(['remote-user:screen'])
+    const pending = new Set(['remote-user:screen'])
 
     pruneWatchedRemoteScreenIds(
       watched,
+      pending,
       new Set(),
       new Set(['remote-user']),
     )
 
     expect(watched).toEqual(new Set(['remote-user:screen']))
+    expect(pending).toEqual(new Set(['remote-user:screen']))
   })
 
   it('removes watch intent after the participant leaves the room', () => {
     const watched = new Set(['remote-user:screen'])
+    const pending = new Set<string>()
 
-    pruneWatchedRemoteScreenIds(watched, new Set(), new Set())
+    pruneWatchedRemoteScreenIds(watched, pending, new Set(), new Set())
 
     expect(watched).toEqual(new Set())
   })
 
-  it('keeps visible remote screen watches', () => {
+  it('removes pending watch intent after the participant leaves the room', () => {
     const watched = new Set(['remote-user:screen'])
+    const pending = new Set(['remote-user:screen'])
 
     pruneWatchedRemoteScreenIds(
       watched,
+      pending,
+      new Set(),
+      new Set(),
+    )
+
+    expect(watched).toEqual(new Set())
+    expect(pending).toEqual(new Set())
+  })
+
+  it('keeps visible remote screen watches', () => {
+    const watched = new Set(['remote-user:screen'])
+    const pending = new Set<string>()
+
+    pruneWatchedRemoteScreenIds(
+      watched,
+      pending,
       new Set(['remote-user:screen']),
       new Set(['remote-user']),
     )

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 
@@ -15,6 +15,12 @@ function ChannelName({ channelId }: { channelId: string }) {
   )
 
   return <p>{name}</p>
+}
+
+function ChannelIds({ label }: { label: string }) {
+  const ids = useSyncStore((state) => Object.keys(state.channels))
+
+  return <p>{`${label}:${ids.join(',')}`}</p>
 }
 
 describe('useSyncStore', () => {
@@ -38,6 +44,7 @@ describe('useSyncStore', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
   it('recomputes selected data when selector inputs change without a store update', () => {
@@ -47,5 +54,19 @@ describe('useSyncStore', () => {
     rerender(<ChannelName channelId={SECOND_CHANNEL_ID} />)
 
     expect(screen.getByText('updates')).toBeTruthy()
+  })
+
+  it('keeps getSnapshot stable when an inline selector returns a new reference', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const { rerender } = render(<ChannelIds label="first" />)
+    expect(screen.getByText(`${FIRST_CHANNEL_ID},${SECOND_CHANNEL_ID}`, {
+      exact: false,
+    })).toBeTruthy()
+
+    rerender(<ChannelIds label="second" />)
+
+    expect(screen.getByText(`second:${FIRST_CHANNEL_ID},${SECOND_CHANNEL_ID}`)).toBeTruthy()
+    expect(errorSpy).not.toHaveBeenCalled()
   })
 })
