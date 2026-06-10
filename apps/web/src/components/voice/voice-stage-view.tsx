@@ -34,7 +34,7 @@ import {
   resolveStageLayoutMode,
   type VoiceStageLayoutMode,
 } from '#/features/voice/voice-stage-mode'
-import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-provider'
+import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   sortStageMediaItemsForGrid,

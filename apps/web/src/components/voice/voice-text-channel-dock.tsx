@@ -10,7 +10,7 @@ import {
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'

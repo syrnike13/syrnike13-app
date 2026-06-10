@@ -3,7 +3,7 @@ import { useNavigate, useRouter } from '@tanstack/react-router'
 import type { HotkeyActivationEvent } from '@syrnike13/platform'
 
 import { usePlatform } from '#/platform/use-platform'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 
 export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
   const { desktop } = usePlatform()

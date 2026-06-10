@@ -15,7 +15,7 @@ import { useChannelChat } from '#/features/chat/use-channel-chat'
 import { getChannelDescription } from '#/lib/channel-meta'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import { presenceLabel } from '#/lib/presence'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,

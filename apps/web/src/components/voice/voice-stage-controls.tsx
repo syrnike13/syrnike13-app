@@ -29,7 +29,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { isMicVisuallyMuted, micControlTitle } from '#/features/voice/voice-mic-status'
 import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
 import { voiceStagePopoverSettingsClass } from '#/components/voice/voice-stage-popover-styles'

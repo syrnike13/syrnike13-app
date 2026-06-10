@@ -16,7 +16,7 @@ import {
   screenShareBroadcastIcon,
 } from '#/features/voice/voice-broadcast-source'
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 

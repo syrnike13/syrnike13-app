@@ -5,7 +5,7 @@ import {
 } from '#/features/sync/voice-selectors'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'

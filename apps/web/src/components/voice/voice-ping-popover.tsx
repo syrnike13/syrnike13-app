@@ -10,7 +10,7 @@ import {
 } from '#/components/ui/popover'
 import { summarizeVoicePingHistory } from '#/features/voice/voice-ping-history'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { cn } from '#/lib/utils'
 
 type VoicePingPopoverContentProps = {

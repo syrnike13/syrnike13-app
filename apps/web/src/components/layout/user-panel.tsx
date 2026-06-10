@@ -18,7 +18,7 @@ import {
 } from '#/components/ui/popover'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { userStatusSubtitle } from '#/lib/presence'
 import { USER_PANEL_SPAN_WIDTH } from '#/components/layout/left-sidebar-stack'

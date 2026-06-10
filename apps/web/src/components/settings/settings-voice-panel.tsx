@@ -34,7 +34,7 @@ import {
 } from '#/features/voice/voice-preference-store'
 import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
 import { useMicPreviewLoopback } from '#/features/voice/use-mic-preview-loopback'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { useVoiceGateMeter } from '#/features/voice/use-voice-gate-meter'
 import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
 import {

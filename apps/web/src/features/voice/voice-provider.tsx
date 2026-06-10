@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -116,6 +114,7 @@ import {
   shouldResetMicPreferenceOnIssue,
   type VoiceConnectionPhase,
   type VoiceMicIssue,
+  type VoiceStatus,
 } from '#/features/voice/voice-mic-status'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
@@ -131,7 +130,6 @@ import {
 import {
   buildStageMediaItems,
   type StageMediaFilters,
-  type StageMediaItem,
   type StageMediaTrackEntry,
   type StageMediaTrackSource,
   stageMediaItemId,
@@ -143,76 +141,12 @@ import {
 } from '#/features/voice/voice-stage-subscription'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
 import { channelAudioBitrateKbps } from '#/lib/channel-audio-bitrate'
-
-type VoiceStatus = 'idle' | 'connecting' | 'connected'
-type StageMediaPublication = {
-  source: Track.Source
-  track?: Track | null
-  isMuted?: boolean
-  isSubscribed?: boolean
-  setSubscribed?: (subscribed: boolean) => void
-  options?: {
-    videoCodec?: string
-    simulcast?: boolean
-    degradationPreference?: string
-    screenShareEncoding?: {
-      maxBitrate?: number
-      maxFramerate?: number
-    }
-  }
-}
-
-export type VoiceStageMediaItem = StageMediaItem<
-  VideoTrack,
-  StageMediaPublication
->
-
-type VoiceContextValue = {
-  channelId: string | null
-  status: VoiceStatus
-  connectionPhase: VoiceConnectionPhase
-  /** LiveKit room connected and local media setup finished. */
-  localVoiceReady: boolean
-  /** Намерение пользователя: микрофон включён. */
-  micEnabled: boolean
-  /** Фактическая публикация микрофона в LiveKit. */
-  micPublishing: boolean
-  /** Причина, если микрофон хотели включить, но он недоступен. */
-  micIssue: VoiceMicIssue | null
-  deafened: boolean
-  participantCount: number
-  speakingUserIds: ReadonlySet<string>
-  /** RTT до LiveKit в мс; null пока нет замера. */
-  voicePingMs: number | null
-  /** История замеров для графика в поповере подключения. */
-  voicePingHistory: readonly VoicePingSample[]
-  rtcDebugEnabled: boolean
-  setRtcDebugEnabled: (enabled: boolean) => void
-  rtcDebugSnapshot: RtcDebugSnapshot | null
-  rtcDebugHistory: readonly RtcDebugSnapshot[]
-  cameraEnabled: boolean
-  screenShareEnabled: boolean
-  screenShareStarting: boolean
-  stageMediaItems: readonly VoiceStageMediaItem[]
-  focusedMediaId: string | null
-  setFocusedMediaId: (mediaId: string | null) => void
-  stageMediaFilters: StageMediaFilters
-  setStageMediaFilters: Dispatch<SetStateAction<StageMediaFilters>>
-  setStageMediaSubscribed: (mediaId: string, subscribed: boolean) => void
-  stageFullscreen: boolean
-  toggleStageFullscreen: () => void
-  join: (channelId: string) => Promise<void>
-  leave: () => void
-  toggleMic: () => void
-  toggleDeafen: () => void
-  toggleCamera: () => void
-  toggleScreenShare: () => void
-  setSelfMonitoringActive: (active: boolean) => void
-  /** Трек активной native mic-сессии для превью в настройках без второго захвата. */
-  getNativeMicrophonePreviewTrack: () => MediaStreamTrack | null
-}
-
-const VoiceContext = createContext<VoiceContextValue | null>(null)
+import {
+  VoiceContext,
+  type VoiceContextValue,
+  type VoiceStageMediaItem,
+  type VoiceStageMediaPublication,
+} from '#/features/voice/voice-context'
 
 const DEVICE_SWITCH_TIMEOUT_MS = 5_000
 const STAGE_MEDIA_FILTERS_STORAGE_KEY = 'syrnike13.voice.stageMediaFilters'
@@ -536,11 +470,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }).map((id) => ({ id }))
       const tracks: StageMediaTrackEntry<
         VideoTrack,
-        StageMediaPublication
+        VoiceStageMediaPublication
       >[] = []
       const ingest = (
         userId: string,
-        publication: StageMediaPublication | null | undefined,
+        publication: VoiceStageMediaPublication | null | undefined,
         isLocalPublication: boolean,
       ) => {
         if (!publication) return
@@ -1601,7 +1535,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           : capture.publish,
       )
       if (publication) {
-        ;(publication as StageMediaPublication).options = {
+        ;(publication as VoiceStageMediaPublication).options = {
           videoCodec: capture.publish.videoCodec,
           simulcast: capture.publish.simulcast,
           degradationPreference: capture.publish.degradationPreference,
@@ -2211,12 +2145,4 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       <DesktopScreenSharePicker />
     </VoiceContext.Provider>
   )
-}
-
-export function useVoice() {
-  const context = useContext(VoiceContext)
-  if (!context) {
-    throw new Error('useVoice must be used within VoiceProvider')
-  }
-  return context
 }

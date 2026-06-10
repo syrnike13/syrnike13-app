@@ -4,9 +4,9 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
-import type { VoiceStageMediaItem } from '#/features/voice/voice-provider'
+import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 
-vi.mock('#/features/voice/voice-provider', () => ({}))
+vi.mock('#/features/voice/voice-context', () => ({}))
 
 const screenItem: VoiceStageMediaItem = {
   id: 'remote-user:screen',

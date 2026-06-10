@@ -12,7 +12,7 @@ import {
   isVoiceConnectionReady,
   voiceConnectionPhaseLabel,
 } from '#/features/voice/voice-mic-status'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 

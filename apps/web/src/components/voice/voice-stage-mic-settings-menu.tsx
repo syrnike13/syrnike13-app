@@ -18,7 +18,7 @@ import {
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,

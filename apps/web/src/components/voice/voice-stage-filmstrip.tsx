@@ -4,7 +4,7 @@ import {
   voiceStageFilmstripSpacingClass,
   voiceStageFilmstripTightTopClass,
 } from '#/components/voice/voice-stage-layout'
-import type { VoiceStageMediaItem } from '#/features/voice/voice-provider'
+import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { cn } from '#/lib/utils'
 
 type VoiceStageFilmstripProps = {

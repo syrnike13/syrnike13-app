@@ -9,7 +9,7 @@ import {
 } from '#/components/ui/tooltip'
 import { VoiceStageFilmstrip } from '#/components/voice/voice-stage-filmstrip'
 import { voiceStageFocusStackGapClass } from '#/components/voice/voice-stage-layout'
-import type { VoiceStageMediaItem } from '#/features/voice/voice-provider'
+import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { useVoiceStageFocusSizing } from '#/features/voice/use-voice-stage-focus-sizing'
 import { voiceStageChromeMotion } from '#/features/voice/use-voice-stage-chrome-visible'
 import { cn } from '#/lib/utils'

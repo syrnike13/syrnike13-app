@@ -379,12 +379,16 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
       'utf8',
     )
+    const contextSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-context.ts'),
+      'utf8',
+    )
     const settingsSource = readFileSync(
       resolve(repoRoot, 'apps/web/src/components/settings/settings-voice-panel.tsx'),
       'utf8',
     )
 
-    expect(providerSource).toContain(
+    expect(contextSource).toContain(
       'setSelfMonitoringActive: (active: boolean) => void',
     )
     expect(providerSource).toContain(

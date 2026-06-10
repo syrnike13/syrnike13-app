@@ -19,7 +19,7 @@ vi.mock('#/features/voice/voice-node', () => ({
   resolveVoiceNodeName: () => Promise.resolve('worldwide'),
 }))
 
-vi.mock('#/features/voice/voice-provider', () => ({
+vi.mock('#/features/voice/voice-context', () => ({
   useVoice: () => voiceState,
 }))
 

@@ -26,7 +26,7 @@ import {
   voiceListenerStore,
   useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
-import type { VoiceStageMediaItem } from '#/features/voice/voice-provider'
+import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
 import { cn } from '#/lib/utils'

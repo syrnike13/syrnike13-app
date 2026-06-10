@@ -4,7 +4,7 @@ import { RtcDebugMetricChart } from '#/components/voice/voice-rtc-debug-chart'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
-import { useVoice } from '#/features/voice/voice-provider'
+import { useVoice } from '#/features/voice/voice-context'
 import {
   RTC_DEBUG_BROWSER_UNAVAILABLE,
   formatRtcBitrate,
