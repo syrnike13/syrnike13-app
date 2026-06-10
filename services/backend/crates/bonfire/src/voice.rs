@@ -113,6 +113,29 @@ pub async fn send_voice_server_update(
         .ok();
 }
 
+pub async fn send_voice_state_ack(
+    write: &Mutex<WsWriter>,
+    config: &ProtocolConfiguration,
+    nonce: Option<String>,
+    channel_id: Option<String>,
+    ok: bool,
+) {
+    let Some(nonce) = nonce else {
+        return;
+    };
+
+    write
+        .lock()
+        .await
+        .send(config.encode(&EventV1::VoiceStateAck {
+            nonce,
+            channel_id,
+            ok,
+        }))
+        .await
+        .ok();
+}
+
 pub async fn send_voice_error(
     write: &Mutex<WsWriter>,
     config: &ProtocolConfiguration,

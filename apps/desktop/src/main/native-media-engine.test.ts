@@ -386,6 +386,93 @@ describe('native media engine entrypoint', () => {
     expect(reconnectBody).not.toContain("status: 'running'")
   })
 
+  it('builds native microphone reconnect command from current runtime state', async () => {
+    const { buildNativeMediaReconnectStartCommand } = await import(
+      './native-media-engine'
+    )
+
+    expect(
+      buildNativeMediaReconnectStartCommand(
+        {
+          startOptions: {
+            kind: 'microphone',
+            deviceId: 'default',
+            sampleRate: 48_000,
+            channels: 1,
+            noiseSuppression: true,
+            echoCancellation: true,
+            inputVolume: 1,
+            voiceGateEnabled: true,
+            voiceGateThresholdDb: -42,
+            muted: false,
+            livekit: {
+              url: 'wss://livekit.example',
+              token: 'native-livekit-token',
+              participantIdentity: 'user-1:desktop-native',
+            },
+          },
+          effectiveMicrophoneConfig: {
+            inputVolume: 0.35,
+            noiseSuppression: false,
+            voiceGateThresholdDb: -55,
+          },
+          effectiveMuted: true,
+        },
+        'mic-session-1',
+        () => null,
+      ),
+    ).toMatchObject({
+      cmd: 'connect_microphone',
+      sessionId: 'mic-session-1',
+      sessionKind: 'microphone',
+      deviceId: 'default',
+      inputVolume: 0.35,
+      noiseSuppression: false,
+      echoCancellation: true,
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: -55,
+      muted: true,
+    })
+  })
+
+  it('handles replacement helper exits during reconnect but ignores stale helpers', async () => {
+    const { shouldHandleNativeMediaHelperExit } = await import(
+      './native-media-engine'
+    )
+    const oldHelper = {} as never
+    const replacementHelper = {} as never
+
+    expect(
+      shouldHandleNativeMediaHelperExit(
+        {
+          helper: oldHelper,
+          reconnecting: true,
+          reconnectHelper: replacementHelper,
+        },
+        oldHelper,
+      ),
+    ).toBe(false)
+    expect(
+      shouldHandleNativeMediaHelperExit(
+        {
+          helper: oldHelper,
+          reconnecting: true,
+          reconnectHelper: replacementHelper,
+        },
+        replacementHelper,
+      ),
+    ).toBe(true)
+    expect(
+      shouldHandleNativeMediaHelperExit(
+        {
+          helper: replacementHelper,
+          reconnecting: false,
+        },
+        oldHelper,
+      ),
+    ).toBe(false)
+  })
+
   it('does not expose a renderer media relay for native sessions', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),

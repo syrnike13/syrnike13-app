@@ -40,7 +40,10 @@ import {
   type LoginCredentials,
   type MfaLoginPayload,
 } from './auth-api'
-import { isUnauthorizedError } from './auth-errors'
+import {
+  isSessionInvalidatingError,
+  isTransientAuthLoadError,
+} from './auth-errors'
 
 type LoginSuccess = Extract<ResponseLogin, { result: 'Success' }>
 
@@ -56,6 +59,7 @@ type AuthContextValue = {
   isLoading: boolean
   gatewayState: GatewayState
   mfaChallenge: MfaChallenge | null
+  profileLoadError: Error | null
   login: (
     credentials: LoginCredentials,
   ) => Promise<{ needsOnboarding: boolean } | undefined>
@@ -63,6 +67,7 @@ type AuthContextValue = {
   cancelMfa: () => void
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
+  retryProfileLoad: () => Promise<void>
   /** Вход по ticket из письма подтверждения (`POST /auth/account/verify/...`). */
   completeEmailVerification: (
     mfaTicket: string,
@@ -79,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [session, setSession] = useState<StoredSession | null>(null)
   const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null)
+  const [profileLoadError, setProfileLoadError] = useState<Error | null>(null)
   const [gatewayState, setGatewayState] = useState<GatewayState>('idle')
   const [hydrated, setHydrated] = useState(false)
 
@@ -141,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void clearSession()
       setSession(null)
       setMfaChallenge(null)
+      setProfileLoadError(null)
       eventsGateway.disableAutoReconnect()
       syncStore.reset()
       queryClient.removeQueries({ queryKey: queryKeys.auth.session })
@@ -170,30 +177,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session?.token || !onboardingQuery.isError) return
-    if (!isUnauthorizedError(onboardingQuery.error)) return
+    if (!isSessionInvalidatingError(onboardingQuery.error)) return
     invalidateSession('Сессия недействительна. Войдите снова.')
   }, [
     invalidateSession,
     onboardingQuery.error,
     onboardingQuery.isError,
     session?.token,
-  ])
-
-  useEffect(() => {
-    if (!session?.token || !userQuery.isError) return
-    if (!isUnauthorizedError(userQuery.error)) return
-    if (needsOnboarding) return
-
-    // Логин прошёл, но профиля ещё нет — нужен ник (частый 401 до onboard/complete).
-    queryClient.setQueryData(queryKeys.auth.onboarding(session.token), {
-      onboarding: true,
-    })
-  }, [
-    needsOnboarding,
-    queryClient,
-    session?.token,
-    userQuery.error,
-    userQuery.isError,
   ])
 
   const syncOnboardingStatus = useCallback(
@@ -203,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         queryClient.setQueryData(queryKeys.auth.onboarding(token), status)
         return status.onboarding
       } catch (error) {
-        if (isUnauthorizedError(error)) {
+        if (isSessionInvalidatingError(error)) {
           invalidateSession('Сессия недействительна. Войдите снова.')
         }
         throw error
@@ -222,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await saveSession(next)
       setSession(next)
       setMfaChallenge(null)
+      setProfileLoadError(null)
       void queryClient.invalidateQueries({ queryKey: queryKeys.auth.session })
       return next.token
     },
@@ -293,6 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!session?.token) return
     const user = await fetchCurrentUser(session.token)
     queryClient.setQueryData(queryKeys.auth.session, user)
+    setProfileLoadError(null)
     syncStore.upsertUser(user)
   }, [queryClient, session?.token])
 
@@ -349,26 +341,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [invalidateSession, session?.token])
 
   useEffect(() => {
-    if (!session?.token || !userQuery.isError || userQuery.isLoading) return
-    if (isUnauthorizedError(userQuery.error)) return
-    invalidateSession(
+    if (!session?.token || userQuery.data) {
+      setProfileLoadError(null)
+      return
+    }
+    if (!session?.token || !userQuery.isError || userQuery.isFetching) return
+    if (isTransientAuthLoadError(userQuery.error)) return
+    if (isSessionInvalidatingError(userQuery.error)) {
+      invalidateSession('Сессия недействительна. Войдите снова.')
+      return
+    }
+    setProfileLoadError(
       userQuery.error instanceof Error
-        ? userQuery.error.message
-        : 'Не удалось загрузить профиль',
+        ? userQuery.error
+        : new Error('Не удалось загрузить профиль'),
     )
   }, [
     invalidateSession,
     session?.token,
     userQuery.error,
     userQuery.isError,
-    userQuery.isLoading,
+    userQuery.isFetching,
   ])
+
+  const retryProfileLoad = useCallback(async () => {
+    if (!session?.token) return
+    setProfileLoadError(null)
+    await userQuery.refetch()
+  }, [session?.token, userQuery])
+
+  const profileLoadRecovering =
+    !!session &&
+    !needsOnboarding &&
+    userQuery.isError &&
+    !userQuery.data &&
+    (userQuery.isFetching || isTransientAuthLoadError(userQuery.error))
 
   const value = useMemo<AuthContextValue>(
     () => ({
       hydrated,
       session: hydrated ? session : null,
       user: userQuery.data,
+      profileLoadError,
       isLoading:
         !hydrated ||
         (!!session &&
@@ -376,7 +390,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             (needsOnboarding
               ? false
               : userQuery.isLoading ||
-                (userQuery.isFetching && !userQuery.data && !userQuery.isError)))),
+                profileLoadRecovering))),
       gatewayState,
       mfaChallenge,
       login,
@@ -384,6 +398,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelMfa,
       logout,
       refreshUser,
+      retryProfileLoad,
       completeEmailVerification,
       needsOnboarding,
       onboardingChecked,
@@ -400,11 +415,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mfaChallenge,
       needsOnboarding,
       onboardingChecked,
+      profileLoadRecovering,
+      profileLoadError,
       refreshUser,
+      retryProfileLoad,
       session,
       submitMfaPassword,
       userQuery.data,
       userQuery.isLoading,
+      userQuery.isFetching,
     ],
   )
 

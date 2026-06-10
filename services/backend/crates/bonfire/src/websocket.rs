@@ -543,6 +543,7 @@ async fn worker(
                         }
                     }
                     ClientMessage::VoiceStateUpdate {
+                        nonce,
                         channel_id,
                         self_mute,
                         self_deaf,
@@ -551,6 +552,7 @@ async fn worker(
                         recipients,
                         refresh_credentials,
                     } => {
+                        let ack_channel_id = channel_id.clone();
                         match crate::voice::handle_voice_state_update(
                             db,
                             crate::voice_client::get(),
@@ -567,10 +569,35 @@ async fn worker(
                         {
                             Ok(Some(event)) => {
                                 crate::voice::send_voice_server_update(write, config, event).await;
+                                crate::voice::send_voice_state_ack(
+                                    write,
+                                    config,
+                                    nonce,
+                                    ack_channel_id,
+                                    true,
+                                )
+                                .await;
                             }
-                            Ok(None) => {}
+                            Ok(None) => {
+                                crate::voice::send_voice_state_ack(
+                                    write,
+                                    config,
+                                    nonce,
+                                    ack_channel_id,
+                                    true,
+                                )
+                                .await;
+                            }
                             Err(error) => {
                                 crate::voice::send_voice_error(write, config, error).await;
+                                crate::voice::send_voice_state_ack(
+                                    write,
+                                    config,
+                                    nonce,
+                                    ack_channel_id,
+                                    false,
+                                )
+                                .await;
                             }
                         }
                     }

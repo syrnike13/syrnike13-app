@@ -86,6 +86,7 @@ import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { shouldUseNativeScreenShare } from '#/features/voice/native-screen-share-mode'
+import { decideVoiceRecoveryAction } from '#/features/voice/voice-recovery'
 import {
   publishNativeScreenShare,
   type NativeScreenShareSession,
@@ -93,6 +94,7 @@ import {
 import {
   configureNativeMicrophoneSession,
   publishNativeMicrophone,
+  shouldRestartNativeMicrophonePublisher,
   shouldUseNativeMicrophone,
   type NativeMicrophoneSession,
 } from '#/features/voice/native-microphone-publish'
@@ -157,6 +159,8 @@ import {
 } from '#/features/voice/voice-context'
 
 const DEVICE_SWITCH_TIMEOUT_MS = 5_000
+const VOICE_RECOVERY_HEALTH_INTERVAL_MS = 5_000
+const VOICE_RECOVERY_SERVER_STATE_GRACE_MS = 10_000
 const STAGE_MEDIA_FILTERS_STORAGE_KEY = 'syrnike13.voice.stageMediaFilters'
 const DEFAULT_STAGE_MEDIA_FILTERS: StageMediaFilters = {
   showOwnStream: true,
@@ -318,6 +322,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const selfSpeakingRef = useRef(false)
   const authUserIdRef = useRef<string | null>(null)
   const channelIdRef = useRef<string | null>(null)
+  const statusRef = useRef<VoiceStatus>('idle')
+  const voiceConnectedAtRef = useRef(0)
   const deafenedRef = useRef(false)
   const micPublishingRef = useRef(readVoicePreferences().micEnabled)
   const micIssueRef = useRef<VoiceMicIssue | null>(null)
@@ -378,11 +384,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }),
   )
   const voiceRejoinDepsRef = useRef<
-    Pick<VoiceRejoinControllerOptions, 'attemptRejoin' | 'onGiveUp' | 'isGatewayConnected'>
+    Pick<
+      VoiceRejoinControllerOptions,
+      'attemptRejoin' | 'onGiveUp' | 'isGatewayConnected' | 'shouldKeepTrying'
+    >
   >({
     attemptRejoin: async (_channelId: string) => false,
     onGiveUp: () => {},
     isGatewayConnected: () => false,
+    shouldKeepTrying: () => false,
   })
   const voiceRejoinRef = useRef(
     createVoiceRejoinController({
@@ -390,6 +400,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         voiceRejoinDepsRef.current.attemptRejoin(channelId),
       onGiveUp: () => voiceRejoinDepsRef.current.onGiveUp(),
       isGatewayConnected: () => voiceRejoinDepsRef.current.isGatewayConnected(),
+      shouldKeepTrying: (channelId) =>
+        voiceRejoinDepsRef.current.shouldKeepTrying(channelId),
     }),
   )
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
@@ -476,6 +488,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [stageFullscreen, setStageFullscreen] = useState(false)
 
   channelIdRef.current = channelId
+  statusRef.current = status
   deafenedRef.current = deafened
   micPublishingRef.current = micPublishing
 
@@ -764,10 +777,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const syncVoiceFlagsToGateway = useCallback(
     (channelId: string, selfMute: boolean, selfDeaf: boolean) => {
-      if (auth.gatewayState !== 'connected') return
       requestVoiceFlagsUpdate(channelId, selfMute, selfDeaf)
     },
-    [auth.gatewayState],
+    [],
   )
 
   const readCurrentVoiceFlags = useCallback((room = roomRef.current) => {
@@ -867,6 +879,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
     setChannelId(null)
     setStatus('idle')
+    voiceConnectedAtRef.current = 0
     setConnectionPhase('idle')
     setLocalVoiceReady(false)
     restoreVoicePreferences()
@@ -1006,7 +1019,51 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           nativeMicrophoneMutedRef.current = false
           setMicPublishing(false)
           setSelfSpeaking(false)
+          const activeChannelId = channelIdRef.current
+          const userId = auth.user?._id
+          if (activeChannelId && userId) {
+            patchLocalVoiceMic(activeChannelId, userId, false)
+            syncVoiceFlagsToGateway(
+              activeChannelId,
+              true,
+              deafenedRef.current,
+            )
+          }
           syncRoomParticipants()
+
+          const prefs = readVoicePreferences()
+          const room = roomRef.current
+          const shouldRestart =
+            room &&
+            shouldRestartNativeMicrophonePublisher({
+              voiceConnected: statusRef.current === 'connected',
+              wantsMic: prefs.micEnabled,
+              deafened: deafenedRef.current,
+              selfMonitoringActive: selfMonitoringRef.current.active,
+            })
+
+          if (!shouldRestart) return
+
+          void startNativeMicrophone(room, false)
+            .then(() => {
+              syncMicFromRoom(room)
+              syncRoomParticipants()
+              if (activeChannelId && userId && statusRef.current === 'connected') {
+                const { selfMute, selfDeaf } = readCurrentVoiceFlags(room)
+                syncVoiceFlagsToGateway(activeChannelId, selfMute, selfDeaf)
+              }
+            })
+            .catch((error) => {
+              syncMicFromRoom(room, describeMicDeviceError(error))
+              syncRoomParticipants()
+              if (activeChannelId && userId && statusRef.current === 'connected') {
+                syncVoiceFlagsToGateway(
+                  activeChannelId,
+                  true,
+                  deafenedRef.current,
+                )
+              }
+            })
         },
         await refreshNativeLiveKitCredentials('microphone'),
         muted,
@@ -1020,9 +1077,177 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [
       refreshNativeLiveKitCredentials,
       activeChannelAudioBitrateKbps,
+      auth.user?._id,
+      readCurrentVoiceFlags,
       setSelfSpeaking,
       setNativeMicrophoneMuted,
+      syncMicFromRoom,
       syncRoomParticipants,
+      syncVoiceFlagsToGateway,
+    ],
+  )
+
+  const runVoiceRecovery = useCallback(
+    (trigger: string) => {
+      const activeChannelId = channelIdRef.current
+      const room = roomRef.current
+      const { selfMute, selfDeaf } = readCurrentVoiceFlags(room)
+      const prefs = readVoicePreferences()
+      const publisherHealthy = room
+        ? shouldUseNativeMicrophone()
+          ? Boolean(nativeMicrophoneRef.current && !nativeMicrophoneMutedRef.current)
+          : participantMicPublishing(room.localParticipant)
+        : false
+
+      const action = decideVoiceRecoveryAction({
+        gatewayConnected: auth.gatewayState === 'connected',
+        channelId: activeChannelId,
+        userId: auth.user?._id,
+        status: statusRef.current,
+        voiceParticipants: syncStore.getState().voiceParticipants,
+        canTrustServerState:
+          trigger === 'gateway_connected' ||
+          (voiceConnectedAtRef.current > 0 &&
+            Date.now() - voiceConnectedAtRef.current >=
+              VOICE_RECOVERY_SERVER_STATE_GRACE_MS),
+        desiredSelfMute: selfMute,
+        desiredSelfDeaf: selfDeaf,
+        wantsMic: prefs.micEnabled,
+        selfMonitoringActive: selfMonitoringRef.current.active,
+        publisherHealthy,
+      })
+
+      if (action.type === 'none') return
+      if (!activeChannelId) return
+
+      if (action.type === 'send_flags') {
+        console.info('[voice-recovery] syncing voice flags', {
+          trigger,
+          reason: action.reason,
+          channelId: activeChannelId,
+          selfMute: action.selfMute,
+          selfDeaf: action.selfDeaf,
+        })
+        syncVoiceFlagsToGateway(
+          activeChannelId,
+          action.selfMute,
+          action.selfDeaf,
+        )
+        return
+      }
+
+      if (action.type === 'repair_publisher') {
+        if (!room) {
+          console.warn('[voice-recovery] cannot repair publisher without room', {
+            trigger,
+            channelId: activeChannelId,
+          })
+          return
+        }
+
+        console.warn('[voice-recovery] repairing voice publisher', {
+          trigger,
+          reason: action.reason,
+          channelId: activeChannelId,
+        })
+
+        if (shouldUseNativeMicrophone()) {
+          void startNativeMicrophone(room, false)
+            .then(() => {
+              syncMicFromRoom(room)
+              syncRoomParticipants()
+              const flags = readCurrentVoiceFlags(room)
+              syncVoiceFlagsToGateway(
+                activeChannelId,
+                flags.selfMute,
+                flags.selfDeaf,
+              )
+            })
+            .catch((error) => {
+              syncMicFromRoom(room, describeMicDeviceError(error))
+              syncRoomParticipants()
+              syncVoiceFlagsToGateway(
+                activeChannelId,
+                true,
+                deafenedRef.current,
+              )
+            })
+          return
+        }
+
+        void room.localParticipant
+          .setMicrophoneEnabled(
+            true,
+            undefined,
+            voiceMicPublishOptions(activeChannelAudioBitrateKbps()),
+          )
+          .then(() => applyMicProcessing(room.localParticipant))
+          .then(() => {
+            syncLocalSpeakingTrack(room)
+            syncMicFromRoom(room)
+            syncRoomParticipants()
+            const flags = readCurrentVoiceFlags(room)
+            syncVoiceFlagsToGateway(
+              activeChannelId,
+              flags.selfMute,
+              flags.selfDeaf,
+            )
+          })
+          .catch((error) => {
+            syncMicFromRoom(room, describeMicDeviceError(error))
+            syncRoomParticipants()
+            syncVoiceFlagsToGateway(
+              activeChannelId,
+              true,
+              deafenedRef.current,
+            )
+          })
+        return
+      }
+
+      const pendingRejoin = voiceRejoinRef.current.getPendingChannelId()
+      if (pendingRejoin === activeChannelId) return
+      if (joinInFlightRef.current?.channelId === activeChannelId) return
+
+      console.warn('[voice-recovery] rejoining voice session', {
+        trigger,
+        reason: action.reason,
+        channelId: activeChannelId,
+      })
+
+      const promise = (async () => {
+        await leaveVoiceSession('switch')
+        const ok = await performVoiceJoinRef.current(activeChannelId, {
+          rejoin: true,
+        })
+        if (!ok) {
+          voiceRejoinRef.current.onUnexpectedDisconnect(activeChannelId)
+        }
+        return ok
+      })()
+
+      joinInFlightRef.current = {
+        channelId: activeChannelId,
+        promise,
+      }
+      void promise.finally(() => {
+        if (joinInFlightRef.current?.channelId === activeChannelId) {
+          joinInFlightRef.current = null
+        }
+      })
+    },
+    [
+      activeChannelAudioBitrateKbps,
+      applyMicProcessing,
+      auth.gatewayState,
+      auth.user?._id,
+      leaveVoiceSession,
+      readCurrentVoiceFlags,
+      startNativeMicrophone,
+      syncLocalSpeakingTrack,
+      syncMicFromRoom,
+      syncRoomParticipants,
+      syncVoiceFlagsToGateway,
     ],
   )
 
@@ -1306,6 +1531,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const onParticipantsChanged = () => {
         setParticipantCount(room.numParticipants)
         syncRoomParticipants()
+        runVoiceRecovery('participants_changed')
       }
       const onLocalParticipantsChanged = () => {
         syncLocalSpeakingTrack(room)
@@ -1373,6 +1599,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       room.on(RoomEvent.Connected, () => {
         if (!channelIdRef.current) return
+        statusRef.current = 'connected'
+        voiceConnectedAtRef.current = Date.now()
         setStatus('connected')
         onParticipantsChanged()
       })
@@ -1417,6 +1645,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       syncMicFromRoom,
       syncLocalSpeakingTrack,
       syncRoomParticipants,
+      runVoiceRecovery,
     ],
   )
 
@@ -1456,6 +1685,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setConnectionPhase,
       onRoomConnected: (room, targetChannelId) => {
         setLocalVoiceReady(false)
+        statusRef.current = 'connected'
+        voiceConnectedAtRef.current = Date.now()
         setStatus('connected')
         syncRoomParticipants()
         void finishLocalVoiceSetup(room, targetChannelId)
@@ -1481,18 +1712,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         performVoiceJoinRef.current(channelId, { rejoin: true }),
       onGiveUp: abortJoinAttempt,
       isGatewayConnected: () => auth.gatewayState === 'connected',
+      shouldKeepTrying: (channelId) =>
+        Boolean(auth.session?.token) &&
+        canJoinVoiceChannel(syncStore.getState().channels[channelId]),
     }
-  }, [abortJoinAttempt, auth.gatewayState])
+  }, [abortJoinAttempt, auth.gatewayState, auth.session?.token])
 
   useEffect(() => {
     const unsubscribe = eventsGateway.subscribeState((state) => {
       if (state !== 'connected') return
       voiceRejoinRef.current.onGatewayConnected()
+      runVoiceRecovery('gateway_connected')
 
       const activeChannelId = channelIdRef.current
       if (status !== 'connected' || !activeChannelId) return
       const { selfMute, selfDeaf } = readCurrentVoiceFlags()
-      requestVoiceFlagsUpdate(
+      syncVoiceFlagsToGateway(
         activeChannelId,
         selfMute,
         selfDeaf,
@@ -1501,7 +1736,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     return () => {
       void unsubscribe()
     }
-  }, [readCurrentVoiceFlags, status])
+  }, [readCurrentVoiceFlags, runVoiceRecovery, status, syncVoiceFlagsToGateway])
 
   const join = useCallback(
     async (targetChannelId: string) => {
@@ -2139,6 +2374,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       )
     })
   }, [setSelfSpeaking, status])
+
+  useEffect(() => {
+    if (status !== 'connected') return
+
+    runVoiceRecovery('health_tick_initial')
+    const interval = window.setInterval(
+      () => runVoiceRecovery('health_tick'),
+      VOICE_RECOVERY_HEALTH_INTERVAL_MS,
+    )
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [runVoiceRecovery, status])
 
   useEffect(() => {
     return voiceListenerStore.subscribe(() => {
