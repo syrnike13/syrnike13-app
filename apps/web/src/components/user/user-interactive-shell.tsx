@@ -6,6 +6,7 @@ import {
   ContextMenuTrigger,
 } from '#/components/ui/context-menu'
 import { UserContextMenuContent } from '#/components/user/user-context-menu-content'
+import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import { useAuth } from '#/features/auth/auth-context'
@@ -33,7 +34,13 @@ export function UserInteractiveShell({
 }: UserInteractiveShellProps) {
   const auth = useAuth()
   const [profileOpen, setProfileOpen] = useState(false)
+  const [globalProfileOpen, setGlobalProfileOpen] = useState(false)
   const isSelf = user._id === auth.user?._id
+
+  function openGlobalProfile() {
+    setProfileOpen(false)
+    setGlobalProfileOpen(true)
+  }
 
   return (
     <ContextMenu>
@@ -46,6 +53,7 @@ export function UserInteractiveShell({
         align={align}
         open={profileOpen}
         onOpenChange={setProfileOpen}
+        onOpenGlobalProfile={openGlobalProfile}
       >
         <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       </UserProfilePopover>
@@ -54,7 +62,13 @@ export function UserInteractiveShell({
         serverId={serverId}
         isSelf={isSelf}
         inVoice={inVoice}
-        onOpenProfile={() => setProfileOpen(true)}
+        onOpenProfile={openGlobalProfile}
+      />
+      <UserGlobalProfileDialog
+        user={user}
+        serverId={serverId}
+        open={globalProfileOpen}
+        onOpenChange={setGlobalProfileOpen}
       />
     </ContextMenu>
   )

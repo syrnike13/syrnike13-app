@@ -58,6 +58,7 @@ type UserProfilePopoverProps = Omit<UserProfileCardProps, 'user' | 'onClose'> & 
   className?: string
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  onOpenGlobalProfile?: () => void
 }
 
 export function UserProfilePopover({
@@ -68,6 +69,7 @@ export function UserProfilePopover({
   className,
   open: openProp,
   onOpenChange: onOpenChangeProp,
+  onOpenGlobalProfile,
   ...cardProps
 }: UserProfilePopoverProps) {
   const [openInternal, setOpenInternal] = useState(false)
@@ -108,6 +110,7 @@ export function UserProfilePopover({
           user={user}
           {...cardProps}
           onClose={() => setOpen(false)}
+          onOpenGlobalProfile={onOpenGlobalProfile}
         />
       </PopoverContent>
     </Popover>

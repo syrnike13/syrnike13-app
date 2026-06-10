@@ -41,8 +41,12 @@ export type UserProfileCardHeaderProps = {
   roles?: MemberRoleEntry[]
   /** Кнопки в правом верхнем углу баннера */
   bannerActions?: ReactNode
+  /** Открыть глобальный профиль (клик по аватару в серверном поповере) */
+  onAvatarClick?: () => void
   /** Узкая карточка (поповер панели пользователя) */
   compact?: boolean
+  /** Полноэкранная модалка глобального профиля */
+  modal?: boolean
   className?: string
 }
 
@@ -52,9 +56,12 @@ export function UserProfileCardHeader({
   serverName: serverNameProp,
   roles: rolesProp,
   bannerActions,
+  onAvatarClick,
   compact = false,
+  modal = false,
   className,
 }: UserProfileCardHeaderProps) {
+  const layout = modal ? 'modal' : compact ? 'compact' : 'default'
   const auth = useAuth()
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
@@ -136,18 +143,22 @@ export function UserProfileCardHeader({
   }
 
   return (
-    <div className={cn('overflow-hidden', className)}>
-      <div className="relative">
+    <div className={className}>
+      <div className="relative overflow-visible">
         <div
           className={cn(
             'relative w-full overflow-hidden rounded-t-md',
             bannerUrl
-              ? compact
-                ? 'h-[72px]'
-                : 'h-[120px]'
-              : compact
-                ? 'h-[56px]'
-                : 'h-[88px]',
+              ? layout === 'modal'
+                ? 'h-[200px]'
+                : layout === 'compact'
+                  ? 'h-[72px]'
+                  : 'h-[120px]'
+              : layout === 'modal'
+                ? 'h-[160px]'
+                : layout === 'compact'
+                  ? 'h-[56px]'
+                  : 'h-[88px]',
             !bannerUrl &&
               'bg-gradient-to-br from-primary via-chart-4 to-sidebar-primary',
           )}
@@ -172,32 +183,106 @@ export function UserProfileCardHeader({
         <div
           className={cn(
             'absolute z-10',
-            compact ? 'left-3 -bottom-5' : 'left-4 -bottom-7',
+            layout === 'modal'
+              ? 'left-5 -bottom-12'
+              : layout === 'compact'
+                ? 'left-3 -bottom-7'
+                : 'left-4 -bottom-10',
           )}
         >
-          <UserAvatar
-            user={user}
-            className={compact ? 'size-14' : 'size-20'}
-            fallbackClassName={cn(
-              compact ? 'size-14 text-base ring-4' : 'size-20 text-xl ring-[6px]',
-              'ring-muted bg-muted',
-            )}
-            showPresence
-            presenceRingClassName="border-muted"
-            presenceClassName={
-              compact
-                ? 'size-5 translate-x-[16%] translate-y-[16%] border-[3px]'
-                : 'size-7 translate-x-[16%] translate-y-[16%] border-4'
-            }
-          />
+          {onAvatarClick ? (
+            <button
+              type="button"
+              title="Открыть профиль"
+              className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
+              onClick={(event) => {
+                event.stopPropagation()
+                onAvatarClick()
+              }}
+            >
+              <span className="relative block rounded-full">
+                <UserAvatar
+                  user={user}
+                  className={
+                    layout === 'modal'
+                      ? 'size-24'
+                      : layout === 'compact'
+                        ? 'size-14'
+                        : 'size-20'
+                  }
+                  fallbackClassName={cn(
+                    layout === 'modal'
+                      ? 'size-24 text-2xl ring-[6px]'
+                      : layout === 'compact'
+                        ? 'size-14 text-base ring-4'
+                        : 'size-20 text-xl ring-[6px]',
+                    'ring-muted bg-muted',
+                  )}
+                  showPresence
+                  presenceRingClassName="border-muted"
+                  presenceClassName={
+                    layout === 'modal'
+                      ? 'size-7 translate-x-[16%] translate-y-[16%] border-4'
+                      : layout === 'compact'
+                        ? 'size-5 translate-x-[16%] translate-y-[16%] border-[3px]'
+                        : 'size-7 translate-x-[16%] translate-y-[16%] border-4'
+                  }
+                />
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition-colors group-hover/avatar-button:bg-black/25"
+                />
+              </span>
+            </button>
+          ) : (
+            <UserAvatar
+              user={user}
+              className={
+                layout === 'modal'
+                  ? 'size-24'
+                  : layout === 'compact'
+                    ? 'size-14'
+                    : 'size-20'
+              }
+              fallbackClassName={cn(
+                layout === 'modal'
+                  ? 'size-24 text-2xl ring-[6px]'
+                  : layout === 'compact'
+                    ? 'size-14 text-base ring-4'
+                    : 'size-20 text-xl ring-[6px]',
+                'ring-muted bg-muted',
+              )}
+              showPresence
+              presenceRingClassName="border-muted"
+              presenceClassName={
+                layout === 'modal'
+                  ? 'size-7 translate-x-[16%] translate-y-[16%] border-4'
+                  : layout === 'compact'
+                    ? 'size-5 translate-x-[16%] translate-y-[16%] border-[3px]'
+                    : 'size-7 translate-x-[16%] translate-y-[16%] border-4'
+              }
+            />
+          )}
         </div>
       </div>
 
-      <div className={cn(compact ? 'px-3 pt-9 pb-2.5' : 'px-4 pt-10 pb-3')}>
+      <div
+        className={cn(
+          layout === 'modal'
+            ? 'px-5 pt-12 pb-4'
+            : layout === 'compact'
+              ? 'px-3 pt-9 pb-2.5'
+              : 'px-4 pt-10 pb-3',
+        )}
+      >
         <h2
           className={cn(
             'truncate font-bold leading-tight text-foreground',
-            compact ? 'text-xl' : 'text-2xl',
+            layout === 'modal'
+              ? 'text-3xl'
+              : layout === 'compact'
+                ? 'text-xl'
+                : 'text-2xl',
           )}
         >
           {displayName}
@@ -205,7 +290,11 @@ export function UserProfileCardHeader({
         <p
           className={cn(
             'truncate text-muted-foreground',
-            compact ? 'text-base' : 'text-sm',
+            layout === 'modal'
+              ? 'text-base'
+              : layout === 'compact'
+                ? 'text-base'
+                : 'text-sm',
           )}
         >
           {user.display_name ? `@${user.username}` : user.username}
@@ -219,13 +308,15 @@ export function UserProfileCardHeader({
         <p
           className={cn(
             'mt-0.5 truncate text-muted-foreground',
-            compact
-              ? customStatus
-                ? 'text-sm text-muted-foreground/80'
-                : 'text-base'
-              : customStatus
-                ? 'text-xs text-muted-foreground/80'
-                : 'text-sm',
+            layout === 'modal'
+              ? 'text-sm'
+              : layout === 'compact'
+                ? customStatus
+                  ? 'text-sm text-muted-foreground/80'
+                  : 'text-base'
+                : customStatus
+                  ? 'text-xs text-muted-foreground/80'
+                  : 'text-sm',
           )}
         >
           {customStatus ? presenceLabel : userStatusSubtitle(user)}
@@ -233,8 +324,9 @@ export function UserProfileCardHeader({
         {profileBio ? (
           <p
             className={cn(
-              'mt-2 line-clamp-3 text-muted-foreground',
-              compact ? 'text-base' : 'text-sm',
+              'mt-2 text-muted-foreground',
+              layout === 'modal' ? 'text-sm whitespace-pre-wrap' : 'line-clamp-3',
+              layout === 'compact' ? 'text-base' : 'text-sm',
             )}
           >
             {profileBio}
@@ -271,7 +363,10 @@ export function UserProfileCardHeader({
               return (
                 <span
                   key={role.id}
-                  className="inline-flex max-w-full items-center gap-1 rounded-md bg-secondary py-0.5 pr-0.5 pl-2 text-xs font-medium text-secondary-foreground"
+                  className={cn(
+                    'inline-flex max-w-full items-center gap-1 rounded-md bg-secondary py-0.5 text-xs font-medium text-secondary-foreground',
+                    canRemove ? 'pl-2 pr-0.5' : 'px-2',
+                  )}
                 >
                   <span
                     className="size-2.5 shrink-0 rounded-full"

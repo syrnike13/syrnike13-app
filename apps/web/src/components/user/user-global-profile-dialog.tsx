@@ -1,0 +1,149 @@
+import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
+import type { User } from '@syrnike13/api-types'
+import { toast } from 'sonner'
+
+import { UserGlobalProfileSections } from '#/components/user/user-global-profile-sections'
+import { UserGlobalProfileSidebar } from '#/components/user/user-global-profile-sidebar'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '#/components/ui/dialog'
+import { useAuth } from '#/features/auth/auth-context'
+import { blockUser, openDirectMessage } from '#/features/api/users-api'
+import { useSettingsModal } from '#/features/settings/settings-modal-context'
+import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+
+type UserGlobalProfileDialogProps = {
+  user: User
+  /** Если задан, показываем серверный контекст (роли, дата входа) */
+  serverId?: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function UserGlobalProfileDialog({
+  user,
+  serverId,
+  open,
+  onOpenChange,
+}: UserGlobalProfileDialogProps) {
+  const auth = useAuth()
+  const navigate = useNavigate()
+  const { openSettings } = useSettingsModal()
+  const [busy, setBusy] = useState(false)
+
+  const isSelf = user._id === auth.user?._id
+  const mutualServers = useSyncStore((s) =>
+    listMutualServers(s, user._id, auth.user?._id),
+  )
+
+  const displayName = user.display_name ?? user.username
+
+  function close() {
+    onOpenChange(false)
+  }
+
+  async function openDm() {
+    const token = auth.session?.token
+    if (!token || isSelf) return
+    setBusy(true)
+    try {
+      const channel = await openDirectMessage(token, user._id)
+      syncStore.upsertChannel(channel)
+      close()
+      await navigate({
+        to: '/app/c/$channelId',
+        params: { channelId: channel._id },
+        search: { m: undefined },
+      })
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось открыть ЛС',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleBlock() {
+    const token = auth.session?.token
+    if (!token || isSelf) return
+    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+    setBusy(true)
+    try {
+      const updated = await blockUser(token, user._id)
+      syncStore.upsertUser(updated)
+      close()
+      toast.success('Пользователь заблокирован')
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось заблокировать',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function copyUserId() {
+    try {
+      await navigator.clipboard.writeText(user._id)
+      toast.success('ID скопирован')
+    } catch {
+      toast.error('Не удалось скопировать')
+    }
+  }
+
+  function handleServerSelect(serverId: string) {
+    const channelId = listServerChannels(syncStore.getState(), serverId)[0]?._id
+    if (!channelId) return
+    close()
+    void navigate({
+      to: '/app/c/$channelId',
+      params: { channelId },
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex h-[min(660px,90vh)] max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]"
+        showCloseButton
+      >
+        <DialogTitle className="sr-only">Профиль {displayName}</DialogTitle>
+        <DialogDescription className="sr-only">
+          Глобальный профиль пользователя {displayName}
+        </DialogDescription>
+
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background">
+            <UserGlobalProfileSidebar
+              user={user}
+              serverId={serverId}
+              isSelf={isSelf}
+              busy={busy}
+              onOpenDm={() => void openDm()}
+              onCopyId={() => void copyUserId()}
+              onBlock={() => void handleBlock()}
+              onEditProfile={() => {
+                close()
+                openSettings('account')
+              }}
+            />
+          </aside>
+
+          <div className="flex min-w-0 flex-1 flex-col bg-background">
+            <UserGlobalProfileSections
+              mutualServers={mutualServers}
+              busy={busy}
+              onServerSelect={handleServerSelect}
+            />
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

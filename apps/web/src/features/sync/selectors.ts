@@ -236,6 +236,26 @@ export function listServerMembers(
   return list
 }
 
+export function listMutualServers(
+  state: SyncState,
+  userId: string,
+  currentUserId: string | undefined,
+): Server[] {
+  if (!currentUserId || userId === currentUserId) return []
+
+  const mutual: Server[] = []
+  for (const server of Object.values(state.servers)) {
+    if (
+      state.members[`${server._id}:${userId}`] &&
+      state.members[`${server._id}:${currentUserId}`]
+    ) {
+      mutual.push(server)
+    }
+  }
+
+  return mutual.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+}
+
 export function pickDefaultChannelId(
   state: SyncState,
   currentUserId?: string,

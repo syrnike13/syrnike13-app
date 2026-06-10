@@ -1,11 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import {
-  BanIcon,
-  Loader2Icon,
-  MessageCircleIcon,
-  MoreHorizontalIcon,
-  UserMinusIcon,
-} from '#/components/icons'
+import { Loader2Icon, MessageCircleIcon } from '#/components/icons'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
@@ -13,24 +7,11 @@ import { toast } from 'sonner'
 import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
-import { FloatingMenuItem } from '#/components/ui/floating-menu'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '#/components/ui/popover'
 import { useAuth } from '#/features/auth/auth-context'
-import {
-  banServerMember,
-  kickServerMember,
-} from '#/features/api/servers-api'
-import { blockUser, openDirectMessage } from '#/features/api/users-api'
+import { openDirectMessage } from '#/features/api/users-api'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import {
-  canBanServerMember,
-  canKickServerMember,
-} from '#/lib/permissions'
+import { syncStore } from '#/features/sync/sync-store'
+
 export type UserProfileCardProps = {
   user: User
   hideMessage?: boolean
@@ -38,8 +19,10 @@ export type UserProfileCardProps = {
   serverName?: string
   roles?: MemberRoleEntry[]
   onClose?: () => void
+  onOpenGlobalProfile?: () => void
 }
 
+/** Серверный профиль в поповере (ЛКМ по участнику). */
 export function UserProfileCard({
   user: profile,
   hideMessage,
@@ -47,34 +30,16 @@ export function UserProfileCard({
   serverName: serverNameProp,
   roles: rolesProp,
   onClose,
+  onOpenGlobalProfile,
 }: UserProfileCardProps) {
   const auth = useAuth()
   const navigate = useNavigate()
 
   const [busy, setBusy] = useState(false)
-  const [actionsOpen, setActionsOpen] = useState(false)
   const [messageDraft, setMessageDraft] = useState('')
 
   const isSelf = profile._id === auth.user?._id
   const canMessage = !hideMessage && !isSelf
-  const server = useSyncStore((s) =>
-    serverId ? s.servers[serverId] : undefined,
-  )
-  const actorMember = useSyncStore((s) =>
-    serverId && auth.user?._id
-      ? s.members[`${serverId}:${auth.user._id}`]
-      : undefined,
-  )
-  const targetMember = useSyncStore((s) =>
-    serverId ? s.members[`${serverId}:${profile._id}`] : undefined,
-  )
-  const canKick =
-    server &&
-    canKickServerMember(server, actorMember, auth.user?._id, targetMember)
-  const canBan =
-    server &&
-    canBanServerMember(server, actorMember, auth.user?._id, targetMember)
-  const showProfileActions = canKick || canBan || !isSelf
 
   function dismiss() {
     onClose?.()
@@ -108,126 +73,6 @@ export function UserProfileCard({
     }
   }
 
-  async function handleKick() {
-    const token = auth.session?.token
-    if (!token || !serverId || isSelf) return
-    if (!window.confirm(`Исключить @${profile.username} с сервера?`)) return
-    setBusy(true)
-    try {
-      await kickServerMember(token, serverId, profile._id)
-      syncStore.removeServerMember(serverId, profile._id)
-      dismiss()
-      toast.success('Участник исключён')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось исключить',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleBan() {
-    const token = auth.session?.token
-    if (!token || !serverId || isSelf) return
-    if (
-      !window.confirm(
-        `Забанить @${profile.username}? Пользователь не сможет вернуться на сервер.`,
-      )
-    ) {
-      return
-    }
-    setBusy(true)
-    try {
-      await banServerMember(token, serverId, profile._id)
-      syncStore.removeServerMember(serverId, profile._id)
-      dismiss()
-      toast.success('Пользователь забанен')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось забанить',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleBlock() {
-    const token = auth.session?.token
-    if (!token || isSelf) return
-    if (!window.confirm(`Заблокировать @${profile.username}?`)) return
-    setBusy(true)
-    try {
-      const updated = await blockUser(token, profile._id)
-      syncStore.upsertUser(updated)
-      dismiss()
-      toast.success('Пользователь заблокирован')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось заблокировать',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const bannerActions =
-    showProfileActions ? (
-      <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-full bg-foreground/20 text-primary-foreground hover:bg-foreground/30 hover:text-primary-foreground"
-          >
-            <MoreHorizontalIcon className="size-4" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="left"
-          align="start"
-          sideOffset={8}
-          className="z-[250] w-auto min-w-[11rem] p-1"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-        >
-          {canKick ? (
-            <FloatingMenuItem
-              onClick={() => {
-                setActionsOpen(false)
-                void handleKick()
-              }}
-            >
-              <UserMinusIcon className="size-3.5" />
-              Исключить
-            </FloatingMenuItem>
-          ) : null}
-          {canBan ? (
-            <FloatingMenuItem
-              onClick={() => {
-                setActionsOpen(false)
-                void handleBan()
-              }}
-            >
-              <BanIcon className="size-3.5" />
-              Бан на сервере
-            </FloatingMenuItem>
-          ) : null}
-          {!isSelf ? (
-            <FloatingMenuItem
-              onClick={() => {
-                setActionsOpen(false)
-                void handleBlock()
-              }}
-            >
-              <BanIcon className="size-3.5" />
-              Заблокировать
-            </FloatingMenuItem>
-          ) : null}
-        </PopoverContent>
-      </Popover>
-    ) : null
-
   return (
     <>
       <UserProfileCardHeader
@@ -235,7 +80,14 @@ export function UserProfileCard({
         serverId={serverId}
         serverName={serverNameProp}
         roles={rolesProp}
-        bannerActions={bannerActions}
+        onAvatarClick={
+          onOpenGlobalProfile
+            ? () => {
+                dismiss()
+                onOpenGlobalProfile()
+              }
+            : undefined
+        }
       />
 
       {canMessage ? (
@@ -271,7 +123,6 @@ export function UserProfileCard({
           </div>
         </form>
       ) : null}
-
     </>
   )
 }
