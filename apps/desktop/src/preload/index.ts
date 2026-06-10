@@ -2,10 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@syrnike13/platform'
 
 import type {
-  DesktopOverlayPreferences,
   DesktopOverlaySnapshot,
   DesktopOverlayState,
   DesktopOs,
+  DesktopLocalSettings,
+  DesktopLocalSettingsPatch,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
@@ -97,6 +98,17 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       return ipcRenderer.invoke(IPC.authClearSession)
     },
   },
+  settings: {
+    load() {
+      return ipcRenderer.invoke(IPC.settingsLoad) as Promise<DesktopLocalSettings>
+    },
+    update(patch: DesktopLocalSettingsPatch) {
+      return ipcRenderer.invoke(
+        IPC.settingsUpdate,
+        patch,
+      ) as Promise<DesktopLocalSettings>
+    },
+  },
   updates: {
     getState() {
       return ipcRenderer.invoke(IPC.updatesGetState)
@@ -156,17 +168,6 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
   },
   overlay: {
-    getPreferences() {
-      return ipcRenderer.invoke(
-        IPC.overlayGetPreferences,
-      ) as Promise<DesktopOverlayPreferences>
-    },
-    setPreferences(preferences: DesktopOverlayPreferences) {
-      return ipcRenderer.invoke(
-        IPC.overlaySetPreferences,
-        preferences,
-      ) as Promise<DesktopOverlayPreferences>
-    },
     getState() {
       return ipcRenderer.invoke(IPC.overlayGetState) as Promise<DesktopOverlayState>
     },

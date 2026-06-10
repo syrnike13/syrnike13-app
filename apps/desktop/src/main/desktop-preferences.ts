@@ -1,21 +1,14 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import {
-  DEFAULT_DESKTOP_OVERLAY_PREFERENCES,
-  normalizeDesktopOverlayPreferences,
-  type DesktopOverlayPreferences,
-} from '@syrnike13/platform'
 
 export type DesktopPreferences = {
   closeToTray: boolean
   openAtLogin: boolean
-  overlay: DesktopOverlayPreferences
 }
 
 export const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   closeToTray: true,
   openAtLogin: true,
-  overlay: DEFAULT_DESKTOP_OVERLAY_PREFERENCES,
 }
 
 export function normalizeDesktopPreferences(value: unknown): DesktopPreferences {
@@ -33,7 +26,6 @@ export function normalizeDesktopPreferences(value: unknown): DesktopPreferences 
       typeof preferences.openAtLogin === 'boolean'
         ? preferences.openAtLogin
         : DEFAULT_DESKTOP_PREFERENCES.openAtLogin,
-    overlay: normalizeDesktopOverlayPreferences(preferences.overlay),
   }
 }
 

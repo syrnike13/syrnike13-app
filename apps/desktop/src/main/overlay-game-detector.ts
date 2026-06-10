@@ -7,7 +7,7 @@ import type { Readable } from 'node:stream'
 import { app } from 'electron'
 import type {
   DesktopOverlayGameTarget,
-  DesktopOverlayPreferences,
+  DesktopOverlaySettings,
 } from '@syrnike13/platform'
 
 import { OVERLAY_EXCLUDED_PROCESS_NAMES } from './overlay-game-exclusions'
@@ -185,11 +185,11 @@ function isKnownGamePath(processPath: string | null) {
 }
 
 export function rememberDetectedOverlayGame(
-  preferences: DesktopOverlayPreferences,
+  settings: DesktopOverlaySettings,
   target: DesktopOverlayGameTarget,
   lastSeenAt: number,
-): DesktopOverlayPreferences {
-  const existing = preferences.games.find((game) => game.id === target.gameId)
+): DesktopOverlaySettings {
+  const existing = settings.games.find((game) => game.id === target.gameId)
   const nextGame = {
     id: target.gameId,
     processName: target.processName,
@@ -200,12 +200,12 @@ export function rememberDetectedOverlayGame(
   }
 
   return {
-    ...preferences,
+    ...settings,
     games: existing
-      ? preferences.games.map((game) =>
+      ? settings.games.map((game) =>
           game.id === target.gameId ? nextGame : game,
         )
-      : [...preferences.games, nextGame],
+      : [...settings.games, nextGame],
   }
 }
 

@@ -29,20 +29,6 @@ export type DesktopOverlayGameTarget = {
   bounds: DesktopOverlayBounds
 }
 
-export type DesktopOverlayGamePreference = {
-  id: string
-  processName: string
-  processPath: string | null
-  title: string
-  enabled: boolean
-  lastSeenAt: number
-}
-
-export type DesktopOverlayPreferences = {
-  enabled: boolean
-  games: DesktopOverlayGamePreference[]
-}
-
 export type DesktopOverlayState = {
   available: boolean
   enabled: boolean
@@ -56,11 +42,6 @@ export const EMPTY_DESKTOP_OVERLAY_SNAPSHOT: DesktopOverlaySnapshot = {
   channelId: null,
   channelLabel: null,
   participants: [],
-}
-
-export const DEFAULT_DESKTOP_OVERLAY_PREFERENCES: DesktopOverlayPreferences = {
-  enabled: true,
-  games: [],
 }
 
 export function normalizeDesktopOverlaySnapshot(
@@ -91,54 +72,6 @@ export function normalizeDesktopOverlaySnapshot(
     channelLabel,
     participants,
   }
-}
-
-export function normalizeDesktopOverlayPreferences(
-  value: unknown,
-): DesktopOverlayPreferences {
-  if (!value || typeof value !== 'object') {
-    return { ...DEFAULT_DESKTOP_OVERLAY_PREFERENCES }
-  }
-
-  const preferences = value as Partial<DesktopOverlayPreferences>
-  return {
-    enabled:
-      typeof preferences.enabled === 'boolean'
-        ? preferences.enabled
-        : DEFAULT_DESKTOP_OVERLAY_PREFERENCES.enabled,
-    games: Array.isArray(preferences.games)
-      ? preferences.games.flatMap(normalizeDesktopOverlayGamePreference)
-      : [],
-  }
-}
-
-function normalizeDesktopOverlayGamePreference(
-  value: unknown,
-): DesktopOverlayGamePreference[] {
-  if (!value || typeof value !== 'object') return []
-
-  const game = value as Partial<DesktopOverlayGamePreference>
-  if (
-    !nonEmptyString(game.id) ||
-    !nonEmptyString(game.processName) ||
-    !nonEmptyString(game.title) ||
-    typeof game.enabled !== 'boolean' ||
-    typeof game.lastSeenAt !== 'number' ||
-    !Number.isFinite(game.lastSeenAt)
-  ) {
-    return []
-  }
-
-  return [
-    {
-      id: game.id,
-      processName: game.processName,
-      processPath: stringOrNull(game.processPath),
-      title: game.title,
-      enabled: game.enabled,
-      lastSeenAt: game.lastSeenAt,
-    },
-  ]
 }
 
 function normalizeDesktopOverlayParticipant(

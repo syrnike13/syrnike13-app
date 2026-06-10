@@ -23,36 +23,10 @@ describe('desktop preferences', () => {
       normalizeDesktopPreferences({
         closeToTray: false,
         openAtLogin: false,
-        overlay: {
-          enabled: false,
-          games: [
-            {
-              id: 'c:/games/raid.exe',
-              processName: 'raid.exe',
-              processPath: 'C:/Games/Raid.exe',
-              title: 'Raid',
-              enabled: true,
-              lastSeenAt: 123,
-            },
-          ],
-        },
       }),
     ).toEqual({
       closeToTray: false,
       openAtLogin: false,
-      overlay: {
-        enabled: false,
-        games: [
-          {
-            id: 'c:/games/raid.exe',
-            processName: 'raid.exe',
-            processPath: 'C:/Games/Raid.exe',
-            title: 'Raid',
-            enabled: true,
-            lastSeenAt: 123,
-          },
-        ],
-      },
     })
   })
 
@@ -60,10 +34,6 @@ describe('desktop preferences', () => {
     expect(normalizeDesktopPreferences({ closeToTray: false })).toEqual({
       closeToTray: false,
       openAtLogin: true,
-      overlay: {
-        enabled: true,
-        games: [],
-      },
     })
   })
 
@@ -81,27 +51,15 @@ describe('desktop preferences', () => {
       await saveDesktopPreferences(filePath, {
         closeToTray: false,
         openAtLogin: false,
-        overlay: {
-          enabled: false,
-          games: [],
-        },
       })
 
       expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual({
         closeToTray: false,
         openAtLogin: false,
-        overlay: {
-          enabled: false,
-          games: [],
-        },
       })
       expect(await loadDesktopPreferences(filePath)).toEqual({
         closeToTray: false,
         openAtLogin: false,
-        overlay: {
-          enabled: false,
-          games: [],
-        },
       })
     } finally {
       await rm(dir, { recursive: true, force: true })

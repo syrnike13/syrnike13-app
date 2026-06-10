@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import type { DesktopOverlayPreferences } from '@syrnike13/platform'
+import type { DesktopOverlaySettings } from '@syrnike13/platform'
 
 import {
   SettingsBlock,
@@ -11,22 +11,21 @@ import { usePlatform } from '#/platform/use-platform'
 
 export function SettingsOverlayPanel() {
   const { desktop, os } = usePlatform()
-  const [preferences, setPreferences] =
-    useState<DesktopOverlayPreferences | null>(null)
+  const [settings, setSettings] = useState<DesktopOverlaySettings | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!desktop || os !== 'win32') return
     let cancelled = false
 
-    const loadPreferences = () => {
-      void desktop.overlay.getPreferences().then((value) => {
-        if (!cancelled) setPreferences(value)
+    const loadSettings = () => {
+      void desktop.settings.load().then((value) => {
+        if (!cancelled) setSettings(value.overlay)
       })
     }
 
-    loadPreferences()
-    const unsubscribe = desktop.overlay.onStateChange(loadPreferences)
+    loadSettings()
+    const unsubscribe = desktop.overlay.onStateChange(loadSettings)
     return () => {
       cancelled = true
       unsubscribe()
@@ -35,10 +34,10 @@ export function SettingsOverlayPanel() {
 
   const games = useMemo(
     () =>
-      [...(preferences?.games ?? [])].sort(
+      [...(settings?.games ?? [])].sort(
         (left, right) => right.lastSeenAt - left.lastSeenAt,
       ),
-    [preferences?.games],
+    [settings?.games],
   )
 
   if (!desktop || os !== 'win32') {
@@ -52,16 +51,16 @@ export function SettingsOverlayPanel() {
     )
   }
 
-  function save(nextPreferences: DesktopOverlayPreferences) {
+  function save(nextSettings: DesktopOverlaySettings) {
     if (!desktop || saving) return
-    const previous = preferences
-    setPreferences(nextPreferences)
+    const previous = settings
+    setSettings(nextSettings)
     setSaving(true)
-    void desktop.overlay
-      .setPreferences(nextPreferences)
-      .then(setPreferences)
+    void desktop.settings
+      .update({ overlay: nextSettings })
+      .then((value) => setSettings(value.overlay))
       .catch((error) => {
-        setPreferences(previous)
+        setSettings(previous)
         toast.error(
           error instanceof Error
             ? error.message
@@ -79,11 +78,11 @@ export function SettingsOverlayPanel() {
           hint="Оверлей показывается только поверх активных окон, которые детектор распознал как игры."
         >
           <Switch
-            checked={preferences?.enabled ?? true}
-            disabled={!preferences || saving}
+            checked={settings?.enabled ?? true}
+            disabled={!settings || saving}
             onCheckedChange={(enabled) => {
-              if (!preferences) return
-              save({ ...preferences, enabled })
+              if (!settings) return
+              save({ ...settings, enabled })
             }}
           />
         </SettingsRow>
@@ -93,7 +92,7 @@ export function SettingsOverlayPanel() {
         title="Игры"
         description="Игра появится здесь после того, как станет активным окном и пройдет детект по runtime-сигналам."
       >
-        {!preferences ? (
+        {!settings ? (
           <p className="text-sm text-muted-foreground">Загрузка…</p>
         ) : games.length === 0 ? (
           <div className="rounded-md border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
@@ -111,10 +110,10 @@ export function SettingsOverlayPanel() {
                   checked={game.enabled}
                   disabled={saving}
                   onCheckedChange={(enabled) => {
-                    if (!preferences) return
+                    if (!settings) return
                     save({
-                      ...preferences,
-                      games: preferences.games.map((item) =>
+                      ...settings,
+                      games: settings.games.map((item) =>
                         item.id === game.id ? { ...item, enabled } : item,
                       ),
                     })

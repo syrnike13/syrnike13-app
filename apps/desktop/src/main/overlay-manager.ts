@@ -1,11 +1,11 @@
 import { BrowserWindow, screen, type WebContents } from 'electron'
 import {
-  DEFAULT_DESKTOP_OVERLAY_PREFERENCES,
+  DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
   IPC,
   normalizeDesktopOverlaySnapshot,
   type DesktopOverlayGameTarget,
-  type DesktopOverlayPreferences,
+  type DesktopOverlaySettings,
   type DesktopOverlaySnapshot,
   type DesktopOverlayState,
 } from '@syrnike13/platform'
@@ -23,12 +23,12 @@ const OVERLAY_HEIGHT = 420
 let overlayWindow: BrowserWindow | null = null
 let overlayLoadUrl: string | null = null
 let getMainWindowRef: (() => BrowserWindow | null) | null = null
-let persistOverlayPreferences:
-  | ((preferences: DesktopOverlayPreferences) => Promise<void>)
+let persistOverlaySettings:
+  | ((settings: DesktopOverlaySettings) => Promise<void>)
   | null = null
 let overlayState = createDesktopOverlayState(process.platform)
-let overlayPreferences: DesktopOverlayPreferences = {
-  ...DEFAULT_DESKTOP_OVERLAY_PREFERENCES,
+let overlaySettings: DesktopOverlaySettings = {
+  ...DEFAULT_DESKTOP_OVERLAY_SETTINGS,
 }
 
 export function createDesktopOverlayState(
@@ -56,7 +56,7 @@ export function updateDesktopOverlaySnapshot(
       canShowDesktopOverlay(state, normalized, state.target) &&
       Boolean(
         state.target &&
-          isOverlayGameEnabled(state.target.gameId, overlayPreferences),
+          isOverlayGameEnabled(state.target.gameId, overlaySettings),
       ),
   }
 }
@@ -74,7 +74,7 @@ export function updateDesktopOverlayEnabled(
       state.snapshot.active &&
       Boolean(
         state.target &&
-          isOverlayGameEnabled(state.target.gameId, overlayPreferences),
+          isOverlayGameEnabled(state.target.gameId, overlaySettings),
       ),
   }
 }
@@ -82,7 +82,7 @@ export function updateDesktopOverlayEnabled(
 export function updateDesktopOverlayGameTarget(
   state: DesktopOverlayState,
   target: DesktopOverlayGameTarget | null,
-  preferences: DesktopOverlayPreferences,
+  settings: DesktopOverlaySettings,
 ): DesktopOverlayState {
   return {
     ...state,
@@ -90,9 +90,9 @@ export function updateDesktopOverlayGameTarget(
     visible:
       state.available &&
       state.enabled &&
-      preferences.enabled &&
+      settings.enabled &&
       state.snapshot.active &&
-      Boolean(target && isOverlayGameEnabled(target.gameId, preferences)),
+      Boolean(target && isOverlayGameEnabled(target.gameId, settings)),
   }
 }
 
@@ -100,15 +100,15 @@ export function configureDesktopOverlay(
   loadUrl: string,
   getMainWindow: () => BrowserWindow | null,
   options?: {
-    preferences?: DesktopOverlayPreferences
-    persistPreferences?: (preferences: DesktopOverlayPreferences) => Promise<void>
+    settings?: DesktopOverlaySettings
+    persistSettings?: (settings: DesktopOverlaySettings) => Promise<void>
   },
 ) {
   overlayLoadUrl = loadUrl
   getMainWindowRef = getMainWindow
-  persistOverlayPreferences = options?.persistPreferences ?? null
-  if (options?.preferences) {
-    setDesktopOverlayPreferences(options.preferences)
+  persistOverlaySettings = options?.persistSettings ?? null
+  if (options?.settings) {
+    setDesktopOverlaySettings(options.settings)
   }
   startOverlayGameDetector(handleOverlayGameTarget)
 }
@@ -124,25 +124,23 @@ export function setDesktopOverlayEnabled(enabled: boolean) {
   return overlayState
 }
 
-export function getDesktopOverlayPreferences() {
-  return overlayPreferences
+export function getDesktopOverlaySettings() {
+  return overlaySettings
 }
 
-export function setDesktopOverlayPreferences(
-  preferences: DesktopOverlayPreferences,
-) {
-  overlayPreferences = preferences
+export function setDesktopOverlaySettings(settings: DesktopOverlaySettings) {
+  overlaySettings = settings
   overlayState = updateDesktopOverlayGameTarget(
     {
       ...overlayState,
-      enabled: overlayState.available && preferences.enabled,
+      enabled: overlayState.available && settings.enabled,
     },
     overlayState.target,
-    overlayPreferences,
+    overlaySettings,
   )
   applyDesktopOverlayVisibility()
   emitDesktopOverlayState()
-  return overlayPreferences
+  return overlaySettings
 }
 
 export function setDesktopOverlayGameTarget(
@@ -151,7 +149,7 @@ export function setDesktopOverlayGameTarget(
   overlayState = updateDesktopOverlayGameTarget(
     overlayState,
     target,
-    overlayPreferences,
+    overlaySettings,
   )
   applyDesktopOverlayVisibility()
   emitDesktopOverlayState()
@@ -186,21 +184,21 @@ export function disposeDesktopOverlay() {
   overlayWindow = null
   overlayLoadUrl = null
   getMainWindowRef = null
-  persistOverlayPreferences = null
-  overlayPreferences = { ...DEFAULT_DESKTOP_OVERLAY_PREFERENCES }
+  persistOverlaySettings = null
+  overlaySettings = { ...DEFAULT_DESKTOP_OVERLAY_SETTINGS }
   overlayState = createDesktopOverlayState(process.platform)
 }
 
 function handleOverlayGameTarget(target: DesktopOverlayGameTarget | null) {
   if (target) {
-    const nextPreferences = rememberDetectedOverlayGame(
-      overlayPreferences,
+    const nextSettings = rememberDetectedOverlayGame(
+      overlaySettings,
       target,
       Date.now(),
     )
-    if (nextPreferences !== overlayPreferences) {
-      overlayPreferences = nextPreferences
-      void persistOverlayPreferences?.(nextPreferences).catch((error) => {
+    if (nextSettings !== overlaySettings) {
+      overlaySettings = nextSettings
+      void persistOverlaySettings?.(nextSettings).catch((error) => {
         console.error('[desktop-overlay] failed to save detected game', error)
       })
     }
@@ -219,10 +217,10 @@ function canShowDesktopOverlay(
 
 function isOverlayGameEnabled(
   gameId: string,
-  preferences: DesktopOverlayPreferences,
+  settings: DesktopOverlaySettings,
 ) {
-  if (!preferences.enabled) return false
-  const game = preferences.games.find((item) => item.id === gameId)
+  if (!settings.enabled) return false
+  const game = settings.games.find((item) => item.id === gameId)
   return game?.enabled ?? true
 }
 

@@ -2,8 +2,9 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
-  type DesktopOverlayPreferences,
+  type DesktopLocalSettings,
   type DesktopOverlaySnapshot,
+  type DesktopLocalSettingsPatch,
   type DesktopStoredSession,
   type DesktopWindowPreferences,
   type HotkeyBinding,
@@ -28,15 +29,19 @@ import {
   loadDesktopSession,
   saveDesktopSession,
 } from './desktop-session'
+import {
+  desktopLocalSettingsDefaults,
+  loadDesktopLocalSettings,
+  updateDesktopLocalSettings,
+} from './desktop-local-settings'
 import { registerNativeMediaEngineIpc } from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
 import {
   canSetDesktopOverlaySnapshot,
   canUseDesktopOverlaySender,
-  getDesktopOverlayPreferences,
   getDesktopOverlayState,
-  setDesktopOverlayPreferences,
   setDesktopOverlayEnabled,
+  setDesktopOverlaySettings,
   setDesktopOverlaySnapshot,
 } from './overlay-manager'
 
@@ -48,10 +53,10 @@ export function registerDesktopIpc(
     getWindowPreferences: () => DesktopWindowPreferences
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
-    setOverlayPreferences: (
-      preferences: DesktopOverlayPreferences,
-    ) => Promise<DesktopOverlayPreferences>
+    onLocalSettingsUpdated?: (settings: DesktopLocalSettings) => void
     showWindow: () => void
+    localSettingsPath: string
+    localSettingsDefaults?: ReturnType<typeof desktopLocalSettingsDefaults>
     sessionPath: string
   },
 ) {
@@ -132,6 +137,24 @@ export function registerDesktopIpc(
     clearDesktopSession(options.sessionPath),
   )
 
+  ipcMain.handle(IPC.settingsLoad, () =>
+    loadDesktopLocalSettings(
+      options.localSettingsPath,
+      options.localSettingsDefaults,
+    ),
+  )
+
+  ipcMain.handle(IPC.settingsUpdate, async (_event, patch: DesktopLocalSettingsPatch) => {
+    const settings = await updateDesktopLocalSettings(
+      options.localSettingsPath,
+      patch,
+      options.localSettingsDefaults,
+    )
+    setDesktopOverlaySettings(settings.overlay)
+    options.onLocalSettingsUpdated?.(settings)
+    return settings
+  })
+
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
 
   ipcMain.handle(IPC.hotkeysSetBindings, (_event, bindings: HotkeyBinding[]) =>
@@ -158,25 +181,6 @@ export function registerDesktopIpc(
     }
     return getDesktopOverlayState()
   })
-
-  ipcMain.handle(IPC.overlayGetPreferences, (event) => {
-    if (!canSetDesktopOverlaySnapshot(event.sender)) {
-      throw new Error('Untrusted overlay preferences request')
-    }
-    return getDesktopOverlayPreferences()
-  })
-
-  ipcMain.handle(
-    IPC.overlaySetPreferences,
-    async (event, preferences: DesktopOverlayPreferences) => {
-      if (!canSetDesktopOverlaySnapshot(event.sender)) {
-        throw new Error('Untrusted overlay preferences update')
-      }
-      const saved = await options.setOverlayPreferences(preferences)
-      setDesktopOverlayPreferences(saved)
-      return saved
-    },
-  )
 
   ipcMain.handle(IPC.overlaySetEnabled, (event, enabled: boolean) => {
     if (!canSetDesktopOverlaySnapshot(event.sender)) {

@@ -12,10 +12,10 @@ import type {
   NativeMediaStatsEvent,
 } from './media'
 import type {
-  DesktopOverlayPreferences,
   DesktopOverlaySnapshot,
   DesktopOverlayState,
 } from './overlay'
+import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -44,7 +44,6 @@ export interface ActivityDetails {
 export interface DesktopWindowPreferences {
   closeToTray: boolean
   openAtLogin: boolean
-  overlay: DesktopOverlayPreferences
 }
 
 export interface DesktopStoredSession {
@@ -193,6 +192,10 @@ export interface SyrnikeDesktopApi {
     saveSession(session: DesktopStoredSession): Promise<void>
     clearSession(): Promise<void>
   }
+  settings: {
+    load(): Promise<DesktopLocalSettings>
+    update(patch: DesktopLocalSettingsPatch): Promise<DesktopLocalSettings>
+  }
   updates: {
     getState(): Promise<DesktopUpdateState>
     check(): Promise<DesktopUpdateState>
@@ -212,10 +215,6 @@ export interface SyrnikeDesktopApi {
     onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
   }
   overlay: {
-    getPreferences(): Promise<DesktopOverlayPreferences>
-    setPreferences(
-      preferences: DesktopOverlayPreferences,
-    ): Promise<DesktopOverlayPreferences>
     getState(): Promise<DesktopOverlayState>
     setEnabled(enabled: boolean): Promise<DesktopOverlayState>
     setSnapshot(snapshot: DesktopOverlaySnapshot): Promise<DesktopOverlayState>
