@@ -106,7 +106,7 @@ export function SettingsDesktopPanel() {
       <SettingsBlock title="Запуск">
         <SettingsRow
           label="Запускать при входе в систему"
-          value="syrnike13 откроется после включения компьютера"
+          hint="syrnike13 откроется после включения компьютера"
         >
           <Switch
             checked={windowPreferences?.openAtLogin ?? true}

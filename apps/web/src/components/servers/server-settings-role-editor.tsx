@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '#/components/ui/popover'
-import { Switch } from '#/components/ui/switch'
+import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { uploadAttachment } from '#/features/api/media-api'
 import {
@@ -493,39 +493,22 @@ export function ServerSettingsRoleEditor({
             iconUrl={previewIconUrl}
           />
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">
-                  Отображать роль отдельно от участников
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Участники с этой ролью будут в отдельной группе в списке.
-                </p>
-              </div>
-              <Switch
-                checked={hoist}
-                disabled={!canEditRole}
-                onCheckedChange={setHoist}
-              />
-            </div>
+          <div className="space-y-0">
+            <SettingsToggleRow
+              label="Отображать роль отдельно от участников"
+              hint="Участники с этой ролью будут в отдельной группе в списке."
+              checked={hoist}
+              disabled={!canEditRole}
+              onCheckedChange={setHoist}
+            />
 
-            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">
-                  Позволять любому пинговать «@» эту роль
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Если выключено, упоминать роль смогут только участники с правом
-                  «Упоминать роли».
-                </p>
-              </div>
-              <Switch
-                checked={mentionable}
-                disabled={!canEditRole}
-                onCheckedChange={setMentionable}
-              />
-            </div>
+            <SettingsToggleRow
+              label="Позволять любому пинговать «@» эту роль"
+              hint="Если выключено, упоминать роль смогут только участники с правом «Упоминать роли»."
+              checked={mentionable}
+              disabled={!canEditRole}
+              onCheckedChange={setMentionable}
+            />
           </div>
         </div>
       ) : null}

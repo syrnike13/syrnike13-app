@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 
+import {
+  SettingsBlock,
+  SettingsRow,
+  SettingsToggleRow,
+} from '#/components/settings/settings-panels'
 import { VoiceGateSensitivityBar } from '#/components/settings/voice-gate-sensitivity-bar'
 import { Button } from '#/components/ui/button'
-import { Label } from '#/components/ui/label'
 import { Switch } from '#/components/ui/switch'
 import {
   Select,
@@ -47,7 +51,7 @@ function sliderToVolume(value: number) {
   return Number(((value / 100) * VOICE_OUTPUT_VOLUME_MAX).toFixed(2))
 }
 
-function DeviceSelect({
+function DeviceSelectField({
   label,
   value,
   devices,
@@ -68,7 +72,7 @@ function DeviceSelect({
 
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <p className="text-base font-medium">{label}</p>
       <Select value={selectValue} onValueChange={onChange}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="По умолчанию" />
@@ -86,7 +90,7 @@ function DeviceSelect({
   )
 }
 
-function VolumeSlider({
+function VolumeSliderField({
   id,
   label,
   value,
@@ -99,7 +103,7 @@ function VolumeSlider({
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <p className="text-base font-medium">{label}</p>
       <Slider
         id={id}
         value={[volumeToSlider(value)]}
@@ -193,15 +197,11 @@ export function SettingsVoicePanel() {
   )
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4 border-b border-border/60 pb-8">
-        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Устройства
-        </h3>
-
-        <div className="grid gap-6 md:grid-cols-2">
+    <div className="space-y-2">
+      <SettingsBlock title="Устройства">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="space-y-4">
-            <DeviceSelect
+            <DeviceSelectField
               label="Микрофон"
               devices={inputDevices}
               value={inputValue}
@@ -211,7 +211,7 @@ export function SettingsVoicePanel() {
                 )
               }}
             />
-            <VolumeSlider
+            <VolumeSliderField
               id="voice-input-volume"
               label="Громкость микрофона"
               value={prefs.inputVolume}
@@ -222,7 +222,7 @@ export function SettingsVoicePanel() {
           </div>
 
           <div className="space-y-4">
-            <DeviceSelect
+            <DeviceSelectField
               label="Динамики / наушники"
               devices={outputDevices}
               value={outputValue}
@@ -232,7 +232,7 @@ export function SettingsVoicePanel() {
                 )
               }}
             />
-            <VolumeSlider
+            <VolumeSliderField
               id="voice-output-volume"
               label="Громкость"
               value={prefs.outputVolume}
@@ -241,53 +241,43 @@ export function SettingsVoicePanel() {
               }}
             />
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              size="sm"
-              variant={micTestActive ? 'secondary' : 'default'}
-              className="shrink-0"
-              onClick={() => setMicTestActive((value) => !value)}
-            >
-              {micTestActive ? 'Остановить' : 'Проверка микрофона'}
-            </Button>
-            <MicInputMeter levels={meterLevels} />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {micTestActive
-              ? 'Слышите обработанный сигнал с выбранного микрофона — как в голосовом канале. Лучше в наушниках.'
-              : 'Воспроизведёт обработанный сигнал через выбранный вывод.'}
-          </p>
-        </div>
-      </section>
-
-      <section className="space-y-4 border-b border-border/60 pb-8">
-        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Обработка звука
-        </h3>
-
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-sm font-medium">
-                Автоматическая чувствительность
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Регулирует, сколько звука передаётся с микрофона. Порог
-                подстраивается по тишине, а не по голосу.
-              </p>
+          <div className="col-span-full pt-1">
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                size="sm"
+                variant={micTestActive ? 'secondary' : 'default'}
+                className="shrink-0"
+                onClick={() => setMicTestActive((value) => !value)}
+              >
+                {micTestActive ? 'Остановить' : 'Проверка микрофона'}
+              </Button>
+              <MicInputMeter levels={meterLevels} />
             </div>
-            <Switch
-              checked={prefs.voiceGateAutoThreshold}
-              onCheckedChange={(checked) =>
-                voicePreferenceStore.setVoiceGateAutoThreshold(checked)
-              }
-            />
+            <p className="mt-2 text-sm text-muted-foreground">
+              {micTestActive
+                ? 'Слышите обработанный сигнал с выбранного микрофона — как в голосовом канале. Лучше в наушниках.'
+                : 'Воспроизведёт обработанный сигнал через выбранный вывод.'}
+            </p>
           </div>
+        </div>
+      </SettingsBlock>
 
+      <SettingsBlock title="Обработка звука">
+        <SettingsRow
+          label="Автоматическая чувствительность"
+          hint="Регулируйте порог передачи звука в Сырниках"
+        >
+          <Switch
+            checked={prefs.voiceGateAutoThreshold}
+            onCheckedChange={(checked) =>
+              voicePreferenceStore.setVoiceGateAutoThreshold(checked)
+            }
+          />
+        </SettingsRow>
+
+        <div className="pb-2">
           <VoiceGateSensitivityBar
             metricsRef={gateMetricsRef}
             thresholdDb={prefs.voiceGateThresholdDb}
@@ -298,39 +288,25 @@ export function SettingsVoicePanel() {
           />
         </div>
 
-        <div className="space-y-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 rounded border-input accent-primary"
-              checked={prefs.noiseSuppression}
-              onChange={(event) =>
-                voicePreferenceStore.setNoiseSuppression(event.target.checked)
-              }
-            />
-            Шумоподавление
-          </label>
+        <SettingsToggleRow
+          label="Шумоподавление"
+          checked={prefs.noiseSuppression}
+          onCheckedChange={(checked) =>
+            voicePreferenceStore.setNoiseSuppression(checked)
+          }
+        />
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 rounded border-input accent-primary"
-              checked={prefs.echoCancellation}
-              onChange={(event) =>
-                voicePreferenceStore.setEchoCancellation(event.target.checked)
-              }
-            />
-            Эхоподавление
-          </label>
-        </div>
-      </section>
+        <SettingsToggleRow
+          label="Эхоподавление"
+          checked={prefs.echoCancellation}
+          onCheckedChange={(checked) =>
+            voicePreferenceStore.setEchoCancellation(checked)
+          }
+        />
+      </SettingsBlock>
 
-      <section className="space-y-4">
-        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Демонстрация экрана
-        </h3>
-        <div className="space-y-2">
-          <Label>Качество по умолчанию</Label>
+      <SettingsBlock title="Демонстрация экрана">
+        <SettingsRow label="Качество по умолчанию">
           <Select
             value={prefs.screenShareQuality}
             onValueChange={(value) =>
@@ -339,7 +315,7 @@ export function SettingsVoicePanel() {
               )
             }
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-[220px] max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -352,10 +328,10 @@ export function SettingsVoicePanel() {
               )}
             </SelectContent>
           </Select>
-        </div>
+        </SettingsRow>
+
         {capabilities.nativeScreenShare ? (
-          <div className="space-y-2">
-            <Label>Захват экрана</Label>
+          <SettingsRow label="Захват экрана">
             <Select
               value={prefs.screenShareCaptureMode}
               onValueChange={(value) =>
@@ -364,7 +340,7 @@ export function SettingsVoicePanel() {
                 )
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-[220px] max-w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -379,49 +355,27 @@ export function SettingsVoicePanel() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </SettingsRow>
         ) : null}
-        <label
-          className={cn(
-            'flex items-center gap-2 text-sm',
-            av1Supported ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
-          )}
-        >
-          <input
-            type="checkbox"
-            className="size-4 rounded border-input accent-primary"
-            disabled={!av1Supported}
-            checked={prefs.screenShareCodec === 'av1'}
-            onChange={(event) =>
-              voicePreferenceStore.setScreenShareCodec(
-                event.target.checked ? 'av1' : 'auto',
-              )
-            }
-          />
-          AV1 (экспериментально)
-          {!av1Supported ? (
-            <span className="text-muted-foreground">— не поддерживается</span>
-          ) : null}
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-input accent-primary"
-            checked={prefs.screenShareAudio}
-            onChange={(event) =>
-              voicePreferenceStore.setScreenShareAudio(event.target.checked)
-            }
-          />
-          Передавать звук с экрана по умолчанию
-        </label>
-        {!capabilities.nativeScreenShare ? (
-          <p className="text-xs text-muted-foreground">
-            В браузере звук экрана может дублировать голоса участников. В
-            desktop-приложении Windows захват исключает звук Syrnike и
-            передаётся в стерео.
-          </p>
-        ) : null}
-      </section>
+
+        <SettingsToggleRow
+          label="AV1 (экспериментально)"
+          hint={!av1Supported ? 'Не поддерживается в этом браузере' : undefined}
+          checked={prefs.screenShareCodec === 'av1'}
+          disabled={!av1Supported}
+          onCheckedChange={(checked) =>
+            voicePreferenceStore.setScreenShareCodec(checked ? 'av1' : 'auto')
+          }
+        />
+
+        <SettingsToggleRow
+          label="Передавать звук с экрана по умолчанию"
+          checked={prefs.screenShareAudio}
+          onCheckedChange={(checked) =>
+            voicePreferenceStore.setScreenShareAudio(checked)
+          }
+        />
+      </SettingsBlock>
     </div>
   )
 }

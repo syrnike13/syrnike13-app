@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import {
+  SettingsBlock,
+  SettingsRow,
+} from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
 import {
   Card,
@@ -137,6 +141,51 @@ export function NotificationSettings({
     }
   }
 
+  if (layout === 'settings') {
+    return (
+      <div className="space-y-2">
+        <SettingsBlock title="Браузер">
+          <SettingsRow
+            label="Уведомления в браузере"
+            hint={`Текущий статус: ${permission}. Сообщения приходят, когда вкладка не в фокусе.`}
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void enableDesktop()}
+            >
+              Разрешить
+            </Button>
+          </SettingsRow>
+        </SettingsBlock>
+
+        {pushReady && vapidKey ? (
+          <SettingsBlock title="Push">
+            <SettingsRow
+              label="Фоновые push-уведомления"
+              hint="Работают, когда вкладка закрыта, через service worker."
+            >
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" onClick={() => void enablePush()}>
+                  Включить
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void disablePush()}
+                >
+                  Отключить
+                </Button>
+              </div>
+            </SettingsRow>
+          </SettingsBlock>
+        ) : null}
+      </div>
+    )
+  }
+
   const actions = (
     <div className="flex flex-col gap-2">
       <Button type="button" variant="outline" onClick={() => void enableDesktop()}>
@@ -158,10 +207,6 @@ export function NotificationSettings({
       ) : null}
     </div>
   )
-
-  if (layout === 'settings') {
-    return <div>{actions}</div>
-  }
 
   return (
     <Card>

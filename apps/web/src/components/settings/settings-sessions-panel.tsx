@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, MonitorIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { SettingsBlock } from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -85,74 +86,74 @@ export function SettingsSessionsPanel() {
     sessions.find((s) => s._id === currentSessionId) ?? sessions[0]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {current ? (
-        <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Текущая сессия
-          </p>
-          <div className="mt-2 flex items-start gap-3">
+        <SettingsBlock title="Текущая сессия">
+          <div className="flex items-start gap-3 py-3">
             <MonitorIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
             <div className="min-w-0">
-              <p className="font-medium">{current.name || 'Это устройство'}</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-base font-medium">
+                {current.name || 'Это устройство'}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
                 Создана {formatSessionDate(current._id)}
               </p>
             </div>
           </div>
-        </div>
+        </SettingsBlock>
       ) : null}
 
-      {others.length > 0 ? (
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-              Другие сессии ({others.length})
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => void revokeAllOthers()}
-            >
-              Завершить все
-            </Button>
-          </div>
-          <ul className="divide-y divide-border/60 rounded-lg border border-border/60">
-            {others.map((session) => (
-              <li
-                key={session._id}
-                className="flex items-center gap-3 px-3 py-2.5"
+      <SettingsBlock
+        title={others.length > 0 ? `Другие сессии (${others.length})` : 'Другие сессии'}
+      >
+        {others.length > 0 ? (
+          <>
+            <div className="flex justify-end pb-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => void revokeAllOthers()}
               >
-                <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {session.name || 'Сессия'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatSessionDate(session._id)}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 shrink-0 text-destructive"
-                  title="Завершить"
-                  onClick={() => void revokeSession(session._id)}
+                Завершить все
+              </Button>
+            </div>
+            <ul className="divide-y divide-border/40">
+              {others.map((session) => (
+                <li
+                  key={session._id}
+                  className="flex items-center gap-3 py-3"
                 >
-                  <Trash2Icon className="size-4" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Других активных сессий нет.
-        </p>
-      )}
+                  <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-medium">
+                      {session.name || 'Сессия'}
+                    </p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {formatSessionDate(session._id)}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 shrink-0 text-destructive"
+                    title="Завершить"
+                    onClick={() => void revokeSession(session._id)}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="py-3 text-sm text-muted-foreground">
+            Других активных сессий нет.
+          </p>
+        )}
+      </SettingsBlock>
     </div>
   )
 }

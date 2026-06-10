@@ -13,6 +13,7 @@ import { ThemeToggle } from '#/components/theme-toggle'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import { Switch } from '#/components/ui/switch'
 import type { SettingsSection } from '#/features/settings/settings-modal-context'
 import { changeAccountPassword } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
@@ -39,14 +40,16 @@ export function SettingsBlock({
   children: ReactNode
 }) {
   return (
-    <section className="border-b border-border/60 py-5 last:border-b-0">
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {title}
-      </h3>
-      {description ? (
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      ) : null}
-      <div className="mt-4">{children}</div>
+    <section className="border-b border-border/40 py-6 last:border-b-0">
+      <div className="mb-1">
+        <h3 className="text-xs font-bold tracking-wide text-muted-foreground uppercase">
+          {title}
+        </h3>
+        {description ? (
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        ) : null}
+      </div>
+      <div className="mt-3">{children}</div>
     </section>
   )
 }
@@ -57,26 +60,36 @@ export function SettingsRow({
   value,
   children,
   stacked,
+  className,
 }: {
   label: string
   hint?: string
   value?: ReactNode
   children?: ReactNode
   stacked?: boolean
+  className?: string
 }) {
+  const alignStart = !stacked && Boolean(hint)
+
   return (
     <div
       className={cn(
-        'gap-3 border-b border-border/40 py-4 last:border-b-0',
+        'gap-x-6 gap-y-3 py-3',
         stacked
           ? 'flex flex-col'
-          : 'flex flex-col sm:flex-row sm:items-start sm:justify-between',
+          : cn(
+              'flex justify-between',
+              alignStart ? 'items-start' : 'min-h-16 items-center',
+            ),
+        className,
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">{label}</p>
+        <p className="text-base font-medium leading-snug">{label}</p>
         {hint ? (
-          <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
+          <p className="mt-1 text-sm leading-snug text-muted-foreground">
+            {hint}
+          </p>
         ) : null}
         {value ? (
           <p className="mt-1 text-sm text-muted-foreground">{value}</p>
@@ -85,14 +98,38 @@ export function SettingsRow({
       {children ? (
         <div
           className={cn(
-            'flex items-center gap-2',
-            stacked ? 'w-full' : 'w-full shrink-0 sm:w-auto',
+            'flex shrink-0 items-center gap-2',
+            stacked ? 'w-full' : alignStart && 'pt-0.5',
           )}
         >
           {children}
         </div>
       ) : null}
     </div>
+  )
+}
+
+export function SettingsToggleRow({
+  label,
+  hint,
+  checked,
+  onCheckedChange,
+  disabled,
+}: {
+  label: string
+  hint?: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <SettingsRow label={label} hint={hint}>
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={disabled}
+      />
+    </SettingsRow>
   )
 }
 
@@ -193,10 +230,9 @@ export function SettingsAccountPanel() {
 export function SettingsAppearancePanel() {
   return (
     <SettingsBlock title="Тема">
-      <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/30 px-4 py-3">
-        <Label>Режим отображения</Label>
+      <SettingsRow label="Режим отображения">
         <ThemeToggle />
-      </div>
+      </SettingsRow>
     </SettingsBlock>
   )
 }
