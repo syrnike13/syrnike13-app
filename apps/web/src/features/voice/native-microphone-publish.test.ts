@@ -80,7 +80,10 @@ describe('native microphone publish', () => {
 
   it('builds native microphone session options from voice preferences', () => {
     expect(
-      nativeMicrophoneSessionOptions(preferences(), {
+      nativeMicrophoneSessionOptions({
+        ...preferences(),
+        voiceGateAutoThreshold: true,
+      }, {
         url: 'wss://livekit.example',
         token: 'livekit-token',
         participantIdentity: 'user-1:desktop-native',
@@ -96,7 +99,7 @@ describe('native microphone publish', () => {
       inputVolume: 0.75,
       voiceGateEnabled: true,
       voiceGateThresholdDb: -45,
-      voiceGateAutoThreshold: false,
+      voiceGateAutoThreshold: true,
       muted: false,
       livekit: {
         url: 'wss://livekit.example',
@@ -323,6 +326,7 @@ describe('native microphone publish', () => {
       ...preferences(),
       inputVolume: 1.8,
       voiceGateEnabled: false,
+      voiceGateAutoThreshold: true,
     })
     await vi.advanceTimersByTimeAsync(39)
 
@@ -337,6 +341,7 @@ describe('native microphone publish', () => {
         inputVolume: 1.8,
         noiseSuppression: true,
         voiceGateEnabled: false,
+        voiceGateAutoThreshold: true,
       }),
     )
   })

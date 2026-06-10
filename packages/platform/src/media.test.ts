@@ -59,6 +59,7 @@ describe('native media session contract', () => {
           echoCancellation: boolean
           inputVolume: number
           audioBitrate?: number
+          voiceGateAutoThreshold?: boolean
           muted?: boolean
           livekit: {
             url: string
@@ -95,6 +96,7 @@ describe('native media session contract', () => {
       noiseSuppression: true,
       echoCancellation: false,
       inputVolume: 1,
+      voiceGateAutoThreshold: true,
       livekit: {
         url: 'wss://example.test',
         token: 'token',
@@ -105,13 +107,16 @@ describe('native media session contract', () => {
     const runtimeConfig = {
       noiseSuppression: false,
       echoCancellation: true,
+      voiceGateAutoThreshold: false,
     } satisfies NativeMicrophoneRuntimeConfig
 
     const noiseStatus: NativeMediaNoiseSuppressionMode = 'software'
     const echoStatus: NativeMediaEchoCancellationMode = 'unavailable'
 
     expectTypeOf(microphoneStart.noiseSuppression).toEqualTypeOf<boolean>()
+    expectTypeOf(microphoneStart.voiceGateAutoThreshold).toEqualTypeOf<true>()
     expectTypeOf(runtimeConfig.echoCancellation).toEqualTypeOf<boolean | undefined>()
+    expectTypeOf(runtimeConfig.voiceGateAutoThreshold).toEqualTypeOf<boolean | undefined>()
     expectTypeOf(noiseStatus).toEqualTypeOf<NativeMediaNoiseSuppressionMode>()
     expectTypeOf(echoStatus).toEqualTypeOf<NativeMediaEchoCancellationMode>()
   })

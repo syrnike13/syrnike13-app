@@ -1,3 +1,4 @@
+#include "runtime_config.hpp"
 #include "voice_gate.hpp"
 
 #include <algorithm>
@@ -63,21 +64,64 @@ void expectNear(float actual, float expected, float epsilon, const std::string& 
   }
 }
 
-syrnike::voice::VoiceGateConfig testConfig() {
+syrnike::voice::VoiceGateConfig manualConfig() {
   syrnike::voice::VoiceGateConfig config;
   config.enabled = true;
-  config.open_threshold_db = -26.0f;
-  config.close_threshold_db = -32.0f;
-  config.attack_ms = 10;
+  config.auto_threshold = false;
+  config.manual_threshold_db = -26.0f;
+  config.auto_margin_db = 8.0f;
+  config.hysteresis_db = 6.0f;
+  config.attack_ms = 4;
   config.hold_ms = 50;
   config.release_ms = 100;
-  config.floor_gain = 0.0f;
+  config.lookahead_ms = 0;
+  config.floor_gain = 0.125f;
   return config;
+}
+
+syrnike::voice::VoiceGateConfig autoConfig() {
+  auto config = manualConfig();
+  config.auto_threshold = true;
+  config.manual_threshold_db = -28.0f;
+  config.hold_ms = 180;
+  config.lookahead_ms = 20;
+  return config;
+}
+
+void protocol_reads_voice_gate_auto_threshold() {
+  const auto command = syrnike::voice::parseStartCommand(
+    "{\"cmd\":\"connect_microphone\",\"voiceGateAutoThreshold\":true}"
+  );
+
+  expect(command.voice_gate_auto_threshold, "protocol should parse enabled auto voice gate");
+
+  const auto default_command = syrnike::voice::parseStartCommand(
+    "{\"cmd\":\"connect_microphone\"}"
+  );
+
+  expect(default_command.voice_gate_auto_threshold, "auto voice gate should default to enabled");
+}
+
+void runtime_config_stores_voice_gate_auto_threshold() {
+  syrnike::voice::StartCommand command;
+  command.voice_gate_auto_threshold = false;
+  syrnike::voice::updateRuntimeConfig(command);
+  expect(
+    !syrnike::voice::readRuntimeConfig().voice_gate_auto_threshold,
+    "runtime config should store disabled auto voice gate"
+  );
+
+  command.voice_gate_auto_threshold = true;
+  syrnike::voice::updateRuntimeConfig(command);
+  expect(
+    syrnike::voice::readRuntimeConfig().voice_gate_auto_threshold,
+    "runtime config should store enabled auto voice gate"
+  );
 }
 
 void disabled_gate_leaves_audio_and_reports_open() {
   syrnike::voice::VoiceGateProcessor gate(kSampleRate);
-  auto config = testConfig();
+  auto config = manualConfig();
   config.enabled = false;
   gate.updateConfig(config);
 
@@ -87,46 +131,109 @@ void disabled_gate_leaves_audio_and_reports_open() {
 
   expect(metrics.open, "disabled gate should report open");
   expectNear(metrics.gain, 1.0f, 0.001f, "disabled gate should keep unity gain");
+  expectNear(metrics.threshold_db, -26.0f, 0.001f, "disabled manual gate should report manual threshold");
   expectNear(peak(frame), before, 0.0001f, "disabled gate should not change samples");
 }
 
-void disabling_gate_recovers_smoothly_from_closed_state() {
+void manual_gate_uses_manual_threshold_and_hysteresis() {
   syrnike::voice::VoiceGateProcessor gate(kSampleRate);
-  auto config = testConfig();
-  gate.updateConfig(config);
+  gate.updateConfig(manualConfig());
 
   auto loud = toneFrame(-20.0f);
-  gate.processFrame(loud);
+  const auto loud_metrics = gate.processFrame(loud);
+  expect(loud_metrics.open, "manual gate should open above manual threshold");
+  expect(!loud_metrics.auto_threshold, "manual gate metrics should identify manual mode");
+  expectNear(loud_metrics.threshold_db, -26.0f, 0.001f, "manual gate should report manual threshold");
 
-  for (int frame_index = 0; frame_index < 20; ++frame_index) {
-    auto quiet = toneFrame(-50.0f);
+  for (int frame_index = 0; frame_index < 5; ++frame_index) {
+    auto quiet = toneFrame(-40.0f);
     gate.processFrame(quiet);
   }
 
-  config.enabled = false;
-  gate.updateConfig(config);
+  auto between = toneFrame(-29.0f);
+  const auto between_metrics = gate.processFrame(between);
+  expect(!between_metrics.open, "closed manual gate should not reopen below manual threshold");
 
-  auto disabled = toneFrame(-20.0f);
-  const auto input_peak = peak(disabled);
-  const auto metrics = gate.processFrame(disabled);
+  auto reopen = toneFrame(-20.0f);
+  const auto reopen_metrics = gate.processFrame(reopen);
+  expect(reopen_metrics.open, "manual gate should reopen at manual threshold");
+}
 
-  expect(metrics.open, "disabled gate should report open while recovering");
-  expect(std::abs(disabled.front()) > 0.0f, "disabled gate should start recovering immediately");
-  expect(std::abs(disabled.front()) < input_peak, "disabled gate should not jump from closed to unity in one sample");
+void auto_gate_raises_threshold_above_steady_room_noise() {
+  syrnike::voice::VoiceGateProcessor gate(kSampleRate);
+  gate.updateConfig(autoConfig());
 
-  for (int frame_index = 0; frame_index < 2; ++frame_index) {
-    auto recover = toneFrame(-20.0f);
-    gate.processFrame(recover);
+  syrnike::voice::VoiceGateFrameMetrics metrics;
+  for (int frame_index = 0; frame_index < 80; ++frame_index) {
+    auto noise = toneFrame(-48.0f);
+    metrics = gate.processFrame(noise);
   }
 
-  auto recovered = toneFrame(-20.0f);
-  gate.processFrame(recovered);
-  expectNear(peak(recovered), input_peak, 0.001f, "disabled gate should return to unity after attack");
+  expect(metrics.auto_threshold, "auto gate should report auto threshold mode");
+  expect(metrics.threshold_db > -43.0f, "auto gate should raise threshold above the measured noise floor");
+  expect(metrics.threshold_db < -34.0f, "auto gate should keep a conservative speech threshold");
+  expect(metrics.noise_floor_db < metrics.threshold_db, "auto gate should report noise floor below threshold");
+}
+
+void auto_gate_does_not_learn_short_loud_transient_as_noise_floor() {
+  syrnike::voice::VoiceGateProcessor gate(kSampleRate);
+  gate.updateConfig(autoConfig());
+
+  syrnike::voice::VoiceGateFrameMetrics metrics;
+  for (int frame_index = 0; frame_index < 80; ++frame_index) {
+    auto noise = toneFrame(-50.0f);
+    metrics = gate.processFrame(noise);
+  }
+  const float before_threshold = metrics.threshold_db;
+
+  auto transient = toneFrame(-8.0f);
+  gate.processFrame(transient);
+
+  for (int frame_index = 0; frame_index < 10; ++frame_index) {
+    auto noise = toneFrame(-50.0f);
+    metrics = gate.processFrame(noise);
+  }
+
+  expect(
+    metrics.threshold_db <= before_threshold + 1.0f,
+    "auto gate should not raise threshold after a short loud transient"
+  );
+}
+
+void auto_gate_uses_lookahead_only_in_auto_mode() {
+  syrnike::voice::VoiceGateProcessor auto_gate(kSampleRate);
+  auto_gate.updateConfig(autoConfig());
+
+  for (int frame_index = 0; frame_index < 80; ++frame_index) {
+    auto noise = toneFrame(-50.0f);
+    auto_gate.processFrame(noise);
+  }
+
+  auto auto_speech = toneFrame(-18.0f);
+  const float auto_input_peak = peak(auto_speech);
+  const auto auto_metrics = auto_gate.processFrame(auto_speech);
+  expect(auto_metrics.open, "auto gate should open quickly on speech");
+  expect(
+    peak(auto_speech) < auto_input_peak * 0.5f,
+    "auto gate should output delayed pre-roll on the opening frame"
+  );
+
+  syrnike::voice::VoiceGateProcessor manual_gate(kSampleRate);
+  manual_gate.updateConfig(manualConfig());
+  auto manual_speech = toneFrame(-18.0f);
+  const float manual_input_peak = peak(manual_speech);
+  const auto manual_metrics = manual_gate.processFrame(manual_speech);
+
+  expect(manual_metrics.open, "manual gate should open immediately");
+  expect(
+    peak(manual_speech) > manual_input_peak * 0.9f,
+    "manual gate should not add lookahead delay"
+  );
 }
 
 void open_gate_is_frequency_neutral() {
   syrnike::voice::VoiceGateProcessor gate(kSampleRate);
-  gate.updateConfig(testConfig());
+  gate.updateConfig(manualConfig());
 
   auto low = sineFrame(120.0f, -20.0f);
   const float low_before = rms(low);
@@ -147,7 +254,7 @@ void open_gate_is_frequency_neutral() {
 
 void gate_uses_hold_before_release() {
   syrnike::voice::VoiceGateProcessor gate(kSampleRate);
-  gate.updateConfig(testConfig());
+  gate.updateConfig(manualConfig());
 
   auto loud = toneFrame(-20.0f);
   gate.processFrame(loud);
@@ -162,7 +269,7 @@ void gate_uses_hold_before_release() {
 
 void gate_releases_smoothly_instead_of_zeroing_a_frame() {
   syrnike::voice::VoiceGateProcessor gate(kSampleRate);
-  gate.updateConfig(testConfig());
+  gate.updateConfig(manualConfig());
 
   auto loud = toneFrame(-20.0f);
   gate.processFrame(loud);
@@ -182,44 +289,25 @@ void gate_releases_smoothly_instead_of_zeroing_a_frame() {
   expect(output_peak < input_peak, "release should reduce the first closing frame");
 }
 
-void closed_gate_requires_open_threshold_to_reopen() {
+void toggling_auto_mode_does_not_leave_gate_stuck_closed() {
   syrnike::voice::VoiceGateProcessor gate(kSampleRate);
-  gate.updateConfig(testConfig());
+  auto config = autoConfig();
+  gate.updateConfig(config);
 
-  auto loud = toneFrame(-20.0f);
-  gate.processFrame(loud);
-
-  for (int frame_index = 0; frame_index < 20; ++frame_index) {
+  for (int frame_index = 0; frame_index < 80; ++frame_index) {
     auto quiet = toneFrame(-50.0f);
     gate.processFrame(quiet);
   }
 
-  auto between_thresholds = toneFrame(-29.0f);
-  const auto between_metrics = gate.processFrame(between_thresholds);
-  expect(!between_metrics.open, "closed gate should ignore levels below open threshold");
-  expect(peak(between_thresholds) < dbToLinear(-29.0f) * 0.5f, "closed gate should keep attenuating below open threshold");
-
-  auto above_open = toneFrame(-20.0f);
-  const auto open_metrics = gate.processFrame(above_open);
-  expect(open_metrics.open, "gate should reopen when input crosses open threshold");
-  expect(peak(above_open) > 0.0f, "attack should allow audio through while reopening");
-}
-
-void threshold_updates_do_not_reset_gate_state() {
-  syrnike::voice::VoiceGateProcessor gate(kSampleRate);
-  auto config = testConfig();
+  config.auto_threshold = false;
+  config.manual_threshold_db = -30.0f;
+  config.lookahead_ms = 0;
   gate.updateConfig(config);
 
-  auto loud = toneFrame(-20.0f);
-  gate.processFrame(loud);
-
-  config.open_threshold_db = -18.0f;
-  config.close_threshold_db = -24.0f;
-  gate.updateConfig(config);
-
-  auto quiet = toneFrame(-40.0f);
-  const auto metrics = gate.processFrame(quiet);
-  expect(metrics.open, "config update should not reset an open gate before hold expires");
+  auto speech = toneFrame(-20.0f);
+  const auto metrics = gate.processFrame(speech);
+  expect(metrics.open, "manual gate should open after auto mode is disabled");
+  expectNear(metrics.threshold_db, -30.0f, 0.001f, "manual threshold should apply after auto mode toggle");
 }
 
 }  // namespace
@@ -227,13 +315,17 @@ void threshold_updates_do_not_reset_gate_state() {
 int main() {
   using TestFn = void (*)();
   TestFn tests[] = {
+    protocol_reads_voice_gate_auto_threshold,
+    runtime_config_stores_voice_gate_auto_threshold,
     disabled_gate_leaves_audio_and_reports_open,
-    disabling_gate_recovers_smoothly_from_closed_state,
+    manual_gate_uses_manual_threshold_and_hysteresis,
+    auto_gate_raises_threshold_above_steady_room_noise,
+    auto_gate_does_not_learn_short_loud_transient_as_noise_floor,
+    auto_gate_uses_lookahead_only_in_auto_mode,
     open_gate_is_frequency_neutral,
     gate_uses_hold_before_release,
     gate_releases_smoothly_instead_of_zeroing_a_frame,
-    closed_gate_requires_open_threshold_to_reopen,
-    threshold_updates_do_not_reset_gate_state,
+    toggling_auto_mode_does_not_leave_gate_stuck_closed,
   };
 
   for (const auto test : tests) {

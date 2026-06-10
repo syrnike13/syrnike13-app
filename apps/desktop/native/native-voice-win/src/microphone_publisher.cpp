@@ -172,6 +172,7 @@ void captureMicrophone(
     std::uint32_t max_frame_gap_ms = 0;
     std::uint32_t max_capture_frame_us = 0;
     float last_input_db = -60.0f;
+    VoiceGateFrameMetrics last_gate_metrics;
     float max_output_peak = 0.0f;
 
     while (g_running.load()) {
@@ -225,6 +226,7 @@ void captureMicrophone(
           const float input_db = processed.gate_metrics.input_db;
           const bool open = processed.gate_metrics.open;
           last_input_db = input_db;
+          last_gate_metrics = processed.gate_metrics;
           if (!open) gated_frames += 1;
           clipped_samples += processed.clipped_samples;
           max_output_peak = std::max(max_output_peak, processed.output_peak);
@@ -261,7 +263,12 @@ void captureMicrophone(
 
           const auto now = std::chrono::steady_clock::now();
           if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
-            emitMicrophoneMetrics(captureSessionId(state), input_db, config.voice_gate_threshold_db, open);
+            emitMicrophoneMetrics(
+              captureSessionId(state),
+              input_db,
+              processed.gate_metrics.threshold_db,
+              open
+            );
             last_metrics_at = now;
           }
           if (now - last_diagnostics_at >= std::chrono::seconds(1)) {
@@ -276,6 +283,7 @@ void captureMicrophone(
               gated_frames,
               max_frame_gap_ms,
               max_capture_frame_us,
+              last_gate_metrics,
               config,
               last_processing_status
             );

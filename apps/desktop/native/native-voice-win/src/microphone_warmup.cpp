@@ -88,6 +88,7 @@ void runMicrophoneWarmup(std::string device_id, std::string session_id) {
     std::uint32_t clipped_samples = 0;
     std::uint32_t max_frame_gap_ms = 0;
     float last_input_db = -60.0f;
+    VoiceGateFrameMetrics last_gate_metrics;
     float max_output_peak = 0.0f;
 
     while (g_warmup_running.load()) {
@@ -118,6 +119,7 @@ void runMicrophoneWarmup(std::string device_id, std::string session_id) {
             const VoiceGateFrameMetrics gate_metrics = gate.processFrame(processed_frame);
             const float input_db = gate_metrics.input_db;
             const bool open = gate_metrics.open;
+            last_gate_metrics = gate_metrics;
             for (float sample : processed_frame) {
               if (std::abs(sample) > 1.0f) clipped_samples += 1;
               max_output_peak = std::max(max_output_peak, std::abs(softLimitSample(sample)));
@@ -142,7 +144,7 @@ void runMicrophoneWarmup(std::string device_id, std::string session_id) {
               emitMicrophoneMetrics(
                 session_id,
                 input_db,
-                config.voice_gate_threshold_db,
+                gate_metrics.threshold_db,
                 open
               );
               last_metrics_at = now;
@@ -159,6 +161,7 @@ void runMicrophoneWarmup(std::string device_id, std::string session_id) {
                 gated_frames,
                 max_frame_gap_ms,
                 0,
+                last_gate_metrics,
                 config,
                 warmupProcessingStatus(config)
               );

@@ -146,6 +146,7 @@ void runMicrophonePreview(const StartCommand& command) {
     std::uint32_t clipped_samples = 0;
     std::uint32_t max_frame_gap_ms = 0;
     float last_input_db = -60.0f;
+    VoiceGateFrameMetrics last_gate_metrics;
     float max_output_peak = 0.0f;
 
     while (g_running.load()) {
@@ -176,6 +177,7 @@ void runMicrophonePreview(const StartCommand& command) {
             const float input_db = processed.gate_metrics.input_db;
             const bool open = processed.gate_metrics.open;
             last_input_db = input_db;
+            last_gate_metrics = processed.gate_metrics;
             if (!open) gated_frames += 1;
 
             clipped_samples += processed.clipped_samples;
@@ -198,7 +200,12 @@ void runMicrophonePreview(const StartCommand& command) {
 
             const auto now = std::chrono::steady_clock::now();
             if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
-              emitMicrophoneMetrics(command.session_id, input_db, config.voice_gate_threshold_db, open);
+              emitMicrophoneMetrics(
+                command.session_id,
+                input_db,
+                processed.gate_metrics.threshold_db,
+                open
+              );
               last_metrics_at = now;
             }
             if (now - last_diagnostics_at >= std::chrono::seconds(1)) {
@@ -213,6 +220,7 @@ void runMicrophonePreview(const StartCommand& command) {
                 gated_frames,
                 max_frame_gap_ms,
                 0,
+                last_gate_metrics,
                 config,
                 last_processing_status
               );

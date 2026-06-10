@@ -51,7 +51,7 @@ export function nativeMicrophoneSessionOptions(
     inputVolume: prefs.inputVolume,
     voiceGateEnabled: prefs.voiceGateEnabled,
     voiceGateThresholdDb: prefs.voiceGateThresholdDb,
-    voiceGateAutoThreshold: false,
+    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
     muted,
     livekit,
   }
@@ -132,6 +132,6 @@ export function configureNativeMicrophoneSession(
     inputVolume: prefs.inputVolume,
     voiceGateEnabled: prefs.voiceGateEnabled,
     voiceGateThresholdDb: prefs.voiceGateThresholdDb,
-    voiceGateAutoThreshold: false,
+    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
   })
 }

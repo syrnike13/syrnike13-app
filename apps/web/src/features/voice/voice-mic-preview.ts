@@ -105,7 +105,7 @@ export async function startMicPreview({
         inputVolume: nextPrefs.inputVolume,
         voiceGateEnabled: nextPrefs.voiceGateEnabled,
         voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
-        voiceGateAutoThreshold: false,
+        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
       })
 
     let session = await startNative(prefs)
@@ -128,7 +128,7 @@ export async function startMicPreview({
         inputVolume: nextPrefs.inputVolume,
         voiceGateEnabled: nextPrefs.voiceGateEnabled,
         voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
-        voiceGateAutoThreshold: false,
+        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
       })
     }
 

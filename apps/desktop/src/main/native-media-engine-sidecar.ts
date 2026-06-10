@@ -103,7 +103,9 @@ export type SidecarEvent =
       max_capture_frame_us: number
       input_volume: number
       voice_gate_enabled: boolean
+      voice_gate_auto_threshold: boolean
       voice_gate_threshold_db: number
+      voice_gate_noise_floor_db: number
       noise_suppression?: string
       echo_cancellation?: string
     }

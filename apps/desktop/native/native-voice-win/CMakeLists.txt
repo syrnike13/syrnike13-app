@@ -64,6 +64,8 @@ enable_testing()
 
 add_executable(syrnike-native-voice-win-tests
   tests/voice_gate_processor_test.cpp
+  src/protocol.cpp
+  src/runtime_config.cpp
   src/voice_gate.cpp
 )
 

@@ -34,6 +34,7 @@ void emitMicrophoneDiagnostics(
   std::uint32_t gated_frames,
   std::uint32_t max_frame_gap_ms,
   std::uint32_t max_capture_frame_us,
+  const VoiceGateFrameMetrics& gate_metrics,
   const RuntimeConfig& config,
   const MicrophoneProcessingStatus& processing_status
 );

@@ -103,7 +103,7 @@ describe('native microphone processing boundary', () => {
       echoCancellation: true,
       voiceGateEnabled: true,
       voiceGateThresholdDb: -28,
-      voiceGateAutoThreshold: false,
+      voiceGateAutoThreshold: true,
       inputVolume: 1,
       outputVolume: 1,
     }
@@ -141,6 +141,11 @@ describe('native microphone processing boundary', () => {
     await vi.advanceTimersByTimeAsync(39)
 
     expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
+    expect(startMicrophonePreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voiceGateAutoThreshold: true,
+      }),
+    )
     expect(stopMicrophonePreview).not.toHaveBeenCalled()
     expect(configureMicrophoneRuntime).not.toHaveBeenCalled()
     expect(onLevels).toHaveBeenCalledTimes(1)
@@ -157,7 +162,7 @@ describe('native microphone processing boundary', () => {
       'preview-1',
       expect.objectContaining({
         voiceGateEnabled: false,
-        voiceGateAutoThreshold: false,
+        voiceGateAutoThreshold: true,
         noiseSuppression: false,
         inputVolume: 1.5,
       }),

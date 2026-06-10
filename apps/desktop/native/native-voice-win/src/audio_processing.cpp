@@ -33,12 +33,15 @@ float rmsToDb(float rms) {
 VoiceGateConfig voiceGateConfigFromRuntimeConfig(const RuntimeConfig& config) {
   VoiceGateConfig gate_config;
   gate_config.enabled = config.voice_gate_enabled;
-  gate_config.open_threshold_db = config.voice_gate_threshold_db;
-  gate_config.close_threshold_db = config.voice_gate_threshold_db - 6.0f;
-  gate_config.attack_ms = 8;
-  gate_config.hold_ms = 180;
-  gate_config.release_ms = 140;
-  gate_config.floor_gain = 0.0f;
+  gate_config.auto_threshold = config.voice_gate_auto_threshold;
+  gate_config.manual_threshold_db = config.voice_gate_threshold_db;
+  gate_config.auto_margin_db = 8.0f;
+  gate_config.hysteresis_db = 6.0f;
+  gate_config.attack_ms = config.voice_gate_auto_threshold ? 4 : 8;
+  gate_config.hold_ms = config.voice_gate_auto_threshold ? 240 : 180;
+  gate_config.release_ms = config.voice_gate_auto_threshold ? 120 : 140;
+  gate_config.lookahead_ms = config.voice_gate_auto_threshold ? 20 : 0;
+  gate_config.floor_gain = config.voice_gate_auto_threshold ? 0.125f : 0.0f;
   return gate_config;
 }
 
@@ -65,6 +68,7 @@ void emitMicrophoneDiagnostics(
   std::uint32_t gated_frames,
   std::uint32_t max_frame_gap_ms,
   std::uint32_t max_capture_frame_us,
+  const VoiceGateFrameMetrics& gate_metrics,
   const RuntimeConfig& config,
   const MicrophoneProcessingStatus& processing_status
 ) {
@@ -80,7 +84,9 @@ void emitMicrophoneDiagnostics(
        ",\"max_capture_frame_us\":" + std::to_string(max_capture_frame_us) +
        ",\"input_volume\":" + std::to_string(config.input_volume) +
        ",\"voice_gate_enabled\":" + (config.voice_gate_enabled ? "true" : "false") +
-       ",\"voice_gate_threshold_db\":" + std::to_string(config.voice_gate_threshold_db) +
+       ",\"voice_gate_auto_threshold\":" + (config.voice_gate_auto_threshold ? "true" : "false") +
+       ",\"voice_gate_threshold_db\":" + std::to_string(gate_metrics.threshold_db) +
+       ",\"voice_gate_noise_floor_db\":" + std::to_string(gate_metrics.noise_floor_db) +
        ",\"noise_suppression\":\"" + jsonEscape(processing_status.noise_suppression) + "\"" +
        ",\"echo_cancellation\":\"" + jsonEscape(processing_status.echo_cancellation) + "\"" +
        "}");
