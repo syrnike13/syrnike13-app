@@ -56,3 +56,21 @@ export type {
 } from './api'
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
+export {
+  DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
+  DEFAULT_DESKTOP_VOICE_SETTINGS,
+  normalizeDesktopLocalSettings,
+  normalizeDesktopLocalSettingsPatch,
+  normalizeDesktopVoiceListenerSettings,
+  normalizeDesktopVoiceSettings,
+  type DesktopLocalSettings,
+  type DesktopLocalSettingsPatch,
+  type DesktopScreenShareCaptureMode,
+  type DesktopScreenShareCodec,
+  type DesktopScreenShareQualityName,
+  type DesktopVoiceListenerSettings,
+  type DesktopVoiceListenerSettingsPatch,
+  type DesktopVoiceSettings,
+  type DesktopVoiceSettingsPatch,
+} from './settings'

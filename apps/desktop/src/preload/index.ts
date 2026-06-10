@@ -3,6 +3,8 @@ import { IPC } from '@syrnike13/platform'
 
 import type {
   DesktopOs,
+  DesktopLocalSettings,
+  DesktopLocalSettingsPatch,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
@@ -92,6 +94,17 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
     clearSession() {
       return ipcRenderer.invoke(IPC.authClearSession)
+    },
+  },
+  settings: {
+    load() {
+      return ipcRenderer.invoke(IPC.settingsLoad) as Promise<DesktopLocalSettings>
+    },
+    update(patch: DesktopLocalSettingsPatch) {
+      return ipcRenderer.invoke(
+        IPC.settingsUpdate,
+        patch,
+      ) as Promise<DesktopLocalSettings>
     },
   },
   updates: {
