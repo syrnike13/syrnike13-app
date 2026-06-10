@@ -370,8 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             (needsOnboarding
               ? false
               : userQuery.isLoading ||
-                profileLoadRecovering ||
-                (userQuery.isFetching && !userQuery.data && !userQuery.isError)))),
+                profileLoadRecovering))),
       gatewayState,
       mfaChallenge,
       login,
@@ -400,8 +399,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       submitMfaPassword,
       userQuery.data,
-      userQuery.isError,
-      userQuery.isFetching,
       userQuery.isLoading,
     ],
   )
