@@ -59,6 +59,7 @@ type AuthContextValue = {
   isLoading: boolean
   gatewayState: GatewayState
   mfaChallenge: MfaChallenge | null
+  profileLoadError: Error | null
   login: (
     credentials: LoginCredentials,
   ) => Promise<{ needsOnboarding: boolean } | undefined>
@@ -66,6 +67,7 @@ type AuthContextValue = {
   cancelMfa: () => void
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
+  retryProfileLoad: () => Promise<void>
   /** Вход по ticket из письма подтверждения (`POST /auth/account/verify/...`). */
   completeEmailVerification: (
     mfaTicket: string,
@@ -82,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [session, setSession] = useState<StoredSession | null>(null)
   const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null)
+  const [profileLoadError, setProfileLoadError] = useState<Error | null>(null)
   const [gatewayState, setGatewayState] = useState<GatewayState>('idle')
   const [hydrated, setHydrated] = useState(false)
 
@@ -144,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void clearSession()
       setSession(null)
       setMfaChallenge(null)
+      setProfileLoadError(null)
       eventsGateway.disableAutoReconnect()
       syncStore.reset()
       queryClient.removeQueries({ queryKey: queryKeys.auth.session })
@@ -208,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await saveSession(next)
       setSession(next)
       setMfaChallenge(null)
+      setProfileLoadError(null)
       void queryClient.invalidateQueries({ queryKey: queryKeys.auth.session })
       return next.token
     },
@@ -279,6 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!session?.token) return
     const user = await fetchCurrentUser(session.token)
     queryClient.setQueryData(queryKeys.auth.session, user)
+    setProfileLoadError(null)
     syncStore.upsertUser(user)
   }, [queryClient, session?.token])
 
@@ -335,16 +341,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [invalidateSession, session?.token])
 
   useEffect(() => {
+    if (!session?.token || userQuery.data) {
+      setProfileLoadError(null)
+      return
+    }
     if (!session?.token || !userQuery.isError || userQuery.isFetching) return
     if (isTransientAuthLoadError(userQuery.error)) return
     if (isSessionInvalidatingError(userQuery.error)) {
       invalidateSession('Сессия недействительна. Войдите снова.')
       return
     }
-    invalidateSession(
+    setProfileLoadError(
       userQuery.error instanceof Error
-        ? userQuery.error.message
-        : 'Не удалось загрузить профиль',
+        ? userQuery.error
+        : new Error('Не удалось загрузить профиль'),
     )
   }, [
     invalidateSession,
@@ -353,6 +363,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userQuery.isError,
     userQuery.isFetching,
   ])
+
+  const retryProfileLoad = useCallback(async () => {
+    if (!session?.token) return
+    setProfileLoadError(null)
+    await userQuery.refetch()
+  }, [session?.token, userQuery])
 
   const profileLoadRecovering =
     !!session &&
@@ -366,6 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hydrated,
       session: hydrated ? session : null,
       user: userQuery.data,
+      profileLoadError,
       isLoading:
         !hydrated ||
         (!!session &&
@@ -381,6 +398,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelMfa,
       logout,
       refreshUser,
+      retryProfileLoad,
       completeEmailVerification,
       needsOnboarding,
       onboardingChecked,
@@ -398,7 +416,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       needsOnboarding,
       onboardingChecked,
       profileLoadRecovering,
+      profileLoadError,
       refreshUser,
+      retryProfileLoad,
       session,
       submitMfaPassword,
       userQuery.data,
