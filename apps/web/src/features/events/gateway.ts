@@ -10,6 +10,11 @@ type GatewayEvent = {
   [key: string]: unknown
 }
 
+type ReliableQueueItem = {
+  event: Record<string, unknown>
+  key?: string
+}
+
 type StateListener = (state: GatewayState) => void
 type EventListener = (event: GatewayEvent) => void
 
@@ -27,6 +32,7 @@ const HEARTBEAT_INTERVAL_MS = 30_000
 const HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS * 2
 const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS = 30_000
+const RELIABLE_QUEUE_MAX = 64
 
 /**
  * WebSocket-клиент syrnike13 (протокол v1, JSON) с auto-reconnect и heartbeat.
@@ -47,6 +53,7 @@ export class EventsGateway {
   #lastMessageAt = 0
   #onVisibilityChange: (() => void) | undefined
   #onNetworkOnline: (() => void) | undefined
+  #reliableQueue: ReliableQueueItem[] = []
 
   get state() {
     return this.#state
@@ -75,6 +82,7 @@ export class EventsGateway {
     this.#autoReconnectEnabled = false
     this.#manualClose = true
     this.#clearReconnectTimer()
+    this.#reliableQueue = []
     this.#removeLifecycleListeners()
     this.#closeSocket()
     this.#setState('idle')
@@ -98,8 +106,12 @@ export class EventsGateway {
   }
 
   send(event: Record<string, unknown>) {
-    if (!this.#ws || this.#ws.readyState !== WebSocket.OPEN) return
-    this.#ws.send(JSON.stringify(event))
+    this.#sendOpen(event)
+  }
+
+  sendReliable(event: Record<string, unknown>, key?: string) {
+    if (this.#sendConnected(event)) return
+    this.#queueReliable(event, key)
   }
 
   beginTyping(channelId: string) {
@@ -167,6 +179,7 @@ export class EventsGateway {
           this.#reconnectAttempt = 0
           this.#clearReconnectTimer()
           this.#setState('connected')
+          this.#flushReliableQueue()
         }
       } catch {
         // ignore malformed frames
@@ -282,6 +295,53 @@ export class EventsGateway {
     if (this.#heartbeatTimeoutTimer !== undefined) {
       clearTimeout(this.#heartbeatTimeoutTimer)
       this.#heartbeatTimeoutTimer = undefined
+    }
+  }
+
+  #sendOpen(event: Record<string, unknown>) {
+    if (!this.#ws || this.#ws.readyState !== WebSocket.OPEN) return false
+    try {
+      this.#ws.send(JSON.stringify(event))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  #sendConnected(event: Record<string, unknown>) {
+    if (this.#state !== 'connected') return false
+    return this.#sendOpen(event)
+  }
+
+  #queueReliable(event: Record<string, unknown>, key?: string) {
+    if (key) {
+      const existingIndex = this.#reliableQueue.findIndex(
+        (item) => item.key === key,
+      )
+      if (existingIndex >= 0) {
+        this.#reliableQueue[existingIndex] = { event, key }
+        return
+      }
+    }
+
+    this.#reliableQueue.push({ event, key })
+    if (this.#reliableQueue.length > RELIABLE_QUEUE_MAX) {
+      this.#reliableQueue.shift()
+    }
+  }
+
+  #flushReliableQueue() {
+    if (this.#reliableQueue.length === 0) return
+
+    const pending = this.#reliableQueue
+    this.#reliableQueue = []
+
+    for (let index = 0; index < pending.length; index += 1) {
+      const item = pending[index]
+      if (this.#sendConnected(item.event)) continue
+
+      this.#reliableQueue = pending.slice(index)
+      return
     }
   }
 

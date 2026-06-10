@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createVoiceRejoinController,
   VOICE_REJOIN_DELAYS_MS,
+  VOICE_REJOIN_STEADY_RETRY_MS,
 } from './voice-rejoin'
 
 describe('createVoiceRejoinController', () => {
@@ -35,7 +36,7 @@ describe('createVoiceRejoinController', () => {
     expect(attemptRejoin).toHaveBeenCalledWith('channel-1')
   })
 
-  it('retries with backoff and gives up after max attempts', async () => {
+  it('continues recoverable retries after the initial backoff window', async () => {
     const attemptRejoin = vi.fn(async () => false)
     const onGiveUp = vi.fn()
 
@@ -50,8 +51,33 @@ describe('createVoiceRejoinController', () => {
     for (let index = 0; index < VOICE_REJOIN_DELAYS_MS.length; index += 1) {
       await vi.advanceTimersByTimeAsync(VOICE_REJOIN_DELAYS_MS[index])
     }
+    await vi.advanceTimersByTimeAsync(VOICE_REJOIN_STEADY_RETRY_MS)
 
-    expect(attemptRejoin).toHaveBeenCalledTimes(VOICE_REJOIN_DELAYS_MS.length)
+    expect(attemptRejoin).toHaveBeenCalledTimes(
+      VOICE_REJOIN_DELAYS_MS.length + 1,
+    )
+    expect(onGiveUp).not.toHaveBeenCalled()
+    expect(controller.getPendingChannelId()).toBe('channel-1')
+  })
+
+  it('gives up when the pending channel is no longer recoverable', async () => {
+    const attemptRejoin = vi.fn(async () => false)
+    const onGiveUp = vi.fn()
+    let shouldKeepTrying = true
+
+    const controller = createVoiceRejoinController({
+      attemptRejoin,
+      onGiveUp,
+      isGatewayConnected: () => true,
+      shouldKeepTrying: () => shouldKeepTrying,
+    })
+
+    controller.onUnexpectedDisconnect('channel-1')
+    shouldKeepTrying = false
+
+    await vi.advanceTimersByTimeAsync(VOICE_REJOIN_DELAYS_MS[0])
+
+    expect(attemptRejoin).not.toHaveBeenCalled()
     expect(onGiveUp).toHaveBeenCalledTimes(1)
     expect(controller.getPendingChannelId()).toBeNull()
   })

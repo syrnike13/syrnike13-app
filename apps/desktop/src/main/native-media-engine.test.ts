@@ -386,6 +386,21 @@ describe('native media engine entrypoint', () => {
     expect(reconnectBody).not.toContain("status: 'running'")
   })
 
+  it('allows sidecar reconnect for native microphone publishers', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const reconnectBody = source.match(
+      /async function attemptSidecarReconnect[\s\S]*?\r?\n}\r?\n\r?\nasync function handleSidecarFailure/,
+    )?.[0]
+
+    expect(reconnectBody).toBeDefined()
+    expect(reconnectBody).not.toContain("session.startOptions.kind !== 'screen'")
+    expect(reconnectBody).toContain('spawnMediaEngineHelper(session.startOptions.kind')
+    expect(reconnectBody).toContain('buildNativeMediaStartCommand(')
+  })
+
   it('does not expose a renderer media relay for native sessions', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),

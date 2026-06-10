@@ -11,6 +11,7 @@ pub enum ClientMessage {
     Subscribe { server_id: String },
     Ping { data: Ping, responded: Option<()> },
     VoiceStateUpdate {
+        nonce: Option<String>,
         channel_id: Option<String>,
         self_mute: bool,
         self_deaf: bool,

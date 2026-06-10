@@ -23,10 +23,87 @@ export type VoiceStateUpdatePayload = {
 }
 
 const VOICE_SERVER_UPDATE_TIMEOUT_MS = 15_000
+const VOICE_STATE_ACK_RETRY_MS = 5_000
+const VOICE_STATE_RELIABLE_KEY = 'voice-state'
+
+type PendingVoiceStateUpdate = {
+  nonce: string
+  event: Record<string, unknown>
+  retryTimer: ReturnType<typeof setTimeout> | undefined
+}
+
+let pendingVoiceStateUpdate: PendingVoiceStateUpdate | null = null
+let voiceStateAckListenerInstalled = false
+
+function createVoiceStateNonce() {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  )
+}
+
+function clearPendingVoiceStateUpdate() {
+  if (pendingVoiceStateUpdate?.retryTimer !== undefined) {
+    clearTimeout(pendingVoiceStateUpdate.retryTimer)
+  }
+  pendingVoiceStateUpdate = null
+}
+
+function scheduleVoiceStateAckRetry() {
+  const pending = pendingVoiceStateUpdate
+  if (!pending) return
+  if (pending.retryTimer !== undefined) {
+    clearTimeout(pending.retryTimer)
+  }
+  pending.retryTimer = setTimeout(() => {
+    const current = pendingVoiceStateUpdate
+    if (!current || current.nonce !== pending.nonce) return
+    eventsGateway.sendReliable(current.event, VOICE_STATE_RELIABLE_KEY)
+    scheduleVoiceStateAckRetry()
+  }, VOICE_STATE_ACK_RETRY_MS)
+}
+
+function voiceServerUpdateAcknowledgesPending(event: Record<string, unknown>) {
+  const pending = pendingVoiceStateUpdate
+  if (!pending) return false
+  if (event.type !== 'VoiceServerUpdate') return false
+  if (event.channel_id !== pending.event.channel_id) return false
+
+  return (
+    Boolean(pending.event.node) ||
+    pending.event.refresh_credentials === true ||
+    pending.event.force_disconnect === true
+  )
+}
+
+function ensureVoiceStateAckListener() {
+  if (voiceStateAckListenerInstalled) return
+  voiceStateAckListenerInstalled = true
+
+  eventsGateway.subscribeEvents((event) => {
+    if (event.type === 'VoiceStateAck') {
+      if (event.nonce !== pendingVoiceStateUpdate?.nonce) return
+      clearPendingVoiceStateUpdate()
+      return
+    }
+
+    if (voiceServerUpdateAcknowledgesPending(event)) {
+      clearPendingVoiceStateUpdate()
+    }
+  })
+
+  eventsGateway.subscribeState((state) => {
+    if (state !== 'idle') return
+    clearPendingVoiceStateUpdate()
+  })
+}
 
 export function sendVoiceStateUpdate(payload: VoiceStateUpdatePayload) {
-  eventsGateway.send({
+  ensureVoiceStateAckListener()
+
+  const event = {
     type: 'VoiceStateUpdate',
+    nonce: createVoiceStateNonce(),
     channel_id: payload.channel_id,
     self_mute: payload.self_mute,
     self_deaf: payload.self_deaf,
@@ -35,10 +112,17 @@ export function sendVoiceStateUpdate(payload: VoiceStateUpdatePayload) {
       ? { force_disconnect: payload.force_disconnect }
       : {}),
     ...(payload.recipients ? { recipients: payload.recipients } : {}),
-    ...(payload.refresh_credentials
-      ? { refresh_credentials: true }
-      : {}),
-  })
+    ...(payload.refresh_credentials ? { refresh_credentials: true } : {}),
+  }
+
+  clearPendingVoiceStateUpdate()
+  pendingVoiceStateUpdate = {
+    nonce: event.nonce,
+    event,
+    retryTimer: undefined,
+  }
+  eventsGateway.sendReliable(event, VOICE_STATE_RELIABLE_KEY)
+  scheduleVoiceStateAckRetry()
 }
 
 export function waitForVoiceServerUpdate(

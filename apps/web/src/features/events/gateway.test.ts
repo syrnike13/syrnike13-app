@@ -89,6 +89,32 @@ describe('EventsGateway', () => {
     expect(states).toEqual(['idle', 'connecting'])
   })
 
+  it('queues reliable events while disconnected and flushes the latest intent after Ready', async () => {
+    gateway.sendReliable(
+      { type: 'VoiceStateUpdate', channel_id: 'channel-1' },
+      'voice-state',
+    )
+    gateway.sendReliable(
+      { type: 'VoiceStateUpdate', channel_id: null },
+      'voice-state',
+    )
+
+    gateway.connect('wss://example.test/ws', 'token-1')
+    const socket = mock.sockets.at(-1)!
+
+    await Promise.resolve()
+    socket.send.mockClear()
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'Ready', users: [] }),
+    })
+
+    expect(socket.send).toHaveBeenCalledTimes(1)
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'VoiceStateUpdate', channel_id: null }),
+    )
+  })
+
   it('schedules reconnect after unexpected close when auto-reconnect is enabled', () => {
     gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
     gateway.connect('wss://example.test/ws', 'token-1')

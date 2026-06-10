@@ -350,6 +350,11 @@ pub enum EventV1 {
         channel_id: String,
         state: UserVoiceState,
     },
+    VoiceStateAck {
+        nonce: String,
+        channel_id: Option<String>,
+        ok: bool,
+    },
     VoiceServerUpdate {
         channel_id: String,
         node: String,

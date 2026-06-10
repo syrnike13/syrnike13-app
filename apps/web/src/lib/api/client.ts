@@ -11,6 +11,16 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiNetworkError extends Error {
+  constructor(
+    message: string,
+    readonly cause?: unknown,
+  ) {
+    super(message)
+    this.name = 'ApiNetworkError'
+  }
+}
+
 export type ApiRequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown
   token?: string | null
@@ -35,11 +45,16 @@ export async function apiRequest<T>(
     headers.set('X-Session-Token', token)
   }
 
-  const response = await fetch(`${config.apiUrl}${path}`, {
-    ...init,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+  let response: Response
+  try {
+    response = await fetch(`${config.apiUrl}${path}`, {
+      ...init,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch (error) {
+    throw new ApiNetworkError('Не удалось подключиться к API', error)
+  }
 
   if (response.status === 204) {
     return undefined as T

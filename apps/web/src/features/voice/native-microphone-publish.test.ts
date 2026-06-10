@@ -12,6 +12,7 @@ import {
   nativeMicrophoneSessionOptions,
   publishNativeMicrophone,
   shouldUseNativeMicrophone,
+  shouldRestartNativeMicrophonePublisher,
 } from './native-microphone-publish'
 
 vi.mock('livekit-client', () => ({
@@ -301,6 +302,129 @@ describe('native microphone publish', () => {
     expect(stopSession).not.toHaveBeenCalled()
   })
 
+  it('notifies once when the native media engine stops the microphone session', async () => {
+    const stopSession = vi.fn(async () => {})
+    const unsubscribeEnded = vi.fn()
+    const unsubscribeError = vi.fn()
+    const unsubscribeSidecar = vi.fn()
+    let onStreamEndedHandler: ((sessionId: string) => void) | undefined
+    let onStreamErrorHandler:
+      | ((event: { sessionId: string; message: string }) => void)
+      | undefined
+    let onSidecarLostHandler:
+      | ((event: { sessionId: string; message: string }) => void)
+      | undefined
+
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startSession: vi.fn(async () => ({
+          kind: 'microphone',
+          sessionId: 'native-mic-1',
+          audio: {
+            mode: 'microphone',
+            sampleRate: 48_000,
+            channels: 1,
+            noiseSuppression: 'software',
+            echoCancellation: 'software',
+          },
+          nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
+        })),
+        stopSession,
+        setMicrophoneMuted: vi.fn(async () => {}),
+        onStreamEnded: vi.fn((handler) => {
+          onStreamEndedHandler = handler
+          return unsubscribeEnded
+        }),
+        onStreamError: vi.fn((handler) => {
+          onStreamErrorHandler = handler
+          return unsubscribeError
+        }),
+        onSidecarLost: vi.fn((handler) => {
+          onSidecarLostHandler = handler
+          return unsubscribeSidecar
+        }),
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const onStopped = vi.fn()
+    const session = await publishNativeMicrophone(
+      { identity: 'user-1' } as never,
+      onStopped,
+      {
+        url: 'wss://livekit.example',
+        token: 'native-livekit-token',
+        participantIdentity: 'user-1:desktop-native',
+      },
+    )
+
+    onStreamEndedHandler?.('other-session')
+    expect(onStopped).not.toHaveBeenCalled()
+
+    onStreamErrorHandler?.({
+      sessionId: 'native-mic-1',
+      message: 'capture failed',
+    })
+    onStreamEndedHandler?.('native-mic-1')
+    onSidecarLostHandler?.({
+      sessionId: 'native-mic-1',
+      message: 'sidecar exited',
+    })
+
+    expect(onStopped).toHaveBeenCalledTimes(1)
+    expect(onStopped).toHaveBeenCalledWith('native-mic-1')
+    expect(unsubscribeEnded).toHaveBeenCalledTimes(1)
+    expect(unsubscribeError).toHaveBeenCalledTimes(1)
+    expect(unsubscribeSidecar).toHaveBeenCalledTimes(1)
+
+    session.disconnect()
+    expect(stopSession).not.toHaveBeenCalled()
+  })
+
+  it('restarts native microphone only while the user still wants to publish', () => {
+    expect(
+      shouldRestartNativeMicrophonePublisher({
+        voiceConnected: true,
+        wantsMic: true,
+        deafened: false,
+        selfMonitoringActive: false,
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldRestartNativeMicrophonePublisher({
+        voiceConnected: false,
+        wantsMic: true,
+        deafened: false,
+        selfMonitoringActive: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldRestartNativeMicrophonePublisher({
+        voiceConnected: true,
+        wantsMic: false,
+        deafened: false,
+        selfMonitoringActive: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldRestartNativeMicrophonePublisher({
+        voiceConnected: true,
+        wantsMic: true,
+        deafened: true,
+        selfMonitoringActive: false,
+      }),
+    ).toBe(false)
+    expect(
+      shouldRestartNativeMicrophonePublisher({
+        voiceConnected: true,
+        wantsMic: true,
+        deafened: false,
+        selfMonitoringActive: true,
+      }),
+    ).toBe(false)
+  })
+
   it('debounces runtime config updates for native microphone publishing', async () => {
     vi.useFakeTimers()
     const configureMicrophoneRuntime = vi.fn(async () => {})
@@ -403,5 +527,20 @@ describe('native microphone provider boundary', () => {
     expect(settingsSource).toContain(
       'setSelfMonitoringActiveRef.current(micTestActive)',
     )
+  })
+
+  it('repairs a stopped native microphone publisher without leaving the room', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toContain('shouldRestartNativeMicrophonePublisher')
+    expect(providerSource).toContain("statusRef.current === 'connected'")
+    expect(providerSource).toContain('void startNativeMicrophone(room, false)')
+    expect(providerSource).toContain('syncVoiceFlagsToGateway(')
   })
 })

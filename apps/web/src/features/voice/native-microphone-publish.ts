@@ -29,8 +29,26 @@ export type NativeMicrophoneLiveKitCredentials = {
   participantIdentity: string
 }
 
+export type NativeMicrophoneRecoveryState = {
+  voiceConnected: boolean
+  wantsMic: boolean
+  deafened: boolean
+  selfMonitoringActive: boolean
+}
+
 export function shouldUseNativeMicrophone() {
   return getSyrnikeDesktop()?.platform.os === 'win32'
+}
+
+export function shouldRestartNativeMicrophonePublisher(
+  state: NativeMicrophoneRecoveryState,
+) {
+  return (
+    state.voiceConnected &&
+    state.wantsMic &&
+    !state.deafened &&
+    !state.selfMonitoringActive
+  )
 }
 
 export function nativeMicrophoneSessionOptions(
@@ -106,13 +124,41 @@ export async function publishNativeMicrophone(
   )
 
   let stopped = false
-  const disconnect = () => {
+  let subscriptions: (() => void)[] = []
+
+  const cleanup = () => {
+    clearNativeMicrophoneRuntimeConfig(session.sessionId)
+    for (const unsubscribe of subscriptions) {
+      unsubscribe()
+    }
+  }
+
+  const completeStopped = (stopNativeSession: boolean) => {
     if (stopped) return
     stopped = true
-    clearNativeMicrophoneRuntimeConfig(session.sessionId)
-    void desktop.media.stopSession(session.sessionId)
+    cleanup()
+    if (stopNativeSession) {
+      void desktop.media.stopSession(session.sessionId)
+    }
     onStopped?.(session.sessionId)
   }
+
+  subscriptions = [
+    desktop.media.onStreamEnded?.((sessionId) => {
+      if (sessionId !== session.sessionId) return
+      completeStopped(false)
+    }),
+    desktop.media.onStreamError?.((event) => {
+      if (event.sessionId !== session.sessionId) return
+      completeStopped(false)
+    }),
+    desktop.media.onSidecarLost?.((event) => {
+      if (event.sessionId !== session.sessionId) return
+      completeStopped(false)
+    }),
+  ].filter((unsubscribe): unsubscribe is () => void => Boolean(unsubscribe))
+
+  const disconnect = () => completeStopped(true)
 
   return {
     sessionId: session.sessionId,

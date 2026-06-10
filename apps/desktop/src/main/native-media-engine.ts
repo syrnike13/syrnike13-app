@@ -747,7 +747,6 @@ function notifySidecarLost(
 async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
   if (session.reconnecting) return false
   if (session.reconnectAttempts >= MAX_SIDECAR_RECONNECT_ATTEMPTS) return false
-  if (session.startOptions.kind !== 'screen') return false
 
   session.reconnecting = true
   session.reconnectAttempts += 1
@@ -763,11 +762,11 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     session.helper.kill()
     closeMediaEngineHelperReader(session.helper)
 
-    const helper = spawnMediaEngineHelper('screen', session.sessionId)
+    const helper = spawnMediaEngineHelper(session.startOptions.kind, session.sessionId)
     const readyPromise = waitForSidecarReady(session.sessionId)
     writeHelperCommand(
       helper,
-      buildScreenShareStartCommand(
+      buildNativeMediaStartCommand(
         session.startOptions,
         session.sessionId,
         getWindow,
@@ -779,15 +778,21 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
       throw new Error('Native media engine reconnect failed')
     }
 
-    session.port = readyEvent.port
-    session.frameBufferPath = readyEvent.frame_buffer_path
+    session.port =
+      session.startOptions.kind === 'screen' ? readyEvent.port : undefined
+    session.frameBufferPath =
+      session.startOptions.kind === 'screen'
+        ? readyEvent.frame_buffer_path
+        : undefined
     session.width = readyEvent.width
     session.height = readyEvent.height
     session.fps = readyEvent.fps
     session.bitrate = readyEvent.bitrate
     const audioMode = mapAudioMode(readyEvent.audio_mode)
     session.audio = buildSessionAudio(
-      session.startOptions.audio?.requested,
+      session.startOptions.kind === 'screen'
+        ? session.startOptions.audio?.requested
+        : true,
       audioMode,
       readyEvent.audio_port,
       mapReadyAudioMetadata(readyEvent),
@@ -805,6 +810,7 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     session.videoLateFrames = undefined
     session.videoAvgCaptureUs = undefined
     session.helper = helper
+    session.reader = mediaEngineHelperReaders.get(helper)
 
     session.reconnecting = false
     return true
@@ -840,6 +846,7 @@ function handleHelperExit(
 ) {
   const session = activeSessions.get(sessionId)
   if (!session) return
+  if (session.reconnecting) return
 
   const message =
     signal != null
