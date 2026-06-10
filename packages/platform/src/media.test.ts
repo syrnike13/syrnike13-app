@@ -2,7 +2,11 @@ import { describe, expectTypeOf, it } from 'vitest'
 
 import type {
   NativeMediaEngineSessionSummary,
+  NativeMediaEchoCancellationMode,
+  NativeMediaNoiseSuppressionMode,
+  NativeMicrophoneRuntimeConfig,
   NativeMediaSession,
+  NativeMediaMicrophoneSessionStartOptions,
   NativeMediaSessionStartOptions,
 } from './media'
 
@@ -51,9 +55,11 @@ describe('native media session contract', () => {
           deviceId?: string
           sampleRate: 48000
           channels: 1
+          noiseSuppression: boolean
           echoCancellation: boolean
           inputVolume: number
           audioBitrate?: number
+          voiceGateAutoThreshold?: boolean
           muted?: boolean
           livekit: {
             url: string
@@ -74,10 +80,44 @@ describe('native media session contract', () => {
             mode: 'microphone'
             sampleRate: 48000
             channels: 1
-            echoCancellation: 'disabled' | 'windows' | 'software' | 'unavailable'
+            noiseSuppression: 'disabled' | 'software' | 'unavailable'
+            echoCancellation: 'disabled' | 'software' | 'unavailable'
           }
           nativeParticipantIdentity: string
         }
     >()
+  })
+
+  it('models separate microphone processing toggles and statuses', () => {
+    const microphoneStart = {
+      kind: 'microphone',
+      sampleRate: 48_000,
+      channels: 1,
+      noiseSuppression: true,
+      echoCancellation: false,
+      inputVolume: 1,
+      voiceGateAutoThreshold: true,
+      livekit: {
+        url: 'wss://example.test',
+        token: 'token',
+        participantIdentity: 'native-user',
+      },
+    } satisfies NativeMediaMicrophoneSessionStartOptions
+
+    const runtimeConfig = {
+      noiseSuppression: false,
+      echoCancellation: true,
+      voiceGateAutoThreshold: false,
+    } satisfies NativeMicrophoneRuntimeConfig
+
+    const noiseStatus: NativeMediaNoiseSuppressionMode = 'software'
+    const echoStatus: NativeMediaEchoCancellationMode = 'unavailable'
+
+    expectTypeOf(microphoneStart.noiseSuppression).toEqualTypeOf<boolean>()
+    expectTypeOf(microphoneStart.voiceGateAutoThreshold).toEqualTypeOf<true>()
+    expectTypeOf(runtimeConfig.echoCancellation).toEqualTypeOf<boolean | undefined>()
+    expectTypeOf(runtimeConfig.voiceGateAutoThreshold).toEqualTypeOf<boolean | undefined>()
+    expectTypeOf(noiseStatus).toEqualTypeOf<NativeMediaNoiseSuppressionMode>()
+    expectTypeOf(echoStatus).toEqualTypeOf<NativeMediaEchoCancellationMode>()
   })
 })

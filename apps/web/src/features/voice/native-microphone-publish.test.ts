@@ -53,6 +53,7 @@ function preferences() {
     screenShareEnabled: false,
     screenShareQuality: 'high',
     screenShareCodec: 'auto',
+    noiseSuppression: true,
     echoCancellation: true,
     voiceGateEnabled: true,
     voiceGateThresholdDb: -45,
@@ -79,7 +80,10 @@ describe('native microphone publish', () => {
 
   it('builds native microphone session options from voice preferences', () => {
     expect(
-      nativeMicrophoneSessionOptions(preferences(), {
+      nativeMicrophoneSessionOptions({
+        ...preferences(),
+        voiceGateAutoThreshold: true,
+      }, {
         url: 'wss://livekit.example',
         token: 'livekit-token',
         participantIdentity: 'user-1:desktop-native',
@@ -90,11 +94,12 @@ describe('native microphone publish', () => {
       sampleRate: 48_000,
       channels: 1,
       audioBitrate: 48_000,
+      noiseSuppression: true,
       echoCancellation: true,
       inputVolume: 0.75,
       voiceGateEnabled: true,
       voiceGateThresholdDb: -45,
-      voiceGateAutoThreshold: false,
+      voiceGateAutoThreshold: true,
       muted: false,
       livekit: {
         url: 'wss://livekit.example',
@@ -121,7 +126,8 @@ describe('native microphone publish', () => {
         mode: 'microphone',
         sampleRate: 48_000,
         channels: 1,
-        echoCancellation: 'windows',
+        noiseSuppression: 'software',
+        echoCancellation: 'software',
       },
       nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
     }))
@@ -176,7 +182,8 @@ describe('native microphone publish', () => {
             mode: 'microphone',
             sampleRate: 48_000,
             channels: 1,
-            echoCancellation: 'windows',
+            noiseSuppression: 'software',
+            echoCancellation: 'software',
           },
           nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
         })),
@@ -217,7 +224,8 @@ describe('native microphone publish', () => {
             mode: 'microphone',
             sampleRate: 48_000,
             channels: 1,
-            echoCancellation: 'windows',
+            noiseSuppression: 'software',
+            echoCancellation: 'software',
           },
           nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
         })),
@@ -258,7 +266,8 @@ describe('native microphone publish', () => {
         mode: 'microphone',
         sampleRate: 48_000,
         channels: 1,
-        echoCancellation: 'windows',
+        noiseSuppression: 'software',
+        echoCancellation: 'software',
       },
       nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
     }))
@@ -317,6 +326,7 @@ describe('native microphone publish', () => {
       ...preferences(),
       inputVolume: 1.8,
       voiceGateEnabled: false,
+      voiceGateAutoThreshold: true,
     })
     await vi.advanceTimersByTimeAsync(39)
 
@@ -329,7 +339,9 @@ describe('native microphone publish', () => {
       'native-mic-1',
       expect.objectContaining({
         inputVolume: 1.8,
+        noiseSuppression: true,
         voiceGateEnabled: false,
+        voiceGateAutoThreshold: true,
       }),
     )
   })

@@ -21,6 +21,7 @@ export type VoicePreferenceState = {
   preferredVideoDevice?: string
   inputVolume: number
   outputVolume: number
+  noiseSuppression: boolean
   echoCancellation: boolean
   voiceGateEnabled: boolean
   voiceGateThresholdDb: number
@@ -51,6 +52,7 @@ const DEFAULT_STATE: VoicePreferenceState = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
+  noiseSuppression: true,
   echoCancellation: true,
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
@@ -148,6 +150,10 @@ function loadState(): VoicePreferenceState {
         parsed.outputVolume <= VOICE_OUTPUT_VOLUME_MAX
           ? parsed.outputVolume
           : DEFAULT_STATE.outputVolume,
+      noiseSuppression:
+        typeof parsed.noiseSuppression === 'boolean'
+          ? parsed.noiseSuppression
+          : DEFAULT_STATE.noiseSuppression,
       echoCancellation:
         typeof parsed.echoCancellation === 'boolean'
           ? parsed.echoCancellation
@@ -209,6 +215,7 @@ export const voicePreferenceStore = {
   getDeafened: () => state.deafened,
   getInputVolume: () => state.inputVolume,
   getOutputVolume: () => state.outputVolume,
+  getNoiseSuppression: () => state.noiseSuppression,
   getPreferredAudioInputDevice: () => state.preferredAudioInputDevice,
   getPreferredAudioOutputDevice: () => state.preferredAudioOutputDevice,
   getPreferredVideoDevice: () => state.preferredVideoDevice,
@@ -236,6 +243,10 @@ export const voicePreferenceStore = {
     )
     if (state.outputVolume === next) return
     patch({ outputVolume: next })
+  },
+  setNoiseSuppression: (noiseSuppression: boolean) => {
+    if (state.noiseSuppression === noiseSuppression) return
+    patch({ noiseSuppression })
   },
   setPreferredAudioInputDevice: (deviceId: string | undefined) => {
     if (state.preferredAudioInputDevice === deviceId) return

@@ -25,7 +25,11 @@ export type NativeMediaLoopbackMode =
 
 export type NativeMediaEchoCancellationMode =
   | 'disabled'
-  | 'windows'
+  | 'software'
+  | 'unavailable'
+
+export type NativeMediaNoiseSuppressionMode =
+  | 'disabled'
   | 'software'
   | 'unavailable'
 
@@ -70,6 +74,7 @@ export type NativeMediaMicrophoneSessionStartOptions = {
   deviceId?: string
   sampleRate: 48_000
   channels: 1
+  noiseSuppression: boolean
   echoCancellation: boolean
   inputVolume: number
   audioBitrate?: number
@@ -85,6 +90,7 @@ export type NativeMicrophoneRuntimeConfig = {
   voiceGateEnabled?: boolean
   voiceGateThresholdDb?: number
   voiceGateAutoThreshold?: boolean
+  noiseSuppression?: boolean
   echoCancellation?: boolean
 }
 
@@ -92,6 +98,7 @@ export type NativeMicrophonePreviewStartOptions = {
   deviceId?: string
   sampleRate: 48_000
   channels: 1
+  noiseSuppression: boolean
   echoCancellation: boolean
   inputVolume: number
   voiceGateEnabled?: boolean
@@ -132,6 +139,7 @@ export type NativeMediaMicrophoneSession = {
     mode: 'microphone'
     sampleRate: 48_000
     channels: 1
+    noiseSuppression: NativeMediaNoiseSuppressionMode
     echoCancellation: NativeMediaEchoCancellationMode
   }
   nativeParticipantIdentity: string
@@ -176,6 +184,7 @@ export type NativeMediaEngineSessionSummary = {
     port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
     echoCancellation?: NativeMediaEchoCancellationMode
     targetProcessId?: number
     loopbackMode?: NativeMediaLoopbackMode
@@ -227,6 +236,7 @@ export type NativeMediaStateEvent = NativeMediaSessionStatus & {
     port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
+    noiseSuppression?: NativeMediaNoiseSuppressionMode
     echoCancellation?: NativeMediaEchoCancellationMode
     targetProcessId?: number
     loopbackMode?: NativeMediaLoopbackMode

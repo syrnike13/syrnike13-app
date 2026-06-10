@@ -393,6 +393,7 @@ describe('native media engine sidecar protocol', () => {
         audio_mode: 'microphone',
         audio_sample_rate: 48_000,
         audio_channels: 1,
+        noise_suppression: 'software',
         echo_cancellation: 'software',
       }),
     ).toEqual({
@@ -402,6 +403,7 @@ describe('native media engine sidecar protocol', () => {
         mode: 'microphone',
         sampleRate: 48_000,
         channels: 1,
+        noiseSuppression: 'software',
         echoCancellation: 'software',
       },
     })

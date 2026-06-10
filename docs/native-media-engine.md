@@ -1,13 +1,14 @@
 # Native Media Engine
 
 Windows desktop media capture goes through the native media engine instead of
-browser capture APIs. The web client still publishes through LiveKit JS, but the
-media source and capture lifecycle are owned by the desktop native layer.
+browser capture APIs. The renderer controls sessions through `desktop.media`
+from `@syrnike13/platform`; the native helper owns capture, processing, and
+LiveKit publishing for Windows-only native sessions.
 
 ## API Boundary
 
-Renderer code talks to the engine through `desktop.media` from
-`@syrnike13/platform`.
+Screen sessions request a source, dimensions, bitrate, and optional system
+audio:
 
 ```ts
 const session = await desktop.media.startSession({
@@ -17,27 +18,12 @@ const session = await desktop.media.startSession({
   height,
   fps,
   bitrate,
-  streamMode,
   audio: { requested: true },
+  livekit,
 })
 ```
 
-`startSession` returns a `NativeMediaSession`. Screen sessions provide a video
-stream port. Microphone sessions are audio-only.
-
-```ts
-type NativeMediaSession = {
-  kind: 'screen'
-  sessionId: string
-  port: number
-  streamMode: 'h264' | 'bgra'
-  encoder: 'media_foundation' | 'software'
-  audio?: {
-    mode: 'none' | 'system_exclude' | 'process'
-    port?: number
-  }
-}
-```
+Microphone sessions request two independent processing toggles:
 
 ```ts
 const session = await desktop.media.startSession({
@@ -45,104 +31,87 @@ const session = await desktop.media.startSession({
   deviceId,
   sampleRate: 48_000,
   channels: 1,
-  echoCancellation,
-  noiseSuppression: 'deep_filter_net3',
+  noiseSuppression: true,
+  echoCancellation: true,
   inputVolume,
+  livekit,
 })
 ```
 
+`desktop.media.getState()` returns helper availability, capabilities, active
+sessions, and the last engine error. It is the renderer's source of truth for
+diagnostics and UI status.
+
+## Microphone Processing
+
+The Windows C++ helper uses LiveKit SDK's WebRTC Audio Processing Module for
+standard microphone cleanup:
+
+- `noiseSuppression`: WebRTC software noise suppression.
+- `echoCancellation`: WebRTC AEC3 when a WASAPI default-render loopback
+  reference is available.
+- `autoGainControl`: not exposed and not enabled.
+
+The native signal order is:
+
+```text
+10 ms microphone frame
+-> WebRTC APM noise suppression / AEC when enabled and available
+-> input volume
+-> voice gate
+-> soft limiter
+-> LiveKit native audio frame
+```
+
+Noise suppression and echo cancellation are separate runtime booleans. The
+renderer can update them with `desktop.media.configureMicrophoneRuntime()`
+without restarting the microphone session.
+
+Echo cancellation is best-effort. If the render loopback reference cannot be
+opened or has not produced 10 ms reference frames yet, the microphone continues
+publishing and reports `echoCancellation: 'unavailable'`. Noise suppression can
+still run without echo reference.
+
+Microphone preview uses the same processor for noise suppression, input volume,
+voice gate, and limiter. Preview reports echo cancellation as unavailable when
+the checkbox is on because monitor audio is rendered to the same output device
+that a loopback AEC reference would capture.
+
+## Status Values
+
+Microphone session audio status exposes both processing features:
+
 ```ts
-type NativeMicrophoneSession = {
-  kind: 'microphone'
-  sessionId: string
-  audio: {
-    mode: 'microphone'
-    port: number
-    sampleRate: 48_000
-    channels: 1
-    noiseSuppression: 'disabled' | 'deep_filter_net3'
-  }
+audio: {
+  mode: 'microphone'
+  sampleRate: 48_000
+  channels: 1
+  noiseSuppression: 'disabled' | 'software' | 'unavailable'
+  echoCancellation: 'disabled' | 'software' | 'unavailable'
 }
 ```
 
-`desktop.media.getState()` returns a snapshot with helper availability,
-capabilities, active sessions, and the last engine error. It is the renderer's
-source of truth for diagnostics and UI status.
+The helper also includes `noise_suppression` and `echo_cancellation` in
+microphone diagnostics events so manual QA can verify enabled, disabled, and
+unavailable states.
 
-## Lifecycle Ownership
+## Browser Boundary
 
-The native helper owns session lifecycle. JavaScript can start, stop, reconnect,
-and relay streams, but it must not invent public `running`, `error`, or
-`stopped` state for a native session.
+On Windows desktop, local microphone publishing uses the native C++ helper.
+Browser `getUserMedia()` remains only for web and non-Windows runtimes.
 
-The helper emits `session_lifecycle` events:
+Browser-side noise suppression and AGC are kept disabled in voice capture
+constraints to avoid double processing:
 
-```json
+```ts
 {
-  "type": "session_lifecycle",
-  "session_id": "session-1",
-  "kind": "screen",
-  "status": "running",
-  "port": 55123
+  noiseSuppression: false,
+  autoGainControl: false
 }
 ```
 
-The Electron main process maps those events to `desktop.media` state events and
-updates `getState()`.
+## Out Of Scope
 
-## Audio Contract
-
-System audio is part of the media session contract:
-
-```ts
-audio: { requested: true }
-```
-
-The renderer does not call separate prepare or clear audio methods. The engine
-decides whether audio is unavailable, process-scoped, or system-exclude capture
-and reports that through `session.audio`.
-
-Session cleanup must release both video and audio resources.
-
-## Microphone Contract
-
-On Windows desktop, microphone capture is native-only. The renderer must not use
-`navigator.mediaDevices.getUserMedia()` or LiveKit `setMicrophoneEnabled()` as
-the capture path for local microphone publishing. It starts a native microphone
-session, bridges the native PCM stream into a `MediaStreamTrack`, and publishes
-that track with LiveKit JS.
-
-Microphone PCM is mono `f32` at 48 kHz. Input gain is applied in the native
-helper. The session carries `noiseSuppression: 'deep_filter_net3'` when enhanced
-noise suppression is enabled. The DeepFilterNet3 inference runtime and model
-packaging live in the Rust helper boundary; they are not a browser worklet.
-When DeepFilterNet3 is active, the helper frames PCM packets using the model
-runtime hop size, not a browser-side worklet block size.
-When echo cancellation is enabled, the helper requests native Windows AEC through
-WASAPI with the default render endpoint as the reference. If the selected capture
-device or OS does not support native AEC, microphone startup fails instead of
-silently falling back to browser echo cancellation.
-The helper reports the microphone session as ready only after WASAPI capture,
-optional AEC, and the native capture client are initialized successfully.
-If the native microphone audio relay ends or errors after startup, Electron
-reports the stream as ended/error and tears down the active native media session.
-
-Microphone preview and gate-meter UI on Windows desktop also use the native
-microphone session as their source. Browser `getUserMedia()` remains only for
-web and non-Windows runtimes.
-
-Windows desktop audio input device listing is native too:
-`desktop.media.listDevices('audioinput')` returns WASAPI endpoint ids and labels.
-Those endpoint ids are passed back into the Rust helper when starting a
-microphone session. The web voice UI must not treat browser `enumerateDevices()`
-ids as native microphone ids on Windows desktop.
-
-RNNoise is not part of the voice stack. Enhanced microphone denoise maps to
-DeepFilterNet3 at the native media engine boundary.
-
-## LiveKit Boundary
-
-LiveKit JS remains the publishing layer. It should receive already captured
-native media data and publish it to the room. Capture quality decisions,
-source selection, system audio routing, native ports, and helper lifecycle stay
-outside LiveKit JS.
+Krisp, RNNoise, DeepFilterNet3, and AGC are not part of this native microphone
+processing path. The intended quality target is the WebRTC/APM "standard"
+class of processing, not Krisp-style ML cancellation.

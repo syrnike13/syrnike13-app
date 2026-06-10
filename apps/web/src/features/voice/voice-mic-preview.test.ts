@@ -53,6 +53,27 @@ describe('native microphone processing boundary', () => {
     }
   })
 
+  it('initializes LiveKit before native preview uses the audio processor', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const source = readFileSync(
+      resolve(
+        repoRoot,
+        'apps/desktop/native/native-voice-win/src/microphone_preview.cpp',
+      ),
+      'utf8',
+    )
+
+    const initializeIndex = source.indexOf('livekit::initialize')
+    const processorIndex = source.indexOf('MicrophoneAudioProcessor processor')
+    const shutdownIndex = source.indexOf('livekit::shutdown')
+
+    expect(initializeIndex).toBeGreaterThanOrEqual(0)
+    expect(processorIndex).toBeGreaterThan(initializeIndex)
+    expect(shutdownIndex).toBeGreaterThan(processorIndex)
+  })
+
   it('configures native preview gate and input gain without restarting preview', async () => {
     vi.useFakeTimers()
     const startMicrophonePreview = vi.fn(async () => ({ sessionId: 'preview-1' }))
@@ -78,10 +99,11 @@ describe('native microphone processing boundary', () => {
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     const prefs: MicPreviewPreferences = {
+      noiseSuppression: true,
       echoCancellation: true,
       voiceGateEnabled: true,
       voiceGateThresholdDb: -28,
-      voiceGateAutoThreshold: false,
+      voiceGateAutoThreshold: true,
       inputVolume: 1,
       outputVolume: 1,
     }
@@ -112,12 +134,18 @@ describe('native microphone processing boundary', () => {
     })
     await session.restartProcessing({
       ...prefs,
+      noiseSuppression: false,
       voiceGateEnabled: false,
       inputVolume: 1.5,
     })
     await vi.advanceTimersByTimeAsync(39)
 
     expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
+    expect(startMicrophonePreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voiceGateAutoThreshold: true,
+      }),
+    )
     expect(stopMicrophonePreview).not.toHaveBeenCalled()
     expect(configureMicrophoneRuntime).not.toHaveBeenCalled()
     expect(onLevels).toHaveBeenCalledTimes(1)
@@ -134,7 +162,8 @@ describe('native microphone processing boundary', () => {
       'preview-1',
       expect.objectContaining({
         voiceGateEnabled: false,
-        voiceGateAutoThreshold: false,
+        voiceGateAutoThreshold: true,
+        noiseSuppression: false,
         inputVolume: 1.5,
       }),
     )

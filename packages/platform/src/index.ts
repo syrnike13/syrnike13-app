@@ -3,6 +3,7 @@ export type {
   NativeMediaEncoderBackend,
   NativeMediaDeviceInfo,
   NativeMediaEchoCancellationMode,
+  NativeMediaNoiseSuppressionMode,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
   NativeMediaLoopbackMode,

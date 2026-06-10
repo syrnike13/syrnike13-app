@@ -40,6 +40,8 @@ describe('voicePreferenceStore', () => {
       voiceGateEnabled: true,
       voiceGateAutoThreshold: true,
       voiceGateThresholdDb: -28,
+      noiseSuppression: true,
+      echoCancellation: true,
     })
   })
 
@@ -88,5 +90,15 @@ describe('voicePreferenceStore', () => {
     voicePreferenceStore.setVoiceGateEnabled(true)
 
     expect(voicePreferenceStore.getState().voiceGateEnabled).toBe(true)
+  })
+
+  it('persists separate microphone cleanup toggles', () => {
+    voicePreferenceStore.setNoiseSuppression(false)
+    voicePreferenceStore.setEchoCancellation(false)
+
+    expect(voicePreferenceStore.getState()).toMatchObject({
+      noiseSuppression: false,
+      echoCancellation: false,
+    })
   })
 })

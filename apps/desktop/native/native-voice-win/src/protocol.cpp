@@ -136,10 +136,12 @@ StartCommand parseStartCommand(const std::string& json) {
   command.exclude_process_id = intField(json, "excludeProcessId", 0);
   command.self_window_hwnd = uintptrField(json, "selfWindowHwnd", 0);
   command.audio_requested = boolField(json, "audio");
-  command.echo_cancellation = boolField(json, "echoCancellation");
+  command.noise_suppression = boolField(json, "noiseSuppression", true);
+  command.echo_cancellation = boolField(json, "echoCancellation", true);
   command.input_volume = numberField(json, "inputVolume", 1.0f);
   command.voice_gate_enabled = boolField(json, "voiceGateEnabled", true);
   command.voice_gate_threshold_db = numberField(json, "voiceGateThresholdDb", -28.0f);
+  command.voice_gate_auto_threshold = boolField(json, "voiceGateAutoThreshold", true);
   command.muted = boolField(json, "muted");
   return command;
 }

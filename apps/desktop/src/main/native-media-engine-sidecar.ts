@@ -2,6 +2,7 @@ import type {
   DesktopDisplayMediaSource,
   NativeMediaAudioMode,
   NativeMediaEchoCancellationMode,
+  NativeMediaNoiseSuppressionMode,
   NativeMediaDeviceInfo,
   NativeMediaEncoderBackend,
   NativeMediaFrameMethod,
@@ -29,6 +30,7 @@ export type SidecarEvent =
       audio_channels?: number
       audio_target_process_id?: number
       audio_loopback_mode?: string
+      noise_suppression?: string
       echo_cancellation?: string
       native_participant_identity?: string
     }
@@ -101,7 +103,11 @@ export type SidecarEvent =
       max_capture_frame_us: number
       input_volume: number
       voice_gate_enabled: boolean
+      voice_gate_auto_threshold: boolean
       voice_gate_threshold_db: number
+      voice_gate_noise_floor_db: number
+      noise_suppression?: string
+      echo_cancellation?: string
     }
   | {
       type: 'session_lifecycle'
@@ -115,6 +121,7 @@ export type SidecarEvent =
       audio_channels?: number
       audio_target_process_id?: number
       audio_loopback_mode?: string
+      noise_suppression?: string
       echo_cancellation?: string
       width?: number
       height?: number
@@ -219,7 +226,15 @@ export function mapEchoCancellationMode(
   value: string | undefined,
 ): NativeMediaEchoCancellationMode | undefined {
   if (value === 'disabled') return 'disabled'
-  if (value === 'windows') return 'windows'
+  if (value === 'software') return 'software'
+  if (value === 'unavailable') return 'unavailable'
+  return undefined
+}
+
+export function mapNoiseSuppressionMode(
+  value: string | undefined,
+): NativeMediaNoiseSuppressionMode | undefined {
+  if (value === 'disabled') return 'disabled'
   if (value === 'software') return 'software'
   if (value === 'unavailable') return 'unavailable'
   return undefined
@@ -259,6 +274,7 @@ export function mapLifecycleState(
                   event.audio_channels === 1 || event.audio_channels === 2
                     ? event.audio_channels
                     : undefined,
+                noiseSuppression: mapNoiseSuppressionMode(event.noise_suppression),
                 echoCancellation: mapEchoCancellationMode(event.echo_cancellation),
                 targetProcessId:
                   typeof event.audio_target_process_id === 'number'

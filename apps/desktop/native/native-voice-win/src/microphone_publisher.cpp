@@ -14,6 +14,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -24,6 +25,8 @@
 
 #include "audio_constants.hpp"
 #include "audio_devices.hpp"
+#include "microphone_audio_processor.hpp"
+#include "microphone_echo_reference.hpp"
 #include "audio_processing.hpp"
 #include "runtime_config.hpp"
 
@@ -90,6 +93,18 @@ std::string captureSessionId(const std::shared_ptr<MicrophoneCaptureState>& stat
   return state->session_id;
 }
 
+MicrophoneProcessingStatus initialMicrophoneProcessingStatus(
+  bool noise_suppression_enabled,
+  bool echo_cancellation_enabled
+) {
+  MicrophoneProcessingStatus status;
+  status.noise_suppression =
+    noise_suppression_enabled ? "software" : "disabled";
+  status.echo_cancellation =
+    echo_cancellation_enabled ? "unavailable" : "disabled";
+  return status;
+}
+
 void setCaptureSessionId(
   const std::shared_ptr<MicrophoneCaptureState>& state,
   const std::string& session_id
@@ -133,16 +148,23 @@ void captureMicrophone(
     hr = audio_client->Start();
     if (FAILED(hr)) throw std::runtime_error("failed to start microphone stream");
 
-    VoiceGateProcessor gate(kSampleRate);
+    MicrophoneAudioProcessor processor;
+    MicrophoneEchoReference echo_reference;
+    bool echo_reference_enabled = command.echo_cancellation;
+    if (echo_reference_enabled) {
+      echo_reference.start();
+    }
     std::vector<float> raw_frame;
     raw_frame.reserve(kSamplesPer10Ms);
-    std::vector<float> processed_frame;
-    processed_frame.reserve(kSamplesPer10Ms);
-    std::vector<std::int16_t> pcm_frame;
-    pcm_frame.reserve(kSamplesPer10Ms);
+    std::vector<std::int16_t> silent_reference_frame(kSamplesPer10Ms, 0);
     auto last_metrics_at = std::chrono::steady_clock::now();
     auto last_diagnostics_at = last_metrics_at;
     auto last_frame_at = last_metrics_at;
+    MicrophoneProcessingStatus last_processing_status =
+      initialMicrophoneProcessingStatus(
+        command.noise_suppression,
+        command.echo_cancellation
+      );
     std::uint64_t total_frames = 0;
     std::uint32_t interval_frames = 0;
     std::uint32_t gated_frames = 0;
@@ -150,6 +172,7 @@ void captureMicrophone(
     std::uint32_t max_frame_gap_ms = 0;
     std::uint32_t max_capture_frame_us = 0;
     float last_input_db = -60.0f;
+    VoiceGateFrameMetrics last_gate_metrics;
     float max_output_peak = 0.0f;
 
     while (g_running.load()) {
@@ -175,30 +198,48 @@ void captureMicrophone(
 
         if (raw_frame.size() == kSamplesPer10Ms) {
           const RuntimeConfig config = readRuntimeConfig();
-          gate.updateConfig(voiceGateConfigFromRuntimeConfig(config));
-
-          processed_frame.clear();
-          for (float sample : raw_frame) {
-            processed_frame.push_back(sample * config.input_volume);
+          if (config.echo_cancellation_enabled != echo_reference_enabled) {
+            echo_reference_enabled = config.echo_cancellation_enabled;
+            if (echo_reference_enabled) {
+              echo_reference.start();
+            } else {
+              echo_reference.stop();
+            }
           }
 
-          const VoiceGateFrameMetrics gate_metrics = gate.processFrame(processed_frame);
-          const float input_db = gate_metrics.input_db;
-          const bool open = gate_metrics.open;
+          const auto reference_frame = echo_reference_enabled
+            ? echo_reference.popFrame()
+            : std::nullopt;
+          const auto reference_status = echo_reference.status();
+          const std::vector<std::int16_t>* reference_frame_ptr = nullptr;
+          if (echo_reference_enabled && reference_status.available) {
+            reference_frame_ptr = reference_frame.has_value()
+              ? &reference_frame.value()
+              : &silent_reference_frame;
+          }
+          auto processed = processor.processFrame(
+            raw_frame,
+            config,
+            reference_frame_ptr
+          );
+
+          const float input_db = processed.gate_metrics.input_db;
+          const bool open = processed.gate_metrics.open;
           last_input_db = input_db;
+          last_gate_metrics = processed.gate_metrics;
           if (!open) gated_frames += 1;
-
-          pcm_frame.clear();
-          for (float sample : processed_frame) {
-            if (std::abs(sample) > 1.0f) clipped_samples += 1;
-            const float processed = softLimitSample(sample);
-            max_output_peak = std::max(max_output_peak, std::abs(processed));
-            pcm_frame.push_back(clampToPcm16(processed));
-          }
+          clipped_samples += processed.clipped_samples;
+          max_output_peak = std::max(max_output_peak, processed.output_peak);
+          last_processing_status = processed.status;
 
           const auto capture_started_at = std::chrono::steady_clock::now();
           if (state->publishing.load()) {
-            livekit::AudioFrame audio_frame(std::move(pcm_frame), kSampleRate, kChannels, kSamplesPer10Ms);
+            livekit::AudioFrame audio_frame(
+              std::move(processed.pcm),
+              kSampleRate,
+              kChannels,
+              kSamplesPer10Ms
+            );
             audio_source->captureFrame(audio_frame);
             const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::steady_clock::now() - capture_started_at
@@ -222,7 +263,12 @@ void captureMicrophone(
 
           const auto now = std::chrono::steady_clock::now();
           if (now - last_metrics_at >= std::chrono::milliseconds(50)) {
-            emitMicrophoneMetrics(captureSessionId(state), input_db, config.voice_gate_threshold_db, open);
+            emitMicrophoneMetrics(
+              captureSessionId(state),
+              input_db,
+              processed.gate_metrics.threshold_db,
+              open
+            );
             last_metrics_at = now;
           }
           if (now - last_diagnostics_at >= std::chrono::seconds(1)) {
@@ -237,7 +283,9 @@ void captureMicrophone(
               gated_frames,
               max_frame_gap_ms,
               max_capture_frame_us,
-              config
+              last_gate_metrics,
+              config,
+              last_processing_status
             );
             interval_frames = 0;
             gated_frames = 0;
@@ -272,9 +320,15 @@ void emitMicrophoneReady(
   const StartCommand& command,
   const std::string& native_identity
 ) {
+  const MicrophoneProcessingStatus status = initialMicrophoneProcessingStatus(
+    command.noise_suppression,
+    command.echo_cancellation
+  );
   emit("{\"type\":\"ready\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"port\":0,\"stream_mode\":\"audio\",\"audio_mode\":\"microphone\","
-       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\","
+       "\"audio_sample_rate\":48000,\"audio_channels\":1,"
+       "\"noise_suppression\":\"" + jsonEscape(status.noise_suppression) + "\","
+       "\"echo_cancellation\":\"" + jsonEscape(status.echo_cancellation) + "\","
        "\"native_participant_identity\":\"" + jsonEscape(native_identity) + "\"}");
 }
 
@@ -385,9 +439,15 @@ bool connectMicrophoneRoom(
   state->publishing.store(true);
 
   emitMicrophoneReady(command, native_identity);
+  const MicrophoneProcessingStatus status = initialMicrophoneProcessingStatus(
+    command.noise_suppression,
+    command.echo_cancellation
+  );
   emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(command.session_id) +
        "\",\"kind\":\"microphone\",\"status\":\"running\",\"audio_mode\":\"microphone\","
-       "\"audio_sample_rate\":48000,\"audio_channels\":1,\"echo_cancellation\":\"unavailable\","
+       "\"audio_sample_rate\":48000,\"audio_channels\":1,"
+       "\"noise_suppression\":\"" + jsonEscape(status.noise_suppression) + "\","
+       "\"echo_cancellation\":\"" + jsonEscape(status.echo_cancellation) + "\","
        "\"elapsed_ms\":" + std::to_string(elapsedMs()) + "}");
   return true;
 }

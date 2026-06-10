@@ -26,6 +26,8 @@ add_executable(syrnike-native-voice-win
   src/audio_devices.cpp
   src/audio_processing.cpp
   src/main.cpp
+  src/microphone_audio_processor.cpp
+  src/microphone_echo_reference.cpp
   src/microphone_preview.cpp
   src/microphone_publisher.cpp
   src/microphone_warmup.cpp
@@ -62,6 +64,8 @@ enable_testing()
 
 add_executable(syrnike-native-voice-win-tests
   tests/voice_gate_processor_test.cpp
+  src/protocol.cpp
+  src/runtime_config.cpp
   src/voice_gate.cpp
 )
 
@@ -72,4 +76,59 @@ target_include_directories(syrnike-native-voice-win-tests PRIVATE
 add_test(
   NAME syrnike-native-voice-win-tests
   COMMAND syrnike-native-voice-win-tests
+)
+
+add_executable(syrnike-native-microphone-audio-processor-tests
+  tests/microphone_audio_processor_test.cpp
+  src/audio_processing.cpp
+  src/microphone_audio_processor.cpp
+  src/protocol.cpp
+  src/voice_gate.cpp
+)
+
+target_include_directories(syrnike-native-microphone-audio-processor-tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+target_link_libraries(syrnike-native-microphone-audio-processor-tests PRIVATE
+  LiveKit::livekit
+)
+
+target_compile_definitions(syrnike-native-microphone-audio-processor-tests PRIVATE
+  WIN32_LEAN_AND_MEAN
+  NOMINMAX
+  _WIN32_WINNT=0x0A00
+)
+
+add_test(
+  NAME syrnike-native-microphone-audio-processor-tests
+  COMMAND syrnike-native-microphone-audio-processor-tests
+)
+
+add_executable(syrnike-native-microphone-echo-reference-tests
+  tests/microphone_echo_reference_test.cpp
+  src/audio_devices.cpp
+  src/microphone_echo_reference.cpp
+  src/protocol.cpp
+)
+
+target_include_directories(syrnike-native-microphone-echo-reference-tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+target_link_libraries(syrnike-native-microphone-echo-reference-tests PRIVATE
+  Mmdevapi
+  avrt
+  ole32
+)
+
+target_compile_definitions(syrnike-native-microphone-echo-reference-tests PRIVATE
+  WIN32_LEAN_AND_MEAN
+  NOMINMAX
+  _WIN32_WINNT=0x0A00
+)
+
+add_test(
+  NAME syrnike-native-microphone-echo-reference-tests
+  COMMAND syrnike-native-microphone-echo-reference-tests
 )

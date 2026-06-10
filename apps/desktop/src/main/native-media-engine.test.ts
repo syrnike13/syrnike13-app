@@ -234,8 +234,10 @@ describe('native media engine entrypoint', () => {
           deviceId: 'default',
           sampleRate: 48_000,
           channels: 1,
+          noiseSuppression: true,
           echoCancellation: true,
           inputVolume: 1.25,
+          voiceGateAutoThreshold: true,
           audioBitrate: 48_000,
           livekit: {
             url: 'wss://livekit.example',
@@ -253,8 +255,10 @@ describe('native media engine entrypoint', () => {
       deviceId: 'default',
       sampleRate: 48_000,
       channels: 1,
+      noiseSuppression: true,
       echoCancellation: true,
       inputVolume: 1.25,
+      voiceGateAutoThreshold: true,
       audioBitrate: 48_000,
       livekit: {
         url: 'wss://livekit.example',
