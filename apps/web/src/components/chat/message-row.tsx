@@ -19,6 +19,7 @@ import {
   type MemberRoleEntry,
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
+import { isMessageMentioningUser } from '#/lib/mentions'
 import { renderMessageContent } from '#/lib/message-markdown'
 import {
   formatMessageTimeShort,
@@ -130,6 +131,11 @@ export function MessageRow({
   const member = useSyncStore((s) =>
     serverId ? s.members[`${serverId}:${message.author}`] : undefined,
   )
+  const currentMember = useSyncStore((s) =>
+    serverId && currentUserId
+      ? s.members[`${serverId}:${currentUserId}`]
+      : undefined,
+  )
 
   const name = authorLabel(message, users)
   const authorUser = message.user ?? users[message.author]
@@ -147,12 +153,38 @@ export function MessageRow({
   const authorRoles =
     server && member ? memberRoleEntries(server, member) : undefined
   const hideAuthorMessage = authorUser?._id === currentUserId
+  const channels = useSyncStore((s) => s.channels)
+  const currentUser = currentUserId ? users[currentUserId] : undefined
+  const mentionsCurrentUser = isMessageMentioningUser(message, currentUserId, {
+    member: currentMember,
+    currentUser,
+  })
+  const members = useSyncStore((s) => s.members)
+
   const renderedContent = useMemo(
     () =>
       hasContent
-        ? renderMessageContent(message.content!, users, emojis)
+        ? renderMessageContent(message.content!, users, emojis, {
+            roles: server?.roles,
+            channels,
+            server,
+            serverId,
+            serverName: server?.name,
+            members,
+            currentUserId,
+          })
         : null,
-    [emojis, hasContent, message.content, users],
+    [
+      channels,
+      currentUserId,
+      emojis,
+      hasContent,
+      members,
+      message.content,
+      server,
+      serverId,
+      users,
+    ],
   )
 
   return (
@@ -164,6 +196,9 @@ export function MessageRow({
           ? cn('min-h-[1.375rem] py-0.5', MESSAGE_COMPACT_CONTENT_INSET)
           : cn('mt-[17px] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
         highlighted && 'bg-primary/10 hover:bg-primary/15',
+        mentionsCurrentUser &&
+          !highlighted &&
+          'bg-amber-400/10 hover:bg-amber-400/15',
       )}
     >
       {compact ? (

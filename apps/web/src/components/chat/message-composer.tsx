@@ -10,20 +10,18 @@ import type { Message } from '@syrnike13/api-types'
 import { Loader2Icon, PlusIcon, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ComposerEditor, type ComposerEditorHandle } from '#/components/chat/composer-editor'
 import { ComposerEmojiPicker } from '#/components/chat/composer-emoji-picker'
 import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
 import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '#/components/ui/button'
-import { Textarea } from '#/components/ui/textarea'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import { uploadAttachment } from '#/features/api/media-api'
 import type { Channel, User } from '@syrnike13/api-types'
-import {
-  extractMentionQuery,
-  filterUsersByQuery,
-  getMentionableUsers,
-  insertMention,
-} from '#/lib/mentions'
+import { memberDisplayColour } from '#/features/sync/member-list-groups'
+import { getMentionableUsers } from '#/lib/mentions'
+import { isCustomEmojiId } from '#/lib/emoji'
+import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
@@ -96,12 +94,12 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const auth = useAuth()
   const members = useSyncStore((s) => s.members)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const composerRef = useRef<ComposerEditorHandle>(null)
+  const composerInputRowRef = useRef<HTMLDivElement>(null)
 
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<PendingComposerFile[]>([])
   const [sending, setSending] = useState(false)
-  const [caret, setCaret] = useState(0)
   const [dragActive, setDragActive] = useState(false)
   const [replyMention, setReplyMention] = useState(true)
 
@@ -116,6 +114,8 @@ export function MessageComposer({
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )
+  const channels = useSyncStore((s) => s.channels)
+  const emojis = useSyncStore((s) => s.emojis)
   const replyMember = useSyncStore((s) =>
     replyTo && serverId
       ? s.members[`${serverId}:${replyTo.author}`]
@@ -136,28 +136,111 @@ export function MessageComposer({
     if (editingMessage) {
       setValue(editingMessage.content ?? '')
       setFiles([])
-      requestAnimationFrame(() => textareaRef.current?.focus())
+      requestAnimationFrame(() => composerRef.current?.focus())
       return
     }
     if (!replyTo) {
       setValue('')
-      setCaret(0)
       return
     }
     setReplyMention(true)
-    requestAnimationFrame(() => textareaRef.current?.focus())
+    requestAnimationFrame(() => composerRef.current?.focus())
   }, [editingMessage?._id, replyTo?._id])
 
-  const mentionQuery = extractMentionQuery(value, caret)
-  const mentionable = getMentionableUsers(
-    channel,
-    users,
-    members,
-    auth.user?._id,
+  const mentionable = useMemo(
+    () => getMentionableUsers(channel, users, members, auth.user?._id),
+    [auth.user?._id, channel, members, users],
   )
-  const mentionSuggestions = mentionQuery
-    ? filterUsersByQuery(mentionable, mentionQuery.query)
-    : []
+
+  const formatContext = useMemo(
+    () => ({
+      users,
+      members,
+      emojis,
+      roles: server?.roles,
+      channels,
+      server,
+      serverId,
+      currentUserId: auth.user?._id,
+    }),
+    [
+      auth.user?._id,
+      channels,
+      emojis,
+      members,
+      server,
+      serverId,
+      users,
+    ],
+  )
+
+  const buildMentionItems = useMemo(
+    () =>
+      (query: string): MentionSuggestionItem[] => {
+        const q = query.toLowerCase()
+        const items: MentionSuggestionItem[] = []
+        const isTextChannel = channel?.channel_type === 'TextChannel'
+
+        if (isTextChannel) {
+          if (!q || 'everyone'.startsWith(q)) {
+            items.push({
+              kind: 'everyone',
+              label: '@everyone',
+              description: 'все в канале',
+            })
+          }
+          if (!q || 'online'.startsWith(q)) {
+            items.push({
+              kind: 'online',
+              label: '@online',
+              description: 'кто в сети',
+            })
+          }
+        }
+
+        const filteredUsers = q
+          ? mentionable.filter((user) => {
+              const member =
+                serverId ? members[`${serverId}:${user._id}`] : undefined
+              const serverName =
+                member?.nickname?.trim() ||
+                user.display_name ||
+                user.username
+              return (
+                user.username.toLowerCase().includes(q) ||
+                user.display_name?.toLowerCase().includes(q) ||
+                serverName.toLowerCase().includes(q)
+              )
+            }).slice(0, 8)
+          : mentionable.slice(0, 8)
+
+        for (const user of filteredUsers) {
+          const member =
+            serverId && members[`${serverId}:${user._id}`]
+              ? members[`${serverId}:${user._id}`]
+              : undefined
+          const serverName =
+            member?.nickname?.trim() ||
+            user.display_name ||
+            user.username
+
+          items.push({
+            kind: 'user',
+            id: user._id,
+            user,
+            serverName,
+            username: user.username,
+            nameColour:
+              server && member
+                ? memberDisplayColour(server, member)
+                : undefined,
+          })
+        }
+
+        return items
+      },
+    [channel?.channel_type, members, mentionable, server, serverId],
+  )
 
   function appendFiles(fileList: FileList | File[]) {
     if (isEditing) return
@@ -193,61 +276,27 @@ export function MessageComposer({
   }
 
   function insertAtCaret(text: string) {
-    const el = textareaRef.current
-    if (!el) {
-      setValue((current) => current + text)
+    const customMatch = text.match(/^:([0-9A-Z]{26}):$/i)
+    if (customMatch && isCustomEmojiId(customMatch[1]!)) {
+      composerRef.current?.insertCustomEmoji(customMatch[1]!)
       return
     }
-    const start = el.selectionStart ?? value.length
-    const end = el.selectionEnd ?? start
-    const next = value.slice(0, start) + text + value.slice(end)
-    const pos = start + text.length
-    setValue(next)
-    setCaret(pos)
-    requestAnimationFrame(() => {
-      el.focus()
-      el.setSelectionRange(pos, pos)
-    })
+    composerRef.current?.insertText(text)
   }
 
-  const isTextChannel = channel?.channel_type === 'TextChannel'
-  const showMassMentions =
-    isTextChannel &&
-    mentionQuery &&
-    ('everyone'.startsWith(mentionQuery.query) ||
-      'online'.startsWith(mentionQuery.query) ||
-      mentionQuery.query === '')
+  function buildOutboundContent(raw: string) {
+    const trimmed = raw.trim()
+    if (!replyTo || !replyMention || isEditing) return trimmed
 
-  function applyMentionText(text: string, replaceStart?: number) {
-    const start = replaceStart ?? mentionQuery?.start ?? value.length
-    const end = caret
-    const next = value.slice(0, start) + text + value.slice(end)
-    const pos = start + text.length
-    setValue(next)
-    setCaret(pos)
-    requestAnimationFrame(() => {
-      const element = textareaRef.current
-      if (!element) return
-      element.focus()
-      element.setSelectionRange(pos, pos)
-    })
-  }
-
-  function applyMention(userId: string) {
-    if (!mentionQuery) return
-    const next = insertMention(value, mentionQuery.start, caret, userId)
-    setValue(next.value)
-    setCaret(next.caret)
-    requestAnimationFrame(() => {
-      const element = textareaRef.current
-      if (!element) return
-      element.focus()
-      element.setSelectionRange(next.caret, next.caret)
-    })
+    const mention = `<@${replyTo.author}>`
+    if (!trimmed.includes(mention)) {
+      return trimmed ? `${mention} ${trimmed}` : mention
+    }
+    return trimmed
   }
 
   async function submit() {
-    const content = value.trim()
+    const content = buildOutboundContent(value)
     if ((!content && files.length === 0 && !isEditing) || sending || disabled) {
       return
     }
@@ -268,6 +317,7 @@ export function MessageComposer({
       try {
         await onEdit(editingMessage._id, content)
         setValue('')
+        composerRef.current?.clear()
         onCancelAction?.()
       } catch (error) {
         toast.error(
@@ -275,7 +325,7 @@ export function MessageComposer({
         )
       } finally {
         setSending(false)
-        requestAnimationFrame(() => textareaRef.current?.focus())
+        requestAnimationFrame(() => composerRef.current?.focus())
       }
       return
     }
@@ -298,7 +348,7 @@ export function MessageComposer({
       })
 
       setValue('')
-      setCaret(0)
+      composerRef.current?.clear()
       revokePendingFiles(files)
       setFiles([])
       onCancelAction?.()
@@ -308,7 +358,7 @@ export function MessageComposer({
       )
     } finally {
       setSending(false)
-      requestAnimationFrame(() => textareaRef.current?.focus())
+      requestAnimationFrame(() => composerRef.current?.focus())
     }
   }
 
@@ -380,66 +430,6 @@ export function MessageComposer({
         </div>
       ) : null}
 
-      {mentionSuggestions.length > 0 || showMassMentions ? (
-        <div className="flex flex-col gap-1 rounded-md border bg-popover p-1 shadow-sm">
-          {showMassMentions ? (
-            <>
-              {(!mentionQuery?.query ||
-                'everyone'.startsWith(mentionQuery.query)) && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-8 justify-start px-2 font-normal"
-                  onClick={() =>
-                    applyMentionText(
-                      '@everyone ',
-                      mentionQuery?.start ?? caret,
-                    )
-                  }
-                >
-                  <span className="font-medium text-primary">@everyone</span>
-                  <span className="ml-2 text-muted-foreground">
-                    все в канале
-                  </span>
-                </Button>
-              )}
-              {(!mentionQuery?.query ||
-                'online'.startsWith(mentionQuery.query)) && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-8 justify-start px-2 font-normal"
-                  onClick={() =>
-                    applyMentionText('@online ', mentionQuery?.start ?? caret)
-                  }
-                >
-                  <span className="font-medium text-primary">@online</span>
-                  <span className="ml-2 text-muted-foreground">
-                    кто в сети
-                  </span>
-                </Button>
-              )}
-            </>
-          ) : null}
-          {mentionSuggestions.map((user) => (
-            <Button
-              key={user._id}
-              type="button"
-              variant="ghost"
-              className="h-8 justify-start px-2 font-normal"
-              onClick={() => applyMention(user._id)}
-            >
-              @{user.username}
-              {user.display_name ? (
-                <span className="ml-2 text-muted-foreground">
-                  {user.display_name}
-                </span>
-              ) : null}
-            </Button>
-          ))}
-        </div>
-      ) : null}
-
       <div
         data-composer-chrome
         className={cn(
@@ -483,6 +473,7 @@ export function MessageComposer({
         ) : null}
 
         <div
+          ref={composerInputRowRef}
           className={cn(
             'flex items-center gap-0.5 px-1',
             floating && FLOATING_BAR_HEIGHT_CLASS,
@@ -513,43 +504,42 @@ export function MessageComposer({
           </label>
         ) : null}
 
-        <Textarea
-          ref={textareaRef}
+        <ComposerEditor
+          ref={composerRef}
           value={value}
-          disabled={disabled}
+          disabled={disabled || sending}
           placeholder={placeholder}
-          rows={1}
-          className={cn(
-            'max-h-40 flex-1 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent',
+          formatContext={formatContext}
+          mentionItems={buildMentionItems}
+          menuAnchorRef={composerInputRowRef}
+          menuSurfaceClassName={
             floating
-              ? 'min-h-0 text-secondary-foreground placeholder:text-muted-foreground'
-              : 'min-h-9 text-foreground placeholder:text-muted-foreground',
-          )}
-          onChange={(event) => {
-            setValue(event.target.value)
-            setCaret(event.target.selectionStart ?? event.target.value.length)
-            onTyping?.()
-          }}
-          onSelect={(event) => {
-            setCaret(
-              event.currentTarget.selectionStart ??
-                event.currentTarget.value.length,
-            )
-          }}
-          onPaste={(event) => {
-            const pasted = event.clipboardData?.files
-            if (pasted?.length && !isEditing) {
-              event.preventDefault()
-              appendFiles(pasted)
+              ? 'bg-secondary text-secondary-foreground'
+              : 'bg-accent text-foreground'
+          }
+          className={floating ? 'min-h-0' : 'min-h-9'}
+          editorClassName={
+            floating ? 'text-secondary-foreground' : 'text-foreground'
+          }
+          onValueChange={(nextValue) => {
+            if (nextValue !== value) {
+              onTyping?.()
             }
+            setValue(nextValue)
           }}
+          onPasteFiles={
+            !isEditing
+              ? (fileList) => {
+                  appendFiles(fileList)
+                }
+              : undefined
+          }
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               onCancelAction?.()
               return
             }
             if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
               void submit()
             }
           }}

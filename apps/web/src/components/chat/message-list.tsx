@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -157,8 +158,8 @@ export function MessageList({
   }, [messages])
 
   const scrollToIndexRef = useRef<
-    Virtualizer<HTMLDivElement, Element>['scrollToIndex']
-  >(() => {})
+    Virtualizer<HTMLDivElement, Element>['scrollToIndex'] | null
+  >(null)
   const feedItemsForScrollRef = useRef(feedItems)
   feedItemsForScrollRef.current = feedItems
 
@@ -166,19 +167,28 @@ export function MessageList({
     const root = scrollRef.current
     if (!root) return
 
-    if (useVirtual && lastMessageId) {
+    const scrollToIndex = scrollToIndexRef.current
+    if (useVirtual && lastMessageId && scrollToIndex) {
       const index = feedIndexForMessage(
         feedItemsForScrollRef.current,
         lastMessageId,
       )
       if (index >= 0) {
-        scrollToIndexRef.current(index, { align: 'end', behavior })
+        scrollToIndex(index, { align: 'end', behavior })
         return
       }
     }
 
     scrollContainerToBottom(root, behavior)
   }
+
+  const scrollToTailRef = useRef(scrollToTail)
+  scrollToTailRef.current = scrollToTail
+
+  const handleVirtualizerReady = useCallback(() => {
+    if (!stickToBottomRef.current) return
+    scrollToTailRef.current('auto')
+  }, [])
 
   useEffect(() => {
     canLoadOlderRef.current = false
@@ -194,7 +204,6 @@ export function MessageList({
       stickToBottomRef.current = isNearBottom(root)
     }
 
-    onScroll()
     root.addEventListener('scroll', onScroll, { passive: true })
     return () => root.removeEventListener('scroll', onScroll)
   }, [channelId, messages.length])
@@ -276,10 +285,11 @@ export function MessageList({
     const items = feedItemsForScrollRef.current
     const anchorId = anchorMessageIdRef.current
 
-    if (useVirtual && anchorId) {
+    const scrollToIndex = scrollToIndexRef.current
+    if (useVirtual && anchorId && scrollToIndex) {
       const index = feedIndexForMessage(items, anchorId)
       if (index >= 0) {
-        scrollToIndexRef.current(index, { align: 'start' })
+        scrollToIndex(index, { align: 'start' })
       }
     } else if (scrollRef.current) {
       const delta =
@@ -351,6 +361,7 @@ export function MessageList({
             feedItems={feedItems}
             scrollRef={scrollRef}
             scrollToIndexRef={scrollToIndexRef}
+            onVirtualizerReady={handleVirtualizerReady}
             rowProps={rowProps}
             highlightMessageId={highlightMessageId}
           />
@@ -376,8 +387,9 @@ type VirtualizedFeedItemsProps = {
   feedItems: MessageFeedItem[]
   scrollRef: RefObject<HTMLDivElement | null>
   scrollToIndexRef: RefObject<
-    Virtualizer<HTMLDivElement, Element>['scrollToIndex']
+    Virtualizer<HTMLDivElement, Element>['scrollToIndex'] | null
   >
+  onVirtualizerReady?: () => void
   rowProps: MessageRowSharedProps
   highlightMessageId?: string
 }
@@ -386,6 +398,7 @@ function VirtualizedFeedItems({
   feedItems,
   scrollRef,
   scrollToIndexRef,
+  onVirtualizerReady,
   rowProps,
   highlightMessageId,
 }: VirtualizedFeedItemsProps) {
@@ -397,7 +410,18 @@ function VirtualizedFeedItems({
     getItemKey: (index) => feedItems[index]!.key,
   })
 
-  scrollToIndexRef.current = virtualizer.scrollToIndex
+  useEffect(() => {
+    scrollToIndexRef.current = virtualizer.scrollToIndex
+    return () => {
+      scrollToIndexRef.current = null
+    }
+  }, [scrollToIndexRef, virtualizer])
+
+  useEffect(() => {
+    onVirtualizerReady?.()
+    const raf = requestAnimationFrame(() => onVirtualizerReady?.())
+    return () => cancelAnimationFrame(raf)
+  }, [onVirtualizerReady, feedItems.length])
 
   const virtualItems = virtualizer.getVirtualItems()
 

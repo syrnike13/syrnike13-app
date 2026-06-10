@@ -165,7 +165,7 @@ export function ChannelSidebarItem({
     >
       <div
         className={cn(
-          'flex h-9 min-w-0 items-center rounded-md text-sm transition-colors',
+          'flex h-9 min-w-0 items-stretch rounded-md text-sm transition-colors',
           active
             ? 'bg-secondary text-secondary-foreground'
             : 'text-foreground hover:bg-accent hover:text-accent-foreground',
@@ -176,7 +176,7 @@ export function ChannelSidebarItem({
           params={{ channelId: channel._id }}
           search={{ m: undefined }}
           className={cn(
-            'flex min-w-0 flex-1 items-center gap-2 px-2 font-normal',
+            'flex h-full min-w-0 flex-1 items-center gap-2 px-2 font-normal',
             canManage &&
               dragHandleProps &&
               'cursor-grab touch-none active:cursor-grabbing',
@@ -203,7 +203,7 @@ export function ChannelSidebarItem({
         {canManage && isServerChannel ? (
           <button
             type="button"
-            className="mr-1 flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/channel:opacity-100 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="mr-1 flex size-6 shrink-0 self-center items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/channel:opacity-100 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             title="Настройки канала"
             onClick={(event) => {
               event.preventDefault()
