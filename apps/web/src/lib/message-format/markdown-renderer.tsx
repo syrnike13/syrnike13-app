@@ -122,7 +122,11 @@ function createMarkdownComponents(
     ol: ({ children }) => (
       <ol className="my-0.5 list-decimal pl-5">{children}</ol>
     ),
-    li: ({ children }) => <li className="my-0 leading-relaxed">{children}</li>,
+    li: ({ children }) => (
+      <li className="my-0 leading-relaxed [&>p:only-child]:my-0 [&>p:only-child]:inline">
+        {children}
+      </li>
+    ),
     pre: ({ children }) => (
       <pre className="my-1 overflow-x-auto rounded-md bg-background/60 p-2 font-mono text-[0.9em]">
         {children}

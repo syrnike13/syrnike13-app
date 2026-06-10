@@ -136,11 +136,37 @@ function serializeBlock(node: JSONContent): string {
   }
 }
 
+function shouldJoinAdjacentListBlocks(
+  previousType: JSONContent['type'] | undefined,
+  nextType: JSONContent['type'] | undefined,
+): boolean {
+  return (
+    (previousType === 'bulletList' && nextType === 'bulletList') ||
+    (previousType === 'orderedList' && nextType === 'orderedList')
+  )
+}
+
 export function serializeMessageContent(doc: MessageDocument): string {
   if (!doc.content?.length) return ''
 
-  return doc.content
-    .map(serializeBlock)
-    .filter((block) => block.length > 0)
-    .join('\n\n')
+  const blocks: string[] = []
+  let previousType: JSONContent['type'] | undefined
+
+  for (const node of doc.content) {
+    const block = serializeBlock(node)
+    if (!block.length) continue
+
+    if (
+      blocks.length > 0 &&
+      shouldJoinAdjacentListBlocks(previousType, node.type)
+    ) {
+      blocks[blocks.length - 1] = `${blocks[blocks.length - 1]}\n${block}`
+    } else {
+      blocks.push(block)
+    }
+
+    previousType = node.type
+  }
+
+  return blocks.join('\n\n')
 }

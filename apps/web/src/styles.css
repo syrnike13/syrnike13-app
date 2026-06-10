@@ -497,3 +497,8 @@ body,
 .message-content p + p {
   margin-top: 0.25rem;
 }
+
+.message-content li > p:only-child {
+  display: inline;
+  margin: 0;
+}

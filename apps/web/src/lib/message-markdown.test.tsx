@@ -65,4 +65,20 @@ describe('renderMessageContent', () => {
     expect(html).toContain('456')
     expect(html).not.toContain('##')
   })
+
+  it('keeps loose list items on the same line as their bullet', () => {
+    const html = renderToStaticMarkup(
+      <>
+        {renderMessageContent(`**Чат**
+
+- Первый пункт
+
+- Второй пункт`)}
+      </>,
+    )
+
+    expect(html).toContain('p:only-child]:inline')
+    expect(html).toContain('Первый пункт')
+    expect(html).toContain('Второй пункт')
+  })
 })

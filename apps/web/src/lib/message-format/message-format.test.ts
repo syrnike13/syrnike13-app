@@ -63,6 +63,11 @@ describe('message-format', () => {
     expect(roundTrip(value)).toBe(value)
   })
 
+  it('merges adjacent bullet lists without blank lines', () => {
+    const value = '- one\n\n- two'
+    expect(roundTrip(value)).toBe('- one\n- two')
+  })
+
   it('round-trips headings', () => {
     expect(roundTrip('# title')).toBe('# title')
     expect(roundTrip('## subtitle')).toBe('## subtitle')
