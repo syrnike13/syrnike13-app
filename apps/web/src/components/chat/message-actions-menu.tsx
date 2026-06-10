@@ -9,7 +9,7 @@ import {
   PinOffIcon,
   ReplyIcon,
   Trash2Icon,
-} from 'lucide-react'
+} from '#/components/icons'
 import { toast } from 'sonner'
 
 import { messageDeepLink } from '#/lib/message-link'

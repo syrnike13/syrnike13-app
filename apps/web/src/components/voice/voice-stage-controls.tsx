@@ -10,12 +10,13 @@ import {
   MicOffIcon,
   Minimize2Icon,
   MonitorUpIcon,
+  MonitorXIcon,
   MoreHorizontalIcon,
   PhoneOffIcon,
   Settings2Icon,
   VideoIcon,
   VideoOffIcon,
-} from 'lucide-react'
+} from '#/components/icons'
 
 import { Button } from '#/components/ui/button'
 import {
@@ -375,6 +376,8 @@ function VoiceStageOverlayControlBar({
         >
           {screenShareStarting ? (
             <Loader2Icon className="size-5 animate-spin" />
+          ) : sharingScreen ? (
+            <MonitorXIcon className="size-5" />
           ) : (
             <MonitorUpIcon className="size-5" />
           )}
@@ -559,6 +562,8 @@ function LegacyControlBar({
       >
         {screenShareStarting ? (
           <Loader2Icon className="size-5 animate-spin" />
+        ) : sharingScreen ? (
+          <MonitorXIcon className="size-5" />
         ) : (
           <MonitorUpIcon className="size-5" />
         )}

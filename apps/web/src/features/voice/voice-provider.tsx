@@ -793,9 +793,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const room = roomRef.current
       const leftChannelId = channelIdRef.current
       const userId = room?.localParticipant.identity ?? auth.user?._id
-      // #region debug log
-      fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'A,D',location:'apps/web/src/features/voice/voice-provider.tsx:leaveVoiceSession:start',message:'leave voice session start',data:{intent,leftChannelId,hasRoom:room!=null,gatewayState:auth.gatewayState},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       if (room) {
         disconnectIntentRef.current = intent
@@ -819,9 +816,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
 
       disconnectIntentRef.current = 'none'
-      // #region debug log
-      fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'A,D',location:'apps/web/src/features/voice/voice-provider.tsx:leaveVoiceSession:end',message:'leave voice session end',data:{intent,leftChannelId,gatewayState:auth.gatewayState},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     },
     [auth.gatewayState, auth.user?._id, cleanupAudio, resetVoiceState],
   )
@@ -1367,22 +1361,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const join = useCallback(
     async (targetChannelId: string) => {
       const token = auth.session?.token
-      const joinBlockedRemainingMs = Math.max(
-        0,
-        joinBlockedUntilRef.current - Date.now(),
-      )
-      // #region debug log
-      fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'A,B,D',location:'apps/web/src/features/voice/voice-provider.tsx:join:start',message:'voice join requested',data:{targetChannelId,currentChannelId:channelId,status,hasRoom:roomRef.current!=null,joinBlockedRemainingMs,hasInFlight:joinInFlightRef.current!=null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (!token) {
         toast.error('Нет сессии')
         return
       }
 
       if (Date.now() < joinBlockedUntilRef.current) {
-        // #region debug log
-        fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'B',location:'apps/web/src/features/voice/voice-provider.tsx:join:blocked',message:'voice join blocked by cooldown',data:{targetChannelId,currentChannelId:channelId,status,joinBlockedRemainingMs:Math.max(0,joinBlockedUntilRef.current-Date.now())},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         return
       }
 
@@ -1412,10 +1396,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const promise = performVoiceJoinRef.current(targetChannelId)
       joinInFlightRef.current = { channelId: targetChannelId, promise }
       try {
-        const joined = await promise
-        // #region debug log
-        fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'B,C,D',location:'apps/web/src/features/voice/voice-provider.tsx:join:done',message:'voice join finished',data:{targetChannelId,joined,currentChannelId:channelIdRef.current,status:joined?'connected':status,hasRoom:roomRef.current!=null,joinBlockedRemainingMs:Math.max(0,joinBlockedUntilRef.current-Date.now())},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
+        await promise
       } finally {
         if (joinInFlightRef.current?.channelId === targetChannelId) {
           joinInFlightRef.current = null

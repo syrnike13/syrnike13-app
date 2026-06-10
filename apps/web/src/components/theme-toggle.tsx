@@ -1,4 +1,4 @@
-import { MoonIcon, SunIcon } from 'lucide-react'
+import { MoonIcon, SunIcon } from '#/components/icons'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 

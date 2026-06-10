@@ -6,7 +6,7 @@ import { CustomEmoji } from '#/components/emoji/custom-emoji'
 import { isCustomEmojiId } from '#/lib/emoji'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
-import { SmilePlusIcon } from 'lucide-react'
+import { SmilePlusIcon } from '#/components/icons'
 
 type MessageReactionsProps = {
   message: Message

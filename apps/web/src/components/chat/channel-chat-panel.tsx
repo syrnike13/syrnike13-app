@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { MessageSquareIcon, XIcon } from 'lucide-react'
+import { MessageSquareIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'

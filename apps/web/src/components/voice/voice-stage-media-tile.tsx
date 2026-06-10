@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Maximize2Icon, MonitorXIcon, VolumeXIcon } from 'lucide-react'
+import { Maximize2Icon, MonitorXIcon, VolumeXIcon } from '#/components/icons'
 import type { User } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'

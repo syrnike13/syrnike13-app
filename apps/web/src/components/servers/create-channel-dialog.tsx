@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { HashIcon, Volume2Icon } from 'lucide-react'
+import { HashIcon, Volume2BoldIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
@@ -144,7 +144,7 @@ export function CreateChannelDialog({
                 </SelectItem>
                 <SelectItem value="Voice">
                   <span className="flex items-center gap-2">
-                    <Volume2Icon className="size-4" />
+                    <Volume2BoldIcon className="size-4" />
                     Голосовой
                   </span>
                 </SelectItem>

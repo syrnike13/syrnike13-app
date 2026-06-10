@@ -1,4 +1,4 @@
-import { HeadphonesIcon } from 'lucide-react'
+import { HeadphonesIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { VoiceChannelShell } from '#/components/voice/voice-channel-shell'

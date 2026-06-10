@@ -1,4 +1,4 @@
-import { VolumeXIcon } from 'lucide-react'
+import { VolumeXIcon } from '#/components/icons'
 
 import {
   ContextMenuCheckboxItem,

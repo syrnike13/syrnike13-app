@@ -123,9 +123,6 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
 
     try {
       deps.setConnectionPhase('fetching_rtc_token')
-      // #region debug log
-      fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'C,D',location:'apps/web/src/features/voice/voice-join.ts:requestVoiceJoin:start',message:'request voice join start',data:{targetChannelId,rejoin:options.rejoin===true},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const credentials = await runVoiceRequest(
         `voice_join:${targetChannelId}`,
         () =>
@@ -137,9 +134,6 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         0,
       )
       if (!credentials) {
-        // #region debug log
-        fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'B,C',location:'apps/web/src/features/voice/voice-join.ts:requestVoiceJoin:empty',message:'request voice join returned empty',data:{targetChannelId,rejoin:options.rejoin===true},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (!options.rejoin) deps.abortJoin()
         return false
       }
@@ -159,9 +153,6 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       return true
     } catch (error) {
       deps.setConnectionPhase('failed')
-      // #region debug log
-      fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'C,D',location:'apps/web/src/features/voice/voice-join.ts:catch',message:'voice join failed',data:{targetChannelId,rejoin:options.rejoin===true,errorName:error instanceof Error?error.name:typeof error,errorMessage:error instanceof Error?error.message:'non-error'},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (!options.rejoin) {
         deps.abortJoin()
         toast.error(voiceJoinErrorMessage(error))

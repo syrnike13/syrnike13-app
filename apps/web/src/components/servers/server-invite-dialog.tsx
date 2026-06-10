@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link2Icon, Trash2Icon } from 'lucide-react'
+import { Link2Icon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'

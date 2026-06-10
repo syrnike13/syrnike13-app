@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveVoiceChannelClickAction } from './voice-channel-click'
 
 describe('resolveVoiceChannelClickAction', () => {
-  it('joins without opening the voice screen when no voice session is active', () => {
+  it('joins and opens the voice screen when no voice session is active', () => {
     expect(
       resolveVoiceChannelClickAction({
         clickedChannelId: 'voice-a',
@@ -11,7 +11,7 @@ describe('resolveVoiceChannelClickAction', () => {
         voiceChannelId: null,
         voiceStatus: 'idle',
       }),
-    ).toBe('join')
+    ).toBe('join-and-open')
   })
 
   it('opens the current voice session screen on repeated click from another screen', () => {
@@ -36,7 +36,7 @@ describe('resolveVoiceChannelClickAction', () => {
     ).toBe('open')
   })
 
-  it('does nothing when the current voice session screen is already open', () => {
+  it('keeps opening the current voice session screen on repeated click', () => {
     expect(
       resolveVoiceChannelClickAction({
         clickedChannelId: 'voice-a',
@@ -44,7 +44,7 @@ describe('resolveVoiceChannelClickAction', () => {
         voiceChannelId: 'voice-a',
         voiceStatus: 'connected',
       }),
-    ).toBe('none')
+    ).toBe('open')
   })
 
   it('switches voice and opens the target voice screen when another voice session is active', () => {

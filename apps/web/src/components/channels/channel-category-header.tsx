@@ -1,4 +1,4 @@
-import { ChevronDownIcon, PlusIcon, SettingsIcon } from 'lucide-react'
+import { ChevronDownIcon, PlusIcon, SettingsIcon } from '#/components/icons'
 import { useState } from 'react'
 
 import { CategorySettingsDialog } from '#/components/channels/category-settings-dialog'

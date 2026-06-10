@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server } from '@syrnike13/api-types'
-import { MoreHorizontalIcon, Trash2Icon } from 'lucide-react'
+import { MoreHorizontalIcon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { RoleColourPicker } from '#/components/servers/role-colour-picker'

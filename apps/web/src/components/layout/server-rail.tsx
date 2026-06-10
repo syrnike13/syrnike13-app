@@ -1,5 +1,5 @@
 import { Link, useMatch } from '@tanstack/react-router'
-import { HashIcon, HomeIcon } from 'lucide-react'
+import { HashIcon, HomeIcon } from '#/components/icons'
 import type { Server } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { SuggestionProps } from '@tiptap/suggestion'
-import { UsersIcon, WifiIcon } from 'lucide-react'
+import { UsersIcon, WifiIcon } from '#/components/icons'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'

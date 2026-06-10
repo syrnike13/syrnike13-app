@@ -1,4 +1,4 @@
-import { SearchIcon } from 'lucide-react'
+import { SearchIcon } from '#/components/icons'
 import { useMemo } from 'react'
 
 import { useCommandPalette } from '#/features/command-palette/command-palette-context'

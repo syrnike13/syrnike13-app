@@ -1,4 +1,4 @@
-import { Loader2Icon, WifiOffIcon } from 'lucide-react'
+import { Loader2Icon, WifiOffIcon } from '#/components/icons'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { useSyncReady } from '#/features/sync/sync-store'

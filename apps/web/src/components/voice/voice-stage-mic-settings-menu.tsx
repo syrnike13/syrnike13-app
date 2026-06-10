@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { CheckIcon, ChevronRightIcon, Settings2Icon } from 'lucide-react'
+import { CheckIcon, ChevronRightIcon, Settings2Icon } from '#/components/icons'
 
 import { Slider } from '#/components/ui/slider'
 import {

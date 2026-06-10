@@ -7,7 +7,7 @@ import {
   type DragEvent,
 } from 'react'
 import type { Message } from '@syrnike13/api-types'
-import { Loader2Icon, PlusIcon, XIcon } from 'lucide-react'
+import { Loader2Icon, PlusIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { ComposerEditor, type ComposerEditorHandle } from '#/components/chat/composer-editor'

@@ -1,5 +1,5 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
-import { PinIcon } from 'lucide-react'
+import { PinIcon } from '#/components/icons'
 import { useMemo, type ReactElement } from 'react'
 
 import {

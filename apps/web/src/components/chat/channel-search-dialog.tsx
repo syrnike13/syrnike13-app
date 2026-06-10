@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
-import { SearchIcon } from 'lucide-react'
+import { SearchIcon } from '#/components/icons'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 

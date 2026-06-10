@@ -1,11 +1,11 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   LayoutTemplateIcon,
-  ShieldIcon,
-  SmileIcon,
-  UsersIcon,
+  ShieldFillIcon,
+  SmileFillIcon,
+  UsersFillIcon,
   XIcon,
-} from 'lucide-react'
+} from '#/components/icons'
 import { useCallback, useEffect, type ReactNode } from 'react'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
@@ -177,7 +177,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                   serverId={serverId}
                   tab="emoji"
                   activeTab={tab}
-                  icon={<SmileIcon className="size-4 shrink-0" />}
+                  icon={<SmileFillIcon className="size-4 shrink-0" />}
                   label={SERVER_SETTINGS_TAB_LABELS.emoji}
                 />
               </NavSection>
@@ -187,14 +187,14 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                   serverId={serverId}
                   tab="roles"
                   activeTab={tab}
-                  icon={<ShieldIcon className="size-4 shrink-0" />}
+                  icon={<ShieldFillIcon className="size-4 shrink-0" />}
                   label={SERVER_SETTINGS_TAB_LABELS.roles}
                 />
                 <SettingsNavLink
                   serverId={serverId}
                   tab="members"
                   activeTab={tab}
-                  icon={<UsersIcon className="size-4 shrink-0" />}
+                  icon={<UsersFillIcon className="size-4 shrink-0" />}
                   label={SERVER_SETTINGS_TAB_LABELS.members}
                 />
               </NavSection>

@@ -25,9 +25,6 @@ export type VoiceStateUpdatePayload = {
 const VOICE_SERVER_UPDATE_TIMEOUT_MS = 15_000
 
 export function sendVoiceStateUpdate(payload: VoiceStateUpdatePayload) {
-  // #region debug log
-  fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'C,D',location:'apps/web/src/features/voice/voice-gateway.ts:sendVoiceStateUpdate',message:'send voice state update',data:{channelId:payload.channel_id,selfMute:payload.self_mute,selfDeaf:payload.self_deaf,hasNode:payload.node!=null,forceDisconnect:payload.force_disconnect,refreshCredentials:payload.refresh_credentials===true},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   eventsGateway.send({
     type: 'VoiceStateUpdate',
     channel_id: payload.channel_id,
@@ -57,18 +54,12 @@ export function waitForVoiceServerUpdate(
     const unsubscribe = eventsGateway.subscribeEvents((event) => {
       if (event.type === 'VoiceServerUpdate') {
         if (event.channel_id !== channelId) return
-        // #region debug log
-        fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'C,D',location:'apps/web/src/features/voice/voice-gateway.ts:waitForVoiceServerUpdate:success',message:'voice server update received',data:{channelId:event.channel_id,node:event.node,urlPresent:typeof event.url==='string'},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         clearTimeout(timer)
         unsubscribe()
         resolve(event as VoiceServerUpdateEvent)
         return
       }
       if (event.type === 'Error') {
-        // #region debug log
-        fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'C,D',location:'apps/web/src/features/voice/voice-gateway.ts:waitForVoiceServerUpdate:error',message:'gateway error while waiting voice server update',data:{channelId,eventDataType:typeof event.data==='object'&&event.data&&'type'in event.data?(event.data as {type?:unknown}).type:undefined,eventMessage:typeof event.data==='object'&&event.data&&'message'in event.data?(event.data as {message?:unknown}).message:undefined},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         clearTimeout(timer)
         unsubscribe()
         const message =

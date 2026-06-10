@@ -7,7 +7,7 @@ import {
   PlusCircleIcon,
   SettingsIcon,
   UserPlusIcon,
-} from 'lucide-react'
+} from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 

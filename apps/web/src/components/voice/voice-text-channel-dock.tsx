@@ -1,4 +1,4 @@
-import { ChevronDownIcon, ChevronUpIcon, Volume2Icon } from 'lucide-react'
+import { ChevronDownIcon, ChevronUpIcon, Volume2BoldIcon } from '#/components/icons'
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 
@@ -46,7 +46,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   return (
     <div className="shrink-0 border-b border-shell-divider bg-[#1e1f22]/90">
       <div className="flex items-center gap-2 px-3 py-2">
-        <Volume2Icon className="size-4 shrink-0 text-[#23a559]" />
+        <Volume2BoldIcon className="size-4 shrink-0 text-[#23a559]" />
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
           Голос · {participants.length}{' '}
           {participants.length === 1 ? 'участник' : 'участника'}

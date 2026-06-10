@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2Icon, MonitorIcon, Trash2Icon } from 'lucide-react'
+import { Loader2Icon, MonitorIcon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { SettingsBlock } from '#/components/settings/settings-panels'

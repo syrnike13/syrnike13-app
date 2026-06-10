@@ -3,8 +3,8 @@ import {
   GlobeIcon,
   MonitorIcon,
   VideoIcon,
-  type LucideIcon,
-} from 'lucide-react'
+  type AppIcon,
+} from '#/components/icons'
 
 export type ScreenShareSurface = 'monitor' | 'window' | 'browser'
 
@@ -48,7 +48,7 @@ export function readScreenShareBroadcastSource(
 
 export function screenShareBroadcastIcon(
   surface: ScreenShareSurface,
-): LucideIcon {
+): AppIcon {
   switch (surface) {
     case 'monitor':
       return MonitorIcon
@@ -65,6 +65,6 @@ export function readCameraBroadcastLabel(
   return track?.label?.trim() || 'Камера'
 }
 
-export function cameraBroadcastIcon(): LucideIcon {
+export function cameraBroadcastIcon(): AppIcon {
   return VideoIcon
 }

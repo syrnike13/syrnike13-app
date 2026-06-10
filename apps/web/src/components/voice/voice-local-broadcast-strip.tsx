@@ -1,5 +1,5 @@
-import { MonitorXIcon, VideoOffIcon } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { MonitorXIcon, VideoOffIcon } from '#/components/icons'
+import type { AppIcon } from '#/components/icons'
 import { useMemo, useSyncExternalStore } from 'react'
 
 import { Button } from '#/components/ui/button'
@@ -44,9 +44,9 @@ function BroadcastStrip({
   onStop,
 }: {
   sourceLabel: string
-  Icon: LucideIcon
+  Icon: AppIcon
   stopTitle: string
-  StopIcon: LucideIcon
+  StopIcon: AppIcon
   disabled: boolean
   onStop: () => void
 }) {

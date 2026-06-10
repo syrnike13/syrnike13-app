@@ -1,11 +1,11 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   CheckCheckIcon,
   HashIcon,
   LinkIcon,
   SettingsIcon,
-  Volume2Icon,
-} from 'lucide-react'
+  Volume2BoldIcon,
+} from '#/components/icons'
 import { useState, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
@@ -70,6 +70,7 @@ export function ChannelSidebarItem({
 }: ChannelSidebarItemProps) {
   const auth = useAuth()
   const voice = useVoice()
+  const navigate = useNavigate()
   const token = auth.session?.token
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -138,20 +139,13 @@ export function ChannelSidebarItem({
       voiceChannelId: voice.channelId,
       voiceStatus: voice.status,
     })
-    // #region debug log
-    fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'A',location:'apps/web/src/components/channels/channel-sidebar-item.tsx:handleVoiceChannelClick',message:'voice channel click resolved',data:{clickedChannelId:channel._id,currentRouteChannelId:activeChannelId,voiceChannelId:voice.channelId,voiceStatus:voice.status,action},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
-    if (action === 'none') {
-      event.preventDefault()
-      return
-    }
-
-    if (action === 'join') {
-      event.preventDefault()
-      void voice.join(channel._id)
-      return
-    }
+    event.preventDefault()
+    void navigate({
+      to: '/app/c/$channelId',
+      params: { channelId: channel._id },
+      search: { m: undefined },
+    })
 
     if (action === 'join-and-open') {
       void voice.join(channel._id)
@@ -194,7 +188,7 @@ export function ChannelSidebarItem({
               fallbackClassName="size-6 text-[10px]"
             />
           ) : serverVoice ? (
-            <Volume2Icon className="size-4 shrink-0 text-muted-foreground" />
+            <Volume2BoldIcon className="size-4 shrink-0 text-muted-foreground" />
           ) : (
             <HashIcon className="size-4 shrink-0 text-muted-foreground" />
           )}

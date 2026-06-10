@@ -1,4 +1,4 @@
-import { HeadphoneOffIcon, MicOffIcon, VideoIcon } from 'lucide-react'
+import { HeadphoneOffIcon, MicOffIcon, VideoIcon } from '#/components/icons'
 
 import { cn } from '#/lib/utils'
 

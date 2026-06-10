@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
-import { SearchIcon, XIcon } from 'lucide-react'
+import { SearchIcon, XIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'

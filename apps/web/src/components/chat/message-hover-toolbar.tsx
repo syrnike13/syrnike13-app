@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Message } from '@syrnike13/api-types'
-import { ReplyIcon, SmilePlusIcon } from 'lucide-react'
+import { ReplyIcon, SmilePlusIcon } from '#/components/icons'
 
 import { MessageActionsMenu } from '#/components/chat/message-actions-menu'
 import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'

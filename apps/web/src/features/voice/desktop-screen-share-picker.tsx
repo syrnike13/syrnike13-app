@@ -5,7 +5,7 @@ import {
   Gamepad2Icon,
   Loader2Icon,
   MonitorIcon,
-} from 'lucide-react'
+} from '#/components/icons'
 import { toast } from 'sonner'
 import type {
   DesktopDisplayMediaRequest,

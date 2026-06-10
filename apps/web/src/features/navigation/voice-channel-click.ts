@@ -1,4 +1,4 @@
-export type VoiceChannelClickAction = 'join' | 'open' | 'join-and-open' | 'none'
+export type VoiceChannelClickAction = 'open' | 'join-and-open'
 
 export type VoiceChannelClickVoiceStatus = 'idle' | 'connecting' | 'connected'
 
@@ -18,14 +18,12 @@ export function resolveVoiceChannelClickAction(
     voiceSessionActive && state.voiceChannelId === state.clickedChannelId
 
   if (clickedVoiceSessionActive) {
-    return state.currentRouteChannelId === state.clickedChannelId
-      ? 'none'
-      : 'open'
+    return 'open'
   }
 
   if (voiceSessionActive && state.voiceChannelId) {
     return 'join-and-open'
   }
 
-  return 'join'
+  return 'join-and-open'
 }

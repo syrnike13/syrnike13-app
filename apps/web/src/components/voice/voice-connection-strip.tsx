@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { PhoneOffIcon, SignalIcon } from 'lucide-react'
+import { PhoneOffIcon, SignalIcon } from '#/components/icons'
 
 import { Button } from '#/components/ui/button'
 import { Popover, PopoverTrigger } from '#/components/ui/popover'

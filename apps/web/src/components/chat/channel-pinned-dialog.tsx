@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { PinIcon } from 'lucide-react'
+import { PinIcon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'

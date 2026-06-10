@@ -7,7 +7,7 @@ import {
   type RefObject,
 } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
-import { Loader2Icon } from 'lucide-react'
+import { Loader2Icon } from '#/components/icons'
 import {
   useVirtualizer,
   type Virtualizer,

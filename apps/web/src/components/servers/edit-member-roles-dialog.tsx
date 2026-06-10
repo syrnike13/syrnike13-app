@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Member, Server, User } from '@syrnike13/api-types'
-import { SearchIcon } from 'lucide-react'
+import { SearchIcon } from '#/components/icons'
 
 import { MemberRolesEditor } from '#/components/servers/member-roles-editor'
 import {

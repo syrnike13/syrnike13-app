@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SettingsIcon } from 'lucide-react'
+import { SettingsIcon } from '#/components/icons'
 import {
   VoiceCameraStrip,
   VoiceScreenShareStrip,

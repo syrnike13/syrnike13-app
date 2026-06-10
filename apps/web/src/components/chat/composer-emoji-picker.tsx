@@ -1,4 +1,4 @@
-import { SmileIcon } from 'lucide-react'
+import { SmileIcon } from '#/components/icons'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
 import { Button } from '#/components/ui/button'

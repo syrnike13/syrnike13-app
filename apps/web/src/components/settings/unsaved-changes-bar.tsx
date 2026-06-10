@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckIcon, Loader2Icon, Undo2Icon } from 'lucide-react'
+import { CheckIcon, Loader2Icon, Undo2Icon } from '#/components/icons'
 
 import { useDraftContext } from '#/components/settings/draft-controller-context'
 import { cn } from '#/lib/utils'
@@ -130,14 +130,14 @@ export function UnsavedChangesBar({
         {showSaveAck ? (
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <span className="profile-unsaved-check flex size-6 items-center justify-center rounded-full bg-[#23a559]/20">
-              <CheckIcon className="size-4 text-[#23a559]" strokeWidth={2.5} />
+              <CheckIcon className="size-4 text-[#23a559]" />
             </span>
             Изменения сохранены
           </div>
         ) : showResetAck ? (
           <div className="flex items-center gap-2 text-sm font-medium text-foreground/90">
             <span className="profile-unsaved-undo flex size-6 items-center justify-center rounded-full bg-primary/15">
-              <Undo2Icon className="size-4 text-primary" strokeWidth={2.25} />
+              <Undo2Icon className="size-4 text-primary" />
             </span>
             Изменения отменены
           </div>

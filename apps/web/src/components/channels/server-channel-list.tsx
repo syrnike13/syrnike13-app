@@ -15,7 +15,7 @@ import {
   Droppable,
   type DropResult,
 } from '@hello-pangea/dnd'
-import { FolderPlusIcon, PlusCircleIcon } from 'lucide-react'
+import { FolderPlusIcon, PlusCircleIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { ChannelCategoryHeader } from '#/components/channels/channel-category-header'

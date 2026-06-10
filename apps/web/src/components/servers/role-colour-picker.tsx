@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { CheckIcon, PencilIcon } from 'lucide-react'
+import { CheckIcon, PencilIcon } from '#/components/icons'
 
 import { Label } from '#/components/ui/label'
 import { normalizeRoleColour } from '#/lib/server-permissions'

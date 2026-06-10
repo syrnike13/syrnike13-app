@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { User } from '@syrnike13/api-types'
-import { SearchIcon } from 'lucide-react'
+import { SearchIcon } from '#/components/icons'
 
 import { Input } from '#/components/ui/input'
 import {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { PencilIcon } from 'lucide-react'
+import { PencilFillIcon } from '#/components/icons'
 import type { User } from '@syrnike13/api-types'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -107,7 +107,7 @@ export function CurrentUserProfileMenu({
             openSettings('profile')
           }}
         >
-          <PencilIcon
+          <PencilFillIcon
             className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
             aria-hidden
           />

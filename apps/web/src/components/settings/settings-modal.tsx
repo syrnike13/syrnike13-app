@@ -7,12 +7,12 @@ import {
   LogOutIcon,
   MonitorIcon,
   PaletteIcon,
-  PencilIcon,
+  PencilFillIcon,
   Volume2Icon,
   SearchIcon,
   XIcon,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+} from '#/components/icons'
+import type { AppIcon } from '#/components/icons'
 
 import {
   SettingsPanelContent,
@@ -50,9 +50,9 @@ function settingsNavItemClass(active: boolean) {
 const NAV: {
   id: Exclude<SettingsSection, 'profile'>
   label: string
-  icon: LucideIcon
+  icon: AppIcon
 }[] = [
-  { id: 'account', label: 'Аккаунт', icon: PencilIcon },
+  { id: 'account', label: 'Аккаунт', icon: PencilFillIcon },
   { id: 'voice', label: 'Голос и видео', icon: Volume2Icon },
   { id: 'sessions', label: 'Устройства', icon: MonitorIcon },
   { id: 'notifications', label: 'Уведомления', icon: BellIcon },

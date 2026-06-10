@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  AppWindowIcon,
+  GlobeIcon,
+  MonitorIcon,
+  VideoIcon,
+} from '#/components/icons'
+import {
   cameraBroadcastIcon,
   parseScreenShareSurface,
   readCameraBroadcastLabel,
@@ -35,9 +41,9 @@ describe('screenShareSurfaceFallbackLabel', () => {
 
 describe('screenShareBroadcastIcon', () => {
   it('returns an icon for each supported surface', () => {
-    expect(screenShareBroadcastIcon('monitor').displayName).toBe('Monitor')
-    expect(screenShareBroadcastIcon('window').displayName).toBe('AppWindow')
-    expect(screenShareBroadcastIcon('browser').displayName).toBe('Globe')
+    expect(screenShareBroadcastIcon('monitor')).toBe(MonitorIcon)
+    expect(screenShareBroadcastIcon('window')).toBe(AppWindowIcon)
+    expect(screenShareBroadcastIcon('browser')).toBe(GlobeIcon)
   })
 })
 
@@ -104,6 +110,6 @@ describe('readCameraBroadcastLabel', () => {
 
 describe('cameraBroadcastIcon', () => {
   it('returns the camera icon', () => {
-    expect(cameraBroadcastIcon().displayName).toBe('Video')
+    expect(cameraBroadcastIcon()).toBe(VideoIcon)
   })
 })

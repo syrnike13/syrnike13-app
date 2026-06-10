@@ -1,5 +1,5 @@
 import type { Member, Message, Server, User } from '@syrnike13/api-types'
-import { XIcon } from 'lucide-react'
+import { XIcon } from '#/components/icons'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'

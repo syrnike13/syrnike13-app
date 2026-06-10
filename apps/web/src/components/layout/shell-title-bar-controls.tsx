@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, SquareIcon, XIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, MinusIcon, SquareIcon, XIcon } from '#/components/icons'
 
 import {
   SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
@@ -59,7 +59,7 @@ export function ShellHistoryNavButtons({
         disabled={!canGoBack}
         onClick={goBack}
       >
-        <ChevronLeftIcon className="size-4" strokeWidth={2.5} />
+        <ChevronLeftIcon className="size-4" />
       </button>
       <button
         type="button"
@@ -68,7 +68,7 @@ export function ShellHistoryNavButtons({
         disabled={!canGoForward}
         onClick={goForward}
       >
-        <ChevronRightIcon className="size-4" strokeWidth={2.5} />
+        <ChevronRightIcon className="size-4" />
       </button>
     </div>
   )

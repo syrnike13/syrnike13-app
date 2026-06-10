@@ -1,4 +1,4 @@
-import { MicIcon, MicOffIcon } from 'lucide-react'
+import { MicIcon, MicOffIcon } from '#/components/icons'
 
 import {
   VoicePanelMicSettingsMenuContent,

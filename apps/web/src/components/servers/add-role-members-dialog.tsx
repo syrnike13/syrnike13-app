@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Member, Role, Server, User } from '@syrnike13/api-types'
-import { CheckIcon, SearchIcon } from 'lucide-react'
+import { CheckIcon, SearchIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { UserAvatar } from '#/components/user/user-avatar'

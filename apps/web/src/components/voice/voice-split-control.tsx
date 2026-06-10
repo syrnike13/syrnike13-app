@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronDownIcon } from 'lucide-react'
+import { ChevronDownIcon } from '#/components/icons'
 
 import {
   Popover,

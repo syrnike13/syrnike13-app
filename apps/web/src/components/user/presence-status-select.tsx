@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BellOffIcon, CheckIcon, ChevronRightIcon } from 'lucide-react'
+import { BellOffIcon, CheckIcon, ChevronRightIcon } from '#/components/icons'
 import type { Presence } from '@syrnike13/api-types'
 
 import {

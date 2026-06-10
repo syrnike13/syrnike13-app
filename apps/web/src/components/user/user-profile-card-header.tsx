@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { PlusIcon, XIcon } from 'lucide-react'
+import { PlusIcon, XIcon } from '#/components/icons'
 import { useMemo, useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
@@ -292,7 +292,6 @@ export function UserProfileCardHeader({
                     >
                       <XIcon
                         className={cn('size-3', removing && 'opacity-50')}
-                        strokeWidth={2.5}
                       />
                     </button>
                   ) : null}
@@ -310,7 +309,7 @@ export function UserProfileCardHeader({
                   setRolesDialogOpen(true)
                 }}
               >
-                <PlusIcon className="size-3.5" strokeWidth={2.5} />
+                <PlusIcon className="size-3.5" />
               </button>
             ) : null}
           </div>

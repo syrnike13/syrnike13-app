@@ -6,7 +6,7 @@ import {
   useState,
   type Ref,
 } from 'react'
-import { MessageSquareIcon, Volume2Icon } from 'lucide-react'
+import { MessageSquareIcon, Volume2Icon } from '#/components/icons'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 

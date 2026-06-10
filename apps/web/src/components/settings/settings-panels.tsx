@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Loader2Icon } from 'lucide-react'
+import { Loader2Icon } from '#/components/icons'
 import { useState } from 'react'
 import { toast } from 'sonner'
 

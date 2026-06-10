@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { MessageCircleIcon, PlusIcon, UsersIcon } from 'lucide-react'
+import { MessageCircleIcon, PlusIcon, UsersIcon } from '#/components/icons'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 

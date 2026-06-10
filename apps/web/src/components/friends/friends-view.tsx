@@ -6,7 +6,7 @@ import {
   UserCheckIcon,
   UserMinusIcon,
   UserPlusIcon,
-} from 'lucide-react'
+} from '#/components/icons'
 import { useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'

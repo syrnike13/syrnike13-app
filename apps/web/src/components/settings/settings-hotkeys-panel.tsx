@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircleIcon, Trash2Icon } from 'lucide-react'
+import { AlertCircleIcon, Trash2Icon } from '#/components/icons'
 import type {
   HotkeyBinding,
   NativeInputEvent,

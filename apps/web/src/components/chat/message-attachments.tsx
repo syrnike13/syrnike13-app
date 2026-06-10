@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { File } from '@syrnike13/api-types'
-import { FileIcon } from 'lucide-react'
+import { FileIcon } from '#/components/icons'
 
 import { ImageLightbox } from '#/components/media/image-lightbox'
 import { FxImage } from '#/components/ui/fx-image'

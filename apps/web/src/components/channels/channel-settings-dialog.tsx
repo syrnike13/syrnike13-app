@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Channel } from '@syrnike13/api-types'
-import { SettingsIcon, Trash2Icon } from 'lucide-react'
+import { SettingsIcon, Trash2Icon } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 

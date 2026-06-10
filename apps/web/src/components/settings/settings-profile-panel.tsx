@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { PencilIcon } from 'lucide-react'
+import { PencilFillIcon } from '#/components/icons'
 import {
   useCallback,
   useEffect,
@@ -610,7 +610,7 @@ function ProfileMediaEditOverlay({
         className,
       )}
     >
-      <PencilIcon className="size-5 text-white drop-shadow-sm" aria-hidden />
+      <PencilFillIcon className="size-5 text-white drop-shadow-sm" aria-hidden />
     </button>
   )
 }

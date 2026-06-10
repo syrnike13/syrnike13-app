@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Trash2Icon } from 'lucide-react'
+import { Trash2Icon } from '#/components/icons'
 import type { Emoji } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 

@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { UsersIcon } from 'lucide-react'
+import { UsersIcon } from '#/components/icons'
 
 import { CommandPaletteTrigger } from '#/components/command-palette/command-palette-trigger'
 import { DmChannelList } from '#/components/home/dm-channel-list'

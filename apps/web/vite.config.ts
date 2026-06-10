@@ -37,7 +37,14 @@ const config = defineConfig({
     dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
-    include: ['@syrnike13/api-types', '@syrnike13/platform'],
+    include: [
+      '@syrnike13/api-types',
+      '@syrnike13/platform',
+      '@remixicon/react',
+      'iconoir-react',
+      'iconoir-react/solid',
+      '@iconify/react',
+    ],
   },
   plugins: [
     tailwindcss(),

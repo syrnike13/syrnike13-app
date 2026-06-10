@@ -5,7 +5,7 @@ import {
   MessageCircleIcon,
   MoreHorizontalIcon,
   UserMinusIcon,
-} from 'lucide-react'
+} from '#/components/icons'
 import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'

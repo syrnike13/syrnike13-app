@@ -1,4 +1,4 @@
-import { HeadphoneOffIcon, HeadphonesIcon } from 'lucide-react'
+import { HeadphoneOffIcon, HeadphonesIcon } from '#/components/icons'
 
 import { VoiceSoundSettingsMenuContent } from '#/components/voice/voice-stage-mic-settings-menu'
 import {

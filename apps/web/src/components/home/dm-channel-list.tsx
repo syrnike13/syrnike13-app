@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { HashIcon } from 'lucide-react'
+import { HashIcon } from '#/components/icons'
 
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
