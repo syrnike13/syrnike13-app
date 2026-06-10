@@ -1,15 +1,27 @@
+import type { MouseEvent } from 'react'
+
 import { HeadphoneOffIcon, MicOffIcon, VideoIcon } from '#/components/icons'
 
 import { cn } from '#/lib/utils'
 
-export function VoiceOnAirBadge({ className }: { className?: string }) {
+type VoiceOnAirBadgeProps = {
+  className?: string
+  onDoubleClick?: (event: MouseEvent<HTMLSpanElement>) => void
+}
+
+export function VoiceOnAirBadge({
+  className,
+  onDoubleClick,
+}: VoiceOnAirBadgeProps) {
   return (
     <span
       className={cn(
         'inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-[#ed4245] px-1.5 text-[9px] font-bold leading-none tracking-wide text-white',
+        onDoubleClick && 'cursor-pointer select-none',
         className,
       )}
       aria-label="В эфире"
+      onDoubleClick={onDoubleClick}
     >
       В ЭФИРЕ
     </span>

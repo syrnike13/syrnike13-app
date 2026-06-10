@@ -63,6 +63,7 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
         return (
           <VoiceParticipantRow
             key={participant.id}
+            channelId={channelId}
             participant={participant}
             user={user}
             displayName={voiceParticipantDisplayName(

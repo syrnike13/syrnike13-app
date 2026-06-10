@@ -14,12 +14,18 @@ export function shouldSubscribeStageScreen({
   isLocal,
   mediaId,
   watchedRemoteScreenIds,
+  pendingScreenWatchIds,
 }: {
   isLocal: boolean
   mediaId: string
   watchedRemoteScreenIds: ReadonlySet<string>
+  pendingScreenWatchIds?: ReadonlySet<string>
 }) {
-  return isLocal || watchedRemoteScreenIds.has(mediaId)
+  return (
+    isLocal ||
+    watchedRemoteScreenIds.has(mediaId) ||
+    Boolean(pendingScreenWatchIds?.has(mediaId))
+  )
 }
 
 export function applyStageScreenPublicationSubscription(
@@ -35,6 +41,26 @@ export function applyStageScreenPublicationSubscription(
   }
   if (publication.isSubscribed === subscribed) return
   publication.setSubscribed?.(subscribed)
+}
+
+export function stageScreenMediaUserId(mediaId: string) {
+  const suffix = ':screen'
+  return mediaId.endsWith(suffix) ? mediaId.slice(0, -suffix.length) : null
+}
+
+export function pruneWatchedRemoteScreenIds(
+  watchedRemoteScreenIds: Set<string>,
+  visibleRemoteScreenIds: ReadonlySet<string>,
+  remoteParticipantUserIds: ReadonlySet<string>,
+) {
+  for (const mediaId of Array.from(watchedRemoteScreenIds)) {
+    if (visibleRemoteScreenIds.has(mediaId)) continue
+
+    const userId = stageScreenMediaUserId(mediaId)
+    if (userId && remoteParticipantUserIds.has(userId)) continue
+
+    watchedRemoteScreenIds.delete(mediaId)
+  }
 }
 
 export function setStageScreenSubscription(

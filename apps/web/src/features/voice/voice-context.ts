@@ -69,6 +69,12 @@ export type VoiceContextValue = {
   stageMediaItems: readonly VoiceStageMediaItem[]
   focusedMediaId: string | null
   setFocusedMediaId: (mediaId: string | null) => void
+  /** Увеличивается при запросе фокуса стрима со stage. */
+  stageFocusNonce: number
+  watchParticipantScreenShare: (
+    channelId: string,
+    userId: string,
+  ) => Promise<void>
   stageMediaFilters: StageMediaFilters
   setStageMediaFilters: Dispatch<SetStateAction<StageMediaFilters>>
   setStageMediaSubscribed: (mediaId: string, subscribed: boolean) => void

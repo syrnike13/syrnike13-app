@@ -116,6 +116,7 @@ import {
   type VoiceMicIssue,
   type VoiceStatus,
 } from '#/features/voice/voice-mic-status'
+import { isVoiceConnectedInChannel } from '#/features/voice/voice-watch-screen-share'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
   effectiveVoiceJoinPreferences,
@@ -136,6 +137,7 @@ import {
 } from '#/features/voice/voice-stage-media'
 import {
   applyStageScreenPublicationSubscription,
+  pruneWatchedRemoteScreenIds,
   setStageScreenSubscription,
   shouldSubscribeStageScreen,
 } from '#/features/voice/voice-stage-subscription'
@@ -283,6 +285,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const nativeMicrophoneMutedRef = useRef(false)
   const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
   const watchedRemoteScreenIdsRef = useRef<Set<string>>(new Set())
+  const pendingScreenWatchIdsRef = useRef<Set<string>>(new Set())
   const remoteAudioMixerRef = useRef<RemoteAudioMixer | null>(null)
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
@@ -412,6 +415,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [screenShareEnabled, setScreenShareEnabled] = useState(false)
   const [screenShareStarting, setScreenShareStarting] = useState(false)
   const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null)
+  const [stageFocusNonce, setStageFocusNonce] = useState(0)
   const [stageFullscreen, setStageFullscreen] = useState(false)
 
   channelIdRef.current = channelId
@@ -458,6 +462,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           isLocal: false,
           mediaId,
           watchedRemoteScreenIds: watchedRemoteScreenIdsRef.current,
+          pendingScreenWatchIds: pendingScreenWatchIdsRef.current,
         })
 
       for (const publication of participant.trackPublications.values()) {
@@ -498,6 +503,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 isLocal: isLocalPublication,
                 mediaId,
                 watchedRemoteScreenIds: watchedRemoteScreenIdsRef.current,
+                pendingScreenWatchIds: pendingScreenWatchIdsRef.current,
               })
             : publication.isSubscribed !== false
         if (!isLocalPublication && source === 'screen') {
@@ -547,10 +553,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           .filter((item) => item.kind === 'screen' && !item.isLocal)
           .map((item) => item.id),
       )
-      for (const mediaId of Array.from(watchedRemoteScreenIdsRef.current)) {
-        if (!visibleRemoteScreenIds.has(mediaId)) {
-          watchedRemoteScreenIdsRef.current.delete(mediaId)
+      const remoteParticipantUserIds = new Set(
+        Array.from(room.remoteParticipants.values()).map((participant) =>
+          baseVoiceIdentity(participant.identity),
+        ),
+      )
+      pruneWatchedRemoteScreenIds(
+        watchedRemoteScreenIdsRef.current,
+        visibleRemoteScreenIds,
+        remoteParticipantUserIds,
+      )
+
+      for (const item of items) {
+        if (item.kind !== 'screen' || item.isLocal || item.subscribed === false) {
+          continue
         }
+        pendingScreenWatchIdsRef.current.delete(item.id)
+        watchedRemoteScreenIdsRef.current.add(item.id)
       }
 
       setStageMediaItems(items)
@@ -746,6 +765,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
     stoppedNativeScreenIdentityRef.current = null
     watchedRemoteScreenIdsRef.current.clear()
+    pendingScreenWatchIdsRef.current.clear()
     const desktop = getSyrnikeDesktop()
     if (desktop?.platform.os === 'win32') {
       void desktop.media.disconnectPreparedScreenSession().catch(() => {})
@@ -1429,6 +1449,53 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     await active.stop()
   }, [])
 
+  const requestStageMediaFocus = useCallback((mediaId: string) => {
+    setFocusedMediaId(mediaId)
+    setStageFocusNonce((current) => current + 1)
+  }, [])
+
+  const watchParticipantScreenShare = useCallback(
+    async (targetChannelId: string, userId: string) => {
+      const mediaId = stageMediaItemId(userId, 'screen')
+      const localUserId = auth.user?._id
+      const isLocal = isVoiceLocalUserId(userId, localUserId)
+
+      if (!isLocal) {
+        pendingScreenWatchIdsRef.current.add(mediaId)
+        watchedRemoteScreenIdsRef.current.add(mediaId)
+      }
+
+      if (!isVoiceConnectedInChannel({ channelId, status }, targetChannelId)) {
+        await join(targetChannelId)
+      }
+
+      if (!isLocal) {
+        pendingScreenWatchIdsRef.current.add(mediaId)
+        watchedRemoteScreenIdsRef.current.add(mediaId)
+      }
+
+      const room = roomRef.current
+      if (room && !isLocal) {
+        for (const participant of room.remoteParticipants.values()) {
+          if (baseVoiceIdentity(participant.identity) !== userId) continue
+          applyRemoteScreenParticipantSubscription(participant, true)
+        }
+        syncStageMediaItems(room)
+      }
+
+      requestStageMediaFocus(mediaId)
+    },
+    [
+      applyRemoteScreenParticipantSubscription,
+      auth.user?._id,
+      channelId,
+      join,
+      requestStageMediaFocus,
+      status,
+      syncStageMediaItems,
+    ],
+  )
+
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
       const room = roomRef.current
@@ -2090,9 +2157,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       screenShareStarting,
       stageMediaItems: stageMediaItemsForUi,
       focusedMediaId,
+      stageFocusNonce,
       join,
       leave,
       setFocusedMediaId,
+      watchParticipantScreenShare,
       stageMediaFilters,
       setStageMediaFilters,
       setStageMediaSubscribed,
@@ -2111,8 +2180,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       connectionPhase,
       deafened,
       focusedMediaId,
+      stageFocusNonce,
       join,
       leave,
+      watchParticipantScreenShare,
       localVoiceReady,
       micEnabled,
       micIssue,

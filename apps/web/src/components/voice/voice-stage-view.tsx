@@ -149,6 +149,14 @@ export function VoiceStageView({
     [mediaItems],
   )
   const mediaIds = useMemo(() => mediaItems.map((item) => item.id), [mediaItems])
+
+  useEffect(() => {
+    if (!voice.stageFocusNonce) return
+    const mediaId = voice.focusedMediaId
+    if (!mediaId || !mediaIds.includes(mediaId)) return
+    setRequestedMode('focus')
+  }, [mediaIds, voice.focusedMediaId, voice.stageFocusNonce])
+
   const layoutMode = resolveStageLayoutMode({
     requestedMode,
     focusedMediaId: voice.focusedMediaId,

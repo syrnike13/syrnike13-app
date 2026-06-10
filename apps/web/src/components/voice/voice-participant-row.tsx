@@ -9,10 +9,12 @@ import {
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { useAuth } from '#/features/auth/auth-context'
+import { useWatchParticipantScreenShare } from '#/features/voice/use-watch-participant-screen-share'
 import { useVoiceListenerStore } from '#/features/voice/voice-listener-store'
 import { cn } from '#/lib/utils'
 
 type VoiceParticipantRowProps = {
+  channelId?: string
   participant: UserVoiceState
   user?: User
   displayName: string
@@ -28,6 +30,7 @@ type VoiceParticipantRowProps = {
 }
 
 export function VoiceParticipantRow({
+  channelId,
   participant,
   user,
   displayName,
@@ -40,6 +43,7 @@ export function VoiceParticipantRow({
   roles,
 }: VoiceParticipantRowProps) {
   const auth = useAuth()
+  const watchScreenShare = useWatchParticipantScreenShare()
   const muted = participant.server_muted || participant.self_mute
   const deafened = participant.server_deafened || participant.self_deaf
   const listenerMuted = useVoiceListenerStore((s) => {
@@ -87,7 +91,19 @@ export function VoiceParticipantRow({
         {displayName}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
-        {participant.screensharing ? <VoiceOnAirBadge /> : null}
+        {participant.screensharing ? (
+          <VoiceOnAirBadge
+            onDoubleClick={
+              channelId
+                ? (event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    void watchScreenShare(channelId, participant.id)
+                  }
+                : undefined
+            }
+          />
+        ) : null}
         <VoiceParticipantIcons
           muted={muted}
           deafened={deafened}

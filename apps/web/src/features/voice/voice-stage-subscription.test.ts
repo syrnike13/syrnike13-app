@@ -4,6 +4,7 @@ import { Track } from 'livekit-client'
 
 import {
   applyStageScreenPublicationSubscription,
+  pruneWatchedRemoteScreenIds,
   setStageScreenSubscription,
   shouldSubscribeStageScreen,
 } from '#/features/voice/voice-stage-subscription'
@@ -92,6 +93,51 @@ describe('shouldSubscribeStageScreen', () => {
         watchedRemoteScreenIds: new Set(['remote-user:screen']),
       }),
     ).toBe(true)
+  })
+
+  it('subscribes remote screen shares while join is still settling', () => {
+    expect(
+      shouldSubscribeStageScreen({
+        isLocal: false,
+        mediaId: 'remote-user:screen',
+        watchedRemoteScreenIds: new Set(),
+        pendingScreenWatchIds: new Set(['remote-user:screen']),
+      }),
+    ).toBe(true)
+  })
+})
+
+describe('pruneWatchedRemoteScreenIds', () => {
+  it('keeps pending watch intent while the participant is still in the room', () => {
+    const watched = new Set(['remote-user:screen'])
+
+    pruneWatchedRemoteScreenIds(
+      watched,
+      new Set(),
+      new Set(['remote-user']),
+    )
+
+    expect(watched).toEqual(new Set(['remote-user:screen']))
+  })
+
+  it('removes watch intent after the participant leaves the room', () => {
+    const watched = new Set(['remote-user:screen'])
+
+    pruneWatchedRemoteScreenIds(watched, new Set(), new Set())
+
+    expect(watched).toEqual(new Set())
+  })
+
+  it('keeps visible remote screen watches', () => {
+    const watched = new Set(['remote-user:screen'])
+
+    pruneWatchedRemoteScreenIds(
+      watched,
+      new Set(['remote-user:screen']),
+      new Set(['remote-user']),
+    )
+
+    expect(watched).toEqual(new Set(['remote-user:screen']))
   })
 })
 
