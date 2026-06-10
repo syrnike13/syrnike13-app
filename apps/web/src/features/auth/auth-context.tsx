@@ -42,7 +42,7 @@ import {
 } from './auth-api'
 import {
   isSessionInvalidatingError,
-  isUnauthorizedError,
+  isTransientAuthLoadError,
 } from './auth-errors'
 
 type LoginSuccess = Extract<ResponseLogin, { result: 'Success' }>
@@ -180,23 +180,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onboardingQuery.error,
     onboardingQuery.isError,
     session?.token,
-  ])
-
-  useEffect(() => {
-    if (!session?.token || !userQuery.isError) return
-    if (!isUnauthorizedError(userQuery.error)) return
-    if (needsOnboarding) return
-
-    // Логин прошёл, но профиля ещё нет — нужен ник (частый 401 до onboard/complete).
-    queryClient.setQueryData(queryKeys.auth.onboarding(session.token), {
-      onboarding: true,
-    })
-  }, [
-    needsOnboarding,
-    queryClient,
-    session?.token,
-    userQuery.error,
-    userQuery.isError,
   ])
 
   const syncOnboardingStatus = useCallback(
@@ -351,12 +334,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     toast.success('Вы вышли из аккаунта')
   }, [invalidateSession, session?.token])
 
+  useEffect(() => {
+    if (!session?.token || !userQuery.isError || userQuery.isFetching) return
+    if (isTransientAuthLoadError(userQuery.error)) return
+    if (isSessionInvalidatingError(userQuery.error)) {
+      invalidateSession('Сессия недействительна. Войдите снова.')
+      return
+    }
+    invalidateSession(
+      userQuery.error instanceof Error
+        ? userQuery.error.message
+        : 'Не удалось загрузить профиль',
+    )
+  }, [
+    invalidateSession,
+    session?.token,
+    userQuery.error,
+    userQuery.isError,
+    userQuery.isFetching,
+  ])
+
   const profileLoadRecovering =
     !!session &&
     !needsOnboarding &&
     userQuery.isError &&
     !userQuery.data &&
-    !isSessionInvalidatingError(userQuery.error)
+    (userQuery.isFetching || isTransientAuthLoadError(userQuery.error))
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -400,6 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       submitMfaPassword,
       userQuery.data,
       userQuery.isLoading,
+      userQuery.isFetching,
     ],
   )
 

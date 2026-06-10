@@ -102,7 +102,9 @@ export function UserProfileCardHeader({
     staleTime: 60_000,
   })
 
-  const bannerUrl = userBannerUrl(profileQuery.data?.background)
+  const bannerUrl = userBannerUrl(profileQuery.data?.background, {
+    animated: true,
+  })
   const profileBio = profileQuery.data?.content?.trim()
 
   async function removeRole(roleId: string) {
@@ -218,6 +220,7 @@ export function UserProfileCardHeader({
                         : 'size-20 text-xl ring-[6px]',
                     'ring-muted bg-muted',
                   )}
+                  animated="always"
                   showPresence
                   presenceRingClassName="border-muted"
                   presenceClassName={
@@ -252,6 +255,7 @@ export function UserProfileCardHeader({
                     : 'size-20 text-xl ring-[6px]',
                 'ring-muted bg-muted',
               )}
+              animated="always"
               showPresence
               presenceRingClassName="border-muted"
               presenceClassName={

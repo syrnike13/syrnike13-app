@@ -4,10 +4,15 @@ import type {
   ScreenShareQualityName,
 } from '#/features/voice/voice-preference-types'
 import {
+  loadDesktopLocalSettings,
+  updateDesktopLocalSettings,
+} from '#/features/settings/desktop-local-settings-client'
+import {
   DEFAULT_VOICE_GATE_THRESHOLD_DB,
   linearThresholdToDb,
   normalizeVoiceGateThresholdDb,
 } from '#/features/voice/voice-gate-level'
+import { getSyrnikeDesktop } from '#/platform/runtime'
 
 const STORAGE_KEY = 'syrnike13-voice-preferences'
 
@@ -106,80 +111,94 @@ function parseVoiceGateThresholdDb(parsed: Record<string, unknown>) {
   return DEFAULT_STATE.voiceGateThresholdDb
 }
 
+export function normalizeVoicePreferenceState(
+  parsed: Partial<VoicePreferenceState> | null | undefined,
+): VoicePreferenceState {
+  if (!parsed) {
+    return {
+      ...DEFAULT_STATE,
+      screenShareQuality: defaultScreenShareQuality(),
+    }
+  }
+
+  return {
+    micEnabled:
+      typeof parsed.micEnabled === 'boolean'
+        ? parsed.micEnabled
+        : DEFAULT_STATE.micEnabled,
+    deafened:
+      typeof parsed.deafened === 'boolean'
+        ? parsed.deafened
+        : DEFAULT_STATE.deafened,
+    preferredAudioInputDevice:
+      typeof parsed.preferredAudioInputDevice === 'string'
+        ? parsed.preferredAudioInputDevice
+        : undefined,
+    preferredAudioOutputDevice:
+      typeof parsed.preferredAudioOutputDevice === 'string'
+        ? parsed.preferredAudioOutputDevice
+        : undefined,
+    preferredVideoDevice:
+      typeof parsed.preferredVideoDevice === 'string'
+        ? parsed.preferredVideoDevice
+        : undefined,
+    inputVolume:
+      typeof parsed.inputVolume === 'number' &&
+      parsed.inputVolume >= 0 &&
+      parsed.inputVolume <= VOICE_OUTPUT_VOLUME_MAX
+        ? parsed.inputVolume
+        : DEFAULT_STATE.inputVolume,
+    outputVolume:
+      typeof parsed.outputVolume === 'number' &&
+      parsed.outputVolume >= 0 &&
+      parsed.outputVolume <= VOICE_OUTPUT_VOLUME_MAX
+        ? parsed.outputVolume
+        : DEFAULT_STATE.outputVolume,
+    noiseSuppression:
+      typeof parsed.noiseSuppression === 'boolean'
+        ? parsed.noiseSuppression
+        : DEFAULT_STATE.noiseSuppression,
+    echoCancellation:
+      typeof parsed.echoCancellation === 'boolean'
+        ? parsed.echoCancellation
+        : DEFAULT_STATE.echoCancellation,
+    voiceGateEnabled:
+      typeof parsed.voiceGateEnabled === 'boolean'
+        ? parsed.voiceGateEnabled
+        : DEFAULT_STATE.voiceGateEnabled,
+    voiceGateThresholdDb: parseVoiceGateThresholdDb(parsed),
+    voiceGateAutoThreshold:
+      typeof parsed.voiceGateAutoThreshold === 'boolean'
+        ? parsed.voiceGateAutoThreshold
+        : DEFAULT_STATE.voiceGateAutoThreshold,
+    screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
+    screenShareCodec: parseScreenShareCodec(parsed.screenShareCodec),
+    screenShareAudio:
+      typeof parsed.screenShareAudio === 'boolean'
+        ? parsed.screenShareAudio
+        : DEFAULT_STATE.screenShareAudio,
+    screenShareCaptureMode: parseScreenShareCaptureMode(
+      parsed.screenShareCaptureMode,
+    ),
+  }
+}
+
 function loadState(): VoicePreferenceState {
-  if (typeof window === 'undefined') return DEFAULT_STATE
+  if (typeof window === 'undefined' || getSyrnikeDesktop()) {
+    return normalizeVoicePreferenceState(null)
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
-      return {
-        ...DEFAULT_STATE,
-        screenShareQuality: defaultScreenShareQuality(),
-      }
-    }
-    const parsed = JSON.parse(raw) as Partial<VoicePreferenceState>
-    return {
-      micEnabled:
-        typeof parsed.micEnabled === 'boolean'
-          ? parsed.micEnabled
-          : DEFAULT_STATE.micEnabled,
-      deafened:
-        typeof parsed.deafened === 'boolean'
-          ? parsed.deafened
-          : DEFAULT_STATE.deafened,
-      preferredAudioInputDevice:
-        typeof parsed.preferredAudioInputDevice === 'string'
-          ? parsed.preferredAudioInputDevice
-          : undefined,
-      preferredAudioOutputDevice:
-        typeof parsed.preferredAudioOutputDevice === 'string'
-          ? parsed.preferredAudioOutputDevice
-          : undefined,
-      preferredVideoDevice:
-        typeof parsed.preferredVideoDevice === 'string'
-          ? parsed.preferredVideoDevice
-          : undefined,
-      inputVolume:
-        typeof parsed.inputVolume === 'number' &&
-        parsed.inputVolume >= 0 &&
-        parsed.inputVolume <= VOICE_OUTPUT_VOLUME_MAX
-          ? parsed.inputVolume
-          : DEFAULT_STATE.inputVolume,
-      outputVolume:
-        typeof parsed.outputVolume === 'number' &&
-        parsed.outputVolume >= 0 &&
-        parsed.outputVolume <= VOICE_OUTPUT_VOLUME_MAX
-          ? parsed.outputVolume
-          : DEFAULT_STATE.outputVolume,
-      noiseSuppression:
-        typeof parsed.noiseSuppression === 'boolean'
-          ? parsed.noiseSuppression
-          : DEFAULT_STATE.noiseSuppression,
-      echoCancellation:
-        typeof parsed.echoCancellation === 'boolean'
-          ? parsed.echoCancellation
-          : DEFAULT_STATE.echoCancellation,
-      voiceGateEnabled: true,
-      voiceGateThresholdDb: parseVoiceGateThresholdDb(parsed),
-      voiceGateAutoThreshold:
-        typeof parsed.voiceGateAutoThreshold === 'boolean'
-          ? parsed.voiceGateAutoThreshold
-          : DEFAULT_STATE.voiceGateAutoThreshold,
-      screenShareQuality: parseScreenShareQuality(parsed.screenShareQuality),
-      screenShareCodec: parseScreenShareCodec(parsed.screenShareCodec),
-      screenShareAudio:
-        typeof parsed.screenShareAudio === 'boolean'
-          ? parsed.screenShareAudio
-          : DEFAULT_STATE.screenShareAudio,
-      screenShareCaptureMode: parseScreenShareCaptureMode(
-        parsed.screenShareCaptureMode,
-      ),
-    }
+    return normalizeVoicePreferenceState(
+      raw ? (JSON.parse(raw) as Partial<VoicePreferenceState>) : null,
+    )
   } catch {
-    return DEFAULT_STATE
+    return normalizeVoicePreferenceState(null)
   }
 }
 
 let state = loadState()
+let stateRevision = 0
 const listeners = new Set<() => void>()
 
 function emit() {
@@ -188,6 +207,10 @@ function emit() {
 
 function persist() {
   if (typeof window === 'undefined') return
+  if (getSyrnikeDesktop()) {
+    void updateDesktopLocalSettings({ voice: state })
+    return
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   } catch {
@@ -197,7 +220,16 @@ function persist() {
 
 function patch(partial: Partial<VoicePreferenceState>) {
   state = { ...state, ...partial }
+  stateRevision += 1
   persist()
+  emit()
+}
+
+export async function hydrateVoicePreferencesFromDesktop() {
+  const revision = stateRevision
+  const settings = await loadDesktopLocalSettings()
+  if (!settings || revision !== stateRevision) return
+  state = normalizeVoicePreferenceState(settings.voice)
   emit()
 }
 
@@ -300,3 +332,5 @@ export const voicePreferenceStore = {
 export function readVoicePreferences() {
   return voicePreferenceStore.getState()
 }
+
+void hydrateVoicePreferencesFromDesktop()

@@ -18,6 +18,8 @@ export const IPC = {
   authLoadSession: 'syrnike-desktop:auth:load-session',
   authSaveSession: 'syrnike-desktop:auth:save-session',
   authClearSession: 'syrnike-desktop:auth:clear-session',
+  settingsLoad: 'syrnike-desktop:settings:load',
+  settingsUpdate: 'syrnike-desktop:settings:update',
   hotkeysGetBindings: 'syrnike-desktop:hotkeys:get-bindings',
   hotkeysSetBindings: 'syrnike-desktop:hotkeys:set-bindings',
   hotkeysSetSuspended: 'syrnike-desktop:hotkeys:set-suspended',
