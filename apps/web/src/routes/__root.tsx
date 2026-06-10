@@ -4,6 +4,7 @@ import {
   Scripts,
   createRootRouteWithContext,
   redirect,
+  useRouterState,
 } from '@tanstack/react-router'
 
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
@@ -15,7 +16,11 @@ import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 
 import appCss from '../styles.css?url'
 
-import { DESKTOP_ENTRY_PATH, isDesktopAllowedPath } from '#/lib/desktop-routes'
+import {
+  DESKTOP_ENTRY_PATH,
+  isDesktopAllowedPath,
+  isDesktopOverlayPath,
+} from '#/lib/desktop-routes'
 import { isDesktopRuntime } from '#/platform/runtime'
 
 import type { QueryClient } from '@tanstack/react-query'
@@ -96,6 +101,18 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext()
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+
+  if (isDesktopOverlayPath(pathname)) {
+    return (
+      <ThemeProvider>
+        <NativeScrollbarEnhancer />
+        <Outlet />
+      </ThemeProvider>
+    )
+  }
 
   return (
     <TanstackQueryProvider client={queryClient}>

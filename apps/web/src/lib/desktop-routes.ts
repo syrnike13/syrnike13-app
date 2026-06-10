@@ -1,4 +1,5 @@
-const DESKTOP_ROUTE_PREFIXES = ['/app', '/invite', '/login'] as const
+const DESKTOP_ROUTE_PREFIXES = ['/app', '/desktop', '/invite', '/login'] as const
+const DESKTOP_OVERLAY_PATH = '/desktop/overlay'
 
 export const DESKTOP_ENTRY_PATH = '/app'
 
@@ -7,4 +8,8 @@ export function isDesktopAllowedPath(pathname: string) {
   return DESKTOP_ROUTE_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   )
+}
+
+export function isDesktopOverlayPath(pathname: string) {
+  return pathname === DESKTOP_OVERLAY_PATH
 }

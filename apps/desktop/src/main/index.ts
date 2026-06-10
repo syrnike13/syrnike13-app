@@ -9,6 +9,7 @@ import {
   Tray,
   type MenuItemConstructorOptions,
 } from 'electron'
+import type { DesktopLocalSettings, DesktopOverlaySettings } from '@syrnike13/platform'
 
 import {
   disposeDesktopAutoUpdate,
@@ -16,6 +17,10 @@ import {
 } from './auto-update'
 import { registerDesktopIpc } from './ipc'
 import { disposeHotkeys } from './hotkeys'
+import {
+  configureDesktopOverlay,
+  disposeDesktopOverlay,
+} from './overlay-manager'
 import {
   disposePrewarmedNativeMediaEngineHelper,
   prewarmNativeMediaEngineHelper,
@@ -29,7 +34,11 @@ import {
   saveDesktopPreferences,
   type DesktopPreferences,
 } from './desktop-preferences'
-import { desktopLocalSettingsDefaults } from './desktop-local-settings'
+import {
+  desktopLocalSettingsDefaults,
+  loadDesktopLocalSettings,
+  updateDesktopLocalSettings,
+} from './desktop-local-settings'
 import { desktopSessionPath } from './desktop-session'
 import { routeFromDeepLink } from './deep-links'
 import { applyLoginItemSettings } from './login-item'
@@ -40,6 +49,7 @@ let tray: Tray | null = null
 let quitting = false
 let desktopIpcRegistered = false
 let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
+let desktopLocalSettings: DesktopLocalSettings = desktopLocalSettingsDefaults()
 let creatingApp: Promise<void> | null = null
 
 const isDev = !app.isPackaged
@@ -111,6 +121,18 @@ async function setOpenAtLogin(openAtLogin: boolean) {
   desktopPreferences = nextPreferences
   applyLoginItemSettings(openAtLogin)
   return desktopPreferences
+}
+
+async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
+  desktopLocalSettings = await updateDesktopLocalSettings(
+    desktopLocalSettingsPath(),
+    { overlay },
+    desktopLocalSettingsDefaults(),
+  )
+}
+
+function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
+  desktopLocalSettings = settings
 }
 
 async function ensureAppCreated() {
@@ -218,12 +240,17 @@ function setupTray() {
 
 async function createApp() {
   const loadUrl = await resolveAppUrl()
+  configureDesktopOverlay(loadUrl, () => mainWindow, {
+    settings: desktopLocalSettings.overlay,
+    persistSettings: saveOverlaySettings,
+  })
   if (!desktopIpcRegistered) {
     desktopIpcRegistered = true
     registerDesktopIpc(() => mainWindow, {
       getWindowPreferences: getDesktopPreferences,
       setCloseToTray,
       setOpenAtLogin,
+      onLocalSettingsUpdated: applyDesktopLocalSettings,
       showWindow: showMainWindow,
       localSettingsPath: desktopLocalSettingsPath(),
       localSettingsDefaults: desktopLocalSettingsDefaults(),
@@ -291,6 +318,10 @@ if (setupSingleInstance()) {
 
   app.whenReady().then(async () => {
     desktopPreferences = await loadDesktopPreferences(desktopPreferencesPath())
+    desktopLocalSettings = await loadDesktopLocalSettings(
+      desktopLocalSettingsPath(),
+      desktopLocalSettingsDefaults(),
+    )
     applyLoginItemSettings(desktopPreferences.openAtLogin)
     prewarmNativeMediaEngineHelper()
     if (initialDeepLinkRoute) {
@@ -317,6 +348,7 @@ if (setupSingleInstance()) {
     quitting = true
     disposeDesktopAutoUpdate()
     disposeHotkeys()
+    disposeDesktopOverlay()
     disposePrewarmedNativeMediaEngineHelper()
     tray?.destroy()
     tray = null

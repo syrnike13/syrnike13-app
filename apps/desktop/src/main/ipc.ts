@@ -2,6 +2,8 @@ import { app, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
+  type DesktopLocalSettings,
+  type DesktopOverlaySnapshot,
   type DesktopLocalSettingsPatch,
   type DesktopStoredSession,
   type DesktopWindowPreferences,
@@ -34,6 +36,14 @@ import {
 } from './desktop-local-settings'
 import { registerNativeMediaEngineIpc } from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
+import {
+  canSetDesktopOverlaySnapshot,
+  canUseDesktopOverlaySender,
+  getDesktopOverlayState,
+  setDesktopOverlayEnabled,
+  setDesktopOverlaySettings,
+  setDesktopOverlaySnapshot,
+} from './overlay-manager'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -43,6 +53,7 @@ export function registerDesktopIpc(
     getWindowPreferences: () => DesktopWindowPreferences
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
+    onLocalSettingsUpdated?: (settings: DesktopLocalSettings) => void
     showWindow: () => void
     localSettingsPath: string
     localSettingsDefaults?: ReturnType<typeof desktopLocalSettingsDefaults>
@@ -133,13 +144,16 @@ export function registerDesktopIpc(
     ),
   )
 
-  ipcMain.handle(IPC.settingsUpdate, (_event, patch: DesktopLocalSettingsPatch) =>
-    updateDesktopLocalSettings(
+  ipcMain.handle(IPC.settingsUpdate, async (_event, patch: DesktopLocalSettingsPatch) => {
+    const settings = await updateDesktopLocalSettings(
       options.localSettingsPath,
       patch,
       options.localSettingsDefaults,
-    ),
-  )
+    )
+    setDesktopOverlaySettings(settings.overlay)
+    options.onLocalSettingsUpdated?.(settings)
+    return settings
+  })
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
 
@@ -160,6 +174,30 @@ export function registerDesktopIpc(
   })
 
   ipcMain.handle(IPC.hotkeysGetRuntimeStatus, () => getHotkeyRuntimeStatus())
+
+  ipcMain.handle(IPC.overlayGetState, (event) => {
+    if (!canUseDesktopOverlaySender(event.sender)) {
+      throw new Error('Untrusted overlay state request')
+    }
+    return getDesktopOverlayState()
+  })
+
+  ipcMain.handle(IPC.overlaySetEnabled, (event, enabled: boolean) => {
+    if (!canSetDesktopOverlaySnapshot(event.sender)) {
+      throw new Error('Untrusted overlay settings request')
+    }
+    return setDesktopOverlayEnabled(Boolean(enabled))
+  })
+
+  ipcMain.handle(
+    IPC.overlaySetSnapshot,
+    (event, snapshot: DesktopOverlaySnapshot) => {
+      if (!canSetDesktopOverlaySnapshot(event.sender)) {
+        throw new Error('Untrusted overlay snapshot request')
+      }
+      return setDesktopOverlaySnapshot(snapshot)
+    },
+  )
 
   return () => {
     lastActivity = null

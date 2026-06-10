@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import {
   BellIcon,
   AppWindowIcon,
+  Gamepad2Icon,
   KeyboardIcon,
   LogOutIcon,
   MonitorIcon,
@@ -70,6 +71,11 @@ const DESKTOP_ONLY_NAV_ITEMS = [
     id: 'hotkeys' as const,
     label: 'Горячие клавиши',
     icon: KeyboardIcon,
+  },
+  {
+    id: 'overlay' as const,
+    label: 'Оверлей',
+    icon: Gamepad2Icon,
   },
   DESKTOP_NAV_ITEM,
 ]

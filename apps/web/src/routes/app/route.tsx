@@ -10,6 +10,7 @@ import { Button } from '#/components/ui/button'
 import { CommandPaletteProvider } from '#/features/command-palette/command-palette-context'
 import { DesktopUpdateBanner } from '#/features/desktop/desktop-update-banner'
 import { DesktopHotkeyProvider } from '#/features/hotkeys/desktop-hotkey-provider'
+import { DesktopOverlayPublisher } from '#/features/overlay/desktop-overlay-publisher'
 import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
 import { useSyncReady } from '#/features/sync/sync-store'
@@ -105,6 +106,7 @@ function AppLayoutGate() {
     <CommandPaletteProvider>
       <SettingsModalProvider>
         <DesktopHotkeyProvider>
+          <DesktopOverlayPublisher />
           <ActivityPresenceManager />
           <DesktopUpdateBanner />
           <AppShell />

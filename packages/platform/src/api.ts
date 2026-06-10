@@ -12,9 +12,10 @@ import type {
   NativeMediaStatsEvent,
 } from './media'
 import type {
-  DesktopLocalSettings,
-  DesktopLocalSettingsPatch,
-} from './settings'
+  DesktopOverlaySnapshot,
+  DesktopOverlayState,
+} from './overlay'
+import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -212,6 +213,12 @@ export interface SyrnikeDesktopApi {
     getRuntimeStatus(): Promise<HotkeyRuntimeStatus>
     onRecordedInput(handler: (event: NativeInputEvent) => void): () => void
     onPressed(handler: (event: HotkeyActivationEvent) => void): () => void
+  }
+  overlay: {
+    getState(): Promise<DesktopOverlayState>
+    setEnabled(enabled: boolean): Promise<DesktopOverlayState>
+    setSnapshot(snapshot: DesktopOverlaySnapshot): Promise<DesktopOverlayState>
+    onStateChange(handler: (state: DesktopOverlayState) => void): () => void
   }
   media: {
     getDisplaySources(requestId: string): Promise<DesktopDisplayMediaSource[]>

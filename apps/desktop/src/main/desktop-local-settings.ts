@@ -63,6 +63,10 @@ export async function updateDesktopLocalSettings(
       ...current.voiceListener,
       ...normalizedPatch.voiceListener,
     },
+    overlay: {
+      ...current.overlay,
+      ...normalizedPatch.overlay,
+    },
   }
   await saveDesktopLocalSettings(filePath, next)
   return next

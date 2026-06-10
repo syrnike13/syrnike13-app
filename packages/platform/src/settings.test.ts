@@ -59,6 +59,48 @@ describe('desktop local settings contract', () => {
     })
   })
 
+  it('keeps saved overlay settings with per-game toggles', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        overlay: {
+          enabled: false,
+          games: [
+            {
+              id: 'c:/games/raid.exe',
+              processName: 'raid.exe',
+              processPath: 'C:/Games/Raid.exe',
+              title: 'Raid',
+              enabled: false,
+              lastSeenAt: 123,
+            },
+            {
+              id: '',
+              processName: '',
+              processPath: null,
+              title: 42,
+              enabled: true,
+              lastSeenAt: 'now',
+            },
+          ],
+        },
+      }),
+    ).toMatchObject({
+      overlay: {
+        enabled: false,
+        games: [
+          {
+            id: 'c:/games/raid.exe',
+            processName: 'raid.exe',
+            processPath: 'C:/Games/Raid.exe',
+            title: 'Raid',
+            enabled: false,
+            lastSeenAt: 123,
+          },
+        ],
+      },
+    })
+  })
+
   it('normalizes patches without filling unrelated namespaces', () => {
     expect(
       normalizeDesktopLocalSettingsPatch({
@@ -73,5 +115,57 @@ describe('desktop local settings contract', () => {
         outputVolume: 3,
       },
     })
+  })
+
+  it('normalizes overlay patches without filling unrelated namespaces', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        overlay: {
+          enabled: false,
+          games: [
+            {
+              id: 'c:/games/raid.exe',
+              processName: 'raid.exe',
+              processPath: 'C:/Games/Raid.exe',
+              title: 'Raid',
+              enabled: true,
+              lastSeenAt: 123,
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      overlay: {
+        enabled: false,
+        games: [
+          {
+            id: 'c:/games/raid.exe',
+            processName: 'raid.exe',
+            processPath: 'C:/Games/Raid.exe',
+            title: 'Raid',
+            enabled: true,
+            lastSeenAt: 123,
+          },
+        ],
+      },
+    })
+  })
+
+  it('ignores malformed non-empty overlay games patches', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        overlay: {
+          games: [
+            {
+              id: '',
+              processName: '',
+              title: 42,
+              enabled: true,
+              lastSeenAt: 'now',
+            },
+          ],
+        },
+      }),
+    ).toEqual({})
   })
 })

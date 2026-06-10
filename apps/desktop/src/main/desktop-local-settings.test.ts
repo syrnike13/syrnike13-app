@@ -66,4 +66,46 @@ describe('desktop local settings', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('merges overlay updates into the persisted settings file', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      const next = await updateDesktopLocalSettings(filePath, {
+        overlay: {
+          enabled: false,
+          games: [
+            {
+              id: 'c:/games/raid.exe',
+              processName: 'raid.exe',
+              processPath: 'C:/Games/Raid.exe',
+              title: 'Raid',
+              enabled: true,
+              lastSeenAt: 123,
+            },
+          ],
+        },
+      })
+
+      expect(next.overlay).toEqual({
+        enabled: false,
+        games: [
+          {
+            id: 'c:/games/raid.exe',
+            processName: 'raid.exe',
+            processPath: 'C:/Games/Raid.exe',
+            title: 'Raid',
+            enabled: true,
+            lastSeenAt: 123,
+          },
+        ],
+      })
+
+      const saved = JSON.parse(await readFile(filePath, 'utf8')) as DesktopLocalSettings
+      expect(saved).toEqual(next)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

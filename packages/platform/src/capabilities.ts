@@ -11,6 +11,8 @@ export type PlatformCapabilities = {
   advancedScreenShare: boolean
   /** Hybrid WGC/DXGI/GDI захват через desktop sidecar (Windows). */
   nativeScreenShare: boolean
+  /** Прозрачный voice overlay поверх windowed/borderless игр (Windows). */
+  desktopOverlay: boolean
   /** Собственные кнопки окна (macOS traffic lights остаются системными). */
   customWindowChrome: boolean
 }
@@ -26,6 +28,7 @@ export function getCapabilities(
     nativeNotifications: desktop,
     advancedScreenShare: desktop,
     nativeScreenShare: desktop && os === 'win32',
+    desktopOverlay: desktop && os === 'win32',
     customWindowChrome: desktop,
   }
 }

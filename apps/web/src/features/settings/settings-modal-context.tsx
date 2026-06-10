@@ -15,6 +15,7 @@ export type SettingsSection =
   | 'notifications'
   | 'appearance'
   | 'hotkeys'
+  | 'overlay'
   | 'desktop'
 
 type SettingsModalContextValue = {

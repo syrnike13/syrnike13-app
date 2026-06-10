@@ -20,7 +20,10 @@ describe('desktop preferences', () => {
 
   it('keeps valid preference values from persisted data', () => {
     expect(
-      normalizeDesktopPreferences({ closeToTray: false, openAtLogin: false }),
+      normalizeDesktopPreferences({
+        closeToTray: false,
+        openAtLogin: false,
+      }),
     ).toEqual({
       closeToTray: false,
       openAtLogin: false,

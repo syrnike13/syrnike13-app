@@ -32,6 +32,17 @@ export type {
   NativeMediaTarget,
 } from './media'
 export type {
+  DesktopOverlayBounds,
+  DesktopOverlayGameTarget,
+  DesktopOverlayParticipant,
+  DesktopOverlaySnapshot,
+  DesktopOverlayState,
+} from './overlay'
+export {
+  EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
+  normalizeDesktopOverlaySnapshot,
+} from './overlay'
+export type {
   ActivityDetails,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
@@ -58,14 +69,20 @@ export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export {
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   DEFAULT_DESKTOP_VOICE_SETTINGS,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
+  normalizeDesktopOverlaySettings,
+  normalizeDesktopOverlaySettingsPatch,
   normalizeDesktopVoiceListenerSettings,
   normalizeDesktopVoiceSettings,
   type DesktopLocalSettings,
   type DesktopLocalSettingsPatch,
+  type DesktopOverlayGameSettings,
+  type DesktopOverlaySettings,
+  type DesktopOverlaySettingsPatch,
   type DesktopScreenShareCaptureMode,
   type DesktopScreenShareCodec,
   type DesktopScreenShareQualityName,

@@ -11,6 +11,11 @@ import type {
   DesktopWindowPreferences,
 } from '@syrnike13/platform'
 
+const DEFAULT_WINDOW_PREFERENCES: DesktopWindowPreferences = {
+  closeToTray: true,
+  openAtLogin: true,
+}
+
 export function SettingsDesktopPanel() {
   const { desktop } = usePlatform()
   const [versions, setVersions] = useState<DesktopVersions | null>(null)
@@ -115,7 +120,7 @@ export function SettingsDesktopPanel() {
               if (!desktop || savingOpenAtLogin) return
               const previous = windowPreferences
               setWindowPreferences((current) => ({
-                ...(current ?? { closeToTray: true, openAtLogin: true }),
+                ...(current ?? DEFAULT_WINDOW_PREFERENCES),
                 openAtLogin: checked,
               }))
               setSavingOpenAtLogin(true)
@@ -147,7 +152,7 @@ export function SettingsDesktopPanel() {
               if (!desktop || savingCloseToTray) return
               const previous = windowPreferences
               setWindowPreferences((current) => ({
-                ...(current ?? { closeToTray: true, openAtLogin: true }),
+                ...(current ?? DEFAULT_WINDOW_PREFERENCES),
                 closeToTray: checked,
               }))
               setSavingCloseToTray(true)

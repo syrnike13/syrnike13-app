@@ -28,19 +28,36 @@ export type DesktopVoiceListenerSettings = {
   streamMutes: Record<string, boolean>
 }
 
+export type DesktopOverlayGameSettings = {
+  id: string
+  processName: string
+  processPath: string | null
+  title: string
+  enabled: boolean
+  lastSeenAt: number
+}
+
+export type DesktopOverlaySettings = {
+  enabled: boolean
+  games: DesktopOverlayGameSettings[]
+}
+
 export type DesktopLocalSettings = {
   version: 1
   voice: DesktopVoiceSettings
   voiceListener: DesktopVoiceListenerSettings
+  overlay: DesktopOverlaySettings
 }
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
 export type DesktopVoiceListenerSettingsPatch =
   Partial<DesktopVoiceListenerSettings>
+export type DesktopOverlaySettingsPatch = Partial<DesktopOverlaySettings>
 
 export type DesktopLocalSettingsPatch = {
   voice?: DesktopVoiceSettingsPatch
   voiceListener?: DesktopVoiceListenerSettingsPatch
+  overlay?: DesktopOverlaySettingsPatch
 }
 
 const VOICE_VOLUME_MAX = 3
@@ -69,10 +86,16 @@ export const DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS: DesktopVoiceListenerSettin
   streamMutes: {},
 }
 
+export const DEFAULT_DESKTOP_OVERLAY_SETTINGS: DesktopOverlaySettings = {
+  enabled: true,
+  games: [],
+}
+
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   version: 1,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
+  overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
 }
 
 function objectRecord(value: unknown) {
@@ -86,6 +109,14 @@ function booleanOrDefault(value: unknown, fallback: boolean) {
 
 function stringOrUndefined(value: unknown) {
   return typeof value === 'string' ? value : undefined
+}
+
+function stringOrNull(value: unknown) {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
 }
 
 function finiteNumber(value: unknown, fallback: number) {
@@ -224,6 +255,46 @@ export function normalizeDesktopVoiceListenerSettings(
   }
 }
 
+export function normalizeDesktopOverlaySettings(
+  value: unknown,
+  defaults: DesktopOverlaySettings = DEFAULT_DESKTOP_OVERLAY_SETTINGS,
+): DesktopOverlaySettings {
+  const settings = objectRecord(value)
+  return {
+    enabled: booleanOrDefault(settings.enabled, defaults.enabled),
+    games: Array.isArray(settings.games)
+      ? settings.games.flatMap(normalizeDesktopOverlayGameSettings)
+      : [...defaults.games],
+  }
+}
+
+function normalizeDesktopOverlayGameSettings(
+  value: unknown,
+): DesktopOverlayGameSettings[] {
+  const game = objectRecord(value)
+  if (
+    !nonEmptyString(game.id) ||
+    !nonEmptyString(game.processName) ||
+    !nonEmptyString(game.title) ||
+    typeof game.enabled !== 'boolean' ||
+    typeof game.lastSeenAt !== 'number' ||
+    !Number.isFinite(game.lastSeenAt)
+  ) {
+    return []
+  }
+
+  return [
+    {
+      id: game.id,
+      processName: game.processName,
+      processPath: stringOrNull(game.processPath),
+      title: game.title,
+      enabled: game.enabled,
+      lastSeenAt: game.lastSeenAt,
+    },
+  ]
+}
+
 export function normalizeDesktopLocalSettings(
   value: unknown,
   defaults: DesktopLocalSettings = DEFAULT_DESKTOP_LOCAL_SETTINGS,
@@ -233,6 +304,7 @@ export function normalizeDesktopLocalSettings(
     version: 1,
     voice: normalizeDesktopVoiceSettings(settings.voice, defaults.voice),
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
+    overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
   }
 }
 
@@ -344,6 +416,23 @@ export function normalizeDesktopVoiceListenerSettingsPatch(
   return Object.keys(next).length > 0 ? next : undefined
 }
 
+export function normalizeDesktopOverlaySettingsPatch(
+  value: unknown,
+): DesktopOverlaySettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopOverlaySettingsPatch = {}
+  if ('enabled' in patch && typeof patch.enabled === 'boolean') {
+    next.enabled = patch.enabled
+  }
+  if ('games' in patch && Array.isArray(patch.games)) {
+    const games = patch.games.flatMap(normalizeDesktopOverlayGameSettings)
+    if (patch.games.length === 0 || games.length > 0) {
+      next.games = games
+    }
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 export function normalizeDesktopLocalSettingsPatch(
   value: unknown,
 ): DesktopLocalSettingsPatch {
@@ -353,7 +442,9 @@ export function normalizeDesktopLocalSettingsPatch(
   const voiceListener = normalizeDesktopVoiceListenerSettingsPatch(
     patch.voiceListener,
   )
+  const overlay = normalizeDesktopOverlaySettingsPatch(patch.overlay)
   if (voice) next.voice = voice
   if (voiceListener) next.voiceListener = voiceListener
+  if (overlay) next.overlay = overlay
   return next
 }
