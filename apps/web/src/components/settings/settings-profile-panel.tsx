@@ -546,19 +546,19 @@ function ProfilePreviewCard({
             onEdit={onEditAvatar}
             onRemove={onRemoveAvatar}
           >
-            <div className="group/avatar relative size-16">
+            <div className="group/profile-avatar relative size-16 overflow-hidden rounded-full">
               {avatarUrl ? (
                 <FxImage
                   src={avatarUrl}
                   rounded="full"
-                  wrapperClassName="size-16 border-4 border-card"
+                  wrapperClassName="size-16 rounded-full ring-4 ring-card"
                   className="size-16"
                 />
               ) : (
                 <UserAvatar
                   user={{ ...user, avatar: null }}
-                  className="size-16 border-4 border-card"
-                  fallbackClassName="size-16 text-lg"
+                  className="size-16"
+                  fallbackClassName="size-16 bg-card text-lg ring-4 ring-card"
                   showPresence={false}
                 />
               )}
@@ -566,7 +566,7 @@ function ProfilePreviewCard({
                 label={hasAvatar ? 'Изменить аватар' : 'Добавить аватар'}
                 disabled={mediaBusy}
                 onClick={onEditAvatar}
-                className="rounded-full"
+                className="rounded-full group-hover/profile-avatar:opacity-100"
               />
             </div>
           </ProfileMediaContextMenu>
@@ -606,7 +606,7 @@ function ProfileMediaEditOverlay({
       }}
       className={cn(
         'absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-black/55 opacity-0 transition-opacity',
-        'group-hover/banner:opacity-100 group-hover/avatar:opacity-100',
+        'group-hover/banner:opacity-100',
         'focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
         'disabled:pointer-events-none disabled:opacity-0',
         className,
