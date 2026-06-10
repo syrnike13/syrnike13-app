@@ -59,6 +59,27 @@ function installMediaStreamMock() {
 }
 
 function installAudioContextMock() {
+  let analyserByteSample = 128
+  let analyserFloatSample = 0
+
+  class TestAnalyserNode {
+    fftSize = 256
+    smoothingTimeConstant = 0
+    connect = vi.fn()
+    disconnect = vi.fn()
+
+    getByteTimeDomainData(samples: Uint8Array) {
+      samples.fill(128)
+      for (let index = 0; index < 16; index += 1) {
+        samples[index] = analyserByteSample
+      }
+    }
+
+    getFloatTimeDomainData(samples: Float32Array) {
+      samples.fill(analyserFloatSample)
+    }
+  }
+
   class TestAudioContext {
     destination = {}
     sinkId: string | undefined
@@ -79,6 +100,10 @@ function installAudioContextMock() {
       }
     }
 
+    createAnalyser() {
+      return new TestAnalyserNode()
+    }
+
     resume() {
       return Promise.resolve()
     }
@@ -97,6 +122,44 @@ function installAudioContextMock() {
     configurable: true,
     value: TestAudioContext,
   })
+
+  return {
+    setAnalyserByteSample(sample: number) {
+      analyserByteSample = sample
+    },
+    setAnalyserFloatSample(sample: number) {
+      analyserFloatSample = sample
+    },
+  }
+}
+
+function installAnimationFrameMock() {
+  let frameId = 0
+  const callbacks = new Map<number, FrameRequestCallback>()
+  const request = vi
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      const id = ++frameId
+      callbacks.set(id, callback)
+      return id
+    })
+  const cancel = vi
+    .spyOn(window, 'cancelAnimationFrame')
+    .mockImplementation((id) => {
+      callbacks.delete(id)
+    })
+
+  return {
+    runFrame() {
+      const pending = Array.from(callbacks.entries())
+      callbacks.clear()
+      pending.forEach(([, callback]) => callback(performance.now()))
+    },
+    restore() {
+      request.mockRestore()
+      cancel.mockRestore()
+    },
+  }
 }
 
 function createTrack() {
@@ -110,10 +173,13 @@ function createTrack() {
 
 describe('RemoteAudioMixer', () => {
   let mixer: RemoteAudioMixer
+  let animationFrame: ReturnType<typeof installAnimationFrameMock>
+  let audioContext: ReturnType<typeof installAudioContextMock>
 
   beforeEach(() => {
     installMediaStreamMock()
-    installAudioContextMock()
+    audioContext = installAudioContextMock()
+    animationFrame = installAnimationFrameMock()
     voiceListenerStore.setUserVolume('remote-user', 1)
     voiceListenerStore.setUserMuted('remote-user', false)
     voiceListenerStore.setStreamVolume('remote-user', 1)
@@ -125,6 +191,7 @@ describe('RemoteAudioMixer', () => {
 
   afterEach(() => {
     mixer.dispose()
+    animationFrame.restore()
     Reflect.deleteProperty(window, 'AudioContext')
     Reflect.deleteProperty(window, 'MediaStream')
     Reflect.deleteProperty(window, 'MediaStreamTrack')
@@ -226,5 +293,97 @@ describe('RemoteAudioMixer', () => {
 
     expect(track.enabled).toBe(true)
     expect(mixer.debugSnapshot()).toEqual([])
+  })
+
+  it('reports remote mic speaking from low post-gain audio', () => {
+    const changes: string[][] = []
+    mixer.dispose()
+    mixer = createRemoteAudioMixer({
+      onSpeakingUserIdsChange: (userIds) => {
+        changes.push(Array.from(userIds))
+      },
+    })
+    audioContext.setAnalyserFloatSample(0.002)
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(false)
+    animationFrame.runFrame()
+
+    expect(changes.at(-1)).toEqual(['remote-user'])
+  })
+
+  it('clears remote mic speaking when local gain mutes the audible signal', () => {
+    const changes: string[][] = []
+    mixer.dispose()
+    mixer = createRemoteAudioMixer({
+      onSpeakingUserIdsChange: (userIds) => {
+        changes.push(Array.from(userIds))
+      },
+    })
+    audioContext.setAnalyserFloatSample(0.002)
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(false)
+    animationFrame.runFrame()
+
+    voiceListenerStore.setUserMuted('remote-user', true)
+    mixer.applyVolumes(false)
+
+    expect(changes.at(-1)).toEqual([])
+  })
+
+  it('does not report stream audio as participant speech', () => {
+    const changes: string[][] = []
+    mixer.dispose()
+    mixer = createRemoteAudioMixer({
+      onSpeakingUserIdsChange: (userIds) => {
+        changes.push(Array.from(userIds))
+      },
+    })
+    audioContext.setAnalyserFloatSample(0.002)
+
+    mixer.addTrack({
+      trackId: 'pub-stream',
+      userId: 'remote-user',
+      source: 'stream',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(false)
+    animationFrame.runFrame()
+
+    expect(changes).toEqual([])
+  })
+
+  it('does not report byte analyser quantization noise as speech', () => {
+    const changes: string[][] = []
+    mixer.dispose()
+    mixer = createRemoteAudioMixer({
+      onSpeakingUserIdsChange: (userIds) => {
+        changes.push(Array.from(userIds))
+      },
+    })
+    audioContext.setAnalyserByteSample(129)
+    audioContext.setAnalyserFloatSample(0)
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(false)
+    animationFrame.runFrame()
+
+    expect(changes).toEqual([])
   })
 })

@@ -284,9 +284,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
   const watchedRemoteScreenIdsRef = useRef<Set<string>>(new Set())
   const remoteAudioMixerRef = useRef<RemoteAudioMixer | null>(null)
-  if (!remoteAudioMixerRef.current) {
-    remoteAudioMixerRef.current = createRemoteAudioMixer()
-  }
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
   const micPublishingRef = useRef(readVoicePreferences().micEnabled)
@@ -384,6 +381,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [speakingUserIds, setSpeakingUserIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   )
+  const setSpeakingUserIdsIfChanged = useCallback(
+    (next: ReadonlySet<string>) => {
+      setSpeakingUserIds((current) =>
+        stringSetEquals(current, next) ? current : new Set(next),
+      )
+    },
+    [],
+  )
+  if (!remoteAudioMixerRef.current) {
+    remoteAudioMixerRef.current = createRemoteAudioMixer({
+      onSpeakingUserIdsChange: setSpeakingUserIdsIfChanged,
+    })
+  }
   const [voicePingMs, setVoicePingMs] = useState<number | null>(null)
   const [voicePingHistory, setVoicePingHistory] = useState<VoicePingSample[]>(
     [],
@@ -747,7 +757,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     restoreVoicePreferences()
     setCurrentMicIssue(null)
     setParticipantCount(0)
-    setSpeakingUserIds(new Set())
+    setSpeakingUserIdsIfChanged(new Set())
     setVoicePingMs(null)
     setVoicePingHistory([])
     rtcDebugSnapshotRef.current = null
@@ -759,7 +769,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setScreenShareStarting(false)
     setFocusedMediaId(null)
     setStageFullscreen(false)
-  }, [restoreVoicePreferences, setCurrentMicIssue, setStageMediaItems])
+  }, [
+    restoreVoicePreferences,
+    setCurrentMicIssue,
+    setSpeakingUserIdsIfChanged,
+    setStageMediaItems,
+  ])
 
   const abortJoinAttempt = useCallback(() => {
     const activeChannelId = channelIdRef.current
@@ -1158,15 +1173,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         applyRemoteAudio(deafenedRef.current)
       }
 
-      const syncSpeakers = () => {
-        const nextSpeakers = new Set(
-          room.activeSpeakers.map((speaker) => baseVoiceIdentity(speaker.identity)),
-        )
-        setSpeakingUserIds((current) =>
-          stringSetEquals(current, nextSpeakers) ? current : nextSpeakers,
-        )
-      }
-
       const onParticipantsChanged = () => {
         setParticipantCount(room.numParticipants)
         syncRoomParticipants()
@@ -1220,7 +1226,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.on(RoomEvent.TrackUnpublished, onParticipantsChanged)
       room.on(RoomEvent.TrackMuted, onParticipantsChanged)
       room.on(RoomEvent.TrackUnmuted, onParticipantsChanged)
-      room.on(RoomEvent.ActiveSpeakersChanged, syncSpeakers)
 
       room.on(RoomEvent.Connected, () => {
         if (!channelIdRef.current) return
@@ -1259,7 +1264,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
 
       onParticipantsChanged()
-      syncSpeakers()
     },
     [
       abortJoinAttempt,

@@ -6,6 +6,15 @@ import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
+import {
+  rmsFromFloatTimeDomain,
+  rmsToDb,
+} from '#/features/voice/voice-gate-level'
+
+const CLIENT_SPEAKING_THRESHOLD_DB = -58
+const CLIENT_SPEAKING_CLOSE_HOLD_MS = 180
+const CLIENT_SPEAKING_DEBUG_USER_ID = '01KT9QHCVTZ8T519M3S5FP2YF2'
+const CLIENT_SPEAKING_DEBUG_INTERVAL_MS = 500
 
 type AudioContextConstructor = typeof AudioContext
 
@@ -31,6 +40,15 @@ type RemoteAudioMixerEntry = {
   stream: MediaStream
   sourceNode: MediaStreamAudioSourceNode
   gainNode: GainNode
+  analyserNode: AnalyserNode
+  analyserSamples: Float32Array
+  speaking: boolean
+  quietSince: number | null
+  debugLastLogAt: number
+}
+
+export type RemoteAudioMixerOptions = {
+  onSpeakingUserIdsChange?: (userIds: ReadonlySet<string>) => void
 }
 
 export type RemoteAudioMixerSnapshot = {
@@ -93,10 +111,16 @@ export class RemoteAudioMixer {
   #outputNode: MediaStreamAudioDestinationNode | null = null
   #outputElement: HTMLAudioElement | null = null
   #entries = new Map<string, RemoteAudioMixerEntry>()
+  #speakingUserIds = new Set<string>()
+  #speakingFrame: number | null = null
   #outputDeviceId: string | undefined
   #disposed = false
+  readonly #onSpeakingUserIdsChange:
+    | ((userIds: ReadonlySet<string>) => void)
+    | undefined
 
-  constructor() {
+  constructor(options: RemoteAudioMixerOptions = {}) {
+    this.#onSpeakingUserIdsChange = options.onSpeakingUserIdsChange
     registerMixer(this)
   }
 
@@ -122,13 +146,17 @@ export class RemoteAudioMixer {
     try {
       const sourceNode = context.createMediaStreamSource(stream)
       const gainNode = context.createGain()
+      const analyserNode = context.createAnalyser()
       const outputNode = this.#mediaOutputNode()
       if (!outputNode) {
         throw new Error('Remote audio output node is unavailable')
       }
+      analyserNode.fftSize = 256
+      analyserNode.smoothingTimeConstant = 0.2
       gainNode.gain.value = 0
       sourceNode.connect(gainNode)
-      gainNode.connect(outputNode)
+      gainNode.connect(analyserNode)
+      analyserNode.connect(outputNode)
       this.#entries.set(track.trackId, {
         trackId: track.trackId,
         userId: track.userId,
@@ -137,7 +165,15 @@ export class RemoteAudioMixer {
         stream,
         sourceNode,
         gainNode,
+        analyserNode,
+        analyserSamples: new Float32Array(analyserNode.fftSize),
+        speaking: false,
+        quietSince: null,
+        debugLastLogAt: Number.NEGATIVE_INFINITY,
       })
+      const entry = this.#entries.get(track.trackId)
+      if (entry) this.#debugSpeaking('add-track', entry, {}, true)
+      this.#scheduleSpeakingAnalysis()
       void context.resume().catch(() => {})
       return true
     } catch {
@@ -148,8 +184,20 @@ export class RemoteAudioMixer {
   removeTrack(trackId: string) {
     const entry = this.#entries.get(trackId)
     if (!entry) return
+    this.#debugSpeaking(
+      'remove-track',
+      entry,
+      {
+        wasSpeaking: entry.speaking,
+      },
+      true,
+    )
     this.#releaseEntry(entry)
     this.#entries.delete(trackId)
+    if (entry.speaking) {
+      entry.speaking = false
+      this.#publishSpeakingUsersIfChanged()
+    }
   }
 
   removeMediaStreamTrack(track: MediaStreamTrack) {
@@ -164,7 +212,9 @@ export class RemoteAudioMixer {
   }
 
   applyVolumes(globallyDeafened: boolean) {
+    let speakingChanged = false
     for (const entry of this.#entries.values()) {
+      const previousGain = entry.gainNode.gain.value
       const channelMuted =
         entry.source === 'stream'
           ? voiceListenerStore.getStreamMuted(entry.userId)
@@ -179,8 +229,32 @@ export class RemoteAudioMixer {
           ? 0
           : clampRemoteGain(channelVolume * prefs.outputVolume)
       entry.gainNode.gain.value = gain
+      if (Math.abs(previousGain - gain) > 0.001) {
+        this.#debugSpeaking(
+          'volume',
+          entry,
+          {
+            globallyDeafened,
+            channelMuted,
+            channelVolume,
+            outputVolume: prefs.outputVolume,
+            previousGain: Number(previousGain.toFixed(3)),
+            nextGain: Number(gain.toFixed(3)),
+          },
+          true,
+        )
+      }
+      if (gain <= 0 && entry.speaking) {
+        entry.speaking = false
+        entry.quietSince = null
+        speakingChanged = true
+      }
       this.#startOutput()
     }
+    if (speakingChanged) {
+      this.#publishSpeakingUsersIfChanged()
+    }
+    this.#scheduleSpeakingAnalysis()
   }
 
   clear() {
@@ -188,6 +262,14 @@ export class RemoteAudioMixer {
       this.#releaseEntry(entry)
     }
     this.#entries.clear()
+    if (this.#speakingFrame !== null) {
+      window.cancelAnimationFrame(this.#speakingFrame)
+      this.#speakingFrame = null
+    }
+    if (this.#speakingUserIds.size > 0) {
+      this.#speakingUserIds = new Set()
+      this.#onSpeakingUserIdsChange?.(new Set())
+    }
     this.#outputElement?.remove()
     this.#outputElement = null
     this.#outputNode = null
@@ -253,9 +335,172 @@ export class RemoteAudioMixer {
     })
   }
 
+  #scheduleSpeakingAnalysis() {
+    if (this.#disposed || this.#speakingFrame !== null) return
+    if (!this.#onSpeakingUserIdsChange) return
+    let hasMicEntry = false
+    for (const entry of this.#entries.values()) {
+      if (entry.source === 'mic') {
+        hasMicEntry = true
+        break
+      }
+    }
+    if (!hasMicEntry) return
+    this.#speakingFrame = window.requestAnimationFrame(() => {
+      this.#speakingFrame = null
+      this.#analyzeSpeaking()
+      this.#scheduleSpeakingAnalysis()
+    })
+  }
+
+  #analyzeSpeaking() {
+    let changed = false
+    const now = performance.now()
+
+    for (const entry of this.#entries.values()) {
+      if (entry.source !== 'mic') continue
+
+      const speaking = this.#entrySpeaking(entry, now)
+      if (entry.speaking !== speaking) {
+        const previousSpeaking = entry.speaking
+        entry.speaking = speaking
+        this.#debugSpeaking(
+          'state-change',
+          entry,
+          {
+            previousSpeaking,
+            nextSpeaking: speaking,
+          },
+          true,
+        )
+        changed = true
+      }
+    }
+
+    if (changed) {
+      this.#publishSpeakingUsersIfChanged()
+    }
+  }
+
+  #entrySpeaking(entry: RemoteAudioMixerEntry, now: number) {
+    if (
+      entry.gainNode.gain.value <= 0 ||
+      entry.mediaStreamTrack.muted ||
+      entry.mediaStreamTrack.readyState !== 'live'
+    ) {
+      this.#debugSpeaking('sample', entry, {
+        reason:
+          entry.gainNode.gain.value <= 0
+            ? 'silent-gain'
+            : entry.mediaStreamTrack.muted
+              ? 'track-muted'
+              : 'track-not-live',
+        levelDb: null,
+        aboveThreshold: false,
+        nextSpeaking: false,
+      })
+      entry.quietSince = null
+      return false
+    }
+
+    entry.analyserNode.getFloatTimeDomainData(entry.analyserSamples)
+    const levelDb = rmsToDb(rmsFromFloatTimeDomain(entry.analyserSamples))
+    if (levelDb >= CLIENT_SPEAKING_THRESHOLD_DB) {
+      this.#debugSpeaking('sample', entry, {
+        reason: 'above-threshold',
+        sampleType: 'float-time-domain',
+        levelDb: Number(levelDb.toFixed(1)),
+        thresholdDb: CLIENT_SPEAKING_THRESHOLD_DB,
+        aboveThreshold: true,
+        nextSpeaking: true,
+      })
+      entry.quietSince = null
+      return true
+    }
+
+    if (!entry.speaking) {
+      this.#debugSpeaking('sample', entry, {
+        reason: 'below-threshold',
+        sampleType: 'float-time-domain',
+        levelDb: Number(levelDb.toFixed(1)),
+        thresholdDb: CLIENT_SPEAKING_THRESHOLD_DB,
+        aboveThreshold: false,
+        nextSpeaking: false,
+      })
+      entry.quietSince = null
+      return false
+    }
+
+    entry.quietSince ??= now
+    const quietMs = now - entry.quietSince
+    const nextSpeaking = quietMs < CLIENT_SPEAKING_CLOSE_HOLD_MS
+    this.#debugSpeaking('sample', entry, {
+      reason: nextSpeaking ? 'close-hold' : 'hold-expired',
+      sampleType: 'float-time-domain',
+      levelDb: Number(levelDb.toFixed(1)),
+      thresholdDb: CLIENT_SPEAKING_THRESHOLD_DB,
+      aboveThreshold: false,
+      quietMs: Number(quietMs.toFixed(1)),
+      holdMs: CLIENT_SPEAKING_CLOSE_HOLD_MS,
+      nextSpeaking,
+    })
+    return nextSpeaking
+  }
+
+  #publishSpeakingUsersIfChanged() {
+    const next = new Set<string>()
+    for (const entry of this.#entries.values()) {
+      if (entry.source === 'mic' && entry.speaking) {
+        next.add(entry.userId)
+      }
+    }
+
+    if (sameStringSet(this.#speakingUserIds, next)) return
+    this.#speakingUserIds = next
+    this.#onSpeakingUserIdsChange?.(new Set(next))
+  }
+
   #releaseEntry(entry: RemoteAudioMixerEntry) {
     entry.sourceNode.disconnect()
     entry.gainNode.disconnect()
+    entry.analyserNode.disconnect()
+  }
+
+  #debugSpeaking(
+    event: string,
+    entry: RemoteAudioMixerEntry,
+    data: Record<string, unknown> = {},
+    force = false,
+  ) {
+    if (!import.meta.env.DEV) return
+    if (entry.userId !== CLIENT_SPEAKING_DEBUG_USER_ID) return
+
+    const now = performance.now()
+    if (
+      !force &&
+      now - entry.debugLastLogAt < CLIENT_SPEAKING_DEBUG_INTERVAL_MS
+    ) {
+      return
+    }
+    entry.debugLastLogAt = now
+
+    console.info('[voice-speaking-debug]', {
+      event,
+      userId: entry.userId,
+      trackId: entry.trackId,
+      source: entry.source,
+      speaking: entry.speaking,
+      gain: Number(entry.gainNode.gain.value.toFixed(3)),
+      thresholdDb: CLIENT_SPEAKING_THRESHOLD_DB,
+      holdMs: CLIENT_SPEAKING_CLOSE_HOLD_MS,
+      mediaStreamTrack: {
+        id: entry.mediaStreamTrack.id,
+        enabled: entry.mediaStreamTrack.enabled,
+        muted: entry.mediaStreamTrack.muted,
+        readyState: entry.mediaStreamTrack.readyState,
+      },
+      ...data,
+    })
   }
 }
 
@@ -268,6 +513,14 @@ function trackSnapshot(track: MediaStreamTrack) {
   }
 }
 
-export function createRemoteAudioMixer() {
-  return new RemoteAudioMixer()
+function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  if (left.size !== right.size) return false
+  for (const value of left) {
+    if (!right.has(value)) return false
+  }
+  return true
+}
+
+export function createRemoteAudioMixer(options?: RemoteAudioMixerOptions) {
+  return new RemoteAudioMixer(options)
 }

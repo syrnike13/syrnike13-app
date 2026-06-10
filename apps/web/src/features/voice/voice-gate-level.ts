@@ -12,6 +12,14 @@ export function rmsFromByteTimeDomain(samples: Uint8Array) {
   return Math.sqrt(sum / samples.length)
 }
 
+export function rmsFromFloatTimeDomain(samples: Float32Array) {
+  let sum = 0
+  for (const sample of samples) {
+    sum += sample * sample
+  }
+  return Math.sqrt(sum / samples.length)
+}
+
 export function rmsToDb(rms: number) {
   if (!Number.isFinite(rms) || rms <= 0.000_000_1) {
     return VOICE_GATE_DB_MIN
