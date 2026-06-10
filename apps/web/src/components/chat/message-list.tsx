@@ -201,7 +201,11 @@ export function MessageList({
     if (!root) return
 
     const onScroll = () => {
-      stickToBottomRef.current = isNearBottom(root)
+      const nearBottom = isNearBottom(root)
+      stickToBottomRef.current = nearBottom
+      if (!nearBottom) {
+        canLoadOlderRef.current = true
+      }
     }
 
     root.addEventListener('scroll', onScroll, { passive: true })
@@ -246,13 +250,8 @@ export function MessageList({
     run()
     const raf = requestAnimationFrame(run)
 
-    const timer = window.setTimeout(() => {
-      canLoadOlderRef.current = true
-    }, 0)
-
     return () => {
       cancelAnimationFrame(raf)
-      window.clearTimeout(timer)
     }
   }, [channelId, lastMessageId, useVirtual])
 

@@ -1069,18 +1069,22 @@ export const syncStore = {
 }
 
 export function useSyncStore<T>(selector: (state: SyncState) => T): T {
-  const selectorRef = useRef(selector)
-  selectorRef.current = selector
-
-  const cacheRef = useRef<{ store: SyncState; value: T } | null>(null)
+  const cacheRef = useRef<{
+    store: SyncState
+    selector: (state: SyncState) => T
+    value: T
+  } | null>(null)
 
   const getSnapshot = () => {
     const store = syncStore.getState()
-    if (cacheRef.current?.store === store) {
+    if (
+      cacheRef.current?.store === store &&
+      cacheRef.current.selector === selector
+    ) {
       return cacheRef.current.value
     }
-    const value = selectorRef.current(store)
-    cacheRef.current = { store, value }
+    const value = selector(store)
+    cacheRef.current = { store, selector, value }
     return value
   }
 
