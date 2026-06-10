@@ -48,6 +48,11 @@ import {
   type RemoteAudioMixer,
   type RemoteAudioSource,
 } from '#/features/voice/remote-audio-mixer'
+import {
+  createLocalSpeakingDetector,
+  type LocalSpeakingDetector,
+} from '#/features/voice/local-speaking-detector'
+import { mergeSpeakingUserIds } from '#/features/voice/voice-speaking-users'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import {
   liveKitRoomParticipantIds,
@@ -106,6 +111,7 @@ import {
   applyMicProcessing,
   refreshMicProcessing,
 } from '#/features/voice/voice-mic-processing'
+import { SYRNIKE_MIC_PROCESSOR_NAME } from '#/features/voice/voice-mic-processor'
 import { clearSessionVoiceGateThreshold } from '#/features/voice/voice-gate-session'
 import { voicePreferenceEffectFlags } from '#/features/voice/voice-preference-effects'
 import {
@@ -256,10 +262,30 @@ type AudioTrackWithMedia = Track & {
   sid?: string
 }
 
+type LocalAudioTrackWithProcessor = AudioTrackWithMedia & {
+  getProcessor?: () =>
+    | {
+        name?: string
+        processedTrack?: MediaStreamTrack
+      }
+    | undefined
+}
+
 function audioSourceFromPublication(
   publication: RemoteTrackPublication,
 ): RemoteAudioSource {
   return publication.source === Track.Source.ScreenShareAudio ? 'stream' : 'mic'
+}
+
+function localMicMediaStreamTrack(track: LocalAudioTrackWithProcessor | undefined) {
+  const processor = track?.getProcessor?.()
+  if (
+    processor?.name === SYRNIKE_MIC_PROCESSOR_NAME &&
+    processor.processedTrack
+  ) {
+    return processor.processedTrack
+  }
+  return track?.mediaStreamTrack ?? null
 }
 
 function remoteAudioTrackId(
@@ -287,6 +313,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const watchedRemoteScreenIdsRef = useRef<Set<string>>(new Set())
   const pendingScreenWatchIdsRef = useRef<Set<string>>(new Set())
   const remoteAudioMixerRef = useRef<RemoteAudioMixer | null>(null)
+  const localSpeakingDetectorRef = useRef<LocalSpeakingDetector | null>(null)
+  const remoteSpeakingUserIdsRef = useRef<ReadonlySet<string>>(new Set())
+  const selfSpeakingRef = useRef(false)
+  const authUserIdRef = useRef<string | null>(null)
   const channelIdRef = useRef<string | null>(null)
   const deafenedRef = useRef(false)
   const micPublishingRef = useRef(readVoicePreferences().micEnabled)
@@ -302,6 +332,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     restorePublishing: false,
     sequence: 0,
   })
+  authUserIdRef.current = auth.user?._id ?? null
   const voiceJoinDepsRef = useRef<VoiceJoinRunnerDeps>({
     getToken: () => undefined as string | undefined,
     getLocalUserId: () => undefined as string | undefined,
@@ -384,19 +415,45 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [speakingUserIds, setSpeakingUserIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   )
-  const setSpeakingUserIdsIfChanged = useCallback(
+  const publishSpeakingUserIds = useCallback(() => {
+    const next = mergeSpeakingUserIds({
+      remoteUserIds: remoteSpeakingUserIdsRef.current,
+      selfUserId: authUserIdRef.current,
+      selfSpeaking: selfSpeakingRef.current,
+    })
+    setSpeakingUserIds((current) =>
+      stringSetEquals(current, next) ? current : next,
+    )
+  }, [])
+  const setRemoteSpeakingUserIds = useCallback(
     (next: ReadonlySet<string>) => {
-      setSpeakingUserIds((current) =>
-        stringSetEquals(current, next) ? current : new Set(next),
-      )
+      if (stringSetEquals(remoteSpeakingUserIdsRef.current, next)) return
+      remoteSpeakingUserIdsRef.current = new Set(next)
+      publishSpeakingUserIds()
     },
-    [],
+    [publishSpeakingUserIds],
+  )
+  const setSelfSpeaking = useCallback(
+    (speaking: boolean) => {
+      if (selfSpeakingRef.current === speaking) return
+      selfSpeakingRef.current = speaking
+      publishSpeakingUserIds()
+    },
+    [publishSpeakingUserIds],
   )
   if (!remoteAudioMixerRef.current) {
     remoteAudioMixerRef.current = createRemoteAudioMixer({
-      onSpeakingUserIdsChange: setSpeakingUserIdsIfChanged,
+      onSpeakingUserIdsChange: setRemoteSpeakingUserIds,
     })
   }
+  if (!localSpeakingDetectorRef.current) {
+    localSpeakingDetectorRef.current = createLocalSpeakingDetector({
+      onSpeakingChange: setSelfSpeaking,
+    })
+  }
+  useEffect(() => {
+    publishSpeakingUserIds()
+  }, [auth.user?._id, publishSpeakingUserIds])
   const [voicePingMs, setVoicePingMs] = useState<number | null>(null)
   const [voicePingHistory, setVoicePingHistory] = useState<VoicePingSample[]>(
     [],
@@ -596,16 +653,53 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const cleanupAudio = useCallback(() => {
     remoteAudioMixerRef.current?.clear()
+    localSpeakingDetectorRef.current?.clear()
+    setSelfSpeaking(false)
     for (const element of document.querySelectorAll(
       'audio[data-syrnike-remote-audio-mixer="source"]',
     )) {
       element.remove()
     }
-  }, [])
+  }, [setSelfSpeaking])
 
   const applyRemoteAudio = useCallback((deafened = deafenedRef.current) => {
     remoteAudioMixerRef.current?.applyVolumes(deafened)
   }, [])
+
+  const syncLocalSpeakingTrack = useCallback(
+    (room = roomRef.current) => {
+      const detector = localSpeakingDetectorRef.current
+      if (!detector) return
+
+      if (!room || shouldUseNativeMicrophone()) {
+        detector.clear()
+        detector.setEnabled(false)
+        if (!shouldUseNativeMicrophone()) {
+          setSelfSpeaking(false)
+        }
+        return
+      }
+
+      const micPublication = room.localParticipant.getTrackPublication(
+        Track.Source.Microphone,
+      )
+      const audioTrack = micPublication?.audioTrack as
+        | LocalAudioTrackWithProcessor
+        | undefined
+      const mediaStreamTrack = localMicMediaStreamTrack(audioTrack)
+      const enabled =
+        participantMicPublishing(room.localParticipant) &&
+        !deafenedRef.current &&
+        !selfMonitoringRef.current.active
+
+      detector.setTrack(mediaStreamTrack)
+      detector.setEnabled(enabled)
+      if (!mediaStreamTrack || !enabled) {
+        setSelfSpeaking(false)
+      }
+    },
+    [setSelfSpeaking],
+  )
 
   const restoreVoicePreferences = useCallback(() => {
     const prefs = readVoicePreferences()
@@ -778,7 +872,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     restoreVoicePreferences()
     setCurrentMicIssue(null)
     setParticipantCount(0)
-    setSpeakingUserIdsIfChanged(new Set())
+    remoteSpeakingUserIdsRef.current = new Set()
+    selfSpeakingRef.current = false
+    setSpeakingUserIds((current) => (current.size === 0 ? current : new Set()))
     setVoicePingMs(null)
     setVoicePingHistory([])
     rtcDebugSnapshotRef.current = null
@@ -793,7 +889,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [
     restoreVoicePreferences,
     setCurrentMicIssue,
-    setSpeakingUserIdsIfChanged,
     setStageMediaItems,
   ])
 
@@ -872,7 +967,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     nativeMicrophoneMutedRef.current = false
     active.disconnect()
     setMicPublishing(false)
-  }, [])
+    setSelfSpeaking(false)
+  }, [setSelfSpeaking])
 
   const setNativeMicrophoneMuted = useCallback(
     async (muted: boolean) => {
@@ -880,6 +976,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       nativeMicrophoneMutedRef.current = muted
       const active = nativeMicrophoneRef.current
       setMicPublishing(Boolean(active) && !muted)
+      if (muted) setSelfSpeaking(false)
       if (!active) return
       try {
         await active.setMuted(muted)
@@ -890,7 +987,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         throw error
       }
     },
-    [syncRoomParticipants],
+    [setSelfSpeaking, syncRoomParticipants],
   )
 
   const startNativeMicrophone = useCallback(
@@ -908,6 +1005,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           nativeMicrophoneRef.current = null
           nativeMicrophoneMutedRef.current = false
           setMicPublishing(false)
+          setSelfSpeaking(false)
           syncRoomParticipants()
         },
         await refreshNativeLiveKitCredentials('microphone'),
@@ -916,11 +1014,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       )
       nativeMicrophoneRef.current = session
       setMicPublishing(!muted)
+      if (muted) setSelfSpeaking(false)
       syncRoomParticipants()
     },
     [
       refreshNativeLiveKitCredentials,
       activeChannelAudioBitrateKbps,
+      setSelfSpeaking,
       setNativeMicrophoneMuted,
       syncRoomParticipants,
     ],
@@ -971,6 +1071,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       ) {
         await applyMicProcessing(room.localParticipant)
       }
+      syncLocalSpeakingTrack(room)
       syncRoomParticipants()
 
       const userId = auth.user?._id
@@ -1002,6 +1103,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       startNativeMicrophone,
       activeChannelAudioBitrateKbps,
       syncMicFromRoom,
+      syncLocalSpeakingTrack,
       syncRoomParticipants,
       syncVoiceFlagsToGateway,
     ],
@@ -1039,6 +1141,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
         }
         setMicPublishing(false)
+        setSelfSpeaking(false)
         setCurrentMicIssue(null)
         if (userId) patchLocalVoiceMic(activeChannelId, userId, false)
         if (status === 'connected') {
@@ -1059,6 +1162,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           void startNativeMicrophone(room, true).catch(() => {})
         }
         setMicPublishing(false)
+        setSelfSpeaking(false)
         if (userId) patchLocalVoiceMic(activeChannelId, userId, false)
         if (status === 'connected') {
           syncVoiceFlagsToGateway(activeChannelId, true, deafenedRef.current)
@@ -1079,6 +1183,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             }
             setCurrentMicIssue(null)
             syncMicFromRoom(room)
+            syncLocalSpeakingTrack(room)
             syncRoomParticipants()
             if (status === 'connected') {
               syncVoiceFlagsToGateway(
@@ -1109,7 +1214,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             void room.localParticipant.setMicrophoneEnabled(false)
             return
           }
-          void applyMicProcessing(room.localParticipant)
+          void applyMicProcessing(room.localParticipant).then(() => {
+            syncLocalSpeakingTrack(room)
+          })
           setCurrentMicIssue(null)
           syncMicFromRoom(room)
           syncRoomParticipants()
@@ -1130,10 +1237,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       auth.user?._id,
       activeChannelAudioBitrateKbps,
       setCurrentMicIssue,
+      setSelfSpeaking,
       startNativeMicrophone,
       status,
       setNativeMicrophoneMuted,
       syncMicFromRoom,
+      syncLocalSpeakingTrack,
       syncRoomParticipants,
       syncVoiceFlagsToGateway,
     ],
@@ -1198,6 +1307,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setParticipantCount(room.numParticipants)
         syncRoomParticipants()
       }
+      const onLocalParticipantsChanged = () => {
+        syncLocalSpeakingTrack(room)
+        onParticipantsChanged()
+      }
 
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (participant.isLocal) return
@@ -1236,8 +1349,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       room.on(RoomEvent.ParticipantConnected, onParticipantsChanged)
       room.on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
-      room.on(RoomEvent.LocalTrackPublished, onParticipantsChanged)
-      room.on(RoomEvent.LocalTrackUnpublished, onParticipantsChanged)
+      room.on(RoomEvent.LocalTrackPublished, onLocalParticipantsChanged)
+      room.on(RoomEvent.LocalTrackUnpublished, onLocalParticipantsChanged)
       room.on(RoomEvent.TrackPublished, (publication, participant) => {
         if (!participant.isLocal) {
           applyRemoteScreenParticipantSubscription(participant)
@@ -1245,8 +1358,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         onParticipantsChanged()
       })
       room.on(RoomEvent.TrackUnpublished, onParticipantsChanged)
-      room.on(RoomEvent.TrackMuted, onParticipantsChanged)
-      room.on(RoomEvent.TrackUnmuted, onParticipantsChanged)
+      room.on(RoomEvent.TrackMuted, (_publication, participant) => {
+        if (participant.isLocal) {
+          syncLocalSpeakingTrack(room)
+        }
+        onParticipantsChanged()
+      })
+      room.on(RoomEvent.TrackUnmuted, (_publication, participant) => {
+        if (participant.isLocal) {
+          syncLocalSpeakingTrack(room)
+        }
+        onParticipantsChanged()
+      })
 
       room.on(RoomEvent.Connected, () => {
         if (!channelIdRef.current) return
@@ -1292,6 +1415,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       cleanupAudio,
       applyRemoteScreenParticipantSubscription,
       syncMicFromRoom,
+      syncLocalSpeakingTrack,
       syncRoomParticipants,
     ],
   )
@@ -1813,6 +1937,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               syncRoomParticipants()
             })
             setMicPublishing(false)
+            setSelfSpeaking(false)
             setCurrentMicIssue(null)
             if (activeChannelId && userId) {
               patchLocalVoiceMic(activeChannelId, userId, false)
@@ -1849,6 +1974,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             syncMicFromRoom(room, describeMicDeviceError(error))
             syncRoomParticipants()
           })
+          setSelfSpeaking(false)
           syncMicFromRoom(room)
           syncRoomParticipants()
           if (activeChannelId && userId && status === 'connected') {
@@ -1859,6 +1985,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       if (!nextMic) {
         selfMonitoringRef.current.restorePublishing = false
+        setSelfSpeaking(false)
       }
       void room.localParticipant
         .setMicrophoneEnabled(
@@ -1870,12 +1997,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           if (nextMic && selfMonitoringRef.current.active) {
             selfMonitoringRef.current.restorePublishing = true
             setMicPublishing(false)
+            setSelfSpeaking(false)
             setCurrentMicIssue(null)
             if (activeChannelId && userId) {
               patchLocalVoiceMic(activeChannelId, userId, false)
             }
           } else {
-            if (nextMic) void applyMicProcessing(room.localParticipant)
+            if (nextMic) {
+              void applyMicProcessing(room.localParticipant).then(() => {
+                syncLocalSpeakingTrack(room)
+              })
+            } else {
+              syncLocalSpeakingTrack(room)
+            }
             syncMicFromRoom(room)
           }
           syncRoomParticipants()
@@ -1912,10 +2046,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     auth.user?._id,
     activeChannelAudioBitrateKbps,
     setCurrentMicIssue,
+    setSelfSpeaking,
     readCurrentVoiceFlags,
     startNativeMicrophone,
     status,
     syncMicFromRoom,
+    syncLocalSpeakingTrack,
     syncRoomParticipants,
     syncVoiceFlagsToGateway,
   ])
@@ -1934,6 +2070,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       voicePreferenceStore.setMicEnabled(false)
       setMicEnabled(false)
       setMicPublishing(false)
+      setSelfSpeaking(false)
       setCurrentMicIssue(null)
       if (room) {
         if (shouldUseNativeMicrophone()) {
@@ -1943,6 +2080,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           })
         } else {
           void room.localParticipant.setMicrophoneEnabled(false)
+          syncLocalSpeakingTrack(room)
         }
       }
       if (activeChannelId && userId) {
@@ -1961,13 +2099,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
     }
     if (room && activeChannelId) {
+      syncLocalSpeakingTrack(room)
       syncRoomParticipants()
     }
   }, [
     auth.user?._id,
     setCurrentMicIssue,
+    setSelfSpeaking,
     startNativeMicrophone,
     status,
+    syncLocalSpeakingTrack,
     syncRoomParticipants,
     syncVoiceFlagsToGateway,
   ])
@@ -1975,8 +2116,29 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status === 'connected') {
       applyRemoteAudio(deafened)
+      syncLocalSpeakingTrack()
     }
-  }, [deafened, status])
+  }, [applyRemoteAudio, deafened, status, syncLocalSpeakingTrack])
+
+  useEffect(() => {
+    if (status !== 'connected' || !shouldUseNativeMicrophone()) {
+      return
+    }
+
+    const desktop = getSyrnikeDesktop()
+    if (!desktop) return
+
+    return desktop.media.onMicrophoneMetrics((metrics) => {
+      const active = nativeMicrophoneRef.current
+      if (!active || metrics.sessionId !== active.sessionId) return
+      setSelfSpeaking(
+        metrics.open &&
+          !nativeMicrophoneMutedRef.current &&
+          !deafenedRef.current &&
+          !selfMonitoringRef.current.active,
+      )
+    })
+  }, [setSelfSpeaking, status])
 
   useEffect(() => {
     return voiceListenerStore.subscribe(() => {
@@ -2000,7 +2162,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           if (shouldUseNativeMicrophone()) {
             configureNativeMicrophoneSession(nativeMicrophoneRef.current, next)
           } else {
-            void refreshMicProcessing(room)
+            void refreshMicProcessing(room).then(() => {
+              syncLocalSpeakingTrack(room)
+            })
           }
         })
       } else if (effects.remoteAudioChanged) {
@@ -2010,11 +2174,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         if (shouldUseNativeMicrophone()) {
           configureNativeMicrophoneSession(nativeMicrophoneRef.current, next)
         } else {
-          void refreshMicProcessing(room)
+          void refreshMicProcessing(room).then(() => {
+            syncLocalSpeakingTrack(room)
+          })
         }
       }
     })
-  }, [applyVoiceDevices, startNativeMicrophone, status])
+  }, [applyVoiceDevices, startNativeMicrophone, status, syncLocalSpeakingTrack])
 
   useEffect(() => {
     return () => {
