@@ -138,6 +138,9 @@ export function ChannelSidebarItem({
       voiceChannelId: voice.channelId,
       voiceStatus: voice.status,
     })
+    // #region debug log
+    fetch('http://127.0.0.1:65045/ingest/eef881',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'eef881',runId:'voice-switch-a-to-b',hypothesisId:'A',location:'apps/web/src/components/channels/channel-sidebar-item.tsx:handleVoiceChannelClick',message:'voice channel click resolved',data:{clickedChannelId:channel._id,currentRouteChannelId:activeChannelId,voiceChannelId:voice.channelId,voiceStatus:voice.status,action},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     if (action === 'none') {
       event.preventDefault()

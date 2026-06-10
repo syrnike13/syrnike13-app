@@ -38,6 +38,7 @@ vi.mock('#/features/voice/voice-capture', () => ({
 }))
 
 beforeEach(() => {
+  vi.clearAllMocks()
   syncStore.reset()
   syncStore.upsertChannel({
     _id: 'channel-1',
@@ -108,6 +109,35 @@ describe('createVoiceJoinRunner', () => {
       'connecting_microphone',
     ])
     expect(requestVoiceJoin).toHaveBeenCalledWith('channel-1', false, false)
+  })
+
+  it('does not suppress an immediate user join retry for the same channel', async () => {
+    syncStore.upsertChannel({
+      _id: 'channel-repeat',
+      channel_type: 'VoiceChannel',
+      server: 'server-1',
+    } as never)
+    const runner = createVoiceJoinRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      setJoinBlockedUntil: vi.fn(),
+      shouldLeaveBeforeJoin: () => false,
+      leaveBeforeJoin: vi.fn(),
+      beginConnecting: vi.fn(),
+      setActiveRoom: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      onRoomConnected: vi.fn(),
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(runner('channel-repeat')).resolves.toBe(true)
+    await expect(runner('channel-repeat')).resolves.toBe(true)
+
+    expect(requestVoiceJoin).toHaveBeenCalledTimes(2)
   })
 })
 
