@@ -85,6 +85,8 @@ export function VoiceStageTile({
             avatarSize,
             compact ? 'text-base' : 'text-xl sm:text-2xl',
           )}
+          animated="speaking"
+          speaking={speaking}
           showPresence={false}
         />
       </div>

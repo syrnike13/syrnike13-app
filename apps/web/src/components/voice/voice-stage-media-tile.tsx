@@ -185,6 +185,8 @@ export function StageMediaTile({
                     variant !== 'grid' &&
                     'size-24 text-2xl sm:size-32',
                 )}
+                animated="speaking"
+                speaking={speaking}
                 showPresence={false}
               />
               {item.kind === 'screen' && item.subscribed === false ? (

@@ -39,7 +39,9 @@ export function CurrentUserProfileMenu({
     staleTime: 60_000,
   })
 
-  const bannerUrl = userBannerUrl(profileQuery.data?.background)
+  const bannerUrl = userBannerUrl(profileQuery.data?.background, {
+    animated: true,
+  })
   const profileBio = profileQuery.data?.content?.trim()
 
   return (
@@ -71,6 +73,7 @@ export function CurrentUserProfileMenu({
             user={user}
             className="size-20"
             fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-card"
+            animated="always"
             showPresence
             presenceRingClassName="border-card"
             presenceClassName="size-7 translate-x-[16%] translate-y-[16%] border-4"

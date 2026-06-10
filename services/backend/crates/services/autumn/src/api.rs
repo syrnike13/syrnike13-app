@@ -12,6 +12,8 @@ use axum::{
 };
 use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use syrnike_config::{config, report_internal_error};
 use syrnike_database::{iso8601_timestamp::Timestamp, Database, FileHash, Metadata, User};
 use syrnike_files::{
@@ -19,8 +21,6 @@ use syrnike_files::{
     AUTHENTICATION_TAG_SIZE_BYTES,
 };
 use syrnike_result::{create_error, Error, Result, ToSyrnikeError};
-use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use tempfile::NamedTempFile;
 use tokio::time::Instant;
 use tower_http::cors::{AllowHeaders, Any, CorsLayer};
@@ -131,6 +131,24 @@ pub enum Tag {
     emojis,
 }
 
+const PROFILE_GIF_UPLOAD_SIZE_LIMIT: usize = 10_000_000;
+
+fn effective_upload_size_limit(tag: &Tag, mime_type: &str, configured_limit: usize) -> usize {
+    if mime_type == "image/gif" && matches!(tag, Tag::avatars | Tag::backgrounds) {
+        PROFILE_GIF_UPLOAD_SIZE_LIMIT
+    } else {
+        configured_limit
+    }
+}
+
+fn original_content_disposition(tag: &Tag, content_type: &str) -> &'static str {
+    if content_type == "image/gif" && matches!(tag, Tag::avatars | Tag::backgrounds) {
+        "inline"
+    } else {
+        "attachment"
+    }
+}
+
 /// Request body for upload
 #[derive(ToSchema, TryFromMultipart)]
 pub struct UploadPayload {
@@ -154,8 +172,8 @@ pub struct UploadResponse {
 /// | Tag | Size | Resolution | Type |
 /// | :-: | --: | :-- | :-: |
 /// | attachments | 20 MB | - | Any |
-/// | avatars | 4 MB | 40 MP or 10,000px | Image |
-/// | backgrounds | 6 MB | 40 MP or 10,000px | Image |
+/// | avatars | 4 MB, GIF up to 10 MB | 40 MP or 10,000px | Image |
+/// | backgrounds | 6 MB, GIF up to 10 MB | 40 MP or 10,000px | Image |
 /// | icons | 2.5 MB | 40 MP or 10,000px | Image |
 /// | banners | 6 MB | 40 MP or 10,000px | Image |
 /// | emojis | 500 KB | 40 MP or 10,000px | Image |
@@ -201,12 +219,17 @@ async fn upload_file(
         return Err(create_error!(FileTooSmall));
     }
 
+    // Determine the mime type for the file before choosing tag-specific limits.
+    let mime_type = determine_mime_type(&mut file.contents, &buf, &filename);
+
     // Get user's file upload limits
     let limits = user.limits().await;
-    let size_limit = *limits
+    let tag_name: &'static str = tag.clone().into();
+    let configured_size_limit = *limits
         .file_upload_size_limit
-        .get(tag.clone().into())
+        .get(tag_name)
         .expect("size limit");
+    let size_limit = effective_upload_size_limit(&tag, mime_type, configured_size_limit);
 
     if original_file_size > size_limit {
         return Err(create_error!(FileTooLarge { max: size_limit }));
@@ -225,9 +248,6 @@ async fn upload_file(
     } else {
         nanoid::nanoid!(42)
     };
-
-    // Determine the mime type for the file
-    let mime_type = determine_mime_type(&mut file.contents, &buf, &filename);
 
     // Check blocklist for mime type
     if config
@@ -325,7 +345,9 @@ async fn upload_file(
     let upload_start = Instant::now();
     let nonce = upload_to_s3(&file_hash.bucket_id, &file_hash.id, &buf).await?;
     db.set_attachment_hash_nonce(&file_hash.id, &nonce).await?;
-    S3_CACHE.insert(file_hash.id.to_owned(), Ok(buf.clone())).await;
+    S3_CACHE
+        .insert(file_hash.id.to_owned(), Ok(buf.clone()))
+        .await;
 
     // Debug information
     let time_to_upload = Instant::now() - upload_start;
@@ -452,9 +474,11 @@ async fn fetch_preview(
 
 /// Fetch original file
 ///
-/// Content disposition header will be set to 'attachment' to prevent browser from rendering anything.
+/// Content disposition is usually set to 'attachment' to prevent browser rendering.
+/// Profile GIF originals in `avatars` and `backgrounds` are served as `inline`.
 ///
-/// Using `original` as the file name parameter will redirect you to the original file.
+/// Using `original` as the file name parameter redirects to the original filename.
+/// For profile GIF originals, that redirected response can be delivered inline.
 #[utoipa::path(
     get,
     path = "/{tag}/{file_id}/{file_name}",
@@ -471,8 +495,8 @@ async fn fetch_file(
     State(db): State<Database>,
     Path((tag, file_id, file_name)): Path<(Tag, String, String)>,
 ) -> Result<Response> {
-    let tag: &'static str = tag.clone().into();
-    let file = db.fetch_attachment(tag, &file_id).await?;
+    let tag_str: &'static str = tag.clone().into();
+    let file = db.fetch_attachment(tag_str, &file_id).await?;
 
     // Ignore deleted files
     if file.deleted.is_some_and(|v| v) {
@@ -490,7 +514,8 @@ async fn fetch_file(
             let safe_filename = encode_component(&file.filename);
 
             return Ok(
-                Redirect::permanent(&format!("/{tag}/{file_id}/{}", safe_filename)).into_response(),
+                Redirect::permanent(&format!("/{tag_str}/{file_id}/{}", safe_filename))
+                    .into_response(),
             );
         }
 
@@ -498,15 +523,68 @@ async fn fetch_file(
     }
 
     let hash = file.as_hash(&db).await?;
+    let content_disposition = original_content_disposition(&tag, &hash.content_type);
     retrieve_file_by_hash(&hash).await.map(|data| {
         (
             [
                 (header::CONTENT_TYPE, hash.content_type),
-                (header::CONTENT_DISPOSITION, "attachment".to_owned()),
+                (header::CONTENT_DISPOSITION, content_disposition.to_owned()),
                 (header::CACHE_CONTROL, CACHE_CONTROL.to_owned()),
             ],
             data,
         )
             .into_response()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        effective_upload_size_limit, original_content_disposition, Tag,
+        PROFILE_GIF_UPLOAD_SIZE_LIMIT,
+    };
+
+    #[test]
+    fn gif_avatars_and_backgrounds_use_profile_gif_upload_limit() {
+        assert_eq!(
+            effective_upload_size_limit(&Tag::avatars, "image/gif", 4_000_000),
+            PROFILE_GIF_UPLOAD_SIZE_LIMIT,
+        );
+        assert_eq!(
+            effective_upload_size_limit(&Tag::backgrounds, "image/gif", 6_000_000),
+            PROFILE_GIF_UPLOAD_SIZE_LIMIT,
+        );
+    }
+
+    #[test]
+    fn non_profile_gif_and_non_gif_uploads_keep_configured_limit() {
+        assert_eq!(
+            effective_upload_size_limit(&Tag::attachments, "image/gif", 20_000_000),
+            20_000_000,
+        );
+        assert_eq!(
+            effective_upload_size_limit(&Tag::avatars, "image/png", 4_000_000),
+            4_000_000,
+        );
+    }
+
+    #[test]
+    fn only_profile_gif_originals_are_inline() {
+        assert_eq!(
+            original_content_disposition(&Tag::avatars, "image/gif"),
+            "inline"
+        );
+        assert_eq!(
+            original_content_disposition(&Tag::backgrounds, "image/gif"),
+            "inline",
+        );
+        assert_eq!(
+            original_content_disposition(&Tag::attachments, "image/gif"),
+            "attachment",
+        );
+        assert_eq!(
+            original_content_disposition(&Tag::avatars, "image/png"),
+            "attachment",
+        );
+    }
 }
