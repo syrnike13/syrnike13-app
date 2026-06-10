@@ -44,6 +44,7 @@ private:
   void captureLoop();
   void setStatus(bool available, std::string reason);
 
+  mutable std::mutex lifecycle_mutex_;
   std::atomic_bool running_{false};
   std::thread thread_;
   MicrophoneEchoReferenceBuffer buffer_;

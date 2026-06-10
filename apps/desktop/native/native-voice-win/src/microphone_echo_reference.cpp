@@ -91,14 +91,26 @@ MicrophoneEchoReference::~MicrophoneEchoReference() {
 }
 
 void MicrophoneEchoReference::start() {
-  bool expected = false;
-  if (!running_.compare_exchange_strong(expected, true)) return;
+  std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+  if (running_.load()) return;
+  if (thread_.joinable()) thread_.join();
+
+  running_.store(true);
   setStatus(false, "starting");
-  thread_ = std::thread(&MicrophoneEchoReference::captureLoop, this);
+  try {
+    thread_ = std::thread(&MicrophoneEchoReference::captureLoop, this);
+  } catch (...) {
+    running_.store(false);
+    setStatus(false, "start_failed");
+  }
 }
 
 void MicrophoneEchoReference::stop() {
-  if (!running_.exchange(false) && !thread_.joinable()) return;
+  std::lock_guard<std::mutex> lock(lifecycle_mutex_);
+  if (!running_.exchange(false) && !thread_.joinable()) {
+    setStatus(false, "stopped");
+    return;
+  }
   if (thread_.joinable()) thread_.join();
   setStatus(false, "stopped");
 }

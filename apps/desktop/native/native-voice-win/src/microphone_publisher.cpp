@@ -150,7 +150,8 @@ void captureMicrophone(
 
     MicrophoneAudioProcessor processor;
     MicrophoneEchoReference echo_reference;
-    if (command.echo_cancellation) {
+    bool echo_reference_enabled = command.echo_cancellation;
+    if (echo_reference_enabled) {
       echo_reference.start();
     }
     std::vector<float> raw_frame;
@@ -196,18 +197,21 @@ void captureMicrophone(
 
         if (raw_frame.size() == kSamplesPer10Ms) {
           const RuntimeConfig config = readRuntimeConfig();
-          if (config.echo_cancellation_enabled) {
-            echo_reference.start();
-          } else {
-            echo_reference.stop();
+          if (config.echo_cancellation_enabled != echo_reference_enabled) {
+            echo_reference_enabled = config.echo_cancellation_enabled;
+            if (echo_reference_enabled) {
+              echo_reference.start();
+            } else {
+              echo_reference.stop();
+            }
           }
 
-          const auto reference_frame = config.echo_cancellation_enabled
+          const auto reference_frame = echo_reference_enabled
             ? echo_reference.popFrame()
             : std::nullopt;
           const auto reference_status = echo_reference.status();
           const std::vector<std::int16_t>* reference_frame_ptr = nullptr;
-          if (config.echo_cancellation_enabled && reference_status.available) {
+          if (echo_reference_enabled && reference_status.available) {
             reference_frame_ptr = reference_frame.has_value()
               ? &reference_frame.value()
               : &silent_reference_frame;

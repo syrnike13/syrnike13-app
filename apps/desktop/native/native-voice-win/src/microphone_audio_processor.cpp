@@ -35,12 +35,14 @@ MicrophoneAudioProcessor::~MicrophoneAudioProcessor() = default;
 bool MicrophoneAudioProcessor::ensureApm(
   const MicrophoneAudioProcessingOptions& options
 ) {
-  if (options == active_options_) {
-    return apm_ != nullptr;
+  if (options == active_options_ && apm_ != nullptr) {
+    return true;
   }
 
-  active_options_ = options;
-  apm_.reset();
+  if (options != active_options_) {
+    active_options_ = options;
+    apm_.reset();
+  }
 
   if (!options.noise_suppression &&
       !options.echo_cancellation &&
