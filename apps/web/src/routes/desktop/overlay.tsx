@@ -25,12 +25,25 @@ function DesktopOverlayRoute() {
   useEffect(() => {
     if (!desktop) return
     let cancelled = false
-    void desktop.overlay.getState().then((nextState) => {
-      if (!cancelled) setState(nextState)
-    })
-    const unsubscribe = desktop.overlay.onStateChange((nextState) => {
-      if (!cancelled) setState(nextState)
-    })
+    let unsubscribe = () => {}
+
+    void desktop.overlay
+      .getState()
+      .then((nextState) => {
+        if (!cancelled) setState(nextState)
+      })
+      .catch((error) => {
+        console.error('[desktop-overlay] failed to load state', error)
+      })
+
+    try {
+      unsubscribe = desktop.overlay.onStateChange((nextState) => {
+        if (!cancelled) setState(nextState)
+      })
+    } catch (error) {
+      console.error('[desktop-overlay] failed to subscribe to state', error)
+    }
+
     return () => {
       cancelled = true
       unsubscribe()

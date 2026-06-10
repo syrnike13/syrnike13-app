@@ -47,6 +47,7 @@ export function createDesktopOverlayState(
 export function updateDesktopOverlaySnapshot(
   state: DesktopOverlayState,
   snapshot: unknown,
+  settings: DesktopOverlaySettings,
 ): DesktopOverlayState {
   const normalized = normalizeDesktopOverlaySnapshot(snapshot)
   return {
@@ -56,7 +57,7 @@ export function updateDesktopOverlaySnapshot(
       canShowDesktopOverlay(state, normalized, state.target) &&
       Boolean(
         state.target &&
-          isOverlayGameEnabled(state.target.gameId, overlaySettings),
+          isOverlayGameEnabled(state.target.gameId, settings),
       ),
   }
 }
@@ -64,6 +65,7 @@ export function updateDesktopOverlaySnapshot(
 export function updateDesktopOverlayEnabled(
   state: DesktopOverlayState,
   enabled: boolean,
+  settings: DesktopOverlaySettings,
 ): DesktopOverlayState {
   return {
     ...state,
@@ -74,7 +76,7 @@ export function updateDesktopOverlayEnabled(
       state.snapshot.active &&
       Boolean(
         state.target &&
-          isOverlayGameEnabled(state.target.gameId, overlaySettings),
+          isOverlayGameEnabled(state.target.gameId, settings),
       ),
   }
 }
@@ -118,7 +120,11 @@ export function getDesktopOverlayState() {
 }
 
 export function setDesktopOverlayEnabled(enabled: boolean) {
-  overlayState = updateDesktopOverlayEnabled(overlayState, enabled)
+  overlayState = updateDesktopOverlayEnabled(
+    overlayState,
+    enabled,
+    overlaySettings,
+  )
   applyDesktopOverlayVisibility()
   emitDesktopOverlayState()
   return overlayState
@@ -157,7 +163,11 @@ export function setDesktopOverlayGameTarget(
 }
 
 export function setDesktopOverlaySnapshot(snapshot: DesktopOverlaySnapshot) {
-  overlayState = updateDesktopOverlaySnapshot(overlayState, snapshot)
+  overlayState = updateDesktopOverlaySnapshot(
+    overlayState,
+    snapshot,
+    overlaySettings,
+  )
   applyDesktopOverlayVisibility()
   emitDesktopOverlayState()
   return overlayState

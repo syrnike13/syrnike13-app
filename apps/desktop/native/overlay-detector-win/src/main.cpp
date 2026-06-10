@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cwctype>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <iterator>
@@ -279,7 +280,17 @@ std::string foregroundEvent() {
 int main() {
   std::string last_event;
   while (true) {
-    const auto event = foregroundEvent();
+    std::string event;
+    try {
+      event = foregroundEvent();
+    } catch (const std::exception& error) {
+      std::cerr << "[overlay-detector] foreground poll failed: "
+                << error.what() << std::endl;
+      event = emptyEvent();
+    } catch (...) {
+      std::cerr << "[overlay-detector] foreground poll failed" << std::endl;
+      event = emptyEvent();
+    }
     if (event != last_event) {
       std::cout << event << std::endl;
       last_event = event;

@@ -93,4 +93,35 @@ describe('DesktopOverlayHud', () => {
 
     expect(container.textContent).toBe('')
   })
+
+  it('ignores empty display-name parts when rendering fallback initials', () => {
+    render(
+      <DesktopOverlayHud
+        state={{
+          available: true,
+          enabled: true,
+          visible: true,
+          target: null,
+          snapshot: {
+            active: true,
+            channelId: 'voice-1',
+            channelLabel: 'General voice',
+            participants: [
+              {
+                userId: 'listener',
+                displayName: '  Mira   Stone  ',
+                avatarUrl: null,
+                speaking: false,
+                muted: false,
+                deafened: false,
+              },
+            ],
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByText('MS')).toBeTruthy()
+    expect(screen.queryByText(/undefined/i)).toBeNull()
+  })
 })

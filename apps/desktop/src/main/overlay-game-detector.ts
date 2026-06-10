@@ -97,6 +97,11 @@ export function startOverlayGameDetector(
   })
 
   nextHelper.stderr.resume()
+  nextHelper.on('error', (error) => {
+    console.error('[overlay-detector] spawn error', error)
+    if (helper === nextHelper) helper = null
+    onTargetChanged(null)
+  })
   nextHelper.on('exit', () => {
     if (helper === nextHelper) helper = null
     onTargetChanged(null)

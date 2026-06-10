@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import type { DesktopOverlaySettings } from '@syrnike13/platform'
+import {
+  DEFAULT_DESKTOP_OVERLAY_SETTINGS,
+  type DesktopOverlaySettings,
+} from '@syrnike13/platform'
 
 import {
   SettingsBlock,
@@ -19,9 +22,21 @@ export function SettingsOverlayPanel() {
     let cancelled = false
 
     const loadSettings = () => {
-      void desktop.settings.load().then((value) => {
-        if (!cancelled) setSettings(value.overlay)
-      })
+      void desktop.settings
+        .load()
+        .then((value) => {
+          if (!cancelled) setSettings(value.overlay)
+        })
+        .catch((error) => {
+          console.error('[settings-overlay] failed to load settings', error)
+          if (cancelled) return
+          setSettings({ ...DEFAULT_DESKTOP_OVERLAY_SETTINGS })
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Не удалось загрузить настройки оверлея',
+          )
+        })
     }
 
     loadSettings()

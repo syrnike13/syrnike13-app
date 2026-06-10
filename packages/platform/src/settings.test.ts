@@ -150,4 +150,22 @@ describe('desktop local settings contract', () => {
       },
     })
   })
+
+  it('ignores malformed non-empty overlay games patches', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        overlay: {
+          games: [
+            {
+              id: '',
+              processName: '',
+              title: 42,
+              enabled: true,
+              lastSeenAt: 'now',
+            },
+          ],
+        },
+      }),
+    ).toEqual({})
+  })
 })

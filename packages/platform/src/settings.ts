@@ -425,7 +425,10 @@ export function normalizeDesktopOverlaySettingsPatch(
     next.enabled = patch.enabled
   }
   if ('games' in patch && Array.isArray(patch.games)) {
-    next.games = patch.games.flatMap(normalizeDesktopOverlayGameSettings)
+    const games = patch.games.flatMap(normalizeDesktopOverlayGameSettings)
+    if (patch.games.length === 0 || games.length > 0) {
+      next.games = games
+    }
   }
   return Object.keys(next).length > 0 ? next : undefined
 }

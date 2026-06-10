@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createDesktopOverlayState,
+  updateDesktopOverlayEnabled,
   updateDesktopOverlayGameTarget,
   updateDesktopOverlaySnapshot,
 } from './overlay-manager'
@@ -64,6 +65,7 @@ describe('desktop overlay manager state', () => {
     const voiceState = updateDesktopOverlaySnapshot(
       createDesktopOverlayState('win32'),
       snapshot,
+      enabledPreferences,
     )
 
     expect(voiceState.visible).toBe(false)
@@ -82,6 +84,7 @@ describe('desktop overlay manager state', () => {
     const voiceState = updateDesktopOverlaySnapshot(
       createDesktopOverlayState('win32'),
       snapshot,
+      enabledPreferences,
     )
 
     expect(
@@ -89,6 +92,29 @@ describe('desktop overlay manager state', () => {
         enabled: true,
         games: [{ ...enabledPreferences.games[0], enabled: false }],
       }).visible,
+    ).toBe(false)
+  })
+
+  it('uses the supplied overlay settings when updating snapshots and enabled state', () => {
+    const disabledSettings = {
+      enabled: true,
+      games: [{ ...enabledPreferences.games[0], enabled: false }],
+    }
+    const gameState = updateDesktopOverlayGameTarget(
+      createDesktopOverlayState('win32'),
+      target,
+      enabledPreferences,
+    )
+
+    expect(
+      updateDesktopOverlaySnapshot(gameState, snapshot, disabledSettings).visible,
+    ).toBe(false)
+    expect(
+      updateDesktopOverlayEnabled(
+        { ...gameState, snapshot },
+        true,
+        disabledSettings,
+      ).visible,
     ).toBe(false)
   })
 })

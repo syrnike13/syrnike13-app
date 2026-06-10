@@ -20,7 +20,6 @@ import { disposeHotkeys } from './hotkeys'
 import {
   configureDesktopOverlay,
   disposeDesktopOverlay,
-  setDesktopOverlaySettings,
 } from './overlay-manager'
 import {
   disposePrewarmedNativeMediaEngineHelper,
@@ -134,7 +133,6 @@ async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
 
 function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
   desktopLocalSettings = settings
-  setDesktopOverlaySettings(settings.overlay)
 }
 
 async function ensureAppCreated() {

@@ -418,9 +418,28 @@ function isDesktopOverlayState(value: unknown): value is DesktopOverlayState {
         (typeof state.target.processPath === 'string' ||
           state.target.processPath === null) &&
         typeof state.target.title === 'string' &&
-        state.target.bounds !== null &&
-        typeof state.target.bounds === 'object')) &&
+        isDesktopOverlayBounds(state.target.bounds))) &&
     isDesktopOverlaySnapshot(state.snapshot)
+  )
+}
+
+function isDesktopOverlayBounds(value: unknown) {
+  if (!value || typeof value !== 'object') return false
+  const bounds = value as {
+    x?: unknown
+    y?: unknown
+    width?: unknown
+    height?: unknown
+  }
+  return (
+    typeof bounds.x === 'number' &&
+    Number.isFinite(bounds.x) &&
+    typeof bounds.y === 'number' &&
+    Number.isFinite(bounds.y) &&
+    typeof bounds.width === 'number' &&
+    Number.isFinite(bounds.width) &&
+    typeof bounds.height === 'number' &&
+    Number.isFinite(bounds.height)
   )
 }
 
