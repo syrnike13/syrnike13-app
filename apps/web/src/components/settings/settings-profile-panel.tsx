@@ -144,14 +144,16 @@ export function SettingsProfilePanel() {
     if (avatarPreviewOverride !== undefined) {
       return avatarPreviewOverride
     }
-    return userAvatarUrl(user?.avatar ?? null)
+    return userAvatarUrl(user?.avatar ?? null, { animated: true })
   }, [avatarPreviewOverride, user?.avatar])
 
   const bannerPreview = useMemo(() => {
     if (bannerPreviewOverride !== undefined) {
       return bannerPreviewOverride
     }
-    return userBannerUrl(profileQuery.data?.background ?? null)
+    return userBannerUrl(profileQuery.data?.background ?? null, {
+      animated: true,
+    })
   }, [bannerPreviewOverride, profileQuery.data?.background])
 
   useEffect(() => {

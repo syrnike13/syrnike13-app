@@ -121,7 +121,9 @@ export function UserGlobalProfileSidebar({
     staleTime: 60_000,
   })
 
-  const bannerUrl = userBannerUrl(profileQuery.data?.background)
+  const bannerUrl = userBannerUrl(profileQuery.data?.background, {
+    animated: true,
+  })
   const profileBio = profileQuery.data?.content?.trim()
 
   async function removeRole(roleId: string) {
@@ -172,6 +174,7 @@ export function UserGlobalProfileSidebar({
               user={user}
               className="size-24"
               fallbackClassName="size-24 text-2xl ring-[5px] ring-secondary bg-secondary"
+              animated="always"
               showPresence
               presenceRingClassName="border-secondary"
               presenceClassName="size-7 translate-x-[14%] translate-y-[14%] border-[3px]"
