@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Frontend URL Selection
+## Task 1: Frontend URL Selection
 
 **Files:**
 - Modify: `apps/web/src/lib/media.ts`
@@ -19,7 +19,7 @@
 - [ ] Add helpers that detect animated GIF files and return original URL only when animation is enabled.
 - [ ] Cover preview URL fallback for non-GIF, non-animated images, and null files.
 
-### Task 2: Avatar Animation Modes
+## Task 2: Avatar Animation Modes
 
 **Files:**
 - Modify: `apps/web/src/components/user/user-avatar.tsx`
@@ -30,7 +30,7 @@
 - [ ] Use original only when `speaking` is true for `speaking`.
 - [ ] Keep default mode as `hover` for existing small avatar uses.
 
-### Task 3: Apply Large And Voice Modes
+## Task 3: Apply Large And Voice Modes
 
 **Files:**
 - Modify: `apps/web/src/components/user/user-profile-card-header.tsx`
@@ -43,7 +43,7 @@
 - [ ] Use animated banner URLs for large profile banners.
 - [ ] Pass `animated="speaking"` and `speaking={speaking}` to voice stage avatar surfaces.
 
-### Task 4: Backend GIF Limit And Original Disposition
+## Task 4: Backend GIF Limit And Original Disposition
 
 **Files:**
 - Modify: `services/backend/crates/services/autumn/src/api.rs`
@@ -53,7 +53,7 @@
 - [ ] Add helper for original content disposition: `inline` only for GIF originals in `avatars` and `backgrounds`.
 - [ ] Add focused Rust unit tests for both helpers.
 
-### Task 5: Verification
+## Task 5: Verification
 
 **Commands:**
 - `pnpm --filter @syrnike13/web test`

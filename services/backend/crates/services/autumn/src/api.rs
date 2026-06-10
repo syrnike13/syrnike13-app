@@ -474,9 +474,11 @@ async fn fetch_preview(
 
 /// Fetch original file
 ///
-/// Content disposition header will be set to 'attachment' to prevent browser from rendering anything.
+/// Content disposition is usually set to 'attachment' to prevent browser rendering.
+/// Profile GIF originals in `avatars` and `backgrounds` are served as `inline`.
 ///
-/// Using `original` as the file name parameter will redirect you to the original file.
+/// Using `original` as the file name parameter redirects to the original filename.
+/// For profile GIF originals, that redirected response can be delivered inline.
 #[utoipa::path(
     get,
     path = "/{tag}/{file_id}/{file_name}",

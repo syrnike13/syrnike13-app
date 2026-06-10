@@ -7,7 +7,7 @@ import {
   userBannerUrl,
 } from '#/lib/media'
 
-function imageFile(overrides: Partial<File> = {}): File {
+function imageFile(overrides: Partial<File> = {}) {
   return {
     _id: 'file-1',
     tag: 'avatars',
@@ -21,7 +21,7 @@ function imageFile(overrides: Partial<File> = {}): File {
       animated: true,
     },
     ...overrides,
-  } as File
+  } satisfies File
 }
 
 describe('isAnimatedGifFile', () => {

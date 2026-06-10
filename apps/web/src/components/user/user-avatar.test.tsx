@@ -29,29 +29,42 @@ vi.mock('#/components/ui/avatar', () => ({
   ),
 }))
 
-function user(overrides: Partial<User> = {}): User {
-  return {
-    _id: 'user-1',
-    username: 'alice',
-    avatar: {
-      _id: 'avatar-1',
-      tag: 'avatars',
-      filename: 'avatar.gif',
-      content_type: 'image/gif',
-      size: 1024,
-      metadata: {
-        type: 'Image',
-        width: 128,
-        height: 128,
-        animated: true,
-      },
+const baseUser = {
+  _id: 'user-1',
+  username: 'alice',
+  discriminator: '0001',
+  avatar: {
+    _id: 'avatar-1',
+    tag: 'avatars',
+    filename: 'avatar.gif',
+    content_type: 'image/gif',
+    size: 1024,
+    metadata: {
+      type: 'Image',
+      width: 128,
+      height: 128,
+      animated: true,
     },
+  },
+  relationship: 'None',
+  online: true,
+} as const satisfies User
+
+function user(overrides: Partial<User> = {}) {
+  return {
+    ...baseUser,
     ...overrides,
-  } as User
+  }
 }
 
 function avatarImage() {
-  return screen.getByRole('img', { name: 'alice' }) as HTMLImageElement
+  const element = screen.getByRole('img', { name: 'alice' })
+
+  if (!(element instanceof HTMLImageElement)) {
+    throw new Error('Expected avatar image to be an HTMLImageElement')
+  }
+
+  return element
 }
 
 describe('UserAvatar animation modes', () => {

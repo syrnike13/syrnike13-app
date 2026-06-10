@@ -27,7 +27,7 @@ Support uploaded GIF files as animated avatars and profile banners while keeping
 - `apps/web/src/lib/media.ts` owns animated/static URL selection.
 - `UserAvatar` gets an explicit animation mode: `never`, `hover`, `always`, or `speaking`.
 - Existing small avatar uses default hover behavior.
-- Large profile/card uses pass `always`.
+- Large profile/card surfaces pass `animated="always"`.
 - Voice stage passes `speaking` without additional debounce.
 
 ## Verification
