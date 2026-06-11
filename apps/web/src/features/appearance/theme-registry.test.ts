@@ -67,7 +67,7 @@ describe('theme registry', () => {
     ).toBe('dark')
   })
 
-  it('exposes six palettes including syrnike base', () => {
+  it('exposes eight palettes including syrnike base', () => {
     expect(THEME_CATALOG.map((theme) => theme.id)).toEqual([
       'syrnike',
       'lug',
@@ -75,6 +75,8 @@ describe('theme registry', () => {
       'matrix',
       'monolit',
       'pergament',
+      'grafit',
+      'kontrast',
     ])
     expect(getThemeById('syrnike').name).toBe('Сырники')
   })
