@@ -39,34 +39,82 @@ export function UserAvatar({
   presenceRingClassName = 'border-card',
   presenceClassName,
 }: UserAvatarProps) {
+  const [hovered, setHovered] = useState(false)
   const [hoverAnimationRequested, setHoverAnimationRequested] = useState(false)
   const name = user?.display_name ?? user?.username ?? '?'
   const showDot = showPresence && user && user.relationship !== 'Blocked'
-  const shouldAnimate =
-    animated === 'always' ||
-    (animated === 'hover' && hoverAnimationRequested) ||
-    (animated === 'speaking' && speaking)
-  const avatarSrc = user
-    ? userAvatarUrl(user.avatar, { animated: shouldAnimate })
+  const staticAvatarSrc = user
+    ? userAvatarUrl(user.avatar, { animated: false })
     : null
+  const animatedAvatarSrc = user
+    ? userAvatarUrl(user.avatar, { animated: true })
+    : null
+  const hasAnimatedVariant =
+    animatedAvatarSrc !== null && animatedAvatarSrc !== staticAvatarSrc
+  const showAnimatedOverlay =
+    hasAnimatedVariant &&
+    ((animated === 'hover' && hovered) || (animated === 'speaking' && speaking))
+  const mountAnimatedOverlay =
+    hasAnimatedVariant &&
+    (animated === 'speaking' || (animated === 'hover' && hoverAnimationRequested))
+  const avatarSrc =
+    animated === 'always' && hasAnimatedVariant
+      ? animatedAvatarSrc
+      : staticAvatarSrc
+
+  function startHoverAnimation() {
+    setHovered(true)
+    setHoverAnimationRequested(true)
+  }
 
   return (
     <div
       className={cn('relative shrink-0', className)}
       onPointerEnter={
         animated === 'hover'
-          ? () => setHoverAnimationRequested(true)
+          ? startHoverAnimation
+          : undefined
+      }
+      onPointerLeave={
+        animated === 'hover'
+          ? () => setHovered(false)
           : undefined
       }
       onFocus={
         animated === 'hover'
-          ? () => setHoverAnimationRequested(true)
+          ? startHoverAnimation
+          : undefined
+      }
+      onBlur={
+        animated === 'hover'
+          ? () => setHovered(false)
           : undefined
       }
     >
       <Avatar className={fallbackClassName}>
         {avatarSrc ? (
-          <AvatarImage src={avatarSrc} alt={name} className="object-cover" />
+          <AvatarImage
+            src={avatarSrc}
+            alt={name}
+            className={cn(
+              'object-cover',
+              mountAnimatedOverlay && 'transition-opacity duration-150',
+              showAnimatedOverlay && 'opacity-0',
+            )}
+          />
+        ) : null}
+        {mountAnimatedOverlay && animatedAvatarSrc ? (
+          <img
+            src={animatedAvatarSrc}
+            alt=""
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute inset-0 z-[1] size-full object-cover transition-opacity duration-150',
+              showAnimatedOverlay ? 'opacity-100' : 'opacity-0',
+            )}
+            loading="lazy"
+            decoding="async"
+          />
         ) : null}
         <AvatarFallback>{initials(name)}</AvatarFallback>
       </Avatar>

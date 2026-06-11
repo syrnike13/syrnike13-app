@@ -362,7 +362,7 @@ async fn upload_file(
 }
 
 /// Header value used for cache control
-pub static CACHE_CONTROL: &str = "public, max-age=604800, must-revalidate";
+pub static CACHE_CONTROL: &str = "public, max-age=604800, immutable";
 
 /// Fetch preview of file
 ///
@@ -374,7 +374,7 @@ pub static CACHE_CONTROL: &str = "public, max-age=604800, must-revalidate";
 /// | Tag | Image Resolution <sup>†</sup> | Animations stripped by preview <sup>‡</sup> |
 /// | :-: | --- | :-: |
 /// | attachments | Up to 1280px on any axis | ❌ |
-/// | avatars | Up to 128px on any axis | ✅ |
+/// | avatars | Up to 256px on any axis | ✅ |
 /// | backgrounds | Up to 1280x720px | ❌ |
 /// | icons | Up to 128px on any axis | ✅ |
 /// | banners | Up to 480px on any axis | ❌ |
@@ -442,9 +442,13 @@ async fn fetch_preview(
     if !matches!(hash.metadata, Metadata::Image { .. })
         || (is_animated && !matches!(tag, Tag::avatars | Tag::icons))
     {
-        return Ok(
-            Redirect::permanent(&format!("/{tag_str}/{file_id}/{}", file.filename)).into_response(),
-        );
+        let safe_filename = encode_component(&file.filename);
+
+        return Ok((
+            [(header::CACHE_CONTROL, CACHE_CONTROL)],
+            Redirect::permanent(&format!("/{tag_str}/{file_id}/{safe_filename}")),
+        )
+            .into_response());
     }
 
     // Original image data
@@ -513,10 +517,11 @@ async fn fetch_file(
         if file_name == "original" {
             let safe_filename = encode_component(&file.filename);
 
-            return Ok(
-                Redirect::permanent(&format!("/{tag_str}/{file_id}/{}", safe_filename))
-                    .into_response(),
-            );
+            return Ok((
+                [(header::CACHE_CONTROL, CACHE_CONTROL)],
+                Redirect::permanent(&format!("/{tag_str}/{file_id}/{}", safe_filename)),
+            )
+                .into_response());
         }
 
         return Err(create_error!(NotFound));
@@ -540,7 +545,7 @@ async fn fetch_file(
 #[cfg(test)]
 mod tests {
     use super::{
-        effective_upload_size_limit, original_content_disposition, Tag,
+        effective_upload_size_limit, original_content_disposition, Tag, CACHE_CONTROL,
         PROFILE_GIF_UPLOAD_SIZE_LIMIT,
     };
 
@@ -586,5 +591,10 @@ mod tests {
             original_content_disposition(&Tag::avatars, "image/png"),
             "attachment",
         );
+    }
+
+    #[test]
+    fn media_cache_control_keeps_immutable_files_fresh() {
+        assert_eq!(CACHE_CONTROL, "public, max-age=604800, immutable");
     }
 }

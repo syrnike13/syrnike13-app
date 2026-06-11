@@ -67,6 +67,16 @@ function avatarImage() {
   return element
 }
 
+function animatedOverlay(container: HTMLElement) {
+  const element = container.querySelector('img[aria-hidden="true"]')
+
+  if (element !== null && !(element instanceof HTMLImageElement)) {
+    throw new Error('Expected animated overlay to be an HTMLImageElement')
+  }
+
+  return element
+}
+
 describe('UserAvatar animation modes', () => {
   afterEach(() => {
     cleanup()
@@ -80,37 +90,61 @@ describe('UserAvatar animation modes', () => {
     )
   })
 
-  it('loads original GIF after hover in hover mode', () => {
+  it('shows animated GIF overlay only while hover is active', () => {
     const { container } = render(<UserAvatar user={user()} />)
+
+    expect(avatarImage().src).toBe(
+      'https://syrnike13.ru/autumn/avatars/avatar-1',
+    )
+    expect(animatedOverlay(container)).toBeNull()
 
     fireEvent.pointerEnter(container.firstElementChild!)
 
     expect(avatarImage().src).toBe(
-      'https://syrnike13.ru/autumn/avatars/avatar-1/original',
+      'https://syrnike13.ru/autumn/avatars/avatar-1',
     )
+    expect(animatedOverlay(container)?.src).toBe(
+      'https://syrnike13.ru/autumn/avatars/avatar-1/avatar.gif',
+    )
+    expect(animatedOverlay(container)?.className).toContain('opacity-100')
+
+    fireEvent.pointerLeave(container.firstElementChild!)
+
+    expect(avatarImage().src).toBe(
+      'https://syrnike13.ru/autumn/avatars/avatar-1',
+    )
+    expect(animatedOverlay(container)?.className).toContain('opacity-0')
   })
 
   it('uses original GIF immediately in always mode', () => {
     render(<UserAvatar user={user()} animated="always" />)
 
     expect(avatarImage().src).toBe(
-      'https://syrnike13.ru/autumn/avatars/avatar-1/original',
+      'https://syrnike13.ru/autumn/avatars/avatar-1/avatar.gif',
     )
   })
 
-  it('uses original GIF only while speaking in speaking mode', () => {
-    const { rerender } = render(
+  it('keeps speaking GIF sources mounted without swapping the static image src', () => {
+    const { container, rerender } = render(
       <UserAvatar user={user()} animated="speaking" speaking={false} />,
     )
 
     expect(avatarImage().src).toBe(
       'https://syrnike13.ru/autumn/avatars/avatar-1',
     )
+    expect(animatedOverlay(container)?.src).toBe(
+      'https://syrnike13.ru/autumn/avatars/avatar-1/avatar.gif',
+    )
+    expect(animatedOverlay(container)?.className).toContain('opacity-0')
 
     rerender(<UserAvatar user={user()} animated="speaking" speaking />)
 
     expect(avatarImage().src).toBe(
-      'https://syrnike13.ru/autumn/avatars/avatar-1/original',
+      'https://syrnike13.ru/autumn/avatars/avatar-1',
     )
+    expect(animatedOverlay(container)?.src).toBe(
+      'https://syrnike13.ru/autumn/avatars/avatar-1/avatar.gif',
+    )
+    expect(animatedOverlay(container)?.className).toContain('opacity-100')
   })
 })

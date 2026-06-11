@@ -54,7 +54,17 @@ describe('profile media urls', () => {
       'https://syrnike13.ru/autumn/avatars/file-1',
     )
     expect(userAvatarUrl(avatar, { animated: true })).toBe(
-      'https://syrnike13.ru/autumn/avatars/file-1/original',
+      'https://syrnike13.ru/autumn/avatars/file-1/avatar.gif',
+    )
+  })
+
+  it('uses canonical encoded filenames for original media URLs', () => {
+    const avatar = imageFile({
+      filename: 'space cat.gif',
+    })
+
+    expect(userAvatarUrl(avatar, { animated: true })).toBe(
+      'https://syrnike13.ru/autumn/avatars/file-1/space%20cat.gif',
     )
   })
 
