@@ -329,9 +329,7 @@ fn failed_livekit_rooms_to_reconcile(
         .iter()
         .filter_map(|failure| match failure {
             VoiceTransportCleanupFailure::ListRooms { .. } => None,
-            VoiceTransportCleanupFailure::ListParticipants { node, room } => {
-                Some((node.clone(), room.clone()))
-            }
+            VoiceTransportCleanupFailure::ListParticipants { .. } => None,
             VoiceTransportCleanupFailure::RemoveParticipant { node, room, .. } => {
                 Some((node.clone(), room.clone()))
             }
@@ -399,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn reconciles_each_failed_livekit_room_once() {
+    fn reconciles_each_room_with_failed_participant_removal_once() {
         let failures = vec![
             VoiceTransportCleanupFailure::RemoveParticipant {
                 node: "worldwide".into(),
@@ -422,10 +420,7 @@ mod tests {
 
         assert_eq!(
             failed_livekit_rooms_to_reconcile(&failures),
-            vec![
-                ("worldwide".to_string(), "room-a".to_string()),
-                ("worldwide".to_string(), "room-b".to_string()),
-            ]
+            vec![("worldwide".to_string(), "room-a".to_string())]
         );
     }
 

@@ -109,7 +109,7 @@ export const appearanceSettingsStore = {
     }
   },
 
-  getState: () => state,
+  getState: () => ({ ...state }),
 
   setThemeId(themeId: string) {
     if (state.themeId === themeId) return

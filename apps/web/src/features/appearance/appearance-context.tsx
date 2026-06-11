@@ -50,7 +50,6 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const onChange = () => setPrefersDark(media.matches)
-    onChange()
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
   }, [])
