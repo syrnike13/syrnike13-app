@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { File } from '@syrnike13/api-types'
 
 import {
+  attachmentOriginalUrl,
   isAnimatedGifFile,
   userAvatarUrl,
   userBannerUrl,
@@ -65,6 +66,22 @@ describe('profile media urls', () => {
 
     expect(userAvatarUrl(avatar, { animated: true })).toBe(
       'https://syrnike13.ru/autumn/avatars/file-1/space%20cat.gif',
+    )
+  })
+
+  it('falls back to original token when original filename is empty', () => {
+    const avatar = imageFile({
+      filename: '',
+    })
+
+    expect(userAvatarUrl(avatar, { animated: true })).toBe(
+      'https://syrnike13.ru/autumn/avatars/file-1/original',
+    )
+  })
+
+  it('falls back to original token when original filename is missing', () => {
+    expect(attachmentOriginalUrl({ _id: 'file-1', tag: 'avatars' })).toBe(
+      'https://syrnike13.ru/autumn/avatars/file-1/original',
     )
   })
 

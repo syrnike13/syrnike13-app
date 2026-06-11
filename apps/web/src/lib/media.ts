@@ -11,14 +11,17 @@ type AnimatedMediaOptions = {
   animated?: boolean
 }
 
+type OriginalMediaFile = Pick<File, '_id' | 'tag'> & {
+  filename?: string | null
+}
+
 export function attachmentPreviewUrl(file: Pick<File, '_id' | 'tag'>) {
   return `${config.mediaUrl}/${file.tag}/${file._id}`
 }
 
-export function attachmentOriginalUrl(
-  file: Pick<File, '_id' | 'tag' | 'filename'>,
-) {
-  const filename = encodeURIComponent(file.filename)
+export function attachmentOriginalUrl(file: OriginalMediaFile) {
+  const originalName = file.filename || 'original'
+  const filename = encodeURIComponent(originalName)
   return `${config.mediaUrl}/${file.tag}/${file._id}/${filename}`
 }
 
