@@ -89,3 +89,15 @@ export const Gamepad2Icon = defineIcon(RiGamepadLine, {
   pack: 'remixicon',
   name: 'RiGamepadLine',
 })
+
+/** Звуковая панель в голосовой панели пользователя. */
+export const SoundboardIcon = defineIcon(iconifyIcon('lucide:audio-lines'), {
+  pack: 'iconify',
+  name: 'lucide:audio-lines',
+})
+
+/** Активность в голосовой панели пользователя. */
+export const ActivityIcon = defineIcon(iconifyIcon('duo-icons:app'), {
+  pack: 'iconify',
+  name: 'duo-icons:app',
+})

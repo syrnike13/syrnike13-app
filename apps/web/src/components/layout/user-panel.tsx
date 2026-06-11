@@ -5,6 +5,7 @@ import {
   VoiceScreenShareStrip,
 } from '#/components/voice/voice-local-broadcast-strip'
 import { VoiceConnectionStrip } from '#/components/voice/voice-connection-strip'
+import { VoicePanelMediaBar } from '#/components/voice/voice-panel-media-bar'
 import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
 import { VoiceSoundSplitControl } from '#/components/voice/voice-sound-split-control'
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
@@ -88,6 +89,7 @@ export function UserPanel() {
             <VoiceScreenShareStrip />
             <VoiceCameraStrip />
             <VoiceConnectionStrip />
+            <VoicePanelMediaBar />
           </>
         ) : null}
 

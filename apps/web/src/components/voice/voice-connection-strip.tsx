@@ -13,25 +13,24 @@ import {
   voiceConnectionPhaseLabel,
 } from '#/features/voice/voice-mic-status'
 import { useVoice } from '#/features/voice/voice-context'
-import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 const VOICE_STATUS_CONNECTED = {
-  accent: 'text-[#23a559]',
-  icon: 'text-[#23a559]',
-  iconBg: 'bg-[#23a559]/15',
+  accent: 'text-chart-3',
+  icon: 'text-chart-3',
+  iconBg: 'bg-chart-3/15',
 } as const
 
 const VOICE_STATUS_CONNECTING = {
-  accent: 'text-[#f0b232]',
-  icon: 'text-[#f0b232]',
-  iconBg: 'bg-[#f0b232]/15',
+  accent: 'text-chart-2',
+  icon: 'text-chart-2',
+  iconBg: 'bg-chart-2/15',
 } as const
 
 const VOICE_STATUS_FAILED = {
-  accent: 'text-[#ed4245]',
-  icon: 'text-[#ed4245]',
-  iconBg: 'bg-[#ed4245]/15',
+  accent: 'text-destructive',
+  icon: 'text-destructive',
+  iconBg: 'bg-destructive/15',
 } as const
 
 export function VoiceConnectionStrip() {
@@ -78,10 +77,7 @@ export function VoiceConnectionStrip() {
 
   return (
     <div
-      className={cn(
-        `border-b px-2 py-2 ${shellDivider}`,
-        !connected && 'animate-pulse',
-      )}
+      className={cn('px-2 pt-2 pb-1', !connected && 'animate-pulse')}
     >
       <div className="flex items-center gap-2">
         {connected ? (
@@ -135,7 +131,7 @@ export function VoiceConnectionStrip() {
           type="button"
           size="icon"
           variant="ghost"
-          className="size-8 shrink-0 text-muted-foreground hover:bg-[#ed4245]/15 hover:text-[#ed4245]"
+          className="size-8 shrink-0 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
           title="Отключиться от голоса"
           onClick={voice.leave}
         >
