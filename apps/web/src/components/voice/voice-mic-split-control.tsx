@@ -8,33 +8,36 @@ import {
   VoiceSplitControl,
   type VoiceSplitControlSurface,
 } from '#/components/voice/voice-split-control'
-import { micControlTitle } from '#/features/voice/voice-mic-status'
+import { useVoice } from '#/features/voice/voice-context'
+import { microphoneMediaControlState } from '#/features/voice/voice-media-availability'
 
 export function VoiceMicSplitControl({
   surface,
   inVoice,
   connecting,
   micMuted,
-  micIssue,
   onToggleMic,
 }: {
   surface: VoiceSplitControlSurface
   inVoice: boolean
   connecting: boolean
   micMuted: boolean
-  micIssue: { label: string } | null | undefined
   onToggleMic: () => void
 }) {
+  const voice = useVoice()
+  const { disabled, title } = microphoneMediaControlState({
+    availability: voice.mediaAvailability.microphone,
+    inVoice,
+    micMuted,
+    connecting,
+  })
+
   return (
     <VoiceSplitControl
       surface={surface}
       danger={micMuted}
-      disabled={connecting}
-      mainTitle={micControlTitle({
-        inVoice,
-        micMuted,
-        micIssue,
-      })}
+      disabled={disabled}
+      mainTitle={title}
       chevronTitle="Параметры микрофона"
       onMainClick={onToggleMic}
       popoverContent={

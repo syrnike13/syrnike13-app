@@ -13,6 +13,7 @@ import type {
 } from '#/features/voice/voice-mic-status'
 import type { VoicePingSample } from '#/features/voice/voice-ping-history'
 import type { RtcDebugSnapshot } from '#/features/voice/voice-rtc-debug'
+import type { VoiceMediaAvailabilityState } from '#/features/voice/voice-media-availability'
 import type {
   StageMediaFilters,
   StageMediaItem,
@@ -52,6 +53,8 @@ export type VoiceContextValue = {
   micPublishing: boolean
   /** Причина, если микрофон хотели включить, но он недоступен. */
   micIssue: VoiceMicIssue | null
+  /** Доступность микрофона, камеры и демонстрации на текущем устройстве. */
+  mediaAvailability: VoiceMediaAvailabilityState
   deafened: boolean
   participantCount: number
   speakingUserIds: ReadonlySet<string>

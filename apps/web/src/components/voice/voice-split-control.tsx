@@ -6,6 +6,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '#/components/ui/popover'
+import { TooltipProvider } from '#/components/ui/tooltip'
+import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { voiceStagePopoverMicSettingsClass } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
 
@@ -27,13 +29,13 @@ export function splitControlMainButtonClass(
 ) {
   if (surface === 'stage') {
     return cn(
-      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50',
+      'flex h-9 min-w-12 shrink-0 items-center justify-center rounded-l-md rounded-r-none px-2 text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger ? splitControlDangerMainClass : 'group-hover/media:bg-white/10 group-hover/media:text-white',
     )
   }
 
   return cn(
-    'flex size-9 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors disabled:pointer-events-none disabled:opacity-50',
+    'flex size-9 shrink-0 items-center justify-center rounded-l-md rounded-r-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
     danger
       ? splitControlDangerMainClass
       : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
@@ -46,7 +48,7 @@ export function splitControlChevronButtonClass(
 ) {
   if (surface === 'stage') {
     return cn(
-      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50',
+      'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
       danger
         ? splitControlDangerChevronClass
         : 'group-hover/media:bg-white/[0.06] group-hover/media:text-white',
@@ -54,7 +56,7 @@ export function splitControlChevronButtonClass(
   }
 
   return cn(
-    'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors disabled:pointer-events-none disabled:opacity-50',
+    'flex h-9 w-5 shrink-0 items-center justify-center rounded-r-md rounded-l-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
     danger
       ? splitControlDangerChevronClass
       : 'bg-transparent text-muted-foreground group-hover/media:bg-accent group-hover/media:text-foreground',
@@ -81,8 +83,7 @@ function SplitControlChevron({
       <PopoverTrigger asChild>
         <button
           type="button"
-          title={title}
-          disabled={disabled}
+          aria-disabled={disabled}
           className={splitControlChevronButtonClass(surface, segmentState)}
         >
           <ChevronDownIcon
@@ -129,23 +130,26 @@ export function VoiceSplitControl({
   const segmentState = { danger }
 
   return (
-    <div className="group/media flex items-center gap-px">
-      <button
-        type="button"
-        title={mainTitle}
-        disabled={disabled}
-        onClick={onMainClick}
-        className={splitControlMainButtonClass(surface, segmentState)}
-      >
-        {children}
-      </button>
-      <SplitControlChevron
-        surface={surface}
-        disabled={Boolean(disabled)}
-        danger={danger}
-        title={chevronTitle}
-        popoverContent={popoverContent}
-      />
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <div className="group/media flex items-center gap-px">
+        <VoiceControlTooltip title={mainTitle}>
+          <button
+            type="button"
+            aria-disabled={disabled}
+            onClick={disabled ? undefined : onMainClick}
+            className={splitControlMainButtonClass(surface, segmentState)}
+          >
+            {children}
+          </button>
+        </VoiceControlTooltip>
+        <SplitControlChevron
+          surface={surface}
+          disabled={Boolean(disabled)}
+          danger={danger}
+          title={chevronTitle}
+          popoverContent={popoverContent}
+        />
+      </div>
+    </TooltipProvider>
   )
 }

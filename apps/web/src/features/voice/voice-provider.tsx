@@ -124,6 +124,8 @@ import {
   type VoiceMicIssue,
   type VoiceStatus,
 } from '#/features/voice/voice-mic-status'
+import { useMediaDevices } from '#/features/voice/use-media-devices'
+import { buildVoiceMediaAvailabilityState } from '#/features/voice/voice-media-availability'
 import { isVoiceConnectedInChannel } from '#/features/voice/voice-watch-screen-share'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
@@ -420,6 +422,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     () => readVoicePreferences().micEnabled,
   )
   const [micIssue, setMicIssue] = useState<VoiceMicIssue | null>(null)
+  const inputDevices = useMediaDevices('audioinput')
+  const videoDevices = useMediaDevices('videoinput')
   const [deafened, setDeafened] = useState(
     () => readVoicePreferences().deafened,
   )
@@ -2549,6 +2553,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const mediaAvailability = useMemo(
+    () =>
+      buildVoiceMediaAvailabilityState({
+        inputDevices,
+        videoDevices,
+        micIssue,
+      }),
+    [inputDevices, micIssue, videoDevices],
+  )
+
   const value = useMemo<VoiceContextValue>(
     () => ({
       channelId,
@@ -2558,6 +2572,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       micEnabled,
       micPublishing,
       micIssue,
+      mediaAvailability,
       deafened,
       participantCount,
       speakingUserIds,
@@ -2602,6 +2617,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       localVoiceReady,
       micEnabled,
       micIssue,
+      mediaAvailability,
       micPublishing,
       participantCount,
       screenShareEnabled,

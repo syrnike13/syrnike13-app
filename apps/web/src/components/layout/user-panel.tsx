@@ -150,7 +150,6 @@ export function UserPanel() {
                   inVoice={inVoice}
                   connecting={voice.status === 'connecting'}
                   micMuted={micMuted}
-                  micIssue={voice.micIssue}
                   onToggleMic={voice.toggleMic}
                 />
 

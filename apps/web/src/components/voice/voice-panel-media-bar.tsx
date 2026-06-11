@@ -9,21 +9,18 @@ import {
   VideoOffIcon,
 } from '#/components/icons'
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '#/components/ui/tooltip'
+import { TooltipProvider } from '#/components/ui/tooltip'
+import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { useVoice } from '#/features/voice/voice-context'
+import { voiceMediaControlState } from '#/features/voice/voice-media-availability'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 const panelMediaButtonBaseClass =
-  'relative flex h-8 flex-1 items-center justify-center rounded-md border text-secondary-foreground transition-colors'
+  'relative flex h-8 w-full items-center justify-center rounded-md border text-secondary-foreground transition-colors'
 
 const panelMediaButtonDisabledClass =
-  'pointer-events-none opacity-45'
+  'cursor-not-allowed opacity-45'
 
 const panelMediaButtonIdleClass =
   'border-secondary-foreground/5 bg-secondary-foreground/8 hover:border-secondary-foreground/5 hover:bg-secondary-foreground/12'
@@ -48,50 +45,44 @@ function PanelMediaButton({
   children: ReactNode
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          title={title}
-          disabled={disabled}
-          onClick={onClick}
-          className={cn(
-            panelMediaButtonBaseClass,
-            active ? panelMediaButtonActiveClass : panelMediaButtonIdleClass,
-            disabled && panelMediaButtonDisabledClass,
-          )}
-        >
-          {children}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8}>
-        {title}
-      </TooltipContent>
-    </Tooltip>
+    <VoiceControlTooltip title={title} wrapperClassName="flex min-w-0 flex-1">
+      <button
+        type="button"
+        aria-disabled={disabled}
+        onClick={disabled ? undefined : onClick}
+        className={cn(
+          panelMediaButtonBaseClass,
+          active ? panelMediaButtonActiveClass : panelMediaButtonIdleClass,
+          disabled && panelMediaButtonDisabledClass,
+        )}
+      >
+        {children}
+      </button>
+    </VoiceControlTooltip>
   )
 }
 
 function PanelMediaButtonSoon({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex min-w-0 flex-1">
-          <button
-            type="button"
-            disabled
-            aria-disabled
-            title={title}
-            className={cn(panelMediaButtonBaseClass, panelMediaButtonSoonClass, 'w-full')}
-          >
-            {children}
-          </button>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8} className="text-center">
-        <p className="font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">Скоро</p>
-      </TooltipContent>
-    </Tooltip>
+    <VoiceControlTooltip
+      title={title}
+      wrapperClassName="flex min-w-0 flex-1"
+      content={
+        <>
+          <p className="font-medium">{title}</p>
+          <p className="text-xs text-muted-foreground">Скоро</p>
+        </>
+      }
+      contentClassName="text-center"
+    >
+      <button
+        type="button"
+        aria-disabled
+        className={cn(panelMediaButtonBaseClass, panelMediaButtonSoonClass)}
+      >
+        {children}
+      </button>
+    </VoiceControlTooltip>
   )
 }
 
@@ -101,14 +92,30 @@ export function VoicePanelMediaBar() {
   const cameraOn = voice.cameraEnabled
   const sharingScreen = voice.screenShareEnabled
   const screenShareStarting = voice.screenShareStarting
+  const cameraControl = voiceMediaControlState({
+    availability: voice.mediaAvailability.camera,
+    active: cameraOn,
+    connecting,
+    activeTitle: 'Выключить камеру',
+    inactiveTitle: 'Включить камеру',
+  })
+  const screenShareControl = voiceMediaControlState({
+    availability: voice.mediaAvailability.screenShare,
+    active: sharingScreen,
+    connecting,
+    busy: screenShareStarting,
+    activeTitle: 'Остановить демонстрацию',
+    inactiveTitle: 'Демонстрация экрана',
+    busyTitle: 'Демонстрация запускается',
+  })
 
   return (
     <TooltipProvider delayDuration={300}>
       <div className={cn('flex gap-1.5 border-b px-2 pb-2 pt-1', shellDivider)}>
         <PanelMediaButton
-          title={cameraOn ? 'Выключить камеру' : 'Включить камеру'}
+          title={cameraControl.title}
           active={cameraOn}
-          disabled={connecting}
+          disabled={cameraControl.disabled}
           onClick={voice.toggleCamera}
         >
           {cameraOn ? (
@@ -119,15 +126,9 @@ export function VoicePanelMediaBar() {
         </PanelMediaButton>
 
         <PanelMediaButton
-          title={
-            screenShareStarting
-              ? 'Демонстрация запускается'
-              : sharingScreen
-                ? 'Остановить демонстрацию'
-                : 'Демонстрация экрана'
-          }
+          title={screenShareControl.title}
           active={sharingScreen || screenShareStarting}
-          disabled={connecting || screenShareStarting}
+          disabled={screenShareControl.disabled}
           onClick={voice.toggleScreenShare}
         >
           {screenShareStarting ? (

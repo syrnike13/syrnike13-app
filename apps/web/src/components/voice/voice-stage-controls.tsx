@@ -31,7 +31,12 @@ import {
   TooltipTrigger,
 } from '#/components/ui/tooltip'
 import { useVoice } from '#/features/voice/voice-context'
-import { isMicVisuallyMuted, micControlTitle } from '#/features/voice/voice-mic-status'
+import {
+  microphoneMediaControlState,
+  voiceMediaControlState,
+} from '#/features/voice/voice-media-availability'
+import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
+import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
 import { voiceStagePopoverSettingsClass } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
@@ -49,7 +54,7 @@ const stageControlGroupClass =
   'flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#1e1f22] p-1.5'
 
 const stageControlIconClass =
-  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50'
+  'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
 
 const stageControlNeutralMainGroupHoverClass =
   'group-hover/media:bg-white/10 group-hover/media:text-white'
@@ -97,7 +102,7 @@ function stageIconButtonClass({
 const stageControlMediaMainClass = 'rounded-l-md rounded-r-none'
 
 const stageControlChevronClass =
-  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors disabled:pointer-events-none disabled:opacity-50'
+  'flex h-9 w-7 shrink-0 items-center justify-center rounded-r-md rounded-l-none text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
 
 function stageMediaSegmentButtonClass(
   segment: 'main' | 'chevron',
@@ -229,10 +234,25 @@ export function VoiceStageControls({
   const cameraOn = voice.cameraEnabled
   const sharingScreen = voice.screenShareEnabled
   const screenShareStarting = voice.screenShareStarting
+  const cameraControl = voiceMediaControlState({
+    availability: voice.mediaAvailability.camera,
+    active: cameraOn,
+    connecting,
+    activeTitle: 'Выключить камеру',
+    inactiveTitle: 'Включить камеру',
+  })
+  const screenShareControl = voiceMediaControlState({
+    availability: voice.mediaAvailability.screenShare,
+    active: sharingScreen,
+    connecting,
+    busy: screenShareStarting,
+    activeTitle: 'Остановить демонстрацию',
+    inactiveTitle: 'Демонстрация экрана',
+    busyTitle: 'Демонстрация запускается',
+  })
 
   const controlBar = overlay ? (
     <VoiceStageOverlayControlBar
-      channelId={channelId}
       connecting={connecting}
       inCall={inCall}
       micMuted={micMuted}
@@ -240,7 +260,8 @@ export function VoiceStageControls({
       cameraOn={cameraOn}
       sharingScreen={sharingScreen}
       screenShareStarting={screenShareStarting}
-      micIssue={voice.micIssue}
+      cameraControl={cameraControl}
+      screenShareControl={screenShareControl}
       onToggleMic={voice.toggleMic}
       onToggleDeafen={voice.toggleDeafen}
       onToggleCamera={voice.toggleCamera}
@@ -249,7 +270,6 @@ export function VoiceStageControls({
     />
   ) : (
     <LegacyControlBar
-      channelId={channelId}
       compact={compact}
       connecting={connecting}
       inCall={inCall}
@@ -258,7 +278,8 @@ export function VoiceStageControls({
       cameraOn={cameraOn}
       sharingScreen={sharingScreen}
       screenShareStarting={screenShareStarting}
-      micIssue={voice.micIssue}
+      cameraControl={cameraControl}
+      screenShareControl={screenShareControl}
       onToggleMic={voice.toggleMic}
       onToggleDeafen={voice.toggleDeafen}
       onToggleCamera={voice.toggleCamera}
@@ -300,8 +321,12 @@ export function VoiceStageControls({
   )
 }
 
+type MediaControlState = {
+  title: string
+  disabled: boolean
+}
+
 type ControlBarStateProps = {
-  channelId: string
   inCall: boolean
   connecting: boolean
   micMuted: boolean
@@ -309,7 +334,8 @@ type ControlBarStateProps = {
   cameraOn: boolean
   sharingScreen: boolean
   screenShareStarting: boolean
-  micIssue: { label: string } | null | undefined
+  cameraControl: MediaControlState
+  screenShareControl: MediaControlState
   onToggleMic: () => void
   onToggleDeafen: () => void
   onToggleCamera: () => void
@@ -325,14 +351,16 @@ function VoiceStageOverlayControlBar({
   cameraOn,
   sharingScreen,
   screenShareStarting,
-  micIssue,
+  cameraControl,
+  screenShareControl,
   onToggleMic,
   onToggleDeafen,
   onToggleCamera,
   onToggleScreenShare,
   onLeave,
-}: Omit<ControlBarStateProps, 'channelId'>) {
+}: ControlBarStateProps) {
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="flex items-stretch gap-2">
       <div className={stageControlGroupClass}>
         <VoiceMicSplitControl
@@ -340,16 +368,15 @@ function VoiceStageOverlayControlBar({
           inVoice={inCall}
           connecting={connecting}
           micMuted={micMuted}
-          micIssue={micIssue}
           onToggleMic={onToggleMic}
         />
 
         <StageControlDivider />
 
         <StageMediaControl
-          title={cameraOn ? 'Выключить камеру' : 'Включить камеру'}
+          title={cameraControl.title}
           success={cameraOn}
-          disabled={connecting}
+          disabled={cameraControl.disabled}
           onClick={onToggleCamera}
           chevronDisabled
         >
@@ -363,15 +390,9 @@ function VoiceStageOverlayControlBar({
 
       <div className={stageControlGroupClass}>
         <StageIconButton
-          title={
-            screenShareStarting
-              ? 'Демонстрация запускается'
-              : sharingScreen
-                ? 'Остановить демонстрацию'
-                : 'Демонстрация экрана'
-          }
+          title={screenShareControl.title}
           highlight={sharingScreen || screenShareStarting}
-          disabled={connecting || screenShareStarting}
+          disabled={screenShareControl.disabled}
           onClick={onToggleScreenShare}
         >
           {screenShareStarting ? (
@@ -409,6 +430,7 @@ function VoiceStageOverlayControlBar({
         <PhoneOffIcon className="size-5" />
       </button>
     </div>
+    </TooltipProvider>
   )
 }
 
@@ -433,26 +455,30 @@ function StageMediaControl({
 }) {
   const segmentState = { danger, success, chevronDisabled }
 
+  const mainDisabled = Boolean(disabled)
+
   return (
     <div className="group/media flex items-center gap-px">
-      <button
-        type="button"
-        title={title}
-        disabled={disabled}
-        onClick={onClick}
-        className={stageMediaSegmentButtonClass('main', segmentState)}
-      >
-        {children}
-      </button>
-      {chevron ?? (
+      <VoiceControlTooltip title={title}>
         <button
           type="button"
-          title="Параметры камеры"
-          disabled={disabled || chevronDisabled}
-          className={stageMediaSegmentButtonClass('chevron', segmentState)}
+          aria-disabled={mainDisabled}
+          onClick={mainDisabled ? undefined : onClick}
+          className={stageMediaSegmentButtonClass('main', segmentState)}
         >
-          <ChevronDownIcon className="size-3.5" />
+          {children}
         </button>
+      </VoiceControlTooltip>
+      {chevron ?? (
+        <VoiceControlTooltip title="Параметры камеры">
+          <button
+            type="button"
+            aria-disabled={mainDisabled || chevronDisabled}
+            className={stageMediaSegmentButtonClass('chevron', segmentState)}
+          >
+            <ChevronDownIcon className="size-3.5" />
+          </button>
+        </VoiceControlTooltip>
       )}
     </div>
   )
@@ -477,16 +503,19 @@ function StageIconButton({
   onClick: () => void
   children: ReactNode
 }) {
+  const isDisabled = Boolean(disabled)
+
   return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={stageIconButtonClass({ danger, highlight })}
-    >
-      {children}
-    </button>
+    <VoiceControlTooltip title={title}>
+      <button
+        type="button"
+        aria-disabled={isDisabled}
+        onClick={isDisabled ? undefined : onClick}
+        className={stageIconButtonClass({ danger, highlight })}
+      >
+        {children}
+      </button>
+    </VoiceControlTooltip>
   )
 }
 
@@ -499,14 +528,24 @@ function LegacyControlBar({
   cameraOn,
   sharingScreen,
   screenShareStarting,
-  micIssue,
+  cameraControl,
+  screenShareControl,
   onToggleMic,
   onToggleDeafen,
   onToggleCamera,
   onToggleScreenShare,
   onLeave,
-}: Omit<ControlBarStateProps, 'channelId'> & { compact: boolean }) {
+}: ControlBarStateProps & { compact: boolean }) {
+  const voice = useVoice()
+  const micControl = microphoneMediaControlState({
+    availability: voice.mediaAvailability.microphone,
+    inVoice: inCall,
+    micMuted,
+    connecting,
+  })
+
   return (
+    <TooltipProvider delayDuration={300}>
     <div
       className={cn(
         'flex items-center gap-1 rounded-full bg-[#232428] p-1.5 shadow-lg ring-1 ring-white/10',
@@ -514,9 +553,9 @@ function LegacyControlBar({
       )}
     >
       <LegacyControlButton
-        title={micControlTitle({ inVoice: inCall, micMuted, micIssue })}
+        title={micControl.title}
         active={micMuted}
-        disabled={connecting}
+        disabled={micControl.disabled}
         compact={compact}
         onClick={onToggleMic}
       >
@@ -538,9 +577,9 @@ function LegacyControlBar({
       </LegacyControlButton>
 
       <LegacyControlButton
-        title={cameraOn ? 'Выключить камеру' : 'Включить камеру'}
+        title={cameraControl.title}
         active={!cameraOn}
-        disabled={connecting}
+        disabled={cameraControl.disabled}
         compact={compact}
         onClick={onToggleCamera}
       >
@@ -548,15 +587,9 @@ function LegacyControlBar({
       </LegacyControlButton>
 
       <LegacyControlButton
-        title={
-          screenShareStarting
-            ? 'Демонстрация запускается'
-            : sharingScreen
-              ? 'Остановить демонстрацию'
-              : 'Демонстрация экрана'
-        }
+        title={screenShareControl.title}
         active={sharingScreen || screenShareStarting}
-        disabled={connecting || screenShareStarting}
+        disabled={screenShareControl.disabled}
         compact={compact}
         onClick={onToggleScreenShare}
       >
@@ -586,6 +619,7 @@ function LegacyControlBar({
         <PhoneOffIcon className="size-5" />
       </Button>
     </div>
+    </TooltipProvider>
   )
 }
 
@@ -719,21 +753,24 @@ function LegacyControlButton({
   onClick: () => void
   children: ReactNode
 }) {
+  const isDisabled = Boolean(disabled)
+
   return (
-    <Button
-      type="button"
-      size="icon"
-      variant="ghost"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'rounded-full text-foreground hover:bg-white/10',
-        compact ? 'size-8' : 'size-11',
-        active && 'bg-white/10 text-destructive',
-      )}
-    >
-      {children}
-    </Button>
+    <VoiceControlTooltip title={title}>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-disabled={isDisabled}
+        onClick={isDisabled ? undefined : onClick}
+        className={cn(
+          'rounded-full text-foreground hover:bg-white/10 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+          compact ? 'size-8' : 'size-11',
+          active && 'bg-white/10 text-destructive',
+        )}
+      >
+        {children}
+      </Button>
+    </VoiceControlTooltip>
   )
 }
