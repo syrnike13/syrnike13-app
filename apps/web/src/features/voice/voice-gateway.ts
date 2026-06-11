@@ -174,6 +174,7 @@ export async function requestVoiceJoin(
     node,
     force_disconnect: options?.force_disconnect ?? true,
     recipients: options?.recipients,
+    refresh_credentials: true,
   })
   return responsePromise
 }

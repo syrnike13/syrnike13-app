@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sendReliable = vi.fn()
-let eventHandler: ((event: { type: string; [key: string]: unknown }) => void) | null =
-  null
+let eventHandlers: ((event: { type: string; [key: string]: unknown }) => void)[] =
+  []
 let stateHandler: ((state: string) => void) | null = null
 
 vi.mock('#/features/events/gateway', () => ({
@@ -10,7 +10,7 @@ vi.mock('#/features/events/gateway', () => ({
     state: 'connected',
     sendReliable,
     subscribeEvents: vi.fn((handler) => {
-      eventHandler = handler
+      eventHandlers.push(handler)
       return vi.fn()
     }),
     subscribeState: vi.fn((handler) => {
@@ -29,9 +29,15 @@ describe('voice gateway reliable state updates', () => {
     vi.useFakeTimers()
     vi.resetModules()
     vi.clearAllMocks()
-    eventHandler = null
+    eventHandlers = []
     stateHandler = null
   })
+
+  function emitEvent(event: { type: string; [key: string]: unknown }) {
+    for (const handler of eventHandlers) {
+      handler(event)
+    }
+  }
 
   it('sends voice state updates with a nonce and retries until ack', async () => {
     const { sendVoiceStateUpdate } = await import('./voice-gateway')
@@ -56,7 +62,7 @@ describe('voice gateway reliable state updates', () => {
     expect(sendReliable).toHaveBeenCalledTimes(2)
     expect(sendReliable.mock.calls[1]?.[0]).toEqual(firstEvent)
 
-    eventHandler?.({
+    emitEvent({
       type: 'VoiceStateAck',
       nonce: firstEvent.nonce,
       channel_id: 'channel-1',
@@ -92,7 +98,7 @@ describe('voice gateway reliable state updates', () => {
       force_disconnect: true,
     })
 
-    eventHandler?.({
+    emitEvent({
       type: 'VoiceServerUpdate',
       channel_id: 'channel-1',
       node: 'node-1',
@@ -112,7 +118,7 @@ describe('voice gateway reliable state updates', () => {
       force_disconnect: false,
     })
 
-    eventHandler?.({
+    emitEvent({
       type: 'VoiceServerUpdate',
       channel_id: 'channel-1',
       node: 'node-1',
@@ -120,5 +126,38 @@ describe('voice gateway reliable state updates', () => {
 
     await vi.advanceTimersByTimeAsync(5_000)
     expect(sendReliable).toHaveBeenCalledTimes(2)
+  })
+
+  it('requests fresh credentials when joining a channel that may already contain this user', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+
+    const joinPromise = requestVoiceJoin('channel-1', false, false)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
+      type: 'VoiceStateUpdate',
+      channel_id: 'channel-1',
+      self_mute: false,
+      self_deaf: false,
+      node: 'node-1',
+      force_disconnect: true,
+      refresh_credentials: true,
+    })
+
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      channel_id: 'channel-1',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+
+    await expect(joinPromise).resolves.toMatchObject({
+      type: 'VoiceServerUpdate',
+      channel_id: 'channel-1',
+    })
   })
 })
