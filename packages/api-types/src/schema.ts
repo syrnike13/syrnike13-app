@@ -1115,7 +1115,15 @@ export interface components {
       presence?: components["schemas"]["Presence"] | null;
     };
     /** @description Presence status */
-    Presence: "Online" | "Idle" | "Focus" | "Busy" | "Invisible";
+    Presence:
+      | "Online"
+      | "Idle"
+      | "Focus"
+      | "Busy"
+      | "Invisible"
+      | "SystemIdle"
+      | "SystemWebOnline"
+      | "SystemMobileOnline";
     /** @description Bot information for if the user is a bot */
     BotInformation: {
       /** @description Id of the owner of this bot */

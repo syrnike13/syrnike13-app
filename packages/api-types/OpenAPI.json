@@ -7983,6 +7983,27 @@
             "enum": [
               "Invisible"
             ]
+          },
+          {
+            "description": "User was marked idle by the system",
+            "type": "string",
+            "enum": [
+              "SystemIdle"
+            ]
+          },
+          {
+            "description": "User is online through a web client",
+            "type": "string",
+            "enum": [
+              "SystemWebOnline"
+            ]
+          },
+          {
+            "description": "User is online through a mobile client",
+            "type": "string",
+            "enum": [
+              "SystemMobileOnline"
+            ]
           }
         ]
       },

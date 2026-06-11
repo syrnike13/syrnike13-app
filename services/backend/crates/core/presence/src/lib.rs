@@ -4,12 +4,15 @@ extern crate log;
 use once_cell::sync::Lazy;
 use rand::Rng;
 use redis_kiss::{get_connection, AsyncCommands};
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 mod operations;
 use operations::{
     __add_to_set_string, __add_to_set_u32, __delete_key, __get_set_members_as_string,
-    __get_set_size, __remove_from_set_string, __remove_from_set_u32,
+    __get_set_members_as_u32, __get_set_size, __remove_from_set_string, __remove_from_set_u32,
 };
 
 pub static REGION_ID: Lazy<u16> = Lazy::new(|| {
@@ -23,9 +26,109 @@ pub static REGION_KEY: Lazy<String> = Lazy::new(|| format!("region{}", &*REGION_
 pub static ONLINE_SET: &str = "online";
 
 pub static FLAG_BITS: u32 = 0b1;
+pub const SYSTEM_IDLE_AFTER_MS: u64 = 5 * 60 * 1000;
+pub const SYSTEM_IDLE_CHECK_INTERVAL_MS: u64 = 30 * 1000;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PresenceClientKind {
+    Web,
+    Mobile,
+    Desktop,
+    Unknown,
+}
+
+impl PresenceClientKind {
+    pub fn from_client_name(value: &str) -> Self {
+        match value {
+            "web" => Self::Web,
+            "mobile" => Self::Mobile,
+            "desktop" => Self::Desktop,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Mobile => "mobile",
+            Self::Desktop => "desktop",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+fn current_time_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn session_activity_key(user_id: &str, session_id: u32) -> String {
+    format!("presence_session:{user_id}:{session_id}")
+}
+
+fn session_client_key(user_id: &str, session_id: u32) -> String {
+    format!("presence_session_client:{user_id}:{session_id}")
+}
+
+async fn write_session_activity(
+    conn: &mut redis_kiss::Conn,
+    user_id: &str,
+    session_id: u32,
+    client_kind: PresenceClientKind,
+) {
+    let _: Option<()> = conn
+        .set(session_activity_key(user_id, session_id), current_time_ms())
+        .await
+        .ok();
+    let _: Option<()> = conn
+        .set(
+            session_client_key(user_id, session_id),
+            client_kind.as_str(),
+        )
+        .await
+        .ok();
+}
+
+pub async fn touch_session(user_id: &str, session_id: u32, client_kind: PresenceClientKind) {
+    if let Ok(mut conn) = get_connection().await {
+        write_session_activity(&mut conn, user_id, session_id, client_kind).await;
+    }
+}
+
+pub async fn has_recent_activity(user_id: &str, max_idle_ms: u64) -> bool {
+    let Ok(mut conn) = get_connection().await else {
+        return true;
+    };
+
+    let session_ids = __get_set_members_as_u32(&mut conn, user_id).await;
+    if session_ids.is_empty() {
+        return false;
+    }
+
+    let oldest_active_ms = current_time_ms().saturating_sub(max_idle_ms);
+    for session_id in session_ids {
+        let last_activity = conn
+            .get::<_, Option<u64>>(session_activity_key(user_id, session_id))
+            .await
+            .ok()
+            .flatten();
+
+        if last_activity.is_none_or(|value| value >= oldest_active_ms) {
+            return true;
+        }
+    }
+
+    false
+}
 
 /// Create a new presence session, returns the ID of this session
-pub async fn create_session(user_id: &str, flags: u8) -> (bool, u32) {
+pub async fn create_session(
+    user_id: &str,
+    flags: u8,
+    client_kind: PresenceClientKind,
+) -> (bool, u32) {
     info!("Creating a presence session for {user_id} with flags {flags}");
 
     if let Ok(mut conn) = get_connection().await {
@@ -42,6 +145,7 @@ pub async fn create_session(user_id: &str, flags: u8) -> (bool, u32) {
         __add_to_set_u32(&mut conn, user_id, session_id).await;
         __add_to_set_string(&mut conn, ONLINE_SET, user_id).await;
         __add_to_set_string(&mut conn, &REGION_KEY, &format!("{user_id}:{session_id}")).await;
+        write_session_activity(&mut conn, user_id, session_id, client_kind).await;
         info!("Created session for {user_id}, assigned them a session ID of {session_id}.");
 
         (was_empty, session_id)
@@ -63,6 +167,8 @@ async fn delete_session_internal(user_id: &str, session_id: u32, skip_region: bo
     if let Ok(mut conn) = get_connection().await {
         // Remove the session
         __remove_from_set_u32(&mut conn, user_id, session_id).await;
+        __delete_key(&mut conn, &session_activity_key(user_id, session_id)).await;
+        __delete_key(&mut conn, &session_client_key(user_id, session_id)).await;
 
         // Remove from the region
         if !skip_region {
@@ -192,7 +298,10 @@ pub async fn clear_region(region_id: Option<&str>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{clear_region, create_session, delete_session, filter_online, is_online};
+    use crate::{
+        clear_region, create_session, delete_session, filter_online, is_online,
+        session_activity_key, PresenceClientKind,
+    };
     use rand::Rng;
 
     #[async_std::test]
@@ -208,7 +317,8 @@ mod tests {
         let flags = 1;
 
         // Create a session
-        let (first_session, session_id) = create_session(&user_id, flags).await;
+        let (first_session, session_id) =
+            create_session(&user_id, flags, PresenceClientKind::Web).await;
         assert!(first_session);
         assert_ne!(session_id, 0);
         assert_eq!(session_id as u8 & flags, flags);
@@ -221,11 +331,13 @@ mod tests {
         assert!(user_ids.contains(&user_id));
 
         // Create a few more sessions
-        let (first_session, second_session_id) = create_session(&user_id, 0).await;
+        let (first_session, second_session_id) =
+            create_session(&user_id, 0, PresenceClientKind::Web).await;
         assert!(!first_session);
         assert_eq!(second_session_id as u8 & 1, 0);
 
-        let (first_session, other_session_id) = create_session(&other_id, 0).await;
+        let (first_session, other_session_id) =
+            create_session(&other_id, 0, PresenceClientKind::Web).await;
         assert!(first_session);
 
         let user_ids = filter_online(&[user_id.to_string(), other_id.to_string()]).await;
@@ -244,5 +356,33 @@ mod tests {
 
         let user_ids = filter_online(&[user_id.to_string(), other_id.to_string()]).await;
         assert!(user_ids.is_empty())
+    }
+
+    #[test]
+    fn presence_client_kind_parses_known_clients() {
+        assert_eq!(
+            PresenceClientKind::from_client_name("web"),
+            PresenceClientKind::Web
+        );
+        assert_eq!(
+            PresenceClientKind::from_client_name("mobile"),
+            PresenceClientKind::Mobile
+        );
+        assert_eq!(
+            PresenceClientKind::from_client_name("desktop"),
+            PresenceClientKind::Desktop
+        );
+        assert_eq!(
+            PresenceClientKind::from_client_name("other"),
+            PresenceClientKind::Unknown
+        );
+    }
+
+    #[test]
+    fn session_activity_key_is_namespaced_by_user_and_session() {
+        assert_eq!(
+            session_activity_key("user-1", 42),
+            "presence_session:user-1:42"
+        );
     }
 }

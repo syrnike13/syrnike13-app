@@ -60,6 +60,7 @@ describe('EventsGateway', () => {
 
   afterEach(() => {
     gateway.disconnect()
+    window.syrnikeDesktop = undefined
     mock.restore()
     vi.useRealTimers()
   })
@@ -77,6 +78,42 @@ describe('EventsGateway', () => {
     })
 
     expect(gateway.state).toBe('connected')
+  })
+
+  it('adds the web client kind to gateway URLs by default', () => {
+    gateway.connect('wss://example.test/ws', 'token-1')
+
+    const url = new URL(mock.sockets.at(-1)!.url)
+    expect(url.searchParams.get('client')).toBe('web')
+  })
+
+  it('adds the desktop client kind when running inside Electron', () => {
+    window.syrnikeDesktop = { runtime: 'desktop' } as never
+
+    gateway.connect('wss://example.test/ws', 'token-1')
+
+    const url = new URL(mock.sockets.at(-1)!.url)
+    expect(url.searchParams.get('client')).toBe('desktop')
+  })
+
+  it('sends user activity only after Ready', async () => {
+    gateway.connect('wss://example.test/ws', 'token-1')
+    const socket = mock.sockets.at(-1)!
+
+    await Promise.resolve()
+    socket.send.mockClear()
+
+    gateway.userActivity()
+    expect(socket.send).not.toHaveBeenCalled()
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'Ready', users: [] }),
+    })
+    gateway.userActivity()
+
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'UserActivity' }),
+    )
   })
 
   it('does not notify state subscribers when state does not change', () => {

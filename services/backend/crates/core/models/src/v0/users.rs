@@ -135,6 +135,12 @@ auto_derived!(
         Busy,
         /// User appears to be offline
         Invisible,
+        /// User was marked idle by the system
+        SystemIdle,
+        /// User is online through a web client
+        SystemWebOnline,
+        /// User is online through a mobile client
+        SystemMobileOnline,
     }
 
     /// User's active status

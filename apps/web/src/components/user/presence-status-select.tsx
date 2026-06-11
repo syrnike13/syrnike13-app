@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
 } from '#/components/ui/popover'
 import { profileMenuRowClass } from '#/components/user/profile-menu-row'
-import { PRESENCE_OPTIONS } from '#/lib/presence'
+import { PRESENCE_DISPLAY, PRESENCE_OPTIONS } from '#/lib/presence'
 import { useSetPresence } from '#/features/users/use-set-presence'
 import { cn } from '#/lib/utils'
 
@@ -23,9 +23,7 @@ export function PresenceStatusSelect({
 }: PresenceStatusSelectProps) {
   const [open, setOpen] = useState(false)
   const { presence, setPresence, isPending } = useSetPresence()
-  const current =
-    PRESENCE_OPTIONS.find((option) => option.value === presence) ??
-    PRESENCE_OPTIONS[0]
+  const current = PRESENCE_DISPLAY[presence ?? 'Online'] ?? PRESENCE_OPTIONS[0]
 
   const showMutedBell = presence === 'Busy' || presence === 'Focus'
 
@@ -76,7 +74,7 @@ export function PresenceStatusSelect({
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         {PRESENCE_OPTIONS.map((option) => {
-          const selected = option.value === presence
+          const selected = option.value === current.value
           return (
             <button
               key={option.value}

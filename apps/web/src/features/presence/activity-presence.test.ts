@@ -1,133 +1,57 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Presence, User } from '@syrnike13/api-types'
 
 import {
+  ACTIVITY_THROTTLE_MS,
   createActivityPresenceController,
-  HIDDEN_IDLE_AFTER_MS,
-  IDLE_AFTER_MS,
 } from './activity-presence'
 
-function makeUser(presence: Presence) {
-  return {
-    _id: 'user-1',
-    username: 'tester',
-    discriminator: '0001',
-    online: true,
-    status: { presence, text: null },
-  } satisfies User
-}
-
 describe('createActivityPresenceController', () => {
-  it('sets Idle after inactivity when user is Online', async () => {
-    let now = 0
-    const applyPresence = vi.fn(async () => {})
-    const controller = createActivityPresenceController({
-      applyPresence,
-      now: () => now,
-    })
+  it('sends activity when the gateway is connected', () => {
+    const sendActivity = vi.fn()
+    const controller = createActivityPresenceController({ sendActivity })
 
-    controller.updateSnapshot({
-      token: 'token-1',
-      user: makeUser('Online'),
-      gatewayConnected: true,
-    })
-
-    now += IDLE_AFTER_MS + 1
-    controller.evaluateIdle()
-
-    await vi.waitFor(() => {
-      expect(applyPresence).toHaveBeenCalledWith(
-        'Idle',
-        expect.objectContaining({ _id: 'user-1' }),
-        'token-1',
-      )
-    })
-  })
-
-  it('does not set Idle when user is Busy', async () => {
-    let now = 0
-    const applyPresence = vi.fn(async () => {})
-    const controller = createActivityPresenceController({
-      applyPresence,
-      now: () => now,
-    })
-
-    controller.updateSnapshot({
-      token: 'token-1',
-      user: makeUser('Busy'),
-      gatewayConnected: true,
-    })
-
-    now += IDLE_AFTER_MS + 1
-    controller.evaluateIdle()
-
-    expect(applyPresence).not.toHaveBeenCalled()
-  })
-
-  it('restores Online only after auto-idle', async () => {
-    let now = 0
-    const applyPresence = vi.fn(async () => {})
-    const controller = createActivityPresenceController({
-      applyPresence,
-      now: () => now,
-    })
-
-    controller.updateSnapshot({
-      token: 'token-1',
-      user: makeUser('Online'),
-      gatewayConnected: true,
-    })
-
-    now += IDLE_AFTER_MS + 1
-    controller.evaluateIdle()
-    await vi.waitFor(() => expect(applyPresence).toHaveBeenCalledTimes(1))
-
-    controller.updateSnapshot({
-      token: 'token-1',
-      user: makeUser('Idle'),
-      gatewayConnected: true,
-    })
-
+    controller.updateSnapshot({ gatewayConnected: true })
     controller.markActive()
-    await vi.waitFor(() => {
-      expect(applyPresence).toHaveBeenLastCalledWith(
-        'Online',
-        expect.any(Object),
-        'token-1',
-      )
-    })
+
+    expect(sendActivity).toHaveBeenCalledTimes(1)
   })
 
-  it('uses fresh token from updated snapshot', async () => {
+  it('does not send activity while the gateway is disconnected', () => {
+    const sendActivity = vi.fn()
+    const controller = createActivityPresenceController({ sendActivity })
+
+    controller.updateSnapshot({ gatewayConnected: false })
+    controller.markActive()
+
+    expect(sendActivity).not.toHaveBeenCalled()
+  })
+
+  it('throttles noisy activity events', () => {
     let now = 0
-    const applyPresence = vi.fn(async () => {})
+    const sendActivity = vi.fn()
     const controller = createActivityPresenceController({
-      applyPresence,
+      sendActivity,
       now: () => now,
     })
 
-    controller.updateSnapshot({
-      token: 'token-old',
-      user: makeUser('Online'),
-      gatewayConnected: true,
-    })
+    controller.updateSnapshot({ gatewayConnected: true })
 
-    controller.updateSnapshot({
-      token: 'token-new',
-      user: makeUser('Online'),
-      gatewayConnected: true,
-    })
+    controller.recordThrottledActivity()
+    now += ACTIVITY_THROTTLE_MS - 1
+    controller.recordThrottledActivity()
+    now += 1
+    controller.recordThrottledActivity()
 
-    controller.onTabHidden()
-    now += HIDDEN_IDLE_AFTER_MS + 1
-    controller.evaluateIdle()
+    expect(sendActivity).toHaveBeenCalledTimes(2)
+  })
 
-    await vi.waitFor(() => {
-      expect(applyPresence).toHaveBeenCalledWith(
-        'Idle',
-        expect.any(Object),
-        'token-new',
-      )
-    })
+  it('marks activity when the tab becomes visible again', () => {
+    const sendActivity = vi.fn()
+    const controller = createActivityPresenceController({ sendActivity })
+
+    controller.updateSnapshot({ gatewayConnected: true })
+    controller.onTabVisible()
+
+    expect(sendActivity).toHaveBeenCalledTimes(1)
   })
 })

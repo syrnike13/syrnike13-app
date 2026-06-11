@@ -14,6 +14,17 @@ export const PRESENCE_OPTIONS: PresenceOption[] = [
   { value: 'Invisible', label: 'Невидимый', dotClass: 'bg-muted-foreground' },
 ]
 
+export const PRESENCE_DISPLAY: Record<Presence, PresenceOption> = {
+  Online: PRESENCE_OPTIONS[0],
+  Idle: PRESENCE_OPTIONS[1],
+  Focus: PRESENCE_OPTIONS[2],
+  Busy: PRESENCE_OPTIONS[3],
+  Invisible: PRESENCE_OPTIONS[4],
+  SystemIdle: PRESENCE_OPTIONS[1],
+  SystemWebOnline: PRESENCE_OPTIONS[0],
+  SystemMobileOnline: PRESENCE_OPTIONS[0],
+}
+
 export function isUserOnline(user?: User | null) {
   return Boolean(user?.online)
 }
@@ -23,10 +34,7 @@ export function getUserPresence(user?: User | null): Presence {
 }
 
 export function presenceModeLabel(presence: Presence) {
-  return (
-    PRESENCE_OPTIONS.find((option) => option.value === presence)?.label ??
-    'В сети'
-  )
+  return PRESENCE_DISPLAY[presence]?.label ?? 'В сети'
 }
 
 export function presenceDotClass(user?: User | null) {
@@ -41,10 +49,7 @@ export function presenceDotClass(user?: User | null) {
     return 'bg-muted-foreground'
   }
 
-  return (
-    PRESENCE_OPTIONS.find((option) => option.value === presence)?.dotClass ??
-    'bg-muted-foreground'
-  )
+  return PRESENCE_DISPLAY[presence]?.dotClass ?? 'bg-muted-foreground'
 }
 
 /** Подпись под именем: кастомный статус или режим присутствия. */
