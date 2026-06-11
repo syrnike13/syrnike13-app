@@ -2,18 +2,27 @@ import type { File, User } from '@syrnike13/api-types'
 
 import { config } from '#/lib/config'
 
-type AnimatedImageFile = Pick<File, '_id' | 'tag' | 'metadata' | 'content_type'>
+type AnimatedImageFile = Pick<
+  File,
+  '_id' | 'tag' | 'filename' | 'metadata' | 'content_type'
+>
 
 type AnimatedMediaOptions = {
   animated?: boolean
+}
+
+type OriginalMediaFile = Pick<File, '_id' | 'tag'> & {
+  filename?: string | null
 }
 
 export function attachmentPreviewUrl(file: Pick<File, '_id' | 'tag'>) {
   return `${config.mediaUrl}/${file.tag}/${file._id}`
 }
 
-export function attachmentOriginalUrl(file: Pick<File, '_id' | 'tag'>) {
-  return `${config.mediaUrl}/${file.tag}/${file._id}/original`
+export function attachmentOriginalUrl(file: OriginalMediaFile) {
+  const originalName = file.filename || 'original'
+  const filename = encodeURIComponent(originalName)
+  return `${config.mediaUrl}/${file.tag}/${file._id}/${filename}`
 }
 
 export function isImageFile(file: File) {

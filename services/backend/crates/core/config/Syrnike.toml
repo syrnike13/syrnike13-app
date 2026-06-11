@@ -175,7 +175,7 @@ max_pixel_side = 10_000
 [files.preview]
 # Maximum image resolution
 attachments = [1280, 1280]
-avatars = [128, 128]
+avatars = [256, 256]
 backgrounds = [1280, 720]
 icons = [128, 128]
 banners = [480, 480]
