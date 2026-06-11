@@ -20,7 +20,7 @@ function userWithPresence(presence: Presence, online = true) {
 
 describe('presence labels', () => {
   it('renders system idle as user-facing idle', () => {
-    const presence = 'SystemIdle' as Presence
+    const presence = 'SystemIdle'
 
     expect(presenceModeLabel(presence)).toBe('Не активен')
     expect(presenceLabel(userWithPresence(presence))).toBe('не активен')
@@ -28,10 +28,12 @@ describe('presence labels', () => {
   })
 
   it('renders system online variants as user-facing online', () => {
-    for (const presence of [
+    const systemOnlinePresences = [
       'SystemWebOnline',
       'SystemMobileOnline',
-    ] as Presence[]) {
+    ] as const satisfies readonly Presence[]
+
+    for (const presence of systemOnlinePresences) {
       expect(presenceModeLabel(presence)).toBe('В сети')
       expect(presenceLabel(userWithPresence(presence))).toBe('в сети')
       expect(presenceDotTitle(userWithPresence(presence))).toBe('В сети')

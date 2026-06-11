@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BellOffIcon, CheckIcon, ChevronRightIcon } from '#/components/icons'
-import type { Presence } from '@syrnike13/api-types'
+import type { ManualPresence } from '@syrnike13/api-types'
 
 import {
   Popover,
@@ -27,7 +27,7 @@ export function PresenceStatusSelect({
 
   const showMutedBell = presence === 'Busy' || presence === 'Focus'
 
-  async function pick(next: Presence) {
+  async function pick(next: ManualPresence) {
     if (next === presence || isPending) return
     await setPresence(next)
     setOpen(false)

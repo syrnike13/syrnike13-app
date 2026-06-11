@@ -17,6 +17,7 @@ export function ActivityPresenceManager() {
     }),
   )
 
+  // Keep handlers in sync before effects run, so activity events cannot read a stale gateway state.
   snapshotRef.current = {
     gatewayConnected: auth.gatewayState === 'connected',
   }

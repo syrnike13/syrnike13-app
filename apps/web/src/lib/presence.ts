@@ -1,7 +1,7 @@
-import type { Presence, User } from '@syrnike13/api-types'
+import type { ManualPresence, Presence, User } from '@syrnike13/api-types'
 
 export type PresenceOption = {
-  value: Presence
+  value: ManualPresence
   label: string
   dotClass: string
 }

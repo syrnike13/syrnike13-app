@@ -1,6 +1,6 @@
-# Server Presence System Implementation Plan
+# Server Presence System Implementation Record
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> These implementation steps were completed for the server presence system work. Checked items record the executed work and verification.
 
 **Goal:** Move automatic idle/active presence from the web client to the backend while preserving manual statuses.
 
@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Presence Types And UI Mapping
+## Task 1: Presence Types And UI Mapping
 
 **Files:**
 - Modify: `services/backend/crates/core/models/src/v0/users.rs`
@@ -27,7 +27,7 @@
 - [x] Update frontend presence helpers so system statuses render like their user-facing state but do not appear in selectable options.
 - [x] Run `pnpm --dir apps/web test -- presence.test.ts --run` and verify it passes.
 
-### Task 2: API Validation For Manual Statuses
+## Task 2: API Validation For Manual Statuses
 
 **Files:**
 - Modify: `services/backend/crates/delta/src/routes/users/edit_user.rs`
@@ -38,7 +38,7 @@
 - [x] Add a small explicit validator that accepts only manual statuses in `PATCH /users/@me`.
 - [x] Run the narrow Cargo test and verify it passes.
 
-### Task 3: Redis Session Activity
+## Task 3: Redis Session Activity
 
 **Files:**
 - Modify: `services/backend/crates/core/presence/src/lib.rs`
@@ -49,7 +49,7 @@
 - [x] Add helper functions to touch a session, delete metadata, and detect whether any session is recently active.
 - [x] Keep existing online set behavior intact.
 
-### Task 4: Gateway System Presence Lifecycle
+## Task 4: Gateway System Presence Lifecycle
 
 **Files:**
 - Modify: `services/backend/crates/core/database/src/models/users/model.rs`
@@ -69,7 +69,7 @@
 - [x] Do not alter manual `Idle`, `Focus`, `Busy`, or `Invisible`.
 - [x] Run frontend presence tests and backend check.
 
-### Task 5: Full Verification
+## Task 5: Full Verification
 
 **Files:**
 - No new files.

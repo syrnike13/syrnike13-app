@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Presence } from '@syrnike13/api-types'
+import type { ManualPresence } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { updateCurrentUser } from '#/features/api/users-api'
@@ -13,7 +13,7 @@ export function useSetPresence() {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: async (presence: Presence) => {
+    mutationFn: async (presence: ManualPresence) => {
       const token = auth.session?.token
       const user = auth.user
       if (!token || !user) {
