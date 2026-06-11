@@ -1,6 +1,3 @@
-/** Макс. ширина фокус-стрима (не на весь ультраширокий канал). */
-export const VOICE_STAGE_FOCUS_MAX_WIDTH_PX = 1200
-
 /** Нижние превью всегда 16:9. */
 export const VOICE_STAGE_STRIP_TILE_ASPECT = 16 / 9
 
@@ -39,6 +36,7 @@ function stripRowHeight(stripTileWidth: number): number {
   return stripTileWidth / VOICE_STAGE_STRIP_TILE_ASPECT + STRIP_ROW_PADDING_PX
 }
 
+/** Вписывает прямоугольник заданных пропорций в бокс, максимизируя площадь. */
 function fitAspectRatioInBox(
   boxWidth: number,
   boxHeight: number,
@@ -55,21 +53,21 @@ function fitAspectRatioInBox(
   return { width, height }
 }
 
-/** @deprecated use computeVoiceStageFocusLayout */
-export function computeVoiceStageFocusSize(
-  containerWidth: number,
-  containerHeight: number,
-  aspectRatio: number,
-  hasFilmstrip: boolean,
-): { width: number; height: number } {
-  return computeVoiceStageFocusLayout(
-    containerWidth,
-    containerHeight,
-    aspectRatio,
-    hasFilmstrip ? 2 : 0,
-  ).focus
+function flooredSize(size: { width: number; height: number }) {
+  return {
+    width: Math.max(0, Math.floor(size.width)),
+    height: Math.max(0, Math.floor(size.height)),
+  }
 }
 
+/**
+ * Раскладка фокус-режима: фокус-стрим максимально заполняет доступную площадь
+ * (с сохранением своих пропорций), под ним резервируется ряд превью 16:9.
+ *
+ * Нет искусственного ограничения ширины — на широких экранах стрим занимает
+ * всё доступное место, упираясь либо в ширину контейнера, либо в высоту,
+ * оставшуюся после ленты превью.
+ */
 export function computeVoiceStageFocusLayout(
   containerWidth: number,
   containerHeight: number,
@@ -84,78 +82,40 @@ export function computeVoiceStageFocusLayout(
     }
   }
 
-  const widthCap =
-    collapsedStripChrome && stripCount <= 0
-      ? containerWidth
-      : Math.min(containerWidth, VOICE_STAGE_FOCUS_MAX_WIDTH_PX)
-
+  // Ленты нет (или она свёрнута): фокус занимает весь контейнер.
   if (stripCount <= 0) {
     const chromeHeight = collapsedStripChrome ? COLLAPSED_STRIP_CHROME_PX : 0
-    const focusBoxHeight = Math.max(
+    const boxHeight = Math.max(
       FOCUS_MIN_HEIGHT_PX,
-      containerHeight - FOCUS_STACK_GAP_PX - chromeHeight,
+      containerHeight - chromeHeight,
     )
-    const focus = fitAspectRatioInBox(widthCap, focusBoxHeight, streamAspectRatio)
+    const focus = fitAspectRatioInBox(containerWidth, boxHeight, streamAspectRatio)
 
     return {
-      focus: {
-        width: Math.max(0, Math.floor(focus.width)),
-        height: Math.max(0, Math.floor(focus.height)),
-      },
+      focus: flooredSize(focus),
       stripTile: { width: 0, height: 0 },
     }
   }
-  let stripTileWidth = stripTileWidthForContainer(containerWidth, stripCount)
-  let stripHeight = stripRowHeight(stripTileWidth)
 
-  let focusZoneHeight = Math.max(
+  // Лента снизу: резервируем под неё один ряд 16:9, остаток отдаём фокусу.
+  const stripTileWidth = stripTileWidthForContainer(containerWidth, stripCount)
+  const stripHeight = stripRowHeight(stripTileWidth)
+
+  const focusBoxHeight = Math.max(
     FOCUS_MIN_HEIGHT_PX,
     containerHeight - stripHeight - FOCUS_STACK_GAP_PX,
   )
-
-  let focusWidth = widthCap
-  let focusHeight = focusWidth / streamAspectRatio
-
-  if (focusHeight > focusZoneHeight) {
-    focusHeight = focusZoneHeight
-    focusWidth = focusHeight * streamAspectRatio
-  }
-
-  focusWidth = Math.min(focusWidth, widthCap)
-
-  const totalStack =
-    focusHeight + FOCUS_STACK_GAP_PX + stripHeight
-
-  if (totalStack > containerHeight && stripCount > 0) {
-    focusZoneHeight = Math.max(
-      FOCUS_MIN_HEIGHT_PX,
-      containerHeight * 0.58 - FOCUS_STACK_GAP_PX,
-    )
-    focusHeight = Math.min(focusHeight, focusZoneHeight)
-    focusWidth = Math.min(focusHeight * streamAspectRatio, widthCap)
-
-    const stripBudget = Math.max(
-      0,
-      containerHeight - focusHeight - FOCUS_STACK_GAP_PX - STRIP_ROW_PADDING_PX,
-    )
-    stripTileWidth = Math.min(
-      stripTileWidthForContainer(containerWidth, stripCount),
-      stripBudget * VOICE_STAGE_STRIP_TILE_ASPECT,
-    )
-    stripTileWidth = Math.max(STRIP_TILE_MIN_WIDTH_PX, stripTileWidth)
-    stripHeight = stripRowHeight(stripTileWidth)
-  }
-
-  const stripTileHeight = stripTileWidth / VOICE_STAGE_STRIP_TILE_ASPECT
+  const focus = fitAspectRatioInBox(
+    containerWidth,
+    focusBoxHeight,
+    streamAspectRatio,
+  )
 
   return {
-    focus: {
-      width: Math.max(0, Math.floor(focusWidth)),
-      height: Math.max(0, Math.floor(focusHeight)),
-    },
+    focus: flooredSize(focus),
     stripTile: {
       width: Math.max(0, Math.floor(stripTileWidth)),
-      height: Math.max(0, Math.floor(stripTileHeight)),
+      height: Math.max(0, Math.floor(stripTileWidth / VOICE_STAGE_STRIP_TILE_ASPECT)),
     },
   }
 }
