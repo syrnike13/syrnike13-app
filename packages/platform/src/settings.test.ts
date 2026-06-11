@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
@@ -149,6 +150,14 @@ describe('desktop local settings contract', () => {
         ],
       },
     })
+  })
+
+  it('fills missing appearance settings with defaults', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        appearance: {},
+      }).appearance,
+    ).toEqual(DEFAULT_APPEARANCE_SETTINGS)
   })
 
   it('ignores malformed non-empty overlay games patches', () => {

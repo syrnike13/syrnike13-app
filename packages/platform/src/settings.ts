@@ -1,3 +1,11 @@
+import {
+  DEFAULT_APPEARANCE_SETTINGS,
+  normalizeAppearanceSettings,
+  normalizeAppearanceSettingsPatch,
+  type AppearanceSettings,
+  type AppearanceSettingsPatch,
+} from './appearance'
+
 export type DesktopScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
 export type DesktopScreenShareCodec = 'auto' | 'av1'
 export type DesktopScreenShareCaptureMode = 'auto' | 'native'
@@ -42,11 +50,21 @@ export type DesktopOverlaySettings = {
   games: DesktopOverlayGameSettings[]
 }
 
+export type { AppearanceSettings, AppearanceSettingsPatch, AppearanceColorMode } from './appearance'
+export {
+  DEFAULT_APPEARANCE_SETTINGS,
+  DEFAULT_THEME_ID,
+  normalizeAppearanceColorMode,
+  normalizeAppearanceSettings,
+  normalizeAppearanceSettingsPatch,
+} from './appearance'
+
 export type DesktopLocalSettings = {
   version: 1
   voice: DesktopVoiceSettings
   voiceListener: DesktopVoiceListenerSettings
   overlay: DesktopOverlaySettings
+  appearance: AppearanceSettings
 }
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
@@ -58,6 +76,7 @@ export type DesktopLocalSettingsPatch = {
   voice?: DesktopVoiceSettingsPatch
   voiceListener?: DesktopVoiceListenerSettingsPatch
   overlay?: DesktopOverlaySettingsPatch
+  appearance?: AppearanceSettingsPatch
 }
 
 const VOICE_VOLUME_MAX = 3
@@ -96,6 +115,7 @@ export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
+  appearance: DEFAULT_APPEARANCE_SETTINGS,
 }
 
 function objectRecord(value: unknown) {
@@ -305,6 +325,7 @@ export function normalizeDesktopLocalSettings(
     voice: normalizeDesktopVoiceSettings(settings.voice, defaults.voice),
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
+    appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
   }
 }
 
@@ -443,8 +464,10 @@ export function normalizeDesktopLocalSettingsPatch(
     patch.voiceListener,
   )
   const overlay = normalizeDesktopOverlaySettingsPatch(patch.overlay)
+  const appearance = normalizeAppearanceSettingsPatch(patch.appearance)
   if (voice) next.voice = voice
   if (voiceListener) next.voiceListener = voiceListener
   if (overlay) next.overlay = overlay
+  if (appearance) next.appearance = appearance
   return next
 }

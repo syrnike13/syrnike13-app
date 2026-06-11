@@ -23,7 +23,7 @@ use syrnike_result::{create_error, Result, ToSyrnikeError};
 mod join;
 mod voice_client;
 pub use join::*;
-pub use voice_client::VoiceClient;
+pub use voice_client::{VoiceClient, VoiceTransportCleanupFailure, VoiceTransportCleanupReport};
 
 /// Client join intent stored until LiveKit `participant_joined` webhook confirms membership.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1092,6 +1092,7 @@ impl FromRedisValue for VoiceJoinIntent {
 #[cfg(test)]
 mod tests {
     use super::partial_voice_state_for_track;
+    use syrnike_models::v0::PartialUserVoiceState;
 
     #[test]
     fn screen_share_video_updates_streaming_state() {

@@ -67,6 +67,10 @@ export async function updateDesktopLocalSettings(
       ...current.overlay,
       ...normalizedPatch.overlay,
     },
+    appearance: {
+      ...current.appearance,
+      ...normalizedPatch.appearance,
+    },
   }
   await saveDesktopLocalSettings(filePath, next)
   return next

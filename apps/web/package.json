@@ -49,7 +49,6 @@
     "clsx": "^2.1.1",
     "iconoir-react": "^7.11.0",
     "livekit-client": "^2.15.13",
-    "next-themes": "^0.4.6",
     "radix-ui": "^1.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -82,5 +81,5 @@
       "lightningcss"
     ]
   },
-  "version": "0.3.5"
+  "version": "0.4.4"
 }
