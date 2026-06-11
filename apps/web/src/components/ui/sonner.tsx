@@ -5,15 +5,15 @@ import {
   OctagonXIcon,
   TriangleAlertIcon,
 } from '#/components/icons'
-import { useTheme } from 'next-themes'
+import { useAppearance } from '#/features/appearance/appearance-context'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { resolvedTheme } = useTheme()
+  const { resolvedVariant } = useAppearance()
 
   return (
     <Sonner
-      theme={(resolvedTheme ?? 'dark') as 'light' | 'dark' | 'system'}
+      theme={resolvedVariant}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,

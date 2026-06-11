@@ -151,6 +151,20 @@ describe('desktop local settings contract', () => {
     })
   })
 
+  it('normalizes appearance settings with defaults', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        appearance: {
+          themeId: 'lug',
+          colorMode: 'system',
+        },
+      }).appearance,
+    ).toEqual({
+      themeId: 'lug',
+      colorMode: 'system',
+    })
+  })
+
   it('ignores malformed non-empty overlay games patches', () => {
     expect(
       normalizeDesktopLocalSettingsPatch({

@@ -8,7 +8,9 @@ import {
 } from '@tanstack/react-router'
 
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
-import { ThemeProvider } from '#/components/theme-provider'
+import { ThemeColorMeta } from '#/components/appearance/theme-color-meta'
+import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bootstrap'
+import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
@@ -107,16 +109,18 @@ function RootComponent() {
 
   if (isDesktopOverlayPath(pathname)) {
     return (
-      <ThemeProvider>
+      <AppearanceProvider>
+        <ThemeColorMeta />
         <NativeScrollbarEnhancer />
         <Outlet />
-      </ThemeProvider>
+      </AppearanceProvider>
     )
   }
 
   return (
     <TanstackQueryProvider client={queryClient}>
-      <ThemeProvider>
+      <AppearanceProvider>
+        <ThemeColorMeta />
         <AuthProvider>
           <SyncProvider>
             <NativeScrollbarEnhancer />
@@ -124,7 +128,7 @@ function RootComponent() {
             <Toaster richColors closeButton />
           </SyncProvider>
         </AuthProvider>
-      </ThemeProvider>
+      </AppearanceProvider>
     </TanstackQueryProvider>
   )
 }
@@ -134,6 +138,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="ru" suppressHydrationWarning>
       <head>
         <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
+        <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP_SCRIPT }} />
         <HeadContent />
       </head>
       <body>

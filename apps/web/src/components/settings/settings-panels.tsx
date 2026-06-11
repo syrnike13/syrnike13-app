@@ -10,7 +10,10 @@ import { NotificationSettings } from '#/components/notifications/notification-se
 import { SettingsProfilePanel } from '#/components/settings/settings-profile-panel'
 import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
-import { ThemeToggle } from '#/components/theme-toggle'
+import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
+import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
+import { useAppearance } from '#/features/appearance/appearance-context'
+import { getThemeById, themeSupportsColorMode } from '#/features/appearance/theme-registry'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -230,12 +233,32 @@ export function SettingsAccountPanel() {
 }
 
 export function SettingsAppearancePanel() {
+  const { settings, setColorMode } = useAppearance()
+  const activeTheme = getThemeById(settings.themeId)
+  const supportsColorMode = themeSupportsColorMode(activeTheme)
+
   return (
-    <SettingsBlock title="Тема">
-      <SettingsRow label="Режим отображения">
-        <ThemeToggle />
-      </SettingsRow>
-    </SettingsBlock>
+    <div className="space-y-6">
+      <SettingsBlock title="Палитра">
+        <ThemePickerGrid />
+      </SettingsBlock>
+      <SettingsBlock title="Режим отображения">
+        <SettingsRow
+          label="Светлая / тёмная"
+          hint={
+            supportsColorMode
+              ? 'Как отображать выбранную палитру'
+              : 'Для этой палитры доступен только один режим'
+          }
+        >
+          <ColorModeSegment
+            value={settings.colorMode}
+            disabled={!supportsColorMode}
+            onChange={setColorMode}
+          />
+        </SettingsRow>
+      </SettingsBlock>
+    </div>
   )
 }
 

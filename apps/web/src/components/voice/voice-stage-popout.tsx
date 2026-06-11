@@ -22,6 +22,12 @@ export function syncPopoutDocumentAppearance(
   targetHtml.className = sourceHtml.className
   targetHtml.lang = sourceHtml.lang
 
+  if (sourceHtml.dataset.theme) {
+    targetHtml.dataset.theme = sourceHtml.dataset.theme
+  } else {
+    delete targetHtml.dataset.theme
+  }
+
   if (sourceHtml.style.cssText) {
     targetHtml.style.cssText = sourceHtml.style.cssText
   }
