@@ -1115,7 +1115,22 @@ export interface components {
       presence?: components["schemas"]["Presence"] | null;
     };
     /** @description Presence status */
-    Presence: "Online" | "Idle" | "Focus" | "Busy" | "Invisible";
+    Presence:
+      | "Online"
+      | "Idle"
+      | "Focus"
+      | "Busy"
+      | "Invisible"
+      | "SystemIdle"
+      | "SystemWebOnline"
+      | "SystemMobileOnline";
+    /** @description User-selectable presence status */
+    ManualPresence:
+      | "Online"
+      | "Idle"
+      | "Focus"
+      | "Busy"
+      | "Invisible";
     /** @description Bot information for if the user is a bot */
     BotInformation: {
       /** @description Id of the owner of this bot */
@@ -1130,6 +1145,13 @@ export interface components {
        */
       flags: number;
     };
+    /** @description User-selectable status update */
+    DataUserStatusEdit: {
+      /** @description Custom status text */
+      text?: string | null;
+      /** @description Current user-selectable presence option */
+      presence?: components["schemas"]["ManualPresence"] | null;
+    };
     /** @description New user information */
     DataEditUser: {
       /** @description New display name */
@@ -1137,7 +1159,7 @@ export interface components {
       /** @description Attachment Id for avatar */
       avatar?: string | null;
       /** @description New user status */
-      status?: components["schemas"]["UserStatus"] | null;
+      status?: components["schemas"]["DataUserStatusEdit"] | null;
       /**
        * @description New user profile data
        *

@@ -1,10 +1,21 @@
+use rocket::serde::json::Json;
+use rocket::State;
 use syrnike_database::FieldsUser;
 use syrnike_database::{util::reference::Reference, Database, File, PartialUser, User};
 use syrnike_models::v0;
 use syrnike_result::{create_error, Result};
-use rocket::serde::json::Json;
-use rocket::State;
 use validator::Validate;
+
+fn is_manual_presence_update(presence: &v0::Presence) -> bool {
+    matches!(
+        presence,
+        v0::Presence::Online
+            | v0::Presence::Idle
+            | v0::Presence::Focus
+            | v0::Presence::Busy
+            | v0::Presence::Invisible
+    )
+}
 
 /// # Edit User
 ///
@@ -98,6 +109,12 @@ pub async fn edit(
         }
 
         if let Some(presence) = status.presence {
+            if !is_manual_presence_update(&presence) {
+                return Err(create_error!(FailedValidation {
+                    error: "system presence values cannot be set through user edit".to_string()
+                }));
+            }
+
             new_status.presence = Some(presence.into());
         }
 
@@ -127,4 +144,32 @@ pub async fn edit(
     .await?;
 
     Ok(Json(user.into_self(false).await))
+}
+
+#[cfg(test)]
+mod tests {
+    use syrnike_models::v0::Presence;
+
+    use super::is_manual_presence_update;
+
+    #[test]
+    fn user_edit_accepts_only_manual_presence_values() {
+        for presence in [
+            Presence::Online,
+            Presence::Idle,
+            Presence::Focus,
+            Presence::Busy,
+            Presence::Invisible,
+        ] {
+            assert!(is_manual_presence_update(&presence));
+        }
+
+        for presence in [
+            Presence::SystemIdle,
+            Presence::SystemWebOnline,
+            Presence::SystemMobileOnline,
+        ] {
+            assert!(!is_manual_presence_update(&presence));
+        }
+    }
 }

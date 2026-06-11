@@ -8,11 +8,11 @@ use iso8601_timestamp::Timestamp;
 use once_cell::sync::Lazy;
 use rand::seq::SliceRandom;
 use regex::{Regex, RegexBuilder};
+use serde_json::json;
 use syrnike_config::{config, FeaturesLimits};
 use syrnike_models::v0::{self, UserBadges, UserFlags};
 use syrnike_presence::filter_online;
 use syrnike_result::{create_error, Result};
-use serde_json::json;
 use ulid::Ulid;
 
 auto_derived_partial!(
@@ -109,6 +109,12 @@ auto_derived!(
         Busy,
         /// User appears to be offline
         Invisible,
+        /// User was marked idle by the system
+        SystemIdle,
+        /// User is online through a web client
+        SystemWebOnline,
+        /// User is online through a mobile client
+        SystemMobileOnline,
     }
 
     /// User's active status
@@ -149,6 +155,46 @@ auto_derived!(
         User,
     }
 );
+
+impl Presence {
+    pub fn is_online_like(&self) -> bool {
+        matches!(
+            self,
+            Presence::Online | Presence::SystemWebOnline | Presence::SystemMobileOnline
+        )
+    }
+
+    pub fn is_system_managed(&self) -> bool {
+        matches!(
+            self,
+            Presence::SystemIdle | Presence::SystemWebOnline | Presence::SystemMobileOnline
+        )
+    }
+
+    pub fn system_activity_presence(
+        &self,
+        client_kind: syrnike_presence::PresenceClientKind,
+    ) -> Option<Presence> {
+        if !self.is_online_like() && !matches!(self, Presence::SystemIdle) {
+            return None;
+        }
+
+        Some(match client_kind {
+            syrnike_presence::PresenceClientKind::Web => Presence::SystemWebOnline,
+            syrnike_presence::PresenceClientKind::Mobile => Presence::SystemMobileOnline,
+            syrnike_presence::PresenceClientKind::Desktop
+            | syrnike_presence::PresenceClientKind::Unknown => Presence::Online,
+        })
+    }
+
+    pub fn system_idle_presence(&self) -> Option<Presence> {
+        if self.is_online_like() {
+            Some(Presence::SystemIdle)
+        } else {
+            None
+        }
+    }
+}
 
 pub static DISCRIMINATOR_SEARCH_SPACE: Lazy<HashSet<String>> = Lazy::new(|| {
     let mut set = (2..9999)
@@ -678,6 +724,54 @@ impl User {
         Ok(())
     }
 
+    pub fn presence(&self) -> Presence {
+        self.status
+            .as_ref()
+            .and_then(|status| status.presence.clone())
+            .unwrap_or(Presence::Online)
+    }
+
+    async fn apply_system_presence(&mut self, db: &Database, presence: Presence) -> Result<bool> {
+        if self.presence() == presence {
+            return Ok(false);
+        }
+
+        let mut status = self.status.clone().unwrap_or_default();
+        status.presence = Some(presence);
+
+        self.update(
+            db,
+            PartialUser {
+                status: Some(status),
+                ..Default::default()
+            },
+            vec![],
+        )
+        .await?;
+
+        Ok(true)
+    }
+
+    pub async fn apply_system_activity_presence(
+        &mut self,
+        db: &Database,
+        client_kind: syrnike_presence::PresenceClientKind,
+    ) -> Result<bool> {
+        let Some(presence) = self.presence().system_activity_presence(client_kind) else {
+            return Ok(false);
+        };
+
+        self.apply_system_presence(db, presence).await
+    }
+
+    pub async fn apply_system_idle_presence(&mut self, db: &Database) -> Result<bool> {
+        let Some(presence) = self.presence().system_idle_presence() else {
+            return Ok(false);
+        };
+
+        self.apply_system_presence(db, presence).await
+    }
+
     /// Remove a field from User object
     pub fn remove_field(&mut self, field: &FieldsUser) {
         match field {
@@ -841,7 +935,50 @@ impl User {
 
 #[cfg(test)]
 mod tests {
-    use crate::User;
+    use crate::{Presence, User};
+    use syrnike_presence::PresenceClientKind;
+
+    #[test]
+    fn presence_helpers_classify_manual_and_system_states() {
+        assert!(Presence::Online.is_online_like());
+        assert!(Presence::SystemWebOnline.is_online_like());
+        assert!(Presence::SystemMobileOnline.is_online_like());
+        assert!(!Presence::SystemIdle.is_online_like());
+        assert!(!Presence::Busy.is_online_like());
+
+        assert!(Presence::SystemIdle.is_system_managed());
+        assert!(Presence::SystemWebOnline.is_system_managed());
+        assert!(Presence::SystemMobileOnline.is_system_managed());
+        assert!(!Presence::Online.is_system_managed());
+        assert!(!Presence::Idle.is_system_managed());
+    }
+
+    #[test]
+    fn system_activity_presence_keeps_manual_statuses_manual() {
+        assert_eq!(
+            Presence::Online.system_activity_presence(PresenceClientKind::Web),
+            Some(Presence::SystemWebOnline),
+        );
+        assert_eq!(
+            Presence::SystemIdle.system_activity_presence(PresenceClientKind::Mobile),
+            Some(Presence::SystemMobileOnline),
+        );
+        assert_eq!(
+            Presence::SystemIdle.system_activity_presence(PresenceClientKind::Desktop),
+            Some(Presence::Online),
+        );
+        assert_eq!(
+            Presence::SystemWebOnline.system_idle_presence(),
+            Some(Presence::SystemIdle),
+        );
+        assert_eq!(
+            Presence::Idle.system_activity_presence(PresenceClientKind::Web),
+            None
+        );
+        assert_eq!(Presence::Focus.system_idle_presence(), None);
+        assert_eq!(Presence::Busy.system_idle_presence(), None);
+        assert_eq!(Presence::Invisible.system_idle_presence(), None);
+    }
 
     #[test]
     fn username_validation_blocked_names() {

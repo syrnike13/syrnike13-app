@@ -27,6 +27,11 @@ pub async fn __get_set_members_as_string(conn: &mut Conn, key: &str) -> Vec<Stri
         .expect("could not get set members as string")
 }
 
+/// Get set members as u32
+pub async fn __get_set_members_as_u32(conn: &mut Conn, key: &str) -> Vec<u32> {
+    conn.smembers::<_, Vec<u32>>(key).await.unwrap_or_default()
+}
+
 /// Get set size
 pub async fn __get_set_size(conn: &mut Conn, id: &str) -> u32 {
     conn.scard::<_, u32>(id)

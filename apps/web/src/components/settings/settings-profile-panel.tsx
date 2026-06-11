@@ -248,7 +248,6 @@ export function SettingsProfilePanel() {
     if (trimmedStatus !== baseline.statusText.trim()) {
       changes.status = {
         text: trimmedStatus.length ? trimmedStatus : null,
-        presence: user.status?.presence ?? 'Online',
       }
     }
 
