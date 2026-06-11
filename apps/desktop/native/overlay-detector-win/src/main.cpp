@@ -3,15 +3,12 @@
 #include <windows.h>
 
 #include <chrono>
-#include <cwctype>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <iterator>
-#include <set>
 #include <string>
 #include <thread>
-#include <vector>
 
 namespace {
 
@@ -140,49 +137,6 @@ std::string processNameFromSnapshot(DWORD pid) {
   return result;
 }
 
-std::wstring lower(std::wstring value) {
-  for (wchar_t& ch : value) {
-    ch = static_cast<wchar_t>(towlower(ch));
-  }
-  return value;
-}
-
-std::vector<std::string> graphicsModules(DWORD pid) {
-  static const std::set<std::wstring> kInterestingModules = {
-    L"d3d9.dll",
-    L"d3d10.dll",
-    L"d3d10core.dll",
-    L"d3d11.dll",
-    L"d3d12.dll",
-    L"dxgi.dll",
-    L"opengl32.dll",
-    L"vulkan-1.dll",
-    L"unityplayer.dll",
-    L"gameassembly.dll",
-  };
-
-  std::vector<std::string> modules;
-  const HANDLE snapshot = CreateToolhelp32Snapshot(
-    TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
-    pid
-  );
-  if (snapshot == INVALID_HANDLE_VALUE) return modules;
-
-  MODULEENTRY32W entry = {};
-  entry.dwSize = sizeof(entry);
-  if (Module32FirstW(snapshot, &entry)) {
-    do {
-      const std::wstring name = lower(entry.szModule);
-      if (kInterestingModules.contains(name)) {
-        modules.push_back(utf8(name));
-      }
-    } while (Module32NextW(snapshot, &entry));
-  }
-
-  CloseHandle(snapshot);
-  return modules;
-}
-
 Rect windowBounds(HWND hwnd) {
   RECT rect = {};
   if (FAILED(DwmGetWindowAttribute(
@@ -230,18 +184,7 @@ bool isFullscreenLike(const Rect& window, const Rect& monitor) {
 std::string emptyEvent() {
   return "{\"pid\":0,\"processName\":\"\",\"processPath\":null,\"title\":\"\","
          "\"className\":\"\",\"visible\":false,\"fullscreenLike\":false,"
-         "\"graphicsModules\":[],"
          "\"bounds\":{\"x\":0,\"y\":0,\"width\":0,\"height\":0}}";
-}
-
-std::string jsonArray(const std::vector<std::string>& values) {
-  std::string out = "[";
-  for (std::size_t index = 0; index < values.size(); ++index) {
-    if (index > 0) out += ",";
-    out += "\"" + jsonEscape(values[index]) + "\"";
-  }
-  out += "]";
-  return out;
 }
 
 std::string foregroundEvent() {
@@ -256,7 +199,6 @@ std::string foregroundEvent() {
   const auto name = path_name.empty() ? processNameFromSnapshot(pid) : path_name;
   const auto bounds = windowBounds(hwnd);
   const auto monitor = monitorBounds(hwnd);
-  const auto modules = graphicsModules(pid);
   const bool visible = IsWindowVisible(hwnd) && bounds.width > 0 && bounds.height > 0;
   const bool fullscreen_like = visible && isFullscreenLike(bounds, monitor);
 
@@ -268,7 +210,6 @@ std::string foregroundEvent() {
          "\",\"className\":\"" + jsonEscape(utf8(className(hwnd))) +
          "\",\"visible\":" + (visible ? "true" : "false") +
          ",\"fullscreenLike\":" + (fullscreen_like ? "true" : "false") +
-         ",\"graphicsModules\":" + jsonArray(modules) +
          ",\"bounds\":{\"x\":" + std::to_string(bounds.x) +
          ",\"y\":" + std::to_string(bounds.y) +
          ",\"width\":" + std::to_string(bounds.width) +
