@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
@@ -151,18 +152,12 @@ describe('desktop local settings contract', () => {
     })
   })
 
-  it('normalizes appearance settings with defaults', () => {
+  it('fills missing appearance settings with defaults', () => {
     expect(
       normalizeDesktopLocalSettings({
-        appearance: {
-          themeId: 'lug',
-          colorMode: 'system',
-        },
+        appearance: {},
       }).appearance,
-    ).toEqual({
-      themeId: 'lug',
-      colorMode: 'system',
-    })
+    ).toEqual(DEFAULT_APPEARANCE_SETTINGS)
   })
 
   it('ignores malformed non-empty overlay games patches', () => {

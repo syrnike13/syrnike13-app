@@ -2,6 +2,7 @@ import type { AppearanceSettings } from '@syrnike13/platform'
 
 import {
   allThemeCssVariables,
+  getThemeById,
   getThemeTokens,
   resolveThemeVariant,
   type ThemeVariant,
@@ -20,11 +21,12 @@ export function applyThemeToDocument(
   if (typeof document === 'undefined') return resolveThemeVariant(settings, prefersDark)
 
   const variant = resolveThemeVariant(settings, prefersDark)
+  const theme = getThemeById(settings.themeId)
   const tokens = getThemeTokens(settings, prefersDark)
   const root = document.documentElement
 
   root.classList.toggle('dark', variant === 'dark')
-  root.dataset.theme = settings.themeId
+  root.dataset.theme = theme.id
 
   const variables = allThemeCssVariables(tokens)
   for (const [name, value] of Object.entries(variables)) {

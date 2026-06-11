@@ -23,8 +23,8 @@ describe('appearance settings store', () => {
   })
 
   afterEach(() => {
-    localStorage.clear()
     appearanceSettingsStore.setSettings(DEFAULT_APPEARANCE_SETTINGS)
+    localStorage.clear()
   })
 
   it('persists theme changes to localStorage on web', () => {
@@ -33,18 +33,22 @@ describe('appearance settings store', () => {
     expect(appearanceSettingsStore.getState().themeId).toBe('lug')
   })
 
-  it('migrates legacy next-themes storage key', async () => {
+  it('migrates legacy next-themes storage key', () => {
     localStorage.clear()
     localStorage.setItem('theme', 'light')
-    const { readStoredAppearanceSettings: readSettings } = await import(
-      '#/features/appearance/appearance-settings-store'
-    )
-    expect(readSettings()).toEqual({
+    expect(readStoredAppearanceSettings()).toEqual({
       themeId: 'syrnike',
       colorMode: 'light',
     })
     expect(localStorage.getItem('theme')).toBeNull()
     expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toBeTruthy()
+  })
+
+  it('returns a snapshot instead of the live store state', () => {
+    const snapshot = appearanceSettingsStore.getState()
+    snapshot.themeId = 'mutated'
+
+    expect(appearanceSettingsStore.getState()).toEqual(DEFAULT_APPEARANCE_SETTINGS)
   })
 
   it('defaults to syrnike dark when storage is empty', () => {

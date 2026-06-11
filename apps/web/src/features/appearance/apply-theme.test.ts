@@ -36,6 +36,15 @@ describe('applyThemeToDocument', () => {
     expect(document.documentElement.dataset.theme).toBe('syrnike')
   })
 
+  it('uses the resolved theme id for the theme dataset', () => {
+    applyThemeToDocument({
+      ...DEFAULT_APPEARANCE_SETTINGS,
+      themeId: 'unknown-theme',
+    })
+
+    expect(document.documentElement.dataset.theme).toBe('syrnike')
+  })
+
   it('writes css variables for active tokens', () => {
     applyThemeToDocument({
       ...DEFAULT_APPEARANCE_SETTINGS,

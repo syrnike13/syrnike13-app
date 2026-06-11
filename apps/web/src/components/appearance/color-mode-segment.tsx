@@ -2,11 +2,11 @@ import type { AppearanceColorMode } from '@syrnike13/platform'
 
 import { cn } from '#/lib/utils'
 
-const MODES: { id: AppearanceColorMode; label: string }[] = [
+const MODES = [
   { id: 'light', label: 'Светлая' },
   { id: 'dark', label: 'Тёмная' },
   { id: 'system', label: 'Системная' },
-]
+] as const satisfies ReadonlyArray<{ id: AppearanceColorMode; label: string }>
 
 type ColorModeSegmentProps = {
   value: AppearanceColorMode
