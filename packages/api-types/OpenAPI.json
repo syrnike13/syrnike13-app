@@ -7983,6 +7983,67 @@
             "enum": [
               "Invisible"
             ]
+          },
+          {
+            "description": "User was marked idle by the system",
+            "type": "string",
+            "enum": [
+              "SystemIdle"
+            ]
+          },
+          {
+            "description": "User is online through a web client",
+            "type": "string",
+            "enum": [
+              "SystemWebOnline"
+            ]
+          },
+          {
+            "description": "User is online through a mobile client",
+            "type": "string",
+            "enum": [
+              "SystemMobileOnline"
+            ]
+          }
+        ]
+      },
+      "ManualPresence": {
+        "description": "User-selectable presence status",
+        "oneOf": [
+          {
+            "description": "User is online",
+            "type": "string",
+            "enum": [
+              "Online"
+            ]
+          },
+          {
+            "description": "User is not currently available",
+            "type": "string",
+            "enum": [
+              "Idle"
+            ]
+          },
+          {
+            "description": "User is focusing / will only receive mentions",
+            "type": "string",
+            "enum": [
+              "Focus"
+            ]
+          },
+          {
+            "description": "User is busy / will not receive any notifications",
+            "type": "string",
+            "enum": [
+              "Busy"
+            ]
+          },
+          {
+            "description": "User appears to be offline",
+            "type": "string",
+            "enum": [
+              "Invisible"
+            ]
           }
         ]
       },
@@ -8016,6 +8077,28 @@
           }
         }
       },
+      "DataUserStatusEdit": {
+        "description": "User-selectable status update",
+        "type": "object",
+        "properties": {
+          "text": {
+            "description": "Custom status text",
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 0,
+            "nullable": true
+          },
+          "presence": {
+            "description": "Current user-selectable presence option",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManualPresence"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
       "DataEditUser": {
         "description": "New user information",
         "type": "object",
@@ -8039,7 +8122,7 @@
             "description": "New user status",
             "allOf": [
               {
-                "$ref": "#/components/schemas/UserStatus"
+                "$ref": "#/components/schemas/DataUserStatusEdit"
               }
             ],
             "nullable": true

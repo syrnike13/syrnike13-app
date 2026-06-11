@@ -1316,6 +1316,9 @@ impl From<crate::Presence> for Presence {
             crate::Presence::Focus => Presence::Focus,
             crate::Presence::Busy => Presence::Busy,
             crate::Presence::Invisible => Presence::Invisible,
+            crate::Presence::SystemIdle => Presence::SystemIdle,
+            crate::Presence::SystemWebOnline => Presence::SystemWebOnline,
+            crate::Presence::SystemMobileOnline => Presence::SystemMobileOnline,
         }
     }
 }
@@ -1328,6 +1331,9 @@ impl From<Presence> for crate::Presence {
             Presence::Focus => crate::Presence::Focus,
             Presence::Busy => crate::Presence::Busy,
             Presence::Invisible => crate::Presence::Invisible,
+            Presence::SystemIdle => crate::Presence::SystemIdle,
+            Presence::SystemWebOnline => crate::Presence::SystemWebOnline,
+            Presence::SystemMobileOnline => crate::Presence::SystemMobileOnline,
         }
     }
 }

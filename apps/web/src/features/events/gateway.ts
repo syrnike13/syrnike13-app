@@ -34,6 +34,10 @@ const RECONNECT_BASE_MS = 1_000
 const RECONNECT_MAX_MS = 30_000
 const RELIABLE_QUEUE_MAX = 64
 
+function gatewayClientKind() {
+  return window.syrnikeDesktop?.runtime === 'desktop' ? 'desktop' : 'web'
+}
+
 /**
  * WebSocket-клиент syrnike13 (протокол v1, JSON) с auto-reconnect и heartbeat.
  */
@@ -122,6 +126,10 @@ export class EventsGateway {
     this.send({ type: 'EndTyping', channel: channelId })
   }
 
+  userActivity() {
+    this.#sendConnected({ type: 'UserActivity' })
+  }
+
   #openSocket(isReconnect: boolean) {
     const wsUrl = this.#wsUrl
     const token = this.#token
@@ -135,6 +143,7 @@ export class EventsGateway {
     url.searchParams.set('version', '1')
     url.searchParams.set('format', 'json')
     url.searchParams.set('token', token)
+    url.searchParams.set('client', gatewayClientKind())
     for (const field of READY_FIELDS) {
       url.searchParams.append('ready', field)
     }

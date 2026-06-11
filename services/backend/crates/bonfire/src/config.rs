@@ -2,9 +2,10 @@ use async_tungstenite::tungstenite::{handshake, Message};
 use futures::channel::oneshot::Sender;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use syrnike_database::events::client::ReadyPayloadFields;
-use syrnike_result::{create_error, Result};
 use serde::{Deserialize, Serialize};
+use syrnike_database::events::client::ReadyPayloadFields;
+use syrnike_presence::PresenceClientKind;
+use syrnike_result::{create_error, Result};
 
 /// matches either a single word ie "users" or a key and value ie "settings[notifications]"
 static READY_PAYLOAD_FIELD_REGEX: Lazy<Regex> =
@@ -23,6 +24,7 @@ pub struct ProtocolConfiguration {
     protocol_version: i32,
     format: ProtocolFormat,
     session_token: Option<String>,
+    client_kind: PresenceClientKind,
     ready_payload_fields: ReadyPayloadFields,
 }
 
@@ -32,12 +34,14 @@ impl ProtocolConfiguration {
         protocol_version: i32,
         format: ProtocolFormat,
         session_token: Option<String>,
+        client_kind: PresenceClientKind,
         ready_payload_fields: ReadyPayloadFields,
     ) -> Self {
         Self {
             protocol_version,
             format,
             session_token,
+            client_kind,
             ready_payload_fields,
         }
     }
@@ -94,6 +98,10 @@ impl ProtocolConfiguration {
         &self.format
     }
 
+    pub fn get_client_kind(&self) -> PresenceClientKind {
+        self.client_kind
+    }
+
     /// Get ready payload fields
     pub fn get_ready_payload_fields(&self) -> &ReadyPayloadFields {
         &self.ready_payload_fields
@@ -127,6 +135,7 @@ impl handshake::server::Callback for WebsocketHandshakeCallback {
         let mut protocol_version = 1;
         let mut format = ProtocolFormat::Json;
         let mut session_token = None;
+        let mut client_kind = PresenceClientKind::Unknown;
         let mut ready_payload_fields = if params.iter().any(|(k, _)| *k == "ready") {
             // If they pass the ready field, set all fields to false
 
@@ -159,6 +168,7 @@ impl handshake::server::Callback for WebsocketHandshakeCallback {
                     _ => {}
                 },
                 "token" => session_token = Some(value.into()),
+                "client" => client_kind = PresenceClientKind::from_client_name(value),
                 "ready" => {
                     // Re-enable all the fields the client specifies
                     if let Some(captures) = READY_PAYLOAD_FIELD_REGEX.captures(value) {
@@ -196,6 +206,7 @@ impl handshake::server::Callback for WebsocketHandshakeCallback {
                 protocol_version,
                 format,
                 session_token,
+                client_kind,
                 ready_payload_fields,
             })
             .is_ok()

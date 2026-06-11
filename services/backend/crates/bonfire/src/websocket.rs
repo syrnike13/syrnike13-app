@@ -1,4 +1,9 @@
-use std::{collections::HashSet, net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashSet,
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_tungstenite::WebSocketStream;
 use authifier::AuthifierEvent;
@@ -20,15 +25,18 @@ use syrnike_database::{
     iso8601_timestamp::Timestamp,
     Database, User, UserHint,
 };
-use syrnike_presence::{create_session, delete_session};
+use syrnike_presence::{
+    create_session, delete_session, has_recent_activity, touch_session, PresenceClientKind,
+    SYSTEM_IDLE_AFTER_MS, SYSTEM_IDLE_CHECK_INTERVAL_MS,
+};
 
 use async_std::{
     net::TcpStream,
     sync::{Mutex, RwLock},
     task::spawn,
 };
-use syrnike_result::create_error;
 use sentry::Level;
+use syrnike_result::create_error;
 
 use crate::config::{ProtocolConfiguration, WebsocketHandshakeCallback};
 use crate::events::state::{State, SubscriptionStateChange};
@@ -107,15 +115,27 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
         .await
         .ok();
 
-    let worker_user = user.clone();
-
     // Create local state.
     let mut state = State::from(user, session_id);
     let user_id = state.cache.user_id.clone();
+    let client_kind = config.get_client_kind();
 
     // Notify socket we have authenticated.
     if report_internal_error!(write.send(config.encode(&EventV1::Authenticated)).await).is_err() {
         return;
+    }
+
+    // Create presence session before Ready so system presence changes are reflected in the payload.
+    let (first_session, presence_session_id) = create_session(&user_id, 0, client_kind).await;
+
+    {
+        let mut ready_user = state.clone_user();
+        if let Ok(true) = ready_user
+            .apply_system_activity_presence(db, client_kind)
+            .await
+        {
+            state.cache.users.insert(user_id.clone(), ready_user);
+        }
     }
 
     // Download required data to local cache and send Ready payload.
@@ -125,10 +145,14 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
             .await
     ) {
         Ok(ready_payload) => ready_payload,
-        Err(_) => return,
+        Err(_) => {
+            delete_session(&user_id, presence_session_id).await;
+            return;
+        }
     };
 
     if report_internal_error!(write.send(config.encode(&ready_payload)).await).is_err() {
+        delete_session(&user_id, presence_session_id).await;
         return;
     }
 
@@ -136,12 +160,10 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
     if !slowmodes.is_empty() {
         let event = EventV1::UserSlowmodes { slowmodes };
         if report_internal_error!(write.send(config.encode(&event)).await).is_err() {
+            delete_session(&user_id, presence_session_id).await;
             return;
         }
     }
-
-    // Create presence session.
-    let (first_session, session_id) = create_session(&user_id, 0).await;
 
     // If this was the first session, notify other users that we just went online.
     if first_session {
@@ -153,6 +175,7 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
         let write = Mutex::new(write);
         let subscribed = state.subscribed.clone();
         let active_servers = state.active_servers.clone();
+        let worker_user = state.clone_user();
         let (topic_signal_s, topic_signal_r) = async_channel::unbounded();
 
         // TODO: this needs to be rewritten
@@ -180,6 +203,8 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
             subscribed,
             active_servers,
             user_id.clone(),
+            presence_session_id,
+            client_kind,
             &config,
             topic_signal_s,
             kill_signal_2_r,
@@ -191,7 +216,7 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
         join!(listener, worker);
     }
     // Clean up presence session.
-    let last_session = delete_session(&user_id, session_id).await;
+    let last_session = delete_session(&user_id, presence_session_id).await;
 
     // If this was the last session, notify other users that we just went offline.
     if last_session {
@@ -415,6 +440,8 @@ async fn worker_with_kill_signal(
     subscribed: Arc<RwLock<HashSet<String>>>,
     active_servers: Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
     user_id: String,
+    presence_session_id: u32,
+    client_kind: PresenceClientKind,
     config: &ProtocolConfiguration,
     topic_signal_s: async_channel::Sender<()>,
     kill_signal_r: async_channel::Receiver<()>,
@@ -429,6 +456,8 @@ async fn worker_with_kill_signal(
         subscribed,
         active_servers,
         user_id,
+        presence_session_id,
+        client_kind,
         config,
         topic_signal_s,
         kill_signal_r,
@@ -447,6 +476,8 @@ async fn worker(
     subscribed: Arc<RwLock<HashSet<String>>>,
     active_servers: Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
     user_id: String,
+    presence_session_id: u32,
+    client_kind: PresenceClientKind,
     config: &ProtocolConfiguration,
     topic_signal_s: async_channel::Sender<()>,
     kill_signal_r: async_channel::Receiver<()>,
@@ -454,16 +485,29 @@ async fn worker(
     write: &Mutex<WsWriter>,
 ) {
     let syrnike_config = syrnike_config::config().await;
+    let idle_check_interval = Duration::from_millis(SYSTEM_IDLE_CHECK_INTERVAL_MS);
+    let mut next_idle_check = Instant::now() + idle_check_interval;
 
     loop {
+        if Instant::now() >= next_idle_check {
+            apply_system_idle_presence_if_needed(db, &user_id).await;
+            next_idle_check = Instant::now() + idle_check_interval;
+        }
+
         let t1 = read.try_next().fuse();
         let t2 = kill_signal_r.recv().fuse();
+        let t3 = async_std::task::sleep(next_idle_check.saturating_duration_since(Instant::now()))
+            .fuse();
 
-        pin_mut!(t1, t2);
+        pin_mut!(t1, t2, t3);
 
         select! {
             _ = t2 => {
                 return;
+            },
+            _ = t3 => {
+                apply_system_idle_presence_if_needed(db, &user_id).await;
+                next_idle_check = Instant::now() + idle_check_interval;
             },
             result = t1 => {
                 let msg = match result {
@@ -521,6 +565,10 @@ async fn worker(
                         }
                         .p(channel.clone())
                         .await;
+                    }
+                    ClientMessage::UserActivity => {
+                        touch_session(&user_id, presence_session_id, client_kind).await;
+                        apply_system_activity_presence(db, &user_id, client_kind).await;
                     }
                     ClientMessage::Subscribe { server_id } => {
                         let mut servers = active_servers.lock().await;
@@ -605,6 +653,26 @@ async fn worker(
                 }
             }
         }
+    }
+}
+
+async fn apply_system_activity_presence(
+    db: &Database,
+    user_id: &str,
+    client_kind: PresenceClientKind,
+) {
+    if let Ok(mut user) = db.fetch_user(user_id).await {
+        let _ = user.apply_system_activity_presence(db, client_kind).await;
+    }
+}
+
+async fn apply_system_idle_presence_if_needed(db: &Database, user_id: &str) {
+    if has_recent_activity(user_id, SYSTEM_IDLE_AFTER_MS).await {
+        return;
+    }
+
+    if let Ok(mut user) = db.fetch_user(user_id).await {
+        let _ = user.apply_system_idle_presence(db).await;
     }
 }
 
