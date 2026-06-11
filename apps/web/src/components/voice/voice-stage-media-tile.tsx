@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Maximize2Icon, MonitorXIcon } from '#/components/icons'
+import {
+  Loader2Icon,
+  Maximize2Icon,
+  MonitorIcon,
+  MonitorXIcon,
+} from '#/components/icons'
 import type { User } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'
@@ -49,6 +54,108 @@ type StageMediaTileProps = {
 
 const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 
+/** Нейтральный серый фон превью стрима (как в Discord), без палитры аватара. */
+const screenStreamSurfaceClass = 'absolute inset-0 bg-[#232428]'
+
+const unsubscribedStreamButtonClass =
+  'h-auto rounded-md border border-white/20 bg-[#1e1f22] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#2b2d31]'
+
+const screenStreamOwnerLabelClass =
+  'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-black/60 font-medium text-white'
+
+function screenStreamOwnerLabelPositionClass(variant: StageMediaTileVariant) {
+  return variant === 'strip'
+    ? 'bottom-1.5 left-1 px-1.5 py-0.5 text-[10px] leading-tight'
+    : 'bottom-2 left-2 px-2 py-1 text-xs'
+}
+
+function ScreenStreamOwnerLabel({
+  displayName,
+  variant,
+}: {
+  displayName: string
+  variant: StageMediaTileVariant
+}) {
+  return (
+    <div
+      className={cn(
+        screenStreamOwnerLabelClass,
+        screenStreamOwnerLabelPositionClass(variant),
+      )}
+    >
+      <MonitorIcon className="size-3 shrink-0 opacity-90" aria-hidden />
+      <span className="min-w-0 truncate">{displayName}</span>
+    </div>
+  )
+}
+
+function UnsubscribedScreenStreamTile({
+  displayName,
+  variant,
+  onSubscribe,
+}: {
+  displayName: string
+  variant: StageMediaTileVariant
+  onSubscribe: () => void
+}) {
+  const showWatchButton = variant !== 'strip'
+
+  return (
+    <>
+      <div className={screenStreamSurfaceClass} aria-hidden />
+
+      {showWatchButton ? (
+        <div className="absolute inset-0 flex items-center justify-center p-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className={unsubscribedStreamButtonClass}
+            onClick={(event) => {
+              event.stopPropagation()
+              onSubscribe()
+            }}
+          >
+            Смотреть
+          </Button>
+        </div>
+      ) : null}
+
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
+    </>
+  )
+}
+
+function LoadingScreenStreamTile({
+  displayName,
+  variant,
+}: {
+  displayName: string
+  variant: StageMediaTileVariant
+}) {
+  return (
+    <>
+      <div className={screenStreamSurfaceClass} aria-hidden />
+
+      <div
+        className="absolute inset-0 flex items-center justify-center p-3"
+        role="status"
+        aria-label="Подключение к стриму"
+      >
+        <Loader2Icon
+          className={cn(
+            'animate-spin text-white/80',
+            variant === 'strip' ? 'size-5' : 'size-8',
+          )}
+          aria-hidden
+        />
+      </div>
+
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
+    </>
+  )
+}
+
 export function StageMediaTile({
   item,
   user,
@@ -70,7 +177,11 @@ export function StageMediaTile({
     isScreen ? s.getStreamVolume(item.userId) : s.getUserVolume(item.userId),
   )
   const palette = useVoiceTilePalette(user, item.userId)
-  const hasVideo = Boolean(item.track && item.subscribed !== false)
+  const isUnsubscribedScreen = isScreen && item.subscribed === false
+  const isLoadingScreen =
+    isScreen && !isUnsubscribedScreen && !item.track
+  const isScreenPlaceholder = isUnsubscribedScreen || isLoadingScreen
+  const hasVideo = Boolean(item.track && !isUnsubscribedScreen)
   const fit =
     variant === 'focus'
       ? 'cover'
@@ -82,11 +193,11 @@ export function StageMediaTile({
     isScreen && hasVideo ? aspectRatio : DEFAULT_SCREEN_ASPECT_RATIO
   const tileStyle = useMemo(
     () => ({
-      ...(!hasVideo ? tilePaletteStyle(palette) : {}),
+      ...(!hasVideo && !isScreenPlaceholder ? tilePaletteStyle(palette) : {}),
       // Размер grid-плитки задаёт обёртка (VoiceStageGrid), aspect-ratio не нужен.
       ...(variant === 'focus' ? { aspectRatio: panelAspectRatio } : {}),
     }),
-    [hasVideo, palette, panelAspectRatio, variant],
+    [hasVideo, isScreenPlaceholder, palette, panelAspectRatio, variant],
   )
   const updateVideoSize = useCallback(
     ({ width, height }: { width: number; height: number }) => {
@@ -118,7 +229,7 @@ export function StageMediaTile({
             dimmed && 'opacity-50',
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
-              : 'bg-[#111214]',
+              : !isScreenPlaceholder && 'bg-[#111214]',
             variant === 'grid' && 'size-full',
             variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
@@ -152,6 +263,17 @@ export function StageMediaTile({
                 onVideoSizeChange={updateVideoSize}
               />
             )
+          ) : isUnsubscribedScreen ? (
+            <UnsubscribedScreenStreamTile
+              displayName={displayName}
+              variant={variant}
+              onSubscribe={() => onSetSubscribed(item.id, true)}
+            />
+          ) : isLoadingScreen ? (
+            <LoadingScreenStreamTile
+              displayName={displayName}
+              variant={variant}
+            />
           ) : (
             <>
               {variant === 'strip' ? (
@@ -166,49 +288,35 @@ export function StageMediaTile({
                   variant === 'strip' ? 'px-2' : 'flex-col gap-3',
                 )}
               >
-              <UserAvatar
-                user={user}
-                className={cn(
-                  variant === 'strip' &&
-                    'aspect-square size-[min(58cqh,36cqw,4.75rem)]',
-                  variant === 'grid' && 'size-16 sm:size-20',
-                  variant !== 'strip' &&
-                    variant !== 'grid' &&
-                    'size-24 sm:size-32',
-                )}
-                fallbackClassName={cn(
-                  variant === 'strip' && 'size-full text-[min(1.125rem,26cqh)]',
-                  variant === 'grid' &&
-                    'size-16 text-base sm:size-20',
-                  variant !== 'strip' &&
-                    variant !== 'grid' &&
-                    'size-24 text-2xl sm:size-32',
-                )}
-                animated="speaking"
-                speaking={speaking}
-                showPresence={false}
-              />
-              {item.kind === 'screen' && item.subscribed === false ? (
-                variant === 'strip' ? null : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onSetSubscribed(item.id, true)
-                    }}
-                  >
-                    Подключиться к стриму
-                  </Button>
-                )
-              ) : null}
+                <UserAvatar
+                  user={user}
+                  className={cn(
+                    variant === 'strip' &&
+                      'aspect-square size-[min(58cqh,36cqw,4.75rem)]',
+                    variant === 'grid' && 'size-16 sm:size-20',
+                    variant !== 'strip' &&
+                      variant !== 'grid' &&
+                      'size-24 sm:size-32',
+                  )}
+                  fallbackClassName={cn(
+                    variant === 'strip' &&
+                      'size-full text-[min(1.125rem,26cqh)]',
+                    variant === 'grid' && 'size-16 text-base sm:size-20',
+                    variant !== 'strip' &&
+                      variant !== 'grid' &&
+                      'size-24 text-2xl sm:size-32',
+                  )}
+                  animated="speaking"
+                  speaking={speaking}
+                  showPresence={false}
+                />
               </div>
             </>
           )}
 
           {participant?.screensharing &&
           item.kind === 'screen' &&
+          !isUnsubscribedScreen &&
           variant !== 'focus' &&
           variant !== 'fullscreen' ? (
             <div
@@ -221,7 +329,9 @@ export function StageMediaTile({
             </div>
           ) : null}
 
-          {variant !== 'focus' && variant !== 'fullscreen' ? (
+          {variant !== 'focus' &&
+          variant !== 'fullscreen' &&
+          !isScreenPlaceholder ? (
             <div
               className={cn(
                 'absolute z-10 flex min-w-0 items-center gap-1.5 rounded bg-black/60 font-medium text-white',

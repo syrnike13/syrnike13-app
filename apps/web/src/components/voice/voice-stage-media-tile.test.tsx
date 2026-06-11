@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
@@ -42,6 +42,7 @@ describe('StageMediaTile', () => {
   })
 
   afterEach(() => {
+    cleanup()
     vi.unstubAllGlobals()
   })
 
@@ -99,6 +100,67 @@ describe('StageMediaTile', () => {
     )
 
     expect(screen.queryByLabelText('В эфире')).toBeNull()
+  })
+
+  it('renders a loading screen tile while subscribed but the track is not ready', () => {
+    render(
+      <StageMediaTile
+        item={{ ...screenItem, track: null, subscribed: true, live: true }}
+        displayName="исочка"
+        variant="grid"
+        participant={{
+          id: 'remote-user',
+          joined_at: 1,
+          self_mute: false,
+          self_deaf: false,
+          version: 1,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: true,
+        }}
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('status', { name: 'Подключение к стриму' })).toBeTruthy()
+    expect(screen.getByText('исочка')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Смотреть' })).toBeNull()
+    expect(screen.queryByText('Экран исочка')).toBeNull()
+  })
+
+  it('renders an unsubscribed screen tile with a watch button and owner label', () => {
+    const onSetSubscribed = vi.fn()
+
+    render(
+      <StageMediaTile
+        item={{ ...screenItem, subscribed: false }}
+        displayName="nioh13"
+        variant="grid"
+        participant={{
+          id: 'remote-user',
+          joined_at: 1,
+          self_mute: false,
+          self_deaf: false,
+          version: 1,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: true,
+        }}
+        onFocus={vi.fn()}
+        onSetSubscribed={onSetSubscribed}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Смотреть' })).toBeTruthy()
+    expect(screen.getByText('nioh13')).toBeTruthy()
+    expect(screen.queryByLabelText('В эфире')).toBeNull()
+    expect(screen.queryByText('Экран nioh13')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Смотреть' }))
+    expect(onSetSubscribed).toHaveBeenCalledWith(screenItem.id, true)
   })
 
   it('focuses the tile when the user clicks directly on video', () => {
