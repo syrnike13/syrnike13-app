@@ -46,10 +46,8 @@ import {
   voiceStageControlsChromeCenterClass,
   voiceStageControlsChromeClass,
   voiceStageControlsChromeTrailingClass,
-  voiceStageGridContainerClass,
-  voiceStageGridOuterClass,
-  voiceStageGridSlotClass,
 } from '#/components/voice/voice-stage-layout'
+import { VoiceStageGrid } from '#/components/voice/voice-stage-grid'
 import {
   useVoiceStageChromeVisible,
   voiceStageChromeMotion,
@@ -199,8 +197,6 @@ export function VoiceStageView({
     layoutMode === 'grid' &&
     !voice.stageFullscreen &&
     shouldShowVoiceInviteSlot(participants.length)
-
-  const gridSlotCount = gridMediaItems.length + (showInviteSlot ? 1 : 0)
 
   const focusMedia = useCallback(
     (mediaId: string) => {
@@ -354,28 +350,15 @@ export function VoiceStageView({
             renderTile={renderTile}
           />
         ) : (
-          <div className={voiceStageGridOuterClass}>
-            <div className={voiceStageGridContainerClass(gridSlotCount)}>
-              {gridMediaItems.map((item, index) => (
-                <div
-                  key={item.id}
-                  className={voiceStageGridSlotClass(gridSlotCount, index)}
-                >
-                  {renderTile(item, 'grid')}
-                </div>
-              ))}
-              {showInviteSlot ? (
-                <div
-                  className={voiceStageGridSlotClass(
-                    gridSlotCount,
-                    gridMediaItems.length,
-                  )}
-                >
-                  <VoiceStageInviteTile channelId={channelId} />
-                </div>
-              ) : null}
-            </div>
-          </div>
+          <VoiceStageGrid
+            items={gridMediaItems}
+            inviteSlot={
+              showInviteSlot ? (
+                <VoiceStageInviteTile channelId={channelId} />
+              ) : undefined
+            }
+            renderTile={renderTile}
+          />
         )}
       </div>
 

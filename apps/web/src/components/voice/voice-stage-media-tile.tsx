@@ -83,9 +83,8 @@ export function StageMediaTile({
   const tileStyle = useMemo(
     () => ({
       ...(!hasVideo ? tilePaletteStyle(palette) : {}),
-      ...(variant === 'focus' || variant === 'grid'
-        ? { aspectRatio: panelAspectRatio }
-        : {}),
+      // Размер grid-плитки задаёт обёртка (VoiceStageGrid), aspect-ratio не нужен.
+      ...(variant === 'focus' ? { aspectRatio: panelAspectRatio } : {}),
     }),
     [hasVideo, palette, panelAspectRatio, variant],
   )
@@ -120,7 +119,7 @@ export function StageMediaTile({
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
               : 'bg-[#111214]',
-            variant === 'grid' && 'w-full',
+            variant === 'grid' && 'size-full',
             variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
             speaking && variant !== 'strip' && 'ring-2 ring-[#23a559]',
