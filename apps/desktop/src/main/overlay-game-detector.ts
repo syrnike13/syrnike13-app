@@ -11,6 +11,7 @@ import type {
 } from '@syrnike13/platform'
 
 import { OVERLAY_EXCLUDED_PROCESS_NAMES } from './overlay-game-exclusions'
+import { POPULAR_GAME_PROCESS_NAMES } from './overlay-game-processes'
 
 export type OverlayForegroundWindow = {
   pid: number
@@ -20,7 +21,6 @@ export type OverlayForegroundWindow = {
   className: string
   visible: boolean
   fullscreenLike: boolean
-  graphicsModules: string[]
   bounds: {
     x: number
     y: number
@@ -41,24 +41,6 @@ const GAME_PATH_MARKERS = [
   '/ea games/',
   '/origin games/',
 ]
-
-const GRAPHICS_RUNTIME_MODULES = new Set([
-  'd3d9.dll',
-  'd3d10.dll',
-  'd3d10core.dll',
-  'd3d11.dll',
-  'd3d12.dll',
-  'dxgi.dll',
-  'opengl32.dll',
-  'vulkan-1.dll',
-])
-
-const GAME_RUNTIME_MODULES = new Set([
-  'gameassembly.dll',
-  'godot.windows.opt.tools.64.exe',
-  'godot.windows.template_release.x86_64.exe',
-  'unityplayer.dll',
-])
 
 const PROTECTED_GAME_SIGNATURES = [
   {
@@ -126,7 +108,7 @@ export function buildOverlayGameTarget(
   if (window.bounds.width <= 0 || window.bounds.height <= 0) return null
 
   const processPath = window.processPath?.trim() || null
-  if (!hasGameRuntimeSignal(window, processPath)) return null
+  if (!hasGameIdentitySignal(window, processPath)) return null
   return {
     gameId: overlayGameId(processPath, processName),
     processName,
@@ -136,30 +118,17 @@ export function buildOverlayGameTarget(
   }
 }
 
-function hasGameRuntimeSignal(
+function hasGameIdentitySignal(
   window: OverlayForegroundWindow,
   processPath: string | null,
 ) {
   if (matchesProtectedGameSignature(window)) return true
+  if (isLikelyGameWindowClass(window.className)) return true
+  if (POPULAR_GAME_PROCESS_NAMES.has(window.processName.trim().toLowerCase())) {
+    return true
+  }
 
-  const modules = new Set(
-    window.graphicsModules.map((moduleName) => moduleName.toLowerCase()),
-  )
-  const hasGameRuntimeModule = [...modules].some((moduleName) =>
-    GAME_RUNTIME_MODULES.has(moduleName),
-  )
-  if (hasGameRuntimeModule) return true
-
-  const hasGraphicsRuntimeModule = [...modules].some((moduleName) =>
-    GRAPHICS_RUNTIME_MODULES.has(moduleName),
-  )
-  if (!hasGraphicsRuntimeModule) return false
-
-  return (
-    window.fullscreenLike ||
-    isKnownGamePath(processPath) ||
-    isLikelyGameWindowClass(window.className)
-  )
+  return window.fullscreenLike && isKnownGamePath(processPath)
 }
 
 function matchesProtectedGameSignature(window: OverlayForegroundWindow) {
@@ -255,12 +224,6 @@ function parseOverlayForegroundWindow(line: string) {
       className: parsed.className,
       visible: parsed.visible,
       fullscreenLike: parsed.fullscreenLike,
-      graphicsModules: Array.isArray(parsed.graphicsModules)
-        ? parsed.graphicsModules.filter(
-            (moduleName): moduleName is string =>
-              typeof moduleName === 'string' && moduleName.length > 0,
-          )
-        : [],
       bounds: {
         x: bounds.x,
         y: bounds.y,

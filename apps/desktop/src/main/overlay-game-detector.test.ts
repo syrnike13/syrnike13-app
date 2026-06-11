@@ -4,6 +4,12 @@ import {
   buildOverlayGameTarget,
   rememberDetectedOverlayGame,
 } from './overlay-game-detector'
+import { OVERLAY_EXCLUDED_PROCESS_NAMES } from './overlay-game-exclusions'
+import {
+  POPULAR_GAME_PROCESS_NAME_COUNT,
+  POPULAR_GAME_PROCESS_NAME_LIST,
+  POPULAR_GAME_PROCESS_NAMES,
+} from './overlay-game-processes'
 
 const foregroundWindow = {
   pid: 42,
@@ -13,11 +19,25 @@ const foregroundWindow = {
   className: 'UnrealWindow',
   visible: true,
   fullscreenLike: true,
-  graphicsModules: ['d3d11.dll'],
   bounds: { x: 0, y: 0, width: 1920, height: 1080 },
 }
 
 describe('overlay game detector policy', () => {
+  it('keeps a normalized allowlist of 500 popular game executable names', () => {
+    expect(POPULAR_GAME_PROCESS_NAME_COUNT).toBe(500)
+    expect(POPULAR_GAME_PROCESS_NAMES.size).toBe(500)
+    expect(POPULAR_GAME_PROCESS_NAMES.has('cs2.exe')).toBe(true)
+    expect(POPULAR_GAME_PROCESS_NAMES.has('league of legends.exe')).toBe(true)
+    expect(POPULAR_GAME_PROCESS_NAMES.has('telegram.exe')).toBe(false)
+    expect(POPULAR_GAME_PROCESS_NAMES.has('fl64.exe')).toBe(false)
+
+    for (const processName of POPULAR_GAME_PROCESS_NAME_LIST) {
+      expect(processName).toBe(processName.toLowerCase())
+      expect(processName.endsWith('.exe')).toBe(true)
+      expect(OVERLAY_EXCLUDED_PROCESS_NAMES.has(processName)).toBe(false)
+    }
+  })
+
   it('builds a target for fullscreen-like foreground game windows', () => {
     expect(buildOverlayGameTarget(foregroundWindow, 100)).toEqual({
       gameId: 'c:/games/raid.exe',
@@ -28,6 +48,42 @@ describe('overlay game detector policy', () => {
     })
   })
 
+  it('ignores fullscreen-like Telegram windows', () => {
+    expect(
+      buildOverlayGameTarget(
+        {
+          pid: 4242,
+          processName: 'Telegram.exe',
+          processPath: 'C:/Users/JAKEL/AppData/Roaming/Telegram Desktop/Telegram.exe',
+          title: 'Telegram',
+          className: 'Qt5152QWindowIcon',
+          visible: true,
+          fullscreenLike: true,
+          bounds: { x: 0, y: 0, width: 2560, height: 1440 },
+        },
+        100,
+      ),
+    ).toBeNull()
+  })
+
+  it('ignores fullscreen-like FL Studio windows', () => {
+    expect(
+      buildOverlayGameTarget(
+        {
+          pid: 5150,
+          processName: 'FL64.exe',
+          processPath: 'C:/Program Files/Image-Line/FL Studio 21/FL64.exe',
+          title: 'FL Studio',
+          className: 'TFruityLoopsMainForm',
+          visible: true,
+          fullscreenLike: true,
+          bounds: { x: 0, y: 0, width: 2560, height: 1440 },
+        },
+        100,
+      ),
+    ).toBeNull()
+  })
+
   it('ignores Steam launcher windows even when they are large', () => {
     expect(
       buildOverlayGameTarget(
@@ -36,7 +92,6 @@ describe('overlay game detector policy', () => {
           processName: 'steam.exe',
           processPath: 'C:/Program Files (x86)/Steam/steam.exe',
           title: 'Steam',
-          graphicsModules: ['d3d11.dll'],
         },
         100,
       ),
@@ -54,7 +109,6 @@ describe('overlay game detector policy', () => {
           className: 'Chrome_WidgetWin_0',
           visible: true,
           fullscreenLike: true,
-          graphicsModules: ['dxgi.dll', 'd3d9.dll'],
           bounds: { x: 0, y: 0, width: 2560, height: 1440 },
         },
         100,
@@ -73,7 +127,6 @@ describe('overlay game detector policy', () => {
           className: 'RiotWindowClass',
           visible: true,
           fullscreenLike: true,
-          graphicsModules: [],
           bounds: { x: 0, y: 0, width: 2560, height: 1440 },
         },
         100,
@@ -98,7 +151,6 @@ describe('overlay game detector policy', () => {
           className: 'RiotWindowClass',
           visible: true,
           fullscreenLike: true,
-          graphicsModules: [],
           bounds: { x: 0, y: 0, width: 2560, height: 1440 },
         },
         100,
@@ -112,14 +164,13 @@ describe('overlay game detector policy', () => {
     })
   })
 
-  it('builds a target for windowed games with graphics runtime signals', () => {
+  it('builds a target for windowed games with game window class signals', () => {
     expect(
       buildOverlayGameTarget(
         {
           ...foregroundWindow,
           processPath: 'D:/SteamLibrary/steamapps/common/Raid/Raid.exe',
           fullscreenLike: false,
-          graphicsModules: ['dxgi.dll', 'd3d11.dll'],
           bounds: { x: 120, y: 80, width: 1280, height: 720 },
         },
         100,
@@ -133,14 +184,38 @@ describe('overlay game detector policy', () => {
     })
   })
 
-  it('does not treat game-library paths as games without runtime signals', () => {
+  it('builds a target for known game executable names', () => {
+    expect(
+      buildOverlayGameTarget(
+        {
+          pid: 777,
+          processName: 'cs2.exe',
+          processPath: 'C:/CustomGames/Counter-Strike 2/game/bin/win64/cs2.exe',
+          title: 'Counter-Strike 2',
+          className: 'Valve001',
+          visible: true,
+          fullscreenLike: false,
+          bounds: { x: 80, y: 60, width: 1600, height: 900 },
+        },
+        100,
+      ),
+    ).toEqual({
+      gameId: 'c:/customgames/counter-strike 2/game/bin/win64/cs2.exe',
+      processName: 'cs2.exe',
+      processPath: 'C:/CustomGames/Counter-Strike 2/game/bin/win64/cs2.exe',
+      title: 'Counter-Strike 2',
+      bounds: { x: 80, y: 60, width: 1600, height: 900 },
+    })
+  })
+
+  it('does not treat game-library paths as games without game-specific signals', () => {
     expect(
       buildOverlayGameTarget(
         {
           ...foregroundWindow,
           processPath: 'D:/SteamLibrary/steamapps/common/Raid/Raid.exe',
+          className: 'Chrome_WidgetWin_1',
           fullscreenLike: false,
-          graphicsModules: [],
         },
         100,
       ),
@@ -158,7 +233,6 @@ describe('overlay game detector policy', () => {
           title: 'Notes',
           className: 'Notepad',
           fullscreenLike: false,
-          graphicsModules: [],
         },
         100,
       ),
