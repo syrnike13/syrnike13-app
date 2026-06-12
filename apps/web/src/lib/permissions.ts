@@ -348,3 +348,22 @@ export function canManageChannel(
     ChannelPermission.ManageChannel,
   )
 }
+
+export function canManageChannelPermissions(
+  server: Server | undefined,
+  channel: ServerScopedChannel,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!server || !userId) return false
+
+  return hasChannelPermission(
+    calculateChannelPermissions(
+      server,
+      channel as ServerTextChannel,
+      member,
+      userId,
+    ),
+    ChannelPermission.ManagePermissions,
+  )
+}

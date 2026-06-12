@@ -20,6 +20,28 @@ export function clampVoiceChannelAudioBitrateKbps(value: number) {
   )
 }
 
+export function channelMaxUsers(channel: ChannelWithVoiceSettings): number | null {
+  const value = channel.voice?.max_users
+  if (value == null || value <= 0) return null
+  return value
+}
+
+export function buildVoiceChannelVoicePatch(
+  channel: ChannelWithVoiceSettings,
+  patch: Partial<VoiceInformation>,
+): Pick<DataEditChannel, 'voice'> {
+  const voice: VoiceInformation = {
+    ...(channel.voice ?? {}),
+    ...patch,
+  }
+  if (patch.audio_bitrate_kbps != null) {
+    voice.audio_bitrate_kbps = clampVoiceChannelAudioBitrateKbps(
+      patch.audio_bitrate_kbps,
+    )
+  }
+  return { voice }
+}
+
 export function channelAudioBitrateKbps(channel: ChannelWithVoiceSettings) {
   return clampVoiceChannelAudioBitrateKbps(
     channel.voice?.audio_bitrate_kbps ??

@@ -14,6 +14,8 @@ import { isDmChannel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { usePlatform } from '#/platform/use-platform'
 import { serverChannelServerId } from '#/lib/channel-voice'
+import { parseChannelSettingsTab } from '#/components/channels/channel-settings-types'
+import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
 import { cn } from '#/lib/utils'
 
 export function AppShell() {
@@ -32,6 +34,9 @@ export function AppShell() {
   })
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const activeChannelId = channelMatch?.params.channelId
+  const settingsChannelId = channelMatch?.search?.settingsChannel
+  const settingsTab = parseChannelSettingsTab(channelMatch?.search?.settingsTab)
+  const highlightMessageId = channelMatch?.search?.m
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isHomePath = pathname === '/app' || pathname === '/app/'
 
@@ -96,6 +101,17 @@ export function AppShell() {
         <UserPanel />
         <IncomingVoiceCallOverlay activeChannelId={activeChannelId} />
       </div>
+
+      {settingsChannelId && activeChannelId ? (
+        <div className="fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
+          <ChannelSettingsPage
+            channelId={settingsChannelId}
+            hostChannelId={activeChannelId}
+            tab={settingsTab}
+            highlightMessageId={highlightMessageId}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

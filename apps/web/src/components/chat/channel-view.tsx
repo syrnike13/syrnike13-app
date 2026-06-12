@@ -22,7 +22,6 @@ import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
-import { getChannelDescription } from '#/lib/channel-meta'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import { useVoice } from '#/features/voice/voice-context'
 import {
@@ -201,7 +200,6 @@ export function ChannelView({
   }
 
   const title = getChannelLabel(channel, users, auth.user?._id)
-  const channelDescription = getChannelDescription(channel)
   const isDirectMessage = channel.channel_type === 'DirectMessage'
   const isGroupDirectMessage = channel.channel_type === 'Group'
   const isDmVoiceCallChannel =
@@ -336,11 +334,6 @@ export function ChannelView({
           ) : (
             <div className="min-w-0 flex-1">
               <h1 className="truncate font-semibold">{title}</h1>
-              {channelDescription ? (
-                <p className="line-clamp-2 text-xs text-muted-foreground">
-                  {channelDescription}
-                </p>
-              ) : null}
             </div>
           )}
           {historyQuery.isFetching ? (

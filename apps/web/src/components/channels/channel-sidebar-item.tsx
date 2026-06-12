@@ -1,18 +1,18 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useMatch, useNavigate } from '@tanstack/react-router'
 import {
   CheckCheckIcon,
   HashIcon,
   HeadphonesIcon,
   LinkIcon,
   SettingsIcon,
+  Trash2Icon,
   UsersIcon,
   Volume2BoldIcon,
 } from '#/components/icons'
-import { useState, type MouseEvent } from 'react'
+import type { MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
-import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import {
   ContextMenu,
@@ -24,6 +24,7 @@ import {
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { ackChannel } from '#/features/api/sync-api'
+import { deleteChannel } from '#/features/api/channels-api'
 import { createChannelInvite } from '#/features/api/servers-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import {
@@ -35,7 +36,7 @@ import {
   isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
-import { getChannelLastMessageId } from '#/features/sync/selectors'
+import { getChannelLastMessageId, pickDefaultChannelId } from '#/features/sync/selectors'
 import {
   syncStore,
   useSyncStore,
@@ -45,6 +46,8 @@ import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
 import { useVoice } from '#/features/voice/voice-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
+import { canManageChannel } from '#/lib/permissions'
+import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { inviteUrl } from '#/lib/invite-link'
 import { publicAppUrl } from '#/lib/public-origin'
 import { cn } from '#/lib/utils'
@@ -78,7 +81,79 @@ export function ChannelSidebarItem({
   const voice = useVoice()
   const navigate = useNavigate()
   const token = auth.session?.token
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const channelRouteMatch = useMatch({
+    from: '/app/c/$channelId',
+    shouldThrow: false,
+  })
+  const server = useSyncStore((s) =>
+    channel.channel_type === 'TextChannel' ? s.servers[channel.server] : undefined,
+  )
+  const member = useSyncStore((s) =>
+    channel.channel_type === 'TextChannel' && auth.user?._id
+      ? s.members[`${channel.server}:${auth.user._id}`]
+      : undefined,
+  )
+  const canDeleteChannel = canManageChannel(
+    server,
+    channel,
+    member,
+    auth.user?._id,
+  )
+
+  function openChannelSettings() {
+    const hostChannelId = activeChannelId ?? channel._id
+    void navigate({
+      to: '/app/c/$channelId',
+      params: { channelId: hostChannelId },
+      search: channelSettingsSearch({
+        settingsChannel: channel._id,
+        settingsTab: 'overview',
+        m: channelRouteMatch?.search?.m,
+      }),
+    })
+  }
+
+  async function handleDeleteChannel() {
+    if (!token || !canDeleteChannel) return
+    if (
+      !window.confirm(
+        `Удалить канал «${channel.name}»? Это действие необратимо.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      await deleteChannel(token, channel._id)
+      syncStore.removeChannel(channel._id)
+      toast.success('Канал удалён')
+
+      const settingsChannelId = channelRouteMatch?.search?.settingsChannel
+      const viewingDeletedChannel =
+        channelRouteMatch?.params.channelId === channel._id ||
+        settingsChannelId === channel._id
+
+      if (!viewingDeletedChannel) return
+
+      const fallback = pickDefaultChannelId(
+        syncStore.getState(),
+        auth.user?._id,
+      )
+      if (fallback) {
+        await navigate({
+          to: '/app/c/$channelId',
+          params: { channelId: fallback },
+          search: { m: undefined },
+        })
+      } else {
+        await navigate({ to: '/app', search: { tab: 'online' } })
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось удалить канал',
+      )
+    }
+  }
 
   const label = getChannelLabel(channel, users, currentUserId)
   const active = channel._id === activeChannelId
@@ -245,7 +320,7 @@ export function ChannelSidebarItem({
             onClick={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              setSettingsOpen(true)
+              openChannelSettings()
             }}
           >
             <SettingsIcon className="size-3.5" />
@@ -275,9 +350,21 @@ export function ChannelSidebarItem({
       {canManage && isServerChannel ? (
         <>
           <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => setSettingsOpen(true)}>
+          <ContextMenuItem onSelect={openChannelSettings}>
             <SettingsIcon className="size-3.5" />
             Настройки канала
+          </ContextMenuItem>
+        </>
+      ) : null}
+      {canDeleteChannel && isServerChannel ? (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            variant="destructive"
+            onSelect={() => void handleDeleteChannel()}
+          >
+            <Trash2Icon className="size-3.5" />
+            Удалить канал
           </ContextMenuItem>
         </>
       ) : null}
@@ -294,14 +381,6 @@ export function ChannelSidebarItem({
       ) : (
         row
       )}
-
-      {isServerChannel ? (
-        <ChannelSettingsDialog
-          channel={channel as ServerChannel}
-          open={settingsOpen}
-          onOpenChange={setSettingsOpen}
-        />
-      ) : null}
     </>
   )
 }

@@ -1,4 +1,9 @@
-import type { Channel, DataEditChannel } from '@syrnike13/api-types'
+import type {
+  Channel,
+  DataDefaultChannelPermissions,
+  DataEditChannel,
+  DataSetRolePermissions,
+} from '@syrnike13/api-types'
 
 import { apiRequest } from '#/lib/api/client'
 
@@ -35,6 +40,31 @@ export async function deleteChannel(
     method: 'DELETE',
     token,
     body: { leave_silently: leaveSilently },
+  })
+}
+
+export async function setChannelRolePermissions(
+  token: string,
+  channelId: string,
+  roleId: string,
+  data: DataSetRolePermissions,
+) {
+  return apiRequest<Channel>(`/channels/${channelId}/permissions/${roleId}`, {
+    method: 'PUT',
+    token,
+    body: data,
+  })
+}
+
+export async function setDefaultChannelPermissions(
+  token: string,
+  channelId: string,
+  data: DataDefaultChannelPermissions,
+) {
+  return apiRequest<Channel>(`/channels/${channelId}/permissions/default`, {
+    method: 'PUT',
+    token,
+    body: data,
   })
 }
 
