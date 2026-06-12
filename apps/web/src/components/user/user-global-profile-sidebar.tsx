@@ -2,12 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BanIcon,
   CopyIcon,
-  HeadphonesIcon,
   Loader2Icon,
   MessageCircleIcon,
   MoreHorizontalIcon,
   PlusIcon,
   SettingsIcon,
+  UserCheckIcon,
+  UserPlusIcon,
   XIcon,
 } from '#/components/icons'
 import { useMemo, useState } from 'react'
@@ -15,8 +16,8 @@ import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
-import { FriendshipAction } from '#/components/friends/friendship-action'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { Button } from '#/components/ui/button'
 import {
   Popover,
@@ -27,17 +28,17 @@ import { FloatingMenuItem } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
+import {
+  acceptIncomingFriendRequest,
+  cancelOutgoingFriendRequest,
+  declineIncomingFriendRequest,
+  sendFriendRequestToUser,
+} from '#/features/friends/friend-actions'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import {
-  getUserPresence,
-  presenceModeLabel,
-  userStatusSubtitle,
-} from '#/lib/presence'
-import {
   memberRoleEntries,
-  selectDirectMessageCallActionLabel,
   type MemberRoleEntry,
 } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
@@ -54,7 +55,6 @@ type UserGlobalProfileSidebarProps = {
   isSelf: boolean
   busy: boolean
   onOpenDm: () => void
-  onStartCall: () => void
   onCopyId: () => void
   onBlock: () => void
   onEditProfile: () => void
@@ -73,13 +73,18 @@ function formatDate(iso: string) {
   })
 }
 
+const profileIconActionClass =
+  'size-8 shrink-0 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'
+
+const profilePrimaryActionClass =
+  'w-fit gap-1.5 transition-colors hover:bg-primary/85 active:bg-primary/75'
+
 export function UserGlobalProfileSidebar({
   user,
   serverId,
   isSelf,
   busy,
   onOpenDm,
-  onStartCall,
   onCopyId,
   onBlock,
   onEditProfile,
@@ -88,14 +93,12 @@ export function UserGlobalProfileSidebar({
   const token = auth.session?.token
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
-  const presenceLabel = presenceModeLabel(getUserPresence(user))
   const canDirectMessage = !isSelf && !user.bot
-  const directCallActionLabel = useSyncStore((s) =>
-    selectDirectMessageCallActionLabel(s, auth.user?._id, user._id),
-  )
 
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
+  const [friendBusy, setFriendBusy] = useState(false)
+  const actionsDisabled = busy || friendBusy || !token
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -155,10 +158,26 @@ export function UserGlobalProfileSidebar({
 
   const showServerSection = Boolean(serverId && member)
 
+  async function runFriendAction(action: () => Promise<unknown>) {
+    if (!token || actionsDisabled) return
+    setFriendBusy(true)
+    try {
+      await action()
+    } catch {
+      // friend-actions already shows the concrete error toast.
+    } finally {
+      setFriendBusy(false)
+    }
+  }
+
+  const showAddFriend = canDirectMessage && user.relationship === 'None'
+  const showAcceptFriend = canDirectMessage && user.relationship === 'Incoming'
+  const isFriend = user.relationship === 'Friend'
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-6">
       {/* Inner card */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-secondary">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-secondary ">
         {/* Banner */}
         <div className="relative shrink-0">
           <div
@@ -180,6 +199,10 @@ export function UserGlobalProfileSidebar({
           </div>
           {/* Avatar — straddling banner */}
           <div className="absolute -bottom-12 left-4 z-10">
+            <UserProfileStatusBubble
+              status={customStatus}
+              className="left-full top-[43%] ml-2"
+            />
             <UserAvatar
               user={user}
               className="size-24"
@@ -199,26 +222,16 @@ export function UserGlobalProfileSidebar({
         </h2>
         <p className="truncate text-sm text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
-          {customStatus ? (
-            <>
-              <span className="text-muted-foreground/50"> · </span>
-              <span>{customStatus}</span>
-            </>
-          ) : null}
-        </p>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {customStatus ? presenceLabel : userStatusSubtitle(user)}
         </p>
 
         {/* Action buttons */}
-        <div className="mt-3 flex flex-col gap-1.5">
+        <div className="mt-3 flex gap-1.5">
           {isSelf ? (
             <Button
               type="button"
-              variant="secondary"
               size="sm"
               disabled={busy}
-              className="flex-1 gap-2"
+              className={cn('gap-2', profilePrimaryActionClass)}
               onClick={onEditProfile}
             >
               <SettingsIcon className="size-3.5" />
@@ -226,68 +239,121 @@ export function UserGlobalProfileSidebar({
             </Button>
           ) : (
             <>
-              <div className="flex gap-1.5">
-                {canDirectMessage ? (
-                  <>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={busy}
-                      className="min-w-0 flex-1 gap-1.5"
-                      onClick={onOpenDm}
-                    >
-                      {busy ? (
-                        <Loader2Icon className="size-3.5 animate-spin" />
-                      ) : (
-                        <MessageCircleIcon className="size-3.5" />
-                      )}
-                      <span className="truncate">Сообщение</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon"
-                      className="size-8 shrink-0"
-                      disabled={busy}
-                      title={directCallActionLabel}
-                      onClick={onStartCall}
-                    >
-                      <HeadphonesIcon className="size-4" />
-                      <span className="sr-only">{directCallActionLabel}</span>
-                    </Button>
-                  </>
-                ) : null}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon"
-                      className="size-8 shrink-0"
-                      disabled={busy}
-                      title="Ещё"
-                    >
-                      <MoreHorizontalIcon className="size-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    side="top"
-                    align="end"
-                    className="w-auto min-w-[11rem] p-1"
-                    onOpenAutoFocus={(e) => e.preventDefault()}
+              {showAcceptFriend ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={actionsDisabled}
+                  className={profilePrimaryActionClass}
+                  onClick={() =>
+                    void runFriendAction(() =>
+                      acceptIncomingFriendRequest(token!, user._id),
+                    )
+                  }
+                >
+                  {friendBusy ? (
+                    <Loader2Icon className="size-3.5 animate-spin" />
+                  ) : (
+                    <UserCheckIcon className="size-3.5" />
+                  )}
+                  <span className="truncate">Принять</span>
+                </Button>
+              ) : null}
+              {showAddFriend ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={actionsDisabled}
+                  className={profilePrimaryActionClass}
+                  onClick={() =>
+                    void runFriendAction(() => sendFriendRequestToUser(token!, user))
+                  }
+                >
+                  {friendBusy ? (
+                    <Loader2Icon className="size-3.5 animate-spin" />
+                  ) : (
+                    <UserPlusIcon className="size-3.5" />
+                  )}
+                  <span className="truncate">Добавить в друзья</span>
+                </Button>
+              ) : null}
+              {canDirectMessage ? (
+                <Button
+                  type="button"
+                  variant={isFriend ? 'default' : 'ghost'}
+                  size={isFriend ? 'sm' : 'icon'}
+                  disabled={actionsDisabled}
+                  className={
+                    isFriend ? profilePrimaryActionClass : profileIconActionClass
+                  }
+                  title="Сообщение"
+                  aria-label="Сообщение"
+                  onClick={onOpenDm}
+                >
+                  {busy ? (
+                    <Loader2Icon
+                      className={cn('animate-spin', isFriend ? 'size-3.5' : 'size-4')}
+                    />
+                  ) : (
+                    <MessageCircleIcon className={isFriend ? 'size-3.5' : 'size-4'} />
+                  )}
+                  {isFriend ? <span className="truncate">Сообщение</span> : null}
+                </Button>
+              ) : null}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={profileIconActionClass}
+                    disabled={actionsDisabled}
+                    title="Ещё"
+                    aria-label="Ещё"
                   >
-                    <FloatingMenuItem onClick={onCopyId}>
-                      <CopyIcon className="size-3.5" />
-                      Копировать ID
+                    <MoreHorizontalIcon className="size-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="end"
+                  className="w-auto min-w-[11rem] p-1"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  {user.relationship === 'Incoming' ? (
+                    <FloatingMenuItem
+                      onClick={() =>
+                        void runFriendAction(() =>
+                          declineIncomingFriendRequest(token!, user._id),
+                        )
+                      }
+                    >
+                      <XIcon className="size-3.5" />
+                      Отклонить заявку
                     </FloatingMenuItem>
-                    <FloatingMenuItem onClick={onBlock}>
-                      <BanIcon className="size-3.5" />
-                      Заблокировать
+                  ) : null}
+                  {user.relationship === 'Outgoing' ? (
+                    <FloatingMenuItem
+                      onClick={() =>
+                        void runFriendAction(() =>
+                          cancelOutgoingFriendRequest(token!, user._id),
+                        )
+                      }
+                    >
+                      <XIcon className="size-3.5" />
+                      Отменить заявку
                     </FloatingMenuItem>
-                  </PopoverContent>
-                </Popover>
-              </div>
-              {canDirectMessage ? <FriendshipAction user={user} /> : null}
+                  ) : null}
+                  <FloatingMenuItem onClick={onCopyId}>
+                    <CopyIcon className="size-3.5" />
+                    Копировать ID
+                  </FloatingMenuItem>
+                  <FloatingMenuItem onClick={onBlock}>
+                    <BanIcon className="size-3.5" />
+                    Заблокировать
+                  </FloatingMenuItem>
+                </PopoverContent>
+              </Popover>
             </>
           )}
         </div>
@@ -297,9 +363,6 @@ export function UserGlobalProfileSidebar({
         {/* Bio */}
         {profileBio ? (
           <div className="mt-4">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Обо мне
-            </p>
             <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/90">
               {profileBio}
             </p>

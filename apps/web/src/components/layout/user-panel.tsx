@@ -10,6 +10,7 @@ import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control
 import { VoiceSoundSplitControl } from '#/components/voice/voice-sound-split-control'
 import { CurrentUserProfileMenu } from '#/components/user/current-user-profile-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { Button } from '#/components/ui/button'
 import {
   Popover,
@@ -46,6 +47,7 @@ export function UserPanel() {
   const { openSettings } = useSettingsModal()
   const voice = useVoice()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [globalProfileOpen, setGlobalProfileOpen] = useState(false)
   const user = auth.user
   if (!user) return null
   if (voice.stageFullscreen) return null
@@ -184,9 +186,19 @@ export function UserPanel() {
             <CurrentUserProfileMenu
               user={user}
               onClose={() => setMenuOpen(false)}
+              onOpenGlobalProfile={() => {
+                setMenuOpen(false)
+                setGlobalProfileOpen(true)
+              }}
             />
           </PopoverContent>
         </Popover>
+
+        <UserGlobalProfileDialog
+          user={user}
+          open={globalProfileOpen}
+          onOpenChange={setGlobalProfileOpen}
+        />
       </div>
     </div>
   )

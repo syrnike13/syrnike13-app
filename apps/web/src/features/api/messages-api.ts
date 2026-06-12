@@ -185,7 +185,29 @@ export async function fetchPinnedMessages(
   channelId: string,
   limit = 50,
 ) {
-  return fetchChannelMessages(token, channelId, { pinned: true, limit })
+  const body: DataMessageSearch = {
+    pinned: true,
+    limit,
+    sort: 'Latest',
+    include_users: true,
+  }
+
+  const response = await apiRequest<BulkMessageResponse>(
+    `/channels/${channelId}/search`,
+    {
+      method: 'POST',
+      token,
+      body,
+    },
+  )
+
+  const { messages, users } = normalizeMessagesResponse(response)
+  return {
+    messages: [...messages].filter((message) => message.pinned).sort((a, b) =>
+      a._id.localeCompare(b._id),
+    ),
+    users,
+  }
 }
 
 export async function pinChannelMessage(

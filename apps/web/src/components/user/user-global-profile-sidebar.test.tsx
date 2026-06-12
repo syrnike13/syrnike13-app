@@ -46,8 +46,6 @@ describe('UserGlobalProfileSidebar', () => {
   })
 
   it('does not render an invalid join date when member data has no joined_at', () => {
-    const onStartCall = vi.fn()
-
     render(
       <UserGlobalProfileSidebar
         user={{ _id: 'user-target', username: 'bob', online: true } as never}
@@ -55,7 +53,6 @@ describe('UserGlobalProfileSidebar', () => {
         isSelf={false}
         busy={false}
         onOpenDm={vi.fn()}
-        onStartCall={onStartCall}
         onCopyId={vi.fn()}
         onBlock={vi.fn()}
         onEditProfile={vi.fn()}
@@ -63,7 +60,6 @@ describe('UserGlobalProfileSidebar', () => {
     )
 
     expect(screen.queryByText('Invalid Date')).toBeNull()
-    screen.getByRole('button', { name: 'Позвонить' }).click()
-    expect(onStartCall).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Сообщение' })).toBeTruthy()
   })
 })

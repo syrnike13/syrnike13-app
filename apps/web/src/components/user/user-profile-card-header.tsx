@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
@@ -17,11 +18,6 @@ import {
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
-import {
-  getUserPresence,
-  presenceModeLabel,
-  userStatusSubtitle,
-} from '#/lib/presence'
 import {
   memberRoleEntries,
   type MemberRoleEntry,
@@ -54,7 +50,6 @@ export type UserProfileCardHeaderProps = {
 export function UserProfileCardHeader({
   user,
   serverId,
-  serverName: serverNameProp,
   roles: rolesProp,
   bannerActions,
   onAvatarClick,
@@ -79,7 +74,6 @@ export function UserProfileCardHeader({
   )
   const roles =
     rolesProp ?? (member ? memberRoleEntries(server, member) : [])
-  const serverName = serverNameProp ?? server?.name
   const token = auth.session?.token
   const actorUserId = auth.user?._id
   const canEditRoles = useMemo(
@@ -94,7 +88,6 @@ export function UserProfileCardHeader({
   )
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
-  const presenceLabel = presenceModeLabel(getUserPresence(user))
 
   const profileQuery = useQuery({
     queryKey: queryKeys.users.profile(user._id),
@@ -170,7 +163,7 @@ export function UserProfileCardHeader({
           ) : null}
         </div>
         {bannerActions ? (
-          <div className="absolute top-2 right-2">{bannerActions}</div>
+          <div className="absolute top-2 right-2 z-20">{bannerActions}</div>
         ) : null}
         <div
           className={cn(
@@ -182,6 +175,17 @@ export function UserProfileCardHeader({
                 : 'left-4 -bottom-10',
           )}
         >
+          <UserProfileStatusBubble
+            status={customStatus}
+            className={cn(
+              'left-full',
+              layout === 'modal'
+                ? 'top-[55%] ml-2'
+                : layout === 'compact'
+                  ? 'top-[50%] ml-1.5'
+                  : 'top-[46%] ml-2.5',
+            )}
+          />
           {onAvatarClick ? (
             <button
               type="button"
@@ -252,7 +256,7 @@ export function UserProfileCardHeader({
             ? 'px-5 pt-12 pb-4'
             : layout === 'compact'
               ? 'px-3 pt-9 pb-2.5'
-              : 'px-4 pt-10 pb-3',
+              : 'px-4 pt-14 pb-3',
         )}
       >
         <h2
@@ -278,43 +282,16 @@ export function UserProfileCardHeader({
           )}
         >
           {user.display_name ? `@${user.username}` : user.username}
-          {customStatus ? (
-            <>
-              <span className="text-muted-foreground/60"> · </span>
-              <span>{customStatus}</span>
-            </>
-          ) : null}
-        </p>
-        <p
-          className={cn(
-            'mt-0.5 truncate text-muted-foreground',
-            layout === 'modal'
-              ? 'text-sm'
-              : layout === 'compact'
-                ? customStatus
-                  ? 'text-sm text-muted-foreground/80'
-                  : 'text-base'
-                : customStatus
-                  ? 'text-xs text-muted-foreground/80'
-                  : 'text-sm',
-          )}
-        >
-          {customStatus ? presenceLabel : userStatusSubtitle(user)}
         </p>
         {profileBio ? (
           <p
             className={cn(
-              'mt-2 text-muted-foreground',
+              'mt-2 text-foreground',
               layout === 'modal' ? 'text-sm whitespace-pre-wrap' : 'line-clamp-3',
               layout === 'compact' ? 'text-base' : 'text-sm',
             )}
           >
             {profileBio}
-          </p>
-        ) : null}
-        {serverName ? (
-          <p className="mt-1 text-xs text-muted-foreground/80">
-            Участник · {serverName}
           </p>
         ) : null}
       </div>

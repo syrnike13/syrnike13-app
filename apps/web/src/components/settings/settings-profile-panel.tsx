@@ -33,6 +33,10 @@ import {
   useProfileDraftRegistration,
   type ProfileDraftController,
 } from '#/components/settings/profile-draft-context'
+import {
+  ProfileStatusBubbleTrigger,
+  SettingsProfileStatusDialog,
+} from '#/components/settings/settings-profile-status-dialog'
 import { cn } from '#/lib/utils'
 
 type ProfileBaseline = {
@@ -90,6 +94,7 @@ export function SettingsProfilePanel() {
   const [bannerPreviewOverride, setBannerPreviewOverride] = useState<
     string | null | undefined
   >(undefined)
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false)
 
   const profileReady =
     Boolean(user) && (profileQuery.isFetched || !profileQuery.isLoading)
@@ -421,16 +426,6 @@ export function SettingsProfilePanel() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-status">Статус</Label>
-            <Input
-              id="profile-status"
-              value={statusText}
-              maxLength={128}
-              onChange={(event) => setStatusText(event.target.value)}
-              placeholder="Чем заняты?"
-            />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="profile-bio">О себе</Label>
             <Textarea
               id="profile-bio"
@@ -469,8 +464,21 @@ export function SettingsProfilePanel() {
               ? () => void removeBanner()
               : undefined
           }
+          onEditStatus={() => setStatusDialogOpen(true)}
         />
       </aside>
+
+      <SettingsProfileStatusDialog
+        open={statusDialogOpen}
+        onOpenChange={setStatusDialogOpen}
+        statusText={statusText}
+        onApply={setStatusText}
+        user={user}
+        displayName={displayName.trim() || username}
+        username={username}
+        avatarUrl={avatarPreview}
+        bannerUrl={bannerPreview}
+      />
     </div>
   )
 }
@@ -490,6 +498,7 @@ function ProfilePreviewCard({
   onEditBanner,
   onRemoveAvatar,
   onRemoveBanner,
+  onEditStatus,
 }: {
   displayName: string
   username: string
@@ -505,9 +514,10 @@ function ProfilePreviewCard({
   onEditBanner: () => void
   onRemoveAvatar?: () => void
   onRemoveBanner?: () => void
+  onEditStatus: () => void
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+    <div className="overflow-visible rounded-xl border border-border bg-card shadow-sm">
       <ProfileMediaContextMenu
         editLabel="Изменить баннер"
         removeLabel="Удалить баннер"
@@ -517,7 +527,7 @@ function ProfilePreviewCard({
       >
         <div
           className={userProfileBannerClassName(
-            'group/banner',
+            'group/banner overflow-hidden rounded-t-xl',
             !bannerUrl &&
               'bg-gradient-to-br from-primary/30 via-chart-4/20 to-sidebar-primary/40',
           )}
@@ -546,28 +556,31 @@ function ProfilePreviewCard({
             onEdit={onEditAvatar}
             onRemove={onRemoveAvatar}
           >
-            <div className="group/profile-avatar relative size-16">
-              <UserAvatar
-                user={avatarUrl ? user : { ...user, avatar: null }}
-                imageSrc={avatarUrl}
-                className="size-16 ring-4 ring-card"
-                fallbackClassName="size-16 bg-card text-lg"
-                showPresence={false}
-              />
-              <ProfileMediaEditOverlay
-                label={hasAvatar ? 'Изменить аватар' : 'Добавить аватар'}
-                disabled={mediaBusy}
-                onClick={onEditAvatar}
-                className="rounded-full group-hover/profile-avatar:opacity-100"
+            <div className="relative size-16">
+              <div className="group/profile-avatar relative size-16">
+                <UserAvatar
+                  user={avatarUrl ? user : { ...user, avatar: null }}
+                  imageSrc={avatarUrl}
+                  className="size-16 ring-4 ring-card bg-card text-lg"
+                  showPresence={false}
+                />
+                <ProfileMediaEditOverlay
+                  label={hasAvatar ? 'Изменить аватар' : 'Добавить аватар'}
+                  disabled={mediaBusy}
+                  onClick={onEditAvatar}
+                  className="rounded-full group-hover/profile-avatar:opacity-100"
+                />
+              </div>
+              <ProfileStatusBubbleTrigger
+                status={statusText}
+                onClick={onEditStatus}
+                className="left-full top-[48%] ml-1.5"
               />
             </div>
           </ProfileMediaContextMenu>
         </div>
         <p className="truncate text-base font-semibold">{displayName}</p>
         <p className="truncate text-sm text-muted-foreground">@{username}</p>
-        {statusText ? (
-          <p className="mt-2 text-sm text-muted-foreground">{statusText}</p>
-        ) : null}
         {bio ? (
           <p className="mt-2 line-clamp-4 text-sm leading-relaxed">{bio}</p>
         ) : null}

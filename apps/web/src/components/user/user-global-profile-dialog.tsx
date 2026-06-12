@@ -17,7 +17,6 @@ import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
 
 type UserGlobalProfileDialogProps = {
   user: User
@@ -35,7 +34,6 @@ export function UserGlobalProfileDialog({
 }: UserGlobalProfileDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
-  const voice = useVoice()
   const { openSettings } = useSettingsModal()
   const [busy, setBusy] = useState(false)
 
@@ -64,27 +62,6 @@ export function UserGlobalProfileDialog({
           search: { m: undefined },
         })
       })
-    } catch {
-      // dm-actions already shows the concrete error toast.
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function startDirectCall() {
-    const token = auth.session?.token
-    if (!token || !canDirectMessage) return
-    setBusy(true)
-    try {
-      const channel = await openDirectMessageChannel(token, user._id, (channelId) => {
-        close()
-        return navigate({
-          to: '/app/c/$channelId',
-          params: { channelId },
-          search: { m: undefined },
-        })
-      })
-      await voice.join(channel._id)
     } catch {
       // dm-actions already shows the concrete error toast.
     } finally {
@@ -138,15 +115,14 @@ export function UserGlobalProfileDialog({
           Глобальный профиль пользователя {displayName}
         </DialogDescription>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background">
+        <div className="flex min-h-0 flex-1 overflow-hidden p-6">
+          <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background ">
             <UserGlobalProfileSidebar
               user={user}
               serverId={serverId}
               isSelf={isSelf}
               busy={busy}
               onOpenDm={() => void openDm()}
-              onStartCall={() => void startDirectCall()}
               onCopyId={() => void copyUserId()}
               onBlock={() => void handleBlock()}
               onEditProfile={() => {

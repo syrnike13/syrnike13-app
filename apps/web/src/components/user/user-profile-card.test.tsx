@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserProfileCard } from './user-profile-card'
 
 const navigateMock = vi.hoisted(() => vi.fn())
-const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const openDirectMessageChannelMock = vi.hoisted(() =>
   vi.fn(
     async (
@@ -37,18 +36,8 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/voice/voice-context', () => ({
-  useVoice: () => ({
-    join: voiceJoinMock,
-  }),
-}))
-
 vi.mock('#/features/dm/dm-actions', () => ({
   openDirectMessageChannel: openDirectMessageChannelMock,
-}))
-
-vi.mock('#/components/friends/friendship-action', () => ({
-  FriendshipAction: () => null,
 }))
 
 vi.mock('#/components/user/user-profile-card-header', () => ({
@@ -66,17 +55,16 @@ const targetUser = {
 describe('UserProfileCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    voiceJoinMock.mockResolvedValue(true)
   })
 
   afterEach(() => {
     cleanup()
   })
 
-  it('starts a direct message call from the profile popover', async () => {
+  it('opens a direct message from the profile popover', async () => {
     render(<UserProfileCard user={targetUser} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Позвонить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ЛС' }))
 
     await waitFor(() => {
       expect(openDirectMessageChannelMock).toHaveBeenCalledWith(
@@ -90,6 +78,5 @@ describe('UserProfileCard', () => {
       params: { channelId: 'dm-1' },
       search: { m: undefined },
     })
-    expect(voiceJoinMock).toHaveBeenCalledWith('dm-1')
   })
 })

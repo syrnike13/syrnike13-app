@@ -46,6 +46,7 @@ pub async fn query(
         sort,
         nearby,
         include_users,
+        pinned,
     } = options;
 
     Message::fetch_with_users(
@@ -53,6 +54,7 @@ pub async fn query(
         MessageQuery {
             filter: MessageFilter {
                 channel: Some(channel.id().to_string()),
+                pinned,
                 ..Default::default()
             },
             time_period: if let Some(nearby) = nearby {

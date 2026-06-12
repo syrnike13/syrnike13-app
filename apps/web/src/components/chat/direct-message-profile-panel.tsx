@@ -4,6 +4,7 @@ import type { User } from '@syrnike13/api-types'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { listMutualServers } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
@@ -123,6 +124,10 @@ export function DirectMessageProfilePanel({
             ) : null}
           </div>
           <div className="absolute -bottom-11 left-4 z-10">
+            <UserProfileStatusBubble
+              status={customStatus}
+              className="left-full top-[45%] ml-2"
+            />
             {onOpenProfile ? (
               <button
                 type="button"
@@ -165,12 +170,6 @@ export function DirectMessageProfilePanel({
             </h2>
             <p className="truncate text-sm text-muted-foreground">
               {user.display_name ? `@${user.username}` : user.username}
-              {customStatus ? (
-                <>
-                  <span className="text-muted-foreground/50"> · </span>
-                  <span>{customStatus}</span>
-                </>
-              ) : null}
             </p>
           </div>
 

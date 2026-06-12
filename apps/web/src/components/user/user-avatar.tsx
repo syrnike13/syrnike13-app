@@ -92,7 +92,7 @@ export function UserAvatar({
 
   return (
     <div
-      className={cn('relative shrink-0', className)}
+      className="relative shrink-0"
       onPointerEnter={
         animated === 'hover' && !useImageSrcOverride
           ? startHoverAnimation
@@ -114,7 +114,7 @@ export function UserAvatar({
           : undefined
       }
     >
-      <Avatar className={fallbackClassName}>
+      <Avatar className={cn(className, fallbackClassName)}>
         {avatarSrc ? (
           <AvatarImage
             src={avatarSrc}

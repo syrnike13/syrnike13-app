@@ -1,20 +1,38 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { MessageCircleIcon, UserPlusIcon, UsersIcon } from '#/components/icons'
+import {
+  BanIcon,
+  CopyIcon,
+  MessageCircleIcon,
+  MoreHorizontalIcon,
+  UserMinusIcon,
+  UserPlusIcon,
+  UsersIcon,
+  XIcon,
+} from '#/components/icons'
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
+import { toast } from 'sonner'
 
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
+import { FloatingMenuItem } from '#/components/ui/floating-menu'
 import { Input } from '#/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import {
   acceptIncomingFriendRequest,
+  blockUserRelationship,
   cancelOutgoingFriendRequest,
   declineIncomingFriendRequest,
+  removeFriend,
   sendFriendRequestByUsername,
 } from '#/features/friends/friend-actions'
 import { selectFriendRequestNotificationBadge } from '#/features/notifications/notification-selectors'
@@ -35,13 +53,18 @@ function userLabel(user: { username: string; display_name?: string | null }) {
   return user.display_name ?? user.username
 }
 
+const rowIconActionClass =
+  'size-9 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'
+
 function HomeFriendRow({
   user,
+  token,
   onMessage,
   onOpen,
   actions,
 }: {
   user: User
+  token?: string
   onMessage?: () => void
   onOpen?: () => void
   actions?: ReactNode
@@ -53,6 +76,21 @@ function HomeFriendRow({
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     onOpen()
+  }
+
+  async function copyUserId() {
+    try {
+      await navigator.clipboard.writeText(user._id)
+      toast.success('ID скопирован')
+    } catch {
+      toast.error('Не удалось скопировать')
+    }
+  }
+
+  function handleBlock() {
+    if (!token) return
+    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+    void blockUserRelationship(token, user._id).catch(() => undefined)
   }
 
   return (
@@ -84,12 +122,78 @@ function HomeFriendRow({
             type="button"
             size="icon"
             variant="ghost"
-            className="size-9 shrink-0 rounded-full bg-muted/50"
+            className={rowIconActionClass}
             title="Написать"
+            aria-label="Написать"
             onClick={onMessage}
           >
             <MessageCircleIcon className="size-4" />
           </Button>
+        ) : null}
+        {token ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={rowIconActionClass}
+                title="Ещё"
+                aria-label="Ещё"
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="bottom"
+              align="end"
+              className="w-auto min-w-[11rem] p-1"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
+              {user.relationship === 'Incoming' ? (
+                <FloatingMenuItem
+                  onClick={() => {
+                    void declineIncomingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
+                  }}
+                >
+                  <XIcon className="size-3.5" />
+                  Отклонить заявку
+                </FloatingMenuItem>
+              ) : null}
+              {user.relationship === 'Outgoing' ? (
+                <FloatingMenuItem
+                  onClick={() => {
+                    void cancelOutgoingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
+                  }}
+                >
+                  <XIcon className="size-3.5" />
+                  Отменить заявку
+                </FloatingMenuItem>
+              ) : null}
+              {user.relationship === 'Friend' ? (
+                <FloatingMenuItem
+                  onClick={() => {
+                    void removeFriend(token, user._id).catch(() => undefined)
+                  }}
+                >
+                  <UserMinusIcon className="size-3.5" />
+                  Удалить из друзей
+                </FloatingMenuItem>
+              ) : null}
+              <FloatingMenuItem onClick={() => void copyUserId()}>
+                <CopyIcon className="size-3.5" />
+                Копировать ID
+              </FloatingMenuItem>
+              <FloatingMenuItem onClick={handleBlock}>
+                <BanIcon className="size-3.5" />
+                Заблокировать
+              </FloatingMenuItem>
+            </PopoverContent>
+          </Popover>
         ) : null}
       </div>
     </div>
@@ -302,6 +406,7 @@ export function HomeView({ tab }: HomeViewProps) {
                   <HomeFriendRow
                     key={user._id}
                     user={user}
+                    token={token}
                     onOpen={
                       isOutgoing ? undefined : () => void openDm(user._id)
                     }

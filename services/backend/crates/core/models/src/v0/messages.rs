@@ -319,6 +319,8 @@ auto_derived!(
         pub nearby: Option<String>,
         /// Whether to include user (and member, if server channel) objects
         pub include_users: Option<bool>,
+        /// Whether to only fetch pinned messages
+        pub pinned: Option<bool>,
     }
 
     /// Options for searching for messages

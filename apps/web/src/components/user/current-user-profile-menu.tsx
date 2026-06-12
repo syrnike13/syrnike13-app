@@ -4,6 +4,7 @@ import type { User } from '@syrnike13/api-types'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import {
   profileMenuNestClass,
   profileMenuRowClass,
@@ -20,12 +21,14 @@ import { cn } from '#/lib/utils'
 type CurrentUserProfileMenuProps = {
   user: User
   onClose?: () => void
+  onOpenGlobalProfile?: () => void
 }
 
 /** Поповер панели пользователя — отдельная вёрстка, не общая карточка чужого профиля. */
 export function CurrentUserProfileMenu({
   user,
   onClose,
+  onOpenGlobalProfile,
 }: CurrentUserProfileMenuProps) {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
@@ -69,14 +72,35 @@ export function CurrentUserProfileMenu({
           ) : null}
         </div>
         <div className="absolute -bottom-7 left-3 z-10">
-          <UserAvatar
-            user={user}
-            className="size-20"
-            fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-card"
-            animated="always"
-            showPresence
-            presenceRingClassName="border-card"
+          <UserProfileStatusBubble
+            status={customStatus}
+            className="left-full top-[52%] ml-2"
           />
+          <button
+            type="button"
+            title="Открыть профиль"
+            aria-label="Открыть профиль"
+            className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
+            onClick={(event) => {
+              event.stopPropagation()
+              onOpenGlobalProfile?.()
+            }}
+          >
+            <span className="relative block rounded-full">
+              <UserAvatar
+                user={user}
+                className="size-20"
+                fallbackClassName="size-20 text-xl ring-[6px] ring-card bg-card"
+                animated="always"
+                showPresence
+                presenceRingClassName="border-card"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition-colors group-hover/avatar-button:bg-black/25"
+              />
+            </span>
+          </button>
         </div>
       </div>
 
@@ -86,12 +110,6 @@ export function CurrentUserProfileMenu({
         </h2>
         <p className="mt-0.5 truncate text-sm leading-snug text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
-          {customStatus ? (
-            <>
-              <span className="text-muted-foreground/50"> · </span>
-              <span className="text-foreground/80">{customStatus}</span>
-            </>
-          ) : null}
         </p>
         {profileBio ? (
           <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
