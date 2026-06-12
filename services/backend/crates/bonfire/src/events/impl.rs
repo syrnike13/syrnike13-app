@@ -222,6 +222,7 @@ impl State {
                 if let Some(call) = get_channel_voice_call(channel.id()).await? {
                     user_ids.insert(call.initiator_id.clone());
                     user_ids.extend(call.ringing_recipients.iter().cloned());
+                    user_ids.extend(call.declined_recipients.iter().cloned());
 
                     voice_calls.push(VoiceCall {
                         channel_id: call.channel_id,
@@ -233,6 +234,7 @@ impl State {
                         started_at: call.started_at,
                         expires_at: call.expires_at,
                         recipients: call.ringing_recipients,
+                        declined_recipients: call.declined_recipients,
                     });
                 }
             }

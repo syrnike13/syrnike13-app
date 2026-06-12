@@ -103,9 +103,14 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         const call = event as {
           initiator_id?: string
           recipients?: string[]
+          declined_recipients?: string[]
         }
         ensureVoiceUsersLoaded(
-          [call.initiator_id, ...(call.recipients ?? [])].filter(
+          [
+            call.initiator_id,
+            ...(call.recipients ?? []),
+            ...(call.declined_recipients ?? []),
+          ].filter(
             (userId): userId is string => Boolean(userId),
           ),
           token,
@@ -113,9 +118,16 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       if (event.type === 'VoiceCallActive') {
-        const call = event as { channel_id?: string; initiator_id?: string }
+        const call = event as {
+          channel_id?: string
+          initiator_id?: string
+          declined_recipients?: string[]
+        }
         if (call.initiator_id) {
-          ensureVoiceUsersLoaded([call.initiator_id], token)
+          ensureVoiceUsersLoaded(
+            [call.initiator_id, ...(call.declined_recipients ?? [])],
+            token,
+          )
         }
         if (call.channel_id) {
           void closeVoiceCallNotification(call.channel_id)
@@ -133,10 +145,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         const voiceCalls = event.voice_calls as Array<{
           initiator_id?: string
           recipients?: string[]
+          declined_recipients?: string[]
         }>
         const userIds = voiceCalls.flatMap((call) => [
           call.initiator_id,
           ...(call.recipients ?? []),
+          ...(call.declined_recipients ?? []),
         ])
         ensureVoiceUsersLoaded(
           userIds.filter((userId): userId is string => Boolean(userId)),

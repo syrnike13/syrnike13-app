@@ -10,7 +10,7 @@ import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
-import { cancelDirectMessageCall } from '#/features/api/channels-api'
+import { declineDirectMessageCall } from '#/features/api/channels-api'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
 import { useVoice } from '#/features/voice/voice-context'
 
@@ -69,14 +69,14 @@ export function IncomingVoiceCallOverlay({
       ? 'Личный звонок'
       : 'Групповой звонок'
   const declineLabel =
-    channel.channel_type === 'DirectMessage' ? 'Отменить' : 'Скрыть'
+    channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
 
   function declineIncomingCall() {
     if (channel.channel_type === 'DirectMessage') {
-      if (!token) return
-      void cancelDirectMessageCall(token, call.channelId)
+      if (!token || !currentUserId) return
+      void declineDirectMessageCall(token, call.channelId)
         .then(() => {
-          syncStore.removeVoiceCall(call.channelId)
+          syncStore.markVoiceCallDeclined(call.channelId, currentUserId)
           void closeVoiceCallNotification(call.channelId)
         })
         .catch(() => undefined)

@@ -75,6 +75,7 @@ pub(crate) async fn stop_ringing_for_removed_group_member(
                 initiator_id: next_call.initiator_id.clone(),
                 started_at: next_call.started_at,
                 expires_at: next_call.expires_at,
+                declined_recipients: next_call.declined_recipients.clone(),
             }
             .p(next_call.channel_id.clone())
             .await;

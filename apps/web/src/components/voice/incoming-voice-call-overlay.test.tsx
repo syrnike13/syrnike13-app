@@ -17,6 +17,9 @@ const navigateMock = vi.hoisted(() => vi.fn())
 const cancelDirectMessageCallMock = vi.hoisted(() =>
   vi.fn().mockResolvedValue(undefined),
 )
+const declineDirectMessageCallMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+)
 
 const currentUser = {
   _id: CURRENT_USER_ID,
@@ -84,6 +87,7 @@ vi.mock('#/features/voice/voice-context', () => ({
 
 vi.mock('#/features/api/channels-api', () => ({
   cancelDirectMessageCall: cancelDirectMessageCallMock,
+  declineDirectMessageCall: declineDirectMessageCallMock,
 }))
 
 describe('IncomingVoiceCallOverlay', () => {
@@ -93,6 +97,7 @@ describe('IncomingVoiceCallOverlay', () => {
     voiceJoinMock.mockResolvedValue(true)
     navigateMock.mockClear()
     cancelDirectMessageCallMock.mockClear()
+    declineDirectMessageCallMock.mockClear()
     syncStore.applyReady({
       users: [currentUser, caller],
       servers: [],
@@ -149,23 +154,28 @@ describe('IncomingVoiceCallOverlay', () => {
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
-  it('cancels one-to-one calls when the user declines', () => {
+  it('declines one-to-one calls without cancelling the call', () => {
     render(<IncomingVoiceCallOverlay />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }))
 
-    expect(cancelDirectMessageCallMock).toHaveBeenCalledWith(
+    expect(declineDirectMessageCallMock).toHaveBeenCalledWith(
       'session-token',
       CHANNEL_ID,
     )
+    expect(cancelDirectMessageCallMock).not.toHaveBeenCalled()
   })
 
-  it('removes one-to-one calls after a successful cancel', async () => {
+  it('keeps one-to-one calls joinable after a successful decline', async () => {
     const view = render(<IncomingVoiceCallOverlay />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }))
     await waitFor(() => {
       expect(screen.queryByText('test_isa звонит')).toBeNull()
+    })
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toMatchObject({
+      phase: 'active',
+      declinedRecipients: [CURRENT_USER_ID],
     })
 
     view.unmount()
@@ -174,15 +184,15 @@ describe('IncomingVoiceCallOverlay', () => {
     expect(screen.queryByText('test_isa звонит')).toBeNull()
   })
 
-  it('keeps one-to-one calls visible when cancel fails', async () => {
-    cancelDirectMessageCallMock.mockRejectedValueOnce(new Error('boom'))
+  it('keeps one-to-one calls visible when decline fails', async () => {
+    declineDirectMessageCallMock.mockRejectedValueOnce(new Error('boom'))
 
     render(<IncomingVoiceCallOverlay />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }))
 
     await waitFor(() => {
-      expect(cancelDirectMessageCallMock).toHaveBeenCalledWith(
+      expect(declineDirectMessageCallMock).toHaveBeenCalledWith(
         'session-token',
         CHANNEL_ID,
       )

@@ -290,6 +290,7 @@ export const syncStore = {
         startedAt: call.started_at,
         expiresAt: call.expires_at,
         recipients: call.recipients ?? [],
+        declinedRecipients: call.declined_recipients ?? [],
       }
     }
     const currentVoiceCallKeys = new Set(
@@ -447,7 +448,11 @@ export const syncStore = {
       existing.startedAt === call.startedAt &&
       existing.expiresAt === call.expiresAt &&
       existing.recipients.length === call.recipients.length &&
-      existing.recipients.every((id, index) => id === call.recipients[index])
+      existing.recipients.every((id, index) => id === call.recipients[index]) &&
+      existing.declinedRecipients.length === call.declinedRecipients.length &&
+      existing.declinedRecipients.every(
+        (id, index) => id === call.declinedRecipients[index],
+      )
     ) {
       scheduleVoiceCallExpiry(call)
       return
@@ -483,6 +488,21 @@ export const syncStore = {
         ...state.dismissedVoiceCallKeys,
         [key]: true,
       },
+    })
+  },
+
+  markVoiceCallDeclined(channelId: string, userId: string) {
+    const call = state.voiceCalls[channelId]
+    if (!call) return
+
+    this.setVoiceCall({
+      ...call,
+      phase: 'active',
+      expiresAt: undefined,
+      recipients: call.recipients.filter((recipientId) => recipientId !== userId),
+      declinedRecipients: call.declinedRecipients.includes(userId)
+        ? call.declinedRecipients
+        : [...call.declinedRecipients, userId],
     })
   },
 
@@ -999,6 +1019,7 @@ export const syncStore = {
           started_at: number
           expires_at?: number | string
           recipients?: string[]
+          declined_recipients?: string[]
         }
         this.setVoiceCall({
           channelId: payload.channel_id,
@@ -1007,6 +1028,7 @@ export const syncStore = {
           startedAt: payload.started_at,
           expiresAt: payload.expires_at as number | string | undefined,
           recipients: payload.recipients ?? [],
+          declinedRecipients: payload.declined_recipients ?? [],
         })
         break
       }
@@ -1016,6 +1038,7 @@ export const syncStore = {
           initiator_id: string
           started_at: number
           expires_at?: number | string
+          declined_recipients?: string[]
         }
         this.setVoiceCall({
           channelId: payload.channel_id,
@@ -1024,6 +1047,7 @@ export const syncStore = {
           startedAt: payload.started_at,
           expiresAt: payload.expires_at,
           recipients: [],
+          declinedRecipients: payload.declined_recipients ?? [],
         })
         break
       }

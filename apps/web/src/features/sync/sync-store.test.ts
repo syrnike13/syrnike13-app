@@ -447,6 +447,7 @@ describe('syncStore voice events', () => {
       startedAt: 1,
       expiresAt: '2026-06-12T00:00:30.000Z',
       recipients: ['target-user'],
+      declinedRecipients: [],
     })
     syncStore.dismissVoiceCall(syncStore.getState().voiceCalls[CHANNEL_ID]!)
     expect(
@@ -458,6 +459,7 @@ describe('syncStore voice events', () => {
       channel_id: CHANNEL_ID,
       initiator_id: USER_ID,
       started_at: 1,
+      declined_recipients: ['target-user'],
     })
 
     expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toEqual({
@@ -467,6 +469,7 @@ describe('syncStore voice events', () => {
       startedAt: 1,
       expiresAt: undefined,
       recipients: [],
+      declinedRecipients: ['target-user'],
     })
     expect(
       Object.keys(syncStore.getState().dismissedVoiceCallKeys),
@@ -504,6 +507,7 @@ describe('syncStore voice events', () => {
       startedAt: '2026-06-12T00:00:00.000Z',
       expiresAt: '2026-06-12T00:00:30.000Z',
       recipients: ['target-user'],
+      declinedRecipients: [],
     })
   })
 
@@ -530,6 +534,7 @@ describe('syncStore voice events', () => {
       startedAt: '2026-06-12T00:00:00.000Z',
       expiresAt: undefined,
       recipients: [],
+      declinedRecipients: [],
     })
   })
 
@@ -562,6 +567,7 @@ describe('syncStore voice events', () => {
       startedAt: '2026-06-12T00:00:00.000Z',
       expiresAt: '2026-06-12T00:00:30.000Z',
       recipients: ['target-user'],
+      declinedRecipients: [],
     }
 
     syncStore.setVoiceCall(call)
@@ -582,6 +588,7 @@ describe('syncStore voice events', () => {
       startedAt: '2026-06-12T00:00:00.000Z',
       expiresAt: '2026-06-12T00:00:30.000Z',
       recipients: ['target-user'],
+      declinedRecipients: [],
     }
 
     syncStore.setVoiceCall(call)
@@ -673,6 +680,7 @@ describe('syncStore voice events', () => {
         startedAt: '2026-06-12T00:00:00.000Z',
         expiresAt: Date.parse('2026-06-12T00:00:01.000Z') + 10 * 60 * 1000,
         recipients: [],
+        declinedRecipients: [],
       })
 
       vi.advanceTimersByTime(10 * 60 * 1000 - 1)

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -41,14 +42,15 @@ import {
   editChannelMessage,
   unreactFromMessage,
 } from '#/features/api/messages-api'
-import { cancelDirectMessageCall } from '#/features/api/channels-api'
 import {
-  listUserMutualServerNicknames,
-} from '#/features/sync/selectors'
+  cancelDirectMessageCall,
+  declineDirectMessageCall,
+} from '#/features/api/channels-api'
+import { listUserMutualServerNicknames } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
+  hasOngoingVoiceCall,
   isIncomingVoiceCall,
-  isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
 import type { User } from '@syrnike13/api-types'
@@ -59,19 +61,22 @@ type ChannelViewProps = {
 }
 
 const EMPTY_ALIASES: string[] = []
-const INLINE_VOICE_STAGE_DEFAULT_HEIGHT = 300
+const INLINE_VOICE_STAGE_DEFAULT_HEIGHT = 360
 const INLINE_VOICE_STAGE_MIN_HEIGHT = 220
-const INLINE_VOICE_STAGE_MAX_HEIGHT = 560
+const INLINE_CHAT_MIN_HEIGHT = 160
 
-function clampInlineVoiceStageHeight(height: number, viewportHeight?: number) {
-  const viewportMax =
-    viewportHeight == null
-      ? INLINE_VOICE_STAGE_MAX_HEIGHT
-      : Math.min(INLINE_VOICE_STAGE_MAX_HEIGHT, viewportHeight * 0.6)
+export function clampInlineVoiceStageHeight(
+  height: number,
+  containerHeight: number,
+) {
+  const maxHeight = Math.max(
+    INLINE_VOICE_STAGE_MIN_HEIGHT,
+    containerHeight - INLINE_CHAT_MIN_HEIGHT,
+  )
 
   return Math.min(
-    Math.max(INLINE_VOICE_STAGE_MIN_HEIGHT, viewportMax),
     Math.max(INLINE_VOICE_STAGE_MIN_HEIGHT, height),
+    maxHeight,
   )
 }
 
@@ -132,6 +137,8 @@ export function ChannelView({
   const [inlineVoiceStageHeight, setInlineVoiceStageHeight] = useState(
     INLINE_VOICE_STAGE_DEFAULT_HEIGHT,
   )
+  const channelContentRef = useRef<HTMLDivElement>(null)
+  const inlineVoiceStageRef = useRef<HTMLElement>(null)
 
   const {
     auth,
@@ -159,15 +166,13 @@ export function ChannelView({
   useEffect(() => {
     setDmProfilePanelOpen(true)
     setFullProfileOpen(false)
+    setInlineVoiceStageHeight(INLINE_VOICE_STAGE_DEFAULT_HEIGHT)
   }, [channelId])
 
   const currentUserId = auth.user?._id
   const voiceCall = useSyncStore((s) => s.voiceCalls[channelId])
   const voiceCallRingingDismissed = useSyncStore((s) =>
     isVoiceCallRingingDismissed(voiceCall, s.dismissedVoiceCallKeys),
-  )
-  const voiceCallDismissed = useSyncStore((s) =>
-    isVoiceCallDismissed(voiceCall, s.dismissedVoiceCallKeys),
   )
   const dmRecipientId = channel
     ? getDmRecipientId(channel, currentUserId)
@@ -216,8 +221,7 @@ export function ChannelView({
   const showInlineVoiceStage =
     hasVoice &&
     isDmVoiceCallChannel &&
-    (inThisVoiceSession ||
-      (voiceCall?.phase === 'active' && !voiceCallDismissed))
+    (inThisVoiceSession || hasOngoingVoiceCall(voiceCall))
   let voiceActionLabel = isDmVoiceCallChannel ? 'Позвонить' : 'Голос'
   if (
     (isDmVoiceCallChannel && voiceCall?.phase === 'active') ||
@@ -244,15 +248,25 @@ export function ChannelView({
     voiceCallInitiator?.display_name ??
     voiceCallInitiator?.username ??
     'Пользователь'
+  const voiceCallInitiatedByCurrentUser =
+    Boolean(currentUserId) && voiceCall?.initiatorId === currentUserId
   function dismissVoiceCallBanner() {
     if (!voiceCall) return
 
     if (isDirectMessage && voiceCall.phase === 'ringing') {
-      if (!token) return
+      if (!token || !currentUserId) return
 
-      void cancelDirectMessageCall(token, channelId)
+      const updateCall = voiceCallInitiatedByCurrentUser
+        ? cancelDirectMessageCall(token, channelId)
+        : declineDirectMessageCall(token, channelId)
+
+      void updateCall
         .then(() => {
-          syncStore.removeVoiceCall(channelId)
+          if (voiceCallInitiatedByCurrentUser) {
+            syncStore.removeVoiceCall(channelId)
+          } else {
+            syncStore.markVoiceCallDeclined(channelId, currentUserId)
+          }
           void closeVoiceCallNotification(channelId)
         })
         .catch(() => undefined)
@@ -268,14 +282,19 @@ export function ChannelView({
   ) {
     event.preventDefault()
 
+    const container = channelContentRef.current
+    const section = inlineVoiceStageRef.current
+    if (!container || !section) return
+
     const startY = event.clientY
-    const startHeight = inlineVoiceStageHeight
+    const startHeight = section.getBoundingClientRect().height
+    const containerHeight = container.clientHeight
 
     function handlePointerMove(moveEvent: PointerEvent) {
       setInlineVoiceStageHeight(
         clampInlineVoiceStageHeight(
           startHeight + moveEvent.clientY - startY,
-          window.innerHeight,
+          containerHeight,
         ),
       )
     }
@@ -341,15 +360,29 @@ export function ChannelView({
             </Button>
           ) : null}
           {hasVoice && !inThisVoiceSession ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => void voice.join(channelId)}
-            >
-              <HeadphonesIcon className="size-4" />
-              {voiceActionLabel}
-            </Button>
+            <>
+              {voiceCallIncoming &&
+              voiceCall?.phase === 'ringing' &&
+              isDirectMessage ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={dismissVoiceCallBanner}
+                >
+                  {voiceCallInitiatedByCurrentUser ? 'Отменить' : 'Отклонить'}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void voice.join(channelId)}
+              >
+                <HeadphonesIcon className="size-4" />
+                {voiceActionLabel}
+              </Button>
+            </>
           ) : null}
           {channel.channel_type === 'TextChannel' ? (
             <ChannelSettingsDialog channel={channel} />
@@ -391,17 +424,20 @@ export function ChannelView({
       </header>
 
       <div className="flex min-h-0 min-w-0 flex-1">
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={channelContentRef}
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        >
           {showInlineVoiceStage &&
           (channel.channel_type === 'DirectMessage' ||
             channel.channel_type === 'Group') ? (
             <section
+              ref={inlineVoiceStageRef}
               aria-label="Голосовой звонок"
               className="relative shrink-0 overflow-hidden border-b border-shell-divider bg-black"
               style={{
                 height: inlineVoiceStageHeight,
                 minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,
-                maxHeight: '60vh',
               }}
             >
               <VoiceStageView
@@ -410,6 +446,13 @@ export function ChannelView({
                 chatOpen={false}
                 onToggleChat={() => undefined}
                 showChatToggle={false}
+                voiceCall={voiceCall}
+                voiceCallIncoming={voiceCallIncoming}
+                onDeclineVoiceCall={
+                  voiceCallIncoming && voiceCall?.phase === 'ringing'
+                    ? dismissVoiceCallBanner
+                    : undefined
+                }
               />
               <div
                 aria-label="Изменить высоту звонка"
@@ -434,7 +477,9 @@ export function ChannelView({
               actionLabel="Ответить"
               dismissLabel={
                 isDirectMessage && voiceCall.phase === 'ringing'
-                  ? 'Отменить'
+                  ? voiceCallInitiatedByCurrentUser
+                    ? 'Отменить'
+                    : 'Отклонить'
                   : 'Скрыть'
               }
               onJoin={() => {
@@ -443,95 +488,99 @@ export function ChannelView({
               onDismiss={dismissVoiceCallBanner}
             />
           ) : null}
-          <MessageList
-            channelId={channelId}
-            serverId={serverIdForSelection ?? undefined}
-            scrollPaddingClassName={cn(
-              FLOATING_BAR_SCROLL_PAD_CLASS,
-              replyTo && 'pb-[88px]',
-            )}
-            highlightMessageId={listHighlightMessageId}
-            messages={messages}
-            users={users}
-            currentUserId={auth.user?._id}
-            hasOlder={hasOlder}
-            loadingOlder={loadingOlder}
-            onLoadOlder={loadOlder}
-            onJumpToMessage={jumpToMessage}
-            onReply={(message) => setComposerAction({ type: 'reply', message })}
-            onEdit={(message) => setComposerAction({ type: 'edit', message })}
-            onDelete={(message) => void handleDelete(message)}
-            onBlock={(message) => {
-              if (!token || message.author === auth.user?._id) return
-              if (!window.confirm('Заблокировать этого пользователя?')) return
-              void blockUserRelationship(token, message.author).catch(
-                () => undefined,
-              )
-            }}
-            onPin={(message) => void handlePin(message)}
-            onUnpin={(message) => void handleUnpin(message)}
-            onToggleReaction={async (messageId, emoji, active) => {
-              if (!token || !auth.user?._id) return
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <MessageList
+              channelId={channelId}
+              serverId={serverIdForSelection ?? undefined}
+              scrollPaddingClassName={cn(
+                FLOATING_BAR_SCROLL_PAD_CLASS,
+                replyTo && 'pb-[88px]',
+              )}
+              highlightMessageId={listHighlightMessageId}
+              messages={messages}
+              users={users}
+              currentUserId={auth.user?._id}
+              hasOlder={hasOlder}
+              loadingOlder={loadingOlder}
+              onLoadOlder={loadOlder}
+              onJumpToMessage={jumpToMessage}
+              onReply={(message) =>
+                setComposerAction({ type: 'reply', message })
+              }
+              onEdit={(message) => setComposerAction({ type: 'edit', message })}
+              onDelete={(message) => void handleDelete(message)}
+              onBlock={(message) => {
+                if (!token || message.author === auth.user?._id) return
+                if (!window.confirm('Заблокировать этого пользователя?')) return
+                void blockUserRelationship(token, message.author).catch(
+                  () => undefined,
+                )
+              }}
+              onPin={(message) => void handlePin(message)}
+              onUnpin={(message) => void handleUnpin(message)}
+              onToggleReaction={async (messageId, emoji, active) => {
+                if (!token || !auth.user?._id) return
 
-              syncStore.mutateReaction(
-                channelId,
-                messageId,
-                emoji,
-                auth.user._id,
-                !active,
-              )
-
-              try {
-                if (active) {
-                  await unreactFromMessage(token, channelId, messageId, emoji)
-                } else {
-                  await reactToMessage(token, channelId, messageId, emoji)
-                }
-              } catch {
                 syncStore.mutateReaction(
                   channelId,
                   messageId,
                   emoji,
                   auth.user._id,
-                  active,
+                  !active,
                 )
-              }
-            }}
-          />
 
-          <div
-            className={cn(
-              'pointer-events-none absolute z-20 flex flex-col items-stretch gap-1',
-              FLOATING_BAR_INSET_X_CLASS,
-              FLOATING_BAR_BOTTOM_CLASS,
-            )}
-          >
-            <TypingIndicator channelId={channelId} floating />
-            <MessageComposer
-              channel={channel}
-              users={users}
-              floating
-              disabled={!token || auth.gatewayState !== 'connected'}
-              token={token}
-              replyTo={replyTo}
-              editingMessage={editingMessage}
-              onCancelAction={() => setComposerAction(null)}
-              onTyping={notifyTyping}
-              onSend={async (input) => {
-                if (!token) return
-                await sendChannelMessage(token, channelId, input)
-              }}
-              onEdit={async (messageId, content) => {
-                if (!token) return
-                const updated = await editChannelMessage(
-                  token,
-                  channelId,
-                  messageId,
-                  content,
-                )
-                syncStore.patchMessage(channelId, messageId, updated)
+                try {
+                  if (active) {
+                    await unreactFromMessage(token, channelId, messageId, emoji)
+                  } else {
+                    await reactToMessage(token, channelId, messageId, emoji)
+                  }
+                } catch {
+                  syncStore.mutateReaction(
+                    channelId,
+                    messageId,
+                    emoji,
+                    auth.user._id,
+                    active,
+                  )
+                }
               }}
             />
+
+            <div
+              className={cn(
+                'pointer-events-none absolute z-20 flex flex-col items-stretch gap-1',
+                FLOATING_BAR_INSET_X_CLASS,
+                FLOATING_BAR_BOTTOM_CLASS,
+              )}
+            >
+              <TypingIndicator channelId={channelId} floating />
+              <MessageComposer
+                channel={channel}
+                users={users}
+                floating
+                disabled={!token || auth.gatewayState !== 'connected'}
+                token={token}
+                replyTo={replyTo}
+                editingMessage={editingMessage}
+                onCancelAction={() => setComposerAction(null)}
+                onTyping={notifyTyping}
+                onSend={async (input) => {
+                  if (!token) return
+                  await sendChannelMessage(token, channelId, input)
+                }}
+                onEdit={async (messageId, content) => {
+                  if (!token) return
+                  const updated = await editChannelMessage(
+                    token,
+                    channelId,
+                    messageId,
+                    content,
+                  )
+                  syncStore.patchMessage(channelId, messageId, updated)
+                }}
+              />
+            </div>
           </div>
         </div>
         {isDirectMessage && dmRecipient && dmProfilePanelOpen ? (

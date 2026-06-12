@@ -38,6 +38,7 @@ export type ReadyPayload = {
     started_at: number | string
     expires_at?: number | string
     recipients?: string[]
+    declined_recipients?: string[]
   }>
 }
 

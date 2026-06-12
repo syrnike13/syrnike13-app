@@ -38,6 +38,7 @@ pub(crate) async fn send_active_group_voice_call_to_new_member(
         initiator_id: call.initiator_id,
         started_at: call.started_at,
         expires_at: call.expires_at,
+        declined_recipients: call.declined_recipients,
     }
     .private(member_id.to_string())
     .await;

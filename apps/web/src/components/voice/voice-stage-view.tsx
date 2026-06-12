@@ -7,7 +7,8 @@ import {
   type Ref,
 } from 'react'
 import { MessageSquareIcon, Volume2Icon } from '#/components/icons'
-import type { Channel } from '@syrnike13/api-types'
+import type { Channel, User } from '@syrnike13/api-types'
+import type { VoiceCallState } from '#/features/sync/voice-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -20,6 +21,7 @@ import {
   VoiceStageFullscreenButton,
   VoiceStagePopoutButton,
 } from '#/components/voice/voice-stage-controls'
+import { VoiceStageAvatarRoster } from '#/components/voice/voice-stage-avatar-roster'
 import { VoiceStageInviteTile } from '#/components/voice/voice-stage-tile'
 import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
 import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popout-placeholder'
@@ -37,6 +39,7 @@ import {
 import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
+  filterStageVideoMediaItems,
   sortStageMediaItemsForGrid,
   stageMediaKindLabel,
 } from '#/features/voice/voice-stage-media'
@@ -63,6 +66,9 @@ type VoiceStageViewProps = {
   chatOpen: boolean
   onToggleChat: () => void
   showChatToggle?: boolean
+  voiceCall?: VoiceCallState
+  voiceCallIncoming?: boolean
+  onDeclineVoiceCall?: () => void
 }
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
@@ -73,6 +79,9 @@ export function VoiceStageView({
   chatOpen,
   onToggleChat,
   showChatToggle = true,
+  voiceCall,
+  voiceCallIncoming = false,
+  onDeclineVoiceCall,
 }: VoiceStageViewProps) {
   const auth = useAuth()
   const voice = useVoice()
@@ -94,10 +103,9 @@ export function VoiceStageView({
   const inVoiceSession = isVoiceSessionInChannel(voice, channelId)
   const inThisVoiceCall = voice.status === 'connected' && inVoiceSession
   const connecting = voice.status === 'connecting' && inVoiceSession
-  const joinLabel =
+  const isDmVoiceStage =
     channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
-      ? 'Присоединиться'
-      : undefined
+  const joinLabel = isDmVoiceStage ? 'Присоединиться' : undefined
   const [requestedMode, setRequestedMode] =
     useState<VoiceStageLayoutMode>('grid')
   const [popoutWindow, setPopoutWindow] = useState<Window | null>(null)
@@ -152,7 +160,20 @@ export function VoiceStageView({
     () => sortStageMediaItemsForGrid(mediaItems),
     [mediaItems],
   )
+  const videoMediaItems = useMemo(
+    () => filterStageVideoMediaItems(gridMediaItems),
+    [gridMediaItems],
+  )
   const mediaIds = useMemo(() => mediaItems.map((item) => item.id), [mediaItems])
+  const videoUserIds = useMemo(
+    () => new Set(videoMediaItems.map((item) => item.userId)),
+    [videoMediaItems],
+  )
+  const avatarOnlyParticipants = useMemo(
+    () => participants.filter((participant) => !videoUserIds.has(participant.id)),
+    [participants, videoUserIds],
+  )
+  const useAvatarRosterLayout = isDmVoiceStage && videoMediaItems.length === 0
 
   useEffect(() => {
     if (!voice.stageFocusNonce) return
@@ -278,6 +299,38 @@ export function VoiceStageView({
     voice,
   ])
 
+  const resolveParticipantDisplayName = useCallback(
+    (userId: string) =>
+      voiceParticipantDisplayName(userId, users, auth.user),
+    [auth.user, users],
+  )
+
+  const renderAvatarRoster = useCallback(
+    (options?: { compact?: boolean; rosterParticipants?: typeof participants }) => (
+      <VoiceStageAvatarRoster
+        participants={options?.rosterParticipants ?? participants}
+        users={users}
+        currentUser={auth.user}
+        speakingUserIds={voice.speakingUserIds}
+        displayName={resolveParticipantDisplayName}
+        dimmedUserId={
+          connecting && auth.user?._id ? auth.user._id : undefined
+        }
+        compact={options?.compact}
+        speakingEnabled={inThisVoiceCall}
+      />
+    ),
+    [
+      auth.user,
+      connecting,
+      inThisVoiceCall,
+      participants,
+      resolveParticipantDisplayName,
+      users,
+      voice.speakingUserIds,
+    ],
+  )
+
   const renderTile = useCallback(
     (
       item: VoiceStageMediaItem,
@@ -347,7 +400,20 @@ export function VoiceStageView({
         )}
       >
         {participants.length === 0 && mediaItems.length === 0 ? (
-          <EmptyVoiceStage canInvite={canInvite} />
+          isDmVoiceStage && voiceCall ? (
+            <VoiceStageWaitingCall
+              voiceCall={voiceCall}
+              voiceCallIncoming={voiceCallIncoming}
+              users={users}
+              channelRecipients={
+                'recipients' in channel ? channel.recipients : []
+              }
+              currentUserId={auth.user?._id}
+              displayName={resolveParticipantDisplayName}
+            />
+          ) : (
+            <EmptyVoiceStage canInvite={canInvite} />
+          )
         ) : focusedItem ? (
           <VoiceStageFocusStage
             focusedItem={focusedItem}
@@ -355,6 +421,21 @@ export function VoiceStageView({
             chromeVisible={chromeVisible}
             renderTile={renderTile}
           />
+        ) : useAvatarRosterLayout ? (
+          renderAvatarRoster()
+        ) : isDmVoiceStage && videoMediaItems.length > 0 ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-2">
+            <VoiceStageGrid
+              items={videoMediaItems}
+              renderTile={renderTile}
+            />
+            {avatarOnlyParticipants.length > 0
+              ? renderAvatarRoster({
+                  compact: true,
+                  rosterParticipants: avatarOnlyParticipants,
+                })
+              : null}
+          </div>
         ) : (
           <VoiceStageGrid
             items={gridMediaItems}
@@ -443,6 +524,11 @@ export function VoiceStageView({
             connecting={connecting}
             joinLabel={joinLabel}
             overlay
+            incomingCall={voiceCallIncoming && voiceCall?.phase === 'ringing'}
+            declineLabel={
+              channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
+            }
+            onDeclineIncomingCall={onDeclineVoiceCall}
           />
         </div>
         <div className={voiceStageControlsChromeTrailingClass}>
@@ -492,6 +578,67 @@ export function VoiceStageView({
         </VoiceStagePopout>
       ) : null}
     </>
+  )
+}
+
+function VoiceStageWaitingCall({
+  voiceCall,
+  voiceCallIncoming,
+  users,
+  channelRecipients,
+  currentUserId,
+  displayName,
+}: {
+  voiceCall: VoiceCallState
+  voiceCallIncoming: boolean
+  users: Record<string, User | undefined>
+  channelRecipients: string[]
+  currentUserId?: string
+  displayName: (userId: string) => string
+}) {
+  const counterpartId = voiceCallIncoming
+    ? voiceCall.initiatorId
+    : (voiceCall.recipients.find((userId) => userId !== currentUserId) ??
+      voiceCall.declinedRecipients.find((userId) => userId !== currentUserId) ??
+      channelRecipients.find((userId) => userId !== currentUserId) ??
+      voiceCall.initiatorId)
+  const counterpart = users[counterpartId]
+  const counterpartName = displayName(counterpartId)
+  const counterpartDeclined = Boolean(
+    currentUserId &&
+      voiceCall.initiatorId === currentUserId &&
+      voiceCall.declinedRecipients.includes(counterpartId),
+  )
+  let statusLabel = 'Звонок идёт'
+  if (voiceCallIncoming) {
+    statusLabel = `${counterpartName} звонит`
+  } else if (counterpartDeclined) {
+    statusLabel = `${counterpartName} отклонил звонок`
+  } else if (voiceCall.phase === 'ringing') {
+    statusLabel = `Звоним ${counterpartName}`
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
+      <div className="rounded-full ring-2 ring-[#23a559] ring-offset-2 ring-offset-black">
+        <UserAvatar
+          user={counterpart}
+          className="size-28 sm:size-32 md:size-36"
+          fallbackClassName="size-28 text-2xl sm:size-32 md:size-36"
+          showPresence={false}
+        />
+      </div>
+      <div className="space-y-1">
+        <p className="text-lg font-semibold text-white">{statusLabel}</p>
+        <p className="text-sm text-white/60">
+          {counterpartDeclined
+            ? 'Звонок останется доступен, пока вы в канале'
+            : voiceCall.phase === 'ringing'
+              ? 'Ответьте на звонок или отклоните его'
+              : 'Подключитесь, чтобы присоединиться к разговору'}
+        </p>
+      </div>
+    </div>
   )
 }
 

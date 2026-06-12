@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
 import {
   buildStageMediaItems,
+  filterStageVideoMediaItems,
   sortStageMediaItemsForGrid,
   stageMediaKindLabel,
   type StageMediaTrackEntry,
@@ -320,6 +321,21 @@ describe('stageMediaKindLabel', () => {
     expect(stageMediaKindLabel('screen')).toBe('Экран')
     expect(stageMediaKindLabel('camera')).toBe('Камера')
     expect(stageMediaKindLabel('avatar')).toBeNull()
+  })
+})
+
+describe('filterStageVideoMediaItems', () => {
+  it('keeps only camera and screen items', () => {
+    const items = [
+      { id: 'a:avatar', kind: 'avatar' as const },
+      { id: 'b:screen', kind: 'screen' as const },
+      { id: 'c:camera', kind: 'camera' as const },
+    ]
+
+    expect(filterStageVideoMediaItems(items).map((item) => item.id)).toEqual([
+      'b:screen',
+      'c:camera',
+    ])
   })
 })
 

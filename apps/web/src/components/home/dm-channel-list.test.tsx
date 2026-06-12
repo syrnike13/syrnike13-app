@@ -170,6 +170,7 @@ describe('DmChannelList', () => {
       phase: 'ringing',
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: ['current-user'],
+      declinedRecipients: [],
     })
 
     render(<DmChannelList />)
@@ -184,6 +185,7 @@ describe('DmChannelList', () => {
       phase: 'ringing' as const,
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: ['current-user'],
+      declinedRecipients: [],
     }
     syncStore.applyReady({
       users: [
@@ -232,6 +234,7 @@ describe('DmChannelList', () => {
       phase: 'ringing' as const,
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: ['current-user'],
+      declinedRecipients: [],
     }
     syncStore.applyReady({
       users: [

@@ -23,6 +23,7 @@ export type VoiceCallState = {
   startedAt: number | string
   expiresAt?: number | string
   recipients: string[]
+  declinedRecipients: string[]
 }
 
 /** channelId → userId → state */

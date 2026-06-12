@@ -100,6 +100,7 @@ async fn publish_voice_call_start(
         started_at: state.started_at,
         expires_at: state.expires_at.unwrap_or(state.started_at),
         recipients: notify_recipients.clone(),
+        declined_recipients: state.declined_recipients.clone(),
     }
     .p(state.channel_id.clone())
     .await;
@@ -131,6 +132,7 @@ async fn publish_voice_call_active(
         initiator_id: initiator_id.clone(),
         started_at: state.started_at,
         expires_at: state.expires_at,
+        declined_recipients: state.declined_recipients.clone(),
     }
     .p(channel_id.clone())
     .await;

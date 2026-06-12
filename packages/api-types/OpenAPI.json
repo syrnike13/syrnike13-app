@@ -2047,8 +2047,48 @@
           "Voice"
         ],
         "summary": "Cancel Call",
-        "description": "Cancels a ringing one-to-one DM call. The authenticated user must be the ringing recipient.",
+        "description": "Cancels a ringing one-to-one DM call. The authenticated user must be the call initiator.",
         "operationId": "voice_cancel_call_cancel_call",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Success"
+          }
+        },
+        "security": [
+          {
+            "Session Token": []
+          }
+        ]
+      }
+    },
+    "/channels/{target}/voice/decline": {
+      "put": {
+        "tags": [
+          "Voice"
+        ],
+        "summary": "Decline Call",
+        "description": "Declines an incoming one-to-one DM call without ending the call. The declined call remains joinable while the caller stays connected.",
+        "operationId": "voice_decline_call_decline_call",
         "parameters": [
           {
             "name": "target",

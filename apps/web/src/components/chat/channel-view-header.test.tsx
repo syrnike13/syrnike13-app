@@ -24,6 +24,9 @@ const voiceJoinMock = vi.hoisted(() => vi.fn())
 const cancelDirectMessageCallMock = vi.hoisted(() =>
   vi.fn().mockResolvedValue(undefined),
 )
+const declineDirectMessageCallMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+)
 const voiceState = vi.hoisted(() => ({
   channelId: null as string | null,
   status: 'idle' as 'idle' | 'connecting' | 'connected',
@@ -107,6 +110,7 @@ vi.mock('#/features/voice/voice-context', () => ({
 
 vi.mock('#/features/api/channels-api', () => ({
   cancelDirectMessageCall: cancelDirectMessageCallMock,
+  declineDirectMessageCall: declineDirectMessageCallMock,
 }))
 
 vi.mock('#/components/voice/voice-channel-shell', () => ({
@@ -202,6 +206,7 @@ describe('ChannelView direct message header', () => {
   beforeEach(() => {
     voiceJoinMock.mockClear()
     cancelDirectMessageCallMock.mockClear()
+    declineDirectMessageCallMock.mockClear()
     voiceState.channelId = null
     voiceState.status = 'idle'
     chatState.channel = directMessageChannel
@@ -348,6 +353,7 @@ describe('ChannelView direct message header', () => {
       phase: 'ringing' as const,
       startedAt: 1,
       recipients: [CURRENT_USER_ID],
+      declinedRecipients: [],
     }
     syncStore.setVoiceCall(call)
     syncStore.dismissVoiceCall(call)
@@ -376,7 +382,7 @@ describe('ChannelView direct message header', () => {
     expect(voiceJoinMock).toHaveBeenCalledWith(CHANNEL_ID)
   })
 
-  it('keeps direct message chat visible with an inline voice stage while connected', () => {
+  it('shows an inline voice stage with chat while connected', () => {
     voiceState.channelId = CHANNEL_ID
     voiceState.status = 'connected'
 
@@ -429,7 +435,7 @@ describe('ChannelView direct message header', () => {
     expect(screen.getByTestId('message-list')).toBeTruthy()
   })
 
-  it('keeps a hidden group call out of the inline stage after it becomes active', () => {
+  it('keeps an inline voice stage visible after a dismissed ring becomes active', () => {
     chatState.channel = groupChannel
     syncStore.reset()
     syncStore.applyReady({
@@ -447,6 +453,7 @@ describe('ChannelView direct message header', () => {
       phase: 'ringing' as const,
       startedAt: 1,
       recipients: [CURRENT_USER_ID],
+      declinedRecipients: [],
     }
     syncStore.setVoiceCall(call)
     syncStore.dismissVoiceCall(call)
@@ -458,12 +465,13 @@ describe('ChannelView direct message header', () => {
 
     renderChannelView(<ChannelView channelId={GROUP_CHANNEL_ID} />)
 
-    expect(screen.queryByTestId('inline-voice-stage')).toBeNull()
+    expect(screen.getByTestId('inline-voice-stage').textContent).toBe('Команда')
+    expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
     expect(screen.queryByText('Звонок уже идёт')).toBeNull()
     expect(screen.getByRole('button', { name: 'Присоединиться' })).toBeTruthy()
   })
 
-  it('shows and cancels an incoming direct message call banner', async () => {
+  it('shows and declines an incoming direct message call on the inline stage', async () => {
     syncStore.handleGatewayEvent({
       type: 'VoiceCallRinging',
       channel_id: CHANNEL_ID,
@@ -474,25 +482,31 @@ describe('ChannelView direct message header', () => {
 
     renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
 
-    expect(screen.getByText('Личный звонок')).toBeTruthy()
-    expect(screen.getByText('test_isa звонит')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: 'Ответить' }).length).toBe(2)
+    expect(screen.getByTestId('inline-voice-stage').textContent).toBe('test_isa')
+    expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
+    expect(screen.queryByText('Личный звонок')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ответить' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Отклонить' })).toBeTruthy()
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Ответить' }).at(-1)!)
+    fireEvent.click(screen.getByRole('button', { name: 'Ответить' }))
     expect(voiceJoinMock).toHaveBeenCalledWith(CHANNEL_ID)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
-    expect(cancelDirectMessageCallMock).toHaveBeenCalledWith(
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }))
+    expect(declineDirectMessageCallMock).toHaveBeenCalledWith(
       'session-token',
       CHANNEL_ID,
     )
     await waitFor(() => {
-      expect(screen.queryByText('Личный звонок')).toBeNull()
+      expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
+    })
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toMatchObject({
+      phase: 'active',
+      declinedRecipients: [CURRENT_USER_ID],
     })
   })
 
-  it('keeps the direct message call banner visible when cancel fails', async () => {
-    cancelDirectMessageCallMock.mockRejectedValueOnce(new Error('boom'))
+  it('keeps the inline direct message call ringing when decline fails', async () => {
+    declineDirectMessageCallMock.mockRejectedValueOnce(new Error('boom'))
     syncStore.handleGatewayEvent({
       type: 'VoiceCallRinging',
       channel_id: CHANNEL_ID,
@@ -503,15 +517,15 @@ describe('ChannelView direct message header', () => {
 
     renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отменить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Отклонить' }))
 
     await waitFor(() => {
-      expect(cancelDirectMessageCallMock).toHaveBeenCalledWith(
+      expect(declineDirectMessageCallMock).toHaveBeenCalledWith(
         'session-token',
         CHANNEL_ID,
       )
     })
-    expect(screen.getByText('Личный звонок')).toBeTruthy()
+    expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
   })
 
 })

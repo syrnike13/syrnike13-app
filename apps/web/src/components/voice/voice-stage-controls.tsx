@@ -49,6 +49,9 @@ type VoiceStageControlsProps = {
   compact?: boolean
   /** Без внешней обёртки — позиционирование задаёт родитель (оверлей стейджа). */
   overlay?: boolean
+  incomingCall?: boolean
+  declineLabel?: string
+  onDeclineIncomingCall?: () => void
 }
 
 const stageControlGroupClass =
@@ -225,6 +228,9 @@ export function VoiceStageControls({
   joinLabel = 'Подключиться к голосу',
   compact = false,
   overlay = false,
+  incomingCall = false,
+  declineLabel = 'Отменить',
+  onDeclineIncomingCall,
 }: VoiceStageControlsProps) {
   const voice = useVoice()
   const micMuted = isMicVisuallyMuted({
@@ -301,11 +307,29 @@ export function VoiceStageControls({
         {joinLabel}
       </Button>
     )
+    const idleControls =
+      incomingCall && onDeclineIncomingCall ? (
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="rounded-full border-white/20 bg-transparent px-6 text-white hover:bg-white/10"
+            onClick={onDeclineIncomingCall}
+          >
+            <PhoneOffIcon className="size-4" />
+            {declineLabel}
+          </Button>
+          {joinButton}
+        </div>
+      ) : (
+        joinButton
+      )
 
-    if (overlay) return joinButton
+    if (overlay) return idleControls
 
     return (
-      <div className="flex justify-center px-4 pb-8 pt-2">{joinButton}</div>
+      <div className="flex justify-center px-4 pb-8 pt-2">{idleControls}</div>
     )
   }
 

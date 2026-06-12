@@ -178,6 +178,7 @@ describe('ChannelSidebarItem voice navigation', () => {
       phase: 'ringing' as const,
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: ['user-1'],
+      declinedRecipients: [],
     }
     syncStore.setVoiceCall(call)
 
@@ -209,6 +210,7 @@ describe('ChannelSidebarItem voice navigation', () => {
       phase: 'ringing' as const,
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: ['user-1'],
+      declinedRecipients: [],
     }
     syncStore.setVoiceCall(call)
     syncStore.dismissVoiceCall(call)
@@ -241,6 +243,7 @@ describe('ChannelSidebarItem voice navigation', () => {
       phase: 'active',
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: [],
+      declinedRecipients: [],
     })
 
     render(
@@ -271,6 +274,7 @@ describe('ChannelSidebarItem voice navigation', () => {
       phase: 'ringing' as const,
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: ['user-1'],
+      declinedRecipients: [],
     }
     syncStore.dismissVoiceCall(ringingCall)
     syncStore.setVoiceCall({

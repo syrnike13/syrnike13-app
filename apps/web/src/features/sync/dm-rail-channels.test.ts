@@ -149,6 +149,7 @@ describe('listVisibleDmRailChannels', () => {
             phase: 'ringing',
             startedAt: '2026-06-12T10:00:00.000Z',
             recipients: [CURRENT_USER_ID],
+            declinedRecipients: [],
           },
           'dm-other-ringing': {
             channelId: 'dm-other-ringing',
@@ -156,6 +157,7 @@ describe('listVisibleDmRailChannels', () => {
             phase: 'ringing',
             startedAt: '2026-06-12T10:00:00.000Z',
             recipients: ['friend-c'],
+            declinedRecipients: [],
           },
         },
       }),
@@ -173,6 +175,7 @@ describe('listVisibleDmRailChannels', () => {
       phase: 'ringing' as const,
       startedAt: '2026-06-12T10:00:00.000Z',
       recipients: [CURRENT_USER_ID],
+      declinedRecipients: [],
     }
 
     const visible = listVisibleDmRailChannels(
@@ -199,6 +202,7 @@ describe('listVisibleDmRailChannels', () => {
       phase: 'ringing' as const,
       startedAt,
       recipients: [CURRENT_USER_ID],
+      declinedRecipients: [],
     }
     const activeState = {
       ...dismissedRingingCall,
@@ -233,6 +237,7 @@ describe('listVisibleDmRailChannels', () => {
             phase: 'active',
             startedAt: '2026-06-12T10:00:00.000Z',
             recipients: [],
+            declinedRecipients: [],
           },
         },
       }),

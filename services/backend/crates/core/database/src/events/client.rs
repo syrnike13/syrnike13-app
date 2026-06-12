@@ -37,6 +37,8 @@ pub struct VoiceCall {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<Timestamp>,
     pub recipients: Vec<String>,
+    #[serde(default)]
+    pub declined_recipients: Vec<String>,
 }
 
 /// Fields provided in Ready payload
@@ -378,6 +380,7 @@ pub enum EventV1 {
         started_at: Timestamp,
         expires_at: Timestamp,
         recipients: Vec<String>,
+        declined_recipients: Vec<String>,
     },
     VoiceCallActive {
         channel_id: String,
@@ -385,6 +388,7 @@ pub enum EventV1 {
         started_at: Timestamp,
         #[serde(skip_serializing_if = "Option::is_none")]
         expires_at: Option<Timestamp>,
+        declined_recipients: Vec<String>,
     },
     VoiceCallEnd {
         channel_id: String,

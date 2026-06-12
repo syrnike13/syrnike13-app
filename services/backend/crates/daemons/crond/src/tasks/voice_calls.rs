@@ -129,6 +129,7 @@ async fn stop_group_ringing(
         initiator_id: state.initiator_id.clone(),
         started_at: state.started_at,
         expires_at: state.expires_at,
+        declined_recipients: state.declined_recipients.clone(),
     }
     .p(state.channel_id.clone())
     .await;

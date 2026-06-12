@@ -165,8 +165,12 @@ export interface paths {
     delete: operations["group_remove_member_remove_member"];
   };
   "/channels/{target}/voice/cancel": {
-    /** Cancels a ringing one-to-one DM call. The authenticated user must be the ringing recipient. */
+    /** Cancels a ringing one-to-one DM call. The authenticated user must be the call initiator. */
     put: operations["voice_cancel_call_cancel_call"];
+  };
+  "/channels/{target}/voice/decline": {
+    /** Declines an incoming one-to-one DM call without ending the call. The declined call remains joinable while the caller stays connected. */
+    put: operations["voice_decline_call_decline_call"];
   };
   "/channels/{target}/permissions/{role_id}": {
     /**
@@ -3851,8 +3855,26 @@ export interface operations {
       };
     };
   };
-  /** Cancels a ringing one-to-one DM call. The authenticated user must be the ringing recipient. */
+  /** Cancels a ringing one-to-one DM call. The authenticated user must be the call initiator. */
   voice_cancel_call_cancel_call: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Declines an incoming one-to-one DM call without ending the call. The declined call remains joinable while the caller stays connected. */
+  voice_decline_call_decline_call: {
     parameters: {
       path: {
         target: components["schemas"]["Id"];

@@ -4,6 +4,11 @@ export function voiceCallUiKey(call: VoiceCallState) {
   return `${call.channelId}:${call.initiatorId}:${String(call.startedAt)}`
 }
 
+/** Звонок ещё идёт: звонят или уже разговаривают. */
+export function hasOngoingVoiceCall(call: VoiceCallState | undefined) {
+  return Boolean(call)
+}
+
 export function isIncomingVoiceCall(
   call: VoiceCallState | undefined,
   currentUserId: string | undefined,

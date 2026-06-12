@@ -171,3 +171,13 @@ function mediaItem<TTrack, TPublication>(
 export function stageMediaItemId(userId: string, kind: StageMediaKind) {
   return `${userId}:${kind}`
 }
+
+export function isStageVideoMediaItem(item: { kind: StageMediaKind }) {
+  return item.kind === 'screen' || item.kind === 'camera'
+}
+
+export function filterStageVideoMediaItems<T extends { kind: StageMediaKind }>(
+  items: readonly T[],
+): T[] {
+  return items.filter(isStageVideoMediaItem)
+}

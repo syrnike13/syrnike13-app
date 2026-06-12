@@ -47,6 +47,8 @@ pub struct VoiceCallState {
     pub phase: VoiceCallPhase,
     pub started_at: Timestamp,
     pub expires_at: Option<Timestamp>,
+    #[serde(default)]
+    pub declined_recipients: Vec<String>,
     pub ringing_recipients: Vec<String>,
 }
 
@@ -135,6 +137,15 @@ pub enum VoiceCallCancelEffect {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VoiceCallDeclineEffect {
+    NoChange,
+    Decline {
+        state: VoiceCallState,
+        stop_ringing_recipients: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VoiceCallStateMutation {
     Noop,
     Set(VoiceCallState),
@@ -167,6 +178,9 @@ pub fn voice_call_join_effect(
             {
                 let mut state = existing_call.clone();
                 state.expires_at = None;
+                state
+                    .declined_recipients
+                    .retain(|recipient_id| recipient_id != user_id);
                 return VoiceCallJoinEffect::MarkActive {
                     state,
                     stop_ringing_recipients: Vec::new(),
@@ -184,6 +198,9 @@ pub fn voice_call_join_effect(
             let stop_ringing_recipients = state.ringing_recipients.clone();
             state.phase = VoiceCallPhase::Active;
             state.expires_at = None;
+            state
+                .declined_recipients
+                .retain(|recipient_id| recipient_id != user_id);
             state.ringing_recipients.clear();
             return VoiceCallJoinEffect::MarkActive {
                 state,
@@ -220,6 +237,7 @@ pub fn voice_call_join_effect(
             phase: VoiceCallPhase::Ringing,
             started_at,
             expires_at: Some(started_at + Duration::seconds(ring_duration_seconds)),
+            declined_recipients: Vec::new(),
             ringing_recipients: notify_recipients.clone(),
         },
         notify_recipients,
@@ -330,6 +348,36 @@ pub fn voice_call_cancel_effect(
         .iter()
         .any(|recipient_id| recipient_id == user_id);
     let is_initiator = existing_call.initiator_id == user_id;
+
+    if existing_call.phase != VoiceCallPhase::Ringing
+        || channel_recipients.len() != 2
+        || !is_channel_recipient
+        || !is_initiator
+    {
+        return VoiceCallCancelEffect::NoChange;
+    }
+
+    VoiceCallCancelEffect::Cancel {
+        state: existing_call.clone(),
+        stop_ringing_recipients: existing_call.ringing_recipients.clone(),
+    }
+}
+
+pub fn voice_call_decline_effect(
+    existing_call: Option<&VoiceCallState>,
+    user_id: &str,
+    channel_recipients: &[String],
+    declined_at: Timestamp,
+    unanswered_active_seconds: i64,
+) -> VoiceCallDeclineEffect {
+    let Some(existing_call) = existing_call else {
+        return VoiceCallDeclineEffect::NoChange;
+    };
+
+    let is_channel_recipient = channel_recipients
+        .iter()
+        .any(|recipient_id| recipient_id == user_id);
+    let is_initiator = existing_call.initiator_id == user_id;
     let is_ringing_recipient = existing_call
         .ringing_recipients
         .iter()
@@ -338,14 +386,29 @@ pub fn voice_call_cancel_effect(
     if existing_call.phase != VoiceCallPhase::Ringing
         || channel_recipients.len() != 2
         || !is_channel_recipient
-        || (!is_initiator && !is_ringing_recipient)
+        || is_initiator
+        || !is_ringing_recipient
     {
-        return VoiceCallCancelEffect::NoChange;
+        return VoiceCallDeclineEffect::NoChange;
     }
 
-    VoiceCallCancelEffect::Cancel {
-        state: existing_call.clone(),
-        stop_ringing_recipients: existing_call.ringing_recipients.clone(),
+    let mut state = existing_call.clone();
+    state.phase = VoiceCallPhase::Active;
+    state.expires_at = Some(declined_at + Duration::seconds(unanswered_active_seconds));
+    state
+        .ringing_recipients
+        .retain(|recipient_id| recipient_id != user_id);
+    if !state
+        .declined_recipients
+        .iter()
+        .any(|recipient_id| recipient_id == user_id)
+    {
+        state.declined_recipients.push(user_id.to_string());
+    }
+
+    VoiceCallDeclineEffect::Decline {
+        state,
+        stop_ringing_recipients: vec![user_id.to_string()],
     }
 }
 
@@ -484,8 +547,9 @@ mod tests {
     use iso8601_timestamp::{Duration, Timestamp};
 
     use super::{
-        voice_call_cancel_effect, voice_call_join_effect, VoiceCallCancelEffect,
-        VoiceCallJoinEffect, VoiceCallPhase, VoiceCallState,
+        voice_call_cancel_effect, voice_call_decline_effect, voice_call_join_effect,
+        VoiceCallCancelEffect, VoiceCallDeclineEffect, VoiceCallJoinEffect, VoiceCallPhase,
+        VoiceCallState, GROUP_UNANSWERED_ACTIVE_SECONDS,
     };
 
     fn recipients(recipients: &[&str]) -> Vec<String> {
@@ -502,6 +566,7 @@ mod tests {
             phase: VoiceCallPhase::Ringing,
             started_at: Timestamp::UNIX_EPOCH,
             expires_at: Some(Timestamp::UNIX_EPOCH + Duration::seconds(30)),
+            declined_recipients: Vec::new(),
             ringing_recipients: channel_recipients[1..]
                 .iter()
                 .map(|recipient| recipient.to_string())
@@ -534,6 +599,36 @@ mod tests {
                 &recipients(&["user-a", "user-b", "user-c"]),
             ),
             VoiceCallCancelEffect::NoChange,
+        );
+    }
+
+    #[test]
+    fn direct_call_callee_decline_keeps_call_active_and_joinable() {
+        let call = ringing_call(&["user-a", "user-b"]);
+
+        assert_eq!(
+            voice_call_decline_effect(
+                Some(&call),
+                "user-b",
+                &recipients(&["user-a", "user-b"]),
+                Timestamp::UNIX_EPOCH + Duration::seconds(5),
+                GROUP_UNANSWERED_ACTIVE_SECONDS,
+            ),
+            VoiceCallDeclineEffect::Decline {
+                state: VoiceCallState {
+                    channel_id: "channel".to_string(),
+                    initiator_id: "user-a".to_string(),
+                    phase: VoiceCallPhase::Active,
+                    started_at: Timestamp::UNIX_EPOCH,
+                    expires_at: Some(
+                        Timestamp::UNIX_EPOCH
+                            + Duration::seconds(5 + GROUP_UNANSWERED_ACTIVE_SECONDS)
+                    ),
+                    declined_recipients: recipients(&["user-b"]),
+                    ringing_recipients: Vec::new(),
+                },
+                stop_ringing_recipients: recipients(&["user-b"]),
+            },
         );
     }
 

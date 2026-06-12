@@ -47,3 +47,13 @@ export async function cancelDirectMessageCall(
     token,
   })
 }
+
+export async function declineDirectMessageCall(
+  token: string,
+  channelId: string,
+) {
+  return apiRequest<void>(`/channels/${channelId}/voice/decline`, {
+    method: 'PUT',
+    token,
+  })
+}
