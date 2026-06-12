@@ -30,7 +30,8 @@ import {
 } from '#/lib/channel-audio-bitrate'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { pickDefaultChannelId } from '#/features/sync/selectors'
-import { syncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { canManageChannel } from '#/lib/permissions'
 
 type ServerChannel = Extract<
   Channel,
@@ -50,6 +51,20 @@ export function ChannelSettingsDialog({
 }: ChannelSettingsDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const server = useSyncStore((s) =>
+    channel.server ? s.servers[channel.server] : undefined,
+  )
+  const member = useSyncStore((s) =>
+    channel.server && auth.user?._id
+      ? s.members[`${channel.server}:${auth.user._id}`]
+      : undefined,
+  )
+  const canManage = canManageChannel(
+    server,
+    channel,
+    member,
+    auth.user?._id,
+  )
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen ?? internalOpen
   const setOpen = controlledOnOpenChange ?? setInternalOpen
@@ -71,6 +86,8 @@ export function ChannelSettingsDialog({
       setAudioBitrateKbps(channelAudioBitrateKbps(channel))
     }
   }, [channel, open])
+
+  if (!canManage) return null
 
   async function saveSettings() {
     const token = auth.session?.token

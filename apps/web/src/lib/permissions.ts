@@ -23,6 +23,11 @@ type OverrideField = { a: number; d: number }
 
 type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
 
+type ServerScopedChannel = Extract<
+  Channel,
+  { channel_type: 'TextChannel' | 'VoiceChannel' }
+>
+
 function clampMemberVoicePermissions(permissions: number, member: Member) {
   let next = permissions
   if (member.can_publish === false) {
@@ -321,6 +326,25 @@ export function canManageServerChannels(
   const serverPermissions = calculateServerPermissions(server, member, userId)
   return hasChannelPermission(
     serverPermissions,
+    ChannelPermission.ManageChannel,
+  )
+}
+
+export function canManageChannel(
+  server: Server | undefined,
+  channel: ServerScopedChannel,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!server || !userId) return false
+
+  return hasChannelPermission(
+    calculateChannelPermissions(
+      server,
+      channel as ServerTextChannel,
+      member,
+      userId,
+    ),
     ChannelPermission.ManageChannel,
   )
 }
