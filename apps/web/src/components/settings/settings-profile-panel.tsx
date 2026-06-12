@@ -28,6 +28,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { profileSchema } from '#/features/auth/schemas'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userAvatarUrl, userBannerUrl } from '#/lib/media'
+import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import {
   useProfileDraftRegistration,
   type ProfileDraftController,
@@ -515,8 +516,8 @@ function ProfilePreviewCard({
         onRemove={onRemoveBanner}
       >
         <div
-          className={cn(
-            'group/banner relative h-[88px] w-full',
+          className={userProfileBannerClassName(
+            'group/banner',
             !bannerUrl &&
               'bg-gradient-to-br from-primary/30 via-chart-4/20 to-sidebar-primary/40',
           )}
@@ -545,22 +546,14 @@ function ProfilePreviewCard({
             onEdit={onEditAvatar}
             onRemove={onRemoveAvatar}
           >
-            <div className="group/profile-avatar relative size-16 overflow-hidden rounded-full">
-              {avatarUrl ? (
-                <FxImage
-                  src={avatarUrl}
-                  rounded="full"
-                  wrapperClassName="size-16 rounded-full ring-4 ring-card"
-                  className="size-16"
-                />
-              ) : (
-                <UserAvatar
-                  user={{ ...user, avatar: null }}
-                  className="size-16"
-                  fallbackClassName="size-16 bg-card text-lg ring-4 ring-card"
-                  showPresence={false}
-                />
-              )}
+            <div className="group/profile-avatar relative size-16">
+              <UserAvatar
+                user={avatarUrl ? user : { ...user, avatar: null }}
+                imageSrc={avatarUrl}
+                className="size-16 ring-4 ring-card"
+                fallbackClassName="size-16 bg-card text-lg"
+                showPresence={false}
+              />
               <ProfileMediaEditOverlay
                 label={hasAvatar ? 'Изменить аватар' : 'Добавить аватар'}
                 disabled={mediaBusy}

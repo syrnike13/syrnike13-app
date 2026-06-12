@@ -80,7 +80,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
           <Button
             key={channel._id}
             variant={active ? 'secondary' : 'ghost'}
-            className="h-9 justify-start gap-2 px-2 font-normal"
+            className="h-11 justify-start gap-2.5 px-2.5 text-base font-normal"
             asChild
           >
             <Link
@@ -91,26 +91,26 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
               {dmUser ? (
                 <UserAvatar
                   user={dmUser}
-                  className="size-6"
-                  fallbackClassName="size-6 text-[10px]"
+                  className="size-8"
+                  fallbackClassName="size-8 text-xs"
                 />
               ) : channel.channel_type === 'Group' ? (
                 <span
                   title="Групповой чат"
-                  className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+                  className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
                 >
-                  <UsersIcon aria-hidden="true" className="size-4" />
+                  <UsersIcon aria-hidden="true" className="size-5" />
                 </span>
               ) : (
-                <HashIcon className="size-4 shrink-0 text-muted-foreground" />
+                <HashIcon className="size-5 shrink-0 text-muted-foreground" />
               )}
               <span className="min-w-0 flex-1 truncate">{label}</span>
               {voiceCallMarkerTitle ? (
                 <span
                   title={voiceCallMarkerTitle}
-                  className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-500"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-500"
                 >
-                  <HeadphonesIcon aria-hidden="true" className="size-3.5" />
+                  <HeadphonesIcon aria-hidden="true" className="size-4" />
                 </span>
               ) : null}
               {!active ? (

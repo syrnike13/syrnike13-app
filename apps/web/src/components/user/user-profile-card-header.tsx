@@ -16,6 +16,7 @@ import {
 } from '#/lib/member-roles'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
+import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import {
   getUserPresence,
   presenceModeLabel,
@@ -148,19 +149,8 @@ export function UserProfileCardHeader({
     <div className={className}>
       <div className="relative overflow-visible">
         <div
-          className={cn(
-            'relative w-full overflow-hidden rounded-t-md',
-            bannerUrl
-              ? layout === 'modal'
-                ? 'h-[200px]'
-                : layout === 'compact'
-                  ? 'h-[72px]'
-                  : 'h-[120px]'
-              : layout === 'modal'
-                ? 'h-[160px]'
-                : layout === 'compact'
-                  ? 'h-[56px]'
-                  : 'h-[88px]',
+          className={userProfileBannerClassName(
+            'rounded-t-md',
             !bannerUrl &&
               'bg-gradient-to-br from-primary via-chart-4 to-sidebar-primary',
           )}
@@ -223,13 +213,6 @@ export function UserProfileCardHeader({
                   animated="always"
                   showPresence
                   presenceRingClassName="border-muted"
-                  presenceClassName={
-                    layout === 'modal'
-                      ? 'size-7 translate-x-[16%] translate-y-[16%] border-4'
-                      : layout === 'compact'
-                        ? 'size-5 translate-x-[16%] translate-y-[16%] border-[3px]'
-                        : 'size-7 translate-x-[16%] translate-y-[16%] border-4'
-                  }
                 />
                 <span
                   aria-hidden
@@ -258,13 +241,6 @@ export function UserProfileCardHeader({
               animated="always"
               showPresence
               presenceRingClassName="border-muted"
-              presenceClassName={
-                layout === 'modal'
-                  ? 'size-7 translate-x-[16%] translate-y-[16%] border-4'
-                  : layout === 'compact'
-                    ? 'size-5 translate-x-[16%] translate-y-[16%] border-[3px]'
-                    : 'size-7 translate-x-[16%] translate-y-[16%] border-4'
-              }
             />
           )}
         </div>

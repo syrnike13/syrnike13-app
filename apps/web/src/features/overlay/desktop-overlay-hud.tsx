@@ -1,6 +1,7 @@
 import type { DesktopOverlayState } from '@syrnike13/platform'
 
 import { HeadphoneOffIcon, MicOffIcon } from '#/components/icons'
+import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { cn } from '#/lib/utils'
 
 export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
@@ -19,14 +20,14 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                 !participant.speaking && 'opacity-55',
               )}
             >
-              <div
+              <Avatar
                 aria-label={
                   participant.speaking
                     ? `${participant.displayName} говорит`
                     : participant.displayName
                 }
                 className={cn(
-                  'relative flex size-8 shrink-0 items-center justify-center rounded-full',
+                  'size-8',
                   participant.speaking &&
                     'ring-2 ring-[#23a559] ring-offset-2 ring-offset-[#111318]',
                 )}
@@ -35,15 +36,16 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                   <img
                     src={participant.avatarUrl}
                     alt={participant.displayName}
-                    className="size-8 rounded-full object-cover"
+                    className="aspect-square size-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                     draggable={false}
                   />
-                ) : (
-                  <div className="flex size-8 items-center justify-center rounded-full bg-[#5865f2] text-xs font-bold">
-                    {initials(participant.displayName)}
-                  </div>
-                )}
-              </div>
+                ) : null}
+                <AvatarFallback className="bg-[#5865f2] text-xs font-bold text-white">
+                  {initials(participant.displayName)}
+                </AvatarFallback>
+              </Avatar>
               <span
                 data-status-icons
                 className="flex shrink-0 items-center gap-1 text-white/80"

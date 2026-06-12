@@ -1,7 +1,16 @@
 import type { User } from '@syrnike13/api-types'
 import { useState } from 'react'
 
-import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
+import {
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+  AvatarImage,
+} from '#/components/ui/avatar'
+import {
+  presenceRingColorVar,
+  resolvePresenceBadgeLayoutForAvatar,
+} from '#/components/user/user-avatar-presence'
 import { userAvatarUrl } from '#/lib/media'
 import { presenceDotClass, presenceDotTitle } from '#/lib/presence'
 import { cn } from '#/lib/utils'
@@ -21,36 +30,44 @@ type UserAvatarProps = {
   user?: User | null
   className?: string
   fallbackClassName?: string
+  /** Прямой URL изображения (превью загрузки, анимированный GIF и т.п.) */
+  imageSrc?: string | null
   showPresence?: boolean
   animated?: UserAvatarAnimationMode
   speaking?: boolean
   /** Кольцо вокруг точки статуса (фон под аватаром) */
   presenceRingClassName?: string
-  presenceClassName?: string
 }
 
 export function UserAvatar({
   user,
   className,
   fallbackClassName,
+  imageSrc,
   showPresence = true,
   animated = 'hover',
   speaking = false,
   presenceRingClassName = 'border-card',
-  presenceClassName,
 }: UserAvatarProps) {
   const [hovered, setHovered] = useState(false)
   const [hoverAnimationRequested, setHoverAnimationRequested] = useState(false)
   const name = user?.display_name ?? user?.username ?? '?'
   const showDot = showPresence && user && user.relationship !== 'Blocked'
-  const staticAvatarSrc = user
-    ? userAvatarUrl(user.avatar, { animated: false })
-    : null
-  const animatedAvatarSrc = user
-    ? userAvatarUrl(user.avatar, { animated: true })
-    : null
+  const useImageSrcOverride = imageSrc != null
+
+  const staticAvatarSrc = useImageSrcOverride
+    ? imageSrc
+    : user
+      ? userAvatarUrl(user.avatar, { animated: false })
+      : null
+  const animatedAvatarSrc =
+    useImageSrcOverride || !user
+      ? null
+      : userAvatarUrl(user.avatar, { animated: true })
   const hasAnimatedVariant =
-    animatedAvatarSrc !== null && animatedAvatarSrc !== staticAvatarSrc
+    !useImageSrcOverride &&
+    animatedAvatarSrc !== null &&
+    animatedAvatarSrc !== staticAvatarSrc
   const showAnimatedOverlay =
     hasAnimatedVariant &&
     ((animated === 'hover' && hovered) || (animated === 'speaking' && speaking))
@@ -58,9 +75,15 @@ export function UserAvatar({
     hasAnimatedVariant &&
     (animated === 'speaking' || (animated === 'hover' && hoverAnimationRequested))
   const avatarSrc =
-    animated === 'always' && hasAnimatedVariant
+    !useImageSrcOverride &&
+    animated === 'always' &&
+    hasAnimatedVariant
       ? animatedAvatarSrc
       : staticAvatarSrc
+  const presenceBadge = resolvePresenceBadgeLayoutForAvatar(
+    className,
+    fallbackClassName,
+  )
 
   function startHoverAnimation() {
     setHovered(true)
@@ -71,22 +94,22 @@ export function UserAvatar({
     <div
       className={cn('relative shrink-0', className)}
       onPointerEnter={
-        animated === 'hover'
+        animated === 'hover' && !useImageSrcOverride
           ? startHoverAnimation
           : undefined
       }
       onPointerLeave={
-        animated === 'hover'
+        animated === 'hover' && !useImageSrcOverride
           ? () => setHovered(false)
           : undefined
       }
       onFocus={
-        animated === 'hover'
+        animated === 'hover' && !useImageSrcOverride
           ? startHoverAnimation
           : undefined
       }
       onBlur={
-        animated === 'hover'
+        animated === 'hover' && !useImageSrcOverride
           ? () => setHovered(false)
           : undefined
       }
@@ -97,7 +120,6 @@ export function UserAvatar({
             src={avatarSrc}
             alt={name}
             className={cn(
-              'object-cover',
               mountAnimatedOverlay && 'transition-opacity duration-150',
               showAnimatedOverlay && 'opacity-0',
             )}
@@ -119,13 +141,17 @@ export function UserAvatar({
         <AvatarFallback>{initials(name)}</AvatarFallback>
       </Avatar>
       {showDot ? (
-        <span
+        <AvatarBadge
           className={cn(
-            'absolute right-0 bottom-0 z-10 size-3 translate-x-[22%] translate-y-[22%] rounded-full border-2',
-            presenceRingClassName,
+            'border-0 p-0 text-transparent ring-0',
+            presenceBadge.offsetClass,
             presenceDotClass(user),
-            presenceClassName,
           )}
+          style={{
+            width: presenceBadge.sizePx,
+            height: presenceBadge.sizePx,
+            boxShadow: `0 0 0 ${presenceBadge.ringPx}px ${presenceRingColorVar(presenceRingClassName)}`,
+          }}
           title={presenceDotTitle(user)}
         />
       ) : null}

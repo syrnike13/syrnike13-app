@@ -13,6 +13,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
+import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { cn } from '#/lib/utils'
 
@@ -48,8 +49,7 @@ export function CurrentUserProfileMenu({
     <div className="flex min-w-0 flex-col">
       <div className="relative">
         <div
-          className={cn(
-            'relative h-24 w-full overflow-hidden',
+          className={userProfileBannerClassName(
             !bannerUrl &&
               'bg-gradient-to-br from-primary/80 via-chart-4/70 to-sidebar-primary/80',
           )}
@@ -76,7 +76,6 @@ export function CurrentUserProfileMenu({
             animated="always"
             showPresence
             presenceRingClassName="border-card"
-            presenceClassName="size-7 translate-x-[16%] translate-y-[16%] border-4"
           />
         </div>
       </div>

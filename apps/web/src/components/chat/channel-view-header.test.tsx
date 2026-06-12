@@ -149,6 +149,19 @@ vi.mock('#/components/chat/channel-search-dialog', () => ({
   ChannelSearchDialog: () => null,
 }))
 
+vi.mock('#/components/user/user-global-profile-dialog', () => ({
+  UserGlobalProfileDialog: ({
+    open,
+    user,
+  }: {
+    open: boolean
+    user: User
+  }) =>
+    open ? (
+      <div role="dialog" aria-label={`Профиль ${user.display_name ?? user.username}`} />
+    ) : null,
+}))
+
 vi.mock('#/features/api/users-api', async () => {
   const actual = await vi.importActual<typeof import('#/features/api/users-api')>(
     '#/features/api/users-api',
@@ -265,7 +278,7 @@ describe('ChannelView direct message header', () => {
     expect(within(panel).getByText('Общие серверы — 2')).toBeTruthy()
     expect(within(panel).getByText('Хан батый, Андрей')).toBeTruthy()
 
-    const profileButton = screen.getByRole('button', { name: 'Профиль' })
+    const profileButton = screen.getByRole('button', { name: 'Скрыть профиль' })
     expect(profileButton.getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(profileButton)
@@ -277,22 +290,30 @@ describe('ChannelView direct message header', () => {
     expect(profileButton.getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('opens the direct message profile panel when the header name is clicked', () => {
+  it('opens the global profile dialog when the profile panel avatar is clicked', () => {
+    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
+
+    const panel = screen.getByLabelText('Профиль пользователя')
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(within(panel).getByTitle('Открыть профиль'))
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+
+  it('opens the global profile dialog when the header name is clicked', () => {
     const { container } = renderChannelView(
       <ChannelView channelId={CHANNEL_ID} />,
     )
     const header = container.querySelector('header')
-    const profileButton = screen.getByRole('button', { name: 'Профиль' })
 
     expect(header).toBeTruthy()
-
-    fireEvent.click(profileButton)
-    expect(screen.queryByLabelText('Профиль пользователя')).toBeNull()
-    expect(profileButton.getAttribute('aria-pressed')).toBe('false')
+    expect(screen.queryByRole('dialog')).toBeNull()
 
     fireEvent.click(within(header!).getByRole('button', { name: 'test_isa' }))
+
+    expect(screen.getByRole('dialog')).toBeTruthy()
     expect(screen.getByLabelText('Профиль пользователя')).toBeTruthy()
-    expect(profileButton.getAttribute('aria-pressed')).toBe('true')
   })
 
   it('starts a direct message call from the header call button', () => {
@@ -371,15 +392,6 @@ describe('ChannelView direct message header', () => {
       within(header!).getByRole('button', { name: 'Присоединиться' }),
     )
     expect(voiceJoinMock).toHaveBeenCalledWith(GROUP_CHANNEL_ID)
-  })
-
-  it('starts a direct message call from the profile panel', () => {
-    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
-
-    const panel = screen.getByLabelText('Профиль пользователя')
-    fireEvent.click(within(panel).getByRole('button', { name: 'Позвонить' }))
-
-    expect(voiceJoinMock).toHaveBeenCalledWith(CHANNEL_ID)
   })
 
   it('shows an inline voice stage with chat while connected', () => {

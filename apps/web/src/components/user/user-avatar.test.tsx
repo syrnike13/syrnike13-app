@@ -11,10 +11,22 @@ vi.mock('#/components/ui/avatar', () => ({
   Avatar: ({
     children,
     className,
+    onPointerEnter,
+    onPointerLeave,
   }: {
     children: ReactNode
     className?: string
-  }) => <div className={className}>{children}</div>,
+    onPointerEnter?: () => void
+    onPointerLeave?: () => void
+  }) => (
+    <div
+      className={className}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+    >
+      {children}
+    </div>
+  ),
   AvatarImage: ({
     src,
     alt,
@@ -27,6 +39,13 @@ vi.mock('#/components/ui/avatar', () => ({
   AvatarFallback: ({ children }: { children: ReactNode }) => (
     <span>{children}</span>
   ),
+  AvatarBadge: ({
+    className,
+    title,
+  }: {
+    className?: string
+    title?: string
+  }) => <span className={className} title={title} />,
 }))
 
 const baseUser = {

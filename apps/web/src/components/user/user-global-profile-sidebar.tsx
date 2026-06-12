@@ -29,6 +29,7 @@ import { editServerMember } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
+import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import {
   getUserPresence,
   presenceModeLabel,
@@ -161,8 +162,8 @@ export function UserGlobalProfileSidebar({
         {/* Banner */}
         <div className="relative shrink-0">
           <div
-            className={cn(
-              'h-[140px] w-full overflow-hidden rounded-t-xl',
+            className={userProfileBannerClassName(
+              'rounded-t-xl',
               !bannerUrl && 'bg-gradient-to-br from-primary via-chart-4 to-sidebar-primary',
             )}
           >
@@ -186,7 +187,6 @@ export function UserGlobalProfileSidebar({
               animated="always"
               showPresence
               presenceRingClassName="border-secondary"
-              presenceClassName="size-7 translate-x-[14%] translate-y-[14%] border-[3px]"
             />
           </div>
         </div>

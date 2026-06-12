@@ -1,9 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { HeadphonesIcon } from '#/components/icons'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { User } from '@syrnike13/api-types'
 
-import { Button } from '#/components/ui/button'
 import { FxImage } from '#/components/ui/fx-image'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { fetchUserProfile } from '#/features/api/users-api'
@@ -11,12 +9,7 @@ import { listMutualServers } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
-import {
-  getUserPresence,
-  presenceModeLabel,
-  userStatusSubtitle,
-} from '#/lib/presence'
-import { cn } from '#/lib/utils'
+import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 
 const DEFAULT_PROFILE_PANEL_WIDTH = 320
 const MIN_PROFILE_PANEL_WIDTH = 280
@@ -34,10 +27,7 @@ type DirectMessageProfilePanelProps = {
   currentUserId?: string
   token?: string | null
   aliases: string[]
-  callActionLabel?: string
-  showCallAction?: boolean
-  onStartCall: () => void
-  onViewFullProfile: () => void
+  onOpenProfile?: () => void
 }
 
 export function DirectMessageProfilePanel({
@@ -45,10 +35,7 @@ export function DirectMessageProfilePanel({
   currentUserId,
   token,
   aliases,
-  callActionLabel = 'Позвонить',
-  showCallAction = true,
-  onStartCall,
-  onViewFullProfile,
+  onOpenProfile,
 }: DirectMessageProfilePanelProps) {
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PROFILE_PANEL_WIDTH)
   const mutualServers = useSyncStore((s) =>
@@ -63,8 +50,6 @@ export function DirectMessageProfilePanel({
 
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
-  const presenceLabel = presenceModeLabel(getUserPresence(user))
-  const statusLine = customStatus ? presenceLabel : userStatusSubtitle(user)
   const profileBio = profileQuery.data?.content?.trim()
   const bannerUrl = userBannerUrl(profileQuery.data?.background, {
     animated: true,
@@ -117,8 +102,8 @@ export function DirectMessageProfilePanel({
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="relative shrink-0">
           <div
-            className={cn(
-              'relative h-[116px] w-full overflow-hidden bg-secondary',
+            className={userProfileBannerClassName(
+              'bg-secondary',
               !bannerUrl &&
                 'bg-gradient-to-br from-secondary via-muted to-sidebar-accent',
             )}
@@ -138,15 +123,38 @@ export function DirectMessageProfilePanel({
             ) : null}
           </div>
           <div className="absolute -bottom-11 left-4 z-10">
-            <UserAvatar
-              user={user}
-              className="size-[88px]"
-              fallbackClassName="size-[88px] text-2xl ring-[5px] ring-card bg-muted"
-              animated="always"
-              showPresence
-              presenceRingClassName="border-card"
-              presenceClassName="size-6 translate-x-[16%] translate-y-[16%] border-[3px]"
-            />
+            {onOpenProfile ? (
+              <button
+                type="button"
+                title="Открыть профиль"
+                className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
+                onClick={onOpenProfile}
+              >
+                <span className="relative block rounded-full">
+                  <UserAvatar
+                    user={user}
+                    className="size-[88px]"
+                    fallbackClassName="size-[88px] text-2xl ring-[5px] ring-card bg-muted"
+                    animated="always"
+                    showPresence
+                    presenceRingClassName="border-card"
+                  />
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 rounded-full bg-black/0 transition-colors group-hover/avatar-button:bg-black/25"
+                  />
+                </span>
+              </button>
+            ) : (
+              <UserAvatar
+                user={user}
+                className="size-[88px]"
+                fallbackClassName="size-[88px] text-2xl ring-[5px] ring-card bg-muted"
+                animated="always"
+                showPresence
+                presenceRingClassName="border-card"
+              />
+            )}
           </div>
         </div>
 
@@ -163,9 +171,6 @@ export function DirectMessageProfilePanel({
                   <span>{customStatus}</span>
                 </>
               ) : null}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {statusLine}
             </p>
           </div>
 
@@ -202,28 +207,6 @@ export function DirectMessageProfilePanel({
                   : 'Нет общих серверов'}
               </p>
             </div>
-          </div>
-
-          <div className="mt-auto flex flex-col gap-2 pt-4">
-            {showCallAction ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                onClick={onStartCall}
-              >
-                <HeadphonesIcon className="size-4" />
-                {callActionLabel}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              onClick={onViewFullProfile}
-            >
-              Открыть полный профиль
-            </Button>
           </div>
         </div>
       </div>

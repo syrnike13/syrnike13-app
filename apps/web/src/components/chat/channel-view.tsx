@@ -321,7 +321,7 @@ export function ChannelView({
               user={dmRecipient}
               title={title}
               aliases={dmAliases}
-              onOpenProfile={() => setDmProfilePanelOpen(true)}
+              onOpenProfile={() => setFullProfileOpen(true)}
             />
           ) : isGroupDirectMessage ? (
             <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -349,14 +349,17 @@ export function ChannelView({
           {isDirectMessage && dmRecipient ? (
             <Button
               type="button"
-              size="sm"
-              variant={dmProfilePanelOpen ? 'secondary' : 'ghost'}
+              variant="ghost"
+              size="icon"
+              className="size-8"
               aria-pressed={dmProfilePanelOpen}
+              aria-label={
+                dmProfilePanelOpen ? 'Скрыть профиль' : 'Показать профиль'
+              }
               title={dmProfilePanelOpen ? 'Скрыть профиль' : 'Показать профиль'}
               onClick={() => setDmProfilePanelOpen((open) => !open)}
             >
               <UserIcon className="size-4" />
-              Профиль
             </Button>
           ) : null}
           {hasVoice && !inThisVoiceSession ? (
@@ -375,12 +378,14 @@ export function ChannelView({
               ) : null}
               <Button
                 type="button"
-                size="sm"
-                variant="outline"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label={voiceActionLabel}
+                title={voiceActionLabel}
                 onClick={() => void voice.join(channelId)}
               >
                 <HeadphonesIcon className="size-4" />
-                {voiceActionLabel}
               </Button>
             </>
           ) : null}
@@ -405,11 +410,14 @@ export function ChannelView({
             </div>
           ) : null}
           {token && !showMemberSidebar ? (
-            <ChannelSearchDialog
-              channelId={channelId}
-              token={token}
-              users={users}
-            />
+            <div className="lg:hidden">
+              <ChannelSearchDialog
+                channelId={channelId}
+                token={token}
+                users={users}
+                variant="icon"
+              />
+            </div>
           ) : null}
         </div>
         {token && showMemberSidebar ? (
@@ -418,6 +426,16 @@ export function ChannelView({
               serverId={channel.server}
               token={token}
               users={users}
+            />
+          </div>
+        ) : null}
+        {token && !showMemberSidebar ? (
+          <div className="hidden h-full w-52 shrink-0 items-center px-2 lg:flex">
+            <ChannelSearchDialog
+              channelId={channelId}
+              token={token}
+              users={users}
+              variant="strip"
             />
           </div>
         ) : null}
@@ -589,12 +607,7 @@ export function ChannelView({
             currentUserId={auth.user?._id}
             token={token}
             aliases={dmAliases}
-            callActionLabel={voiceActionLabel}
-            showCallAction={!voiceCall && !hasBotRecipient}
-            onStartCall={() => {
-              void voice.join(channelId)
-            }}
-            onViewFullProfile={() => setFullProfileOpen(true)}
+            onOpenProfile={() => setFullProfileOpen(true)}
           />
         ) : showMemberSidebar && channel.channel_type === 'TextChannel' ? (
           <ChannelMemberSidebar channel={channel} />
