@@ -1,4 +1,4 @@
-import type { AppearanceColorMode, AppearanceSettings } from '@syrnike13/platform'
+import type { AppearanceSettings } from '@syrnike13/platform'
 import { DEFAULT_THEME_ID } from '@syrnike13/platform'
 
 import { THEME_CATALOG, type ThemeDefinition, type ThemeVariant } from '#/features/appearance/theme-catalog-data'

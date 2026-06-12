@@ -1,5 +1,8 @@
 use std::{
-    collections::{HashMap, HashSet}, num::NonZeroUsize, sync::Arc, time::Duration
+    collections::{HashMap, HashSet},
+    num::NonZeroUsize,
+    sync::Arc,
+    time::Duration,
 };
 
 use async_std::sync::{Mutex, RwLock};

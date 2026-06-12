@@ -73,7 +73,8 @@ async function applyScreenShareSenderBitrate(
 
   const nextEncoding = params.encodings[0]
   nextEncoding.maxBitrate = maxBitrate
-  nextEncoding.minBitrate = screenShareBitrateFloor(maxBitrate)
+  ;(nextEncoding as RTCRtpEncodingParameters & { minBitrate?: number }).minBitrate =
+    screenShareBitrateFloor(maxBitrate)
   if (encoding.maxFramerate != null) {
     nextEncoding.maxFramerate = encoding.maxFramerate
   }

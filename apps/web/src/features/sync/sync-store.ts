@@ -12,12 +12,15 @@ import type {
 
 import type { GatewayServerEvent, ReadyPayload, SyncState } from './types'
 import type { UserVoiceState, VoiceParticipantsByChannel } from './voice-types'
+import type { VoiceCallState } from './voice-types'
 import {
   mergeVoiceStatesFromReady,
   normalizeUserVoiceState,
   shouldApplyVoiceState,
 } from './voice-event-utils'
+import { voiceCallUiKey } from './voice-call-utils'
 import { isValidVoiceUserId } from './voice-participant-resolve'
+import { serverChannelServerId } from '#/lib/channel-voice'
 
 function emptyState(): SyncState {
   return {
@@ -32,11 +35,15 @@ function emptyState(): SyncState {
     unreads: {},
     typingUsers: {},
     voiceParticipants: {},
+    voiceCalls: {},
+    dismissedVoiceCallKeys: {},
   }
 }
 
 let state = emptyState()
 const listeners = new Set<() => void>()
+const voiceCallExpiryTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+const GROUP_UNANSWERED_ACTIVE_MS = 10 * 60 * 1000
 let batchDepth = 0
 let batchHasChanges = false
 
@@ -73,6 +80,69 @@ function setState(patch: Partial<SyncState>) {
   }
   state = next
   emit()
+}
+
+function clearVoiceCallExpiryTimer(channelId: string) {
+  const timer = voiceCallExpiryTimers[channelId]
+  if (timer === undefined) return
+  clearTimeout(timer)
+  delete voiceCallExpiryTimers[channelId]
+}
+
+function clearVoiceCallExpiryTimers() {
+  for (const channelId of Object.keys(voiceCallExpiryTimers)) {
+    clearVoiceCallExpiryTimer(channelId)
+  }
+}
+
+function timestampToMs(timestamp: number | string | undefined) {
+  if (timestamp === undefined) return undefined
+  if (typeof timestamp === 'number') {
+    return timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp
+  }
+
+  const parsed = Date.parse(timestamp)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function scheduleVoiceCallExpiry(call: VoiceCallState) {
+  clearVoiceCallExpiryTimer(call.channelId)
+
+  const expiresAtMs = timestampToMs(call.expiresAt)
+  if (expiresAtMs === undefined) return
+
+  const callKey = voiceCallUiKey(call)
+  const delayMs = Math.max(0, expiresAtMs - Date.now())
+  voiceCallExpiryTimers[call.channelId] = setTimeout(() => {
+    const currentCall = state.voiceCalls[call.channelId]
+    if (!currentCall || voiceCallUiKey(currentCall) !== callKey) return
+    if (currentCall.expiresAt !== call.expiresAt) return
+
+    const channel = state.channels[call.channelId]
+    if (currentCall.phase === 'ringing' && channel?.channel_type === 'Group') {
+      syncStore.setVoiceCall({
+        ...currentCall,
+        phase: 'active',
+        expiresAt: expiresAtMs + GROUP_UNANSWERED_ACTIVE_MS,
+        recipients: [],
+      })
+      return
+    }
+
+    syncStore.removeVoiceCall(call.channelId)
+  }, delayMs)
+}
+
+function syncVoiceCallExpiryTimers(voiceCalls: Record<string, VoiceCallState>) {
+  const activeChannelIds = new Set(Object.keys(voiceCalls))
+  for (const channelId of Object.keys(voiceCallExpiryTimers)) {
+    if (!activeChannelIds.has(channelId)) {
+      clearVoiceCallExpiryTimer(channelId)
+    }
+  }
+  for (const call of Object.values(voiceCalls)) {
+    scheduleVoiceCallExpiry(call)
+  }
 }
 
 function upsertRecord<T extends { _id: string }>(
@@ -179,6 +249,7 @@ export const syncStore = {
   },
 
   reset() {
+    clearVoiceCallExpiryTimers()
     state = emptyState()
     emit()
   },
@@ -209,6 +280,32 @@ export const syncStore = {
       state.voiceParticipants,
       payload.voice_states,
     )
+    const hasVoiceCallSnapshot = payload.voice_calls !== undefined
+    const voiceCalls = hasVoiceCallSnapshot ? {} : { ...state.voiceCalls }
+    for (const call of payload.voice_calls ?? []) {
+      voiceCalls[call.channel_id] = {
+        channelId: call.channel_id,
+        initiatorId: call.initiator_id,
+        phase: call.phase.toLowerCase() === 'active' ? 'active' : 'ringing',
+        startedAt: call.started_at,
+        expiresAt: call.expires_at,
+        recipients: call.recipients ?? [],
+      }
+    }
+    const currentVoiceCallKeys = new Set(
+      Object.values(voiceCalls).map(voiceCallUiKey),
+    )
+    const dismissedVoiceCallKeys = hasVoiceCallSnapshot
+      ? (Object.fromEntries(
+          Object.entries(state.dismissedVoiceCallKeys).filter(([key]) =>
+            currentVoiceCallKeys.has(key),
+          ),
+        ) as Record<string, true>)
+      : state.dismissedVoiceCallKeys
+
+    if (hasVoiceCallSnapshot) {
+      syncVoiceCallExpiryTimers(voiceCalls)
+    }
 
     setState({
       ready: true,
@@ -219,6 +316,8 @@ export const syncStore = {
       emojis,
       unreads,
       voiceParticipants,
+      voiceCalls,
+      dismissedVoiceCallKeys,
       selectedServerId:
         state.selectedServerId ?? firstServerId ?? null,
     })
@@ -339,6 +438,67 @@ export const syncStore = {
     if (changed) setState({ voiceParticipants })
   },
 
+  setVoiceCall(call: VoiceCallState) {
+    const existing = state.voiceCalls[call.channelId]
+
+    if (
+      existing?.initiatorId === call.initiatorId &&
+      existing.phase === call.phase &&
+      existing.startedAt === call.startedAt &&
+      existing.expiresAt === call.expiresAt &&
+      existing.recipients.length === call.recipients.length &&
+      existing.recipients.every((id, index) => id === call.recipients[index])
+    ) {
+      scheduleVoiceCallExpiry(call)
+      return
+    }
+
+    scheduleVoiceCallExpiry(call)
+    setState({
+      voiceCalls: {
+        ...state.voiceCalls,
+        [call.channelId]: call,
+      },
+    })
+  },
+
+  removeVoiceCall(channelId: string) {
+    if (!state.voiceCalls[channelId]) return
+    clearVoiceCallExpiryTimer(channelId)
+    const { [channelId]: _, ...voiceCalls } = state.voiceCalls
+    const dismissedVoiceCallKeys = Object.fromEntries(
+      Object.entries(state.dismissedVoiceCallKeys).filter(
+        ([key]) => !key.startsWith(`${channelId}:`),
+      ),
+    )
+    setState({ voiceCalls, dismissedVoiceCallKeys })
+  },
+
+  dismissVoiceCall(call: VoiceCallState) {
+    const key = voiceCallUiKey(call)
+    if (state.dismissedVoiceCallKeys[key]) return
+
+    setState({
+      dismissedVoiceCallKeys: {
+        ...state.dismissedVoiceCallKeys,
+        [key]: true,
+      },
+    })
+  },
+
+  clearVoiceCallDismissal(channelId: string) {
+    let changed = false
+    const dismissedVoiceCallKeys = Object.fromEntries(
+      Object.entries(state.dismissedVoiceCallKeys).filter(([key]) => {
+        const keep = !key.startsWith(`${channelId}:`)
+        changed = changed || !keep
+        return keep
+      }),
+    )
+
+    if (changed) setState({ dismissedVoiceCallKeys })
+  },
+
   patchVoiceParticipant(
     channelId: string,
     userId: string,
@@ -444,10 +604,9 @@ export const syncStore = {
     const unreads = { ...state.unreads }
     let changed = false
     for (const channel of Object.values(state.channels)) {
+      const channelServerId = serverChannelServerId(channel)
       if (
-        (channel.channel_type === 'TextChannel' ||
-          channel.channel_type === 'VoiceChannel') &&
-        channel.server === serverId &&
+        channelServerId === serverId &&
         'last_message_id' in channel &&
         channel.last_message_id &&
         unreads[channel._id] !== channel.last_message_id
@@ -564,11 +723,7 @@ export const syncStore = {
     const { [serverId]: _, ...servers } = state.servers
     const channels = { ...state.channels }
     for (const [id, channel] of Object.entries(channels)) {
-      if (
-        (channel.channel_type === 'TextChannel' ||
-          channel.channel_type === 'VoiceChannel') &&
-        channel.server === serverId
-      ) {
+      if (serverChannelServerId(channel) === serverId) {
         delete channels[id]
       }
     }
@@ -593,9 +748,33 @@ export const syncStore = {
   },
 
   removeChannel(channelId: string) {
-    const { [channelId]: _, ...channels } = state.channels
-    const { [channelId]: __, ...messages } = state.messages
-    setState({ channels, messages })
+    const channels = { ...state.channels }
+    const messages = { ...state.messages }
+    const unreads = { ...state.unreads }
+    const typingUsers = { ...state.typingUsers }
+    const voiceParticipants = { ...state.voiceParticipants }
+    const voiceCalls = { ...state.voiceCalls }
+    delete channels[channelId]
+    delete messages[channelId]
+    delete unreads[channelId]
+    delete typingUsers[channelId]
+    delete voiceParticipants[channelId]
+    delete voiceCalls[channelId]
+    const dismissedVoiceCallKeys = Object.fromEntries(
+      Object.entries(state.dismissedVoiceCallKeys).filter(
+        ([key]) => !key.startsWith(`${channelId}:`),
+      ),
+    )
+    clearVoiceCallExpiryTimer(channelId)
+    setState({
+      channels,
+      messages,
+      unreads,
+      typingUsers,
+      voiceParticipants,
+      voiceCalls,
+      dismissedVoiceCallKeys,
+    })
   },
 
   upsertMessage(message: Message) {
@@ -740,6 +919,7 @@ export const syncStore = {
           emojis,
           channel_unreads,
           voice_states,
+          voice_calls,
         } = event as ReadyPayload & { type: string }
         this.applyReady({
           users,
@@ -749,6 +929,7 @@ export const syncStore = {
           emojis,
           channel_unreads,
           voice_states,
+          voice_calls,
         })
         break
       }
@@ -809,6 +990,46 @@ export const syncStore = {
         if (channel_id && normalized) {
           this.addVoiceParticipant(channel_id, normalized)
         }
+        break
+      }
+      case 'VoiceCallRinging': {
+        const payload = event as {
+          channel_id: string
+          initiator_id: string
+          started_at: number
+          expires_at?: number | string
+          recipients?: string[]
+        }
+        this.setVoiceCall({
+          channelId: payload.channel_id,
+          initiatorId: payload.initiator_id,
+          phase: 'ringing',
+          startedAt: payload.started_at,
+          expiresAt: payload.expires_at as number | string | undefined,
+          recipients: payload.recipients ?? [],
+        })
+        break
+      }
+      case 'VoiceCallActive': {
+        const payload = event as {
+          channel_id: string
+          initiator_id: string
+          started_at: number
+          expires_at?: number | string
+        }
+        this.setVoiceCall({
+          channelId: payload.channel_id,
+          initiatorId: payload.initiator_id,
+          phase: 'active',
+          startedAt: payload.started_at,
+          expiresAt: payload.expires_at,
+          recipients: [],
+        })
+        break
+      }
+      case 'VoiceCallEnd': {
+        const payload = event as { channel_id: string }
+        this.removeVoiceCall(payload.channel_id)
         break
       }
       case 'MessageReact': {
@@ -897,6 +1118,44 @@ export const syncStore = {
       case 'ChannelDelete': {
         const { id } = event as { id: string }
         this.removeChannel(id)
+        break
+      }
+      case 'ChannelGroupJoin': {
+        const { id, user } = event as { id: string; user: string }
+        const channel = state.channels[id]
+        if (
+          channel?.channel_type === 'Group' &&
+          !channel.recipients.includes(user)
+        ) {
+          this.patchChannel(id, {
+            recipients: [...channel.recipients, user],
+          } as Partial<Channel>)
+        }
+        break
+      }
+      case 'ChannelGroupLeave': {
+        const { id, user } = event as { id: string; user: string }
+        const channel = state.channels[id]
+        if (
+          channel?.channel_type === 'Group' &&
+          channel.recipients.includes(user)
+        ) {
+          this.patchChannel(id, {
+            recipients: channel.recipients.filter(
+              (recipientId) => recipientId !== user,
+            ),
+          } as Partial<Channel>)
+        }
+        this.removeVoiceParticipant(id, user)
+        const call = state.voiceCalls[id]
+        if (call?.phase === 'ringing' && call.recipients.includes(user)) {
+          this.setVoiceCall({
+            ...call,
+            recipients: call.recipients.filter(
+              (recipientId) => recipientId !== user,
+            ),
+          })
+        }
         break
       }
       case 'ServerCreate': {

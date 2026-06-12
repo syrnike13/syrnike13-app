@@ -12,10 +12,12 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { useAuth } from '#/features/auth/auth-context'
-import { blockUser, openDirectMessage } from '#/features/api/users-api'
+import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { useVoice } from '#/features/voice/voice-context'
 
 type UserGlobalProfileDialogProps = {
   user: User
@@ -33,10 +35,12 @@ export function UserGlobalProfileDialog({
 }: UserGlobalProfileDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const voice = useVoice()
   const { openSettings } = useSettingsModal()
   const [busy, setBusy] = useState(false)
 
   const isSelf = user._id === auth.user?._id
+  const canDirectMessage = !isSelf && !user.bot
   const mutualServers = useSyncStore((s) =>
     listMutualServers(s, user._id, auth.user?._id),
   )
@@ -49,21 +53,40 @@ export function UserGlobalProfileDialog({
 
   async function openDm() {
     const token = auth.session?.token
-    if (!token || isSelf) return
+    if (!token || !canDirectMessage) return
     setBusy(true)
     try {
-      const channel = await openDirectMessage(token, user._id)
-      syncStore.upsertChannel(channel)
-      close()
-      await navigate({
-        to: '/app/c/$channelId',
-        params: { channelId: channel._id },
-        search: { m: undefined },
+      await openDirectMessageChannel(token, user._id, (channelId) => {
+        close()
+        return navigate({
+          to: '/app/c/$channelId',
+          params: { channelId },
+          search: { m: undefined },
+        })
       })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось открыть ЛС',
-      )
+    } catch {
+      // dm-actions already shows the concrete error toast.
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function startDirectCall() {
+    const token = auth.session?.token
+    if (!token || !canDirectMessage) return
+    setBusy(true)
+    try {
+      const channel = await openDirectMessageChannel(token, user._id, (channelId) => {
+        close()
+        return navigate({
+          to: '/app/c/$channelId',
+          params: { channelId },
+          search: { m: undefined },
+        })
+      })
+      await voice.join(channel._id)
+    } catch {
+      // dm-actions already shows the concrete error toast.
     } finally {
       setBusy(false)
     }
@@ -75,14 +98,10 @@ export function UserGlobalProfileDialog({
     if (!window.confirm(`Заблокировать @${user.username}?`)) return
     setBusy(true)
     try {
-      const updated = await blockUser(token, user._id)
-      syncStore.upsertUser(updated)
+      await blockUserRelationship(token, user._id)
       close()
-      toast.success('Пользователь заблокирован')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось заблокировать',
-      )
+    } catch {
+      // friend-actions already shows the concrete error toast.
     } finally {
       setBusy(false)
     }
@@ -127,6 +146,7 @@ export function UserGlobalProfileDialog({
               isSelf={isSelf}
               busy={busy}
               onOpenDm={() => void openDm()}
+              onStartCall={() => void startDirectCall()}
               onCopyId={() => void copyUserId()}
               onBlock={() => void handleBlock()}
               onEditProfile={() => {

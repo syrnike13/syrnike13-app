@@ -160,4 +160,86 @@ describe('voice gateway reliable state updates', () => {
       channel_id: 'channel-1',
     })
   })
+
+  it('suppresses call notifications when refreshing voice credentials', async () => {
+    const { requestVoiceCredentialsRefresh } = await import('./voice-gateway')
+
+    const refreshPromise = requestVoiceCredentialsRefresh(
+      'channel-1',
+      false,
+      false,
+    )
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
+      type: 'VoiceStateUpdate',
+      channel_id: 'channel-1',
+      force_disconnect: false,
+      suppress_call_notifications: true,
+      refresh_credentials: true,
+    })
+
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      channel_id: 'channel-1',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+
+    await expect(refreshPromise).resolves.toMatchObject({
+      type: 'VoiceServerUpdate',
+      channel_id: 'channel-1',
+    })
+  })
+
+  it('suppresses call notifications for voice flag updates', async () => {
+    const { requestVoiceFlagsUpdate } = await import('./voice-gateway')
+
+    requestVoiceFlagsUpdate('channel-1', true, false)
+
+    expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
+      type: 'VoiceStateUpdate',
+      channel_id: 'channel-1',
+      self_mute: true,
+      self_deaf: false,
+      force_disconnect: false,
+      suppress_call_notifications: true,
+    })
+  })
+
+  it('sends suppress_call_notifications for silent voice rejoins', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+
+    const joinPromise = requestVoiceJoin('channel-1', false, false, {
+      suppress_call_notifications: true,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
+      type: 'VoiceStateUpdate',
+      channel_id: 'channel-1',
+      suppress_call_notifications: true,
+      refresh_credentials: true,
+    })
+
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      channel_id: 'channel-1',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+
+    await expect(joinPromise).resolves.toMatchObject({
+      type: 'VoiceServerUpdate',
+      channel_id: 'channel-1',
+    })
+  })
 })

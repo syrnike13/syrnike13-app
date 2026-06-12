@@ -2,9 +2,9 @@ use axum::{
     extract::{Query, State},
     Json,
 };
+use serde::Deserialize;
 use syrnike_database::User;
 use syrnike_result::{create_error, Result};
-use serde::Deserialize;
 use utoipa::IntoParams;
 
 use crate::{tenor, types};

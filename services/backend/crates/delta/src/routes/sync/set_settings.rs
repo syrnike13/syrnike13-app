@@ -2,10 +2,10 @@ use syrnike_database::{Database, User, UserSettingsImpl};
 use syrnike_models::v0;
 
 use chrono::prelude::*;
-use syrnike_result::Result;
 use rocket::{serde::json::Json, State};
 use rocket_empty::EmptyResponse;
 use std::collections::HashMap;
+use syrnike_result::Result;
 
 type Data = HashMap<String, String>;
 

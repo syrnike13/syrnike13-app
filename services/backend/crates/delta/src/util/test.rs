@@ -4,15 +4,15 @@ use authifier::{
 };
 use futures::StreamExt;
 use rand::Rng;
-use redis_kiss::{redis::aio::PubSub};
+use redis_kiss::redis::aio::PubSub;
+use rocket::http::Header;
+use rocket::local::asynchronous::{Client, LocalRequest, LocalResponse};
 use syrnike_database::{
     events::client::EventV1, Channel, Database, Member, Message, PartialRole, Server, User, AMQP,
 };
 use syrnike_database::{util::idempotency::IdempotencyKey, Role};
 use syrnike_models::v0;
 use syrnike_permissions::OverrideField;
-use rocket::http::Header;
-use rocket::local::asynchronous::{Client, LocalRequest, LocalResponse};
 
 pub struct TestHarness {
     pub client: Client,

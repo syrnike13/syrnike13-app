@@ -19,6 +19,7 @@ export type VoiceStateUpdatePayload = {
   node?: string
   force_disconnect?: boolean
   recipients?: string[]
+  suppress_call_notifications?: boolean
   refresh_credentials?: boolean
 }
 
@@ -112,6 +113,9 @@ export function sendVoiceStateUpdate(payload: VoiceStateUpdatePayload) {
       ? { force_disconnect: payload.force_disconnect }
       : {}),
     ...(payload.recipients ? { recipients: payload.recipients } : {}),
+    ...(payload.suppress_call_notifications
+      ? { suppress_call_notifications: true }
+      : {}),
     ...(payload.refresh_credentials ? { refresh_credentials: true } : {}),
   }
 
@@ -163,7 +167,11 @@ export async function requestVoiceJoin(
   channelId: string,
   selfMute: boolean,
   selfDeaf: boolean,
-  options?: { force_disconnect?: boolean; recipients?: string[] },
+  options?: {
+    force_disconnect?: boolean
+    recipients?: string[]
+    suppress_call_notifications?: boolean
+  },
 ): Promise<VoiceServerUpdateEvent> {
   const node = await resolveVoiceNodeName()
   const responsePromise = waitForVoiceServerUpdate(channelId)
@@ -174,6 +182,7 @@ export async function requestVoiceJoin(
     node,
     force_disconnect: options?.force_disconnect ?? true,
     recipients: options?.recipients,
+    suppress_call_notifications: options?.suppress_call_notifications,
     refresh_credentials: true,
   })
   return responsePromise
@@ -190,6 +199,7 @@ export async function requestVoiceCredentialsRefresh(
     self_mute: selfMute,
     self_deaf: selfDeaf,
     force_disconnect: false,
+    suppress_call_notifications: true,
     refresh_credentials: true,
   })
   return responsePromise
@@ -213,5 +223,6 @@ export function requestVoiceFlagsUpdate(
     self_mute: selfMute,
     self_deaf: selfDeaf,
     force_disconnect: false,
+    suppress_call_notifications: true,
   })
 }

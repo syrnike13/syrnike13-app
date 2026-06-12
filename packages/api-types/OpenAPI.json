@@ -2041,25 +2041,17 @@
         ]
       }
     },
-    "/channels/{target}/end_ring/{target_user}": {
+    "/channels/{target}/voice/cancel": {
       "put": {
         "tags": [
           "Voice"
         ],
-        "summary": "Stop Ring",
-        "description": "Stops ringing a specific user in a dm call. You must be in the call to use this endpoint, returns NotConnected otherwise. Only valid in DM/Group channels, will return NoEffect in servers. Returns NotFound if the user is not in the dm/group channel",
-        "operationId": "voice_stop_ring_stop_ring",
+        "summary": "Cancel Call",
+        "description": "Cancels a ringing one-to-one DM call. The authenticated user must be the ringing recipient.",
+        "operationId": "voice_cancel_call_cancel_call",
         "parameters": [
           {
             "name": "target",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/Id"
-            }
-          },
-          {
-            "name": "target_user",
             "in": "path",
             "required": true,
             "schema": {
@@ -8627,35 +8619,17 @@
         }
       },
       "InviteBotDestination": {
-        "description": "Where we are inviting a bot to",
-        "anyOf": [
-          {
-            "description": "Invite to a server",
-            "type": "object",
-            "required": [
-              "server"
-            ],
-            "properties": {
-              "server": {
-                "description": "Server Id",
-                "type": "string"
-              }
-            }
-          },
-          {
-            "description": "Invite to a group",
-            "type": "object",
-            "required": [
-              "group"
-            ],
-            "properties": {
-              "group": {
-                "description": "Group Id",
-                "type": "string"
-              }
-            }
+        "description": "Server to invite a bot to.",
+        "type": "object",
+        "required": [
+          "server"
+        ],
+        "properties": {
+          "server": {
+            "description": "Server Id",
+            "type": "string"
           }
-        ]
+        }
       },
       "PublicBot": {
         "description": "Public Bot",
@@ -9524,6 +9498,15 @@
                   {
                     "$ref": "#/components/schemas/ISO8601 Timestamp"
                   }
+                ],
+                "nullable": true
+              },
+              "ended_reason": {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "cancelled",
+                  "missed"
                 ],
                 "nullable": true
               }

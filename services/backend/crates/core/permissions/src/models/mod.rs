@@ -3,8 +3,8 @@ mod server;
 mod user;
 
 pub use channel::*;
-use syrnike_result::{create_error, Result};
 pub use server::*;
+use syrnike_result::{create_error, Result};
 pub use user::*;
 
 /// Holds a permission value to manipulate.

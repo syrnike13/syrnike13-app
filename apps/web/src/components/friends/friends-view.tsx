@@ -9,23 +9,25 @@ import {
 } from '#/components/icons'
 import { useState, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
-import { toast } from 'sonner'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
+import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import {
-  acceptFriendRequest,
-  blockUser,
-  openDirectMessage,
-  removeFriendOrRequest,
-  sendFriendRequest,
-  unblockUser,
-} from '#/features/api/users-api'
+  acceptIncomingFriendRequest,
+  blockIncomingFriendRequest,
+  blockUserRelationship,
+  cancelOutgoingFriendRequest,
+  declineIncomingFriendRequest,
+  removeFriend,
+  sendFriendRequestByUsername,
+  unblockBlockedUser,
+} from '#/features/friends/friend-actions'
 import { listUsersByRelationship } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '#/features/sync/sync-store'
 import { presenceLabel } from '#/lib/presence'
 
 function userLabel(user: { username: string; display_name?: string | null }) {
@@ -72,10 +74,6 @@ function FriendsSection({
   )
 }
 
-function handleApiError(error: unknown, fallback: string) {
-  toast.error(error instanceof Error ? error.message : fallback)
-}
-
 export function FriendsView() {
   const auth = useAuth()
   const navigate = useNavigate()
@@ -84,13 +82,19 @@ export function FriendsView() {
   const [sending, setSending] = useState(false)
 
   const friends = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Friend', auth.user?._id),
+    listUsersByRelationship(s, 'Friend', auth.user?._id).filter(
+      (user) => !user.bot,
+    ),
   )
   const incoming = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Incoming', auth.user?._id),
+    listUsersByRelationship(s, 'Incoming', auth.user?._id).filter(
+      (user) => !user.bot,
+    ),
   )
   const outgoing = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Outgoing', auth.user?._id),
+    listUsersByRelationship(s, 'Outgoing', auth.user?._id).filter(
+      (user) => !user.bot,
+    ),
   )
   const blocked = useSyncStore((s) =>
     listUsersByRelationship(s, 'Blocked', auth.user?._id),
@@ -98,17 +102,13 @@ export function FriendsView() {
 
   async function openDm(userId: string) {
     if (!token) return
-    try {
-      const channel = await openDirectMessage(token, userId)
-      syncStore.upsertChannel(channel)
-      syncStore.setSelectedServerId(null)
-      await navigate({
+    await openDirectMessageChannel(token, userId, (channelId) =>
+      navigate({
         to: '/app/c/$channelId',
-        params: { channelId: channel._id },
+        params: { channelId },
+        search: { m: undefined },
       })
-    } catch (error) {
-      handleApiError(error, 'Не удалось открыть ЛС')
-    }
+    ).catch(() => undefined)
   }
 
   async function handleSendRequest() {
@@ -118,12 +118,10 @@ export function FriendsView() {
 
     setSending(true)
     try {
-      const user = await sendFriendRequest(token, trimmed)
-      syncStore.upsertUser(user)
+      await sendFriendRequestByUsername(token, trimmed)
       setUsername('')
-      toast.success('Заявка отправлена')
-    } catch (error) {
-      handleApiError(error, 'Не удалось отправить заявку')
+    } catch {
+      // friend-actions already shows the concrete error toast.
     } finally {
       setSending(false)
     }
@@ -183,11 +181,9 @@ export function FriendsView() {
                   title="Заблокировать"
                   onClick={() => {
                     if (!token) return
-                    void blockUser(token, user._id)
-                      .then((updated) => syncStore.upsertUser(updated))
-                      .catch((error) =>
-                        handleApiError(error, 'Не удалось заблокировать'),
-                      )
+                    void blockUserRelationship(token, user._id).catch(
+                      () => undefined,
+                    )
                   }}
                 >
                   <BanIcon className="size-4" />
@@ -199,11 +195,7 @@ export function FriendsView() {
                   title="Удалить из друзей"
                   onClick={() => {
                     if (!token) return
-                    void removeFriendOrRequest(token, user._id)
-                      .then((updated) => syncStore.upsertUser(updated))
-                      .catch((error) =>
-                        handleApiError(error, 'Ошибка'),
-                      )
+                    void removeFriend(token, user._id).catch(() => undefined)
                   }}
                 >
                   <UserMinusIcon className="size-4" />
@@ -225,11 +217,9 @@ export function FriendsView() {
                   title="Принять"
                   onClick={() => {
                     if (!token) return
-                    void acceptFriendRequest(token, user._id)
-                      .then((updated) => syncStore.upsertUser(updated))
-                      .catch((error) =>
-                        handleApiError(error, 'Ошибка'),
-                      )
+                    void acceptIncomingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
                   }}
                 >
                   <UserCheckIcon className="size-4" />
@@ -241,11 +231,9 @@ export function FriendsView() {
                   title="Отклонить"
                   onClick={() => {
                     if (!token) return
-                    void removeFriendOrRequest(token, user._id)
-                      .then((updated) => syncStore.upsertUser(updated))
-                      .catch((error) =>
-                        handleApiError(error, 'Ошибка'),
-                      )
+                    void declineIncomingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
                   }}
                 >
                   <UserMinusIcon className="size-4" />
@@ -257,11 +245,9 @@ export function FriendsView() {
                   title="Заблокировать"
                   onClick={() => {
                     if (!token) return
-                    void blockUser(token, user._id)
-                      .then((updated) => syncStore.upsertUser(updated))
-                      .catch((error) =>
-                        handleApiError(error, 'Не удалось заблокировать'),
-                      )
+                    void blockIncomingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
                   }}
                 >
                   <BanIcon className="size-4" />
@@ -282,11 +268,9 @@ export function FriendsView() {
                   variant="outline"
                   onClick={() => {
                     if (!token) return
-                    void removeFriendOrRequest(token, user._id)
-                      .then((updated) => syncStore.upsertUser(updated))
-                      .catch((error) =>
-                        handleApiError(error, 'Ошибка'),
-                      )
+                    void cancelOutgoingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
                   }}
                 >
                   Отменить
@@ -304,11 +288,9 @@ export function FriendsView() {
                   variant="outline"
                   onClick={() => {
                     if (!token) return
-                    void unblockUser(token, user._id)
-                      .then((updated) => syncStore.upsertUser(updated))
-                      .catch((error) =>
-                        handleApiError(error, 'Не удалось разблокировать'),
-                      )
+                    void unblockBlockedUser(token, user._id).catch(
+                      () => undefined,
+                    )
                   }}
                 >
                   <ShieldOffIcon className="size-4" />

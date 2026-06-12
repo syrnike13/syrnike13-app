@@ -1,5 +1,5 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
-import { PinIcon } from '#/components/icons'
+import { HeadphonesIcon, PinIcon } from '#/components/icons'
 import { useMemo, type ReactElement } from 'react'
 
 import {
@@ -74,6 +74,78 @@ function memberDisplayColor(
     return colour.startsWith('#') ? colour : `#${colour}`
   }
   return undefined
+}
+
+function callParticipantName(userId: string, users: Record<string, User>) {
+  const user = users[userId]
+  return user?.display_name ?? user?.username ?? 'Пользователь'
+}
+
+function formatCallDuration(startedAt: Date, finishedAt: string) {
+  const finishedAtMs = new Date(finishedAt).getTime()
+  if (!Number.isFinite(finishedAtMs)) return null
+
+  const durationSeconds = Math.max(
+    1,
+    Math.round((finishedAtMs - startedAt.getTime()) / 1000),
+  )
+
+  if (durationSeconds < 60) {
+    return `${durationSeconds} сек`
+  }
+
+  const durationMinutes = Math.max(1, Math.round(durationSeconds / 60))
+  if (durationMinutes < 60) {
+    return `${durationMinutes} мин`
+  }
+
+  const durationHours = Math.max(1, Math.round(durationMinutes / 60))
+  return `${durationHours} ч`
+}
+
+function VoiceCallSystemCard({
+  message,
+  users,
+}: {
+  message: Message
+  users: Record<string, User>
+}) {
+  if (message.system?.type !== 'call_started') return null
+
+  const startedAt = messageCreatedAt(message)
+  const duration = message.system.finished_at
+    ? formatCallDuration(startedAt, message.system.finished_at)
+    : null
+  const endedReason = message.system.ended_reason ?? 'completed'
+  const endedStatus =
+    endedReason === 'cancelled'
+      ? 'Отменён'
+      : endedReason === 'missed'
+        ? 'Пропущен'
+        : 'Завершён'
+  const status = message.system.finished_at
+    ? `${endedStatus}${duration ? ` · ${duration}` : ''}`
+    : 'Идёт сейчас'
+
+  return (
+    <article
+      data-message-id={message._id}
+      className={cn('-mx-4 px-6 py-1.5')}
+    >
+      <div className="flex max-w-xl items-start gap-3 rounded-lg border border-shell-divider bg-card/80 p-3 text-card-foreground shadow-sm">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23a559]/15 text-[#23a559]">
+          <HeadphonesIcon className="size-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">Звонок</p>
+          <p className="truncate text-sm text-foreground">
+            {callParticipantName(message.system.by, users)} начал звонок
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{status}</p>
+        </div>
+      </div>
+    </article>
+  )
 }
 
 function MessageAuthorProfileTrigger({
@@ -186,6 +258,10 @@ export function MessageRow({
       users,
     ],
   )
+
+  if (message.system?.type === 'call_started') {
+    return <VoiceCallSystemCard message={message} users={users} />
+  }
 
   return (
     <article

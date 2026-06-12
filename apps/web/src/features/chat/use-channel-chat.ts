@@ -7,22 +7,18 @@ import { toast } from 'sonner'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   deleteChannelMessage,
-  editChannelMessage,
   fetchChannelMessages,
   MESSAGE_PAGE_SIZE,
   pinChannelMessage,
-  reactToMessage,
-  sendChannelMessage,
   unpinChannelMessage,
-  unreactFromMessage,
 } from '#/features/api/messages-api'
-import { blockUser } from '#/features/api/users-api'
 import { ackChannel } from '#/features/api/sync-api'
 import { useJumpToMessage } from '#/features/chat/use-jump-to-message'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
 import { getChannelMessages } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
+import { serverChannelServerId } from '#/lib/channel-voice'
 
 type ComposerAction =
   | { type: 'reply'; message: Message }
@@ -77,12 +73,9 @@ export function useChannelChat({
     staleTime: 30_000,
   })
 
-  const isServerChannel =
-    channel?.channel_type === 'TextChannel' ||
-    channel?.channel_type === 'VoiceChannel'
+  const serverIdForSelection = serverChannelServerId(channel) ?? null
 
-  const serverIdForSelection =
-    channel && isServerChannel ? channel.server : null
+  const isServerChannel = serverIdForSelection != null
 
   const messagesRef = useRef(messages)
   messagesRef.current = messages

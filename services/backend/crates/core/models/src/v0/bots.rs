@@ -136,19 +136,10 @@ auto_derived!(
         pub remove: Vec<FieldsBot>,
     }
 
-    /// Where we are inviting a bot to
-    #[serde(untagged)]
-    pub enum InviteBotDestination {
-        /// Invite to a server
-        Server {
-            /// Server Id
-            server: String,
-        },
-        /// Invite to a group
-        Group {
-            /// Group Id
-            group: String,
-        },
+    /// Server to invite a bot to.
+    pub struct InviteBotDestination {
+        /// Server Id
+        pub server: String,
     }
 
     /// Owned Bots Response

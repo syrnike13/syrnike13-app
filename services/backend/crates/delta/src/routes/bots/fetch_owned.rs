@@ -1,9 +1,9 @@
 use futures::future::join_all;
+use rocket::serde::json::Json;
+use rocket::State;
 use syrnike_database::{Database, User};
 use syrnike_models::v0::OwnedBotsResponse;
 use syrnike_result::Result;
-use rocket::serde::json::Json;
-use rocket::State;
 
 /// # Fetch Owned Bots
 ///
@@ -32,9 +32,9 @@ pub async fn fetch_owned_bots(db: &State<Database>, user: User) -> Result<Json<O
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{Header, Status};
     use syrnike_database::Bot;
     use syrnike_models::v0;
-    use rocket::http::{Header, Status};
 
     #[rocket::async_test]
     async fn fetch_owned() {

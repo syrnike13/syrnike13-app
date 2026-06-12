@@ -4,11 +4,11 @@ import type { AppIcon, DefinedIcon, IconSource } from '#/components/icons/types'
  * Регистрирует иконку приложения из любого пакета.
  * Меняй только импорт и `source` в registry — UI импортирует стабильные имена (`MicIcon`, …).
  */
-export function defineIcon<C extends AppIcon>(
-  component: C,
+export function defineIcon(
+  component: unknown,
   source: IconSource,
 ): DefinedIcon {
-  const icon = component as DefinedIcon
+  const icon = component as AppIcon as DefinedIcon
   if (icon.__source) {
     return icon
   }

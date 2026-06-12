@@ -49,6 +49,7 @@ export function buildMessageFeedItems(messages: Message[]): MessageFeedItem[] {
 
 export function feedItemEstimateHeight(item: MessageFeedItem): number {
   if (item.type === 'date') return 52
+  if (item.message.system?.type === 'call_started') return 104
   if (item.type === 'message' && item.message.replies?.[0] && !item.compact) {
     return 92
   }

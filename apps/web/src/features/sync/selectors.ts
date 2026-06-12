@@ -9,6 +9,11 @@ import type {
 } from '@syrnike13/api-types'
 
 import { getChannelLabel, isDmChannel, isTextChannel } from './channel-label'
+import {
+  isIncomingVoiceCall,
+  isVoiceCallDismissed,
+  isVoiceCallRingingDismissed,
+} from './voice-call-utils'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import type { SyncState } from './types'
 
@@ -22,15 +27,115 @@ export function listServers(state: SyncState): Server[] {
   )
 }
 
+function hasBotRecipient(state: SyncState, channel: Channel) {
+  if (
+    channel.channel_type !== 'DirectMessage' &&
+    channel.channel_type !== 'Group'
+  ) {
+    return false
+  }
+
+  return channel.recipients.some((recipientId) =>
+    Boolean(state.users[recipientId]?.bot),
+  )
+}
+
 export function listDmChannels(state: SyncState, currentUserId?: string) {
   return Object.values(state.channels)
     .filter(isDmChannel)
     .filter(isTextChannel)
+    .filter((channel) => !hasBotRecipient(state, channel))
     .sort((a, b) =>
       getChannelLabel(a, state.users, currentUserId).localeCompare(
         getChannelLabel(b, state.users, currentUserId),
       ),
     )
+}
+
+export function findDirectMessageChannelWithUser(
+  state: SyncState,
+  currentUserId: string | undefined,
+  userId: string | undefined,
+) {
+  if (!currentUserId || !userId || currentUserId === userId) return undefined
+  if (state.users[userId]?.bot) return undefined
+
+  return Object.values(state.channels).find(
+    (channel) =>
+      channel.channel_type === 'DirectMessage' &&
+      channel.recipients.includes(currentUserId) &&
+      channel.recipients.includes(userId),
+  )
+}
+
+export function selectDirectMessageCallActionLabel(
+  state: SyncState,
+  currentUserId: string | undefined,
+  userId: string | undefined,
+) {
+  const channel = findDirectMessageChannelWithUser(
+    state,
+    currentUserId,
+    userId,
+  )
+  const call = channel ? state.voiceCalls[channel._id] : undefined
+  if (!call) return 'Позвонить'
+  if (
+    !isVoiceCallRingingDismissed(call, state.dismissedVoiceCallKeys) &&
+    isIncomingVoiceCall(call, currentUserId)
+  ) {
+    return 'Ответить'
+  }
+
+  return 'Присоединиться'
+}
+
+function isCurrentUserInChannelVoice(
+  state: SyncState,
+  channelId: string,
+  currentUserId?: string,
+) {
+  return Boolean(
+    currentUserId && state.voiceParticipants[channelId]?.[currentUserId],
+  )
+}
+
+function hasIncomingVoiceCall(
+  state: SyncState,
+  channelId: string,
+  currentUserId?: string,
+) {
+  const call = state.voiceCalls[channelId]
+  if (isVoiceCallDismissed(call, state.dismissedVoiceCallKeys)) {
+    return false
+  }
+  if (call?.phase === 'active') return true
+  if (isVoiceCallRingingDismissed(call, state.dismissedVoiceCallKeys)) {
+    return false
+  }
+
+  return isIncomingVoiceCall(call, currentUserId)
+}
+
+export function shouldShowDmChannelInRail(
+  state: SyncState,
+  channel: Channel,
+  currentUserId?: string,
+) {
+  return (
+    isChannelUnread(channel, state.unreads[channel._id]) ||
+    isCurrentUserInChannelVoice(state, channel._id, currentUserId) ||
+    hasIncomingVoiceCall(state, channel._id, currentUserId)
+  )
+}
+
+export function listVisibleDmRailChannels(
+  state: SyncState,
+  currentUserId?: string,
+) {
+  return listDmChannels(state, currentUserId).filter((channel) =>
+    shouldShowDmChannelInRail(state, channel, currentUserId),
+  )
 }
 
 export function listServerTextChannelIds(
@@ -284,6 +389,34 @@ export function listMutualServers(
   }
 
   return mutual.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+}
+
+export function listUserMutualServerNicknames(
+  state: SyncState,
+  userId: string,
+  currentUserId: string | undefined,
+): string[] {
+  if (!currentUserId || userId === currentUserId) return []
+
+  const user = state.users[userId]
+  const globalNames = new Set(
+    [user?.username, user?.display_name]
+      .map((name) => name?.trim())
+      .filter((name): name is string => Boolean(name)),
+  )
+  const seen = new Set<string>()
+  const aliases: string[] = []
+
+  for (const server of listMutualServers(state, userId, currentUserId)) {
+    const nickname =
+      state.members[`${server._id}:${userId}`]?.nickname?.trim()
+    if (!nickname || globalNames.has(nickname) || seen.has(nickname)) continue
+
+    seen.add(nickname)
+    aliases.push(nickname)
+  }
+
+  return aliases
 }
 
 export function pickDefaultChannelId(

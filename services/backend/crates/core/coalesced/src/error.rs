@@ -19,7 +19,10 @@ impl fmt::Display for Error {
             Error::RecvError => write!(f, "Unable to receive data from the channel"),
             Error::MaxConcurrent => write!(f, "Max number of tasks running at once"),
             Error::MaxQueue => write!(f, "Max number of tasks in queue"),
-            Error::DowncastError => write!(f, "Failed to downcast type, possible key collision with different types")
+            Error::DowncastError => write!(
+                f,
+                "Failed to downcast type, possible key collision with different types"
+            ),
         }
     }
 }

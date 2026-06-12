@@ -26,7 +26,7 @@ const screenItemWithTrack: VoiceStageMediaItem = {
     mediaStreamTrack: {},
     attach: vi.fn((element: HTMLVideoElement) => element),
     detach: vi.fn(),
-  } as VoiceStageMediaItem['track'],
+  } as unknown as VoiceStageMediaItem['track'],
 }
 
 describe('StageMediaTile', () => {

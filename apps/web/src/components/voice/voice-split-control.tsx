@@ -80,17 +80,19 @@ function SplitControlChevron({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-disabled={disabled}
-          className={splitControlChevronButtonClass(surface, segmentState)}
-        >
-          <ChevronDownIcon
-            className={surface === 'panel' ? 'size-3' : 'size-3.5'}
-          />
-        </button>
-      </PopoverTrigger>
+      <VoiceControlTooltip title={title}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-disabled={disabled}
+            className={splitControlChevronButtonClass(surface, segmentState)}
+          >
+            <ChevronDownIcon
+              className={surface === 'panel' ? 'size-3' : 'size-3.5'}
+            />
+          </button>
+        </PopoverTrigger>
+      </VoiceControlTooltip>
       <PopoverContent
         align="start"
         side="top"

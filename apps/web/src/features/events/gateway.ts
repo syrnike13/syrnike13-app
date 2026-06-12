@@ -6,8 +6,9 @@ export type GatewayState =
   | 'reconnecting'
 
 type GatewayEvent = {
-  type: string
-  [key: string]: unknown
+  type?: string
+  // Raw server payload; consumers narrow per event type.
+  [key: string]: any
 }
 
 type ReliableQueueItem = {
@@ -25,6 +26,7 @@ const READY_FIELDS = [
   'members',
   'emojis',
   'voice_states',
+  'voice_calls',
   'channel_unreads',
 ] as const
 

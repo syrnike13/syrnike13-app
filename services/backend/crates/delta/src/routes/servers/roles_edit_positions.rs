@@ -1,10 +1,12 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    util::{permissions::DatabasePermissionQuery, reference::Reference}, voice::{sync_voice_permissions, VoiceClient}, Database, User
+    util::{permissions::DatabasePermissionQuery, reference::Reference},
+    voice::{sync_voice_permissions, VoiceClient},
+    Database, User,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 
 /// # Edits server roles ranks
 ///
@@ -74,16 +76,16 @@ pub async fn edit_role_ranks(
         let channel = Reference::from_unchecked(channel_id).as_channel(db).await?;
 
         sync_voice_permissions(db, voice_client, &channel, Some(&server), None).await?;
-    };
+    }
 
     Ok(Json(server.into()))
 }
 
 #[cfg(test)]
 mod test {
+    use rocket::http::{ContentType, Header, Status};
     use syrnike_database::fixture;
     use syrnike_models::v0;
-    use rocket::http::{ContentType, Header, Status};
 
     use crate::util::test::TestHarness;
 

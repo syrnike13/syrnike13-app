@@ -4,7 +4,7 @@ use crate::utils::Consumer;
 use anyhow::Result;
 use async_trait::async_trait;
 use lapin::{message::Delivery, Channel, Connection};
-use log::debug;
+use log::{debug, warn};
 use syrnike_database::{events::rabbit::*, Database};
 
 #[derive(Clone)]
@@ -43,28 +43,52 @@ impl Consumer for DmCallConsumer {
 
         debug!("Received dm call start/stop event");
 
-        let (syrnike_database::Channel::DirectMessage { recipients, .. }
-        | syrnike_database::Channel::Group { recipients, .. }) =
-            self.db.fetch_channel(&payload.channel_id).await?
-        else {
-            warn!(
-                "Discarding dm call start/stop event for non-dm/group channel {}",
-                payload.channel_id
-            );
+        let call_recipients: Vec<String> = if payload.ended {
+            if let Some(user_recipients) = _p.recipients {
+                user_recipients
+                    .into_iter()
+                    .filter(|user_id| user_id != &payload.initiator_id)
+                    .collect()
+            } else {
+                let (syrnike_database::Channel::DirectMessage { recipients, .. }
+                | syrnike_database::Channel::Group { recipients, .. }) =
+                    self.db.fetch_channel(&payload.channel_id).await?
+                else {
+                    warn!(
+                        "Discarding dm call stop event for non-dm/group channel {}",
+                        payload.channel_id
+                    );
 
-            return Ok(());
-        };
+                    return Ok(());
+                };
 
-        let call_recipients = if let Some(user_recipients) = _p.recipients {
-            user_recipients
-                .into_iter()
-                .filter(|user_id| recipients.contains(user_id) && user_id != &payload.initiator_id)
-                .collect()
+                recipients
+                    .into_iter()
+                    .filter(|user_id| user_id != &payload.initiator_id)
+                    .collect()
+            }
         } else {
+            let (syrnike_database::Channel::DirectMessage { recipients, .. }
+            | syrnike_database::Channel::Group { recipients, .. }) =
+                self.db.fetch_channel(&payload.channel_id).await?
+            else {
+                warn!(
+                    "Discarding dm call start event for non-dm/group channel {}",
+                    payload.channel_id
+                );
+
+                return Ok(());
+            };
+
             recipients
                 .into_iter()
                 .filter(|user_id| user_id != &payload.initiator_id)
-                .collect::<Vec<_>>()
+                .filter(|user_id| {
+                    _p.recipients
+                        .as_ref()
+                        .is_none_or(|recipients| recipients.contains(user_id))
+                })
+                .collect()
         };
 
         let config = syrnike_config::config().await;

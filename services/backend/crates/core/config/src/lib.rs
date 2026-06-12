@@ -465,7 +465,10 @@ impl Settings {
 }
 
 pub async fn init() {
-    println!(":: syrnike13 Configuration ::\n\x1b[32m{:?}\x1b[0m", config().await);
+    println!(
+        ":: syrnike13 Configuration ::\n\x1b[32m{:?}\x1b[0m",
+        config().await
+    );
 }
 
 pub async fn read() -> Config {

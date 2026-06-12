@@ -2,8 +2,10 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import {
   CheckCheckIcon,
   HashIcon,
+  HeadphonesIcon,
   LinkIcon,
   SettingsIcon,
+  UsersIcon,
   Volume2BoldIcon,
 } from '#/components/icons'
 import { useState, type MouseEvent } from 'react'
@@ -11,7 +13,7 @@ import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
-import { Badge } from '#/components/ui/badge'
+import { NotificationBadge } from '#/components/notifications/notification-badge'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -23,16 +25,20 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { ackChannel } from '#/features/api/sync-api'
 import { createChannelInvite } from '#/features/api/servers-api'
+import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import {
   getChannelLabel,
   getDmRecipientId,
 } from '#/features/sync/channel-label'
 import {
-  getChannelLastMessageId,
-  isChannelUnread,
-} from '#/features/sync/selectors'
+  isIncomingVoiceCall,
+  isVoiceCallDismissed,
+  isVoiceCallRingingDismissed,
+} from '#/features/sync/voice-call-utils'
+import { getChannelLastMessageId } from '#/features/sync/selectors'
 import {
   syncStore,
+  useSyncStore,
 } from '#/features/sync/sync-store'
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
@@ -62,7 +68,7 @@ export function ChannelSidebarItem({
   activeChannelId,
   users,
   currentUserId,
-  unreads,
+  unreads: _unreads,
   canManage = false,
   canInvite = false,
   dragHandleProps,
@@ -76,11 +82,30 @@ export function ChannelSidebarItem({
 
   const label = getChannelLabel(channel, users, currentUserId)
   const active = channel._id === activeChannelId
-  const unread = !active && isChannelUnread(channel, unreads[channel._id])
+  const notificationBadge = useSyncStore((s) =>
+    selectChannelNotificationBadge(s, channel),
+  )
+  const voiceCall = useSyncStore((s) => s.voiceCalls[channel._id])
+  const voiceCallDismissed = useSyncStore((s) =>
+    isVoiceCallDismissed(voiceCall, s.dismissedVoiceCallKeys),
+  )
+  const voiceCallRingingDismissed = useSyncStore((s) =>
+    isVoiceCallRingingDismissed(voiceCall, s.dismissedVoiceCallKeys),
+  )
   const dmRecipientId = getDmRecipientId(channel, currentUserId)
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
   const isServerChannel = channel.channel_type === 'TextChannel'
   const serverVoice = isServerVoiceChannel(channel)
+  const incomingVoiceCall =
+    !voiceCallRingingDismissed && isIncomingVoiceCall(voiceCall, currentUserId)
+  const voiceCallMarkerTitle =
+    voiceCallDismissed
+      ? null
+      : incomingVoiceCall
+        ? 'Входящий звонок'
+        : voiceCall?.phase === 'active'
+          ? 'Идёт звонок'
+          : null
 
   async function markRead() {
     if (!token) return
@@ -187,14 +212,29 @@ export function ChannelSidebarItem({
               className="size-6"
               fallbackClassName="size-6 text-[10px]"
             />
+          ) : channel.channel_type === 'Group' ? (
+            <span
+              title="Групповой чат"
+              className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+            >
+              <UsersIcon aria-hidden="true" className="size-4" />
+            </span>
           ) : serverVoice ? (
             <Volume2BoldIcon className="size-4 shrink-0 text-muted-foreground" />
           ) : (
             <HashIcon className="size-4 shrink-0 text-muted-foreground" />
           )}
           <span className="min-w-0 flex-1 truncate">{label}</span>
-          {unread ? (
-            <Badge className="size-2 shrink-0 rounded-full p-0" />
+          {voiceCallMarkerTitle ? (
+            <span
+              title={voiceCallMarkerTitle}
+              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-500"
+            >
+              <HeadphonesIcon aria-hidden="true" className="size-3.5" />
+            </span>
+          ) : null}
+          {!active ? (
+            <NotificationBadge badge={notificationBadge} mode="dot" />
           ) : null}
         </Link>
         {canManage && isServerChannel ? (

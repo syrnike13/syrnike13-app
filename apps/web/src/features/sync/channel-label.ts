@@ -1,10 +1,18 @@
 import type { Channel, User } from '@syrnike13/api-types'
+import {
+  isLegacyVoiceChannel,
+  runtimeChannelName,
+} from '#/lib/channel-voice'
 
 export function getChannelLabel(
   channel: Channel,
   users: Record<string, User>,
   currentUserId?: string,
 ): string {
+  if (isLegacyVoiceChannel(channel)) {
+    return runtimeChannelName(channel) || 'Голосовой канал'
+  }
+
   switch (channel.channel_type) {
     case 'SavedMessages':
       return 'Сохранённые'
@@ -17,8 +25,6 @@ export function getChannelLabel(
       return channel.name
     case 'TextChannel':
       return channel.name
-    case 'VoiceChannel':
-      return channel.name || 'Голосовой канал'
     default:
       return 'Канал'
   }

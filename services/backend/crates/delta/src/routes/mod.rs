@@ -1,8 +1,8 @@
-use syrnike_config::Settings;
 use revolt_rocket_okapi::{revolt_okapi::openapi3::OpenApi, settings::OpenApiSettings};
 pub use rocket::http::Status;
 pub use rocket::response::Redirect;
 use rocket::{Build, Rocket};
+use syrnike_config::Settings;
 
 mod auth_account;
 mod bots;
@@ -17,6 +17,7 @@ mod safety;
 mod servers;
 mod sync;
 mod users;
+mod voice_call_member_sync;
 mod webhooks;
 
 pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
@@ -362,7 +363,8 @@ fn custom_openapi_spec() -> OpenApi {
             Tag {
                 name: "Web Push".to_owned(),
                 description: Some(
-                    "Subscribe to and receive syrnike13 push notifications while offline".to_owned(),
+                    "Subscribe to and receive syrnike13 push notifications while offline"
+                        .to_owned(),
                 ),
                 ..Default::default()
             },

@@ -30,6 +30,7 @@ pub enum ClientMessage {
         node: Option<String>,
         force_disconnect: Option<bool>,
         recipients: Option<Vec<String>>,
+        suppress_call_notifications: Option<bool>,
         refresh_credentials: Option<bool>,
     },
 }

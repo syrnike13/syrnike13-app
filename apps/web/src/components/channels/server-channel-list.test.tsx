@@ -63,7 +63,8 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
-  editServer: (...args: unknown[]) => mocks.editServer(...args),
+  editServer: (...args: Parameters<typeof mocks.editServer>) =>
+    mocks.editServer(...args),
   createChannelInvite: vi.fn(),
 }))
 

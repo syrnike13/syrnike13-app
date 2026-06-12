@@ -1,8 +1,10 @@
-use syrnike_database::{events::client::EventV1, Database, Report, Snapshot, SnapshotContent, User};
-use syrnike_models::v0::{ReportStatus, ReportedContent};
-use syrnike_result::{create_error, Result};
 use rocket_empty::EmptyResponse;
 use serde::Deserialize;
+use syrnike_database::{
+    events::client::EventV1, Database, Report, Snapshot, SnapshotContent, User,
+};
+use syrnike_models::v0::{ReportStatus, ReportedContent};
+use syrnike_result::{create_error, Result};
 use ulid::Ulid;
 use validator::Validate;
 

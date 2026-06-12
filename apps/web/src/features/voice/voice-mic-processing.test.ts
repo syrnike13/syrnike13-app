@@ -24,15 +24,16 @@ describe('applyMicProcessing', () => {
       },
       getProcessor: vi.fn(() => null),
       stopProcessor: vi.fn(async () => {}),
-      setProcessor: vi.fn(async () => {}),
+      setProcessor: vi.fn(async (_processor: unknown) => {}),
     }
 
     await applyMicProcessing(participantWithAudioTrack(audioTrack) as never)
 
     expect(audioTrack.setProcessor).toHaveBeenCalledTimes(1)
-    expect(audioTrack.setProcessor.mock.calls[0]?.[0]?.name).toBe(
-      SYRNIKE_MIC_PROCESSOR_NAME,
-    )
+    const appliedProcessor = audioTrack.setProcessor.mock.calls[0]?.[0] as
+      | { name?: string }
+      | undefined
+    expect(appliedProcessor?.name).toBe(SYRNIKE_MIC_PROCESSOR_NAME)
     expect(audioTrack.mediaStreamTrack.applyConstraints).toHaveBeenCalledWith(
       expect.objectContaining({
         channelCount: 1,

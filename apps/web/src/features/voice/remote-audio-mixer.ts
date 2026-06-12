@@ -17,8 +17,13 @@ const CLIENT_SPEAKING_CLOSE_HOLD_MS = 180
 type AudioContextConstructor = typeof AudioContext
 
 type BrowserWindowWithAudio = Window & {
+  AudioContext?: AudioContextConstructor
   webkitAudioContext?: AudioContextConstructor
   __syrnikeRemoteAudioMixers?: Set<RemoteAudioMixer>
+}
+
+type AudioSinkIdTarget = {
+  setSinkId?: (sinkId: string) => Promise<void>
 }
 
 export type RemoteAudioSource = 'mic' | 'stream'
@@ -39,7 +44,7 @@ type RemoteAudioMixerEntry = {
   sourceNode: MediaStreamAudioSourceNode
   gainNode: GainNode
   analyserNode: AnalyserNode
-  analyserSamples: Float32Array
+  analyserSamples: Float32Array<ArrayBuffer>
   speaking: boolean
   quietSince: number | null
 }
@@ -76,8 +81,9 @@ function clampRemoteGain(gain: number) {
 }
 
 function applyOutputDevice(context: AudioContext, deviceId: string | undefined) {
-  if (!deviceId || !('setSinkId' in context)) return
-  void context.setSinkId(deviceId).catch(() => {})
+  const sink = context as AudioContext & AudioSinkIdTarget
+  if (!deviceId || !sink.setSinkId) return
+  void sink.setSinkId(deviceId).catch(() => {})
 }
 
 function applyElementOutputDevice(
@@ -268,9 +274,10 @@ export class RemoteAudioMixer {
     if (this.#context) return this.#context
     const Context = audioContextConstructor()
     if (!Context) return null
-    this.#context = new Context()
-    applyOutputDevice(this.#context, this.#outputDeviceId)
-    return this.#context
+    const context = new Context()
+    this.#context = context
+    applyOutputDevice(context, this.#outputDeviceId)
+    return context
   }
 
   #mediaOutputNode() {

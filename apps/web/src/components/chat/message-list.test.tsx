@@ -56,6 +56,8 @@ function renderMessageList(onLoadOlder: () => void) {
           user: {
             _id: USER_ID,
             username: 'alice',
+            discriminator: '0001',
+            relationship: 'None',
             online: true,
           },
         },
@@ -64,6 +66,8 @@ function renderMessageList(onLoadOlder: () => void) {
         [USER_ID]: {
           _id: USER_ID,
           username: 'alice',
+          discriminator: '0001',
+          relationship: 'None',
           online: true,
         },
       }}

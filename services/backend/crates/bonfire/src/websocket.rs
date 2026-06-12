@@ -23,7 +23,7 @@ use syrnike_config::report_internal_error;
 use syrnike_database::{
     events::{client::EventV1, server::ClientMessage},
     iso8601_timestamp::Timestamp,
-    Database, User, UserHint,
+    Database, User, UserHint, AMQP,
 };
 use syrnike_presence::{
     create_session, delete_session, has_recent_activity, touch_session, PresenceClientKind,
@@ -48,7 +48,7 @@ pub(crate) type WsWriter =
 
 /// Start a new WebSocket client worker given access to the database,
 /// the relevant TCP stream and the remote address of the client.
-pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) {
+pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: SocketAddr) {
     // Upgrade the TCP connection to a WebSocket connection.
     // In this process, we also parse any additional parameters given.
     // e.g. wss://example.com?format=json&version=1
@@ -211,6 +211,7 @@ pub async fn client(db: &'static Database, stream: TcpStream, addr: SocketAddr) 
             read,
             &write,
             kill_signal_1_s,
+            &amqp,
         );
 
         join!(listener, worker);
@@ -448,6 +449,7 @@ async fn worker_with_kill_signal(
     read: WsReader,
     write: &Mutex<WsWriter>,
     kill_signal_s: async_channel::Sender<()>,
+    amqp: &AMQP,
 ) {
     worker(
         db,
@@ -463,6 +465,7 @@ async fn worker_with_kill_signal(
         kill_signal_r,
         read,
         write,
+        amqp,
     )
     .await;
     kill_signal_s.send(()).await.ok();
@@ -483,6 +486,7 @@ async fn worker(
     kill_signal_r: async_channel::Receiver<()>,
     mut read: WsReader,
     write: &Mutex<WsWriter>,
+    amqp: &AMQP,
 ) {
     let syrnike_config = syrnike_config::config().await;
     let idle_check_interval = Duration::from_millis(SYSTEM_IDLE_CHECK_INTERVAL_MS);
@@ -598,12 +602,14 @@ async fn worker(
                         node,
                         force_disconnect,
                         recipients,
+                        suppress_call_notifications,
                         refresh_credentials,
                     } => {
                         let ack_channel_id = channel_id.clone();
                         match crate::voice::handle_voice_state_update(
                             db,
                             crate::voice_client::get(),
+                            &amqp,
                             &user,
                             channel_id,
                             self_mute,
@@ -611,6 +617,7 @@ async fn worker(
                             node,
                             force_disconnect,
                             recipients,
+                            suppress_call_notifications.unwrap_or(false),
                             refresh_credentials.unwrap_or(false),
                         )
                         .await

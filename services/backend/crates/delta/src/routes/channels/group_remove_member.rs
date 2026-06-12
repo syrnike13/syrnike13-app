@@ -1,11 +1,15 @@
 use syrnike_database::{
-    AMQP, Channel, Database, User, util::reference::Reference, voice::{UserVoiceChannel, VoiceClient, is_in_voice_channel, remove_user_from_voice_channel}
+    util::reference::Reference, voice::VoiceClient, Channel, Database, User, AMQP,
 };
 use syrnike_permissions::ChannelPermission;
 use syrnike_result::{create_error, Result};
 
 use rocket::State;
 use rocket_empty::EmptyResponse;
+
+use super::voice_call_cleanup::{
+    remove_group_member_from_voice_call, stop_ringing_for_removed_group_member,
+};
 
 /// # Remove Member from Group
 ///
@@ -25,8 +29,11 @@ pub async fn remove_member(
     }
 
     let channel = group_id.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
 
-    if let Channel::Group {
+    let removed_member_id = if let Channel::Group {
         owner, recipients, ..
     } = &channel
     {
@@ -48,15 +55,14 @@ pub async fn remove_member(
         channel
             .remove_user_from_group(db, amqp, &member, Some(&user.id), false)
             .await?;
+        stop_ringing_for_removed_group_member(amqp, channel.id(), &member.id).await?;
+        member.id
     } else {
         return Err(create_error!(InvalidOperation));
     };
 
-    let user_voice_channel = UserVoiceChannel::from_channel(&channel);
-
-    if is_in_voice_channel(member_id.id, &user_voice_channel).await? {
-        remove_user_from_voice_channel(voice_client, &user_voice_channel, member_id.id).await?;
-    };
+    remove_group_member_from_voice_call(db, voice_client, amqp, &channel, &removed_member_id)
+        .await?;
 
     Ok(EmptyResponse)
 }
@@ -64,9 +70,9 @@ pub async fn remove_member(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{Header, Status};
     use syrnike_database::{events::client::EventV1, Channel, RelationshipStatus};
     use syrnike_models::v0;
-    use rocket::http::{Header, Status};
 
     #[rocket::async_test]
     async fn success_remove_member() {

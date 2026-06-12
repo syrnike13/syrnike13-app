@@ -1,9 +1,9 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::util::reference::Reference;
 use syrnike_database::{Database, File, PartialWebhook};
 use syrnike_models::v0::{DataEditWebhook, Webhook};
 use syrnike_models::validator::Validate;
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 
 /// # Edits a webhook
 ///

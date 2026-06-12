@@ -1,8 +1,8 @@
 use anyhow::Result;
 use image::{AnimationDecoder, DynamicImage, ImageBuffer, ImageReader};
 use jxl_oxide::integration::JxlDecoder;
-use syrnike_config::report_internal_error;
 use std::io::{BufRead, Read, Seek};
+use syrnike_config::report_internal_error;
 use tempfile::NamedTempFile;
 use tiny_skia::Pixmap;
 

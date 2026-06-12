@@ -39,7 +39,7 @@ describe('media device permissions', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: { listDevices },
-    } as ReturnType<typeof getSyrnikeDesktop>)
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     await ensureMediaDevicePermission('audio')
 

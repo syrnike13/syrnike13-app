@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
+import { syncStore } from '#/features/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -73,6 +74,22 @@ const voiceChannel = {
   voice: { max_users: null },
 } as Channel
 
+const directMessageChannel = {
+  _id: 'dm-call',
+  channel_type: 'DirectMessage',
+  active: true,
+  recipients: ['user-1', 'caller-user'],
+} as Channel
+
+const groupChannel = {
+  _id: 'group-call',
+  channel_type: 'Group',
+  active: true,
+  name: 'Команда',
+  owner: 'user-1',
+  recipients: ['user-1', 'caller-user', 'friend-user'],
+} as Channel
+
 function renderVoiceItem(activeChannelId = 'text-general') {
   render(
     <ChannelSidebarItem
@@ -87,6 +104,7 @@ function renderVoiceItem(activeChannelId = 'text-general') {
 
 describe('ChannelSidebarItem voice navigation', () => {
   beforeEach(() => {
+    syncStore.reset()
     mocks.navigate.mockClear()
     mocks.join.mockClear()
     mocks.voice.channelId = 'voice-main'
@@ -96,6 +114,7 @@ describe('ChannelSidebarItem voice navigation', () => {
 
   afterEach(() => {
     cleanup()
+    syncStore.reset()
   })
 
   it('explicitly opens the connected voice channel from another channel', () => {
@@ -150,5 +169,149 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(mocks.join).not.toHaveBeenCalled()
     expect(mocks.navigate).not.toHaveBeenCalled()
+  })
+
+  it('marks incoming direct calls in the channel row', () => {
+    const call = {
+      channelId: 'dm-call',
+      initiatorId: 'caller-user',
+      phase: 'ringing' as const,
+      startedAt: '2026-06-12T10:00:00.000Z',
+      recipients: ['user-1'],
+    }
+    syncStore.setVoiceCall(call)
+
+    render(
+      <ChannelSidebarItem
+        channel={directMessageChannel}
+        activeChannelId="text-general"
+        users={{
+          'caller-user': {
+            _id: 'caller-user',
+            username: 'test_isa',
+            discriminator: '0002',
+            relationship: 'Friend',
+            online: true,
+          },
+        }}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(screen.getByTitle('Входящий звонок')).toBeTruthy()
+  })
+
+  it('does not mark dismissed incoming direct calls in the channel row', () => {
+    const call = {
+      channelId: 'dm-call',
+      initiatorId: 'caller-user',
+      phase: 'ringing' as const,
+      startedAt: '2026-06-12T10:00:00.000Z',
+      recipients: ['user-1'],
+    }
+    syncStore.setVoiceCall(call)
+    syncStore.dismissVoiceCall(call)
+
+    render(
+      <ChannelSidebarItem
+        channel={directMessageChannel}
+        activeChannelId="text-general"
+        users={{
+          'caller-user': {
+            _id: 'caller-user',
+            username: 'test_isa',
+            discriminator: '0002',
+            relationship: 'Friend',
+            online: true,
+          },
+        }}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(screen.queryByTitle('Входящий звонок')).toBeNull()
+  })
+
+  it('marks active direct calls in the channel row', () => {
+    syncStore.setVoiceCall({
+      channelId: 'dm-call',
+      initiatorId: 'caller-user',
+      phase: 'active',
+      startedAt: '2026-06-12T10:00:00.000Z',
+      recipients: [],
+    })
+
+    render(
+      <ChannelSidebarItem
+        channel={directMessageChannel}
+        activeChannelId="text-general"
+        users={{
+          'caller-user': {
+            _id: 'caller-user',
+            username: 'test_isa',
+            discriminator: '0002',
+            relationship: 'Friend',
+            online: true,
+          },
+        }}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(screen.getByTitle('Идёт звонок')).toBeTruthy()
+  })
+
+  it('does not mark active calls after hiding the same ringing phase', () => {
+    const ringingCall = {
+      channelId: 'dm-call',
+      initiatorId: 'caller-user',
+      phase: 'ringing' as const,
+      startedAt: '2026-06-12T10:00:00.000Z',
+      recipients: ['user-1'],
+    }
+    syncStore.dismissVoiceCall(ringingCall)
+    syncStore.setVoiceCall({
+      ...ringingCall,
+      phase: 'active',
+      recipients: [],
+    })
+
+    render(
+      <ChannelSidebarItem
+        channel={directMessageChannel}
+        activeChannelId="text-general"
+        users={{
+          'caller-user': {
+            _id: 'caller-user',
+            username: 'test_isa',
+            discriminator: '0002',
+            relationship: 'Friend',
+            online: true,
+          },
+        }}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(screen.queryByTitle('Идёт звонок')).toBeNull()
+  })
+
+  it('renders group direct messages with a group icon in the channel row', () => {
+    render(
+      <ChannelSidebarItem
+        channel={groupChannel}
+        activeChannelId="group-call"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: 'Команда' })).toBeTruthy()
+    expect(screen.getByTitle('Групповой чат')).toBeTruthy()
   })
 })

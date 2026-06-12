@@ -1,3 +1,5 @@
+import { Track } from 'livekit-client'
+
 import { voiceAudioProcessingConstraints } from '#/features/voice/voice-capture'
 import {
   createMicProcessorConfigFromPrefs,
@@ -6,10 +8,7 @@ import {
 } from '#/features/voice/voice-mic-processor'
 import type { VoicePreferenceState } from '#/features/voice/voice-preference-store'
 import { resolveVoiceGateStageOptions } from '#/features/voice/voice-gate-session'
-import {
-  VoiceGateStage,
-  type VoiceGateMetrics,
-} from '#/features/voice/voice-gate-stage'
+import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
 import {
   dbToRms,
   rmsFromByteTimeDomain,
@@ -51,9 +50,12 @@ export function meterLevelsFromRms(rms: number, barCount: number) {
 }
 
 async function applyPlaybackSink(context: AudioContext, deviceId?: string) {
-  if (!deviceId || !('setSinkId' in context)) return
+  const sink = context as AudioContext & {
+    setSinkId?: (sinkId: string) => Promise<void>
+  }
+  if (!deviceId || !sink.setSinkId) return
   try {
-    await context.setSinkId(deviceId)
+    await sink.setSinkId(deviceId)
   } catch {
     // Browser rejected the sink; keep the default output device.
   }
@@ -79,7 +81,11 @@ async function attachProcessor(
     ...config,
     gateOnMetrics: onGateMetrics,
   })
-  await processor.init({ audioContext: context, track: rawTrack })
+  await processor.init({
+    audioContext: context,
+    kind: Track.Kind.Audio,
+    track: rawTrack,
+  })
   return {
     processor,
     playbackTrack: processor.processedTrack ?? rawTrack,

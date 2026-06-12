@@ -1,11 +1,13 @@
-use syrnike_database::{
-    util::reference::Reference,
-    voice::{remove_user_from_voice_channels, VoiceClient},
-    Database, User,
-};
-use syrnike_result::{create_error, Result};
 use rocket::State;
 use rocket_empty::EmptyResponse;
+use syrnike_database::{
+    util::reference::Reference,
+    voice::{
+        get_user_voice_channels, remove_user_from_voice_channel_with_call_cleanup, VoiceClient,
+    },
+    Database, User, AMQP,
+};
+use syrnike_result::{create_error, Result};
 
 /// # Delete Bot
 ///
@@ -15,6 +17,7 @@ use rocket_empty::EmptyResponse;
 pub async fn delete_bot(
     db: &State<Database>,
     voice_client: &State<VoiceClient>,
+    amqp: &State<AMQP>,
     user: User,
     bot_id: Reference<'_>,
 ) -> Result<EmptyResponse> {
@@ -25,7 +28,10 @@ pub async fn delete_bot(
 
     bot.delete(db).await?;
 
-    remove_user_from_voice_channels(voice_client, &bot.id).await?;
+    for channel in get_user_voice_channels(&bot.id).await? {
+        remove_user_from_voice_channel_with_call_cleanup(db, voice_client, amqp, &channel, &bot.id)
+            .await?;
+    }
 
     Ok(EmptyResponse)
 }
@@ -33,8 +39,8 @@ pub async fn delete_bot(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
-    use syrnike_database::{events::client::EventV1, Bot};
     use rocket::http::{Header, Status};
+    use syrnike_database::{events::client::EventV1, Bot};
 
     #[rocket::async_test]
     async fn delete_bot() {

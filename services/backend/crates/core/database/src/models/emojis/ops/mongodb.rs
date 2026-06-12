@@ -1,8 +1,8 @@
 use bson::Document;
 use syrnike_result::Result;
 
-use crate::{Emoji, PartialEmoji};
 use crate::MongoDb;
+use crate::{Emoji, PartialEmoji};
 
 use super::AbstractEmojis;
 

@@ -15,8 +15,8 @@ use bson::{oid::ObjectId, to_bson};
 use futures::StreamExt;
 use iso8601_timestamp::Timestamp;
 use rand::seq::SliceRandom;
-use syrnike_permissions::{ChannelPermission, DEFAULT_WEBHOOK_PERMISSIONS};
 use serde::{Deserialize, Serialize};
+use syrnike_permissions::{ChannelPermission, DEFAULT_WEBHOOK_PERMISSIONS};
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Serialize, Deserialize)]
@@ -1085,7 +1085,7 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
         enum Channel {
             Group { owner: String },
             TextChannel { server: String },
-            VoiceChannel { server: String }
+            VoiceChannel { server: String },
         }
 
         let webhooks = db
@@ -1099,7 +1099,12 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             .await;
 
         for webhook in webhooks {
-            match db.col::<Channel>("channels").find_one(doc! { "_id": &webhook.channel_id }).await.unwrap() {
+            match db
+                .col::<Channel>("channels")
+                .find_one(doc! { "_id": &webhook.channel_id })
+                .await
+                .unwrap()
+            {
                 Some(channel) => {
                     let creator_id = match channel {
                         Channel::Group { owner, .. } => owner,
@@ -1240,7 +1245,7 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
                         "channel_type": "TextChannel",
                         "voice": {}
                     }
-                }
+                },
             )
             .await
             .expect("Failed to update voice channels");
@@ -1292,10 +1297,7 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             let mut doc = doc! {};
 
             for id in server.roles.keys() {
-                doc.insert(
-                    format!("roles.{id}._id"),
-                    id,
-                );
+                doc.insert(format!("roles.{id}._id"), id);
             }
 
             db.db()

@@ -5,6 +5,27 @@ import type {
 } from './voice-types'
 import { isValidVoiceUserId } from './voice-participant-resolve'
 
+type RawUserVoiceState = Partial<
+  Omit<
+    UserVoiceState,
+    | 'self_mute'
+    | 'self_deaf'
+    | 'server_muted'
+    | 'server_deafened'
+    | 'screensharing'
+    | 'camera'
+  >
+> & {
+  self_mute?: unknown
+  self_deaf?: unknown
+  server_muted?: unknown
+  server_deafened?: unknown
+  screensharing?: unknown
+  camera?: unknown
+  user?: string
+  user_id?: string
+}
+
 function parseJoinedAt(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
@@ -37,10 +58,7 @@ export function parseVoiceFlag(value: unknown, defaultValue: boolean) {
 }
 
 export function normalizeUserVoiceState(
-  raw: Partial<UserVoiceState> & {
-    user?: string
-    user_id?: string
-  },
+  raw: RawUserVoiceState,
 ): UserVoiceState | null {
   const id = raw.id ?? raw.user ?? raw.user_id
   if (!id || !isValidVoiceUserId(id)) return null
@@ -94,12 +112,7 @@ export function voiceMapFromChannelStates(
       const normalized =
         typeof participant === 'string'
           ? normalizeUserVoiceState({ id: participant })
-          : normalizeUserVoiceState(
-              participant as Partial<UserVoiceState> & {
-                user?: string
-                user_id?: string
-              },
-            )
+          : normalizeUserVoiceState(participant as RawUserVoiceState)
       if (normalized) channelMap[normalized.id] = normalized
     }
     map[channelId] = channelMap

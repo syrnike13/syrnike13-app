@@ -89,10 +89,11 @@ export function CreateChannelDialog({
       onOpenChange(false)
       setName('')
       setType('Text')
-      toast.success(`Канал «${channel.name}» создан`)
+      toast.success(`Канал «${trimmed}» создан`)
       await navigate({
         to: '/app/c/$channelId',
         params: { channelId: channel._id },
+        search: { m: undefined },
       })
     } catch (error) {
       toast.error(

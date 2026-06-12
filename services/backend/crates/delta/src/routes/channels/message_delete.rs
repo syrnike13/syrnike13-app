@@ -1,11 +1,11 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, User,
 };
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
-use syrnike_result::Result;
-use rocket::State;
-use rocket_empty::EmptyResponse;
+use syrnike_result::{create_error, Result};
 
 /// # Delete Message
 ///
@@ -19,9 +19,12 @@ pub async fn delete(
     msg: Reference<'_>,
 ) -> Result<EmptyResponse> {
     let message = msg.as_message_in_channel(db, target.id).await?;
+    let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
 
     if message.author != user.id {
-        let channel = target.as_channel(db).await?;
         let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
         calculate_channel_permissions(&mut query)
             .await

@@ -1,9 +1,9 @@
-use syrnike_result::{create_error, Error};
 use rocket::{
     data::{Data, FromData, Outcome, ToByteUnit},
     http::Status,
     request::Request,
 };
+use syrnike_result::{create_error, Error};
 
 const WEBHOOK_BODY_LIMIT_BYTES: u64 = 1024 * 1024;
 

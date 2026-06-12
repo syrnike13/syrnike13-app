@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import {
   BanIcon,
   CopyIcon,
+  HeadphonesIcon,
   MessageCircleIcon,
   SettingsIcon,
   UserIcon,
@@ -15,14 +16,18 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from '#/components/ui/context-menu'
+import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   banServerMember,
   kickServerMember,
 } from '#/features/api/servers-api'
-import { blockUser, openDirectMessage } from '#/features/api/users-api'
+import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
+import { selectDirectMessageCallActionLabel } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { useVoice } from '#/features/voice/voice-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
 import {
   canBanServerMember,
@@ -47,6 +52,7 @@ export function UserContextMenuContent({
 }: UserContextMenuContentProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const voice = useVoice()
   const { openSettings } = useSettingsModal()
 
   const server = useSyncStore((s) =>
@@ -60,6 +66,9 @@ export function UserContextMenuContent({
   const targetMember = useSyncStore((s) =>
     serverId ? s.members[`${serverId}:${user._id}`] : undefined,
   )
+  const directCallActionLabel = useSyncStore((s) =>
+    selectDirectMessageCallActionLabel(s, auth.user?._id, user._id),
+  )
 
   const canKick =
     server &&
@@ -68,23 +77,38 @@ export function UserContextMenuContent({
     server &&
     canBanServerMember(server, actorMember, auth.user?._id, targetMember)
   const canBlock = !isSelf
+  const canDirectMessage = !isSelf && !user.bot
 
   const token = auth.session?.token
 
   async function openDm() {
-    if (!token || isSelf) return
+    if (!token || !canDirectMessage) return
     try {
-      const channel = await openDirectMessage(token, user._id)
-      syncStore.upsertChannel(channel)
-      await navigate({
-        to: '/app/c/$channelId',
-        params: { channelId: channel._id },
-        search: { m: undefined },
-      })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось открыть ЛС',
+      await openDirectMessageChannel(token, user._id, (channelId) =>
+        navigate({
+          to: '/app/c/$channelId',
+          params: { channelId },
+          search: { m: undefined },
+        }),
       )
+    } catch {
+      // dm-actions already shows the concrete error toast.
+    }
+  }
+
+  async function startDirectCall() {
+    if (!token || !canDirectMessage) return
+    try {
+      const channel = await openDirectMessageChannel(token, user._id, (channelId) =>
+        navigate({
+          to: '/app/c/$channelId',
+          params: { channelId },
+          search: { m: undefined },
+        }),
+      )
+      await voice.join(channel._id)
+    } catch {
+      // dm-actions already shows the concrete error toast.
     }
   }
 
@@ -126,13 +150,9 @@ export function UserContextMenuContent({
     if (!token || isSelf) return
     if (!window.confirm(`Заблокировать @${user.username}?`)) return
     try {
-      const updated = await blockUser(token, user._id)
-      syncStore.upsertUser(updated)
-      toast.success('Пользователь заблокирован')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось заблокировать',
-      )
+      await blockUserRelationship(token, user._id)
+    } catch {
+      // friend-actions already shows the concrete error toast.
     }
   }
 
@@ -162,12 +182,19 @@ export function UserContextMenuContent({
           <SettingsIcon />
           Настройки аккаунта
         </ContextMenuItem>
-      ) : (
-        <ContextMenuItem onSelect={() => void openDm()}>
-          <MessageCircleIcon />
-          Написать сообщение
-        </ContextMenuItem>
-      )}
+      ) : canDirectMessage ? (
+        <>
+          <ContextMenuItem onSelect={() => void openDm()}>
+            <MessageCircleIcon />
+            Написать сообщение
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void startDirectCall()}>
+            <HeadphonesIcon />
+            {directCallActionLabel}
+          </ContextMenuItem>
+          <FriendshipContextMenuItems user={user} />
+        </>
+      ) : null}
       <ContextMenuItem onSelect={() => void copyUserId()}>
         <CopyIcon />
         Копировать ID

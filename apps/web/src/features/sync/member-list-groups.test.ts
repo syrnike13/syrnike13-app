@@ -9,6 +9,13 @@ import {
 } from '#/features/sync/member-list-groups'
 import type { ServerMemberEntry } from '#/features/sync/selectors'
 
+type TestRole = Omit<
+  NonNullable<Server['roles']>[string],
+  'mentionable'
+> & {
+  mentionable?: boolean
+}
+
 function makeUser(id: string, overrides: Partial<User> = {}): User {
   return {
     _id: id,
@@ -36,14 +43,24 @@ function makeEntry(
   }
 }
 
-function makeServer(roles: Server['roles'] = {}): Server {
+function makeServer(roles: Record<string, TestRole> = {}): Server {
+  const normalizedRoles = Object.fromEntries(
+    Object.entries(roles).map(([id, role]) => [
+      id,
+      {
+        mentionable: false,
+        ...role,
+      },
+    ]),
+  ) as Server['roles']
+
   return {
     _id: 'server-1',
     owner: 'owner-1',
     name: 'Test',
     channels: [],
     default_permissions: 0,
-    roles,
+    roles: normalizedRoles,
   }
 }
 

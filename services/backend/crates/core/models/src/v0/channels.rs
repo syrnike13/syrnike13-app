@@ -349,63 +349,53 @@ mod tests {
 
     #[test]
     fn voice_audio_bitrate_accepts_discord_like_range() {
-        assert!(
-            VoiceInformation {
-                max_users: None,
-                audio_bitrate_kbps: Some(8),
-            }
-            .validate()
-            .is_ok()
-        );
-        assert!(
-            VoiceInformation {
-                max_users: None,
-                audio_bitrate_kbps: Some(96),
-            }
-            .validate()
-            .is_ok()
-        );
+        assert!(VoiceInformation {
+            max_users: None,
+            audio_bitrate_kbps: Some(8),
+        }
+        .validate()
+        .is_ok());
+        assert!(VoiceInformation {
+            max_users: None,
+            audio_bitrate_kbps: Some(96),
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]
     fn voice_audio_bitrate_rejects_values_outside_range() {
-        assert!(
-            VoiceInformation {
-                max_users: None,
-                audio_bitrate_kbps: Some(7),
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            VoiceInformation {
-                max_users: None,
-                audio_bitrate_kbps: Some(97),
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(VoiceInformation {
+            max_users: None,
+            audio_bitrate_kbps: Some(7),
+        }
+        .validate()
+        .is_err());
+        assert!(VoiceInformation {
+            max_users: None,
+            audio_bitrate_kbps: Some(97),
+        }
+        .validate()
+        .is_err());
     }
 
     #[test]
     fn channel_edit_validates_nested_voice_audio_bitrate() {
-        assert!(
-            DataEditChannel {
-                name: None,
-                description: None,
-                owner: None,
-                icon: None,
-                nsfw: None,
-                archived: None,
-                voice: Some(VoiceInformation {
-                    max_users: None,
-                    audio_bitrate_kbps: Some(97),
-                }),
-                slowmode: None,
-                remove: Vec::new(),
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(DataEditChannel {
+            name: None,
+            description: None,
+            owner: None,
+            icon: None,
+            nsfw: None,
+            archived: None,
+            voice: Some(VoiceInformation {
+                max_users: None,
+                audio_bitrate_kbps: Some(97),
+            }),
+            slowmode: None,
+            remove: Vec::new(),
+        }
+        .validate()
+        .is_err());
     }
 }

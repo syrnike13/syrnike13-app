@@ -13,6 +13,7 @@ import {
   voiceConnectionPhaseLabel,
 } from '#/features/voice/voice-mic-status'
 import { useVoice } from '#/features/voice/voice-context'
+import { serverChannelServerId } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 const VOICE_STATUS_CONNECTED = {
@@ -40,14 +41,8 @@ export function VoiceConnectionStrip() {
     voice.channelId ? s.channels[voice.channelId] : undefined,
   )
   const server = useSyncStore((s) => {
-    if (
-      !channel ||
-      (channel.channel_type !== 'TextChannel' &&
-        channel.channel_type !== 'VoiceChannel')
-    ) {
-      return undefined
-    }
-    return s.servers[channel.server]
+    const serverId = serverChannelServerId(channel)
+    return serverId ? s.servers[serverId] : undefined
   })
   const users = useSyncStore((s) => s.users)
 

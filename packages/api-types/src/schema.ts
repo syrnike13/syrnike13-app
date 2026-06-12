@@ -164,9 +164,9 @@ export interface paths {
     /** Removes a user from the group. */
     delete: operations["group_remove_member_remove_member"];
   };
-  "/channels/{target}/end_ring/{target_user}": {
-    /** Stops ringing a specific user in a dm call. You must be in the call to use this endpoint, returns NotConnected otherwise. Only valid in DM/Group channels, will return NoEffect in servers. Returns NotFound if the user is not in the dm/group channel */
-    put: operations["voice_stop_ring_stop_ring"];
+  "/channels/{target}/voice/cancel": {
+    /** Cancels a ringing one-to-one DM call. The authenticated user must be the ringing recipient. */
+    put: operations["voice_cancel_call_cancel_call"];
   };
   "/channels/{target}/permissions/{role_id}": {
     /**
@@ -1125,12 +1125,7 @@ export interface components {
       | "SystemWebOnline"
       | "SystemMobileOnline";
     /** @description User-selectable presence status */
-    ManualPresence:
-      | "Online"
-      | "Idle"
-      | "Focus"
-      | "Busy"
-      | "Invisible";
+    ManualPresence: "Online" | "Idle" | "Focus" | "Busy" | "Invisible";
     /** @description Bot information for if the user is a bot */
     BotInformation: {
       /** @description Id of the owner of this bot */
@@ -1364,15 +1359,11 @@ export interface components {
       /** @description Bot username */
       name: string;
     };
-    /** @description Where we are inviting a bot to */
-    InviteBotDestination: Partial<{
+    /** @description Server to invite a bot to. */
+    InviteBotDestination: {
       /** @description Server Id */
       server: string;
-    }> &
-      Partial<{
-        /** @description Group Id */
-        group: string;
-      }>;
+    };
     /** @description Public Bot */
     PublicBot: {
       /** @description Bot Id */
@@ -1678,6 +1669,8 @@ export interface components {
           type: "call_started";
           by: string;
           finished_at?: components["schemas"]["ISO8601 Timestamp"] | null;
+          /** @enum {string|null} */
+          ended_reason?: ("completed" | "cancelled" | "missed") | null;
         };
     /** @description Embed */
     Embed:
@@ -3858,12 +3851,11 @@ export interface operations {
       };
     };
   };
-  /** Stops ringing a specific user in a dm call. You must be in the call to use this endpoint, returns NotConnected otherwise. Only valid in DM/Group channels, will return NoEffect in servers. Returns NotFound if the user is not in the dm/group channel */
-  voice_stop_ring_stop_ring: {
+  /** Cancels a ringing one-to-one DM call. The authenticated user must be the ringing recipient. */
+  voice_cancel_call_cancel_call: {
     parameters: {
       path: {
         target: components["schemas"]["Id"];
-        target_user: components["schemas"]["Id"];
       };
     };
     responses: {

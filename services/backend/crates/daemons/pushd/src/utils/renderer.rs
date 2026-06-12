@@ -1,14 +1,14 @@
 use redis_kiss::{get_connection as _get_conn, AsyncCommands, Conn};
 use regex::Regex;
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 use syrnike_config::config;
 use syrnike_database::{Channel, Database};
 use syrnike_models::v0::PushNotification;
 use syrnike_parser::parse_message;
 use syrnike_result::{create_error, Result, ToSyrnikeError};
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-};
 use tokio::join;
 
 async fn get_connection() -> Result<Conn> {

@@ -8,6 +8,7 @@ use base64::{
     Engine as _,
 };
 use lapin::{message::Delivery, Channel as AMQPChannel, Connection};
+use serde::Serialize;
 use syrnike_a2::{
     request::{
         notification::{DefaultAlert, NotificationOptions},
@@ -17,7 +18,6 @@ use syrnike_a2::{
 };
 use syrnike_database::{events::rabbit::*, Database};
 use syrnike_models::v0::{Channel, Message, PushNotification};
-use serde::Serialize;
 
 // region: payload
 
@@ -57,11 +57,8 @@ struct CallStartStopPayload<'a> {
     device_token: &'a str,
 
     initiator_id: &'a str,
-    #[serde(rename = "camelCase")]
     channel_id: &'a str,
-    #[serde(rename = "camelCase")]
     started_at: &'a str,
-    #[serde(rename = "camelCase")]
     ended: bool,
 }
 

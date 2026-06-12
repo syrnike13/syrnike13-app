@@ -1,11 +1,11 @@
 use authifier::models::Account;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use rocket::{serde::json::Json, State};
+use serde::{Deserialize, Serialize};
 use syrnike_database::{Database, User};
 use syrnike_models::v0;
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
-use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 /// Regex for valid usernames

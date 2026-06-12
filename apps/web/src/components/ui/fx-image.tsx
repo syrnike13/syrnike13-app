@@ -23,7 +23,7 @@ export type FxImageProps = {
   objectFit?: 'cover' | 'contain'
 } & Omit<
   React.HTMLAttributes<HTMLDivElement>,
-  'children' | 'className' | 'style'
+  'children' | 'className'
 >
 
 export function FxImage({

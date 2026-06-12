@@ -1,6 +1,3 @@
-use syrnike_database::{util::reference::Reference, Database, Message, AMQP};
-use syrnike_models::v0::{MessageAuthor, SendableEmbed, Webhook};
-use syrnike_result::{create_error, Error, Result};
 use revolt_rocket_okapi::{
     gen::OpenApiGenerator,
     request::{OpenApiFromRequest, RequestHeaderInput},
@@ -10,6 +7,9 @@ use rocket::{http::Status, request::FromRequest, Request, State};
 use schemars::schema::SchemaObject;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use syrnike_database::{util::reference::Reference, Database, Message, AMQP};
+use syrnike_models::v0::{MessageAuthor, SendableEmbed, Webhook};
+use syrnike_result::{create_error, Error, Result};
 use ulid::Ulid;
 use validator::Validate;
 

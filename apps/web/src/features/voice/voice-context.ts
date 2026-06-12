@@ -83,7 +83,7 @@ export type VoiceContextValue = {
   setStageMediaSubscribed: (mediaId: string, subscribed: boolean) => void
   stageFullscreen: boolean
   toggleStageFullscreen: () => void
-  join: (channelId: string) => Promise<void>
+  join: (channelId: string) => Promise<boolean>
   leave: () => void
   toggleMic: () => void
   toggleDeafen: () => void

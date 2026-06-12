@@ -10,8 +10,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use syrnike_database::{Database, User};
 use syrnike_config::config;
+use syrnike_database::{Database, User};
 
 use crate::ratelimiter::{RatelimitInformation, Ratelimiter, RequestKind};
 

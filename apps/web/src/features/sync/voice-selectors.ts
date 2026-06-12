@@ -4,7 +4,6 @@ import type { SyncState } from './types'
 import type { UserVoiceState } from './voice-types'
 import {
   isResolvableVoiceParticipant,
-  isValidVoiceUserId,
 } from './voice-participant-resolve'
 
 export function getChannelVoiceParticipants(
@@ -48,15 +47,34 @@ export function applyLocalVoiceSessionOverride(
   override: LocalVoiceSessionOverride | undefined,
 ) {
   if (!override) return participants
-  return participants.map((participant) =>
-    participant.id === override.userId
-      ? {
-          ...participant,
-          self_mute: !override.micEnabled,
-          self_deaf: override.deafened,
-        }
-      : participant,
-  )
+  let foundLocalParticipant = false
+  const next = participants.map((participant) => {
+    if (participant.id !== override.userId) return participant
+
+    foundLocalParticipant = true
+    return {
+      ...participant,
+      self_mute: !override.micEnabled,
+      self_deaf: override.deafened,
+    }
+  })
+
+  if (foundLocalParticipant) return next
+
+  return [
+    ...next,
+    {
+      id: override.userId,
+      joined_at: 0,
+      self_mute: !override.micEnabled,
+      self_deaf: override.deafened,
+      server_muted: false,
+      server_deafened: false,
+      camera: false,
+      screensharing: false,
+      version: 0,
+    },
+  ]
 }
 
 export function useChannelVoiceParticipantsWithLocalOverride(

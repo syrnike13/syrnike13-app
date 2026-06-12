@@ -25,7 +25,6 @@ export type VoiceRejoinController = {
 export function createVoiceRejoinController(
   options: VoiceRejoinControllerOptions,
 ): VoiceRejoinController {
-  const now = options.now ?? (() => Date.now())
   const scheduleTimeout = options.scheduleTimeout ?? setTimeout
   const clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout
   const isGatewayConnected = options.isGatewayConnected

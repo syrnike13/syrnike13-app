@@ -59,4 +59,19 @@ describe('applyLocalVoiceSessionOverride', () => {
     expect(merged[0]?.self_deaf).toBe(true)
     expect(merged[0]?.self_mute).toBe(true)
   })
+
+  it('adds the local participant before the server echo arrives', () => {
+    const merged = applyLocalVoiceSessionOverride([], {
+      userId: USER_ONE,
+      micEnabled: true,
+      deafened: false,
+    })
+
+    expect(merged).toEqual([
+      participant(USER_ONE, {
+        joined_at: 0,
+        version: 0,
+      }),
+    ])
+  })
 })

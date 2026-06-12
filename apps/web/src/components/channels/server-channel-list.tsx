@@ -488,19 +488,20 @@ export function ServerChannelList({
   const startPointerTracking = useCallback(() => {
     pointerTrackingCleanupRef.current?.()
 
-    function trackPointer(event: MouseEvent | TouchEvent) {
-      pointerYRef.current =
-        'touches' in event
-          ? (event.touches[0]?.clientY ?? pointerYRef.current)
-          : event.clientY
+    function trackMousePointer(event: globalThis.MouseEvent) {
+      pointerYRef.current = event.clientY
     }
 
-    window.addEventListener('mousemove', trackPointer, { passive: true })
-    window.addEventListener('touchmove', trackPointer, { passive: true })
+    function trackTouchPointer(event: TouchEvent) {
+      pointerYRef.current = event.touches[0]?.clientY ?? pointerYRef.current
+    }
+
+    window.addEventListener('mousemove', trackMousePointer, { passive: true })
+    window.addEventListener('touchmove', trackTouchPointer, { passive: true })
 
     pointerTrackingCleanupRef.current = () => {
-      window.removeEventListener('mousemove', trackPointer)
-      window.removeEventListener('touchmove', trackPointer)
+      window.removeEventListener('mousemove', trackMousePointer)
+      window.removeEventListener('touchmove', trackTouchPointer)
     }
   }, [])
 

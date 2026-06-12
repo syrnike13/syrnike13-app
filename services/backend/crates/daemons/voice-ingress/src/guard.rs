@@ -1,9 +1,9 @@
-use syrnike_result::{create_error, Error};
 use rocket::{
     http::Status,
     request::{FromRequest, Outcome},
     Request,
 };
+use syrnike_result::{create_error, Error};
 
 pub struct AuthHeader<'a>(&'a str);
 

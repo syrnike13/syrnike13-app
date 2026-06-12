@@ -1,7 +1,7 @@
-use syrnike_database::{util::reference::Reference, Database};
-use syrnike_result::{create_error, Result};
 use rocket::State;
 use rocket_empty::EmptyResponse;
+use syrnike_database::{util::reference::Reference, Database};
+use syrnike_result::{create_error, Result};
 
 /// # Deletes a webhook message
 ///

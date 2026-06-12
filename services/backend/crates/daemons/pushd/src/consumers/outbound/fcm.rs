@@ -9,9 +9,9 @@ use fcm_v1::{
     Client, Error as FcmError,
 };
 use lapin::{message::Delivery, Channel as AMQPChannel, Connection};
+use serde_json::Value;
 use syrnike_config::config;
 use syrnike_database::{events::rabbit::*, Database};
-use serde_json::Value;
 
 /// Custom notification data
 #[derive(Debug, Clone, PartialEq)]

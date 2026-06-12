@@ -38,7 +38,7 @@ export function useMessageNotifications() {
   const auth = useAuth()
 
   useEffect(() => {
-    return eventsGateway.subscribeEvents((event) => {
+    const unsubscribe = eventsGateway.subscribeEvents((event) => {
       const gatewayEvent = event as GatewayServerEvent
       if (gatewayEvent.type !== 'Message') return
 
@@ -72,5 +72,8 @@ export function useMessageNotifications() {
         notification.close()
       }
     })
+    return () => {
+      unsubscribe()
+    }
   }, [auth.user?._id])
 }

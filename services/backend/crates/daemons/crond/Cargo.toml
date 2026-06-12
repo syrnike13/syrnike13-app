@@ -30,7 +30,7 @@ serde = { workspace = true }
 iso8601-timestamp = { workspace = true, features = ["serde", "bson"] }
 
 # Core
-syrnike-database = { workspace = true }
+syrnike-database = { workspace = true, features = ["voice"] }
 syrnike-result = { workspace = true }
 syrnike-config = { workspace = true }
 syrnike-files = { workspace = true }

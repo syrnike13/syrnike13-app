@@ -1,8 +1,8 @@
 use axum::{extract::Query, response::IntoResponse, routing::get, Json, Router};
 use reqwest::header;
+use serde::{Deserialize, Serialize};
 use syrnike_models::v0::Embed;
 use syrnike_result::{create_error, Result};
-use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::requests::Request;

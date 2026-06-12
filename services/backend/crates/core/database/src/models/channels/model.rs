@@ -1,12 +1,11 @@
 #![allow(deprecated)]
 use std::{borrow::Cow, collections::HashMap};
 
-use redis_kiss::get_connection;
+use serde::{Deserialize, Serialize};
 use syrnike_config::config;
 use syrnike_models::v0::{self, MessageAuthor};
 use syrnike_permissions::OverrideField;
 use syrnike_result::Result;
-use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 
 use crate::{
@@ -262,6 +261,11 @@ impl Channel {
         owner_id: String,
     ) -> Result<Channel> {
         data.users.insert(owner_id.to_string());
+        for user_id in &data.users {
+            if db.fetch_user(user_id).await?.bot.is_some() {
+                return Err(create_error!(IsBot));
+            }
+        }
 
         let config = config().await;
         if data.users.len() > config.features.limits.global.group_size {
@@ -307,6 +311,10 @@ impl Channel {
 
     /// Create a DM (or return the existing one / saved messages)
     pub async fn create_dm(db: &Database, user_a: &User, user_b: &User) -> Result<Channel> {
+        if user_a.bot.is_some() || user_b.bot.is_some() {
+            return Err(create_error!(IsBot));
+        }
+
         // Try to find existing channel
         if let Ok(channel) = db.find_direct_message_channel(&user_a.id, &user_b.id).await {
             Ok(channel)
@@ -347,6 +355,10 @@ impl Channel {
         user: &User,
         by_id: &str,
     ) -> Result<()> {
+        if user.bot.is_some() {
+            return Err(create_error!(IsBot));
+        }
+
         if let Channel::Group { recipients, .. } = self {
             if recipients.contains(&String::from(&user.id)) {
                 return Err(create_error!(AlreadyInGroup));
@@ -422,6 +434,24 @@ impl Channel {
             Channel::Group { recipients, .. } => Ok(recipients.to_owned()),
             _ => Err(create_error!(NotFound)),
         }
+    }
+
+    pub async fn has_bot_recipient(&self, db: &Database) -> Result<bool> {
+        let user_ids = match self {
+            Channel::SavedMessages { user, .. } => std::slice::from_ref(user),
+            Channel::DirectMessage { recipients, .. } | Channel::Group { recipients, .. } => {
+                recipients.as_slice()
+            }
+            Channel::TextChannel { .. } => return Ok(false),
+        };
+
+        for user_id in user_ids {
+            if db.fetch_user(user_id).await?.bot.is_some() {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     /// Clone this channel's id

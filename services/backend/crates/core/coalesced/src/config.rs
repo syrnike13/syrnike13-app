@@ -18,7 +18,7 @@ impl Default for CoalescionServiceConfig {
             #[cfg(feature = "queue")]
             queue_requests: true,
             #[cfg(feature = "queue")]
-            max_queue: Some(100)
+            max_queue: Some(100),
         }
     }
 }

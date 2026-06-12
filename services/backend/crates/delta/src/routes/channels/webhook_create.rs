@@ -1,3 +1,4 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Channel, Database, File, User, Webhook,
@@ -7,7 +8,6 @@ use syrnike_permissions::{
     calculate_channel_permissions, ChannelPermission, DEFAULT_WEBHOOK_PERMISSIONS,
 };
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 use ulid::Ulid;
 use validator::Validate;
 
@@ -30,6 +30,9 @@ pub async fn create_webhook(
     })?;
 
     let channel = channel_id.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
 
     if !matches!(channel, Channel::TextChannel { .. } | Channel::Group { .. }) {
         return Err(create_error!(InvalidOperation));

@@ -1,9 +1,9 @@
 // use syrnike_database::util::reference::Reference;
+use rocket::serde::json::Json;
+use rocket::State;
 use syrnike_database::{Database, User, AMQP};
 use syrnike_models::v0;
 use syrnike_result::{create_error, Result};
-use rocket::serde::json::Json;
-use rocket::State;
 
 /// # Send Friend Request
 ///

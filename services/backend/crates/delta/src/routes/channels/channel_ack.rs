@@ -1,11 +1,11 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, User, AMQP,
 };
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::State;
-use rocket_empty::EmptyResponse;
 
 /// # Acknowledge Message
 ///
@@ -24,6 +24,10 @@ pub async fn ack(
     }
 
     let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     calculate_channel_permissions(&mut query)
         .await
@@ -38,9 +42,9 @@ pub async fn ack(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{Header, Status};
     use syrnike_database::{events::client::EventV1, Channel};
     use syrnike_models::v0::DataCreateGroup;
-    use rocket::http::{Header, Status};
 
     #[rocket::async_test]
     async fn success_ack_channel() {

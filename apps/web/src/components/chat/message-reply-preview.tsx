@@ -18,7 +18,6 @@ export function messageAuthorName(message: Message, users: Record<string, User>)
 function replyAuthorColor(
   serverId: string | undefined,
   message: Message,
-  users: Record<string, User>,
   members: Record<string, Member>,
   servers: Record<string, Server>,
 ): string | undefined {
@@ -82,7 +81,6 @@ export function InlineReplyQuote({
   const nameColor = replyAuthorColor(
     serverId,
     original,
-    users,
     members,
     servers,
   )

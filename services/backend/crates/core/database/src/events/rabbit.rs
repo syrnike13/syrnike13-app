@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use syrnike_models::v0::PushNotification;
 use serde::{Deserialize, Serialize};
+use syrnike_models::v0::PushNotification;
 
 use crate::User;
 

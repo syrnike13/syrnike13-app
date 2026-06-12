@@ -36,6 +36,17 @@ export type NativeMicrophoneRecoveryState = {
   selfMonitoringActive: boolean
 }
 
+type NativeMicrophonePreferences = Pick<
+  VoicePreferenceState,
+  | 'preferredAudioInputDevice'
+  | 'noiseSuppression'
+  | 'echoCancellation'
+  | 'inputVolume'
+  | 'voiceGateEnabled'
+  | 'voiceGateThresholdDb'
+  | 'voiceGateAutoThreshold'
+>
+
 export function shouldUseNativeMicrophone() {
   return getSyrnikeDesktop()?.platform.os === 'win32'
 }
@@ -52,7 +63,7 @@ export function shouldRestartNativeMicrophonePublisher(
 }
 
 export function nativeMicrophoneSessionOptions(
-  prefs: VoicePreferenceState,
+  prefs: NativeMicrophonePreferences,
   livekit: NativeMicrophoneLiveKitCredentials,
   deviceId = prefs.preferredAudioInputDevice,
   muted = false,
@@ -76,7 +87,7 @@ export function nativeMicrophoneSessionOptions(
 }
 
 export async function startNativeMicrophonePublisher(
-  prefs: VoicePreferenceState,
+  prefs: NativeMicrophonePreferences,
   livekit: NativeMicrophoneLiveKitCredentials,
   deviceId?: string,
   muted = false,
@@ -170,7 +181,7 @@ export async function publishNativeMicrophone(
 
 export function configureNativeMicrophoneSession(
   session: NativeMicrophoneSession | null,
-  prefs: VoicePreferenceState,
+  prefs: NativeMicrophonePreferences,
 ) {
   configureNativeMicrophoneRuntime(session?.sessionId, {
     noiseSuppression: prefs.noiseSuppression,

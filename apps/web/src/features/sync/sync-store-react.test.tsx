@@ -10,9 +10,10 @@ const FIRST_CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ701'
 const SECOND_CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ702'
 
 function ChannelName({ channelId }: { channelId: string }) {
-  const name = useSyncStore(
-    (state) => state.channels[channelId]?.name ?? 'missing',
-  )
+  const name = useSyncStore((state) => {
+    const channel = state.channels[channelId]
+    return channel?.channel_type === 'TextChannel' ? channel.name : 'missing'
+  })
 
   return <p>{name}</p>
 }

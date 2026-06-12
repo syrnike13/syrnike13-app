@@ -1,7 +1,9 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{util::reference::Reference, Channel, Database, Invite, Member, User, AMQP};
 use syrnike_models::v0::{self, InviteJoinResponse};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
+
+use crate::routes::voice_call_member_sync::send_active_group_voice_call_to_new_member;
 
 /// # Join Invite
 ///
@@ -35,7 +37,12 @@ pub async fn join(
             channel, creator, ..
         } => {
             let mut channel = db.fetch_channel(channel).await?;
+            if channel.has_bot_recipient(db).await? {
+                return Err(create_error!(NotFound));
+            }
+
             channel.add_user_to_group(db, amqp, &user, creator).await?;
+            send_active_group_voice_call_to_new_member(&user.id, &channel).await?;
             if let Channel::Group { recipients, .. } = &channel {
                 Ok(Json(InviteJoinResponse::Group {
                     users: User::fetch_many_ids_as_mutuals(db, &user, recipients).await?,

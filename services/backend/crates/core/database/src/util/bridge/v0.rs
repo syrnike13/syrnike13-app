@@ -535,9 +535,25 @@ impl From<crate::SystemMessage> for SystemMessage {
             crate::SystemMessage::UserRemove { id, by } => Self::UserRemove { id, by },
             crate::SystemMessage::MessagePinned { id, by } => Self::MessagePinned { id, by },
             crate::SystemMessage::MessageUnpinned { id, by } => Self::MessageUnpinned { id, by },
-            crate::SystemMessage::CallStarted { by, finished_at } => {
-                Self::CallStarted { by, finished_at }
-            }
+            crate::SystemMessage::CallStarted {
+                by,
+                finished_at,
+                ended_reason,
+            } => Self::CallStarted {
+                by,
+                finished_at,
+                ended_reason: ended_reason.map(Into::into),
+            },
+        }
+    }
+}
+
+impl From<crate::VoiceCallEndReason> for VoiceCallEndReason {
+    fn from(value: crate::VoiceCallEndReason) -> Self {
+        match value {
+            crate::VoiceCallEndReason::Completed => VoiceCallEndReason::Completed,
+            crate::VoiceCallEndReason::Cancelled => VoiceCallEndReason::Cancelled,
+            crate::VoiceCallEndReason::Missed => VoiceCallEndReason::Missed,
         }
     }
 }

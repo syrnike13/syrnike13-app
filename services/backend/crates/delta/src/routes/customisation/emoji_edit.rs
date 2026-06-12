@@ -1,3 +1,4 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, EmojiParent, PartialEmoji, User,
@@ -5,7 +6,6 @@ use syrnike_database::{
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 use validator::Validate;
 
 /// # Edit Emoji
@@ -53,9 +53,9 @@ pub async fn edit_emoji(
 #[cfg(test)]
 mod test {
     use crate::util::test::TestHarness;
+    use rocket::http::{ContentType, Header, Status};
     use syrnike_database::{Emoji, EmojiParent, Member};
     use syrnike_models::v0;
-    use rocket::http::{ContentType, Header, Status};
     use ulid::Ulid;
 
     #[rocket::async_test]

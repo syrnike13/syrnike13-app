@@ -16,7 +16,6 @@ import { queryKeys } from '#/lib/api/query-keys'
 import {
   clearSession,
   loadPersistedSession,
-  loadSession,
   saveSession,
   type StoredSession,
 } from '#/lib/session'
@@ -63,7 +62,9 @@ type AuthContextValue = {
   login: (
     credentials: LoginCredentials,
   ) => Promise<{ needsOnboarding: boolean } | undefined>
-  submitMfaPassword: (password: string) => Promise<void>
+  submitMfaPassword: (
+    password: string,
+  ) => Promise<{ needsOnboarding: boolean } | undefined>
   cancelMfa: () => void
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
@@ -104,7 +105,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    return eventsGateway.subscribeState(setGatewayState)
+    const unsubscribe = eventsGateway.subscribeState(setGatewayState)
+    return () => {
+      unsubscribe()
+    }
   }, [])
 
   const onboardingQuery = useQuery({
@@ -161,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
-    return eventsGateway.subscribeEvents((event) => {
+    const unsubscribe = eventsGateway.subscribeEvents((event) => {
       const data = event.data
       if (
         event.type === 'Error' &&
@@ -173,6 +177,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         invalidateSession('Сессия недействительна. Войдите снова.')
       }
     })
+    return () => {
+      unsubscribe()
+    }
   }, [invalidateSession])
 
   useEffect(() => {

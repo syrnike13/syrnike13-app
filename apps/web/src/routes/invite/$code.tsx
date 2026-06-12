@@ -52,16 +52,17 @@ function InviteJoinPage() {
           await navigate({
             to: '/app/c/$channelId',
             params: { channelId: channel._id },
+            search: { m: undefined },
           })
         } else {
-          await navigate({ to: '/app' })
+          await navigate({ to: '/app', search: { tab: 'online' } })
         }
         toast.success('Вы присоединились к серверу')
         return
       }
 
       toast.success('Приглашение принято')
-      await navigate({ to: '/app' })
+      await navigate({ to: '/app', search: { tab: 'online' } })
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось принять',

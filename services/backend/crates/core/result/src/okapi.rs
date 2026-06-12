@@ -1,5 +1,5 @@
-use revolt_okapi::openapi3::SchemaObject;
 use revolt_okapi::openapi3;
+use revolt_okapi::openapi3::SchemaObject;
 use schemars::schema::Schema;
 
 use crate::Error;

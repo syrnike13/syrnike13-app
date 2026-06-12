@@ -1,7 +1,7 @@
+use rocket::State;
 use syrnike_database::{util::reference::Reference, Database, PartialBot, User};
 use syrnike_models::v0::{self, DataEditBot};
 use syrnike_result::{create_error, Result};
-use rocket::State;
 
 use rocket::serde::json::Json;
 use validator::Validate;
@@ -60,15 +60,8 @@ pub async fn edit_bot(
         ..Default::default()
     };
 
-    bot.update(
-        db,
-        partial,
-        remove
-            .into_iter()
-            .map(|v| v.into())
-            .collect(),
-    )
-    .await?;
+    bot.update(db, partial, remove.into_iter().map(|v| v.into()).collect())
+        .await?;
 
     Ok(Json(v0::BotWithUserResponse {
         bot: bot.into(),
@@ -79,9 +72,9 @@ pub async fn edit_bot(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{ContentType, Header, Status};
     use syrnike_database::Bot;
     use syrnike_models::v0::{self, FieldsBot};
-    use rocket::http::{ContentType, Header, Status};
 
     #[rocket::async_test]
     async fn edit_bot() {

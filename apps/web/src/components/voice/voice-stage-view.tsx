@@ -58,10 +58,11 @@ import { canInviteToChannel } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
 type VoiceStageViewProps = {
-  channel: Extract<Channel, { channel_type: 'TextChannel' | 'VoiceChannel' }>
+  channel: Channel
   title: string
   chatOpen: boolean
   onToggleChat: () => void
+  showChatToggle?: boolean
 }
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
@@ -71,6 +72,7 @@ export function VoiceStageView({
   title,
   chatOpen,
   onToggleChat,
+  showChatToggle = true,
 }: VoiceStageViewProps) {
   const auth = useAuth()
   const voice = useVoice()
@@ -92,6 +94,10 @@ export function VoiceStageView({
   const inVoiceSession = isVoiceSessionInChannel(voice, channelId)
   const inThisVoiceCall = voice.status === 'connected' && inVoiceSession
   const connecting = voice.status === 'connecting' && inVoiceSession
+  const joinLabel =
+    channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
+      ? 'Присоединиться'
+      : undefined
   const [requestedMode, setRequestedMode] =
     useState<VoiceStageLayoutMode>('grid')
   const [popoutWindow, setPopoutWindow] = useState<Window | null>(null)
@@ -341,7 +347,7 @@ export function VoiceStageView({
         )}
       >
         {participants.length === 0 && mediaItems.length === 0 ? (
-          <EmptyVoiceStage />
+          <EmptyVoiceStage canInvite={canInvite} />
         ) : focusedItem ? (
           <VoiceStageFocusStage
             focusedItem={focusedItem}
@@ -404,7 +410,7 @@ export function VoiceStageView({
             <VoiceOnAirBadge className="ml-1 shrink-0" />
           ) : null}
         </h1>
-        {presentation === 'embedded' ? (
+        {presentation === 'embedded' && showChatToggle ? (
           <Button
             type="button"
             variant="ghost"
@@ -435,6 +441,7 @@ export function VoiceStageView({
             channelId={channelId}
             inCall={inThisVoiceCall}
             connecting={connecting}
+            joinLabel={joinLabel}
             overlay
           />
         </div>
@@ -488,12 +495,14 @@ export function VoiceStageView({
   )
 }
 
-function EmptyVoiceStage() {
+function EmptyVoiceStage({ canInvite }: { canInvite: boolean }) {
   return (
     <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 text-center">
       <p className="text-lg font-semibold">Никого нет в канале</p>
       <p className="max-w-sm text-sm text-muted-foreground">
-        Подключитесь к голосу или пригласите участников на сервер.
+        {canInvite
+          ? 'Подключитесь к голосу или пригласите участников.'
+          : 'Подключитесь к голосу, чтобы начать разговор.'}
       </p>
     </div>
   )

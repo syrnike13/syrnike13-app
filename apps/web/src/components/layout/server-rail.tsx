@@ -2,9 +2,15 @@ import { Link, useMatch } from '@tanstack/react-router'
 import { HashIcon, HomeIcon } from '#/components/icons'
 import type { Server } from '@syrnike13/api-types'
 
+import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { Button } from '#/components/ui/button'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { CreateServerDialog } from '#/components/servers/create-server-dialog'
+import { useAuth } from '#/features/auth/auth-context'
+import {
+  selectHomeNotificationBadge,
+  selectServerNotificationBadge,
+} from '#/features/notifications/notification-selectors'
 import { listServerChannels, listServers } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
@@ -20,8 +26,17 @@ function railButtonClass(active: boolean) {
   return cn(railIconButtonClass, !active && railIconIdleClass)
 }
 
-function ServerRailButton({ server }: { server: Server }) {
+function ServerRailButton({
+  server,
+  currentUserId,
+}: {
+  server: Server
+  currentUserId?: string
+}) {
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
+  const notificationBadge = useSyncStore((s) =>
+    selectServerNotificationBadge(s, server._id, currentUserId),
+  )
   const firstChannelId = useSyncStore((s) => {
     const channels = listServerChannels(s, server._id)
     const text = channels.find((c) => c.channel_type === 'TextChannel')
@@ -41,7 +56,15 @@ function ServerRailButton({ server }: { server: Server }) {
     !homeMatch &&
     selectedServerId === server._id
 
-  const content = <ServerInitial name={server.name} />
+  const content = (
+    <span className="relative flex size-full items-center justify-center">
+      <ServerInitial name={server.name} />
+      <NotificationBadge
+        badge={notificationBadge}
+        className="absolute -top-1 -right-1"
+      />
+    </span>
+  )
 
   if (firstChannelId) {
     return (
@@ -55,6 +78,7 @@ function ServerRailButton({ server }: { server: Server }) {
         <Link
           to="/app/c/$channelId"
           params={{ channelId: firstChannelId }}
+          search={{ m: undefined }}
         >
           {content}
         </Link>
@@ -72,6 +96,7 @@ function ServerRailButton({ server }: { server: Server }) {
     >
       <Link
         to="/app"
+        search={{ tab: 'online' }}
         onClick={() => syncStore.setSelectedServerId(server._id)}
       >
         {content}
@@ -89,10 +114,13 @@ function ServerInitial({ name }: { name: string }) {
 }
 
 export function ServerRail() {
+  const auth = useAuth()
   const { capabilities } = usePlatform()
   const ready = useSyncStore((s) => s.ready)
-  const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const servers = useSyncStore(listServers)
+  const homeBadge = useSyncStore((s) =>
+    selectHomeNotificationBadge(s, auth.user?._id),
+  )
 
   const homeMatch = useMatch({
     from: '/app/',
@@ -143,14 +171,24 @@ export function ServerRail() {
           search={{ tab: 'online' }}
           onClick={() => syncStore.setSelectedServerId(null)}
         >
-          <HomeIcon />
+          <span className="relative flex size-full items-center justify-center">
+            <HomeIcon />
+            <NotificationBadge
+              badge={homeBadge}
+              className="absolute -top-1 -right-1"
+            />
+          </span>
         </Link>
       </Button>
 
       <ScrollArea className="min-h-0 w-full flex-1 px-2">
         <div className="flex flex-col items-center gap-2">
           {servers.map((server) => (
-            <ServerRailButton key={server._id} server={server} />
+            <ServerRailButton
+              key={server._id}
+              server={server}
+              currentUserId={auth.user?._id}
+            />
           ))}
           {servers.length === 0 ? (
             <div

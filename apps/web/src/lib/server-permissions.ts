@@ -1,7 +1,6 @@
 import {
   hasPermissionBit,
   maskPermissionBits,
-  permissionAnd,
   permissionAndNot,
   permissionBit,
   permissionOr,

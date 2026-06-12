@@ -1,5 +1,5 @@
-use syrnike_ratelimits::ratelimiter::RatelimitResolver;
 use rocket::{http::Method, Request};
+use syrnike_ratelimits::ratelimiter::RatelimitResolver;
 
 pub struct DeltaRatelimits;
 

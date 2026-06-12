@@ -45,6 +45,7 @@ type VoiceStageControlsProps = {
   channelId: string
   inCall: boolean
   connecting: boolean
+  joinLabel?: string
   compact?: boolean
   /** Без внешней обёртки — позиционирование задаёт родитель (оверлей стейджа). */
   overlay?: boolean
@@ -221,6 +222,7 @@ export function VoiceStageControls({
   channelId,
   inCall,
   connecting,
+  joinLabel = 'Подключиться к голосу',
   compact = false,
   overlay = false,
 }: VoiceStageControlsProps) {
@@ -296,7 +298,7 @@ export function VoiceStageControls({
         className="rounded-full px-8"
         onClick={() => void voice.join(channelId)}
       >
-        Подключиться к голосу
+        {joinLabel}
       </Button>
     )
 

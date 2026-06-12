@@ -13,6 +13,8 @@ function makeState(
     users: {},
     messages: {},
     voiceParticipants: {},
+    voiceCalls: {},
+    dismissedVoiceCallKeys: {},
     ...overrides,
   } as SyncState
 }

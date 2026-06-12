@@ -39,7 +39,7 @@ export class VoiceGateStage {
   #analyser: AnalyserNode | null = null
   #gain: GainNode | null = null
   #destination: MediaStreamAudioDestinationNode | null = null
-  #samples: Uint8Array | null = null
+  #samples: Uint8Array<ArrayBuffer> | null = null
   #frame: number | null = null
   #open = true
   #lastGateChangeAt = 0

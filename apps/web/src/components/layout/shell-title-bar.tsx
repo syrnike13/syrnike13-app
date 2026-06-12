@@ -50,7 +50,10 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
     minHeight: heightPx,
     '--shell-titlebar-height': `${heightPx}px`,
     '--shell-titlebar-button-width': `${SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX}px`,
-  } as const satisfies CSSProperties
+  } satisfies CSSProperties & {
+    '--shell-titlebar-height': string
+    '--shell-titlebar-button-width': string
+  }
 
   return (
     <header

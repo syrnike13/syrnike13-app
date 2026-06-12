@@ -31,7 +31,11 @@ serde = { workspace = true }
 # async
 futures = { workspace = true }
 async-tungstenite = { workspace = true, features = ["async-std-runtime"] }
-async-std = { workspace = true }
+async-std = { workspace = true, features = [
+    "tokio1",
+    "tokio02",
+    "attributes",
+] }
 
 # core
 authifier = { workspace = true }

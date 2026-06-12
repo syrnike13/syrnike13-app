@@ -1,10 +1,12 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    util::{permissions::DatabasePermissionQuery, reference::Reference}, voice::{sync_voice_permissions, VoiceClient}, Database, User
+    util::{permissions::DatabasePermissionQuery, reference::Reference},
+    voice::{sync_voice_permissions, VoiceClient},
+    Database, User,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, Override};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 
 /// # Set Role Permission
 ///
@@ -22,8 +24,13 @@ pub async fn set_role_permissions(
     data: Json<v0::DataSetRolePermissions>,
 ) -> Result<Json<v0::Channel>> {
     let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
-    let permissions: syrnike_permissions::PermissionValue = calculate_channel_permissions(&mut query).await;
+    let permissions: syrnike_permissions::PermissionValue =
+        calculate_channel_permissions(&mut query).await;
 
     permissions.throw_if_lacking_channel_permission(ChannelPermission::ManagePermissions)?;
 
@@ -44,7 +51,8 @@ pub async fn set_role_permissions(
                 .set_role_permission(db, &role_id, data.permissions.clone().into())
                 .await?;
 
-            sync_voice_permissions(db, voice_client, &new_channel, Some(server), Some(&role_id)).await?;
+            sync_voice_permissions(db, voice_client, &new_channel, Some(server), Some(&role_id))
+                .await?;
 
             Ok(Json(new_channel.into()))
         } else {

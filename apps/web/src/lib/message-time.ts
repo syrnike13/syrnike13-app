@@ -54,9 +54,9 @@ function isSystemMessage(message: { system?: unknown }) {
  */
 export function shouldCompactMessage(
   previous:
-    | { author: string; system?: unknown; replies?: readonly unknown[] }
+    | { author: string; system?: unknown; replies?: readonly unknown[] | null }
     | undefined,
-  current: { author: string; system?: unknown; replies?: readonly unknown[] },
+  current: { author: string; system?: unknown; replies?: readonly unknown[] | null },
 ): boolean {
   if (!previous) return false
   if (previous.author !== current.author) return false

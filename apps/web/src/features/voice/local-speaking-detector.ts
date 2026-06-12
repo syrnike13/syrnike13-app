@@ -9,6 +9,7 @@ const CLIENT_SPEAKING_CLOSE_HOLD_MS = 180
 type AudioContextConstructor = typeof AudioContext
 
 type BrowserWindowWithAudio = Window & {
+  AudioContext?: AudioContextConstructor
   webkitAudioContext?: AudioContextConstructor
 }
 
@@ -17,7 +18,7 @@ type LocalSpeakingDetectorEntry = {
   stream: MediaStream
   sourceNode: MediaStreamAudioSourceNode
   analyserNode: AnalyserNode
-  analyserSamples: Float32Array
+  analyserSamples: Float32Array<ArrayBuffer>
   speaking: boolean
   quietSince: number | null
 }

@@ -22,7 +22,7 @@ import {
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { createGroupChannel } from '#/features/api/channels-api'
-import { openDirectMessage } from '#/features/api/users-api'
+import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { listUsersByRelationship } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
@@ -40,7 +40,9 @@ export function NewConversationButton() {
   const [busy, setBusy] = useState(false)
 
   const friends = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Friend', auth.user?._id),
+    listUsersByRelationship(s, 'Friend', auth.user?._id).filter(
+      (user) => !user.bot,
+    ),
   )
 
   const filteredFriends = useMemo(() => {
@@ -81,19 +83,16 @@ export function NewConversationButton() {
 
     setBusy(true)
     try {
-      const channel = await openDirectMessage(token, userId)
-      syncStore.upsertChannel(channel)
-      syncStore.setSelectedServerId(null)
-      closeDialog()
-      await navigate({
-        to: '/app/c/$channelId',
-        params: { channelId: channel._id },
-        search: {},
+      await openDirectMessageChannel(token, userId, (channelId) => {
+        closeDialog()
+        return navigate({
+          to: '/app/c/$channelId',
+          params: { channelId },
+          search: { m: undefined },
+        })
       })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось открыть ЛС',
-      )
+    } catch {
+      // dm-actions already shows the concrete error toast.
     } finally {
       setBusy(false)
     }
@@ -114,7 +113,7 @@ export function NewConversationButton() {
       await navigate({
         to: '/app/c/$channelId',
         params: { channelId: channel._id },
-        search: {},
+        search: { m: undefined },
       })
     } catch (error) {
       toast.error(

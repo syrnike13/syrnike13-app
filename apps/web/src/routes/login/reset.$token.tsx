@@ -22,7 +22,7 @@ import { loadSession } from '#/lib/session'
 export const Route = createFileRoute('/login/reset/$token')({
   beforeLoad: () => {
     if (loadSession()) {
-      throw redirect({ to: '/app' })
+      throw redirect({ to: '/app', search: { tab: 'online' } })
     }
   },
   component: ResetConfirmPage,

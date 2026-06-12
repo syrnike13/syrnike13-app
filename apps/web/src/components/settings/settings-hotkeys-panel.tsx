@@ -138,6 +138,7 @@ export function SettingsHotkeysPanel() {
   }
 
   async function startRecording(id: string) {
+    if (!desktop) return
     recordingEventsRef.current = []
     setRecordingId(id)
     await desktop.hotkeys.startRecording()

@@ -1,5 +1,5 @@
 import { Icon } from '@iconify/react'
-import { forwardRef } from 'react'
+import { forwardRef, type ComponentProps } from 'react'
 
 import type { AppIcon, AppIconProps } from '#/components/icons/types'
 
@@ -7,7 +7,8 @@ import type { AppIcon, AppIconProps } from '#/components/icons/types'
 export function iconifyIcon(iconId: string): AppIcon {
   const Component = forwardRef<SVGSVGElement, AppIconProps>(
     function IconifyIcon(props, ref) {
-      return <Icon ref={ref} icon={iconId} {...props} />
+      const iconProps = props as unknown as Omit<ComponentProps<typeof Icon>, 'icon'>
+      return <Icon ref={ref} icon={iconId} {...iconProps} />
     },
   )
   Component.displayName = iconId

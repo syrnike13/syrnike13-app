@@ -15,7 +15,10 @@ describe('renderMessageContent', () => {
           [userId]: {
             _id: userId,
             username: 'waflya',
+            discriminator: '0001',
             display_name: 'waflyaZOVMAX',
+            relationship: 'None',
+            online: true,
           },
         })}
       </>,
@@ -31,8 +34,10 @@ describe('renderMessageContent', () => {
         {renderMessageContent(`<%${roleId}> <#${channelId}>`, undefined, undefined, {
           roles: {
             [roleId]: {
+              _id: roleId,
               name: 'Модератор',
-              permissions: 0,
+              permissions: { a: 0, d: 0 },
+              mentionable: false,
               rank: 0,
             },
           },

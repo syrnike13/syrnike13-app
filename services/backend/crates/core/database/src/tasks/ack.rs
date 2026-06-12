@@ -3,12 +3,12 @@ use crate::{Database, Message, AMQP};
 
 use deadqueue::limited::Queue;
 use once_cell::sync::Lazy;
-use syrnike_config::capture_message;
-use syrnike_models::v0::PushNotification;
 use std::{
     collections::{HashMap, HashSet},
     time::Duration,
 };
+use syrnike_config::capture_message;
+use syrnike_models::v0::PushNotification;
 use validator::HasLen;
 
 use syrnike_result::Result;

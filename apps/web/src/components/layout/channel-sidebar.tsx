@@ -3,7 +3,7 @@ import { ServerChannelList } from '#/components/channels/server-channel-list'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  listDmChannels,
+  listVisibleDmRailChannels,
 } from '#/features/sync/selectors'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
@@ -27,7 +27,7 @@ export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
   const servers = useSyncStore((s) => s.servers)
 
   const dmChannels = useSyncStore((s) =>
-    listDmChannels(s, auth.user?._id),
+    listVisibleDmRailChannels(s, auth.user?._id),
   )
 
   useServerMembersSync(selectedServerId, auth.session?.token)

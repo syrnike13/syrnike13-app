@@ -1,7 +1,7 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{util::reference::Reference, Database, User};
 use syrnike_models::v0::FetchBotResponse;
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 
 /// # Fetch Bot
 ///
@@ -31,9 +31,9 @@ pub async fn fetch_bot(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{Header, Status};
     use syrnike_database::Bot;
     use syrnike_models::v0;
-    use rocket::http::{Header, Status};
 
     #[rocket::async_test]
     async fn fetch_bot() {

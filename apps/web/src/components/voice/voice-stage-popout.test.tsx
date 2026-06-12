@@ -8,19 +8,26 @@ import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
 
 function childWindowStub() {
   const childDocument = document.implementation.createHTMLDocument('popout')
+  let closed = false
   const childWindow = {
     document: childDocument,
-    closed: false,
     close: vi.fn(() => {
-      childWindow.closed = true
+      closed = true
     }),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }
+  Object.defineProperty(childWindow, 'closed', {
+    configurable: true,
+    get: () => closed,
+  })
 
   return {
     childDocument,
     childWindow: childWindow as unknown as Window,
+    closeChildWindow: () => {
+      closed = true
+    },
   }
 }
 
@@ -58,7 +65,7 @@ describe('VoiceStagePopout', () => {
   })
 
   it('notifies onClose when the user closes the child window', () => {
-    const { childWindow } = childWindowStub()
+    const { childWindow, closeChildWindow } = childWindowStub()
     const close = vi.fn()
 
     render(
@@ -71,7 +78,7 @@ describe('VoiceStagePopout', () => {
       </VoiceStagePopout>,
     )
 
-    childWindow.closed = true
+    closeChildWindow()
     vi.advanceTimersByTime(500)
 
     expect(close).toHaveBeenCalledTimes(1)

@@ -37,3 +37,13 @@ export async function deleteChannel(
     body: { leave_silently: leaveSilently },
   })
 }
+
+export async function cancelDirectMessageCall(
+  token: string,
+  channelId: string,
+) {
+  return apiRequest<void>(`/channels/${channelId}/voice/cancel`, {
+    method: 'PUT',
+    token,
+  })
+}

@@ -23,7 +23,12 @@ pub trait AbstractMessages: Sync + Send {
     async fn fetch_messages_by_id(&self, ids: &[String]) -> Result<Vec<Message>>;
 
     /// Update a given message with new information
-    async fn update_message(&self, id: &str, message: &PartialMessage, remove: Vec<FieldsMessage>) -> Result<()>;
+    async fn update_message(
+        &self,
+        id: &str,
+        message: &PartialMessage,
+        remove: Vec<FieldsMessage>,
+    ) -> Result<()>;
 
     /// Append information to a given message
     async fn append_message(&self, id: &str, append: &AppendMessage) -> Result<()>;
@@ -48,6 +53,6 @@ pub trait AbstractMessages: Sync + Send {
         &self,
         channels: &[String],
         author: &str,
-        since: SystemTime
+        since: SystemTime,
     ) -> Result<HashMap<String, Vec<String>>>;
 }

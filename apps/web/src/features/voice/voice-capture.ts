@@ -87,7 +87,7 @@ export function screenShareCombinedPublishOptions(
 }
 
 export function voiceAudioProcessingConstraints(
-  prefs: VoicePreferenceState,
+  prefs: Pick<VoicePreferenceState, 'echoCancellation'>,
 ): AudioCaptureOptions {
   return {
     channelCount: 1,

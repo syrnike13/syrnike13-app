@@ -51,7 +51,11 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
     if (typeof window === 'undefined') return
     if (!isDesktopRuntime()) return
     if (isDesktopAllowedPath(location.pathname)) return
-    throw redirect({ to: DESKTOP_ENTRY_PATH, replace: true })
+    throw redirect({
+      to: DESKTOP_ENTRY_PATH,
+      search: { tab: 'online' },
+      replace: true,
+    })
   },
   head: () => ({
     meta: [

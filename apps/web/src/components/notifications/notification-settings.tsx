@@ -80,8 +80,9 @@ export function NotificationSettings({
     }
 
     if (Notification.permission !== 'granted') {
-      await enableDesktop()
-      if (Notification.permission !== 'granted') return
+      const result = await Notification.requestPermission()
+      setPermission(result)
+      if (result !== 'granted') return
     }
 
     try {

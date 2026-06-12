@@ -8,6 +8,8 @@ use syrnike_result::{create_error, Result};
 use rocket::State;
 use rocket_empty::EmptyResponse;
 
+use crate::routes::voice_call_member_sync::send_active_group_voice_call_to_new_member;
+
 /// # Add Member to Group
 ///
 /// Adds another user to the group.
@@ -25,6 +27,10 @@ pub async fn add_member(
     }
 
     let mut channel = group_id.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     calculate_channel_permissions(&mut query)
         .await
@@ -34,14 +40,20 @@ pub async fn add_member(
         Channel::Group { .. } => {
             // TODO: use permissions here? interesting if users could block new group invites
             let member = member_id.as_user(db).await?;
+            if member.bot.is_some() {
+                return Err(create_error!(IsBot));
+            }
             if !user.is_friends_with(&member.id) {
                 return Err(create_error!(NotFriends));
             }
 
             channel
                 .add_user_to_group(db, amqp, &member, &user.id)
-                .await
-                .map(|_| EmptyResponse)
+                .await?;
+
+            send_active_group_voice_call_to_new_member(&member.id, &channel).await?;
+
+            Ok(EmptyResponse)
         }
         _ => Err(create_error!(InvalidOperation)),
     }
@@ -50,9 +62,9 @@ pub async fn add_member(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{Header, Status};
     use syrnike_database::{events::client::EventV1, Channel, RelationshipStatus};
     use syrnike_models::v0;
-    use rocket::http::{Header, Status};
 
     #[rocket::async_test]
     async fn success_add_member() {

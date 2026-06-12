@@ -1,19 +1,26 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{util::reference::Reference, Channel, Database, Invite};
 use syrnike_models::v0;
-use syrnike_result::Result;
-use rocket::{serde::json::Json, State};
+use syrnike_result::{create_error, Result};
 
 /// # Fetch Invite
 ///
 /// Fetch an invite by its id.
 #[openapi(tag = "Invites")]
 #[get("/<target>")]
-pub async fn fetch(db: &State<Database>, target: Reference<'_>) -> Result<Json<v0::InviteResponse>> {
+pub async fn fetch(
+    db: &State<Database>,
+    target: Reference<'_>,
+) -> Result<Json<v0::InviteResponse>> {
     Ok(Json(match target.as_invite(db).await? {
         Invite::Server {
             channel, creator, ..
         } => {
             let channel = db.fetch_channel(&channel).await?;
+            if channel.has_bot_recipient(db).await? {
+                return Err(create_error!(NotFound));
+            }
+
             let user = db.fetch_user(&creator).await?;
 
             match channel {
@@ -48,6 +55,10 @@ pub async fn fetch(db: &State<Database>, target: Reference<'_>) -> Result<Json<v
             channel, creator, ..
         } => {
             let channel = db.fetch_channel(&channel).await?;
+            if channel.has_bot_recipient(db).await? {
+                return Err(create_error!(NotFound));
+            }
+
             let user = db.fetch_user(&creator).await?;
 
             match channel {
@@ -73,11 +84,11 @@ pub async fn fetch(db: &State<Database>, target: Reference<'_>) -> Result<Json<v
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::Status;
     use syrnike_database::{Channel, Server};
     use syrnike_models::v0::{
         DataCreateGroup, DataCreateServerChannel, Invite, InviteResponse, LegacyServerChannelType,
     };
-    use rocket::http::Status;
 
     #[rocket::async_test]
     async fn success_fetch_group_invite() {
@@ -195,7 +206,7 @@ mod test {
                 name: "Voice Channel".to_string(),
                 description: None,
                 nsfw: Some(false),
-                voice: None
+                voice: None,
             },
             true,
         )

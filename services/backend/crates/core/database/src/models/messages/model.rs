@@ -1,5 +1,7 @@
 use indexmap::{IndexMap, IndexSet};
 use iso8601_timestamp::Timestamp;
+use std::time::SystemTime;
+use std::{collections::HashSet, hash::RandomState};
 use syrnike_config::{config, FeaturesLimits};
 use syrnike_models::v0::{
     self, BulkMessageResponse, DataMessageSend, Embed, MessageAuthor, MessageFlags, MessageSort,
@@ -7,8 +9,6 @@ use syrnike_models::v0::{
 };
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, PermissionValue};
 use syrnike_result::{ErrorType, Result};
-use std::time::SystemTime;
-use std::{collections::HashSet, hash::RandomState};
 use ulid::Ulid;
 use validator::Validate;
 
@@ -85,6 +85,14 @@ auto_derived_partial!(
 );
 
 auto_derived!(
+    /// Voice call end reason.
+    #[serde(rename_all = "snake_case")]
+    pub enum VoiceCallEndReason {
+        Completed,
+        Cancelled,
+        Missed,
+    }
+
     /// System Event
     #[serde(tag = "type")]
     pub enum SystemMessage {
@@ -118,6 +126,7 @@ auto_derived!(
         CallStarted {
             by: String,
             finished_at: Option<Timestamp>,
+            ended_reason: Option<VoiceCallEndReason>,
         },
     }
 
@@ -391,17 +400,15 @@ impl Message {
             ..
         } = message_mentions;
 
-        let server_for_mentions = if allow_mass_mentions
-            && server_id.is_some()
-            && !role_mentions.is_empty()
-        {
-            Some(
-                db.fetch_server(server_id.as_ref().unwrap().as_str())
-                    .await?,
-            )
-        } else {
-            None
-        };
+        let server_for_mentions =
+            if allow_mass_mentions && server_id.is_some() && !role_mentions.is_empty() {
+                Some(
+                    db.fetch_server(server_id.as_ref().unwrap().as_str())
+                        .await?,
+                )
+            } else {
+                None
+            };
 
         if let Some(server_data) = &server_for_mentions {
             role_mentions.retain(|role_id| server_data.roles.contains_key(role_id));

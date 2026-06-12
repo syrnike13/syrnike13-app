@@ -1,4 +1,5 @@
 use iso8601_timestamp::Timestamp;
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     tasks,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
@@ -7,7 +8,6 @@ use syrnike_database::{
 use syrnike_models::v0::{self, Embed};
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 use validator::Validate;
 
 /// # Edit Message
@@ -37,6 +37,10 @@ pub async fn edit(
 
     // Ensure we have permissions to send a message
     let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     let permissions = calculate_channel_permissions(&mut query).await;
 

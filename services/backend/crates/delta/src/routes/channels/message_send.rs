@@ -1,6 +1,8 @@
 use std::time::Duration;
 
 use redis_kiss::{get_connection, redis, AsyncCommands};
+use rocket::serde::json::Json;
+use rocket::State;
 use syrnike_database::events::client::EventV1;
 use syrnike_database::util::permissions::DatabasePermissionQuery;
 use syrnike_database::{
@@ -12,8 +14,6 @@ use syrnike_models::v0::ChannelSlowmode;
 use syrnike_permissions::PermissionQuery;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::serde::json::Json;
-use rocket::State;
 use validator::Validate;
 
 /// # Send Message
@@ -38,6 +38,10 @@ pub async fn message_send(
 
     // Ensure we have permissions to send a message
     let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     let permissions = calculate_channel_permissions(&mut query).await;
     permissions.throw_if_lacking_channel_permission(ChannelPermission::SendMessage)?;

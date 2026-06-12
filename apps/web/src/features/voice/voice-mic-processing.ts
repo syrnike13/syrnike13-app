@@ -42,7 +42,7 @@ export async function applyMicProcessing(participant: LocalParticipant) {
 
   await applyMicCaptureConstraints(audioTrack, prefs)
 
-  const config = createMicProcessorConfigFromPrefs(prefs, 'live')
+  const config = createMicProcessorConfigFromPrefs(prefs)
   const current = audioTrack.getProcessor()
 
   if (!micProcessingNeeded(config)) {

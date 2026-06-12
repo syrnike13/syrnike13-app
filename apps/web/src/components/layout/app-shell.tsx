@@ -9,9 +9,11 @@ import { LeftSidebarStack } from '#/components/layout/left-sidebar-stack'
 import { ServerRail } from '#/components/layout/server-rail'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { UserPanel } from '#/components/layout/user-panel'
+import { IncomingVoiceCallOverlay } from '#/components/voice/incoming-voice-call-overlay'
 import { isDmChannel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { usePlatform } from '#/platform/use-platform'
+import { serverChannelServerId } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 export function AppShell() {
@@ -43,10 +45,7 @@ export function AppShell() {
     if (!channel) return
     const nextServerId = isDmChannel(channel)
       ? null
-      : channel.channel_type === 'TextChannel' ||
-          channel.channel_type === 'VoiceChannel'
-        ? channel.server
-        : null
+      : serverChannelServerId(channel) ?? null
     syncStore.setSelectedServerId(nextServerId)
   }, [activeChannelId, isHomePath])
 
@@ -95,6 +94,7 @@ export function AppShell() {
         </div>
 
         <UserPanel />
+        <IncomingVoiceCallOverlay activeChannelId={activeChannelId} />
       </div>
     </div>
   )

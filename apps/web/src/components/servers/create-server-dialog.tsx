@@ -68,9 +68,10 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         await navigate({
           to: '/app/c/$channelId',
           params: { channelId: firstChannel._id },
+          search: { m: undefined },
         })
       } else {
-        await navigate({ to: '/app' })
+        await navigate({ to: '/app', search: { tab: 'online' } })
       }
     } catch (error) {
       toast.error(
@@ -107,16 +108,17 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
           await navigate({
             to: '/app/c/$channelId',
             params: { channelId: channel._id },
+            search: { m: undefined },
           })
         } else {
-          await navigate({ to: '/app' })
+          await navigate({ to: '/app', search: { tab: 'online' } })
         }
         return
       }
 
       handleOpenChange(false)
       toast.success('Приглашение принято')
-      await navigate({ to: '/app' })
+      await navigate({ to: '/app', search: { tab: 'online' } })
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось присоединиться',

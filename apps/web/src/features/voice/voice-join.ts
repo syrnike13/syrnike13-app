@@ -1,5 +1,6 @@
 import { Room } from 'livekit-client'
 import { toast } from 'sonner'
+import type { Channel } from '@syrnike13/api-types'
 
 import { syncStore } from '#/features/sync/sync-store'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
@@ -80,6 +81,24 @@ export function voiceJoinErrorMessage(error: unknown) {
   return 'Не удалось подключиться к голосу'
 }
 
+function voiceCallRecipients(
+  channel: Channel | undefined,
+  localUserId: string | undefined,
+) {
+  if (!channel || !localUserId) return undefined
+  if (
+    channel.channel_type !== 'DirectMessage' &&
+    channel.channel_type !== 'Group'
+  ) {
+    return undefined
+  }
+
+  const recipients = channel.recipients.filter(
+    (userId) => userId !== localUserId,
+  )
+  return recipients.length > 0 ? recipients : undefined
+}
+
 export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
   return async function performVoiceJoin(
     targetChannelId: string,
@@ -123,14 +142,30 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
 
     try {
       deps.setConnectionPhase('fetching_rtc_token')
+      const callRecipients = options.rejoin
+        ? undefined
+        : voiceCallRecipients(targetChannel, localUserId)
       const credentials = await runVoiceRequest(
         `voice_join:${targetChannelId}`,
-        () =>
-          requestVoiceJoin(
+        () => {
+          if (callRecipients) {
+            return requestVoiceJoin(
+              targetChannelId,
+              !prefs.micEnabled,
+              prefs.deafened,
+              { recipients: callRecipients },
+            )
+          }
+
+          return requestVoiceJoin(
             targetChannelId,
             !prefs.micEnabled,
             prefs.deafened,
-          ),
+            options.rejoin
+              ? { suppress_call_notifications: true }
+              : undefined,
+          )
+        },
         0,
       )
       if (!credentials) {

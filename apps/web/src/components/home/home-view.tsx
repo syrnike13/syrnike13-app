@@ -1,23 +1,25 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { MessageCircleIcon, UserPlusIcon, UsersIcon } from '#/components/icons'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
-import { toast } from 'sonner'
 
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
+import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
+import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import {
-  acceptFriendRequest,
-  openDirectMessage,
-  removeFriendOrRequest,
-  sendFriendRequest,
-} from '#/features/api/users-api'
+  acceptIncomingFriendRequest,
+  cancelOutgoingFriendRequest,
+  declineIncomingFriendRequest,
+  sendFriendRequestByUsername,
+} from '#/features/friends/friend-actions'
+import { selectFriendRequestNotificationBadge } from '#/features/notifications/notification-selectors'
 import { listUsersByRelationship } from '#/features/sync/selectors'
-import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { useSyncStore } from '#/features/sync/sync-store'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
@@ -36,14 +38,35 @@ function userLabel(user: { username: string; display_name?: string | null }) {
 function HomeFriendRow({
   user,
   onMessage,
+  onOpen,
   actions,
 }: {
   user: User
   onMessage?: () => void
+  onOpen?: () => void
   actions?: ReactNode
 }) {
+  const interactive = Boolean(onOpen)
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!onOpen || event.target !== event.currentTarget) return
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onOpen()
+  }
+
   return (
-    <div className="flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30">
+    <div
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      className={cn(
+        'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
+        interactive &&
+          'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
+      )}
+      onClick={onOpen}
+      onKeyDown={handleKeyDown}
+    >
       <UserAvatar user={user} className="size-10" fallbackClassName="size-10" />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{userLabel(user)}</p>
@@ -51,7 +74,10 @@ function HomeFriendRow({
           {presenceLabel(user)}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div
+        className="flex shrink-0 items-center gap-1"
+        onClick={(event) => event.stopPropagation()}
+      >
         {actions}
         {onMessage ? (
           <Button
@@ -100,13 +126,22 @@ export function HomeView({ tab }: HomeViewProps) {
   const [friendSearch, setFriendSearch] = useState('')
 
   const friends = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Friend', auth.user?._id),
+    listUsersByRelationship(s, 'Friend', auth.user?._id).filter(
+      (user) => !user.bot,
+    ),
   )
   const incoming = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Incoming', auth.user?._id),
+    listUsersByRelationship(s, 'Incoming', auth.user?._id).filter(
+      (user) => !user.bot,
+    ),
   )
   const outgoing = useSyncStore((s) =>
-    listUsersByRelationship(s, 'Outgoing', auth.user?._id),
+    listUsersByRelationship(s, 'Outgoing', auth.user?._id).filter(
+      (user) => !user.bot,
+    ),
+  )
+  const friendRequestBadge = useSyncStore((s) =>
+    selectFriendRequestNotificationBadge(s, auth.user?._id),
   )
 
   const lists = {
@@ -138,19 +173,13 @@ export function HomeView({ tab }: HomeViewProps) {
 
   async function openDm(userId: string) {
     if (!token) return
-    try {
-      const channel = await openDirectMessage(token, userId)
-      syncStore.upsertChannel(channel)
-      syncStore.setSelectedServerId(null)
-      await navigate({
+    await openDirectMessageChannel(token, userId, (channelId) =>
+      navigate({
         to: '/app/c/$channelId',
-        params: { channelId: channel._id },
-      })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось открыть ЛС',
-      )
-    }
+        params: { channelId },
+        search: { m: undefined },
+      }),
+    ).catch(() => undefined)
   }
 
   async function handleSendRequest() {
@@ -160,15 +189,11 @@ export function HomeView({ tab }: HomeViewProps) {
 
     setSending(true)
     try {
-      const user = await sendFriendRequest(token, trimmed)
-      syncStore.upsertUser(user)
+      await sendFriendRequestByUsername(token, trimmed)
       setUsername('')
       setAddOpen(false)
-      toast.success('Заявка отправлена')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось отправить',
-      )
+    } catch {
+      // friend-actions already shows the concrete error toast.
     } finally {
       setSending(false)
     }
@@ -202,7 +227,12 @@ export function HomeView({ tab }: HomeViewProps) {
                 asChild
               >
                 <Link to="/app" search={{ tab: item.id }}>
-                  {item.label}
+                  <span className="inline-flex items-center gap-1.5">
+                    {item.label}
+                    {item.id === 'pending' ? (
+                      <NotificationBadge badge={friendRequestBadge} />
+                    ) : null}
+                  </span>
                 </Link>
               </Button>
             ))}
@@ -272,6 +302,9 @@ export function HomeView({ tab }: HomeViewProps) {
                   <HomeFriendRow
                     key={user._id}
                     user={user}
+                    onOpen={
+                      isOutgoing ? undefined : () => void openDm(user._id)
+                    }
                     onMessage={
                       isOutgoing ? undefined : () => void openDm(user._id)
                     }
@@ -284,17 +317,10 @@ export function HomeView({ tab }: HomeViewProps) {
                               size="sm"
                               variant="secondary"
                               onClick={() => {
-                                void acceptFriendRequest(token, user._id)
-                                  .then((updated) =>
-                                    syncStore.upsertUser(updated),
-                                  )
-                                  .catch((error) =>
-                                    toast.error(
-                                      error instanceof Error
-                                        ? error.message
-                                        : 'Ошибка',
-                                    ),
-                                  )
+                                void acceptIncomingFriendRequest(
+                                  token,
+                                  user._id,
+                                ).catch(() => undefined)
                               }}
                             >
                               Принять
@@ -305,17 +331,18 @@ export function HomeView({ tab }: HomeViewProps) {
                             size="sm"
                             variant="ghost"
                             onClick={() => {
-                              void removeFriendOrRequest(token, user._id)
-                                .then((updated) =>
-                                  syncStore.upsertUser(updated),
-                                )
-                                .catch((error) =>
-                                  toast.error(
-                                    error instanceof Error
-                                      ? error.message
-                                      : 'Ошибка',
-                                  ),
-                                )
+                              if (isIncoming) {
+                                void declineIncomingFriendRequest(
+                                  token,
+                                  user._id,
+                                ).catch(() => undefined)
+                                return
+                              }
+
+                              void cancelOutgoingFriendRequest(
+                                token,
+                                user._id,
+                              ).catch(() => undefined)
                             }}
                           >
                             {isOutgoing ? 'Отменить' : 'Отклонить'}

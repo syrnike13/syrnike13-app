@@ -69,14 +69,12 @@ impl Invite {
                 creator: creator.id.clone(),
                 channel: id.clone(),
             }),
-            Channel::TextChannel { id, server, .. } => {
-                Ok(Invite::Server {
-                    code,
-                    creator: creator.id.clone(),
-                    server: server.clone(),
-                    channel: id.clone(),
-                })
-            }
+            Channel::TextChannel { id, server, .. } => Ok(Invite::Server {
+                code,
+                creator: creator.id.clone(),
+                server: server.clone(),
+                channel: id.clone(),
+            }),
             _ => Err(create_error!(InvalidOperation)),
         }?;
 

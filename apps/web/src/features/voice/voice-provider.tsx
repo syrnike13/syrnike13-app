@@ -38,7 +38,6 @@ import {
   requestVoiceFlagsUpdate,
   requestVoiceLeave,
 } from '#/features/voice/voice-gateway'
-import { isValidVoiceUserId } from '#/features/sync/voice-participant-resolve'
 import {
   canJoinVoiceChannel,
 } from '#/features/voice/voice-api-capability'
@@ -301,7 +300,6 @@ function remoteAudioTrackId(
   const audioTrack = track as AudioTrackWithMedia
   return (
     publication.trackSid ??
-    publication.sid ??
     audioTrack.sid ??
     audioTrack.mediaStreamTrack?.id ??
     crypto.randomUUID()
@@ -403,7 +401,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       onGiveUp: () => voiceRejoinDepsRef.current.onGiveUp(),
       isGatewayConnected: () => voiceRejoinDepsRef.current.isGatewayConnected(),
       shouldKeepTrying: (channelId) =>
-        voiceRejoinDepsRef.current.shouldKeepTrying(channelId),
+        voiceRejoinDepsRef.current.shouldKeepTrying?.(channelId) ?? false,
     }),
   )
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
@@ -977,16 +975,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     applyRemoteAudio(deafenedRef.current)
   }, [applyRemoteAudio])
 
-  const stopNativeMicrophone = useCallback(() => {
-    const active = nativeMicrophoneRef.current
-    if (!active) return
-    nativeMicrophoneRef.current = null
-    nativeMicrophoneMutedRef.current = false
-    active.disconnect()
-    setMicPublishing(false)
-    setSelfSpeaking(false)
-  }, [setSelfSpeaking])
-
   const setNativeMicrophoneMuted = useCallback(
     async (muted: boolean) => {
       const previousMuted = nativeMicrophoneMutedRef.current
@@ -1289,7 +1277,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       setDeafened(prefs.deafened)
       deafenedRef.current = prefs.deafened
-      remoteAudioMixerRef.current?.setOutputDevice(prefs.preferredAudioOutputDevice)
       applyRemoteAudio(prefs.deafened)
       await applyVoiceDevices(room)
       if (
@@ -1510,7 +1497,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         if (!mediaStreamTrack) {
           console.error('[voice-audio-mixer] missing remote audio media track', {
             userId: baseVoiceIdentity(participant.identity),
-            publicationSid: publication.sid,
             publicationTrackSid: publication.trackSid,
           })
           return
@@ -1524,7 +1510,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         if (!added) {
           console.error('[voice-audio-mixer] failed to add remote audio track', {
             userId: baseVoiceIdentity(participant.identity),
-            publicationSid: publication.sid,
             publicationTrackSid: publication.trackSid,
             mediaStreamTrackId: mediaStreamTrack.id,
           })
@@ -1581,7 +1566,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.on(RoomEvent.ParticipantDisconnected, onParticipantsChanged)
       room.on(RoomEvent.LocalTrackPublished, onLocalParticipantsChanged)
       room.on(RoomEvent.LocalTrackUnpublished, onLocalParticipantsChanged)
-      room.on(RoomEvent.TrackPublished, (publication, participant) => {
+      room.on(RoomEvent.TrackPublished, (_publication, participant) => {
         if (!participant.isLocal) {
           applyRemoteScreenParticipantSubscription(participant)
         }
@@ -1692,6 +1677,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         statusRef.current = 'connected'
         voiceConnectedAtRef.current = Date.now()
         setStatus('connected')
+        syncStore.clearVoiceCallDismissal(targetChannelId)
         syncRoomParticipants()
         void finishLocalVoiceSetup(room, targetChannelId)
       },
@@ -1747,11 +1733,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const token = auth.session?.token
       if (!token) {
         toast.error('Нет сессии')
-        return
+        return false
       }
 
       if (Date.now() < joinBlockedUntilRef.current) {
-        return
+        return false
       }
 
       if (
@@ -1759,13 +1745,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         status === 'connected' &&
         roomRef.current != null
       ) {
-        return
+        return true
       }
 
       const inFlight = joinInFlightRef.current
       if (inFlight?.channelId === targetChannelId) {
-        await inFlight.promise
-        return
+        return await inFlight.promise
       }
       if (inFlight) {
         await inFlight.promise.catch(() => {})
@@ -1774,13 +1759,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const targetChannel = syncStore.getState().channels[targetChannelId]
       if (!canJoinVoiceChannel(targetChannel)) {
         toast.error('Голос недоступен в этом канале')
-        return
+        return false
       }
 
       const promise = performVoiceJoinRef.current(targetChannelId)
       joinInFlightRef.current = { channelId: targetChannelId, promise }
       try {
-        await promise
+        return await promise
       } finally {
         if (joinInFlightRef.current?.channelId === targetChannelId) {
           joinInFlightRef.current = null

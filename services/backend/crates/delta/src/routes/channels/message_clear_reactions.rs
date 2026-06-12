@@ -1,11 +1,11 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, PartialMessage, User,
 };
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
-use syrnike_result::Result;
-use rocket::State;
-use rocket_empty::EmptyResponse;
+use syrnike_result::{create_error, Result};
 
 /// # Remove All Reactions from Message
 ///
@@ -21,6 +21,10 @@ pub async fn clear_reactions(
     msg: Reference<'_>,
 ) -> Result<EmptyResponse> {
     let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     calculate_channel_permissions(&mut query)
         .await
@@ -37,7 +41,7 @@ pub async fn clear_reactions(
                 reactions: Some(Default::default()),
                 ..Default::default()
             },
-            vec![]
+            vec![],
         )
         .await
         .map(|_| EmptyResponse)

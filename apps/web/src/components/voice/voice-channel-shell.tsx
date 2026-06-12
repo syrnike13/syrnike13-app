@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import type { Channel } from '@syrnike13/api-types'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { useSyncStore } from '#/features/sync/sync-store'
+import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 type VoiceChannelShellProps = {
@@ -31,8 +31,9 @@ export function VoiceChannelShell({
   }
 
   if (
-    channel.channel_type !== 'VoiceChannel' &&
-    channel.channel_type !== 'TextChannel'
+    !isServerVoiceChannel(channel) &&
+    channel.channel_type !== 'DirectMessage' &&
+    channel.channel_type !== 'Group'
   ) {
     return null
   }

@@ -16,11 +16,17 @@ export function normalizeMessagesResponse(response: BulkMessageResponse): {
   users: User[]
 } {
   if (Array.isArray(response)) {
-    return { messages: response, users: [] }
+    return {
+      messages: response.filter((message): message is Message =>
+        Boolean(message),
+      ),
+      users: [],
+    }
   }
+  const payload = response as { messages?: Message[]; users?: User[] }
   return {
-    messages: response.messages,
-    users: response.users ?? [],
+    messages: payload.messages ?? [],
+    users: payload.users ?? [],
   }
 }
 

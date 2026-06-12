@@ -1,3 +1,4 @@
+use rocket::State;
 use syrnike_database::{
     util::reference::Reference,
     voice::{
@@ -8,7 +9,6 @@ use syrnike_database::{
 };
 use syrnike_models::v0;
 use syrnike_result::Result;
-use rocket::State;
 
 use rocket_empty::EmptyResponse;
 

@@ -13,7 +13,7 @@ import {
   hasChannelPermission,
 } from '#/lib/permissions'
 import { permissionOr } from '#/lib/permission-bits'
-import type { Channel, Member, Server } from '@syrnike13/api-types'
+import type { Channel, Member, Role, Server } from '@syrnike13/api-types'
 
 function makeServer(overrides: Partial<Server> = {}): Server {
   return {
@@ -34,6 +34,16 @@ function makeMember(overrides: Partial<Member> = {}): Member {
   }
 }
 
+function makeRole(overrides: Partial<Role> = {}): Role {
+  return {
+    _id: 'role-1',
+    name: 'Role',
+    permissions: { a: 0, d: 0 },
+    mentionable: false,
+    ...overrides,
+  }
+}
+
 function makeTextChannel(
   overrides: Partial<Extract<Channel, { channel_type: 'TextChannel' }>> = {},
 ): Extract<Channel, { channel_type: 'TextChannel' }> {
@@ -43,7 +53,7 @@ function makeTextChannel(
     server: 'server-1',
     name: 'general',
     default_permissions: null,
-    role_permissions: null,
+    role_permissions: undefined,
     ...overrides,
   }
 }
@@ -66,14 +76,14 @@ describe('calculateServerPermissions', () => {
     const server = makeServer({
       default_permissions: 0,
       roles: {
-        mod: {
+        mod: makeRole({
           _id: 'mod',
           name: 'Mod',
           permissions: {
             a: ChannelPermission.ManageChannel,
             d: 0,
           },
-        },
+        }),
       },
     })
     const member = makeMember({ roles: ['mod'] })
@@ -92,12 +102,12 @@ describe('calculateChannelPermissions', () => {
   it('does not let channel overrides restore disabled publish or receive permissions', () => {
     const server = makeServer({
       roles: {
-        speaker: {
+        speaker: makeRole({
           _id: 'speaker',
           name: 'Speaker',
           permissions: { a: 0, d: 0 },
           rank: 1,
-        },
+        }),
       },
     })
     const channel = makeTextChannel({
@@ -169,18 +179,18 @@ describe('getMemberRank', () => {
   it('uses the highest role position (minimum rank value)', () => {
     const server = makeServer({
       roles: {
-        admin: {
+        admin: makeRole({
           _id: 'admin',
           name: 'Admin',
           permissions: { a: 0, d: 0 },
           rank: 1,
-        },
-        mod: {
+        }),
+        mod: makeRole({
           _id: 'mod',
           name: 'Mod',
           permissions: { a: 0, d: 0 },
           rank: 4,
-        },
+        }),
       },
     })
     const member = makeMember({ roles: ['admin', 'mod'] })
@@ -193,18 +203,18 @@ describe('canEditMember', () => {
   it('requires an explicit management permission before rank-based member edits', () => {
     const server = makeServer({
       roles: {
-        high: {
+        high: makeRole({
           _id: 'high',
           name: 'High',
           permissions: { a: 0, d: 0 },
           rank: 1,
-        },
-        low: {
+        }),
+        low: makeRole({
           _id: 'low',
           name: 'Low',
           permissions: { a: 0, d: 0 },
           rank: 5,
-        },
+        }),
       },
     })
     const actor = makeMember({ roles: ['high'] })
@@ -219,18 +229,18 @@ describe('canEditMember', () => {
   it('allows rank-based member edits with role assignment permission', () => {
     const server = makeServer({
       roles: {
-        high: {
+        high: makeRole({
           _id: 'high',
           name: 'High',
           permissions: { a: ChannelPermission.AssignRoles, d: 0 },
           rank: 1,
-        },
-        low: {
+        }),
+        low: makeRole({
           _id: 'low',
           name: 'Low',
           permissions: { a: 0, d: 0 },
           rank: 5,
-        },
+        }),
       },
     })
     const actor = makeMember({ roles: ['high'] })
@@ -247,18 +257,18 @@ describe('canKickServerMember', () => {
   it('requires kick permission and higher role rank than the target', () => {
     const server = makeServer({
       roles: {
-        mod: {
+        mod: makeRole({
           _id: 'mod',
           name: 'Mod',
           permissions: { a: ChannelPermission.KickMembers, d: 0 },
           rank: 2,
-        },
-        member: {
+        }),
+        member: makeRole({
           _id: 'member',
           name: 'Member',
           permissions: { a: 0, d: 0 },
           rank: 5,
-        },
+        }),
       },
     })
     const actor = makeMember({ roles: ['mod'] })
@@ -295,12 +305,12 @@ describe('canBanServerMember', () => {
   it('requires ban permission', () => {
     const server = makeServer({
       roles: {
-        mod: {
+        mod: makeRole({
           _id: 'mod',
           name: 'Mod',
           permissions: { a: ChannelPermission.BanMembers, d: 0 },
           rank: 2,
-        },
+        }),
       },
     })
     const actor = makeMember({ roles: ['mod'] })
@@ -334,18 +344,18 @@ describe('canBanServerMember', () => {
   it('requires higher role rank than the target', () => {
     const server = makeServer({
       roles: {
-        mod: {
+        mod: makeRole({
           _id: 'mod',
           name: 'Mod',
           permissions: { a: ChannelPermission.BanMembers, d: 0 },
           rank: 2,
-        },
-        admin: {
+        }),
+        admin: makeRole({
           _id: 'admin',
           name: 'Admin',
           permissions: { a: ChannelPermission.BanMembers, d: 0 },
           rank: 1,
-        },
+        }),
       },
     })
     const actor = makeMember({ roles: ['mod'] })

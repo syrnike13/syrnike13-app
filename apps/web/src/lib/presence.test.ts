@@ -13,6 +13,7 @@ function userWithPresence(presence: Presence, online = true) {
     _id: 'user-1',
     username: 'tester',
     discriminator: '0001',
+    relationship: 'None',
     online,
     status: { presence, text: null },
   } satisfies User

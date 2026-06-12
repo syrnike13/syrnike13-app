@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use rocket::{serde::json::Json, State};
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, Message, User,
@@ -7,8 +9,6 @@ use syrnike_database::{
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
-use rocket_empty::EmptyResponse;
 use validator::Validate;
 
 /// # Bulk Delete Messages
@@ -39,13 +39,18 @@ pub async fn bulk_delete_messages(
             .datetime()
             .elapsed()
             .expect("Time went backwards")
-            > Duration::from_hours(7 * 24)  // 7 days
+            > Duration::from_hours(7 * 24)
+        // 7 days
         {
             return Err(create_error!(InvalidOperation));
         }
     }
 
     let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     calculate_channel_permissions(&mut query)
         .await

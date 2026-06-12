@@ -16,8 +16,20 @@ export type ChannelVoiceState = {
   participants: UserVoiceState[]
 }
 
+export type VoiceCallState = {
+  channelId: string
+  initiatorId: string
+  phase: 'ringing' | 'active'
+  startedAt: number | string
+  expiresAt?: number | string
+  recipients: string[]
+}
+
 /** channelId → userId → state */
 export type VoiceParticipantsByChannel = Record<
   string,
   Record<string, UserVoiceState>
 >
+
+/** channelId -> call state */
+export type VoiceCallsByChannel = Record<string, VoiceCallState>

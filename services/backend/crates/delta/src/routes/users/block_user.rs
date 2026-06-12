@@ -1,9 +1,9 @@
+use rocket::serde::json::Json;
+use rocket::State;
 use syrnike_database::util::reference::Reference;
 use syrnike_database::{Database, User};
 use syrnike_models::v0;
 use syrnike_result::Result;
-use rocket::serde::json::Json;
-use rocket::State;
 
 /// # Block User
 ///

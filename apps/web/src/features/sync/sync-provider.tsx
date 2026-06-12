@@ -8,6 +8,7 @@ import { config } from '#/lib/config'
 import { queryKeys } from '#/lib/api/query-keys'
 
 import { useMessageNotifications } from '#/features/notifications/use-message-notifications'
+import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
 
 import { ensureVoiceUsersLoaded } from './ensure-voice-users'
 import { refreshSyncAfterReconnect } from './refresh-sync-after-reconnect'
@@ -53,12 +54,18 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     const token = auth.session?.token
     const currentUserId = auth.user?._id
 
-    return eventsGateway.subscribeEvents((event) => {
+    const unsubscribe = eventsGateway.subscribeEvents((event) => {
       syncStore.handleGatewayEvent(event as GatewayServerEvent)
 
       if (currentUserId) {
         if (event.type === 'Ready') {
           syncAuthSessionOnlineFromStore(queryClient, currentUserId)
+        }
+        if (event.type === 'ChannelGroupLeave') {
+          const leave = event as { id: string; user: string }
+          if (leave.user === currentUserId) {
+            syncStore.removeChannel(leave.id)
+          }
         }
         if (event.type === 'UserUpdate') {
           const update = event as { id: string; data: Partial<User> }
@@ -86,6 +93,56 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
 
       if (!token) return
+
+      if (event.type === 'ChannelGroupJoin') {
+        const join = event as { user: string }
+        ensureVoiceUsersLoaded([join.user], token)
+      }
+
+      if (event.type === 'VoiceCallRinging') {
+        const call = event as {
+          initiator_id?: string
+          recipients?: string[]
+        }
+        ensureVoiceUsersLoaded(
+          [call.initiator_id, ...(call.recipients ?? [])].filter(
+            (userId): userId is string => Boolean(userId),
+          ),
+          token,
+        )
+      }
+
+      if (event.type === 'VoiceCallActive') {
+        const call = event as { channel_id?: string; initiator_id?: string }
+        if (call.initiator_id) {
+          ensureVoiceUsersLoaded([call.initiator_id], token)
+        }
+        if (call.channel_id) {
+          void closeVoiceCallNotification(call.channel_id)
+        }
+      }
+
+      if (event.type === 'VoiceCallEnd') {
+        const call = event as { channel_id?: string }
+        if (call.channel_id) {
+          void closeVoiceCallNotification(call.channel_id)
+        }
+      }
+
+      if (event.type === 'Ready' && Array.isArray(event.voice_calls)) {
+        const voiceCalls = event.voice_calls as Array<{
+          initiator_id?: string
+          recipients?: string[]
+        }>
+        const userIds = voiceCalls.flatMap((call) => [
+          call.initiator_id,
+          ...(call.recipients ?? []),
+        ])
+        ensureVoiceUsersLoaded(
+          userIds.filter((userId): userId is string => Boolean(userId)),
+          token,
+        )
+      }
 
       if (event.type === 'Ready' && Array.isArray(event.voice_states)) {
         const voiceStates = event.voice_states as ChannelVoiceState[]
@@ -124,6 +181,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         syncStore.pruneUnknownVoiceParticipants(currentUserId)
       }
     })
+
+    return () => {
+      unsubscribe()
+    }
   }, [auth.session?.token, auth.user?._id, queryClient])
 
   /** Ready мог прийти до монтирования подписчика — переподключаем WS. */
@@ -156,7 +217,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     const token = auth.session?.token
     const currentUserId = auth.user?._id
 
-    return eventsGateway.subscribeState((state) => {
+    const unsubscribe = eventsGateway.subscribeState((state) => {
       const prev = prevGatewayStateRef.current
       prevGatewayStateRef.current = state
 
@@ -171,6 +232,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
       void refreshSyncAfterReconnect(token, currentUserId)
     })
+
+    return () => {
+      unsubscribe()
+    }
   }, [auth.session?.token, auth.user?._id, ready])
 
   return children

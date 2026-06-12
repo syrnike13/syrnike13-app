@@ -32,6 +32,11 @@ import {
 } from '#/lib/composer-files'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import {
+  isServerVoiceChannel,
+  runtimeChannelName,
+  serverChannelServerId,
+} from '#/lib/channel-voice'
+import {
   FLOATING_BAR_HEIGHT_CLASS,
   floatingComposerShellClass,
 } from '#/components/layout/shell-chrome'
@@ -56,8 +61,8 @@ function composerPlaceholder(
   if (channel.channel_type === 'TextChannel') {
     return `Сообщение #${channel.name}`
   }
-  if (channel.channel_type === 'VoiceChannel') {
-    const name = channel.name || 'голосовой'
+  if (isServerVoiceChannel(channel)) {
+    const name = runtimeChannelName(channel) || 'голосовой'
     return `Сообщение #${name}`
   }
   const label = getChannelLabel(channel, users, currentUserId)
@@ -106,11 +111,7 @@ export function MessageComposer({
   const isEditing = Boolean(editingMessage)
   const showReplyBanner = Boolean(replyTo && !isEditing)
 
-  const serverId =
-    channel?.channel_type === 'TextChannel' ||
-    channel?.channel_type === 'VoiceChannel'
-      ? channel.server
-      : undefined
+  const serverId = serverChannelServerId(channel)
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )

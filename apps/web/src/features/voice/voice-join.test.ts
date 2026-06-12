@@ -139,6 +139,117 @@ describe('createVoiceJoinRunner', () => {
 
     expect(requestVoiceJoin).toHaveBeenCalledTimes(2)
   })
+
+  it('passes DM recipients to the voice join request', async () => {
+    syncStore.upsertChannel({
+      _id: 'dm-channel',
+      channel_type: 'DirectMessage',
+      active: true,
+      recipients: ['user-1', 'user-2'],
+      voice: { max_users: null },
+    } as never)
+    const runner = createVoiceJoinRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      setJoinBlockedUntil: vi.fn(),
+      shouldLeaveBeforeJoin: () => false,
+      leaveBeforeJoin: vi.fn(),
+      beginConnecting: vi.fn(),
+      setActiveRoom: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      onRoomConnected: vi.fn(),
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(runner('dm-channel')).resolves.toBe(true)
+
+    expect(requestVoiceJoin).toHaveBeenCalledWith(
+      'dm-channel',
+      false,
+      false,
+      { recipients: ['user-2'] },
+    )
+  })
+
+  it('does not pass DM recipients during rejoin', async () => {
+    syncStore.upsertChannel({
+      _id: 'dm-channel',
+      channel_type: 'DirectMessage',
+      active: true,
+      recipients: ['user-1', 'user-2'],
+      voice: { max_users: null },
+    } as never)
+    const runner = createVoiceJoinRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      setJoinBlockedUntil: vi.fn(),
+      shouldLeaveBeforeJoin: () => false,
+      leaveBeforeJoin: vi.fn(),
+      beginConnecting: vi.fn(),
+      setActiveRoom: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      onRoomConnected: vi.fn(),
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(runner('dm-channel', { rejoin: true })).resolves.toBe(true)
+
+    expect(requestVoiceJoin).toHaveBeenCalledWith(
+      'dm-channel',
+      false,
+      false,
+      { suppress_call_notifications: true },
+    )
+  })
+
+  it('passes group recipients to the voice join request', async () => {
+    syncStore.upsertChannel({
+      _id: 'group-channel',
+      channel_type: 'Group',
+      active: true,
+      name: 'Команда',
+      owner: 'user-1',
+      description: null,
+      recipients: ['user-1', 'user-2', 'user-3'],
+      icon: null,
+      last_message_id: null,
+      permissions: null,
+      nsfw: false,
+    } as never)
+    const runner = createVoiceJoinRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      setJoinBlockedUntil: vi.fn(),
+      shouldLeaveBeforeJoin: () => false,
+      leaveBeforeJoin: vi.fn(),
+      beginConnecting: vi.fn(),
+      setActiveRoom: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      onRoomConnected: vi.fn(),
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(runner('group-channel')).resolves.toBe(true)
+
+    expect(requestVoiceJoin).toHaveBeenCalledWith(
+      'group-channel',
+      false,
+      false,
+      { recipients: ['user-2', 'user-3'] },
+    )
+  })
 })
 
 describe('nativeCredentialsFromJoinResponse', () => {

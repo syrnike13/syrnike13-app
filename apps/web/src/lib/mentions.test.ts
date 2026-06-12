@@ -39,7 +39,13 @@ describe('isMessageMentioningUser', () => {
       isMessageMentioningUser(
         message({ role_mentions: ['role-1'] }),
         me,
-        { member: { _id: { server: 's', user: me }, roles: ['role-1'] } },
+        {
+          member: {
+            _id: { server: 's', user: me },
+            joined_at: '2024-01-01T00:00:00Z',
+            roles: ['role-1'],
+          },
+        },
       ),
     ).toBe(true)
   })

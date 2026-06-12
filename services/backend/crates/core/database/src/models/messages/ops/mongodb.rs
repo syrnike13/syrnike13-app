@@ -2,10 +2,10 @@ use bson::{to_bson, Document};
 use futures::try_join;
 use futures::StreamExt;
 use mongodb::options::FindOptions;
-use syrnike_models::v0::MessageSort;
-use syrnike_result::Result;
 use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
+use syrnike_models::v0::MessageSort;
+use syrnike_result::Result;
 use ulid::Ulid;
 
 use crate::{

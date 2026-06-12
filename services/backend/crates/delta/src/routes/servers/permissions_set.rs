@@ -1,3 +1,4 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{sync_voice_permissions, VoiceClient},
@@ -6,7 +7,6 @@ use syrnike_database::{
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission, Override};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 
 /// # Set Role Permission
 ///
@@ -55,7 +55,7 @@ pub async fn set_role_permission(
         let channel = Reference::from_unchecked(channel_id).as_channel(db).await?;
 
         sync_voice_permissions(db, voice_client, &channel, Some(&server), Some(&role_id)).await?;
-    };
+    }
 
     Ok(Json(server.into()))
 }

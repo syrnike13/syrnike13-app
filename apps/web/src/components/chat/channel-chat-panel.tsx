@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { MessageSquareIcon, XIcon } from '#/components/icons'
-import { toast } from 'sonner'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
@@ -9,7 +8,7 @@ import { MessageList } from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { Button } from '#/components/ui/button'
-import { blockUser } from '#/features/api/users-api'
+import { blockUserRelationship } from '#/features/friends/friend-actions'
 import {
   reactToMessage,
   sendChannelMessage,
@@ -51,7 +50,6 @@ export function ChannelChatPanel({
     token,
     historyQuery,
     serverIdForSelection,
-    isServerChannel,
     setComposerAction,
     hasOlder,
     loadingOlder,
@@ -85,7 +83,7 @@ export function ChannelChatPanel({
         {historyQuery.isFetching ? (
           <span className="text-xs text-muted-foreground">загрузка…</span>
         ) : null}
-        {isServerChannel ? (
+        {channel.channel_type === 'TextChannel' ? (
           <ChannelSettingsDialog channel={channel} />
         ) : null}
         {token ? (
@@ -126,15 +124,9 @@ export function ChannelChatPanel({
           onBlock={(message) => {
             if (!token || message.author === auth.user?._id) return
             if (!window.confirm('Заблокировать этого пользователя?')) return
-            void blockUser(token, message.author)
-              .then((user) => syncStore.upsertUser(user))
-              .catch((error) =>
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : 'Не удалось заблокировать',
-                ),
-              )
+            void blockUserRelationship(token, message.author).catch(
+              () => undefined,
+            )
           }}
           onPin={(message) => void handlePin(message)}
           onUnpin={(message) => void handleUnpin(message)}

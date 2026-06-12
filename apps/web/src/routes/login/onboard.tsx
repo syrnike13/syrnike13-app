@@ -38,7 +38,11 @@ function OnboardPage() {
     if (!auth.hydrated || !auth.session) return
     if (!auth.onboardingChecked) return
     if (!auth.needsOnboarding) {
-      void navigate({ to: '/app', replace: true })
+      void navigate({
+        to: '/app',
+        search: { tab: 'online' },
+        replace: true,
+      })
     }
   }, [
     auth.hydrated,

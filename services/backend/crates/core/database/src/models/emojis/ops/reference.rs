@@ -1,8 +1,8 @@
 use syrnike_result::Result;
 
-use crate::{Emoji, PartialEmoji};
 use crate::EmojiParent;
 use crate::ReferenceDb;
+use crate::{Emoji, PartialEmoji};
 
 use super::AbstractEmojis;
 

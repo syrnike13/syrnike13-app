@@ -1,18 +1,22 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, Invite, User,
 };
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::Result;
-use rocket::State;
-use rocket_empty::EmptyResponse;
 
 /// # Delete Invite
 ///
 /// Delete an invite by its id.
 #[openapi(tag = "Invites")]
 #[delete("/<target>")]
-pub async fn delete(db: &State<Database>, user: User, target: Reference<'_>) -> Result<EmptyResponse> {
+pub async fn delete(
+    db: &State<Database>,
+    user: User,
+    target: Reference<'_>,
+) -> Result<EmptyResponse> {
     let invite = target.as_invite(db).await?;
 
     if user.id == invite.creator() {

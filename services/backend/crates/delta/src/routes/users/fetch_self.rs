@@ -1,7 +1,7 @@
+use rocket::serde::json::Json;
 use syrnike_database::User;
 use syrnike_models::v0;
 use syrnike_result::Result;
-use rocket::serde::json::Json;
 
 /// # Fetch Self
 ///

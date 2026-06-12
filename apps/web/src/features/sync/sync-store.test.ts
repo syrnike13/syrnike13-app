@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { syncStore } from '#/features/sync/sync-store'
 
@@ -426,5 +426,327 @@ describe('syncStore voice events', () => {
     expect(
       syncStore.getState().voiceParticipants[CHANNEL_ID]?.[USER_ID]?.self_mute,
     ).toBe(true)
+  })
+
+  it('tracks voice call ringing, active, and end events', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'VoiceCallRinging',
+      channel_id: CHANNEL_ID,
+      initiator_id: USER_ID,
+      started_at: 1,
+      expires_at: '2026-06-12T00:00:30.000Z',
+      recipients: ['target-user'],
+    })
+
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toEqual({
+      channelId: CHANNEL_ID,
+      initiatorId: USER_ID,
+      phase: 'ringing',
+      startedAt: 1,
+      expiresAt: '2026-06-12T00:00:30.000Z',
+      recipients: ['target-user'],
+    })
+    syncStore.dismissVoiceCall(syncStore.getState().voiceCalls[CHANNEL_ID]!)
+    expect(
+      Object.keys(syncStore.getState().dismissedVoiceCallKeys),
+    ).toHaveLength(1)
+
+    syncStore.handleGatewayEvent({
+      type: 'VoiceCallActive',
+      channel_id: CHANNEL_ID,
+      initiator_id: USER_ID,
+      started_at: 1,
+    })
+
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toEqual({
+      channelId: CHANNEL_ID,
+      initiatorId: USER_ID,
+      phase: 'active',
+      startedAt: 1,
+      expiresAt: undefined,
+      recipients: [],
+    })
+    expect(
+      Object.keys(syncStore.getState().dismissedVoiceCallKeys),
+    ).toHaveLength(1)
+
+    syncStore.handleGatewayEvent({
+      type: 'VoiceCallEnd',
+      channel_id: CHANNEL_ID,
+    })
+
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeUndefined()
+    expect(syncStore.getState().dismissedVoiceCallKeys).toEqual({})
+  })
+
+  it('hydrates voice calls from Ready payload', () => {
+    syncStore.reset()
+
+    syncStore.applyReady({
+      voice_calls: [
+        {
+          channel_id: CHANNEL_ID,
+          initiator_id: USER_ID,
+          phase: 'Ringing',
+          started_at: '2026-06-12T00:00:00.000Z',
+          expires_at: '2026-06-12T00:00:30.000Z',
+          recipients: ['target-user'],
+        },
+      ],
+    } as never)
+
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toEqual({
+      channelId: CHANNEL_ID,
+      initiatorId: USER_ID,
+      phase: 'ringing',
+      startedAt: '2026-06-12T00:00:00.000Z',
+      expiresAt: '2026-06-12T00:00:30.000Z',
+      recipients: ['target-user'],
+    })
+  })
+
+  it('hydrates voice calls from Ready gateway events', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'Ready',
+      voice_calls: [
+        {
+          channel_id: CHANNEL_ID,
+          initiator_id: USER_ID,
+          phase: 'Active',
+          started_at: '2026-06-12T00:00:00.000Z',
+          recipients: [],
+        },
+      ],
+    })
+
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toEqual({
+      channelId: CHANNEL_ID,
+      initiatorId: USER_ID,
+      phase: 'active',
+      startedAt: '2026-06-12T00:00:00.000Z',
+      expiresAt: undefined,
+      recipients: [],
+    })
+  })
+
+  it('normalizes lowercase voice call phases from Ready payloads', () => {
+    syncStore.reset()
+
+    syncStore.applyReady({
+      voice_calls: [
+        {
+          channel_id: CHANNEL_ID,
+          initiator_id: USER_ID,
+          phase: 'active',
+          started_at: '2026-06-12T00:00:00.000Z',
+          recipients: [],
+        },
+      ],
+    } as never)
+
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]?.phase).toBe(
+      'active',
+    )
+  })
+
+  it('replaces stale voice calls from an explicit Ready snapshot', () => {
+    syncStore.reset()
+    const call = {
+      channelId: CHANNEL_ID,
+      initiatorId: USER_ID,
+      phase: 'ringing' as const,
+      startedAt: '2026-06-12T00:00:00.000Z',
+      expiresAt: '2026-06-12T00:00:30.000Z',
+      recipients: ['target-user'],
+    }
+
+    syncStore.setVoiceCall(call)
+    syncStore.dismissVoiceCall(call)
+
+    syncStore.applyReady({ voice_calls: [] } as never)
+
+    expect(syncStore.getState().voiceCalls).toEqual({})
+    expect(syncStore.getState().dismissedVoiceCallKeys).toEqual({})
+  })
+
+  it('keeps dismissed call keys when Ready reports the same call as active', () => {
+    syncStore.reset()
+    const call = {
+      channelId: CHANNEL_ID,
+      initiatorId: USER_ID,
+      phase: 'ringing' as const,
+      startedAt: '2026-06-12T00:00:00.000Z',
+      expiresAt: '2026-06-12T00:00:30.000Z',
+      recipients: ['target-user'],
+    }
+
+    syncStore.setVoiceCall(call)
+    syncStore.dismissVoiceCall(call)
+
+    syncStore.applyReady({
+      voice_calls: [
+        {
+          channel_id: CHANNEL_ID,
+          initiator_id: USER_ID,
+          phase: 'Active',
+          started_at: '2026-06-12T00:00:00.000Z',
+          recipients: [],
+        },
+      ],
+    } as never)
+
+    expect(syncStore.getState().voiceCalls[CHANNEL_ID]?.phase).toBe('active')
+    expect(
+      Object.keys(syncStore.getState().dismissedVoiceCallKeys),
+    ).toHaveLength(1)
+  })
+
+  it('removes ringing voice calls when their expiry timer elapses', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-12T00:00:00.000Z'))
+
+    try {
+      syncStore.reset()
+      syncStore.handleGatewayEvent({
+        type: 'VoiceCallRinging',
+        channel_id: CHANNEL_ID,
+        initiator_id: USER_ID,
+        started_at: '2026-06-12T00:00:00.000Z',
+        expires_at: '2026-06-12T00:00:01.000Z',
+        recipients: ['target-user'],
+      })
+
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toMatchObject({
+        phase: 'ringing',
+        expiresAt: '2026-06-12T00:00:01.000Z',
+      })
+
+      vi.advanceTimersByTime(999)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeDefined()
+
+      vi.advanceTimersByTime(1)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeUndefined()
+    } finally {
+      syncStore.reset()
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps expired group ringing calls joinable as active fallback', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-12T00:00:00.000Z'))
+
+    try {
+      syncStore.reset()
+      syncStore.applyReady({
+        channels: [
+          {
+            _id: CHANNEL_ID,
+            channel_type: 'Group',
+            owner: USER_ID,
+            name: 'Group',
+            recipients: [USER_ID, 'target-user'],
+          },
+        ],
+        voice_calls: [
+          {
+            channel_id: CHANNEL_ID,
+            initiator_id: USER_ID,
+            phase: 'Ringing',
+            started_at: '2026-06-12T00:00:00.000Z',
+            expires_at: '2026-06-12T00:00:01.000Z',
+            recipients: ['target-user'],
+          },
+        ],
+      } as never)
+
+      vi.advanceTimersByTime(1_000)
+
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toEqual({
+        channelId: CHANNEL_ID,
+        initiatorId: USER_ID,
+        phase: 'active',
+        startedAt: '2026-06-12T00:00:00.000Z',
+        expiresAt: Date.parse('2026-06-12T00:00:01.000Z') + 10 * 60 * 1000,
+        recipients: [],
+      })
+
+      vi.advanceTimersByTime(10 * 60 * 1000 - 1)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeDefined()
+
+      vi.advanceTimersByTime(1)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeUndefined()
+    } finally {
+      syncStore.reset()
+      vi.useRealTimers()
+    }
+  })
+
+  it('removes active voice calls when a no-answer deadline elapses', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-12T00:00:00.000Z'))
+
+    try {
+      syncStore.reset()
+      syncStore.applyReady({
+        channels: [
+          {
+            _id: CHANNEL_ID,
+            channel_type: 'Group',
+            owner: USER_ID,
+            name: 'Group',
+            recipients: [USER_ID, 'target-user'],
+          },
+        ],
+        voice_calls: [
+          {
+            channel_id: CHANNEL_ID,
+            initiator_id: USER_ID,
+            phase: 'Active',
+            started_at: '2026-06-12T00:00:00.000Z',
+            expires_at: '2026-06-12T00:00:01.000Z',
+            recipients: [],
+          },
+        ],
+      } as never)
+
+      vi.advanceTimersByTime(999)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeDefined()
+
+      vi.advanceTimersByTime(1)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeUndefined()
+    } finally {
+      syncStore.reset()
+      vi.useRealTimers()
+    }
+  })
+
+  it('schedules active voice call deadlines from gateway events', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-12T00:00:00.000Z'))
+
+    try {
+      syncStore.reset()
+      syncStore.handleGatewayEvent({
+        type: 'VoiceCallActive',
+        channel_id: CHANNEL_ID,
+        initiator_id: USER_ID,
+        started_at: '2026-06-12T00:00:00.000Z',
+        expires_at: '2026-06-12T00:00:01.000Z',
+      })
+
+      vi.advanceTimersByTime(999)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeDefined()
+
+      vi.advanceTimersByTime(1)
+      expect(syncStore.getState().voiceCalls[CHANNEL_ID]).toBeUndefined()
+    } finally {
+      syncStore.reset()
+      vi.useRealTimers()
+    }
   })
 })

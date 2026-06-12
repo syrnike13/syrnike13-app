@@ -54,6 +54,8 @@ function preferences() {
     screenShareEnabled: false,
     screenShareQuality: 'high',
     screenShareCodec: 'auto',
+    screenShareAudio: true,
+    screenShareCaptureMode: 'auto',
     noiseSuppression: true,
     echoCancellation: true,
     voiceGateEnabled: true,

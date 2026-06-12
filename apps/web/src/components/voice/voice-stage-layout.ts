@@ -8,7 +8,7 @@ import { cn } from '#/lib/utils'
 export const voiceStageControlsChromeClass = cn(
   'absolute inset-x-0 z-50 grid grid-cols-[1fr_auto_1fr] items-stretch gap-2 px-2',
   FLOATING_BAR_BOTTOM_CLASS,
-) as const
+)
 
 /** Центральная колонка нижней полоски (группы контролов). */
 export const voiceStageControlsChromeCenterClass =
@@ -28,7 +28,7 @@ export const voiceStageContentBottomPadClass = 'pb-[72px]' as const
 export const voiceStageContentInsetClass = cn(
   'pt-12 px-2 sm:px-3',
   voiceStageContentBottomPadClass,
-) as const
+)
 
 export { FLOATING_BAR_HEIGHT_CLASS }
 

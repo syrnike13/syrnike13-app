@@ -1,8 +1,8 @@
+use rocket::serde::json::Json;
+use rocket::State;
 use syrnike_database::{Bot, Database, User};
 use syrnike_models::v0;
 use syrnike_result::{create_error, Result};
-use rocket::serde::json::Json;
-use rocket::State;
 use validator::Validate;
 
 /// # Create Bot
@@ -32,8 +32,8 @@ pub async fn create_bot(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
-    use syrnike_models::v0;
     use rocket::http::{ContentType, Header, Status};
+    use syrnike_models::v0;
 
     #[rocket::async_test]
     async fn create_bot() {

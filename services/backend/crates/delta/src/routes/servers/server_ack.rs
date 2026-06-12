@@ -1,11 +1,11 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{acker, permissions::DatabasePermissionQuery, reference::Reference},
     Database, User, AMQP,
 };
 use syrnike_permissions::PermissionQuery;
 use syrnike_result::{create_error, Result};
-use rocket::State;
-use rocket_empty::EmptyResponse;
 
 /// # Mark Server As Read
 ///

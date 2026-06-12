@@ -3,7 +3,12 @@ import type { Channel } from '@syrnike13/api-types'
 import type { CommandItem } from '#/features/command-palette/types'
 import { getChannelLabel, isTextChannel } from '#/features/sync/channel-label'
 import type { SyncState } from '#/features/sync/types'
-import { listDmChannels, listServers, listServerChannels } from '#/features/sync/selectors'
+import {
+  findDirectMessageChannelWithUser,
+  listDmChannels,
+  listServers,
+  listServerChannels,
+} from '#/features/sync/selectors'
 import { matchScore } from '#/lib/fuzzy-match'
 
 type BuildCommandItemsOptions = {
@@ -176,10 +181,11 @@ export function buildCommandItems({
         keywords: `${label} ${user.username} friend`,
         run: () => {
           setSelectedServerId(null)
-          const dm = listDmChannels(state, currentUserId).find((channel) => {
-            if (channel.channel_type !== 'DirectMessage') return false
-            return channel.recipients.includes(user._id)
-          })
+          const dm = findDirectMessageChannelWithUser(
+            state,
+            currentUserId,
+            user._id,
+          )
           if (dm) {
             void navigate({
               to: '/app/c/$channelId',

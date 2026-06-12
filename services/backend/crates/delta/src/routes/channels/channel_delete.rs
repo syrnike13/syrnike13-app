@@ -1,16 +1,18 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{
-        delete_voice_channel, is_in_voice_channel, remove_user_from_voice_channel,
-        UserVoiceChannel, VoiceClient,
-    },
+    voice::{delete_voice_channel, UserVoiceChannel, VoiceClient},
     Channel, Database, PartialChannel, User, AMQP,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::State;
-use rocket_empty::EmptyResponse;
+
+use super::voice_call_cleanup::{
+    delete_group_voice_call, remove_group_member_from_voice_call,
+    stop_ringing_for_removed_group_member,
+};
 
 /// # Close Channel
 ///
@@ -46,7 +48,14 @@ pub async fn delete(
                 )
                 .await?
         }
-        Channel::Group { .. } => {
+        Channel::Group {
+            owner, recipients, ..
+        } => {
+            let deletes_group = owner == &user.id
+                && recipients
+                    .iter()
+                    .all(|recipient_id| recipient_id == &user.id);
+
             channel
                 .remove_user_from_group(
                     db,
@@ -57,11 +66,13 @@ pub async fn delete(
                 )
                 .await?;
 
-            let user_voice_channel = UserVoiceChannel::from_channel(&channel);
-
-            if is_in_voice_channel(&user.id, &user_voice_channel).await? {
-                remove_user_from_voice_channel(voice_client, &user_voice_channel, &user.id).await?;
-            };
+            if deletes_group {
+                delete_group_voice_call(db, voice_client, amqp, &channel).await?;
+            } else {
+                stop_ringing_for_removed_group_member(amqp, channel.id(), &user.id).await?;
+                remove_group_member_from_voice_call(db, voice_client, amqp, &channel, &user.id)
+                    .await?;
+            }
         }
         Channel::TextChannel { .. } => {
             permissions.throw_if_lacking_channel_permission(ChannelPermission::ManageChannel)?;
@@ -77,9 +88,9 @@ pub async fn delete(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{Header, Status};
     use syrnike_database::{events::client::EventV1, Channel};
     use syrnike_models::v0::DataCreateGroup;
-    use rocket::http::{Header, Status};
 
     #[rocket::async_test]
     async fn success_delete_group() {

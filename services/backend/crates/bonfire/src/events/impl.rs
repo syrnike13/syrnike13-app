@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use futures::future::join_all;
-use redis_kiss::AsyncCommands;
 use syrnike_database::{
-    events::client::{EventV1, ReadyPayloadFields},
+    events::client::{EventV1, ReadyPayloadFields, VoiceCall, VoiceCallPhase},
     util::permissions::DatabasePermissionQuery,
-    voice::{get_channel_voice_state, UserVoiceChannel},
+    voice::{
+        call_lifecycle::{get_channel_voice_call, VoiceCallPhase as StoredVoiceCallPhase},
+        get_channel_voice_state, UserVoiceChannel,
+    },
     Channel, Database, Member, MemberCompositeKey, Presence, RelationshipStatus,
 };
 use syrnike_models::v0;
@@ -138,7 +140,12 @@ impl State {
         }
 
         // Fetch DMs and server channels.
-        let mut channels = db.find_direct_messages(&user.id).await?;
+        let mut channels = Vec::new();
+        for channel in db.find_direct_messages(&user.id).await? {
+            if !channel.has_bot_recipient(db).await? {
+                channels.push(channel);
+            }
+        }
         channels.append(&mut db.fetch_channels(&channel_ids).await?);
 
         // Filter server channels by permission.
@@ -199,6 +206,38 @@ impl State {
             }
 
             Some(voice_states)
+        } else {
+            None
+        };
+
+        let voice_calls = if fields.voice_calls {
+            let mut voice_calls = Vec::new();
+
+            for channel in channels.iter().filter(|channel| {
+                matches!(
+                    channel,
+                    Channel::DirectMessage { .. } | Channel::Group { .. }
+                )
+            }) {
+                if let Some(call) = get_channel_voice_call(channel.id()).await? {
+                    user_ids.insert(call.initiator_id.clone());
+                    user_ids.extend(call.ringing_recipients.iter().cloned());
+
+                    voice_calls.push(VoiceCall {
+                        channel_id: call.channel_id,
+                        initiator_id: call.initiator_id,
+                        phase: match call.phase {
+                            StoredVoiceCallPhase::Ringing => VoiceCallPhase::Ringing,
+                            StoredVoiceCallPhase::Active => VoiceCallPhase::Active,
+                        },
+                        started_at: call.started_at,
+                        expires_at: call.expires_at,
+                        recipients: call.ringing_recipients,
+                    });
+                }
+            }
+
+            Some(voice_calls)
         } else {
             None
         };
@@ -322,6 +361,7 @@ impl State {
                 None
             },
             voice_states,
+            voice_calls,
 
             emojis,
             user_settings,

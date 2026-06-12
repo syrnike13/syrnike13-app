@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use authifier::models::{totp::Totp, Account, ValidatedTicket};
+use rocket::{serde::json::Json, Request, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, File, PartialServer, User,
@@ -8,13 +9,9 @@ use syrnike_database::{
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, Request, State};
 use validator::Validate;
 
-pub(crate) fn validate_server_channel_order(
-    current: &[String],
-    next: &[String],
-) -> Result<()> {
+pub(crate) fn validate_server_channel_order(current: &[String], next: &[String]) -> Result<()> {
     if next.len() != current.len() {
         return Err(create_error!(InvalidOperation));
     }

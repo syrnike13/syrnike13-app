@@ -80,11 +80,14 @@ describe('native microphone processing boundary', () => {
     const configureMicrophoneRuntime = vi.fn(async () => {})
     const stopMicrophonePreview = vi.fn(async () => {})
     const unsubscribeMetrics = vi.fn()
-    let microphoneMetricsHandler:
-      | Parameters<
-          NonNullable<ReturnType<typeof getSyrnikeDesktop>>['media']['onMicrophoneMetrics']
-        >[0]
-      | null = null
+    const microphoneMetricsHandlerRef: {
+      current?: (event: {
+          sessionId: string
+          inputDb: number
+          thresholdDb: number
+          open: boolean
+        }) => void
+    } = {}
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
@@ -92,7 +95,7 @@ describe('native microphone processing boundary', () => {
         configureMicrophoneRuntime,
         stopMicrophonePreview,
         onMicrophoneMetrics: vi.fn((handler) => {
-          microphoneMetricsHandler = handler
+          microphoneMetricsHandlerRef.current = handler
           return unsubscribeMetrics
         }),
       },
@@ -115,13 +118,13 @@ describe('native microphone processing boundary', () => {
       onLevels,
       onGateMetrics,
     })
-    microphoneMetricsHandler?.({
+    microphoneMetricsHandlerRef.current?.({
       sessionId: 'preview-1',
       inputDb: -24,
       thresholdDb: -28,
       open: true,
     })
-    microphoneMetricsHandler?.({
+    microphoneMetricsHandlerRef.current?.({
       sessionId: 'other-preview',
       inputDb: -6,
       thresholdDb: -28,

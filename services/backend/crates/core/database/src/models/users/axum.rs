@@ -1,4 +1,7 @@
-use axum::{extract::{FromRef, FromRequestParts}, http::request::Parts};
+use axum::{
+    extract::{FromRef, FromRequestParts},
+    http::request::Parts,
+};
 
 use syrnike_result::{create_error, Error, Result};
 
@@ -8,7 +11,7 @@ use crate::{Database, User};
 impl<S> FromRequestParts<S> for User
 where
     Database: FromRef<S>,
-    S: Send + Sync
+    S: Send + Sync,
 {
     type Rejection = Error;
 

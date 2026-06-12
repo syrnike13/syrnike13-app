@@ -85,6 +85,14 @@ auto_derived_partial!(
 );
 
 auto_derived!(
+    /// Voice call end reason.
+    #[serde(rename_all = "snake_case")]
+    pub enum VoiceCallEndReason {
+        Completed,
+        Cancelled,
+        Missed,
+    }
+
     /// Bulk Message Response
     #[serde(untagged)]
     pub enum BulkMessageResponse {
@@ -136,6 +144,7 @@ auto_derived!(
         CallStarted {
             by: String,
             finished_at: Option<Timestamp>,
+            ended_reason: Option<VoiceCallEndReason>,
         },
     }
 

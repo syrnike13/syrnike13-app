@@ -7,10 +7,10 @@ use lapin::{
 };
 use log::{debug, info};
 use redis_kiss::{get_connection, AsyncCommands, Conn as RedisConnection};
+use serde_json;
 use syrnike_config::config;
 use syrnike_database::{events::rabbit::AckEventPayload, Database, AMQP};
 use syrnike_result::{Result, ToSyrnikeError};
-use serde_json;
 
 pub async fn task(db: Database, amqp: AMQP) -> Result<()> {
     let config = config().await;

@@ -5,7 +5,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from 'react'
 
 export type DraftController = {
@@ -17,7 +19,7 @@ export type DraftController = {
 
 type DraftContextValue = {
   controller: DraftController | null
-  setController: (controller: DraftController | null) => void
+  setController: Dispatch<SetStateAction<DraftController | null>>
 }
 
 const DraftContext = createContext<DraftContextValue | null>(null)

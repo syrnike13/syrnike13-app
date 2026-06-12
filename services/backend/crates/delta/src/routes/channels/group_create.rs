@@ -28,6 +28,11 @@ pub async fn create_group(
     })?;
 
     for target in &data.users {
+        let target_user = db.fetch_user(target).await?;
+        if target_user.bot.is_some() {
+            return Err(create_error!(IsBot));
+        }
+
         match user.relationship_with(target) {
             RelationshipStatus::Friend | RelationshipStatus::User => {}
             _ => {
@@ -42,9 +47,9 @@ pub async fn create_group(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{ContentType, Header, Status};
     use syrnike_database::events::client::EventV1;
     use syrnike_models::v0;
-    use rocket::http::{ContentType, Header, Status};
 
     #[rocket::async_test]
     async fn create_group() {

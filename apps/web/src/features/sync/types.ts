@@ -11,14 +11,16 @@ import type {
 import type {
   ChannelVoiceState,
   UserVoiceState,
+  VoiceCallsByChannel,
   VoiceParticipantsByChannel,
 } from './voice-types'
 
 export type GatewayServerEvent = {
-  type: string
+  type?: string
   channel_id?: string
   state?: Partial<UserVoiceState> & { user?: string; user_id?: string }
-  [key: string]: unknown
+  // Gateway events are raw JSON. Event-specific branches normalize the shape.
+  [key: string]: any
 }
 
 export type ReadyPayload = {
@@ -29,6 +31,14 @@ export type ReadyPayload = {
   emojis?: Emoji[]
   channel_unreads?: ChannelUnread[]
   voice_states?: ChannelVoiceState[]
+  voice_calls?: Array<{
+    channel_id: string
+    initiator_id: string
+    phase: 'Ringing' | 'Active' | 'ringing' | 'active'
+    started_at: number | string
+    expires_at?: number | string
+    recipients?: string[]
+  }>
 }
 
 export type SyncState = {
@@ -48,4 +58,8 @@ export type SyncState = {
   typingUsers: Record<string, string[]>
   /** channelId -> userId -> голосовое состояние */
   voiceParticipants: VoiceParticipantsByChannel
+  /** channelId -> lifecycle of a DM/group voice call. */
+  voiceCalls: VoiceCallsByChannel
+  /** In-memory call UI keys hidden by the current client session. */
+  dismissedVoiceCallKeys: Record<string, true>
 }

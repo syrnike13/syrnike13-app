@@ -27,7 +27,7 @@ export function GatewayLoadingScreen({
   gatewayState,
 }: GatewayLoadingScreenProps) {
   const [visible, setVisible] = useState(false)
-  const [fact, setFact] = useState(INITIAL_FACT)
+  const [fact, setFact] = useState<string>(INITIAL_FACT)
   const status = STATUS_BY_STATE[gatewayState]
 
   useEffect(() => {

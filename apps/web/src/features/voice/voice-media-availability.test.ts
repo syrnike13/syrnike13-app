@@ -99,7 +99,7 @@ describe('voice media availability', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: { openDisplayPicker: vi.fn() },
-    } as ReturnType<typeof getSyrnikeDesktop>)
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     expect(resolveScreenShareAvailability().available).toBe(true)
   })

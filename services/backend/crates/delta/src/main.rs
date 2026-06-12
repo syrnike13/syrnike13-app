@@ -8,19 +8,19 @@ extern crate serde_json;
 pub mod routes;
 pub mod util;
 
-use syrnike_config::config;
-use syrnike_database::{AMQP, events::client::EventV1};
-use syrnike_ratelimits::rocket as ratelimiter;
 use rocket::{Build, Rocket};
 use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_prometheus::PrometheusMetrics;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
+use syrnike_config::config;
+use syrnike_database::{events::client::EventV1, AMQP};
+use syrnike_ratelimits::rocket as ratelimiter;
 
 use async_std::channel::unbounded;
 use authifier::AuthifierEvent;
-use syrnike_database::voice::VoiceClient;
 use rocket::data::ToByteUnit;
+use syrnike_database::voice::VoiceClient;
 
 pub async fn web() -> Rocket<Build> {
     // Get settings
@@ -30,7 +30,10 @@ pub async fn web() -> Rocket<Build> {
     config.preflight_checks();
 
     // Setup database
-    let db = syrnike_database::DatabaseInfo::Auto.connect().await.unwrap();
+    let db = syrnike_database::DatabaseInfo::Auto
+        .connect()
+        .await
+        .unwrap();
     db.migrate_database().await.unwrap();
 
     // Setup Authifier event channel

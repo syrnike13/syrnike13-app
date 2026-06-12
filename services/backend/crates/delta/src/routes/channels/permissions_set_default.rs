@@ -1,10 +1,12 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    util::{permissions::DatabasePermissionQuery, reference::Reference}, voice::{sync_voice_permissions, VoiceClient}, Channel, Database, PartialChannel, User
+    util::{permissions::DatabasePermissionQuery, reference::Reference},
+    voice::{sync_voice_permissions, VoiceClient},
+    Channel, Database, PartialChannel, User,
 };
 use syrnike_models::v0::{self, DataDefaultChannelPermissions};
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 
 /// # Set Default Permission
 ///
@@ -23,6 +25,10 @@ pub async fn set_default_channel_permissions(
     let data = data.into_inner();
 
     let mut channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
+
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     let permissions = calculate_channel_permissions(&mut query).await;
 
@@ -73,7 +79,7 @@ pub async fn set_default_channel_permissions(
 
     let server = match channel.server() {
         Some(server_id) => Some(Reference::from_unchecked(server_id).as_server(db).await?),
-        None => None
+        None => None,
     };
 
     sync_voice_permissions(db, voice_client, &channel, server.as_ref(), None).await?;

@@ -1,16 +1,19 @@
 import { Link } from '@tanstack/react-router'
-import { HashIcon } from '#/components/icons'
+import { HashIcon, HeadphonesIcon, UsersIcon } from '#/components/icons'
 
-import { Badge } from '#/components/ui/badge'
+import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
+import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
-import {
-  isChannelUnread,
-  listDmChannels,
-} from '#/features/sync/selectors'
+import { listDmChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
+import {
+  isIncomingVoiceCall,
+  isVoiceCallDismissed,
+  isVoiceCallRingingDismissed,
+} from '#/features/sync/voice-call-utils'
 import { cn } from '#/lib/utils'
 
 type DmChannelListProps = {
@@ -20,12 +23,10 @@ type DmChannelListProps = {
 
 export function DmChannelList({ activeChannelId, className }: DmChannelListProps) {
   const auth = useAuth()
-  const ready = useSyncStore((s) => s.ready)
-  const users = useSyncStore((s) => s.users)
-  const unreads = useSyncStore((s) => s.unreads)
-  const dmChannels = useSyncStore((s) =>
-    listDmChannels(s, auth.user?._id),
-  )
+  const syncState = useSyncStore((s) => s)
+  const ready = syncState.ready
+  const users = syncState.users
+  const dmChannels = listDmChannels(syncState, auth.user?._id)
 
   if (!ready) {
     return (
@@ -48,10 +49,32 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
       {dmChannels.map((channel) => {
         const label = getChannelLabel(channel, users, auth.user?._id)
         const active = channel._id === activeChannelId
-        const unread =
-          !active && isChannelUnread(channel, unreads[channel._id])
+        const notificationBadge = selectChannelNotificationBadge(
+          syncState,
+          channel,
+        )
         const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
         const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
+        const voiceCall = syncState.voiceCalls[channel._id]
+        const voiceCallDismissed = isVoiceCallDismissed(
+          voiceCall,
+          syncState.dismissedVoiceCallKeys,
+        )
+        const voiceCallRingingDismissed = isVoiceCallRingingDismissed(
+          voiceCall,
+          syncState.dismissedVoiceCallKeys,
+        )
+        const incomingVoiceCall =
+          !voiceCallRingingDismissed &&
+          isIncomingVoiceCall(voiceCall, auth.user?._id)
+        const voiceCallMarkerTitle =
+          voiceCallDismissed
+            ? null
+            : incomingVoiceCall
+              ? 'Входящий звонок'
+              : voiceCall?.phase === 'active'
+                ? 'Идёт звонок'
+                : null
 
         return (
           <Button
@@ -63,6 +86,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
             <Link
               to="/app/c/$channelId"
               params={{ channelId: channel._id }}
+              search={{ m: undefined }}
             >
               {dmUser ? (
                 <UserAvatar
@@ -70,12 +94,27 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                   className="size-6"
                   fallbackClassName="size-6 text-[10px]"
                 />
+              ) : channel.channel_type === 'Group' ? (
+                <span
+                  title="Групповой чат"
+                  className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+                >
+                  <UsersIcon aria-hidden="true" className="size-4" />
+                </span>
               ) : (
                 <HashIcon className="size-4 shrink-0 text-muted-foreground" />
               )}
               <span className="min-w-0 flex-1 truncate">{label}</span>
-              {unread ? (
-                <Badge className="size-2 shrink-0 rounded-full p-0" />
+              {voiceCallMarkerTitle ? (
+                <span
+                  title={voiceCallMarkerTitle}
+                  className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-500"
+                >
+                  <HeadphonesIcon aria-hidden="true" className="size-3.5" />
+                </span>
+              ) : null}
+              {!active ? (
+                <NotificationBadge badge={notificationBadge} mode="dot" />
               ) : null}
             </Link>
           </Button>

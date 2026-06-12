@@ -1,6 +1,7 @@
 use authifier::AuthifierEvent;
-use syrnike_result::Error;
+use iso8601_timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
+use syrnike_result::Error;
 
 use syrnike_models::v0::{
     AppendMessage, Channel, ChannelSlowmode, ChannelUnread, ChannelVoiceState, Emoji,
@@ -21,6 +22,23 @@ pub enum Ping {
     Number(usize),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum VoiceCallPhase {
+    Ringing,
+    Active,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VoiceCall {
+    pub channel_id: String,
+    pub initiator_id: String,
+    pub phase: VoiceCallPhase,
+    pub started_at: Timestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<Timestamp>,
+    pub recipients: Vec<String>,
+}
+
 /// Fields provided in Ready payload
 #[derive(PartialEq, Debug, Clone, Deserialize)]
 pub struct ReadyPayloadFields {
@@ -30,6 +48,7 @@ pub struct ReadyPayloadFields {
     pub members: bool,
     pub emojis: bool,
     pub voice_states: bool,
+    pub voice_calls: bool,
     pub user_settings: Vec<String>,
     pub channel_unreads: bool,
     pub policy_changes: bool,
@@ -44,6 +63,7 @@ impl Default for ReadyPayloadFields {
             members: true,
             emojis: true,
             voice_states: true,
+            voice_calls: true,
             user_settings: Vec::new(),
             channel_unreads: false,
             policy_changes: true,
@@ -82,6 +102,8 @@ pub enum EventV1 {
         emojis: Option<Vec<Emoji>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         voice_states: Option<Vec<ChannelVoiceState>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        voice_calls: Option<Vec<VoiceCall>>,
 
         #[serde(skip_serializing_if = "Option::is_none")]
         user_settings: Option<UserSettings>,
@@ -349,6 +371,23 @@ pub enum EventV1 {
     VoiceStateUpdate {
         channel_id: String,
         state: UserVoiceState,
+    },
+    VoiceCallRinging {
+        channel_id: String,
+        initiator_id: String,
+        started_at: Timestamp,
+        expires_at: Timestamp,
+        recipients: Vec<String>,
+    },
+    VoiceCallActive {
+        channel_id: String,
+        initiator_id: String,
+        started_at: Timestamp,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expires_at: Option<Timestamp>,
+    },
+    VoiceCallEnd {
+        channel_id: String,
     },
     VoiceStateAck {
         nonce: String,

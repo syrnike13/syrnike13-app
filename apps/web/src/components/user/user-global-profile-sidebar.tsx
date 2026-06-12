@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BanIcon,
   CopyIcon,
+  HeadphonesIcon,
   Loader2Icon,
   MessageCircleIcon,
   MoreHorizontalIcon,
@@ -14,6 +15,7 @@ import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
+import { FriendshipAction } from '#/components/friends/friendship-action'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import {
@@ -34,6 +36,7 @@ import {
 } from '#/lib/presence'
 import {
   memberRoleEntries,
+  selectDirectMessageCallActionLabel,
   type MemberRoleEntry,
 } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
@@ -50,6 +53,7 @@ type UserGlobalProfileSidebarProps = {
   isSelf: boolean
   busy: boolean
   onOpenDm: () => void
+  onStartCall: () => void
   onCopyId: () => void
   onBlock: () => void
   onEditProfile: () => void
@@ -74,6 +78,7 @@ export function UserGlobalProfileSidebar({
   isSelf,
   busy,
   onOpenDm,
+  onStartCall,
   onCopyId,
   onBlock,
   onEditProfile,
@@ -83,6 +88,10 @@ export function UserGlobalProfileSidebar({
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
   const presenceLabel = presenceModeLabel(getUserPresence(user))
+  const canDirectMessage = !isSelf && !user.bot
+  const directCallActionLabel = useSyncStore((s) =>
+    selectDirectMessageCallActionLabel(s, auth.user?._id, user._id),
+  )
 
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
@@ -202,7 +211,7 @@ export function UserGlobalProfileSidebar({
         </p>
 
         {/* Action buttons */}
-        <div className="mt-3 flex gap-1.5">
+        <div className="mt-3 flex flex-col gap-1.5">
           {isSelf ? (
             <Button
               type="button"
@@ -217,49 +226,68 @@ export function UserGlobalProfileSidebar({
             </Button>
           ) : (
             <>
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy}
-                className="min-w-0 flex-1 gap-1.5"
-                onClick={onOpenDm}
-              >
-                {busy ? (
-                  <Loader2Icon className="size-3.5 animate-spin" />
-                ) : (
-                  <MessageCircleIcon className="size-3.5" />
-                )}
-                <span className="truncate">Сообщение</span>
-              </Button>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="icon"
-                    className="size-8 shrink-0"
-                    disabled={busy}
-                    title="Ещё"
+              <div className="flex gap-1.5">
+                {canDirectMessage ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busy}
+                      className="min-w-0 flex-1 gap-1.5"
+                      onClick={onOpenDm}
+                    >
+                      {busy ? (
+                        <Loader2Icon className="size-3.5 animate-spin" />
+                      ) : (
+                        <MessageCircleIcon className="size-3.5" />
+                      )}
+                      <span className="truncate">Сообщение</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="size-8 shrink-0"
+                      disabled={busy}
+                      title={directCallActionLabel}
+                      onClick={onStartCall}
+                    >
+                      <HeadphonesIcon className="size-4" />
+                      <span className="sr-only">{directCallActionLabel}</span>
+                    </Button>
+                  </>
+                ) : null}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="size-8 shrink-0"
+                      disabled={busy}
+                      title="Ещё"
+                    >
+                      <MoreHorizontalIcon className="size-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="top"
+                    align="end"
+                    className="w-auto min-w-[11rem] p-1"
+                    onOpenAutoFocus={(e) => e.preventDefault()}
                   >
-                    <MoreHorizontalIcon className="size-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  side="top"
-                  align="end"
-                  className="w-auto min-w-[11rem] p-1"
-                  onOpenAutoFocus={(e) => e.preventDefault()}
-                >
-                  <FloatingMenuItem onClick={onCopyId}>
-                    <CopyIcon className="size-3.5" />
-                    Копировать ID
-                  </FloatingMenuItem>
-                  <FloatingMenuItem onClick={onBlock}>
-                    <BanIcon className="size-3.5" />
-                    Заблокировать
-                  </FloatingMenuItem>
-                </PopoverContent>
-              </Popover>
+                    <FloatingMenuItem onClick={onCopyId}>
+                      <CopyIcon className="size-3.5" />
+                      Копировать ID
+                    </FloatingMenuItem>
+                    <FloatingMenuItem onClick={onBlock}>
+                      <BanIcon className="size-3.5" />
+                      Заблокировать
+                    </FloatingMenuItem>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {canDirectMessage ? <FriendshipAction user={user} /> : null}
             </>
           )}
         </div>

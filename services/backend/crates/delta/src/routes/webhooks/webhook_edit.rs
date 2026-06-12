@@ -1,3 +1,4 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, File, PartialWebhook, User,
@@ -5,7 +6,6 @@ use syrnike_database::{
 use syrnike_models::v0::{DataEditWebhook, Webhook};
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::{serde::json::Json, State};
 use validator::Validate;
 
 /// # Edits a webhook

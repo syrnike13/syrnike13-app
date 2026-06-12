@@ -3,6 +3,7 @@ mod mongodb;
 mod reference;
 
 use authifier::config::Captcha;
+use authifier::config::EmailExpiryConfig;
 use authifier::config::EmailVerificationConfig;
 use authifier::config::PasswordScanning;
 use authifier::config::ResolveIp;
@@ -10,7 +11,6 @@ use authifier::config::SMTPSettings;
 use authifier::config::Shield;
 use authifier::config::Template;
 use authifier::config::Templates;
-use authifier::config::EmailExpiryConfig;
 use authifier::Authifier;
 use rand::Rng;
 use syrnike_config::config;

@@ -1,6 +1,7 @@
 use std::env;
 
 use async_std::net::TcpListener;
+use syrnike_database::AMQP;
 use syrnike_presence::clear_region;
 
 #[macro_use]
@@ -20,6 +21,7 @@ async fn main() {
     syrnike_config::configure!(events);
     database::connect().await;
     voice_client::init().await;
+    let amqp = AMQP::new_auto().await;
 
     // Clean up the current region information.
     let no_clear_region = env::var("NO_CLEAR_PRESENCE").unwrap_or_else(|_| "0".into()) == "1";
@@ -36,9 +38,10 @@ async fn main() {
 
     // Start accepting new connections and spawn a client for each connection.
     while let Ok((stream, addr)) = listener.accept().await {
+        let amqp = amqp.clone();
         async_std::task::spawn(async move {
             info!("User connected from {addr:?}");
-            websocket::client(database::get_db(), stream, addr).await;
+            websocket::client(database::get_db(), amqp, stream, addr).await;
             info!("User disconnected from {addr:?}");
         });
     }

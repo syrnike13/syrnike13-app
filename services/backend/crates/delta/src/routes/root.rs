@@ -1,8 +1,8 @@
-use syrnike_config::config;
-use syrnike_result::Result;
 use rocket::serde::json::Json;
 use serde::Serialize;
 use std::collections::HashMap;
+use syrnike_config::config;
+use syrnike_result::Result;
 
 /// # hCaptcha Configuration
 #[derive(Serialize, JsonSchema, Debug)]

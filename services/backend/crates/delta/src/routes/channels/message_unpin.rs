@@ -1,3 +1,5 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Channel, Database, FieldsMessage, PartialMessage, SystemMessage, User, AMQP,
@@ -5,8 +7,6 @@ use syrnike_database::{
 use syrnike_models::v0::MessageAuthor;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
-use rocket::State;
-use rocket_empty::EmptyResponse;
 
 /// # Unpins a message
 ///
@@ -21,6 +21,9 @@ pub async fn message_unpin(
     msg: Reference<'_>,
 ) -> Result<EmptyResponse> {
     let channel = target.as_channel(db).await?;
+    if channel.has_bot_recipient(db).await? {
+        return Err(create_error!(NotFound));
+    }
 
     if !matches!(channel, Channel::DirectMessage { .. }) {
         let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
@@ -64,13 +67,13 @@ pub async fn message_unpin(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
+    use rocket::http::{Header, Status};
     use syrnike_database::{
         events::client::EventV1,
         util::{idempotency::IdempotencyKey, reference::Reference},
         Member, Message, PartialMessage, Server,
     };
     use syrnike_models::v0::{self, FieldsMessage, SystemMessage};
-    use rocket::http::{Header, Status};
 
     #[rocket::async_test]
     async fn unpin_message() {

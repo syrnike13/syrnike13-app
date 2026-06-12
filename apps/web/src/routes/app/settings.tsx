@@ -13,7 +13,11 @@ function SettingsRoute() {
 
   useEffect(() => {
     openSettings('account')
-    void navigate({ to: '/app', replace: true })
+    void navigate({
+      to: '/app',
+      search: { tab: 'online' },
+      replace: true,
+    })
   }, [navigate, openSettings])
 
   return null

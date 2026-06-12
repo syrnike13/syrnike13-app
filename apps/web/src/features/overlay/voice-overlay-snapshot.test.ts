@@ -46,8 +46,10 @@ describe('buildVoiceOverlaySnapshot', () => {
           avatar: {
             _id: 'avatar-1',
             tag: 'avatars',
+            filename: 'speaker.png',
             content_type: 'image/png',
             metadata: { type: 'Image', width: 128, height: 128 },
+            size: 1024,
           },
         },
       },

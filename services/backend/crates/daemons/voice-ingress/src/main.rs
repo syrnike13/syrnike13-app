@@ -1,10 +1,10 @@
 use std::env;
 
+use rocket::{build, routes, Config};
+use std::net::Ipv4Addr;
 use syrnike_database::DatabaseInfo;
 use syrnike_database::{voice::VoiceClient, AMQP};
 use syrnike_result::Result;
-use rocket::{build, routes, Config};
-use std::net::Ipv4Addr;
 
 mod api;
 mod guard;

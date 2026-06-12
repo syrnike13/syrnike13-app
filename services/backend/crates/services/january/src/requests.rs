@@ -8,16 +8,16 @@ use reqwest::{
     header::{self, CONTENT_TYPE},
     redirect, Client, Response,
 };
-use syrnike_config::{config, report_internal_error};
-use syrnike_files::{create_thumbnail, decode_image, image_size_vec, is_valid_image, video_size};
-use syrnike_models::v0::{Embed, Image, ImageSize, Video};
-use syrnike_result::{create_error, Error, Result, ToSyrnikeError};
 use std::net::{IpAddr, SocketAddr};
 use std::{
     io::{Cursor, Write},
     str::FromStr,
     time::Duration,
 };
+use syrnike_config::{config, report_internal_error};
+use syrnike_files::{create_thumbnail, decode_image, image_size_vec, is_valid_image, video_size};
+use syrnike_models::v0::{Embed, Image, ImageSize, Video};
+use syrnike_result::{create_error, Error, Result, ToSyrnikeError};
 use url::{Host, Url};
 
 lazy_static! {

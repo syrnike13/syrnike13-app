@@ -1,11 +1,11 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Channel, Database, User,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_user_permissions, UserPermission};
-use syrnike_result::Result;
-use rocket::{serde::json::Json, State};
+use syrnike_result::{create_error, Result};
 
 /// # Open Direct Message
 ///
@@ -20,6 +20,9 @@ pub async fn open_dm(
     target: Reference<'_>,
 ) -> Result<Json<v0::Channel>> {
     let target = target.as_user(db).await?;
+    if user.bot.is_some() || target.bot.is_some() {
+        return Err(create_error!(IsBot));
+    }
 
     let mut query = DatabasePermissionQuery::new(db, &user).user(&target);
     calculate_user_permissions(&mut query)

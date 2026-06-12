@@ -28,6 +28,7 @@ function makeRole(overrides: Partial<Role> = {}): Role {
     _id: 'role-1',
     name: 'Role',
     permissions: { a: 0, d: 0 },
+    mentionable: false,
     rank: 5,
     ...overrides,
   }

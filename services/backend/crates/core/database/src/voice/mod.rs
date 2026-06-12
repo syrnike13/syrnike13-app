@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     events::client::EventV1,
-    models::{Channel, User},
+    models::{Channel, Message, PartialMessage, SystemMessage, User, VoiceCallEndReason},
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, Server,
 };
@@ -20,6 +20,7 @@ use syrnike_models::v0::{self, PartialUserVoiceState, UserVoiceState};
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, PermissionValue};
 use syrnike_result::{create_error, Result, ToSyrnikeError};
 
+pub mod call_lifecycle;
 mod join;
 mod voice_client;
 pub use join::*;
@@ -34,6 +35,8 @@ pub struct VoiceJoinIntent {
 }
 
 const DESKTOP_NATIVE_IDENTITY_SUFFIX: &str = ":desktop-native";
+const VOICE_JOIN_INTENT_TTL_SECONDS: usize = 120;
+const MIN_CALL_NOTIFICATION_RECIPIENTS_TTL_SECONDS: usize = 120;
 
 pub fn desktop_native_voice_identity(user_id: &str, media_kind: &str) -> String {
     format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}:{media_kind}")
@@ -56,6 +59,13 @@ pub fn base_voice_identity(identity: &str) -> &str {
 
 pub fn is_desktop_native_voice_identity(identity: &str) -> bool {
     identity.contains(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+}
+
+fn voice_transport_identities(user_id: &str) -> Vec<String> {
+    let mut identities = Vec::with_capacity(4);
+    identities.push(user_id.to_string());
+    identities.extend(desktop_native_voice_identities(user_id));
+    identities
 }
 
 async fn get_connection() -> Result<Conn> {
@@ -134,7 +144,11 @@ pub async fn set_user_voice_join_intent(
 
     get_connection()
         .await?
-        .set_ex(format!("voice_join_intent:{user_id}"), intent, 30)
+        .set_ex(
+            format!("voice_join_intent:{user_id}"),
+            intent,
+            VOICE_JOIN_INTENT_TTL_SECONDS,
+        )
         .await
         .to_internal_error()
 }
@@ -920,6 +934,25 @@ pub async fn set_channel_call_started_system_message(
         .to_internal_error()
 }
 
+pub async fn create_voice_call_started_system_message(
+    db: &Database,
+    channel: &Channel,
+    initiator_id: &str,
+) -> Result<()> {
+    let mut message = voice_call_started_system_message(channel.id(), initiator_id);
+    message
+        .send_without_notifications(
+            db,
+            None,
+            None,
+            matches!(channel, Channel::DirectMessage { .. }),
+            false,
+            false,
+        )
+        .await?;
+    set_channel_call_started_system_message(channel.id(), &message.id).await
+}
+
 pub async fn take_channel_call_started_system_message(channel_id: &str) -> Result<Option<String>> {
     get_connection()
         .await?
@@ -928,17 +961,83 @@ pub async fn take_channel_call_started_system_message(channel_id: &str) -> Resul
         .to_internal_error()
 }
 
+pub async fn finish_voice_call_started_system_message(
+    db: &Database,
+    channel_id: &str,
+    finished_at: Timestamp,
+    ended_reason: VoiceCallEndReason,
+) -> Result<()> {
+    let Some(message_id) = take_channel_call_started_system_message(channel_id).await? else {
+        return Ok(());
+    };
+
+    let Ok(mut message) = Reference::from_unchecked(&message_id).as_message(db).await else {
+        return Ok(());
+    };
+
+    let Some(SystemMessage::CallStarted { by, .. }) = &message.system else {
+        log::error!(
+            "Broken state: Call started message ID ({message_id}) does not contain a CallStarted system message."
+        );
+        return Ok(());
+    };
+
+    message
+        .update(
+            db,
+            voice_call_finished_system_partial(by, finished_at, ended_reason),
+            Vec::new(),
+        )
+        .await
+}
+
+fn voice_call_started_system_message(channel_id: &str, initiator_id: &str) -> Message {
+    SystemMessage::CallStarted {
+        by: initiator_id.to_string(),
+        finished_at: None,
+        ended_reason: None,
+    }
+    .into_message(channel_id.to_string())
+}
+
+fn voice_call_finished_system_partial(
+    initiator_id: &str,
+    finished_at: Timestamp,
+    ended_reason: VoiceCallEndReason,
+) -> PartialMessage {
+    PartialMessage {
+        system: Some(SystemMessage::CallStarted {
+            by: initiator_id.to_string(),
+            finished_at: Some(finished_at),
+            ended_reason: Some(ended_reason),
+        }),
+        ..Default::default()
+    }
+}
+
 pub async fn set_call_notification_recipients(
     channel_id: &str,
     user_id: &str,
     recipients: &[String],
 ) -> Result<()> {
+    let ttl_seconds = std::cmp::max(
+        syrnike_config::config()
+            .await
+            .api
+            .livekit
+            .call_ring_duration
+            + 60,
+        MIN_CALL_NOTIFICATION_RECIPIENTS_TTL_SECONDS,
+    );
+
+    let recipients = serde_json::to_string(recipients).to_internal_error()?;
+
     get_connection()
         .await?
         .set_ex(
             format!("call_notification_recipients:{channel_id}-{user_id}"),
             recipients,
-            10,
+            ttl_seconds,
         )
         .await
         .to_internal_error()
@@ -948,13 +1047,16 @@ pub async fn get_call_notification_recipients(
     channel_id: &str,
     user_id: &str,
 ) -> Result<Option<Vec<String>>> {
-    get_connection()
+    let raw: Option<String> = get_connection()
         .await?
         .get_del(format!(
             "call_notification_recipients:{channel_id}-{user_id}"
         ))
         .await
-        .to_internal_error()
+        .to_internal_error()?;
+
+    raw.map(|raw| serde_json::from_str(&raw).to_internal_error())
+        .transpose()
 }
 
 pub async fn remove_user_from_voice_channels(
@@ -974,7 +1076,11 @@ pub async fn remove_user_from_voice_channel(
     user_id: &str,
 ) -> Result<()> {
     if let Some(node) = get_channel_node(&channel.id).await? {
-        let _ = voice_client.remove_user(&node, user_id, &channel.id).await;
+        for identity in voice_transport_identities(user_id) {
+            let _ = voice_client
+                .remove_user(&node, &identity, &channel.id)
+                .await;
+        }
     }
 
     delete_voice_state(channel, user_id).await?;
@@ -992,22 +1098,23 @@ pub async fn delete_voice_channel(
     voice_client: &VoiceClient,
     channel: &UserVoiceChannel,
 ) -> Result<()> {
-    if let Some(users) = get_voice_channel_members(channel).await? {
-        if let Some(node) = get_channel_node(&channel.id).await? {
-            let _ = voice_client.delete_room(&node, &channel.id).await;
-        }
+    if let Some(node) = get_channel_node(&channel.id).await? {
+        let _ = voice_client.delete_room(&node, &channel.id).await;
+    }
 
-        delete_channel_voice_state(channel, &users).await?;
+    let users = get_voice_channel_members(channel)
+        .await?
+        .unwrap_or_default();
+    delete_channel_voice_state(channel, &users).await?;
 
-        for user_id in users {
-            EventV1::VoiceChannelLeave {
-                id: channel.id.clone(),
-                user: user_id,
-            }
-            .p(channel.id.clone())
-            .await;
+    for user_id in users {
+        EventV1::VoiceChannelLeave {
+            id: channel.id.clone(),
+            user: user_id,
         }
-    };
+        .p(channel.id.clone())
+        .await;
+    }
 
     Ok(())
 }
@@ -1092,6 +1199,9 @@ impl FromRedisValue for VoiceJoinIntent {
 #[cfg(test)]
 mod tests {
     use super::partial_voice_state_for_track;
+    use crate::{SystemMessage, VoiceCallEndReason};
+    use iso8601_timestamp::Timestamp;
+    use std::collections::HashMap;
     use syrnike_models::v0::PartialUserVoiceState;
 
     #[test]
@@ -1155,5 +1265,76 @@ mod tests {
             "user-a:desktop-native"
         ));
         assert!(!super::is_desktop_native_voice_identity("user-a"));
+    }
+
+    #[test]
+    fn voice_transport_identities_include_base_and_desktop_native_participants() {
+        assert_eq!(
+            super::voice_transport_identities("user-a"),
+            vec![
+                "user-a".to_string(),
+                "user-a:desktop-native:microphone".to_string(),
+                "user-a:desktop-native:screen".to_string(),
+                "user-a:desktop-native:camera".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn voice_call_started_system_message_records_initiator_without_finished_time() {
+        let message = super::voice_call_started_system_message("channel-a", "caller-a");
+
+        assert_eq!(message.channel, "channel-a");
+        assert_eq!(
+            message.system,
+            Some(SystemMessage::CallStarted {
+                by: "caller-a".to_string(),
+                finished_at: None,
+                ended_reason: None,
+            })
+        );
+    }
+
+    #[test]
+    fn voice_call_finished_system_partial_preserves_initiator_time_and_end_reason() {
+        let finished_at = Timestamp::UNIX_EPOCH;
+
+        let partial = super::voice_call_finished_system_partial(
+            "caller-a",
+            finished_at,
+            VoiceCallEndReason::Completed,
+        );
+
+        assert_eq!(
+            partial.system,
+            Some(SystemMessage::CallStarted {
+                by: "caller-a".to_string(),
+                finished_at: Some(finished_at),
+                ended_reason: Some(VoiceCallEndReason::Completed),
+            })
+        );
+    }
+
+    #[async_std::test]
+    async fn delete_voice_channel_clears_channel_metadata_without_members() {
+        let channel = super::UserVoiceChannel {
+            id: format!("test-empty-{}", ulid::Ulid::new()),
+            server_id: None,
+        };
+        super::set_channel_node(&channel.id, "missing-node")
+            .await
+            .expect("set channel node");
+
+        let voice_client = super::VoiceClient::new(HashMap::new());
+        super::delete_voice_channel(&voice_client, &channel)
+            .await
+            .expect("delete voice channel");
+
+        assert_eq!(
+            super::get_channel_node(&channel.id)
+                .await
+                .expect("get channel node"),
+            None
+        );
     }
 }

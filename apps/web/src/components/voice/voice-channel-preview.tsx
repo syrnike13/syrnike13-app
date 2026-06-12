@@ -10,6 +10,7 @@ import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
+import { serverChannelServerId } from '#/lib/channel-voice'
 /** Начало аватарки = начало названия канала: px-2 + icon 16px + gap-2 − px-2 строки */
 const VOICE_PREVIEW_TEXT_INSET = 'pl-6' as const
 
@@ -22,11 +23,7 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
   const voice = useVoice()
   const users = useSyncStore((s) => s.users)
   const channel = useSyncStore((s) => s.channels[channelId])
-  const serverId =
-    channel?.channel_type === 'TextChannel' ||
-    channel?.channel_type === 'VoiceChannel'
-      ? channel.server
-      : undefined
+  const serverId = serverChannelServerId(channel)
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )

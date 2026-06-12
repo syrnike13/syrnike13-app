@@ -1,7 +1,7 @@
+use rocket::{serde::json::Json, State};
 use syrnike_database::{util::reference::Reference, Database};
 use syrnike_models::v0;
 use syrnike_result::Result;
-use rocket::{serde::json::Json, State};
 
 /// # Fetch User Flags
 ///

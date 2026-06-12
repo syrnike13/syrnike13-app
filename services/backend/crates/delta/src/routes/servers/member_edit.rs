@@ -1,25 +1,26 @@
 use std::collections::HashSet;
 
 use syrnike_database::{
-    Database, File, PartialMember, User,
     events::client::EventV1,
     util::{
-        permissions::{DatabasePermissionQuery, perms},
+        permissions::{perms, DatabasePermissionQuery},
         reference::Reference,
     },
     voice::{
-        UserVoiceChannel, VoiceClient, get_channel_node, get_user_voice_channel_in_server,
-        get_voice_state, remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
+        get_channel_node, get_user_voice_channel_in_server, get_voice_state,
+        remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
         set_user_moved_to_voice, set_user_voice_join_intent, sync_user_voice_permissions,
+        UserVoiceChannel, VoiceClient,
     },
+    Database, File, PartialMember, User,
 };
 use syrnike_models::v0::{self, FieldsMember};
 
-use rocket::{State, form::validate::Contains, serde::json::Json};
+use rocket::{form::validate::Contains, serde::json::Json, State};
 use syrnike_permissions::{
-    ChannelPermission, UserPermission, calculate_channel_permissions, calculate_server_permissions,
+    calculate_channel_permissions, calculate_server_permissions, ChannelPermission, UserPermission,
 };
-use syrnike_result::{Result, create_error};
+use syrnike_result::{create_error, Result};
 use validator::Validate;
 
 /// # Edit Member

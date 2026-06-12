@@ -15,6 +15,59 @@ use web_push::{
     WebPushClient, WebPushError, WebPushMessageBuilder,
 };
 
+#[derive(serde::Serialize)]
+struct DmCallWebPushPayload {
+    #[serde(rename = "type")]
+    event_type: &'static str,
+    initiator_id: String,
+    channel_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    started_at: Option<String>,
+    ended: bool,
+    tag: String,
+    title: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+}
+
+fn dm_call_web_push_payload_body(
+    alert: &DmCallPayload,
+    initiator_name: Option<&str>,
+    channel: Option<&syrnike_database::Channel>,
+) -> Result<String> {
+    let body = if alert.ended {
+        None
+    } else {
+        let initiator_name = initiator_name
+            .ok_or_else(|| anyhow!("missing initiator name for dm call start notification"))?;
+        let channel =
+            channel.ok_or_else(|| anyhow!("missing channel for dm call start notification"))?;
+
+        Some(match channel {
+            syrnike_database::Channel::DirectMessage { .. } => {
+                format!("{initiator_name} звонит вам")
+            }
+            syrnike_database::Channel::Group { name, .. } => {
+                format!("{initiator_name} звонит в группу {name}")
+            }
+            _ => bail!("Invalid DmCallStart/End channel type"),
+        })
+    };
+
+    let payload = DmCallWebPushPayload {
+        event_type: "DmCallStartEnd",
+        initiator_id: alert.initiator_id.clone(),
+        channel_id: alert.channel_id.clone(),
+        started_at: alert.started_at.clone(),
+        ended: alert.ended,
+        tag: format!("voice-call:{}", alert.channel_id),
+        title: "syrnike13",
+        body,
+    };
+
+    Ok(serde_json::to_string(&payload)?)
+}
+
 #[derive(Clone)]
 #[allow(unused)]
 pub struct VapidOutboundConsumer {
@@ -115,31 +168,18 @@ impl Consumer for VapidOutboundConsumer {
             PayloadKind::Generic(alert) => serde_json::to_string(&alert)?,
             PayloadKind::MessageNotification(alert) => serde_json::to_string(&alert)?,
             PayloadKind::DmCallStartEnd(alert) => {
-                let initiator_name = if let Some(server_id) =
-                    self.db.fetch_channel(&alert.channel_id).await?.server()
-                {
-                    format_display_name(&self.db, &alert.initiator_id, Some(server_id)).await
+                if alert.ended {
+                    dm_call_web_push_payload_body(&alert, None, None)?
                 } else {
-                    format_display_name(&self.db, &alert.initiator_id, None).await
-                }?;
+                    let channel = self.db.fetch_channel(&alert.channel_id).await?;
+                    let initiator_name = if let Some(server_id) = channel.server() {
+                        format_display_name(&self.db, &alert.initiator_id, Some(server_id)).await
+                    } else {
+                        format_display_name(&self.db, &alert.initiator_id, None).await
+                    }?;
 
-                let channel = self.db.fetch_channel(&alert.channel_id).await?;
-                let mut body = HashMap::new();
-
-                match channel {
-                    syrnike_database::Channel::DirectMessage { .. } => {
-                        body.insert("body", format!("{} is calling you", initiator_name));
-                    }
-                    syrnike_database::Channel::Group { name, .. } => {
-                        body.insert(
-                            "body",
-                            format!("{} is calling your group, {}", initiator_name, name),
-                        );
-                    }
-                    _ => bail!("Invalid DmCallStart/End channel type"),
+                    dm_call_web_push_payload_body(&alert, Some(&initiator_name), Some(&channel))?
                 }
-
-                serde_json::to_string(&body)?
             }
             PayloadKind::BadgeUpdate(_) => {
                 bail!("Vapid cannot handle badge updates and they should not be sent here.");
@@ -175,5 +215,65 @@ impl Consumer for VapidOutboundConsumer {
         };
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+    use syrnike_database::{events::rabbit::DmCallPayload, Channel};
+
+    use super::dm_call_web_push_payload_body;
+
+    fn direct_message_channel() -> Channel {
+        Channel::DirectMessage {
+            id: "dm-1".to_string(),
+            active: true,
+            recipients: vec!["caller".to_string(), "callee".to_string()],
+            last_message_id: None,
+        }
+    }
+
+    #[test]
+    fn dm_call_start_payload_carries_service_worker_contract() {
+        let alert = DmCallPayload {
+            initiator_id: "caller".to_string(),
+            channel_id: "dm-1".to_string(),
+            started_at: Some("2026-06-12T10:00:00.000Z".to_string()),
+            ended: false,
+        };
+
+        let channel = direct_message_channel();
+        let raw =
+            dm_call_web_push_payload_body(&alert, Some("Alice"), Some(&channel)).expect("payload");
+        let value: Value = serde_json::from_str(&raw).expect("json");
+
+        assert_eq!(value["type"], "DmCallStartEnd");
+        assert_eq!(value["channel_id"], "dm-1");
+        assert_eq!(value["initiator_id"], "caller");
+        assert_eq!(value["started_at"], "2026-06-12T10:00:00.000Z");
+        assert_eq!(value["ended"], false);
+        assert_eq!(value["tag"], "voice-call:dm-1");
+        assert_eq!(value["body"], "Alice звонит вам");
+    }
+
+    #[test]
+    fn group_call_end_payload_closes_existing_notification_without_calling_body() {
+        let alert = DmCallPayload {
+            initiator_id: "caller".to_string(),
+            channel_id: "group-1".to_string(),
+            started_at: None,
+            ended: true,
+        };
+
+        let raw = dm_call_web_push_payload_body(&alert, None, None).expect("payload");
+        let value: Value = serde_json::from_str(&raw).expect("json");
+
+        assert_eq!(value["type"], "DmCallStartEnd");
+        assert_eq!(value["channel_id"], "group-1");
+        assert_eq!(value["initiator_id"], "caller");
+        assert_eq!(value["ended"], true);
+        assert_eq!(value["tag"], "voice-call:group-1");
+        assert!(value.get("body").is_none());
     }
 }

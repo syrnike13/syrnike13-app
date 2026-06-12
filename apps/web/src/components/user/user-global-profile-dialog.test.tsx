@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -10,6 +10,22 @@ import { syncStore } from '#/features/sync/sync-store'
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   openSettings: vi.fn(),
+  voiceJoin: vi.fn().mockResolvedValue(true),
+  openDirectMessageChannel: vi.fn(
+    async (
+      _token: string,
+      _userId: string,
+      navigateToChannel: (channelId: string) => Promise<void> | void,
+    ) => {
+      await navigateToChannel('dm-1')
+      return {
+        _id: 'dm-1',
+        channel_type: 'DirectMessage',
+        active: true,
+        recipients: ['user-current', 'user-target'],
+      }
+    },
+  ),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -29,6 +45,16 @@ vi.mock('#/features/settings/settings-modal-context', () => ({
   }),
 }))
 
+vi.mock('#/features/voice/voice-context', () => ({
+  useVoice: () => ({
+    join: mocks.voiceJoin,
+  }),
+}))
+
+vi.mock('#/features/dm/dm-actions', () => ({
+  openDirectMessageChannel: mocks.openDirectMessageChannel,
+}))
+
 vi.mock('#/components/ui/dialog', () => ({
   Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
     open ? <div>{children}</div> : null,
@@ -40,13 +66,27 @@ vi.mock('#/components/ui/dialog', () => ({
 }))
 
 vi.mock('#/components/user/user-global-profile-sidebar', () => ({
-  UserGlobalProfileSidebar: () => <aside />,
+  UserGlobalProfileSidebar: ({
+    onStartCall,
+  }: {
+    onStartCall?: () => void
+  }) => (
+    <aside>
+      {onStartCall ? (
+        <button type="button" onClick={onStartCall}>
+          Позвонить
+        </button>
+      ) : null}
+    </aside>
+  ),
 }))
 
 describe('UserGlobalProfileDialog', () => {
   beforeEach(() => {
     mocks.navigate.mockClear()
     mocks.openSettings.mockClear()
+    mocks.voiceJoin.mockClear()
+    mocks.openDirectMessageChannel.mockClear()
     syncStore.reset()
     syncStore.upsertServer({
       _id: 'server-a',
@@ -87,6 +127,32 @@ describe('UserGlobalProfileDialog', () => {
       to: '/app/c/$channelId',
       params: { channelId: 'channel-a' },
       search: { m: undefined },
+    })
+  })
+
+  it('starts a direct message call from the profile actions', async () => {
+    render(
+      <UserGlobalProfileDialog
+        user={{ _id: 'user-target', username: 'bob', online: true } as never}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Позвонить' }))
+
+    expect(mocks.openDirectMessageChannel).toHaveBeenCalledWith(
+      'session-token',
+      'user-target',
+      expect.any(Function),
+    )
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/app/c/$channelId',
+      params: { channelId: 'dm-1' },
+      search: { m: undefined },
+    })
+    await waitFor(() => {
+      expect(mocks.voiceJoin).toHaveBeenCalledWith('dm-1')
     })
   })
 })

@@ -1,11 +1,11 @@
+use rocket::State;
+use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, User,
 };
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::Result;
-use rocket::State;
-use rocket_empty::EmptyResponse;
 
 /// # Unban user
 ///

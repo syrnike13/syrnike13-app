@@ -31,7 +31,10 @@ async fn main() {
     syrnike_config::configure!(pushd);
 
     // Setup database
-    let db = syrnike_database::DatabaseInfo::Auto.connect().await.unwrap();
+    let db = syrnike_database::DatabaseInfo::Auto
+        .connect()
+        .await
+        .unwrap();
     let authifier: authifier::Database;
 
     if let Some(client) = match &db {
