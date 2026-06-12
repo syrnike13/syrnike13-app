@@ -50,7 +50,7 @@ export function ServerInviteDialog({
   const [codes, setCodes] = useState<string[]>([])
 
   const textChannels = useSyncStore((s) =>
-    listServerChannels(s, serverId).filter(
+    listServerChannels(s, serverId, auth.user?._id).filter(
       (channel) => channel.channel_type === 'TextChannel',
     ),
   )

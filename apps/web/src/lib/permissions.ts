@@ -367,3 +367,59 @@ export function canManageChannelPermissions(
     ChannelPermission.ManagePermissions,
   )
 }
+
+export function calculateEveryoneChannelPermissions(
+  server: Server,
+  channel: ServerTextChannel,
+): number {
+  let permissions = maskPermissionBits(server.default_permissions ?? 0)
+  permissions = applyOverride(permissions, channel.default_permissions)
+  return permissions
+}
+
+function channelHasRolePermissionOverrides(channel: ServerTextChannel) {
+  if (!channel.role_permissions) return false
+  return Object.values(channel.role_permissions).some(
+    (override) => (override.a ?? 0) !== 0 || (override.d ?? 0) !== 0,
+  )
+}
+
+export function isChannelAccessRestricted(
+  server: Server,
+  channel: ServerTextChannel,
+): boolean {
+  const everyonePermissions = calculateEveryoneChannelPermissions(
+    server,
+    channel,
+  )
+
+  if (
+    !hasChannelPermission(everyonePermissions, ChannelPermission.ViewChannel)
+  ) {
+    return true
+  }
+
+  if (
+    channel.voice != null &&
+    !hasChannelPermission(everyonePermissions, ChannelPermission.Connect)
+  ) {
+    return true
+  }
+
+  return channelHasRolePermissionOverrides(channel)
+}
+
+export function canViewChannel(
+  server: Server | undefined,
+  channel: ServerTextChannel,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!server || !userId) return false
+  if (server.owner === userId) return true
+
+  return hasChannelPermission(
+    calculateChannelPermissions(server, channel, member, userId),
+    ChannelPermission.ViewChannel,
+  )
+}

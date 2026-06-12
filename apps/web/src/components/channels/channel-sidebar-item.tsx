@@ -7,13 +7,13 @@ import {
   SettingsIcon,
   Trash2Icon,
   UsersIcon,
-  Volume2BoldIcon,
 } from '#/components/icons'
 import type { MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
+import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -295,7 +295,7 @@ export function ChannelSidebarItem({
               <UsersIcon aria-hidden="true" className="size-4" />
             </span>
           ) : serverVoice ? (
-            <Volume2BoldIcon className="size-4 shrink-0 text-muted-foreground" />
+            <VoiceChannelIcon channel={channel} server={server} />
           ) : (
             <HashIcon className="size-4 shrink-0 text-muted-foreground" />
           )}

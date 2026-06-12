@@ -15,6 +15,7 @@ import {
   isVoiceCallRingingDismissed,
 } from './voice-call-utils'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
+import { canViewChannel } from '#/lib/permissions'
 import type { SyncState } from './types'
 
 export const EMPTY_CHANNELS: Channel[] = []
@@ -141,8 +142,9 @@ export function listVisibleDmRailChannels(
 export function listServerTextChannelIds(
   state: SyncState,
   serverId: string,
+  userId?: string,
 ): string[] {
-  return listServerChannels(state, serverId)
+  return listServerChannels(state, serverId, userId)
     .filter((channel) => channel.channel_type === 'TextChannel')
     .map((channel) => channel._id)
 }
@@ -152,6 +154,7 @@ const serverChannelsListCache = new Map<
   {
     server: Server | undefined
     channels: SyncState['channels']
+    userId: string | undefined
     list: Channel[]
   }
 >()
@@ -159,13 +162,15 @@ const serverChannelsListCache = new Map<
 export function listServerChannels(
   state: SyncState,
   serverId: string,
+  userId?: string,
 ): Channel[] {
   const server = state.servers[serverId]
   const cached = serverChannelsListCache.get(serverId)
   if (
     cached &&
     cached.server === server &&
-    cached.channels === state.channels
+    cached.channels === state.channels &&
+    cached.userId === userId
   ) {
     return cached.list
   }
@@ -178,34 +183,38 @@ export function listServerChannels(
       channel.server === serverId,
   )
 
+  let list: Channel[]
   if (!server?.channels?.length) {
-    const list = channels.sort((a, b) => {
+    list = channels.sort((a, b) => {
       const aVoice = isServerVoiceChannel(a)
       const bVoice = isServerVoiceChannel(b)
       if (aVoice !== bVoice) return aVoice ? 1 : -1
       return a.name.localeCompare(b.name)
     })
-    serverChannelsListCache.set(serverId, {
-      server,
-      channels: state.channels,
-      list,
+  } else {
+    const order = new Map(server.channels.map((id, index) => [id, index]))
+    list = channels.sort((a, b) => {
+      const aVoice = isServerVoiceChannel(a)
+      const bVoice = isServerVoiceChannel(b)
+      if (aVoice !== bVoice) return aVoice ? 1 : -1
+      const aIndex = order.get(a._id) ?? Number.MAX_SAFE_INTEGER
+      const bIndex = order.get(b._id) ?? Number.MAX_SAFE_INTEGER
+      if (aIndex !== bIndex) return aIndex - bIndex
+      return a.name.localeCompare(b.name)
     })
-    return list
   }
 
-  const order = new Map(server.channels.map((id, index) => [id, index]))
-  const list = channels.sort((a, b) => {
-    const aVoice = isServerVoiceChannel(a)
-    const bVoice = isServerVoiceChannel(b)
-    if (aVoice !== bVoice) return aVoice ? 1 : -1
-    const aIndex = order.get(a._id) ?? Number.MAX_SAFE_INTEGER
-    const bIndex = order.get(b._id) ?? Number.MAX_SAFE_INTEGER
-    if (aIndex !== bIndex) return aIndex - bIndex
-    return a.name.localeCompare(b.name)
-  })
+  if (userId && server) {
+    const member = state.members[`${serverId}:${userId}`]
+    list = list.filter((channel) =>
+      canViewChannel(server, channel, member, userId),
+    )
+  }
+
   serverChannelsListCache.set(serverId, {
     server,
     channels: state.channels,
+    userId,
     list,
   })
   return list
@@ -429,5 +438,5 @@ export function pickDefaultChannelId(
   const server = listServers(state)[0]
   if (!server) return undefined
 
-  return listServerChannels(state, server._id)[0]?._id
+  return listServerChannels(state, server._id, currentUserId)[0]?._id
 }

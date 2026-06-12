@@ -103,7 +103,7 @@ export function buildCommandItems({
         keywords: `${server.name} server`,
         run: () => {
           setSelectedServerId(server._id)
-          const first = listServerChannels(state, server._id).find(
+          const first = listServerChannels(state, server._id, currentUserId).find(
             (c) => c.channel_type === 'TextChannel',
           )
           if (first) {
@@ -219,7 +219,7 @@ export function messageSearchChannelIds(
     if (!ids.includes(channel._id)) ids.push(channel._id)
   }
   for (const server of listServers(state)) {
-    for (const channel of listServerChannels(state, server._id)) {
+    for (const channel of listServerChannels(state, server._id, currentUserId)) {
       if (channel.channel_type !== 'TextChannel') continue
       if (ids.length >= limit) break
       if (!ids.includes(channel._id)) ids.push(channel._id)

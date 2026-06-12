@@ -38,7 +38,7 @@ function ServerRailButton({
     selectServerNotificationBadge(s, server._id, currentUserId),
   )
   const firstChannelId = useSyncStore((s) => {
-    const channels = listServerChannels(s, server._id)
+    const channels = listServerChannels(s, server._id, currentUserId)
     const text = channels.find((c) => c.channel_type === 'TextChannel')
     return (text ?? channels[0])?._id
   })

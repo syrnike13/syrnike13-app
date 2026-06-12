@@ -94,7 +94,11 @@ export function UserGlobalProfileDialog({
   }
 
   function handleServerSelect(serverId: string) {
-    const channelId = listServerChannels(syncStore.getState(), serverId)[0]?._id
+    const channelId = listServerChannels(
+      syncStore.getState(),
+      serverId,
+      auth.user?._id,
+    )[0]?._id
     if (!channelId) return
     close()
     void navigate({

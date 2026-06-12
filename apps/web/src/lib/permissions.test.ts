@@ -8,9 +8,11 @@ import {
   canEditMember,
   canInviteToChannel,
   canKickServerMember,
+  canViewChannel,
   getMemberRank,
   getServerMenuPermissions,
   hasChannelPermission,
+  isChannelAccessRestricted,
 } from '#/lib/permissions'
 import { permissionOr } from '#/lib/permission-bits'
 import type { Channel, Member, Role, Server } from '@syrnike13/api-types'
@@ -144,6 +146,65 @@ describe('calculateChannelPermissions', () => {
     expect(hasChannelPermission(permissions, ChannelPermission.Listen)).toBe(
       false,
     )
+  })
+})
+
+describe('canViewChannel', () => {
+  it('hides channels from members without ViewChannel', () => {
+    const server = makeServer({
+      default_permissions: permissionOr(
+        ChannelPermission.ViewChannel,
+        ChannelPermission.ReadMessageHistory,
+      ),
+    })
+    const channel = makeTextChannel({
+      default_permissions: {
+        a: 0,
+        d: ChannelPermission.ViewChannel,
+      },
+    })
+    const member = makeMember()
+
+    expect(canViewChannel(server, channel, member, 'user-1')).toBe(false)
+    expect(canViewChannel(server, channel, member, 'owner-1')).toBe(true)
+  })
+})
+
+describe('isChannelAccessRestricted', () => {
+  it('marks channels where @everyone cannot view them', () => {
+    const server = makeServer({
+      default_permissions: permissionOr(
+        ChannelPermission.ViewChannel,
+        ChannelPermission.Connect,
+      ),
+    })
+    const channel = makeTextChannel({
+      voice: { max_users: null },
+      default_permissions: {
+        a: 0,
+        d: ChannelPermission.ViewChannel,
+      },
+    })
+
+    expect(isChannelAccessRestricted(server, channel)).toBe(true)
+  })
+
+  it('marks voice channels where @everyone cannot connect', () => {
+    const server = makeServer({
+      default_permissions: permissionOr(
+        ChannelPermission.ViewChannel,
+        ChannelPermission.Connect,
+      ),
+    })
+    const channel = makeTextChannel({
+      voice: { max_users: null },
+      default_permissions: {
+        a: 0,
+        d: ChannelPermission.Connect,
+      },
+    })
+
+    expect(isChannelAccessRestricted(server, channel)).toBe(true)
   })
 })
 

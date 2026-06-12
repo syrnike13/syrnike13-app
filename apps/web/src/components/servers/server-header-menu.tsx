@@ -70,7 +70,9 @@ export function ServerHeaderMenu({
   const navigate = useNavigate()
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
-  const channels = useSyncStore((s) => listServerChannels(s, serverId))
+  const channels = useSyncStore((s) =>
+    listServerChannels(s, serverId, auth.user?._id),
+  )
   const menuPermissions = server
     ? getServerMenuPermissions(server, channels, member, auth.user?._id)
     : null

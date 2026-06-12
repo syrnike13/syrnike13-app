@@ -6,7 +6,8 @@ import {
   useState,
   type Ref,
 } from 'react'
-import { MessageSquareIcon, Volume2Icon } from '#/components/icons'
+import { MessageSquareIcon } from '#/components/icons'
+import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import type { Channel, User } from '@syrnike13/api-types'
 import type { VoiceCallState } from '#/features/sync/voice-types'
 import { toast } from 'sonner'
@@ -456,7 +457,11 @@ export function VoiceStageView({
           voiceStageChromeMotion(chromeVisible, 'top'),
         )}
       >
-        <Volume2Icon className="size-5 shrink-0 text-white/60" />
+        <VoiceChannelIcon
+          channel={channel}
+          server={server}
+          className="size-5 text-white/60"
+        />
         <h1
           className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
           title={

@@ -67,8 +67,8 @@ export function selectServerNotificationBadge(
   serverId: string,
   _currentUserId?: string,
 ): NotificationBadgeState {
-  const unreadChannels = listServerChannels(state, serverId).filter((channel) =>
-    isUnreadChannel(state, channel),
+  const unreadChannels = listServerChannels(state, serverId, _currentUserId).filter(
+    (channel) => isUnreadChannel(state, channel),
   ).length
 
   return badge(unreadChannels)

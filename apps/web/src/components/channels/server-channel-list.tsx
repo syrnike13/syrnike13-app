@@ -428,7 +428,7 @@ export function ServerChannelList({
     (s) => s.members[`${serverId}:${auth.user?._id}`],
   )
   const channels = useSyncStore((s) =>
-    listServerChannels(s, serverId),
+    listServerChannels(s, serverId, auth.user?._id),
   ) as ServerChannel[]
 
   const canManage = server
