@@ -106,18 +106,17 @@ pub async fn join_voice_channel(
         .ok_or_else(|| create_error!(UnknownNode))?
         .clone();
 
-    if user.bot.is_none() {
-        set_user_voice_join_intent(
-            &user.id,
-            &user_voice_channel,
-            options.operation_id.as_deref(),
-            options.self_mute,
-            options.self_deaf,
-        )
-        .await?;
-    } else {
+    if user.bot.is_some() {
         raise_if_in_voice(user, &user_voice_channel).await?;
     }
+    set_user_voice_join_intent(
+        &user.id,
+        &user_voice_channel,
+        options.operation_id.as_deref(),
+        options.self_mute,
+        options.self_deaf,
+    )
+    .await?;
 
     let token = voice_client
         .create_token_for_identity(&node, db, user, &user.id, current_permissions, &channel)

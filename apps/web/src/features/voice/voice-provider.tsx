@@ -88,7 +88,10 @@ import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engin
 import { shouldUseNativeScreenShare } from '#/features/voice/native-screen-share-mode'
 import { createVoiceOperationId } from '#/features/voice/voice-operation'
 import { createVoiceSessionController } from '#/features/voice/voice-session-controller'
-import { voiceCommitFromGatewayEvent } from '#/features/voice/voice-session-events'
+import {
+  voiceCommitFromGatewayEvent,
+  voiceCommitOperationIdToObserve,
+} from '#/features/voice/voice-session-events'
 import { decideVoiceRecoveryAction } from '#/features/voice/voice-recovery'
 import {
   publishNativeScreenShare,
@@ -1846,21 +1849,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       if (!commit) return
 
       const controller = voiceSessionControllerRef.current
-      const state = controller.getState()
-      if (
-        !commit.operationId ||
-        state.activeOperationId !== commit.operationId ||
-        state.desired.kind !== 'channel' ||
-        state.desired.channelId !== commit.channelId ||
-        state.desired.operationId !== commit.operationId
-      ) {
-        return
-      }
-
-      controller.handleServerCommitObserved(
-        commit.operationId,
-        commit.channelId,
+      const operationId = voiceCommitOperationIdToObserve(
+        controller.getState(),
+        commit,
       )
+      if (!operationId) return
+
+      controller.handleServerCommitObserved(operationId, commit.channelId)
     })
     return () => {
       unsubscribe()

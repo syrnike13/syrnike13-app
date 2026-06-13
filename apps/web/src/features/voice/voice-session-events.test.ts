@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs'
+import { describe, expect, it, vi } from 'vitest'
 
-import { describe, expect, it } from 'vitest'
-
-import { voiceCommitFromGatewayEvent } from './voice-session-events'
+import {
+  voiceCommitFromGatewayEvent,
+  voiceCommitOperationIdToObserve,
+} from './voice-session-events'
 
 describe('voice session gateway events', () => {
   it('returns the committed channel when the local user joins voice', () => {
@@ -35,20 +36,50 @@ describe('voice session gateway events', () => {
     expect(commit).toEqual({ channelId: 'voice-b', operationId: 'op-move' })
   })
 
-  it('requires provider server commits to use the gateway operation id', () => {
-    const source = readFileSync(
-      new URL('./voice-provider.tsx', import.meta.url),
-      'utf8',
-    )
-    const commitEffect = source.match(
-      /const commit = voiceCommitFromGatewayEvent[\s\S]*?controller\.handleServerCommitObserved\([\s\S]*?\)/,
-    )?.[0]
+  it('observes server commits only for the current desired operation', () => {
+    const handleServerCommitObserved = vi.fn()
+    const state = {
+      activeOperationId: 'op-join',
+      desired: {
+        kind: 'channel' as const,
+        channelId: 'voice-a',
+        operationId: 'op-join',
+        reason: 'manual_join' as const,
+      },
+    }
 
-    expect(commitEffect).toBeDefined()
-    expect(commitEffect).toContain('!commit.operationId')
-    expect(commitEffect).toContain('state.desired.operationId !== commit.operationId')
-    expect(commitEffect).toContain('commit.operationId')
-    expect(commitEffect).not.toContain('state.activeOperationId,\n        commit.channelId')
+    const operationId = voiceCommitOperationIdToObserve(state, {
+      channelId: 'voice-a',
+      operationId: 'op-join',
+    })
+    if (operationId) handleServerCommitObserved(operationId, 'voice-a')
+
+    expect(handleServerCommitObserved).toHaveBeenCalledTimes(1)
+    expect(handleServerCommitObserved).toHaveBeenCalledWith(
+      'op-join',
+      'voice-a',
+    )
+  })
+
+  it('ignores stale server commits for a different operation', () => {
+    const handleServerCommitObserved = vi.fn()
+    const state = {
+      activeOperationId: 'op-join',
+      desired: {
+        kind: 'channel' as const,
+        channelId: 'voice-a',
+        operationId: 'op-join',
+        reason: 'manual_join' as const,
+      },
+    }
+
+    const operationId = voiceCommitOperationIdToObserve(state, {
+      channelId: 'voice-a',
+      operationId: 'op-stale',
+    })
+    if (operationId) handleServerCommitObserved(operationId, 'voice-a')
+
+    expect(handleServerCommitObserved).not.toHaveBeenCalled()
   })
 
   it('ignores voice commits for other users', () => {

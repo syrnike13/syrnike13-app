@@ -1,4 +1,5 @@
 import type { GatewayServerEvent } from '#/features/sync/types'
+import type { VoiceSessionState } from '#/features/voice/voice-session-machine'
 
 export type VoiceServerCommit = {
   channelId: string
@@ -28,6 +29,18 @@ export function voiceCommitFromGatewayEvent(
   }
 
   return null
+}
+
+export function voiceCommitOperationIdToObserve(
+  state: Pick<VoiceSessionState, 'activeOperationId' | 'desired'>,
+  commit: VoiceServerCommit,
+): string | null {
+  if (!commit.operationId) return null
+  if (state.activeOperationId !== commit.operationId) return null
+  if (state.desired.kind !== 'channel') return null
+  if (state.desired.channelId !== commit.channelId) return null
+  if (state.desired.operationId !== commit.operationId) return null
+  return commit.operationId
 }
 
 function voiceJoinChannelId(event: GatewayServerEvent) {
