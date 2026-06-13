@@ -21,7 +21,10 @@ use futures::{
 use redis_kiss::{get_connection, AsyncCommands, PayloadType, REDIS_PAYLOAD_TYPE, REDIS_URI};
 use syrnike_config::report_internal_error;
 use syrnike_database::{
-    events::{client::EventV1, server::ClientMessage},
+    events::{
+        client::{EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind},
+        server::ClientMessage,
+    },
     iso8601_timestamp::Timestamp,
     Database, User, UserHint, AMQP,
 };
@@ -92,6 +95,9 @@ pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: 
         write
             .send(config.encode(&EventV1::Error {
                 data: create_error!(InvalidSession),
+                fatal: true,
+                scope: GatewayErrorScope::Session,
+                request: None,
             }))
             .await
             .ok();
@@ -102,7 +108,12 @@ pub async fn client(db: &'static Database, amqp: AMQP, stream: TcpStream, addr: 
         Ok(user) => user,
         Err(err) => {
             write
-                .send(config.encode(&EventV1::Error { data: err }))
+                .send(config.encode(&EventV1::Error {
+                    data: err,
+                    fatal: true,
+                    scope: GatewayErrorScope::Session,
+                    request: None,
+                }))
                 .await
                 .ok();
             return;
@@ -606,6 +617,12 @@ async fn worker(
                         refresh_credentials,
                     } => {
                         let ack_channel_id = channel_id.clone();
+                        let error_request = GatewayErrorRequest {
+                            kind: GatewayRequestKind::VoiceStateUpdate,
+                            nonce: nonce.clone(),
+                            operation_id: operation_id.clone(),
+                            channel_id: ack_channel_id.clone(),
+                        };
                         match crate::voice::handle_voice_state_update(
                             db,
                             crate::voice_client::get(),
@@ -644,7 +661,13 @@ async fn worker(
                                 .await;
                             }
                             Err(error) => {
-                                crate::voice::send_voice_error(write, config, error).await;
+                                crate::voice::send_voice_error(
+                                    write,
+                                    config,
+                                    error,
+                                    error_request,
+                                )
+                                .await;
                                 crate::voice::send_voice_state_ack(
                                     write,
                                     config,

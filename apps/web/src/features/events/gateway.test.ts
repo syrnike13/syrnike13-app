@@ -169,7 +169,7 @@ describe('EventsGateway', () => {
     expect(mock.sockets).toHaveLength(2)
   })
 
-  it('schedules reconnect once when server sends Error then closes socket', () => {
+  it('keeps the socket connected when server sends recoverable request error', () => {
     gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
     gateway.connect('wss://example.test/ws', 'token-1')
 
@@ -180,7 +180,43 @@ describe('EventsGateway', () => {
     expect(gateway.state).toBe('connected')
 
     socket.onmessage?.({
-      data: JSON.stringify({ type: 'Error', data: { type: 'SomeError' } }),
+      data: JSON.stringify({
+        type: 'Error',
+        fatal: false,
+        scope: 'VoiceStateUpdate',
+        request: {
+          kind: 'VoiceStateUpdate',
+          operation_id: 'op-join',
+          channel_id: 'channel-1',
+        },
+        data: { type: 'InvalidOperation' },
+      }),
+    })
+
+    expect(socket.close).not.toHaveBeenCalled()
+    expect(gateway.state).toBe('connected')
+
+    vi.advanceTimersByTime(1_000)
+    expect(mock.sockets).toHaveLength(1)
+  })
+
+  it('schedules reconnect once when server sends fatal Error then closes socket', () => {
+    gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
+    gateway.connect('wss://example.test/ws', 'token-1')
+
+    const socket = mock.sockets.at(-1)!
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'Ready', users: [] }),
+    })
+    expect(gateway.state).toBe('connected')
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: 'Error',
+        fatal: true,
+        scope: 'Session',
+        data: { type: 'InvalidSession' },
+      }),
     })
     expect(socket.close).toHaveBeenCalledTimes(1)
     expect(gateway.state).toBe('reconnecting')

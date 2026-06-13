@@ -24,6 +24,18 @@ export type VoiceStateUpdatePayload = {
   refresh_credentials?: boolean
 }
 
+type GatewayErrorEvent = {
+  type: 'Error'
+  fatal: boolean
+  scope: string
+  request?: {
+    kind?: string
+    operation_id?: string
+    channel_id?: string
+  }
+  data?: unknown
+}
+
 const VOICE_SERVER_UPDATE_TIMEOUT_MS = 15_000
 const VOICE_STATE_ACK_RETRY_MS = 5_000
 const VOICE_STATE_RELIABLE_KEY = 'voice-state'
@@ -101,6 +113,39 @@ function voiceServerUpdateAcknowledgesPending(event: Record<string, unknown>) {
   )
 }
 
+function voiceErrorMatchesOperation(
+  event: Record<string, unknown>,
+  channelId: string,
+  operationId: string,
+) {
+  if (event.type !== 'Error') return false
+  const error = event as GatewayErrorEvent
+  if (error.fatal === true) return true
+  if (error.scope !== 'VoiceStateUpdate') return false
+  if (error.request?.kind !== 'VoiceStateUpdate') return false
+  if (error.request.operation_id !== operationId) return false
+  if (
+    typeof error.request.channel_id === 'string' &&
+    error.request.channel_id !== channelId
+  ) {
+    return false
+  }
+  return true
+}
+
+function gatewayErrorMessage(event: Record<string, unknown>) {
+  const data = event.data
+  if (
+    typeof data === 'object' &&
+    data &&
+    'message' in data &&
+    typeof (data as { message?: unknown }).message === 'string'
+  ) {
+    return (data as { message: string }).message
+  }
+  return 'Voice state update failed'
+}
+
 function ensureVoiceStateAckListener() {
   if (voiceStateAckListenerInstalled) return
   voiceStateAckListenerInstalled = true
@@ -173,17 +218,10 @@ export function waitForVoiceServerUpdate(
         resolve(event as VoiceServerUpdateEvent)
         return
       }
-      if (event.type === 'Error') {
+      if (voiceErrorMatchesOperation(event, channelId, operationId)) {
         clearTimeout(timer)
         unsubscribe()
-        const message =
-          typeof event.data === 'object' &&
-          event.data &&
-          'message' in event.data &&
-          typeof (event.data as { message?: unknown }).message === 'string'
-            ? (event.data as { message: string }).message
-            : 'Voice state update failed'
-        reject(new Error(message))
+        reject(new Error(gatewayErrorMessage(event)))
       }
     })
   })

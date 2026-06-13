@@ -40,6 +40,10 @@ function gatewayClientKind() {
   return window.syrnikeDesktop?.runtime === 'desktop' ? 'desktop' : 'web'
 }
 
+function gatewayErrorIsFatal(event: GatewayEvent) {
+  return event.type === 'Error' && event.fatal === true
+}
+
 /**
  * WebSocket-клиент syrnike13 (протокол v1, JSON) с auto-reconnect и heartbeat.
  */
@@ -177,7 +181,7 @@ export class EventsGateway {
 
         this.#eventListeners.forEach((listener) => listener(event))
 
-        if (event.type === 'Error') {
+        if (gatewayErrorIsFatal(event)) {
           if (this.#ws && this.#ws.readyState === WebSocket.OPEN) {
             this.#ws.close()
           } else {

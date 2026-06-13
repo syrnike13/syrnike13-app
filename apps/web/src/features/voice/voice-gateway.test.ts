@@ -222,6 +222,68 @@ describe('voice gateway reliable state updates', () => {
     })
   })
 
+  it('ignores recoverable voice errors for a different operation while waiting for credentials', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+
+    const joinPromise = requestVoiceJoin('channel-1', false, false, {
+      operationId: 'op-join',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    emitEvent({
+      type: 'Error',
+      fatal: false,
+      scope: 'VoiceStateUpdate',
+      request: {
+        kind: 'VoiceStateUpdate',
+        operation_id: 'op-other',
+        channel_id: 'channel-1',
+      },
+      data: { type: 'InvalidOperation' },
+    })
+
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-join',
+      channel_id: 'channel-1',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+
+    await expect(joinPromise).resolves.toMatchObject({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-join',
+      channel_id: 'channel-1',
+    })
+  })
+
+  it('rejects credentials wait on matching recoverable voice errors', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+
+    const joinPromise = requestVoiceJoin('channel-1', false, false, {
+      operationId: 'op-join',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    emitEvent({
+      type: 'Error',
+      fatal: false,
+      scope: 'VoiceStateUpdate',
+      request: {
+        kind: 'VoiceStateUpdate',
+        operation_id: 'op-join',
+        channel_id: 'channel-1',
+      },
+      data: { type: 'InvalidOperation', message: 'Voice join rejected' },
+    })
+
+    await expect(joinPromise).rejects.toThrow('Voice join rejected')
+  })
+
   it('suppresses call notifications when refreshing voice credentials', async () => {
     const { requestVoiceCredentialsRefresh } = await import('./voice-gateway')
 

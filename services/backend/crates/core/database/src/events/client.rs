@@ -29,6 +29,28 @@ pub enum VoiceCallPhase {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum GatewayErrorScope {
+    Session,
+    VoiceStateUpdate,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum GatewayRequestKind {
+    VoiceStateUpdate,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GatewayErrorRequest {
+    pub kind: GatewayRequestKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VoiceCall {
     pub channel_id: String,
     pub initiator_id: String,
@@ -84,6 +106,10 @@ pub enum EventV1 {
     /// Error event
     Error {
         data: Error,
+        fatal: bool,
+        scope: GatewayErrorScope,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request: Option<GatewayErrorRequest>,
     },
 
     /// Successfully authenticated
@@ -467,10 +493,11 @@ impl EventV1 {
 
 #[cfg(test)]
 mod tests {
-    use super::EventV1;
+    use super::{EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind};
     use iso8601_timestamp::Timestamp;
     use serde_json::json;
     use syrnike_models::v0::{NativeVoiceCredentials, UserVoiceState};
+    use syrnike_result::{Error, ErrorType};
 
     fn native_credentials(kind: &str) -> NativeVoiceCredentials {
         NativeVoiceCredentials {
@@ -511,6 +538,34 @@ mod tests {
         assert_eq!(value["type"], json!("VoiceServerUpdate"));
         assert_eq!(value["operation_id"], json!("op-join"));
         assert_eq!(value["channel_id"], json!("channel-1"));
+    }
+
+    #[test]
+    fn request_scoped_error_serializes_gateway_disposition() {
+        let event = EventV1::Error {
+            data: Error {
+                error_type: ErrorType::InvalidOperation,
+                location: "voice.rs:1:1".to_string(),
+            },
+            fatal: false,
+            scope: GatewayErrorScope::VoiceStateUpdate,
+            request: Some(GatewayErrorRequest {
+                kind: GatewayRequestKind::VoiceStateUpdate,
+                nonce: Some("nonce-1".to_string()),
+                operation_id: Some("op-join".to_string()),
+                channel_id: Some("channel-1".to_string()),
+            }),
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+
+        assert_eq!(value["type"], json!("Error"));
+        assert_eq!(value["fatal"], json!(false));
+        assert_eq!(value["scope"], json!("VoiceStateUpdate"));
+        assert_eq!(value["request"]["kind"], json!("VoiceStateUpdate"));
+        assert_eq!(value["request"]["nonce"], json!("nonce-1"));
+        assert_eq!(value["request"]["operation_id"], json!("op-join"));
+        assert_eq!(value["request"]["channel_id"], json!("channel-1"));
     }
 
     #[test]
