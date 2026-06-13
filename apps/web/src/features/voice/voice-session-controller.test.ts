@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import { createVoiceSessionController } from './voice-session-controller'
@@ -110,5 +114,19 @@ describe('voice session controller', () => {
       connectedChannelId: null,
       activeOperationId: 'op-leave',
     })
+  })
+
+  it('finalizes controlled provider leaves in the session controller', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toMatch(
+      /const leaveOperationId = voiceSessionControllerRef\.current\.requestLeave\(\)[\s\S]*voiceSessionControllerRef\.current\.handleRoomDisconnected\(\{[\s\S]*operationId: leaveOperationId,[\s\S]*expected: true,[\s\S]*\}\)/,
+    )
   })
 })

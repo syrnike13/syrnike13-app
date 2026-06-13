@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -84,6 +88,20 @@ describe('voiceJoinErrorMessage', () => {
 })
 
 describe('createVoiceJoinRunner', () => {
+  it('detaches replaced room handlers before disconnecting during handoff', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toMatch(
+      /disconnectReplacedVoiceRoom[\s\S]*room\.removeAllListeners\(\)[\s\S]*await room\.disconnect\(\)\.catch\(\(\) => \{\}\)/,
+    )
+  })
+
   it('reports concrete phases while joining voice', async () => {
     const phases: string[] = []
     const requestJoinOperation = vi.fn(() => 'op-join')

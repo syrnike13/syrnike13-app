@@ -545,4 +545,20 @@ describe('native microphone provider boundary', () => {
     expect(providerSource).toContain('void startNativeMicrophone(room, false)')
     expect(providerSource).toContain('syncVoiceFlagsToGateway(')
   })
+
+  it('suppresses native microphone stop side effects during controlled voice disconnects', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    const controlledStops = providerSource.match(
+      /const activeNativeMicrophone = nativeMicrophoneRef\.current[\s\S]*?nativeMicrophoneRef\.current = null[\s\S]*?activeNativeMicrophone\.disconnect\(\)/g,
+    )
+
+    expect(controlledStops).toHaveLength(2)
+  })
 })

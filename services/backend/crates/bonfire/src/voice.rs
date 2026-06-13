@@ -1,7 +1,7 @@
 use async_std::sync::Mutex;
 use futures::SinkExt;
 use syrnike_database::{
-    events::client::EventV1,
+    events::client::{EventV1, GatewayErrorRequest, GatewayErrorScope},
     util::reference::Reference,
     voice::{
         get_user_voice_channels, join_voice_channel, publish_voice_state_snapshot,
@@ -154,11 +154,17 @@ pub async fn send_voice_error(
     write: &Mutex<WsWriter>,
     config: &ProtocolConfiguration,
     error: syrnike_result::Error,
+    request: GatewayErrorRequest,
 ) {
     write
         .lock()
         .await
-        .send(config.encode(&EventV1::Error { data: error }))
+        .send(config.encode(&EventV1::Error {
+            data: error,
+            fatal: false,
+            scope: GatewayErrorScope::VoiceStateUpdate,
+            request: Some(request),
+        }))
         .await
         .ok();
 }

@@ -890,9 +890,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const resetVoiceState = useCallback(() => {
-    if (nativeMicrophoneRef.current) {
-      nativeMicrophoneRef.current.disconnect()
+    const activeNativeMicrophone = nativeMicrophoneRef.current
+    if (activeNativeMicrophone) {
       nativeMicrophoneRef.current = null
+      activeNativeMicrophone.disconnect()
     }
     nativeMicrophoneMutedRef.current = false
     selfMonitoringRef.current.restorePublishing = false
@@ -951,6 +952,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const leaveVoiceSession = useCallback(
     async (intent: 'switch' | 'leave' = 'switch') => {
       voiceRejoinRef.current.cancel()
+      const leaveOperationId = voiceSessionControllerRef.current.requestLeave()
       const room = roomRef.current
       const leftChannelId = channelIdRef.current
       const userId = room?.localParticipant.identity ?? auth.user?._id
@@ -976,6 +978,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         removeLocalUserFromAllVoiceChannels(userId)
       }
 
+      voiceSessionControllerRef.current.handleRoomDisconnected({
+        operationId: leaveOperationId,
+        expected: true,
+      })
       disconnectIntentRef.current = 'none'
     },
     [auth.gatewayState, auth.user?._id, cleanupAudio, resetVoiceState],
@@ -1669,9 +1675,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const disconnectNativeMediaForHandoff = useCallback(() => {
-    if (nativeMicrophoneRef.current) {
-      nativeMicrophoneRef.current.disconnect()
+    const activeNativeMicrophone = nativeMicrophoneRef.current
+    if (activeNativeMicrophone) {
       nativeMicrophoneRef.current = null
+      activeNativeMicrophone.disconnect()
     }
     nativeMicrophoneMutedRef.current = false
     selfMonitoringRef.current.restorePublishing = false
@@ -1697,8 +1704,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const disconnectReplacedVoiceRoom = useCallback(
     async (room: Room) => {
-      disconnectNativeMediaForHandoff()
       disconnectIntentRef.current = 'switch'
+      room.removeAllListeners()
+      disconnectNativeMediaForHandoff()
       await room.disconnect().catch(() => {})
       if (roomRef.current === room) {
         roomRef.current = null
