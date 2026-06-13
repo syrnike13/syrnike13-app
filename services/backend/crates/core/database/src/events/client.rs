@@ -8,8 +8,8 @@ use syrnike_models::v0::{
     FieldsChannel, FieldsMember, FieldsMessage, FieldsRole, FieldsServer, FieldsUser,
     FieldsWebhook, Member, MemberCompositeKey, Message, NativeVoiceCredentials, PartialChannel,
     PartialEmoji, PartialMember, PartialMessage, PartialRole, PartialServer, PartialUser,
-    PartialUserVoiceState, PartialWebhook, PolicyChange, RemovalIntention, Report, Server, User,
-    UserSettings, UserVoiceState, Webhook,
+    PartialWebhook, PolicyChange, RemovalIntention, Report, Server, User, UserSettings,
+    UserVoiceState, Webhook,
 };
 
 use crate::Database;
@@ -358,6 +358,8 @@ pub enum EventV1 {
     /// Voice events
     VoiceChannelJoin {
         id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        operation_id: Option<String>,
         state: UserVoiceState,
     },
     VoiceChannelLeave {
@@ -368,6 +370,8 @@ pub enum EventV1 {
         user: String,
         from: String,
         to: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        operation_id: Option<String>,
         state: UserVoiceState,
     },
     VoiceStateUpdate {
@@ -399,6 +403,7 @@ pub enum EventV1 {
         ok: bool,
     },
     VoiceServerUpdate {
+        operation_id: String,
         channel_id: String,
         node: String,
         url: String,
@@ -457,5 +462,86 @@ impl EventV1 {
     /// Publish internal global event
     pub async fn global(self) {
         self.p("global".to_string()).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EventV1;
+    use iso8601_timestamp::Timestamp;
+    use serde_json::json;
+    use syrnike_models::v0::{NativeVoiceCredentials, UserVoiceState};
+
+    fn native_credentials(kind: &str) -> NativeVoiceCredentials {
+        NativeVoiceCredentials {
+            token: format!("{kind}-token"),
+            identity: format!("user-1:desktop-native:{kind}"),
+        }
+    }
+
+    fn voice_state() -> UserVoiceState {
+        UserVoiceState {
+            id: "user-1".to_string(),
+            joined_at: Timestamp::UNIX_EPOCH,
+            self_mute: false,
+            self_deaf: false,
+            server_muted: false,
+            server_deafened: false,
+            screensharing: false,
+            camera: false,
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn voice_server_update_serializes_operation_id() {
+        let event = EventV1::VoiceServerUpdate {
+            operation_id: "op-join".to_string(),
+            channel_id: "channel-1".to_string(),
+            node: "node-1".to_string(),
+            url: "wss://livekit.example".to_string(),
+            token: "browser-token".to_string(),
+            native_microphone: native_credentials("microphone"),
+            native_screen: native_credentials("screen"),
+            native_camera: native_credentials("camera"),
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+
+        assert_eq!(value["type"], json!("VoiceServerUpdate"));
+        assert_eq!(value["operation_id"], json!("op-join"));
+        assert_eq!(value["channel_id"], json!("channel-1"));
+    }
+
+    #[test]
+    fn voice_channel_join_serializes_operation_id() {
+        let event = EventV1::VoiceChannelJoin {
+            id: "channel-1".to_string(),
+            operation_id: Some("op-join".to_string()),
+            state: voice_state(),
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+
+        assert_eq!(value["type"], json!("VoiceChannelJoin"));
+        assert_eq!(value["id"], json!("channel-1"));
+        assert_eq!(value["operation_id"], json!("op-join"));
+    }
+
+    #[test]
+    fn voice_channel_move_serializes_operation_id() {
+        let event = EventV1::VoiceChannelMove {
+            user: "user-1".to_string(),
+            from: "channel-1".to_string(),
+            to: "channel-2".to_string(),
+            operation_id: Some("op-move".to_string()),
+            state: voice_state(),
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+
+        assert_eq!(value["type"], json!("VoiceChannelMove"));
+        assert_eq!(value["to"], json!("channel-2"));
+        assert_eq!(value["operation_id"], json!("op-move"));
     }
 }

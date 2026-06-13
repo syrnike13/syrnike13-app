@@ -33,6 +33,7 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
   useNavigate: () => mocks.navigate,
+  useMatch: () => null,
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({

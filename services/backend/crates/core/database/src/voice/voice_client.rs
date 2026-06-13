@@ -13,7 +13,7 @@ use syrnike_config::{config, LiveKitNode};
 use syrnike_permissions::{ChannelPermission, PermissionValue};
 use syrnike_result::{create_error, Result, ToSyrnikeError};
 
-use super::{desktop_native_voice_identities, get_allowed_sources};
+use super::get_allowed_sources;
 
 const NATIVE_VOICE_TOKEN_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -26,27 +26,6 @@ pub struct RoomClient {
 #[derive(Debug)]
 pub struct VoiceClient {
     pub rooms: HashMap<String, RoomClient>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct VoiceTransportCleanupReport {
-    pub failures: Vec<VoiceTransportCleanupFailure>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VoiceTransportCleanupFailure {
-    ListRooms {
-        node: String,
-    },
-    ListParticipants {
-        node: String,
-        room: String,
-    },
-    RemoveParticipant {
-        node: String,
-        room: String,
-        identity: String,
-    },
 }
 
 impl VoiceClient {
@@ -173,81 +152,6 @@ impl VoiceClient {
             .remove_participant(channel_id, user_id)
             .await
             .to_internal_error()
-    }
-
-    pub async fn remove_user_from_all_rooms(&self, user_id: &str) -> VoiceTransportCleanupReport {
-        let mut report = VoiceTransportCleanupReport::default();
-
-        for (node_name, room) in &self.rooms {
-            let rooms = match room.client.list_rooms(Vec::new()).await {
-                Ok(rooms) => rooms,
-                Err(error) => {
-                    log::warn!(
-                        "Failed to list LiveKit rooms on node {node_name} while enforcing single voice session for user {user_id}: {error}"
-                    );
-                    report
-                        .failures
-                        .push(VoiceTransportCleanupFailure::ListRooms {
-                            node: node_name.clone(),
-                        });
-                    continue;
-                }
-            };
-
-            for livekit_room in rooms {
-                if livekit_room.name.is_empty() {
-                    continue;
-                }
-
-                let participants = match room.client.list_participants(&livekit_room.name).await {
-                    Ok(participants) => participants,
-                    Err(error) => {
-                        log::warn!(
-                            "Failed to list LiveKit participants in room {} on node {node_name} while enforcing single voice session for user {user_id}: {error}",
-                            livekit_room.name
-                        );
-                        report
-                            .failures
-                            .push(VoiceTransportCleanupFailure::ListParticipants {
-                                node: node_name.clone(),
-                                room: livekit_room.name.clone(),
-                            });
-                        continue;
-                    }
-                };
-
-                for identity in std::iter::once(user_id.to_string())
-                    .chain(desktop_native_voice_identities(user_id))
-                {
-                    if !participants
-                        .iter()
-                        .any(|participant| participant.identity == identity)
-                    {
-                        continue;
-                    }
-
-                    if let Err(error) = room
-                        .client
-                        .remove_participant(&livekit_room.name, &identity)
-                        .await
-                    {
-                        log::warn!(
-                            "Failed to remove LiveKit participant {identity} from room {} on node {node_name}: {error}",
-                            livekit_room.name
-                        );
-                        report
-                            .failures
-                            .push(VoiceTransportCleanupFailure::RemoveParticipant {
-                                node: node_name.clone(),
-                                room: livekit_room.name.clone(),
-                                identity,
-                            });
-                    }
-                }
-            }
-        }
-
-        report
     }
 
     pub async fn delete_room(&self, node: &str, channel_id: &str) -> Result<()> {
