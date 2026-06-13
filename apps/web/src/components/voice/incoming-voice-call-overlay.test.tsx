@@ -90,6 +90,15 @@ vi.mock('#/features/api/channels-api', () => ({
   declineDirectMessageCall: declineDirectMessageCallMock,
 }))
 
+vi.mock('#/components/icons', () => ({
+  HeadphonesIcon: ({ className }: { className?: string }) => (
+    <svg aria-hidden="true" className={className} />
+  ),
+  PhoneOffIcon: ({ className }: { className?: string }) => (
+    <svg aria-hidden="true" className={className} />
+  ),
+}))
+
 describe('IncomingVoiceCallOverlay', () => {
   beforeEach(() => {
     syncStore.reset()
