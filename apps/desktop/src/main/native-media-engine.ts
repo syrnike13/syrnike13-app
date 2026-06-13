@@ -117,6 +117,54 @@ type PendingStopResolver = {
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
 }
+type PendingStartResolver = (event: SidecarEvent) => void
+
+export function createPendingStartResolverRegistry() {
+  const resolvers = new Map<string, Set<PendingStartResolver>>()
+
+  return {
+    set(sessionId: string, resolver: PendingStartResolver) {
+      let sessionResolvers = resolvers.get(sessionId)
+      if (!sessionResolvers) {
+        sessionResolvers = new Set()
+        resolvers.set(sessionId, sessionResolvers)
+      }
+      sessionResolvers.add(resolver)
+
+      return () => {
+        const current = resolvers.get(sessionId)
+        if (!current) return
+        current.delete(resolver)
+        if (current.size === 0) {
+          resolvers.delete(sessionId)
+        }
+      }
+    },
+
+    get(sessionId: string) {
+      const sessionResolvers = resolvers.get(sessionId)
+      if (!sessionResolvers) return undefined
+
+      return (event: SidecarEvent) => {
+        for (const resolver of Array.from(sessionResolvers)) {
+          resolver(event)
+        }
+      }
+    },
+
+    delete(sessionId: string) {
+      return resolvers.delete(sessionId)
+    },
+
+    clear() {
+      resolvers.clear()
+    },
+
+    count(sessionId: string) {
+      return resolvers.get(sessionId)?.size ?? 0
+    },
+  }
+}
 
 let mediaEngineIpcRegistered = false
 let activeSession: ActiveMediaEngineSession | null = null
@@ -125,7 +173,7 @@ const mediaEngineHelperReaders = new WeakMap<
   ChildProcessWithoutNullStreams,
   readline.Interface
 >()
-const pendingStartResolvers = new Map<string, (event: SidecarEvent) => void>()
+const pendingStartResolvers = createPendingStartResolverRegistry()
 const pendingStopResolvers = new Map<string, PendingStopResolver>()
 let mediaEngineStatus: NativeMediaSessionStatus = { status: 'idle' }
 let lastMediaEngineError: string | null = null
@@ -1159,7 +1207,10 @@ function spawnMediaEngineHelper(
       : spawnNativeMediaEngineProcess(kind))
 
   const existingReader = mediaEngineHelperReaders.get(helper)
-  if (existingReader) return helper
+  if (existingReader) {
+    if (!existingHelper) return helper
+    closeMediaEngineHelperReader(helper)
+  }
 
   const reader = readline.createInterface({ input: helper.stdout })
   mediaEngineHelperReaders.set(helper, reader)
@@ -1174,6 +1225,8 @@ function spawnMediaEngineHelper(
       if (event.status === 'stopped') {
         resolvePendingStop(event.session_id)
         activeSessions.delete(event.session_id)
+        pendingStartResolvers.get(event.session_id)?.(event)
+        pendingStartResolvers.delete(event.session_id)
         refreshStatusFromActiveSessions()
         return
       }
@@ -1193,6 +1246,8 @@ function spawnMediaEngineHelper(
         )
         pendingStartResolvers.get(event.session_id)?.(event)
         pendingStartResolvers.delete(event.session_id)
+      } else {
+        pendingStartResolvers.get(event.session_id)?.(event)
       }
       return
     }
@@ -1573,22 +1628,52 @@ export async function listNativeDisplaySources(
 
 async function waitForSidecarReady(sessionId: string, timeoutMs = 15_000) {
   return new Promise<SidecarEvent>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pendingStartResolvers.delete(sessionId)
-      lastMediaEngineError = 'Native media engine timed out'
-      reject(new Error('Native media engine timed out'))
-    }, timeoutMs)
+    let removeResolver = () => {}
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let settled = false
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      removeResolver()
+    }
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error)
+    }
+    const resetTimer = () => {
+      if (settled) return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        lastMediaEngineError = 'Native media engine timed out'
+        fail(new Error('Native media engine timed out'))
+      }, timeoutMs)
+    }
 
-    pendingStartResolvers.set(sessionId, (event) => {
-      clearTimeout(timer)
+    resetTimer()
+
+    removeResolver = pendingStartResolvers.set(sessionId, (event) => {
+      if (event.type === 'session_lifecycle') {
+        if (event.status === 'error') {
+          fail(new Error(event.message ?? 'Native media engine failed to start'))
+          return
+        }
+        if (event.status === 'stopped') {
+          fail(new Error(event.message ?? 'Native media engine stopped before it became ready'))
+          return
+        }
+        resetTimer()
+        return
+      }
       if (event.type === 'error') {
-        reject(new Error(event.message))
+        fail(new Error(event.message))
         return
       }
-      if (event.type === 'session_lifecycle' && event.status === 'error') {
-        reject(new Error(event.message ?? 'Native media engine failed to start'))
-        return
-      }
+      settled = true
+      cleanup()
       resolve(event)
     })
   })
@@ -1679,17 +1764,24 @@ async function prepareNativeScreenSession(
   }
 }
 
-async function getPreconnectedScreenHelper(
+async function takePreconnectedScreenHelper(
   livekit: NativeMediaLiveKitCredentials,
 ) {
   const current = preconnectedScreenSession
   if (!current) return null
-  if (current.livekitKey !== nativeScreenLiveKitKey(livekit)) return null
+  if (current.livekitKey !== nativeScreenLiveKitKey(livekit)) {
+    clearPreconnectedScreenSession(true)
+    return null
+  }
   if (!isHelperWritable(current.helper)) {
+    closeMediaEngineHelperReader(current.helper)
     preconnectedScreenSession = null
     return null
   }
   await current.ready
+  if (preconnectedScreenSession === current) {
+    preconnectedScreenSession = null
+  }
   return current.helper
 }
 
@@ -1741,7 +1833,7 @@ async function startNativeMediaSession(
   const sessionId = crypto.randomUUID()
   const preparedScreenHelper =
     options.kind === 'screen'
-      ? await getPreconnectedScreenHelper(options.livekit)
+      ? await takePreconnectedScreenHelper(options.livekit)
       : null
   const helper = spawnMediaEngineHelper(
     options.kind,

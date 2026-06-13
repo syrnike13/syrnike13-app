@@ -14,14 +14,14 @@ use syrnike_database::{
             VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase, VoiceCallStateMutation,
             VoiceCallStateMutationResult,
         },
-        create_voice_call_started_system_message, create_voice_state,
-        delete_channel_voice_state_for_room, delete_voice_channel, delete_voice_state_for_session,
+        cleanup_committed_voice_member_removal, commit_voice_join,
+        create_voice_call_started_system_message, delete_channel_voice_state_for_room,
+        delete_voice_channel, delete_voice_state_for_session,
         finish_voice_call_started_system_message, get_call_notification_recipients,
-        get_user_moved_from_voice, get_user_moved_to_voice, get_user_voice_channels,
-        get_voice_channel_members, is_desktop_native_voice_identity, publish_voice_state_snapshot,
-        remove_user_from_voice_channel_with_call_cleanup, update_voice_state_tracks,
+        get_user_moved_from_voice, get_voice_channel_members, is_desktop_native_voice_identity,
+        publish_voice_state_snapshot, update_voice_state_tracks,
         update_voice_state_tracks_for_session, user_voice_join_intent_matches, RoomMetadata,
-        UserVoiceChannel, VoiceClient,
+        UserVoiceChannel, VoiceClient, VoiceJoinCommitResult,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
 };
@@ -400,30 +400,16 @@ pub async fn ingress(
             let room_id = room_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
-            if !user_voice_join_intent_matches(user_id, &channel).await? {
-                log::debug!(
-                    "Removing user {user_id} from stale LiveKit join in channel {channel_id}; latest join intent targets another channel."
-                );
-                let _ = voice_client.remove_user(node, user_id, channel_id).await;
-                return Ok(EmptyResponse);
-            }
-
             if is_desktop_native_voice_identity(participant_identity) {
-                return Ok(EmptyResponse);
-            }
-
-            for previous_channel in get_user_voice_channels(user_id).await? {
-                if previous_channel == channel {
-                    continue;
+                if !user_voice_join_intent_matches(user_id, &channel).await? {
+                    log::debug!(
+                        "Removing native participant {participant_identity} from stale LiveKit join in channel {channel_id}; latest join intent targets another channel."
+                    );
+                    let _ = voice_client
+                        .remove_user(node, participant_identity, channel_id)
+                        .await;
                 }
-                remove_user_from_voice_channel_with_call_cleanup(
-                    db,
-                    voice_client,
-                    amqp,
-                    &previous_channel,
-                    user_id,
-                )
-                .await?;
+                return Ok(EmptyResponse);
             }
 
             let joined_at = Timestamp::UNIX_EPOCH
@@ -435,20 +421,36 @@ pub async fn ingress(
             let requested_recipients =
                 get_call_notification_recipients(channel_id, user_id).await?;
 
-            let voice_state = create_voice_state(
-                &channel,
-                user_id,
-                joined_at,
-                Some(participant_id),
-                Some(room_id),
-            )
-            .await?;
+            let VoiceJoinCommitResult::Committed {
+                voice_state,
+                previous_channels,
+            } = commit_voice_join(&channel, user_id, joined_at, participant_id, room_id).await?
+            else {
+                log::debug!(
+                    "Removing user {user_id} from stale LiveKit join in channel {channel_id}; latest join intent targets another channel."
+                );
+                let _ = voice_client
+                    .remove_user(node, participant_identity, channel_id)
+                    .await;
+                return Ok(EmptyResponse);
+            };
+
+            for previous_channel in &previous_channels {
+                cleanup_committed_voice_member_removal(
+                    db,
+                    voice_client,
+                    amqp,
+                    previous_channel,
+                    user_id,
+                )
+                .await?;
+            }
 
             // Only publish one event when a user is moved from one channel to another.
-            if let Some(moved_from) = get_user_moved_to_voice(channel_id, user_id).await? {
+            if let Some(moved_from) = previous_channels.first() {
                 EventV1::VoiceChannelMove {
                     user: user_id.to_string(),
-                    from: moved_from.id,
+                    from: moved_from.id.clone(),
                     to: channel_id.to_string(),
                     state: voice_state,
                 }
