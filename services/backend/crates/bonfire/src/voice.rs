@@ -59,7 +59,14 @@ pub async fn handle_voice_state_update(
         .any(|existing| existing == &user_voice_channel);
 
     if already_in_target {
-        set_user_voice_join_intent(&user.id, &user_voice_channel, self_mute, self_deaf).await?;
+        set_user_voice_join_intent(
+            &user.id,
+            &user_voice_channel,
+            operation_id.as_deref(),
+            self_mute,
+            self_deaf,
+        )
+        .await?;
 
         let state =
             update_client_voice_flags(&user_voice_channel, &user.id, self_mute, self_deaf).await?;
@@ -91,6 +98,7 @@ pub async fn handle_voice_state_update(
         &channel_id,
         VoiceJoinOptions {
             node,
+            operation_id: Some(operation_id.clone()),
             recipients,
             suppress_call_notifications,
             self_mute,

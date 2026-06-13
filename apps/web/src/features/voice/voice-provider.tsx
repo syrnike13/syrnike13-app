@@ -1848,15 +1848,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const controller = voiceSessionControllerRef.current
       const state = controller.getState()
       if (
-        !state.activeOperationId ||
+        !commit.operationId ||
+        state.activeOperationId !== commit.operationId ||
         state.desired.kind !== 'channel' ||
-        state.desired.channelId !== commit.channelId
+        state.desired.channelId !== commit.channelId ||
+        state.desired.operationId !== commit.operationId
       ) {
         return
       }
 
       controller.handleServerCommitObserved(
-        state.activeOperationId,
+        commit.operationId,
         commit.channelId,
       )
     })

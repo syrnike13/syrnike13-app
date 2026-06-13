@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Pure Voice Session State Machine
+## Task 1: Pure Voice Session State Machine
 
 **Files:**
 - Create: `apps/web/src/features/voice/voice-session-machine.ts`
@@ -339,7 +339,7 @@ pnpm --filter @syrnike13/web test -- voice-session-machine voice-recovery voice-
 
 Expected: PASS.
 
-### Task 2: Voice Operation Id Helpers
+## Task 2: Voice Operation Id Helpers
 
 **Files:**
 - Create: `apps/web/src/features/voice/voice-operation.ts`
@@ -363,7 +363,7 @@ pnpm --filter @syrnike13/web test -- voice-operation
 
 Expected: PASS.
 
-### Task 3: Controller Skeleton
+## Task 3: Controller Skeleton
 
 **Files:**
 - Create: `apps/web/src/features/voice/voice-session-controller.ts`
@@ -387,7 +387,7 @@ pnpm --filter @syrnike13/web test -- voice-session-controller
 
 Expected: PASS.
 
-### Task 4: Operation-Aware Web Gateway
+## Task 4: Operation-Aware Web Gateway
 
 **Files:**
 - Modify: `apps/web/src/features/voice/voice-gateway.ts`
@@ -405,7 +405,7 @@ Change request/response matching from `channelId` to `operationId`.
 
 Use semantic keys for flags and latest desired join. Do not let flag updates replace join commands.
 
-### Task 5: Backend Handoff Prepare and Commit
+## Task 5: Backend Handoff Prepare and Commit
 
 **Files:**
 - Modify: `services/backend/crates/bonfire/src/voice.rs`
@@ -425,7 +425,7 @@ Persist target channel, previous channel, flags, recipients, and operation id.
 
 Only after target participant joins, remove previous channel membership and publish move.
 
-### Task 6: React Provider Migration
+## Task 6: React Provider Migration
 
 **Files:**
 - Modify: `apps/web/src/features/voice/voice-provider.tsx`
@@ -441,7 +441,7 @@ Replace direct destructive join assumptions with `requestJoin(channelId, { reaso
 
 Remove `joinBlockedUntilRef` and stop silently returning `false` for manual retry.
 
-### Task 7: Native Publisher Isolation
+## Task 7: Native Publisher Isolation
 
 **Files:**
 - Create: `apps/web/src/features/voice/voice-native-publisher-controller.ts`
@@ -457,7 +457,7 @@ Assert publisher failure transitions publisher state to retrying while session s
 
 Use operation/channel from session controller and keep browser LiveKit room untouched.
 
-### Task 8: Full Verification
+## Task 8: Full Verification
 
 **Files:**
 - Modify: `apps/web/src/features/voice/*.test.ts`

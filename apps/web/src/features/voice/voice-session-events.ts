@@ -2,6 +2,7 @@ import type { GatewayServerEvent } from '#/features/sync/types'
 
 export type VoiceServerCommit = {
   channelId: string
+  operationId?: string
 }
 
 export function voiceCommitFromGatewayEvent(
@@ -14,7 +15,7 @@ export function voiceCommitFromGatewayEvent(
     const channelId = voiceJoinChannelId(event)
     const userId = voiceEventUserId(event)
     if (channelId && userId === localUserId) {
-      return { channelId }
+      return { channelId, operationId: voiceEventOperationId(event) }
     }
   }
 
@@ -22,7 +23,7 @@ export function voiceCommitFromGatewayEvent(
     const channelId = typeof event.to === 'string' ? event.to : null
     const userId = voiceEventUserId(event)
     if (channelId && userId === localUserId) {
-      return { channelId }
+      return { channelId, operationId: voiceEventOperationId(event) }
     }
   }
 
@@ -43,4 +44,10 @@ function voiceEventUserId(event: GatewayServerEvent) {
   if (typeof event.state?.user === 'string') return event.state.user
   if (typeof event.state?.user_id === 'string') return event.state.user_id
   return null
+}
+
+function voiceEventOperationId(event: GatewayServerEvent) {
+  if (typeof event.operation_id === 'string') return event.operation_id
+  if (typeof event.operationId === 'string') return event.operationId
+  return undefined
 }

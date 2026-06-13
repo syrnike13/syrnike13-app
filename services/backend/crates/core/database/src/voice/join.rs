@@ -37,6 +37,7 @@ pub struct VoiceJoinCredentials {
 #[derive(Debug, Clone, Default)]
 pub struct VoiceJoinOptions {
     pub node: Option<String>,
+    pub operation_id: Option<String>,
     pub recipients: Option<Vec<String>>,
     pub suppress_call_notifications: bool,
     pub self_mute: bool,
@@ -109,6 +110,7 @@ pub async fn join_voice_channel(
         set_user_voice_join_intent(
             &user.id,
             &user_voice_channel,
+            options.operation_id.as_deref(),
             options.self_mute,
             options.self_deaf,
         )

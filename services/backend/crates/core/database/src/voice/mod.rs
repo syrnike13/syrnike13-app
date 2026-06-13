@@ -30,6 +30,7 @@ pub use voice_client::VoiceClient;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VoiceJoinIntent {
     pub channel: UserVoiceChannel,
+    pub operation_id: Option<String>,
     pub self_mute: bool,
     pub self_deaf: bool,
 }
@@ -51,7 +52,7 @@ local moved_ttl = tonumber(ARGV[8])
 local user_channels_key = 'vc:' .. user_id
 
 local function stale()
-  return {0, 0, 0, 0, 0, 0, 0, 1, {}}
+  return {0, 0, 0, 0, 0, 0, 0, 1, '', {}}
 end
 
 local function parse_channel(value)
@@ -111,6 +112,10 @@ local existing_version = redis.call('GET', 'version:' .. target_unique_key)
 
 local self_mute
 local self_deaf
+local operation_id = ''
+if intent ~= nil and type(intent.operation_id) == 'string' then
+  operation_id = intent.operation_id
+end
 if pending_track_state then
   if intent ~= nil and intent.self_mute ~= nil then
     self_mute = bool_to_number(intent.self_mute)
@@ -189,7 +194,7 @@ if intent_raw then
   redis.call('DEL', KEYS[1])
 end
 
-return {1, self_mute, self_deaf, server_muted, server_deafened, screensharing, camera, version, moved_from}
+return {1, self_mute, self_deaf, server_muted, server_deafened, screensharing, camera, version, operation_id, moved_from}
 "#;
 
 const DELETE_VOICE_STATE_IF_SESSION: &str = r#"
@@ -321,11 +326,13 @@ pub async fn get_user_voice_channels(user_id: &str) -> Result<Vec<UserVoiceChann
 pub async fn set_user_voice_join_intent(
     user_id: &str,
     channel: &UserVoiceChannel,
+    operation_id: Option<&str>,
     self_mute: bool,
     self_deaf: bool,
 ) -> Result<()> {
     let intent = VoiceJoinIntent {
         channel: channel.clone(),
+        operation_id: operation_id.map(ToString::to_string),
         self_mute,
         self_deaf,
     };
@@ -444,13 +451,14 @@ pub async fn is_in_voice_channel(user_id: &str, channel: &UserVoiceChannel) -> R
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VoiceJoinCommitResult {
     Committed {
+        operation_id: Option<String>,
         voice_state: UserVoiceState,
         previous_channels: Vec<UserVoiceChannel>,
     },
     StaleIntent,
 }
 
-type VoiceJoinCommitScriptResponse = (i64, i64, i64, i64, i64, i64, i64, u64, Vec<String>);
+type VoiceJoinCommitScriptResponse = (i64, i64, i64, i64, i64, i64, i64, u64, String, Vec<String>);
 
 pub async fn get_user_voice_channel_in_server(
     user_id: &str,
@@ -660,6 +668,7 @@ fn voice_join_commit_result_from_script(
         screensharing,
         camera,
         version,
+        operation_id,
         previous_channels,
     ) = response;
 
@@ -668,6 +677,7 @@ fn voice_join_commit_result_from_script(
     }
 
     VoiceJoinCommitResult::Committed {
+        operation_id: (!operation_id.is_empty()).then_some(operation_id),
         voice_state: UserVoiceState {
             joined_at,
             id: user_id.to_string(),
@@ -1647,10 +1657,22 @@ mod tests {
         let result = super::voice_join_commit_result_from_script(
             "user-a",
             Timestamp::UNIX_EPOCH,
-            (1, 1, 0, 0, 1, 0, 1, 7, vec!["old-channel-server-a".into()]),
+            (
+                1,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                7,
+                "op-join".to_string(),
+                vec!["old-channel-server-a".into()],
+            ),
         );
 
         let super::VoiceJoinCommitResult::Committed {
+            operation_id,
             voice_state,
             previous_channels,
         } = result
@@ -1658,6 +1680,7 @@ mod tests {
             panic!("applied Lua response should commit");
         };
 
+        assert_eq!(operation_id, Some("op-join".to_string()));
         assert_eq!(voice_state.id, "user-a");
         assert_eq!(voice_state.self_mute, true);
         assert_eq!(voice_state.self_deaf, false);
@@ -1681,7 +1704,18 @@ mod tests {
             super::voice_join_commit_result_from_script(
                 "user-a",
                 Timestamp::UNIX_EPOCH,
-                (0, 1, 1, 1, 1, 1, 1, 9, vec!["old-channel".into()]),
+                (
+                    0,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    9,
+                    "op-stale".to_string(),
+                    vec!["old-channel".into()],
+                ),
             ),
             super::VoiceJoinCommitResult::StaleIntent,
         );

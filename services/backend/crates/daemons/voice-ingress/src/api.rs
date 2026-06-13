@@ -422,6 +422,7 @@ pub async fn ingress(
                 get_call_notification_recipients(channel_id, user_id).await?;
 
             let VoiceJoinCommitResult::Committed {
+                operation_id,
                 voice_state,
                 previous_channels,
             } = commit_voice_join(&channel, user_id, joined_at, participant_id, room_id).await?
@@ -452,6 +453,7 @@ pub async fn ingress(
                     user: user_id.to_string(),
                     from: moved_from.id.clone(),
                     to: channel_id.to_string(),
+                    operation_id,
                     state: voice_state,
                 }
                 .p(channel_id.to_string())
@@ -459,6 +461,7 @@ pub async fn ingress(
             } else {
                 EventV1::VoiceChannelJoin {
                     id: channel_id.to_string(),
+                    operation_id,
                     state: voice_state,
                 }
                 .p(channel_id.to_string())

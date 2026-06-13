@@ -247,6 +247,7 @@ pub async fn edit(
             set_user_voice_join_intent(
                 &target_user.id,
                 &new_user_voice_channel,
+                None,
                 existing_voice_state
                     .as_ref()
                     .map(|state| state.self_mute)

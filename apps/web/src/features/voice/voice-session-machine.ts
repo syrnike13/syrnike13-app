@@ -129,9 +129,11 @@ export function reduceVoiceSession(
       if (event.expected) {
         return {
           ...state,
+          desired: { kind: 'none', operationId: null },
           phase: 'idle',
           connectedChannelId: null,
           activeOperationId: null,
+          previousChannelId: null,
           lastError: null,
         }
       }

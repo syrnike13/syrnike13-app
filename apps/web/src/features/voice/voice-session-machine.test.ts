@@ -113,6 +113,39 @@ describe('voice session machine', () => {
     expect(state.lastError).toBe('network lost')
   })
 
+  it('clears stale intent fields after an expected disconnect', () => {
+    let state = createInitialVoiceSessionState()
+
+    state = reduceVoiceSession(state, {
+      type: 'join_requested',
+      channelId: 'voice-a',
+      operationId: 'op-a',
+      reason: 'manual_join',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'server_commit_observed',
+      operationId: 'op-a',
+      channelId: 'voice-a',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'join_requested',
+      channelId: 'voice-b',
+      operationId: 'op-b',
+      reason: 'switch',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'room_disconnected',
+      expected: true,
+      operationId: 'op-b',
+    })
+
+    expect(state.phase).toBe('idle')
+    expect(state.desired).toEqual({ kind: 'none', operationId: null })
+    expect(state.connectedChannelId).toBeNull()
+    expect(state.activeOperationId).toBeNull()
+    expect(state.previousChannelId).toBeNull()
+  })
+
   it('explicit leave cancels desired channel and stale joins cannot reconnect it', () => {
     let state = createInitialVoiceSessionState()
 
