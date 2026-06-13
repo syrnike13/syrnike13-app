@@ -313,7 +313,7 @@ export function ChannelView({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
-        <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 pl-4">
           {isDirectMessage && dmRecipient ? (
             <DirectMessageHeader
               user={dmRecipient}
@@ -414,7 +414,7 @@ export function ChannelView({
           ) : null}
         </div>
         {token && showMemberSidebar ? (
-          <div className="hidden h-full w-52 shrink-0 items-center px-2 lg:flex">
+          <div className="hidden h-full w-52 shrink-0 items-center pl-2 lg:flex">
             <ServerChannelSearchPopover
               serverId={channel.server}
               token={token}
@@ -423,7 +423,7 @@ export function ChannelView({
           </div>
         ) : null}
         {token && !showMemberSidebar ? (
-          <div className="hidden h-full w-52 shrink-0 items-center px-2 lg:flex">
+          <div className="hidden h-full w-52 shrink-0 items-center pl-2 lg:flex">
             <ChannelSearchDialog
               channelId={channelId}
               token={token}

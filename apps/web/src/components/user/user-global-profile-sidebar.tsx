@@ -317,7 +317,7 @@ export function UserGlobalProfileSidebar({
                 <PopoverContent
                   side="top"
                   align="end"
-                  className="w-auto min-w-[11rem] p-1"
+                  className="z-[310] w-auto min-w-[11rem] p-1"
                   onOpenAutoFocus={(e) => e.preventDefault()}
                 >
                   {user.relationship === 'Incoming' ? (

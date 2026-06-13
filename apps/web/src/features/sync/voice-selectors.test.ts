@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyLocalVoiceSessionOverride,
+  getChannelVoiceParticipants,
   isParticipantDeafened,
   isParticipantMuted,
 } from '#/features/sync/voice-selectors'
+import type { SyncState } from '#/features/sync/types'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 
 const USER_ONE = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
+const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6CH'
 
 function participant(
   id: string,
@@ -73,5 +76,64 @@ describe('applyLocalVoiceSessionOverride', () => {
         version: 0,
       }),
     ])
+  })
+})
+
+function buildState(
+  participants: UserVoiceState[],
+): Pick<SyncState, 'voiceParticipants' | 'users'> {
+  const users: SyncState['users'] = {}
+  for (const item of participants) {
+    users[item.id] = { _id: item.id } as SyncState['users'][string]
+  }
+  return {
+    users,
+    voiceParticipants: {
+      [CHANNEL_ID]: Object.fromEntries(
+        participants.map((item) => [item.id, item]),
+      ),
+    },
+  }
+}
+
+describe('getChannelVoiceParticipants ordering', () => {
+  it('lists participants sharing their screen before the rest', () => {
+    const first = participant(
+      '01KT7DEM3B0T4B0BXGBXWDJ6A1',
+      { joined_at: 1 },
+    )
+    const sharer = participant(
+      '01KT7DEM3B0T4B0BXGBXWDJ6A2',
+      { joined_at: 10, screensharing: true },
+    )
+    const last = participant(
+      '01KT7DEM3B0T4B0BXGBXWDJ6A3',
+      { joined_at: 5 },
+    )
+
+    const result = getChannelVoiceParticipants(
+      buildState([first, sharer, last]) as SyncState,
+      CHANNEL_ID,
+    )
+
+    expect(result.map((item) => item.id)).toEqual([sharer.id, first.id, last.id])
+  })
+
+  it('keeps joined_at order among participants with the same screen-share state', () => {
+    const first = participant(
+      '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+      { joined_at: 2, screensharing: true },
+    )
+    const second = participant(
+      '01KT7DEM3B0T4B0BXGBXWDJ6B2',
+      { joined_at: 7, screensharing: true },
+    )
+
+    const result = getChannelVoiceParticipants(
+      buildState([second, first]) as SyncState,
+      CHANNEL_ID,
+    )
+
+    expect(result.map((item) => item.id)).toEqual([first.id, second.id])
   })
 })

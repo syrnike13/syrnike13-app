@@ -17,7 +17,13 @@ export function getChannelVoiceParticipants(
     .filter((participant) =>
       isResolvableVoiceParticipant(state, participant.id, currentUserId),
     )
-    .sort((a, b) => a.joined_at - b.joined_at)
+    .sort((a, b) => {
+      // Демонстрация экрана приоритетнее: таких участников показываем первыми.
+      if (a.screensharing !== b.screensharing) {
+        return a.screensharing ? -1 : 1
+      }
+      return a.joined_at - b.joined_at
+    })
 }
 
 export function getChannelVoiceParticipantCount(
