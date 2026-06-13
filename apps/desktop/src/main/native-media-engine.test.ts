@@ -537,12 +537,51 @@ describe('native media engine entrypoint', () => {
     )
 
     expect(source).toContain(
-      'const pendingStartResolvers = new Map<string, (event: SidecarEvent) => void>()',
+      'const pendingStartResolvers = createPendingStartResolverRegistry()',
     )
     expect(source).toContain('waitForSidecarReady(sessionId: string')
     expect(source).toContain('pendingStartResolvers.set(sessionId')
     expect(source).toContain('pendingStartResolvers.get(eventSessionId)?.(event)')
     expect(source).not.toContain('let pendingStartResolver')
+  })
+
+  it('fans out sidecar ready events to every waiter for the same session id', async () => {
+    const { createPendingStartResolverRegistry } = await import(
+      './native-media-engine'
+    )
+    const registry = createPendingStartResolverRegistry()
+    const first = vi.fn()
+    const second = vi.fn()
+    const readyEvent = { type: 'ready', port: 0 }
+
+    registry.set('session-1', first)
+    registry.set('session-1', second)
+    registry.get('session-1')?.(readyEvent as never)
+    registry.delete('session-1')
+
+    expect(first).toHaveBeenCalledWith(readyEvent)
+    expect(second).toHaveBeenCalledWith(readyEvent)
+    expect(registry.count('session-1')).toBe(0)
+  })
+
+  it('keeps native startup waiting while the sidecar reports lifecycle progress', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const waitBody = source.match(
+      /async function waitForSidecarReady[\s\S]*?\r?\n}\r?\n\r?\nasync function prepareNativeScreenSession/,
+    )?.[0]
+    const lifecycleBranch = source.match(
+      /if \(event\.type === 'session_lifecycle'\) \{[\s\S]*?return\r?\n    \}/,
+    )?.[0]
+
+    expect(waitBody).toBeDefined()
+    expect(waitBody).toContain('resetTimer()')
+    expect(waitBody).toContain("event.type === 'session_lifecycle'")
+    expect(waitBody).toContain("event.status === 'stopped'")
+    expect(lifecycleBranch).toBeDefined()
+    expect(lifecycleBranch).toContain('pendingStartResolvers.get(event.session_id)?.(event)')
   })
 
   it('prewarms one idle native helper for the first media session', () => {
@@ -600,6 +639,35 @@ describe('native media engine entrypoint', () => {
     expect(spawnBody).toContain("kind === 'microphone'")
     expect(spawnBody).toContain('takePrewarmedMediaEngineHelper()')
     expect(spawnBody).toContain(': spawnNativeMediaEngineProcess(kind)')
+  })
+
+  it('reattaches the helper reader when adopting a prepared screen helper', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const spawnBody = source.match(
+      /function spawnMediaEngineHelper[\s\S]*?\r?\n\r?\n  const reader = readline\.createInterface/,
+    )?.[0]
+
+    expect(spawnBody).toBeDefined()
+    expect(spawnBody).toContain('if (!existingHelper) return helper')
+    expect(spawnBody).toContain('closeMediaEngineHelperReader(helper)')
+  })
+
+  it('consumes the prepared screen helper before starting capture', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const takeBody = source.match(
+      /async function takePreconnectedScreenHelper[\s\S]*?function mapSidecarAudioMetadata/,
+    )?.[0]
+
+    expect(takeBody).toBeDefined()
+    expect(takeBody).toContain('preconnectedScreenSession = null')
+    expect(source).toContain('await takePreconnectedScreenHelper(options.livekit)')
+    expect(source).not.toContain('await getPreconnectedScreenHelper(options.livekit)')
   })
 
   it('routes native microphone mute through a helper command without stopping the session', () => {

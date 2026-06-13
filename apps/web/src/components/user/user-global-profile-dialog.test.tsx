@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { syncStore } from '#/features/sync/sync-store'
+import { ChannelPermission } from '#/lib/permissions'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -57,7 +58,7 @@ describe('UserGlobalProfileDialog', () => {
       name: 'Alpha',
       owner: 'owner',
       channels: ['channel-a'],
-      default_permissions: 0,
+      default_permissions: ChannelPermission.ViewChannel,
     } as never)
     syncStore.upsertChannel({
       _id: 'channel-a',
