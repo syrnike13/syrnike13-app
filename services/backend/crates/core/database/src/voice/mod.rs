@@ -24,7 +24,7 @@ pub mod call_lifecycle;
 mod join;
 mod voice_client;
 pub use join::*;
-pub use voice_client::{VoiceClient, VoiceTransportCleanupFailure, VoiceTransportCleanupReport};
+pub use voice_client::VoiceClient;
 
 /// Client join intent stored until LiveKit `participant_joined` webhook confirms membership.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

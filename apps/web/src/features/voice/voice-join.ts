@@ -16,6 +16,7 @@ import {
   runVoiceRequest,
 } from '#/features/voice/voice-request-gate'
 import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
+import type { VoiceJoinReason } from '#/features/voice/voice-session-machine'
 
 export type VoiceJoinOptions = {
   rejoin?: boolean
@@ -31,6 +32,12 @@ export type LiveKitNativeCredentials = Record<
   LiveKitNativeMediaKind,
   LiveKitNativePublisherCredentials
 >
+
+export type ActiveVoiceSessionSnapshot = {
+  room: Room
+  channelId: string
+  localVoiceReady: boolean
+}
 
 export function nativeCredentialsFromJoinResponse(
   credentials: VoiceServerUpdateEvent,
@@ -59,13 +66,24 @@ export type VoiceJoinRunnerDeps = {
   getLocalUserId: () => string | undefined
   isJoinBlocked: () => boolean
   setJoinBlockedUntil: (timestamp: number) => void
-  shouldLeaveBeforeJoin: () => boolean
-  leaveBeforeJoin: () => Promise<void>
+  getActiveSession: () => ActiveVoiceSessionSnapshot | null
+  requestJoinOperation: (
+    channelId: string,
+    reason: VoiceJoinReason,
+  ) => string
+  handleServerPrepareSucceeded: (operationId: string) => void
+  handleRoomConnected: (operationId: string) => void
+  handleRoomConnectFailed: (operationId: string, error: string) => void
   beginConnecting: (
     channelId: string,
     preview: ReturnType<typeof createConnectingLocalVoiceState>[],
   ) => void
   setActiveRoom: (room: Room) => void
+  disconnectReplacedRoom: (room: Room) => Promise<void>
+  restorePreviousSession: (
+    session: ActiveVoiceSessionSnapshot,
+    failedTargetChannelId: string,
+  ) => void
   attachRoomHandlers: (room: Room) => void
   setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
   setConnectionPhase: (phase: VoiceConnectionPhase) => void
@@ -99,6 +117,22 @@ function voiceCallRecipients(
   return recipients.length > 0 ? recipients : undefined
 }
 
+function voiceJoinReason(
+  channel: Channel | undefined,
+  options: VoiceJoinOptions,
+  previousSession: ActiveVoiceSessionSnapshot | null,
+): VoiceJoinReason {
+  if (options.rejoin) return 'rejoin'
+  if (previousSession) return 'switch'
+  if (
+    channel?.channel_type === 'DirectMessage' ||
+    channel?.channel_type === 'Group'
+  ) {
+    return 'dm_answer'
+  }
+  return 'manual_join'
+}
+
 export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
   return async function performVoiceJoin(
     targetChannelId: string,
@@ -122,12 +156,13 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       return false
     }
 
-    if (!options.rejoin && deps.shouldLeaveBeforeJoin()) {
-      await deps.leaveBeforeJoin()
-    }
-
     const prefs = readVoicePreferences()
     const localUserId = deps.getLocalUserId()
+    const previousSession = options.rejoin ? null : deps.getActiveSession()
+    const operationId = deps.requestJoinOperation(
+      targetChannelId,
+      voiceJoinReason(targetChannel, options, previousSession),
+    )
     const preview = localUserId
       ? [
           createConnectingLocalVoiceState(localUserId, {
@@ -139,6 +174,8 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
 
     deps.setConnectionPhase('joining_channel')
     deps.beginConnecting(targetChannelId, preview)
+
+    let room: Room | null = null
 
     try {
       deps.setConnectionPhase('fetching_rtc_token')
@@ -153,7 +190,7 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
               targetChannelId,
               !prefs.micEnabled,
               prefs.deafened,
-              { recipients: callRecipients },
+              { operationId, recipients: callRecipients },
             )
           }
 
@@ -162,25 +199,34 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
             !prefs.micEnabled,
             prefs.deafened,
             options.rejoin
-              ? { suppress_call_notifications: true }
-              : undefined,
+              ? { operationId, suppress_call_notifications: true }
+              : { operationId },
           )
         },
         0,
       )
       if (!credentials) {
-        if (!options.rejoin) deps.abortJoin()
+        if (previousSession) {
+          deps.restorePreviousSession(previousSession, targetChannelId)
+        } else if (!options.rejoin) {
+          deps.abortJoin()
+        }
         return false
       }
+      deps.handleServerPrepareSucceeded(operationId)
 
       const { url, token: livekitToken } = credentials
-      const room = new Room(createVoiceRoomOptions())
+      room = new Room(createVoiceRoomOptions())
       deps.setLiveKitCredentials(nativeCredentialsFromJoinResponse(credentials))
-      deps.setActiveRoom(room)
       deps.attachRoomHandlers(room)
 
       deps.setConnectionPhase('connecting_rtc')
       await room.connect(url, livekitToken)
+      deps.handleRoomConnected(operationId)
+      deps.setActiveRoom(room)
+      if (previousSession && previousSession.room !== room) {
+        await deps.disconnectReplacedRoom(previousSession.room)
+      }
 
       deps.setConnectionPhase('connecting_microphone')
       deps.onRoomConnected(room, targetChannelId)
@@ -188,8 +234,17 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       return true
     } catch (error) {
       deps.setConnectionPhase('failed')
+      deps.handleRoomConnectFailed(operationId, voiceJoinErrorMessage(error))
       if (!options.rejoin) {
-        deps.abortJoin()
+        if (room) {
+          room.removeAllListeners()
+          await room.disconnect().catch(() => {})
+        }
+        if (previousSession) {
+          deps.restorePreviousSession(previousSession, targetChannelId)
+        } else {
+          deps.abortJoin()
+        }
         toast.error(voiceJoinErrorMessage(error))
       }
       deps.setJoinBlockedUntil(

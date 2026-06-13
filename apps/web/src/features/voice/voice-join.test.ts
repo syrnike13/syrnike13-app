@@ -12,6 +12,8 @@ vi.mock('livekit-client', () => ({
   Room: vi.fn(function Room() {
     return {
       connect: vi.fn(async () => {}),
+      disconnect: vi.fn(async () => {}),
+      removeAllListeners: vi.fn(),
     }
   }),
 }))
@@ -47,6 +49,7 @@ beforeEach(() => {
   } as never)
   vi.mocked(requestVoiceJoin).mockResolvedValue({
     type: 'VoiceServerUpdate',
+    operation_id: 'op-join',
     channel_id: 'channel-1',
     node: 'node-1',
     token: 'browser-token',
@@ -83,15 +86,23 @@ describe('voiceJoinErrorMessage', () => {
 describe('createVoiceJoinRunner', () => {
   it('reports concrete phases while joining voice', async () => {
     const phases: string[] = []
+    const requestJoinOperation = vi.fn(() => 'op-join')
+    const handleServerPrepareSucceeded = vi.fn()
+    const handleRoomConnected = vi.fn()
     const runner = createVoiceJoinRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
       setJoinBlockedUntil: vi.fn(),
-      shouldLeaveBeforeJoin: () => false,
-      leaveBeforeJoin: vi.fn(),
+      getActiveSession: () => null,
+      requestJoinOperation,
+      handleServerPrepareSucceeded,
+      handleRoomConnected,
+      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
       setActiveRoom: vi.fn(),
+      disconnectReplacedRoom: vi.fn(),
+      restorePreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -108,7 +119,18 @@ describe('createVoiceJoinRunner', () => {
       'connecting_rtc',
       'connecting_microphone',
     ])
-    expect(requestVoiceJoin).toHaveBeenCalledWith('channel-1', false, false)
+    expect(requestVoiceJoin).toHaveBeenCalledWith(
+      'channel-1',
+      false,
+      false,
+      { operationId: 'op-join' },
+    )
+    expect(requestJoinOperation).toHaveBeenCalledWith(
+      'channel-1',
+      'manual_join',
+    )
+    expect(handleServerPrepareSucceeded).toHaveBeenCalledWith('op-join')
+    expect(handleRoomConnected).toHaveBeenCalledWith('op-join')
   })
 
   it('does not suppress an immediate user join retry for the same channel', async () => {
@@ -122,10 +144,15 @@ describe('createVoiceJoinRunner', () => {
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
       setJoinBlockedUntil: vi.fn(),
-      shouldLeaveBeforeJoin: () => false,
-      leaveBeforeJoin: vi.fn(),
+      getActiveSession: () => null,
+      requestJoinOperation: vi.fn(() => 'op-join'),
+      handleServerPrepareSucceeded: vi.fn(),
+      handleRoomConnected: vi.fn(),
+      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
       setActiveRoom: vi.fn(),
+      disconnectReplacedRoom: vi.fn(),
+      restorePreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -138,6 +165,44 @@ describe('createVoiceJoinRunner', () => {
     await expect(runner('channel-repeat')).resolves.toBe(true)
 
     expect(requestVoiceJoin).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the current voice session alive until the replacement room connects', async () => {
+    const previousRoom = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      removeAllListeners: vi.fn(),
+    } as never
+    const disconnectReplacedRoom = vi.fn(async () => {})
+    const runner = createVoiceJoinRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      setJoinBlockedUntil: vi.fn(),
+      getActiveSession: () => ({
+        room: previousRoom,
+        channelId: 'old-channel',
+        localVoiceReady: true,
+      }),
+      requestJoinOperation: vi.fn(() => 'op-join'),
+      handleServerPrepareSucceeded: vi.fn(),
+      handleRoomConnected: vi.fn(),
+      handleRoomConnectFailed: vi.fn(),
+      beginConnecting: vi.fn(),
+      setActiveRoom: vi.fn(),
+      disconnectReplacedRoom,
+      restorePreviousSession: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      onRoomConnected: vi.fn(),
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(runner('channel-1')).resolves.toBe(true)
+
+    expect(disconnectReplacedRoom).toHaveBeenCalledWith(previousRoom)
   })
 
   it('passes DM recipients to the voice join request', async () => {
@@ -153,10 +218,15 @@ describe('createVoiceJoinRunner', () => {
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
       setJoinBlockedUntil: vi.fn(),
-      shouldLeaveBeforeJoin: () => false,
-      leaveBeforeJoin: vi.fn(),
+      getActiveSession: () => null,
+      requestJoinOperation: vi.fn(() => 'op-join'),
+      handleServerPrepareSucceeded: vi.fn(),
+      handleRoomConnected: vi.fn(),
+      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
       setActiveRoom: vi.fn(),
+      disconnectReplacedRoom: vi.fn(),
+      restorePreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -171,7 +241,10 @@ describe('createVoiceJoinRunner', () => {
       'dm-channel',
       false,
       false,
-      { recipients: ['user-2'] },
+      {
+        operationId: 'op-join',
+        recipients: ['user-2'],
+      },
     )
   })
 
@@ -188,10 +261,15 @@ describe('createVoiceJoinRunner', () => {
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
       setJoinBlockedUntil: vi.fn(),
-      shouldLeaveBeforeJoin: () => false,
-      leaveBeforeJoin: vi.fn(),
+      getActiveSession: () => null,
+      requestJoinOperation: vi.fn(() => 'op-join'),
+      handleServerPrepareSucceeded: vi.fn(),
+      handleRoomConnected: vi.fn(),
+      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
       setActiveRoom: vi.fn(),
+      disconnectReplacedRoom: vi.fn(),
+      restorePreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -206,7 +284,10 @@ describe('createVoiceJoinRunner', () => {
       'dm-channel',
       false,
       false,
-      { suppress_call_notifications: true },
+      {
+        operationId: 'op-join',
+        suppress_call_notifications: true,
+      },
     )
   })
 
@@ -229,10 +310,15 @@ describe('createVoiceJoinRunner', () => {
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
       setJoinBlockedUntil: vi.fn(),
-      shouldLeaveBeforeJoin: () => false,
-      leaveBeforeJoin: vi.fn(),
+      getActiveSession: () => null,
+      requestJoinOperation: vi.fn(() => 'op-join'),
+      handleServerPrepareSucceeded: vi.fn(),
+      handleRoomConnected: vi.fn(),
+      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
       setActiveRoom: vi.fn(),
+      disconnectReplacedRoom: vi.fn(),
+      restorePreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -247,7 +333,10 @@ describe('createVoiceJoinRunner', () => {
       'group-channel',
       false,
       false,
-      { recipients: ['user-2', 'user-3'] },
+      {
+        operationId: 'op-join',
+        recipients: ['user-2', 'user-3'],
+      },
     )
   })
 })
@@ -256,6 +345,7 @@ describe('nativeCredentialsFromJoinResponse', () => {
   it('keeps native microphone, screen, and camera publishers on separate identities', () => {
     const response = {
       type: 'VoiceServerUpdate' as const,
+      operation_id: 'op-join',
       channel_id: 'channel-1',
       node: 'node-1',
       token: 'browser-token',

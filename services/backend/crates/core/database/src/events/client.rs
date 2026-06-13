@@ -8,8 +8,8 @@ use syrnike_models::v0::{
     FieldsChannel, FieldsMember, FieldsMessage, FieldsRole, FieldsServer, FieldsUser,
     FieldsWebhook, Member, MemberCompositeKey, Message, NativeVoiceCredentials, PartialChannel,
     PartialEmoji, PartialMember, PartialMessage, PartialRole, PartialServer, PartialUser,
-    PartialUserVoiceState, PartialWebhook, PolicyChange, RemovalIntention, Report, Server, User,
-    UserSettings, UserVoiceState, Webhook,
+    PartialWebhook, PolicyChange, RemovalIntention, Report, Server, User, UserSettings,
+    UserVoiceState, Webhook,
 };
 
 use crate::Database;
@@ -399,6 +399,7 @@ pub enum EventV1 {
         ok: bool,
     },
     VoiceServerUpdate {
+        operation_id: String,
         channel_id: String,
         node: String,
         url: String,
@@ -457,5 +458,39 @@ impl EventV1 {
     /// Publish internal global event
     pub async fn global(self) {
         self.p("global".to_string()).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EventV1;
+    use serde_json::json;
+    use syrnike_models::v0::NativeVoiceCredentials;
+
+    fn native_credentials(kind: &str) -> NativeVoiceCredentials {
+        NativeVoiceCredentials {
+            token: format!("{kind}-token"),
+            identity: format!("user-1:desktop-native:{kind}"),
+        }
+    }
+
+    #[test]
+    fn voice_server_update_serializes_operation_id() {
+        let event = EventV1::VoiceServerUpdate {
+            operation_id: "op-join".to_string(),
+            channel_id: "channel-1".to_string(),
+            node: "node-1".to_string(),
+            url: "wss://livekit.example".to_string(),
+            token: "browser-token".to_string(),
+            native_microphone: native_credentials("microphone"),
+            native_screen: native_credentials("screen"),
+            native_camera: native_credentials("camera"),
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+
+        assert_eq!(value["type"], json!("VoiceServerUpdate"));
+        assert_eq!(value["operation_id"], json!("op-join"));
+        assert_eq!(value["channel_id"], json!("channel-1"));
     }
 }

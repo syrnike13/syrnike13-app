@@ -3,6 +3,7 @@ import { resolveVoiceNodeName } from '#/features/voice/voice-node'
 
 export type VoiceServerUpdateEvent = {
   type: 'VoiceServerUpdate'
+  operation_id: string
   channel_id: string
   node: string
   url: string
@@ -13,11 +14,11 @@ export type VoiceServerUpdateEvent = {
 }
 
 export type VoiceStateUpdatePayload = {
+  operation_id?: string
   channel_id: string | null
   self_mute: boolean
   self_deaf: boolean
   node?: string
-  force_disconnect?: boolean
   recipients?: string[]
   suppress_call_notifications?: boolean
   refresh_credentials?: boolean
@@ -30,6 +31,7 @@ const VOICE_STATE_RELIABLE_KEY = 'voice-state'
 type PendingVoiceStateUpdate = {
   nonce: string
   event: Record<string, unknown>
+  reliableKey: string
   retryTimer: ReturnType<typeof setTimeout> | undefined
 }
 
@@ -59,21 +61,43 @@ function scheduleVoiceStateAckRetry() {
   pending.retryTimer = setTimeout(() => {
     const current = pendingVoiceStateUpdate
     if (!current || current.nonce !== pending.nonce) return
-    eventsGateway.sendReliable(current.event, VOICE_STATE_RELIABLE_KEY)
+    eventsGateway.sendReliable(current.event, current.reliableKey)
     scheduleVoiceStateAckRetry()
   }, VOICE_STATE_ACK_RETRY_MS)
+}
+
+function voiceStateReliableKey(event: Record<string, unknown>) {
+  if (typeof event.operation_id === 'string') {
+    return `voice-operation:${event.operation_id}`
+  }
+  if (event.channel_id === null) {
+    return 'voice-leave'
+  }
+  if (
+    typeof event.channel_id === 'string' &&
+    event.suppress_call_notifications === true &&
+    event.refresh_credentials !== true
+  ) {
+    return `voice-flags:${event.channel_id}`
+  }
+  return VOICE_STATE_RELIABLE_KEY
 }
 
 function voiceServerUpdateAcknowledgesPending(event: Record<string, unknown>) {
   const pending = pendingVoiceStateUpdate
   if (!pending) return false
   if (event.type !== 'VoiceServerUpdate') return false
+  if (
+    pending.event.operation_id &&
+    event.operation_id !== pending.event.operation_id
+  ) {
+    return false
+  }
   if (event.channel_id !== pending.event.channel_id) return false
 
   return (
     Boolean(pending.event.node) ||
-    pending.event.refresh_credentials === true ||
-    pending.event.force_disconnect === true
+    pending.event.refresh_credentials === true
   )
 }
 
@@ -105,13 +129,11 @@ export function sendVoiceStateUpdate(payload: VoiceStateUpdatePayload) {
   const event = {
     type: 'VoiceStateUpdate',
     nonce: createVoiceStateNonce(),
+    ...(payload.operation_id ? { operation_id: payload.operation_id } : {}),
     channel_id: payload.channel_id,
     self_mute: payload.self_mute,
     self_deaf: payload.self_deaf,
     ...(payload.node ? { node: payload.node } : {}),
-    ...(payload.force_disconnect !== undefined
-      ? { force_disconnect: payload.force_disconnect }
-      : {}),
     ...(payload.recipients ? { recipients: payload.recipients } : {}),
     ...(payload.suppress_call_notifications
       ? { suppress_call_notifications: true }
@@ -119,18 +141,21 @@ export function sendVoiceStateUpdate(payload: VoiceStateUpdatePayload) {
     ...(payload.refresh_credentials ? { refresh_credentials: true } : {}),
   }
 
+  const reliableKey = voiceStateReliableKey(event)
   clearPendingVoiceStateUpdate()
   pendingVoiceStateUpdate = {
     nonce: event.nonce,
     event,
+    reliableKey,
     retryTimer: undefined,
   }
-  eventsGateway.sendReliable(event, VOICE_STATE_RELIABLE_KEY)
+  eventsGateway.sendReliable(event, reliableKey)
   scheduleVoiceStateAckRetry()
 }
 
 export function waitForVoiceServerUpdate(
   channelId: string,
+  operationId: string,
   timeoutMs = VOICE_SERVER_UPDATE_TIMEOUT_MS,
 ): Promise<VoiceServerUpdateEvent> {
   return new Promise((resolve, reject) => {
@@ -142,6 +167,7 @@ export function waitForVoiceServerUpdate(
     const unsubscribe = eventsGateway.subscribeEvents((event) => {
       if (event.type === 'VoiceServerUpdate') {
         if (event.channel_id !== channelId) return
+        if (event.operation_id !== operationId) return
         clearTimeout(timer)
         unsubscribe()
         resolve(event as VoiceServerUpdateEvent)
@@ -167,20 +193,20 @@ export async function requestVoiceJoin(
   channelId: string,
   selfMute: boolean,
   selfDeaf: boolean,
-  options?: {
-    force_disconnect?: boolean
+  options: {
+    operationId: string
     recipients?: string[]
     suppress_call_notifications?: boolean
   },
 ): Promise<VoiceServerUpdateEvent> {
   const node = await resolveVoiceNodeName()
-  const responsePromise = waitForVoiceServerUpdate(channelId)
+  const responsePromise = waitForVoiceServerUpdate(channelId, options.operationId)
   sendVoiceStateUpdate({
+    operation_id: options.operationId,
     channel_id: channelId,
     self_mute: selfMute,
     self_deaf: selfDeaf,
     node,
-    force_disconnect: options?.force_disconnect ?? true,
     recipients: options?.recipients,
     suppress_call_notifications: options?.suppress_call_notifications,
     refresh_credentials: true,
@@ -192,13 +218,14 @@ export async function requestVoiceCredentialsRefresh(
   channelId: string,
   selfMute: boolean,
   selfDeaf: boolean,
+  operationId: string,
 ): Promise<VoiceServerUpdateEvent> {
-  const responsePromise = waitForVoiceServerUpdate(channelId)
+  const responsePromise = waitForVoiceServerUpdate(channelId, operationId)
   sendVoiceStateUpdate({
+    operation_id: operationId,
     channel_id: channelId,
     self_mute: selfMute,
     self_deaf: selfDeaf,
-    force_disconnect: false,
     suppress_call_notifications: true,
     refresh_credentials: true,
   })
@@ -222,7 +249,6 @@ export function requestVoiceFlagsUpdate(
     channel_id: channelId,
     self_mute: selfMute,
     self_deaf: selfDeaf,
-    force_disconnect: false,
     suppress_call_notifications: true,
   })
 }

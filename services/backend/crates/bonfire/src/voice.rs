@@ -19,11 +19,11 @@ pub async fn handle_voice_state_update(
     voice_client: &VoiceClient,
     amqp: &AMQP,
     user: &User,
+    operation_id: Option<String>,
     channel_id: Option<String>,
     self_mute: bool,
     self_deaf: bool,
     node: Option<String>,
-    force_disconnect: Option<bool>,
     recipients: Option<Vec<String>>,
     suppress_call_notifications: bool,
     refresh_credentials: bool,
@@ -69,8 +69,10 @@ pub async fn handle_voice_state_update(
             return Ok(None);
         }
 
+        let operation_id = operation_id.ok_or_else(|| create_error!(InvalidOperation))?;
         let credentials = refresh_voice_credentials(db, voice_client, user, &channel_id).await?;
         return Ok(Some(EventV1::VoiceServerUpdate {
+            operation_id,
             channel_id: credentials.channel_id,
             node: credentials.node,
             url: credentials.url,
@@ -81,15 +83,14 @@ pub async fn handle_voice_state_update(
         }));
     }
 
+    let operation_id = operation_id.ok_or_else(|| create_error!(InvalidOperation))?;
     let credentials = join_voice_channel(
         db,
         voice_client,
-        amqp,
         user,
         &channel_id,
         VoiceJoinOptions {
             node,
-            force_disconnect,
             recipients,
             suppress_call_notifications,
             self_mute,
@@ -99,6 +100,7 @@ pub async fn handle_voice_state_update(
     .await?;
 
     Ok(Some(EventV1::VoiceServerUpdate {
+        operation_id,
         channel_id: credentials.channel_id,
         node: credentials.node,
         url: credentials.url,

@@ -91,15 +91,17 @@ describe('voice gateway reliable state updates', () => {
     const { sendVoiceStateUpdate } = await import('./voice-gateway')
 
     sendVoiceStateUpdate({
+      operation_id: 'op-join',
       channel_id: 'channel-1',
       self_mute: false,
       self_deaf: false,
       node: 'node-1',
-      force_disconnect: true,
+      refresh_credentials: true,
     })
 
     emitEvent({
       type: 'VoiceServerUpdate',
+      operation_id: 'op-join',
       channel_id: 'channel-1',
       node: 'node-1',
     })
@@ -115,7 +117,7 @@ describe('voice gateway reliable state updates', () => {
       channel_id: 'channel-1',
       self_mute: true,
       self_deaf: false,
-      force_disconnect: false,
+      suppress_call_notifications: true,
     })
 
     emitEvent({
@@ -131,21 +133,27 @@ describe('voice gateway reliable state updates', () => {
   it('requests fresh credentials when joining a channel that may already contain this user', async () => {
     const { requestVoiceJoin } = await import('./voice-gateway')
 
-    const joinPromise = requestVoiceJoin('channel-1', false, false)
+    const joinPromise = requestVoiceJoin('channel-1', false, false, {
+      operationId: 'op-join',
+    })
     await vi.advanceTimersByTimeAsync(0)
 
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
+      operation_id: 'op-join',
       self_mute: false,
       self_deaf: false,
       node: 'node-1',
-      force_disconnect: true,
       refresh_credentials: true,
     })
+    expect(sendReliable.mock.calls[0]?.[0]).not.toHaveProperty(
+      'force_disconnect',
+    )
 
     emitEvent({
       type: 'VoiceServerUpdate',
+      operation_id: 'op-join',
       channel_id: 'channel-1',
       node: 'node-1',
       url: 'wss://livekit.example',
@@ -161,6 +169,59 @@ describe('voice gateway reliable state updates', () => {
     })
   })
 
+  it('matches voice server updates by operation id instead of channel only', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+
+    const joinPromise = requestVoiceJoin('channel-1', false, false, {
+      operationId: 'op-join',
+    })
+    let resolved = false
+    void joinPromise.then(() => {
+      resolved = true
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
+      type: 'VoiceStateUpdate',
+      channel_id: 'channel-1',
+      operation_id: 'op-join',
+      refresh_credentials: true,
+    })
+    expect(sendReliable.mock.calls[0]?.[1]).toBe('voice-operation:op-join')
+
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-stale',
+      channel_id: 'channel-1',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'stale-browser-token',
+      native_microphone: { token: 'stale-mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'stale-screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'stale-camera-token', identity: 'user-1:camera' },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(resolved).toBe(false)
+
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-join',
+      channel_id: 'channel-1',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+
+    await expect(joinPromise).resolves.toMatchObject({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-join',
+      channel_id: 'channel-1',
+    })
+  })
+
   it('suppresses call notifications when refreshing voice credentials', async () => {
     const { requestVoiceCredentialsRefresh } = await import('./voice-gateway')
 
@@ -168,19 +229,25 @@ describe('voice gateway reliable state updates', () => {
       'channel-1',
       false,
       false,
+      'op-refresh',
     )
     await vi.advanceTimersByTimeAsync(0)
 
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
-      force_disconnect: false,
+      operation_id: 'op-refresh',
       suppress_call_notifications: true,
       refresh_credentials: true,
     })
+    expect(sendReliable.mock.calls[0]?.[0]).not.toHaveProperty(
+      'force_disconnect',
+    )
+    expect(sendReliable.mock.calls[0]?.[1]).toBe('voice-operation:op-refresh')
 
     emitEvent({
       type: 'VoiceServerUpdate',
+      operation_id: 'op-refresh',
       channel_id: 'channel-1',
       node: 'node-1',
       url: 'wss://livekit.example',
@@ -206,15 +273,19 @@ describe('voice gateway reliable state updates', () => {
       channel_id: 'channel-1',
       self_mute: true,
       self_deaf: false,
-      force_disconnect: false,
       suppress_call_notifications: true,
     })
+    expect(sendReliable.mock.calls[0]?.[0]).not.toHaveProperty(
+      'force_disconnect',
+    )
+    expect(sendReliable.mock.calls[0]?.[1]).toBe('voice-flags:channel-1')
   })
 
   it('sends suppress_call_notifications for silent voice rejoins', async () => {
     const { requestVoiceJoin } = await import('./voice-gateway')
 
     const joinPromise = requestVoiceJoin('channel-1', false, false, {
+      operationId: 'op-rejoin',
       suppress_call_notifications: true,
     })
     await vi.advanceTimersByTimeAsync(0)
@@ -222,12 +293,14 @@ describe('voice gateway reliable state updates', () => {
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
+      operation_id: 'op-rejoin',
       suppress_call_notifications: true,
       refresh_credentials: true,
     })
 
     emitEvent({
       type: 'VoiceServerUpdate',
+      operation_id: 'op-rejoin',
       channel_id: 'channel-1',
       node: 'node-1',
       url: 'wss://livekit.example',
