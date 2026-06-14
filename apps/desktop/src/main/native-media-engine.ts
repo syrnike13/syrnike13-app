@@ -119,6 +119,16 @@ type PendingStopResolver = {
 }
 type PendingStartResolver = (event: SidecarEvent) => void
 
+export type NativeMediaStartupDiagnostics = {
+  sessionId: string
+  lastLifecycleStatus?: string
+  lastLifecycleMessage?: string
+  stderrLines: string[]
+}
+
+const MAX_STARTUP_DIAGNOSTIC_LINES = 4
+const MAX_STARTUP_DIAGNOSTIC_LINE_LENGTH = 240
+
 export function createPendingStartResolverRegistry() {
   const resolvers = new Map<string, Set<PendingStartResolver>>()
 
@@ -174,6 +184,7 @@ const mediaEngineHelperReaders = new WeakMap<
   readline.Interface
 >()
 const pendingStartResolvers = createPendingStartResolverRegistry()
+const startupDiagnostics = new Map<string, NativeMediaStartupDiagnostics>()
 const pendingStopResolvers = new Map<string, PendingStopResolver>()
 let mediaEngineStatus: NativeMediaSessionStatus = { status: 'idle' }
 let lastMediaEngineError: string | null = null
@@ -546,6 +557,105 @@ function emitSidecarLost(
   const win = getWindow()
   if (!win || win.isDestroyed()) return
   win.webContents.send(IPC.mediaEngineLost, event)
+}
+
+function startupDiagnosticsFor(sessionId: string) {
+  let diagnostics = startupDiagnostics.get(sessionId)
+  if (!diagnostics) {
+    diagnostics = { sessionId, stderrLines: [] }
+    startupDiagnostics.set(sessionId, diagnostics)
+  }
+  return diagnostics
+}
+
+function sanitizeNativeMediaStartupDiagnosticLine(line: string) {
+  return line
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\[[^\]]+\]\s*/, '')
+    .replace(
+      /\b(token|access_token|authorization)\s*[:=]\s*([^\s,;]+)/gi,
+      '$1=[redacted]',
+    )
+    .replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(
+      /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+      '[redacted]',
+    )
+    .slice(0, MAX_STARTUP_DIAGNOSTIC_LINE_LENGTH)
+}
+
+function recordNativeMediaStartupStderr(sessionId: string, text: string) {
+  const diagnostics = startupDiagnosticsFor(sessionId)
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = sanitizeNativeMediaStartupDiagnosticLine(rawLine)
+    if (!line) continue
+    diagnostics.stderrLines.push(line)
+    while (diagnostics.stderrLines.length > MAX_STARTUP_DIAGNOSTIC_LINES) {
+      diagnostics.stderrLines.shift()
+    }
+  }
+}
+
+function recordNativeMediaHelperStderr(
+  helper: ChildProcessWithoutNullStreams,
+  fallbackSessionId: string,
+  text: string,
+) {
+  const sessionIds = new Set([fallbackSessionId])
+
+  for (const session of activeSessions.values()) {
+    if (session.helper === helper || session.reconnectHelper === helper) {
+      sessionIds.add(session.sessionId)
+    }
+  }
+
+  if (preconnectedScreenSession?.helper === helper) {
+    sessionIds.add(preconnectedScreenSession.sessionId)
+  }
+
+  for (const sessionId of sessionIds) {
+    recordNativeMediaStartupStderr(sessionId, text)
+  }
+}
+
+function recordNativeMediaStartupLifecycle(
+  event: Extract<SidecarEvent, { type: 'session_lifecycle' }>,
+) {
+  const diagnostics = startupDiagnosticsFor(event.session_id)
+  diagnostics.lastLifecycleStatus = event.status
+  diagnostics.lastLifecycleMessage = event.message
+}
+
+function startupDiagnosticSuffix(
+  diagnostics: NativeMediaStartupDiagnostics | undefined,
+) {
+  if (!diagnostics) return ''
+
+  const stage =
+    diagnostics.lastLifecycleMessage ?? diagnostics.lastLifecycleStatus
+  const stderrLine =
+    diagnostics.stderrLines.length > 0
+      ? sanitizeNativeMediaStartupDiagnosticLine(
+          diagnostics.stderrLines[diagnostics.stderrLines.length - 1],
+        )
+      : undefined
+  const stageText = stage ? ` while ${stage}` : ''
+  const stderrText = stderrLine ? `: ${stderrLine}` : ''
+  return `${stageText}${stderrText}`
+}
+
+export function buildNativeMediaStartupTimeoutMessage(
+  diagnostics?: NativeMediaStartupDiagnostics,
+) {
+  return `Native media engine timed out${startupDiagnosticSuffix(diagnostics)}`
+}
+
+function buildNativeMediaStartupFailureMessage(
+  message: string,
+  diagnostics?: NativeMediaStartupDiagnostics,
+) {
+  return `${message}${startupDiagnosticSuffix(diagnostics)}`
 }
 
 function writeHelperCommand(
@@ -955,11 +1065,15 @@ function handleHelperExit(
       ? `Native media engine stopped (${signal})`
       : `Native media engine exited (${code ?? 'unknown'})`
 
-  if (session.reconnecting) {
+  if (pendingStartResolvers.count(sessionId) > 0) {
+    const startupMessage = buildNativeMediaStartupFailureMessage(
+      message,
+      startupDiagnostics.get(sessionId),
+    )
     pendingStartResolvers.get(sessionId)?.({
       type: 'error',
       code: 'helper_exit',
-      message,
+      message: startupMessage,
     })
     pendingStartResolvers.delete(sessionId)
   }
@@ -1221,6 +1335,7 @@ function spawnMediaEngineHelper(
     const session = activeSessions.get(eventSessionId)
 
     if (event.type === 'session_lifecycle') {
+      recordNativeMediaStartupLifecycle(event)
       console.info('[media-engine-helper] lifecycle', event)
       if (event.status === 'stopped') {
         resolvePendingStop(event.session_id)
@@ -1368,6 +1483,7 @@ function spawnMediaEngineHelper(
     }
 
     if (event.type === 'error') {
+      recordNativeMediaStartupStderr(eventSessionId, event.message)
       const errorState: NativeMediaStateEvent = {
         status: 'error',
         sessionId: eventSessionId,
@@ -1398,6 +1514,7 @@ function spawnMediaEngineHelper(
 
   helper.stderr.on('data', (chunk) => {
     const text = chunk.toString()
+    recordNativeMediaHelperStderr(helper, sessionId, text)
     console.error('[media-engine-helper]', text)
   })
   helper.stdin.on('error', (error) => {
@@ -1637,6 +1754,7 @@ async function waitForSidecarReady(sessionId: string, timeoutMs = 15_000) {
         timer = null
       }
       removeResolver()
+      startupDiagnostics.delete(sessionId)
     }
     const fail = (error: Error) => {
       if (settled) return
@@ -1648,8 +1766,11 @@ async function waitForSidecarReady(sessionId: string, timeoutMs = 15_000) {
       if (settled) return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
-        lastMediaEngineError = 'Native media engine timed out'
-        fail(new Error('Native media engine timed out'))
+        const message = buildNativeMediaStartupTimeoutMessage(
+          startupDiagnostics.get(sessionId),
+        )
+        lastMediaEngineError = message
+        fail(new Error(message))
       }, timeoutMs)
     }
 

@@ -584,6 +584,58 @@ describe('native media engine entrypoint', () => {
     expect(lifecycleBranch).toContain('pendingStartResolvers.get(event.session_id)?.(event)')
   })
 
+  it('explains native startup timeout with the last lifecycle stage and stderr line', async () => {
+    const { buildNativeMediaStartupTimeoutMessage } = await import(
+      './native-media-engine'
+    )
+
+    expect(
+      buildNativeMediaStartupTimeoutMessage({
+        sessionId: 'session-1',
+        lastLifecycleMessage: 'livekit_connecting',
+        stderrLines: [
+          '[2026-06-14T12:48:23Z WARN livekit_api::signal_client] signal connection failed on v0 path: Timeout("signal connection timed out")',
+          '[2026-06-14T12:48:26Z WARN livekit::rtc_engine] failed to connect: Signal(Timeout("validate request timed out")), retrying... (1/3)',
+        ],
+      }),
+    ).toBe(
+      'Native media engine timed out while livekit_connecting: failed to connect: Signal(Timeout("validate request timed out")), retrying... (1/3)',
+    )
+  })
+
+  it('redacts token-like startup diagnostics before showing timeout details', async () => {
+    const { buildNativeMediaStartupTimeoutMessage } = await import(
+      './native-media-engine'
+    )
+
+    expect(
+      buildNativeMediaStartupTimeoutMessage({
+        sessionId: 'session-1',
+        lastLifecycleMessage: 'livekit_connecting',
+        stderrLines: [
+          'request failed token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload.signature',
+        ],
+      }),
+    ).toBe(
+      'Native media engine timed out while livekit_connecting: request failed token=[redacted]',
+    )
+  })
+
+  it('rejects native startup waiters when the helper exits before ready', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const exitBody = source.match(
+      /function handleHelperExit[\s\S]*?\r?\n}\r?\n\r?\nfunction stopMediaEngineSession/,
+    )?.[0]
+
+    expect(exitBody).toBeDefined()
+    expect(exitBody).toContain('pendingStartResolvers.count(sessionId) > 0')
+    expect(exitBody).toContain('buildNativeMediaStartupFailureMessage')
+    expect(exitBody).not.toContain('if (session.reconnecting) {')
+  })
+
   it('prewarms one idle native helper for the first media session', () => {
     const engineSource = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
