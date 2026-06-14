@@ -36,6 +36,12 @@ const chatState = vi.hoisted(() => ({
   users: {} as Record<string, User>,
 }))
 
+class FakeResizeObserver {
+  observe = vi.fn()
+  disconnect = vi.fn()
+  unobserve = vi.fn()
+}
+
 const currentUser = {
   _id: CURRENT_USER_ID,
   username: 'me',
@@ -228,6 +234,7 @@ describe('ChannelView direct message header', () => {
       [TARGET_USER_ID]: targetUser,
     }
     syncStore.reset()
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
     syncStore.applyReady({
       users: [currentUser, targetUser],
       servers: [
@@ -250,6 +257,7 @@ describe('ChannelView direct message header', () => {
   afterEach(() => {
     cleanup()
     syncStore.reset()
+    vi.unstubAllGlobals()
   })
 
   it('renders avatar, presence dot, name, and mutual server aliases', () => {

@@ -12,14 +12,13 @@ use syrnike_database::{
             get_channel_voice_call, mutate_channel_voice_call_if_current, voice_call_join_effect,
             voice_call_leave_effect, VoiceCallJoinEffect, VoiceCallLeaveEffect,
             VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase, VoiceCallStateMutation,
-            VoiceCallStateMutationResult,
+            VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
         cleanup_committed_voice_member_removal, commit_voice_join,
         create_voice_call_started_system_message, delete_channel_voice_state_for_room,
-        delete_voice_channel, delete_voice_state_for_session,
-        finish_voice_call_started_system_message, get_call_notification_recipients,
-        get_user_moved_from_voice, get_voice_channel_members, is_desktop_native_voice_identity,
-        publish_voice_state_snapshot, update_voice_state_tracks,
+        delete_voice_state_for_session, finish_voice_call_started_system_message,
+        get_call_notification_recipients, get_user_moved_from_voice, get_voice_channel_members,
+        is_desktop_native_voice_identity, publish_voice_state_snapshot, update_voice_state_tracks,
         update_voice_state_tracks_for_session, user_voice_join_intent_matches, RoomMetadata,
         UserVoiceChannel, VoiceClient, VoiceJoinCommitResult,
     },
@@ -82,7 +81,9 @@ async fn call_channel_and_recipients(
 
 async fn voice_call_leave_policy(db: &Database, channel_id: &str) -> VoiceCallLeavePolicy {
     match Reference::from_unchecked(channel_id).as_channel(db).await {
-        Ok(Channel::DirectMessage { .. }) => VoiceCallLeavePolicy::EndWhenAnyParticipantLeaves,
+        Ok(Channel::DirectMessage { .. }) => VoiceCallLeavePolicy::EndAfterLoneMemberTimeout {
+            timeout_seconds: GROUP_UNANSWERED_ACTIVE_SECONDS,
+        },
         _ => VoiceCallLeavePolicy::EndWhenEmpty,
     }
 }
@@ -272,39 +273,48 @@ async fn apply_voice_call_join(
 
 async fn apply_voice_call_leave(
     db: &Database,
-    voice_client: &VoiceClient,
     amqp: &AMQP,
     channel_id: &str,
     reason: VoiceCallLeaveReason<'_>,
     finished_at: Timestamp,
 ) -> Result<()> {
-    let should_delete_voice_channel = matches!(
-        &reason,
-        VoiceCallLeaveReason::ParticipantLeft {
-            leave_policy: VoiceCallLeavePolicy::EndWhenAnyParticipantLeaves,
-            ..
-        }
-    );
-
     for _ in 0..VOICE_CALL_MUTATION_RETRY_LIMIT {
         let existing_call = get_channel_voice_call(channel_id).await?;
-        let VoiceCallLeaveEffect::End {
-            state,
-            stop_ringing_recipients,
-        } = voice_call_leave_effect(existing_call.as_ref(), reason)
-        else {
-            return Ok(());
+        let effect = voice_call_leave_effect(existing_call.as_ref(), reason);
+        let mutation = match &effect {
+            VoiceCallLeaveEffect::NoChange => return Ok(()),
+            VoiceCallLeaveEffect::StartActiveDeadline(state) => {
+                VoiceCallStateMutation::Set(state.clone())
+            }
+            VoiceCallLeaveEffect::End { .. } => VoiceCallStateMutation::Delete,
         };
 
-        if let VoiceCallStateMutationResult::Conflict(_) = mutate_channel_voice_call_if_current(
-            channel_id,
-            existing_call.as_ref(),
-            VoiceCallStateMutation::Delete,
-        )
-        .await?
+        if let VoiceCallStateMutationResult::Conflict(_) =
+            mutate_channel_voice_call_if_current(channel_id, existing_call.as_ref(), mutation)
+                .await?
         {
             continue;
         }
+
+        let (state, stop_ringing_recipients) = match effect {
+            VoiceCallLeaveEffect::NoChange => unreachable!("NoChange returned before mutation"),
+            VoiceCallLeaveEffect::StartActiveDeadline(state) => {
+                EventV1::VoiceCallActive {
+                    channel_id: state.channel_id.clone(),
+                    initiator_id: state.initiator_id.clone(),
+                    started_at: state.started_at,
+                    expires_at: state.expires_at,
+                    declined_recipients: state.declined_recipients.clone(),
+                }
+                .p(state.channel_id.clone())
+                .await;
+                return Ok(());
+            }
+            VoiceCallLeaveEffect::End {
+                state,
+                stop_ringing_recipients,
+            } => (state, stop_ringing_recipients),
+        };
 
         let ended_reason = if state.phase == VoiceCallPhase::Active && state.expires_at.is_none() {
             VoiceCallEndReason::Completed
@@ -323,16 +333,6 @@ async fn apply_voice_call_leave(
                 .await
         {
             syrnike_config::capture_internal_error!(&error);
-        }
-        if should_delete_voice_channel {
-            delete_voice_channel(
-                voice_client,
-                &UserVoiceChannel {
-                    id: channel_id.to_string(),
-                    server_id: None,
-                },
-            )
-            .await?;
         }
 
         return Ok(());
@@ -521,12 +521,12 @@ pub async fn ingress(
                 .unwrap();
             apply_voice_call_leave(
                 db,
-                voice_client,
                 amqp,
                 channel_id,
                 VoiceCallLeaveReason::ParticipantLeft {
                     remaining_members_after_leave: &remaining_members,
                     leave_policy,
+                    left_at: finished_at,
                 },
                 finished_at,
             )
@@ -598,12 +598,12 @@ pub async fn ingress(
                             .unwrap();
                         apply_voice_call_leave(
                             db,
-                            voice_client,
                             amqp,
                             channel_id,
                             VoiceCallLeaveReason::ParticipantLeft {
                                 remaining_members_after_leave: &remaining_members,
                                 leave_policy,
+                                left_at: finished_at,
                             },
                             finished_at,
                         )
@@ -667,7 +667,6 @@ pub async fn ingress(
                 .unwrap();
             apply_voice_call_leave(
                 db,
-                voice_client,
                 amqp,
                 channel_id,
                 VoiceCallLeaveReason::RoomFinished,

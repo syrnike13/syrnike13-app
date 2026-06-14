@@ -92,6 +92,7 @@ pub enum VoiceCallJoinEffect {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VoiceCallLeaveEffect {
     NoChange,
+    StartActiveDeadline(VoiceCallState),
     End {
         state: VoiceCallState,
         stop_ringing_recipients: Vec<String>,
@@ -101,7 +102,7 @@ pub enum VoiceCallLeaveEffect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoiceCallLeavePolicy {
     EndWhenEmpty,
-    EndWhenAnyParticipantLeaves,
+    EndAfterLoneMemberTimeout { timeout_seconds: i64 },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -109,6 +110,7 @@ pub enum VoiceCallLeaveReason<'a> {
     ParticipantLeft {
         remaining_members_after_leave: &'a [String],
         leave_policy: VoiceCallLeavePolicy,
+        left_at: Timestamp,
     },
     RoomFinished,
 }
@@ -173,8 +175,9 @@ pub fn voice_call_join_effect(
     if let Some(existing_call) = existing_call {
         if existing_call.phase == VoiceCallPhase::Active {
             if existing_call.expires_at.is_some()
-                && existing_call.initiator_id != user_id
-                && connected_members_before_join.contains(&existing_call.initiator_id)
+                && connected_members_before_join
+                    .iter()
+                    .any(|member_id| member_id != user_id)
             {
                 let mut state = existing_call.clone();
                 state.expires_at = None;
@@ -257,16 +260,29 @@ pub fn voice_call_leave_effect(
         VoiceCallLeaveReason::ParticipantLeft {
             remaining_members_after_leave,
             leave_policy,
+            left_at,
         } => {
-            if leave_policy == VoiceCallLeavePolicy::EndWhenAnyParticipantLeaves
-                || remaining_members_after_leave.is_empty()
-            {
+            if remaining_members_after_leave.is_empty() {
                 VoiceCallLeaveEffect::End {
                     state: existing_call.clone(),
                     stop_ringing_recipients: ringing_recipients_to_stop(existing_call),
                 }
             } else {
-                VoiceCallLeaveEffect::NoChange
+                match leave_policy {
+                    VoiceCallLeavePolicy::EndWhenEmpty => VoiceCallLeaveEffect::NoChange,
+                    VoiceCallLeavePolicy::EndAfterLoneMemberTimeout { timeout_seconds } => {
+                        if existing_call.phase != VoiceCallPhase::Active
+                            || existing_call.expires_at.is_some()
+                            || remaining_members_after_leave.len() != 1
+                        {
+                            return VoiceCallLeaveEffect::NoChange;
+                        }
+
+                        let mut state = existing_call.clone();
+                        state.expires_at = Some(left_at + Duration::seconds(timeout_seconds));
+                        VoiceCallLeaveEffect::StartActiveDeadline(state)
+                    }
+                }
             }
         }
         VoiceCallLeaveReason::RoomFinished => VoiceCallLeaveEffect::End {
@@ -295,10 +311,7 @@ pub fn voice_call_expire_effect(
     }
 
     if active_no_answer_deadline_is_expired(existing_call, now) {
-        if connected_members
-            .iter()
-            .any(|member_id| member_id != &existing_call.initiator_id)
-        {
+        if connected_members.len() >= 2 {
             let mut state = existing_call.clone();
             state.expires_at = None;
             return VoiceCallExpireEffect::ClearActiveDeadline(state);
