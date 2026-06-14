@@ -6,7 +6,7 @@ import {
 } from 'electron'
 
 import { installMediaPermissions } from './media-permissions'
-import { resolvePreloadScript } from './paths'
+import { resolveDesktopAsset, resolvePreloadScript } from './paths'
 
 const isMac = process.platform === 'darwin'
 
@@ -58,6 +58,7 @@ export function createMainWindow(loadUrl: string) {
     show: false,
     backgroundColor: DESKTOP_WINDOW_BACKGROUND,
     title: 'syrnike13',
+    icon: resolveDesktopAsset('app-logo.png'),
     ...(isMac
       ? {
           titleBarStyle: 'hiddenInset' as const,

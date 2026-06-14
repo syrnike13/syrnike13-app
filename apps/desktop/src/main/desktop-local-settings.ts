@@ -71,6 +71,10 @@ export async function updateDesktopLocalSettings(
       ...current.appearance,
       ...normalizedPatch.appearance,
     },
+    sounds: {
+      ...current.sounds,
+      ...normalizedPatch.sounds,
+    },
   }
   await saveDesktopLocalSettings(filePath, next)
   return next

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_SOUND_AUTHOR_PACK_ID,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
 } from './settings'
@@ -114,6 +115,57 @@ describe('desktop local settings contract', () => {
       voice: {
         noiseSuppression: false,
         outputVolume: 3,
+      },
+    })
+  })
+
+  it('keeps saved UI sound settings', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        sounds: {
+          enabled: false,
+          authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+          volume: 0.4,
+          eventVolumes: {
+            'voice.mute': 0.25,
+            'voice.unmute': 2,
+            broken: 'nope',
+          },
+          easterEnabled: false,
+        },
+      }).sounds,
+    ).toEqual({
+      enabled: false,
+      authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+      volume: 0.4,
+      eventVolumes: {
+        'voice.mute': 0.25,
+        'voice.unmute': 1,
+      },
+      easterEnabled: false,
+    })
+  })
+
+  it('normalizes UI sound setting patches', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        sounds: {
+          authorPackId: 'winter',
+          volume: 2,
+          eventVolumes: {
+            'voice.mute': -1,
+            'voice.unmute': 0.35,
+            broken: Number.NaN,
+          },
+        },
+      }),
+    ).toEqual({
+      sounds: {
+        volume: 1,
+        eventVolumes: {
+          'voice.mute': 0,
+          'voice.unmute': 0.35,
+        },
       },
     })
   })
