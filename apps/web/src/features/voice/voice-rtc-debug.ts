@@ -137,7 +137,18 @@ export type RtcDebugScreenShareSnapshot = {
   captureVideoFrames?: number
   captureVideoIntervalFrames?: number
   captureVideoLateFrames?: number
+  captureVideoNoFrameCount?: number
+  captureVideoRepeatedFrameCount?: number
+  captureVideoRecoverableLostCount?: number
   captureVideoAvgCaptureUs?: number
+  captureVideoAvgReadbackUs?: number
+  captureVideoAvgScaleUs?: number
+  captureVideoAvgPublishUs?: number
+  captureVideoSourceWidth?: number
+  captureVideoSourceHeight?: number
+  captureVideoContentWidth?: number
+  captureVideoContentHeight?: number
+  captureThreadMmcss?: boolean
   captureAudioPublished?: boolean
   captureAudioMode?: string
   captureAudioLoopbackMode?: string
@@ -478,9 +489,53 @@ function screenShareSnapshot(
       nativeStats?.backend === 'native'
         ? nativeStats.videoLateFrames
         : undefined,
+    captureVideoNoFrameCount:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoNoFrameCount
+        : undefined,
+    captureVideoRepeatedFrameCount:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoRepeatedFrameCount
+        : undefined,
+    captureVideoRecoverableLostCount:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoRecoverableLostCount
+        : undefined,
     captureVideoAvgCaptureUs:
       nativeStats?.backend === 'native'
         ? nativeStats.videoAvgCaptureUs
+        : undefined,
+    captureVideoAvgReadbackUs:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoAvgReadbackUs
+        : undefined,
+    captureVideoAvgScaleUs:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoAvgScaleUs
+        : undefined,
+    captureVideoAvgPublishUs:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoAvgPublishUs
+        : undefined,
+    captureVideoSourceWidth:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoSourceWidth
+        : undefined,
+    captureVideoSourceHeight:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoSourceHeight
+        : undefined,
+    captureVideoContentWidth:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoContentWidth
+        : undefined,
+    captureVideoContentHeight:
+      nativeStats?.backend === 'native'
+        ? nativeStats.videoContentHeight
+        : undefined,
+    captureThreadMmcss:
+      nativeStats?.backend === 'native'
+        ? nativeStats.captureThreadMmcss
         : undefined,
     captureAudioPublished:
       nativeStats?.backend === 'native'

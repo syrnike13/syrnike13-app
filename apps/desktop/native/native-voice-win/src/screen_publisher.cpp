@@ -23,6 +23,7 @@
 #include "protocol.hpp"
 #include "runtime_config.hpp"
 #include "screen_audio_capture.hpp"
+#include "screen_capture_priority.hpp"
 #include "screen_video_capture.hpp"
 
 namespace syrnike::voice {
@@ -269,35 +270,69 @@ void captureScreenVideo(
   std::unique_ptr<ScreenVideoCapturer> video_capturer,
   std::shared_ptr<std::atomic_bool> running
 ) {
+  ScreenCapturePriorityScope priority_scope;
   uint32_t frame_count = 0;
   ScreenVideoFrame captured_frame;
   auto next_frame_at = std::chrono::steady_clock::now();
+  const auto video_started_at = next_frame_at;
   auto next_video_stats_at = next_frame_at + std::chrono::seconds(1);
   uint32_t interval_frame_count = 0;
   uint32_t interval_late_count = 0;
+  uint32_t interval_no_frame_count = 0;
+  uint32_t interval_repeated_frame_count = 0;
+  uint32_t interval_recoverable_lost_count = 0;
   std::chrono::microseconds interval_capture_time{0};
-  std::int64_t timestamp_us = 0;
+  std::chrono::microseconds interval_readback_time{0};
+  std::chrono::microseconds interval_scale_time{0};
+  std::chrono::microseconds interval_publish_time{0};
+  ScreenCaptureFrameMetrics last_metrics;
+  last_metrics.output_width = width;
+  last_metrics.output_height = height;
+  std::string active_method = video_capturer ? video_capturer->method() : "";
 
   while (g_running.load() && running->load()) {
-    const auto capture_started_at = std::chrono::steady_clock::now();
-    if (video_capturer->capture(captured_frame)) {
-      const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::steady_clock::now() - capture_started_at);
+    const auto capture_result = video_capturer->capture(captured_frame);
+    if (!capture_result.method.empty()) {
+      active_method = capture_result.method;
+    }
+    if (capture_result.metrics.output_width > 0 || capture_result.metrics.output_height > 0 ||
+        capture_result.metrics.source_width > 0 || capture_result.metrics.source_height > 0) {
+      last_metrics = capture_result.metrics;
+    }
+
+    if (capture_result.status == ScreenCaptureFrameStatus::NewFrame) {
       livekit::VideoFrame frame(
           static_cast<int>(width),
           static_cast<int>(height),
           livekit::VideoBufferType::BGRA,
           std::move(captured_frame.bgra));
+      const auto publish_started_at = std::chrono::steady_clock::now();
+      const auto timestamp_us = std::chrono::duration_cast<std::chrono::microseconds>(
+          publish_started_at - video_started_at)
+          .count();
       video_source->captureFrame(frame, timestamp_us);
+      const auto publish_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - publish_started_at);
       frame_count += 1;
       interval_frame_count += 1;
-      interval_capture_time += capture_elapsed;
-      timestamp_us += 1000000 / fps;
+      interval_capture_time += std::chrono::microseconds{
+          std::max(0, capture_result.metrics.capture_us)};
+      interval_readback_time += std::chrono::microseconds{
+          std::max(0, capture_result.metrics.readback_us)};
+      interval_scale_time += std::chrono::microseconds{
+          std::max(0, capture_result.metrics.scale_us)};
+      interval_publish_time += publish_elapsed;
       if (frame_count % static_cast<uint32_t>(fps) == 0) {
-        emit("{\"type\":\"frame_method\",\"method\":\"" + jsonEscape(captured_frame.method) +
-             "\",\"active_method\":\"" + jsonEscape(captured_frame.method) + "\",\"count\":" +
+        emit("{\"type\":\"frame_method\",\"method\":\"" + jsonEscape(active_method) +
+             "\",\"active_method\":\"" + jsonEscape(active_method) + "\",\"count\":" +
              std::to_string(frame_count) + "}");
       }
+    } else if (capture_result.status == ScreenCaptureFrameStatus::RepeatedFrame) {
+      interval_repeated_frame_count += 1;
+    } else if (capture_result.status == ScreenCaptureFrameStatus::RecoverableLost) {
+      interval_recoverable_lost_count += 1;
+    } else {
+      interval_no_frame_count += 1;
     }
 
     next_frame_at += frame_interval;
@@ -313,17 +348,43 @@ void captureScreenVideo(
       const auto avg_capture_us = interval_frame_count > 0
           ? interval_capture_time.count() / interval_frame_count
           : 0;
+      const auto avg_publish_us = interval_frame_count > 0
+          ? interval_publish_time.count() / interval_frame_count
+          : 0;
+      const auto avg_readback_us = interval_frame_count > 0
+          ? interval_readback_time.count() / interval_frame_count
+          : 0;
+      const auto avg_scale_us = interval_frame_count > 0
+          ? interval_scale_time.count() / interval_frame_count
+          : 0;
       emit("{\"type\":\"screen_video_frame\",\"session_id\":\"" +
            jsonEscape(session_id) +
            "\",\"frames\":" + std::to_string(frame_count) +
            ",\"interval_frames\":" + std::to_string(interval_frame_count) +
            ",\"target_fps\":" + std::to_string(fps) +
            ",\"late_frames\":" + std::to_string(interval_late_count) +
+           ",\"no_frame_count\":" + std::to_string(interval_no_frame_count) +
+           ",\"repeated_frame_count\":" + std::to_string(interval_repeated_frame_count) +
+           ",\"recoverable_lost_count\":" + std::to_string(interval_recoverable_lost_count) +
            ",\"avg_capture_us\":" + std::to_string(avg_capture_us) +
-           ",\"method\":\"" + jsonEscape(captured_frame.method) + "\"}");
+           ",\"avg_readback_us\":" + std::to_string(avg_readback_us) +
+           ",\"avg_scale_us\":" + std::to_string(avg_scale_us) +
+           ",\"avg_publish_us\":" + std::to_string(avg_publish_us) +
+           ",\"source_width\":" + std::to_string(last_metrics.source_width) +
+           ",\"source_height\":" + std::to_string(last_metrics.source_height) +
+           ",\"content_width\":" + std::to_string(last_metrics.content_width) +
+           ",\"content_height\":" + std::to_string(last_metrics.content_height) +
+           ",\"capture_thread_mmcss\":" + (priority_scope.mmcss_enabled() ? "true" : "false") +
+           ",\"method\":\"" + jsonEscape(active_method) + "\"}");
       interval_frame_count = 0;
       interval_late_count = 0;
+      interval_no_frame_count = 0;
+      interval_repeated_frame_count = 0;
+      interval_recoverable_lost_count = 0;
       interval_capture_time = std::chrono::microseconds{0};
+      interval_readback_time = std::chrono::microseconds{0};
+      interval_scale_time = std::chrono::microseconds{0};
+      interval_publish_time = std::chrono::microseconds{0};
       next_video_stats_at = stats_now + std::chrono::seconds(1);
     }
   }

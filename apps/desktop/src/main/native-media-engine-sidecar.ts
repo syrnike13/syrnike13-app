@@ -166,7 +166,18 @@ export type SidecarEvent =
       interval_frames: number
       target_fps: number
       late_frames: number
+      no_frame_count?: number
+      repeated_frame_count?: number
+      recoverable_lost_count?: number
       avg_capture_us: number
+      avg_readback_us?: number
+      avg_scale_us?: number
+      avg_publish_us?: number
+      source_width?: number
+      source_height?: number
+      content_width?: number
+      content_height?: number
+      capture_thread_mmcss?: boolean
       method?: string
     }
 

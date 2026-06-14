@@ -34,6 +34,7 @@ add_executable(syrnike-native-voice-win
   src/protocol.cpp
   src/runtime_config.cpp
   src/screen_audio_capture.cpp
+  src/screen_capture_priority.cpp
   src/screen_preflight.cpp
   src/screen_publisher.cpp
   src/screen_sources.cpp
@@ -131,4 +132,36 @@ target_compile_definitions(syrnike-native-microphone-echo-reference-tests PRIVAT
 add_test(
   NAME syrnike-native-microphone-echo-reference-tests
   COMMAND syrnike-native-microphone-echo-reference-tests
+)
+
+add_executable(syrnike-native-screen-capture-policy-tests
+  tests/screen_capture_policy_test.cpp
+  src/protocol.cpp
+  src/screen_capture_priority.cpp
+  src/screen_video_capture.cpp
+)
+
+target_include_directories(syrnike-native-screen-capture-policy-tests PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
+target_link_libraries(syrnike-native-screen-capture-policy-tests PRIVATE
+  d3d11
+  dwmapi
+  dxgi
+  ole32
+  user32
+  avrt
+  runtimeobject
+)
+
+target_compile_definitions(syrnike-native-screen-capture-policy-tests PRIVATE
+  WIN32_LEAN_AND_MEAN
+  NOMINMAX
+  _WIN32_WINNT=0x0A00
+)
+
+add_test(
+  NAME syrnike-native-screen-capture-policy-tests
+  COMMAND syrnike-native-screen-capture-policy-tests
 )

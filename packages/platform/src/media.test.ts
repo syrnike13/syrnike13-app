@@ -5,6 +5,7 @@ import type {
   NativeMediaEchoCancellationMode,
   NativeMediaMicrophoneSession,
   NativeMediaNoiseSuppressionMode,
+  NativeMediaStatsEvent,
   NativeMicrophoneRuntimeConfig,
   NativeMediaSession,
   NativeMediaMicrophoneSessionStartOptions,
@@ -61,6 +62,40 @@ describe('native media session contract', () => {
         port?: number
       }
     }>()
+  })
+
+  it('models native screen capture bottleneck stats', () => {
+    const event = {
+      sessionId: 'screen-session-1',
+      methods: {
+        wgc: 120,
+        dxgi: 0,
+        gdi_blt: 0,
+        gdi_print: 0,
+      },
+      activeMethod: 'wgc',
+      videoFrames: 120,
+      videoIntervalFrames: 60,
+      videoLateFrames: 1,
+      videoNoFrameCount: 2,
+      videoRepeatedFrameCount: 3,
+      videoRecoverableLostCount: 1,
+      videoAvgCaptureUs: 3200,
+      videoAvgReadbackUs: 1100,
+      videoAvgScaleUs: 900,
+      videoAvgPublishUs: 700,
+      videoSourceWidth: 2560,
+      videoSourceHeight: 1440,
+      videoContentWidth: 1920,
+      videoContentHeight: 1080,
+      captureThreadMmcss: true,
+    } satisfies NativeMediaStatsEvent
+
+    expectTypeOf(event.videoNoFrameCount).toEqualTypeOf<number | undefined>()
+    expectTypeOf(event.videoAvgReadbackUs).toEqualTypeOf<number | undefined>()
+    expectTypeOf(event.videoAvgScaleUs).toEqualTypeOf<number | undefined>()
+    expectTypeOf(event.videoAvgPublishUs).toEqualTypeOf<number | undefined>()
+    expectTypeOf(event.captureThreadMmcss).toEqualTypeOf<boolean | undefined>()
   })
 
   it('models microphone capture as a native media session', () => {

@@ -92,7 +92,18 @@ export async function publishNativeScreenShare(
       videoFrames: event.videoFrames,
       videoIntervalFrames: event.videoIntervalFrames,
       videoLateFrames: event.videoLateFrames,
+      videoNoFrameCount: event.videoNoFrameCount,
+      videoRepeatedFrameCount: event.videoRepeatedFrameCount,
+      videoRecoverableLostCount: event.videoRecoverableLostCount,
       videoAvgCaptureUs: event.videoAvgCaptureUs,
+      videoAvgReadbackUs: event.videoAvgReadbackUs,
+      videoAvgScaleUs: event.videoAvgScaleUs,
+      videoAvgPublishUs: event.videoAvgPublishUs,
+      videoSourceWidth: event.videoSourceWidth,
+      videoSourceHeight: event.videoSourceHeight,
+      videoContentWidth: event.videoContentWidth,
+      videoContentHeight: event.videoContentHeight,
+      captureThreadMmcss: event.captureThreadMmcss,
     })
   })
 
