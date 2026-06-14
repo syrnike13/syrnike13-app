@@ -180,6 +180,13 @@ export type SidecarEvent =
       capture_thread_mmcss?: boolean
       method?: string
     }
+  | {
+      type: 'screen_capture_ended'
+      session_id: string
+      reason: 'target_closed' | string
+      method?: string
+      message?: string
+    }
 
 export function parseSidecarEvent(line: string): SidecarEvent | null {
   const trimmed = line.trim()

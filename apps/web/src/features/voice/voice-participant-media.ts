@@ -17,9 +17,6 @@ export function participantMicPublishing(participant: Participant) {
 }
 
 export function participantHasCamera(participant: Participant) {
-  if ('isCameraEnabled' in participant && participant.isCameraEnabled) {
-    return true
-  }
   return hasPublishedVideoSource(participant, Track.Source.Camera)
 }
 
@@ -47,7 +44,11 @@ function hasPublishedVideoSource(
 
 export function localParticipantVoiceFlags(participant: LocalParticipant) {
   return {
-    camera: participantHasCamera(participant),
+    camera: hasPublishedVideoSource(
+      participant,
+      Track.Source.Camera,
+      true,
+    ),
     screensharing: hasPublishedVideoSource(
       participant,
       Track.Source.ScreenShare,

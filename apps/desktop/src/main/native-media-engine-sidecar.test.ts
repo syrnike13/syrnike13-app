@@ -335,6 +335,24 @@ describe('native media engine sidecar protocol', () => {
     }
   })
 
+  it('parses native screen capture end events', () => {
+    const event = parseSidecarEvent(
+      JSON.stringify({
+        type: 'screen_capture_ended',
+        session_id: 'screen-session-1',
+        reason: 'target_closed',
+        method: 'wgc',
+      }),
+    )
+
+    expect(event?.type).toBe('screen_capture_ended')
+    if (event?.type === 'screen_capture_ended') {
+      expect(event.session_id).toBe('screen-session-1')
+      expect(event.reason).toBe('target_closed')
+      expect(event.method).toBe('wgc')
+    }
+  })
+
   it('parses session lifecycle events', () => {
     const event = parseSidecarEvent(
       JSON.stringify({

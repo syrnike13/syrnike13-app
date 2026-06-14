@@ -29,6 +29,7 @@ enum class ScreenCaptureFrameStatus {
   NoFrame,
   RepeatedFrame,
   RecoverableLost,
+  TargetClosed,
   FatalError,
 };
 

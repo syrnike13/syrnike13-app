@@ -1400,6 +1400,27 @@ function spawnMediaEngineHelper(
       return
     }
 
+    if (event.type === 'screen_capture_ended') {
+      const endedSession = activeSessions.get(event.session_id)
+      console.info('[media-engine-helper] screen capture ended', event)
+      if (getWindowRef) {
+        const win = getWindowRef()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send(IPC.mediaStreamEnded, event.session_id)
+        }
+      }
+      if (endedSession?.startOptions.kind === 'screen') {
+        const stopped = writeHelperCommand(endedSession.helper, {
+          cmd: 'stop_screen_capture',
+          sessionId: event.session_id,
+        })
+        if (!stopped) {
+          stopMediaEngineSession(event.session_id, true)
+        }
+      }
+      return
+    }
+
     if (event.type === 'frame_method' && session) {
       const method = mapFrameMethod(event.method)
       const activeMethod = mapFrameMethod(event.active_method ?? event.method)

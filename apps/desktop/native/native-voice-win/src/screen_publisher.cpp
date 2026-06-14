@@ -331,6 +331,13 @@ void captureScreenVideo(
       interval_repeated_frame_count += 1;
     } else if (capture_result.status == ScreenCaptureFrameStatus::RecoverableLost) {
       interval_recoverable_lost_count += 1;
+    } else if (capture_result.status == ScreenCaptureFrameStatus::TargetClosed) {
+      emit("{\"type\":\"screen_capture_ended\",\"session_id\":\"" +
+           jsonEscape(session_id) +
+           "\",\"reason\":\"target_closed\",\"method\":\"" +
+           jsonEscape(active_method) + "\"}");
+      running->store(false);
+      break;
     } else {
       interval_no_frame_count += 1;
     }

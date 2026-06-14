@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <cmath>
@@ -271,6 +272,10 @@ public:
 
   ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) override {
     const auto started_at = std::chrono::steady_clock::now();
+    if (target_.window && (!target_.hwnd || !IsWindow(target_.hwnd))) {
+      return captureResult(ScreenCaptureFrameStatus::TargetClosed, method());
+    }
+
     HDC source_dc = target_.window ? GetWindowDC(target_.hwnd) : GetDC(nullptr);
     if (!source_dc) return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
 
@@ -487,8 +492,20 @@ public:
     init();
   }
 
+  ~WgcScreenVideoCapturer() override {
+    if (closed_subscribed_ && item_) {
+      item_.Closed(closed_token_);
+    }
+  }
+
   ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) override {
     const auto started_at = std::chrono::steady_clock::now();
+    if (target_closed_.load(std::memory_order_relaxed) ||
+        !target_.hwnd ||
+        !IsWindow(target_.hwnd)) {
+      return captureResult(ScreenCaptureFrameStatus::TargetClosed, method());
+    }
+
     const auto timeout = std::chrono::milliseconds(1);
     auto deadline = std::chrono::steady_clock::now() + timeout;
     capture::Direct3D11CaptureFrame capture_frame{nullptr};
@@ -597,6 +614,10 @@ private:
         reinterpret_cast<void**>(raw_item.put()));
     if (FAILED(hr)) throw std::runtime_error("failed to create wgc item for window");
     item_ = raw_item.as<capture::GraphicsCaptureItem>();
+    closed_token_ = item_.Closed([this](auto const&, auto const&) {
+      target_closed_.store(true, std::memory_order_relaxed);
+    });
+    closed_subscribed_ = true;
 
     const auto size = item_.Size();
     pool_size_ = size;
@@ -642,6 +663,9 @@ private:
   capture::Direct3D11CaptureFramePool frame_pool_{nullptr};
   capture::GraphicsCaptureSession session_{nullptr};
   winrt::Windows::Graphics::SizeInt32 pool_size_{};
+  winrt::event_token closed_token_{};
+  bool closed_subscribed_ = false;
+  std::atomic_bool target_closed_{false};
 };
 
 }  // namespace

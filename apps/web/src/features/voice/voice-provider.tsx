@@ -56,6 +56,7 @@ import { mergeSpeakingUserIds } from '#/features/voice/voice-speaking-users'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import {
   liveKitRoomParticipantIds,
+  patchLocalVoiceCamera,
   patchLocalVoiceDeafen,
   patchLocalVoiceMic,
   removeLocalUserFromAllVoiceChannels,
@@ -690,12 +691,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const room = roomRef.current
     if (!room) return
     const localMedia = localParticipantVoiceFlags(room.localParticipant)
+    const activeChannelId = channelIdRef.current
+    const userId = auth.user?._id
     setCameraEnabled(localMedia.camera)
     setScreenShareEnabled(
       localMedia.screensharing || Boolean(nativeScreenShareRef.current),
     )
+    if (activeChannelId && userId) {
+      patchLocalVoiceCamera(activeChannelId, userId, localMedia.camera)
+    }
     syncStageMediaItems(room)
-  }, [syncStageMediaItems])
+  }, [auth.user?._id, syncStageMediaItems])
 
   const cleanupAudio = useCallback(() => {
     remoteAudioMixerRef.current?.clear()
@@ -2076,7 +2082,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const toggleCamera = useCallback(() => {
     const room = roomRef.current
     if (!room) return
-    const next = !room.localParticipant.isCameraEnabled
+    const next = !localParticipantVoiceFlags(room.localParticipant).camera
     void room.localParticipant
       .setCameraEnabled(next)
       .then(() => {
@@ -2174,6 +2180,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             setScreenShareEnabled(false)
             syncRoomParticipants()
           }
+          const handleNativeScreenEnded = () => {
+            const active = nativeScreenShareRef.current
+            nativeScreenShareRef.current = null
+            stoppedNativeScreenIdentityRef.current =
+              active?.nativeParticipantIdentity ?? null
+            nativeMediaEngineStatsStore.reset()
+            setScreenShareEnabled(false)
+            syncRoomParticipants()
+          }
           const startNative = async (forceRefresh: boolean) =>
             publishNativeScreenShare(
               room,
@@ -2183,6 +2198,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               selection.audioRequested,
               activeChannelAudioBitrateKbps(),
               handleSidecarLost,
+              handleNativeScreenEnded,
               await refreshNativeLiveKitCredentials('screen', forceRefresh),
             )
 

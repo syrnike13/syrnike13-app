@@ -77,6 +77,7 @@ describe('native screen share publish', () => {
       true,
       48,
       undefined,
+      undefined,
       {
         url: 'wss://livekit.example',
         token: 'native-screen-token',
@@ -164,8 +165,96 @@ describe('native screen share publish', () => {
         false,
         64,
         undefined,
-        undefined as unknown as Parameters<typeof publishNativeScreenShare>[7],
+        undefined,
+        undefined as unknown as Parameters<typeof publishNativeScreenShare>[8],
       ),
     ).rejects.toThrow('LiveKit credentials are required')
+  })
+
+  it('cleans up once when the native screen capture ends externally', async () => {
+    const stopSession = vi.fn(async () => {})
+    const unsubscribeStats = vi.fn()
+    const unsubscribeEnded = vi.fn()
+    const unsubscribeError = vi.fn()
+    const unsubscribeSidecar = vi.fn()
+    let onStreamEndedHandler: ((sessionId: string) => void) | undefined
+    let onStreamErrorHandler:
+      | ((event: { sessionId: string; message: string }) => void)
+      | undefined
+    let onSidecarLostHandler:
+      | ((event: { sessionId: string; message: string }) => void)
+      | undefined
+
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startSession: vi.fn(async () => ({
+          kind: 'screen',
+          sessionId: 'native-screen-1',
+          encoder: 'webrtc',
+          width: 1920,
+          height: 1080,
+          fps: 60,
+          bitrate: 16_000_000,
+          nativeParticipantIdentity: 'user-1:desktop-native',
+        })),
+        stopSession,
+        onStats: vi.fn(() => unsubscribeStats),
+        onStreamEnded: vi.fn((handler) => {
+          onStreamEndedHandler = handler
+          return unsubscribeEnded
+        }),
+        onStreamError: vi.fn((handler) => {
+          onStreamErrorHandler = handler
+          return unsubscribeError
+        }),
+        onSidecarLost: vi.fn((handler) => {
+          onSidecarLostHandler = handler
+          return unsubscribeSidecar
+        }),
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const onEnded = vi.fn()
+    const onSidecarLost = vi.fn()
+    const session = await publishNativeScreenShare(
+      {} as never,
+      {} as never,
+      'window:1234',
+      'high60',
+      false,
+      48,
+      onSidecarLost,
+      onEnded,
+      {
+        url: 'wss://livekit.example',
+        token: 'native-screen-token',
+        participantIdentity: 'user-1:desktop-native',
+      },
+    )
+
+    onStreamEndedHandler?.('other-session')
+    expect(onEnded).not.toHaveBeenCalled()
+
+    onStreamEndedHandler?.('native-screen-1')
+    onStreamErrorHandler?.({
+      sessionId: 'native-screen-1',
+      message: 'capture failed',
+    })
+    onSidecarLostHandler?.({
+      sessionId: 'native-screen-1',
+      message: 'sidecar exited',
+    })
+
+    expect(onEnded).toHaveBeenCalledTimes(1)
+    expect(onSidecarLost).not.toHaveBeenCalled()
+    expect(stopSession).not.toHaveBeenCalled()
+    expect(unsubscribeStats).toHaveBeenCalledTimes(1)
+    expect(unsubscribeEnded).toHaveBeenCalledTimes(1)
+    expect(unsubscribeError).toHaveBeenCalledTimes(1)
+    expect(unsubscribeSidecar).toHaveBeenCalledTimes(1)
+
+    await session.stop()
+    expect(stopSession).not.toHaveBeenCalled()
   })
 })

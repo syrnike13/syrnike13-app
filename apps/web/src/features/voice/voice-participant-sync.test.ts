@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { syncStore } from '#/features/sync/sync-store'
 import {
   liveKitRoomParticipantIds,
+  patchLocalVoiceCamera,
   patchLocalVoiceDeafen,
   patchLocalVoiceMic,
 } from '#/features/voice/voice-participant-sync'
@@ -53,7 +54,7 @@ describe('liveKitRoomParticipantIds', () => {
 })
 
 describe('local voice flag patches', () => {
-  it('updates self_mute and self_deaf in sync store', () => {
+  it('updates self_mute, self_deaf, and camera in sync store', () => {
     syncStore.reset()
     syncStore.addVoiceParticipant('channel-1', {
       id: LOCAL_USER_ID,
@@ -69,12 +70,14 @@ describe('local voice flag patches', () => {
 
     patchLocalVoiceMic('channel-1', LOCAL_USER_ID, false)
     patchLocalVoiceDeafen('channel-1', LOCAL_USER_ID, true)
+    patchLocalVoiceCamera('channel-1', LOCAL_USER_ID, true)
 
     expect(
       syncStore.getState().voiceParticipants['channel-1']?.[LOCAL_USER_ID],
     ).toMatchObject({
       self_mute: true,
       self_deaf: true,
+      camera: true,
     })
   })
 })
