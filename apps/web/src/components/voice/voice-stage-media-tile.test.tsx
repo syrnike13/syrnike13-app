@@ -163,6 +163,40 @@ describe('StageMediaTile', () => {
     expect(onSetSubscribed).toHaveBeenCalledWith(screenItem.id, true)
   })
 
+  it('keeps strip avatars compact instead of filling the tile', () => {
+    render(
+      <StageMediaTile
+        item={{
+          id: 'remote-user:camera',
+          userId: 'remote-user',
+          kind: 'camera',
+          source: 'camera',
+          track: null,
+          publication: null,
+          isLocal: false,
+          subscribed: true,
+          live: false,
+        }}
+        user={{
+          _id: 'remote-user',
+          username: 'nioh13',
+          discriminator: '0001',
+          relationship: 'User',
+          online: true,
+        }}
+        displayName="nioh13"
+        variant="strip"
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    const avatar = screen.getByRole('button').querySelector('[data-slot="avatar"]')
+    expect(avatar).toBeTruthy()
+    expect(avatar?.className).toContain('size-[min(58cqh,36cqw,4.75rem)]')
+    expect(avatar?.className).not.toContain('size-full')
+  })
+
   it('focuses the tile when the user clicks directly on video', () => {
     const onFocus = vi.fn()
 
