@@ -13,6 +13,7 @@ import {
 } from '#/features/notifications/notification-selectors'
 import { listServerChannels, listServers } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
   railIconButtonClass,
@@ -29,11 +30,19 @@ function railButtonClass(active: boolean) {
 function ServerRailButton({
   server,
   currentUserId,
+  activeChannelId,
 }: {
   server: Server
   currentUserId?: string
+  activeChannelId?: string
 }) {
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
+  const activeChannel = useSyncStore((s) =>
+    activeChannelId ? s.channels[activeChannelId] : undefined,
+  )
+  const contextualServerId = activeChannelId
+    ? selectedServerIdForChannel(activeChannel)
+    : selectedServerId
   const notificationBadge = useSyncStore((s) =>
     selectServerNotificationBadge(s, server._id, currentUserId),
   )
@@ -54,7 +63,7 @@ function ServerRailButton({
   const active =
     Boolean(channelMatch) &&
     !homeMatch &&
-    selectedServerId === server._id
+    contextualServerId === server._id
 
   const content = (
     <span className="relative flex size-full items-center justify-center">
@@ -130,6 +139,7 @@ export function ServerRail() {
     from: '/app/c/$channelId',
     shouldThrow: false,
   })
+  const activeChannelId = channelMatch?.params.channelId
 
   const homeActive = Boolean(homeMatch) && !channelMatch
 
@@ -188,6 +198,7 @@ export function ServerRail() {
               key={server._id}
               server={server}
               currentUserId={auth.user?._id}
+              activeChannelId={activeChannelId}
             />
           ))}
           {servers.length === 0 ? (

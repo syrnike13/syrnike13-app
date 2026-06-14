@@ -275,7 +275,6 @@ export const syncStore = {
       unreads[unread._id.channel] = unread.last_id ?? null
     }
 
-    const firstServerId = payload.servers?.[0]?._id ?? state.selectedServerId
     const voiceParticipants = mergeVoiceStatesFromReady(
       state.voiceParticipants,
       payload.voice_states,
@@ -319,8 +318,7 @@ export const syncStore = {
       voiceParticipants,
       voiceCalls,
       dismissedVoiceCallKeys,
-      selectedServerId:
-        state.selectedServerId ?? firstServerId ?? null,
+      selectedServerId: state.selectedServerId,
     })
   },
 

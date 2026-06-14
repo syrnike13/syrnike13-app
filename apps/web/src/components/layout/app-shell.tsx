@@ -10,10 +10,10 @@ import { ServerRail } from '#/components/layout/server-rail'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { UserPanel } from '#/components/layout/user-panel'
 import { IncomingVoiceCallOverlay } from '#/components/voice/incoming-voice-call-overlay'
+import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { isDmChannel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { usePlatform } from '#/platform/use-platform'
-import { serverChannelServerId } from '#/lib/channel-voice'
 import { parseChannelSettingsTab } from '#/components/channels/channel-settings-types'
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
 import { cn } from '#/lib/utils'
@@ -32,8 +32,10 @@ export function AppShell() {
     from: '/app/servers/$serverId/settings',
     shouldThrow: false,
   })
-  const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const activeChannelId = channelMatch?.params.channelId
+  const activeChannel = useSyncStore((s) =>
+    activeChannelId ? s.channels[activeChannelId] : undefined,
+  )
   const settingsChannelId = channelMatch?.search?.settingsChannel
   const settingsTab = parseChannelSettingsTab(channelMatch?.search?.settingsTab)
   const highlightMessageId = channelMatch?.search?.m
@@ -46,23 +48,13 @@ export function AppShell() {
       return
     }
     if (!activeChannelId) return
-    const channel = syncStore.getState().channels[activeChannelId]
-    if (!channel) return
-    const nextServerId = isDmChannel(channel)
-      ? null
-      : serverChannelServerId(channel) ?? null
-    syncStore.setSelectedServerId(nextServerId)
-  }, [activeChannelId, isHomePath])
-
-  const activeChannel = useSyncStore((s) =>
-    activeChannelId ? s.channels[activeChannelId] : undefined,
-  )
+    if (!activeChannel) return
+    syncStore.setSelectedServerId(selectedServerIdForChannel(activeChannel))
+  }, [activeChannel, activeChannelId, isHomePath])
   const onHomeRoute =
     !activeChannelId && (Boolean(homeMatch) || isHomePath)
 
-  const dmContext =
-    selectedServerId === null &&
-    Boolean(activeChannel && isDmChannel(activeChannel))
+  const dmContext = Boolean(activeChannel && isDmChannel(activeChannel))
 
   const showHomeSidebar = onHomeRoute || dmContext
 
