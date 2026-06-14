@@ -177,7 +177,8 @@ export function StageMediaTile({
     isScreen ? s.getStreamVolume(item.userId) : s.getUserVolume(item.userId),
   )
   const palette = useVoiceTilePalette(user, item.userId)
-  const isUnsubscribedScreen = isScreen && item.subscribed === false
+  const isUnsubscribedScreen =
+    isScreen && !item.isLocal && item.subscribed === false
   const isLoadingScreen =
     isScreen && !isUnsubscribedScreen && !item.track
   const isScreenPlaceholder = isUnsubscribedScreen || isLoadingScreen

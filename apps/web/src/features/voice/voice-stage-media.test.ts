@@ -6,6 +6,7 @@ import {
   filterStageVideoMediaItems,
   sortStageMediaItemsForGrid,
   stageMediaKindLabel,
+  type StageMediaItem,
   type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
 
@@ -149,6 +150,75 @@ describe('buildStageMediaItems', () => {
     )
   })
 
+  it('does not keep an unsubscribed remote screen as a watch tile', () => {
+    const items = buildStageMediaItems({
+      participants: [{ id: REMOTE_USER_ID }],
+      currentUserId: LOCAL_USER_ID,
+      tracks: [
+        track(REMOTE_USER_ID, 'screen', {
+          track: null,
+          publication: { source: 'screen', sid: 'remote-screen-publication' },
+          subscribed: false,
+          live: true,
+        }),
+      ],
+      filters: defaultFilters,
+    })
+
+    expect(items.map((item) => item.id)).toEqual([`${REMOTE_USER_ID}:avatar`])
+  })
+
+  it('hides an unsubscribed remote screen when participants without media are hidden', () => {
+    const items = buildStageMediaItems({
+      participants: [{ id: REMOTE_USER_ID }],
+      currentUserId: LOCAL_USER_ID,
+      tracks: [
+        track(REMOTE_USER_ID, 'screen', {
+          track: null,
+          publication: { source: 'screen', sid: 'remote-screen-publication' },
+          subscribed: false,
+          live: true,
+        }),
+      ],
+      filters: {
+        ...defaultFilters,
+        showParticipantsWithoutMedia: false,
+      },
+    })
+
+    expect(items).toEqual([])
+  })
+
+  it('keeps a subscribed remote screen loading tile when participants without media are hidden', () => {
+    const items = buildStageMediaItems({
+      participants: [{ id: REMOTE_USER_ID }],
+      currentUserId: LOCAL_USER_ID,
+      tracks: [
+        track(REMOTE_USER_ID, 'screen', {
+          track: null,
+          publication: { source: 'screen', sid: 'remote-screen-publication' },
+          subscribed: true,
+          live: true,
+        }),
+      ],
+      filters: {
+        ...defaultFilters,
+        showParticipantsWithoutMedia: false,
+      },
+    })
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: `${REMOTE_USER_ID}:screen`,
+        userId: REMOTE_USER_ID,
+        kind: 'screen',
+        track: null,
+        subscribed: true,
+        live: true,
+      }),
+    ])
+  })
+
   it('keeps the most live duplicate track for the same user and source', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -240,6 +310,7 @@ describe('buildStageMediaItems', () => {
         },
       }).map((item) => item.id),
     ).toEqual([
+      `${LOCAL_USER_ID}:avatar`,
       `${REMOTE_USER_ID}:screen`,
       `${REMOTE_USER_ID}:avatar`,
       `${QUIET_USER_ID}:avatar`,
@@ -255,7 +326,11 @@ describe('buildStageMediaItems', () => {
           showRemoteStreams: false,
         },
       }).map((item) => item.id),
-    ).toEqual([`${LOCAL_USER_ID}:camera`])
+    ).toEqual([
+      `${LOCAL_USER_ID}:camera`,
+      `${REMOTE_USER_ID}:avatar`,
+      `${QUIET_USER_ID}:avatar`,
+    ])
 
     expect(
       buildStageMediaItems({
@@ -268,6 +343,40 @@ describe('buildStageMediaItems', () => {
         },
       }).map((item) => item.id),
     ).toEqual([`${LOCAL_USER_ID}:camera`, `${REMOTE_USER_ID}:screen`])
+  })
+
+  it('keeps the local avatar tile when own streams are hidden', () => {
+    const items = buildStageMediaItems({
+      participants: [{ id: LOCAL_USER_ID }],
+      currentUserId: LOCAL_USER_ID,
+      tracks: [
+        track(LOCAL_USER_ID, 'screen'),
+        track(LOCAL_USER_ID, 'camera'),
+      ],
+      filters: {
+        ...defaultFilters,
+        showOwnStream: false,
+      },
+    })
+
+    expect(items.map((item) => item.id)).toEqual([`${LOCAL_USER_ID}:avatar`])
+  })
+
+  it('keeps remote avatar tiles when remote streams are hidden', () => {
+    const items = buildStageMediaItems({
+      participants: [{ id: REMOTE_USER_ID }],
+      currentUserId: LOCAL_USER_ID,
+      tracks: [
+        track(REMOTE_USER_ID, 'screen'),
+        track(REMOTE_USER_ID, 'camera'),
+      ],
+      filters: {
+        ...defaultFilters,
+        showRemoteStreams: false,
+      },
+    })
+
+    expect(items.map((item) => item.id)).toEqual([`${REMOTE_USER_ID}:avatar`])
   })
 })
 describe('withConnectingLocalAvatarItem', () => {
@@ -313,6 +422,19 @@ describe('withConnectingLocalAvatarItem', () => {
     })
 
     expect(items.filter((item) => item.userId === LOCAL_USER_ID)).toHaveLength(1)
+  })
+
+  it('keeps the pending local avatar when own streams are hidden', () => {
+    const items = withConnectingLocalAvatarItem<StageMediaItem>([], {
+      connecting: true,
+      localUserId: LOCAL_USER_ID,
+      filters: {
+        ...defaultFilters,
+        showOwnStream: false,
+      },
+    })
+
+    expect(items.map((item) => item.id)).toEqual([`${LOCAL_USER_ID}:avatar`])
   })
 })
 
