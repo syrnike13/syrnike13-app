@@ -120,16 +120,23 @@ export function comboFromNativeInputEvent(
 export function comboFromRecordedInputs(
   events: NativeInputEvent[],
 ): HotkeyCombo | null {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const codes = normalizeCodes(
-      events[index].type === 'inputDown'
-        ? events[index].pressedCodes
-        : [...events[index].pressedCodes, events[index].code],
-    )
-    if (codes.length > 0) return { codes }
+  const pressedCodes = new Set<string>()
+  let lastComboCodes: string[] | null = null
+
+  for (const event of events) {
+    if (event.type === 'inputDown') {
+      pressedCodes.add(event.code)
+      lastComboCodes = normalizeCodes([...pressedCodes])
+      continue
+    }
+
+    if (!pressedCodes.has(event.code)) continue
+
+    lastComboCodes = normalizeCodes([...pressedCodes])
+    pressedCodes.delete(event.code)
   }
 
-  return null
+  return lastComboCodes ? { codes: lastComboCodes } : null
 }
 
 export function hotkeyMatchesNativeInput(

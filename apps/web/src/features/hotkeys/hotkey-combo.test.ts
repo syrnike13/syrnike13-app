@@ -107,6 +107,27 @@ describe('hotkey combo helpers', () => {
     ).toEqual({ codes: ['ControlRight', 'KeyM'] })
   })
 
+  it('records only keys pressed after recording starts', () => {
+    expect(
+      comboFromRecordedInputs([
+        {
+          type: 'inputDown',
+          source: 'keyboard',
+          code: 'ControlRight',
+          label: 'Right Ctrl',
+          pressedCodes: ['ControlRight', 'MetaLeft', 'Space'],
+        },
+        {
+          type: 'inputUp',
+          source: 'keyboard',
+          code: 'ControlRight',
+          label: 'Right Ctrl',
+          pressedCodes: ['MetaLeft', 'Space'],
+        },
+      ]),
+    ).toEqual({ codes: ['ControlRight'] })
+  })
+
   it('finds duplicate enabled combos', () => {
     const combo = {
       codes: ['ControlLeft', 'KeyM'],
