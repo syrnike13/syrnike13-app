@@ -223,6 +223,44 @@ fn callee_joining_group_active_grace_clears_no_answer_deadline() {
 }
 
 #[test]
+fn initiator_rejoining_active_dm_call_clears_lone_member_deadline() {
+    let call = VoiceCallState {
+        phase: VoiceCallPhase::Active,
+        expires_at: Some(Timestamp::UNIX_EPOCH + Duration::seconds(10 * 60)),
+        declined_recipients: ids(&["caller"]),
+        ringing_recipients: ids(&[]),
+        ..ringing_call("dm-channel", "caller")
+    };
+
+    let effect = voice_call_join_effect(
+        Some(&call),
+        "dm-channel",
+        "caller",
+        &ids(&["caller", "callee"]),
+        &ids(&["callee"]),
+        None,
+        Timestamp::UNIX_EPOCH + Duration::seconds(RING_SECONDS + 1),
+        RING_SECONDS,
+    );
+
+    assert_eq!(
+        effect,
+        VoiceCallJoinEffect::MarkActive {
+            state: VoiceCallState {
+                channel_id: "dm-channel".to_string(),
+                initiator_id: "caller".to_string(),
+                phase: VoiceCallPhase::Active,
+                started_at: Timestamp::UNIX_EPOCH,
+                expires_at: None,
+                declined_recipients: ids(&[]),
+                ringing_recipients: ids(&[]),
+            },
+            stop_ringing_recipients: ids(&[]),
+        }
+    );
+}
+
+#[test]
 fn callee_joining_without_initiator_does_not_mark_ringing_call_active() {
     let effect = voice_call_join_effect(
         Some(&ringing_call("dm-channel", "caller")),
@@ -525,6 +563,30 @@ fn unanswered_group_active_grace_expires_when_only_initiator_remains() {
 }
 
 #[test]
+fn active_deadline_expires_when_only_non_initiator_remains() {
+    let call = VoiceCallState {
+        phase: VoiceCallPhase::Active,
+        expires_at: Some(Timestamp::UNIX_EPOCH + Duration::seconds(10 * 60)),
+        ringing_recipients: ids(&[]),
+        ..ringing_call("dm-channel", "caller")
+    };
+
+    assert_eq!(
+        voice_call_expire_effect(
+            Some(&call),
+            Timestamp::UNIX_EPOCH + Duration::seconds(10 * 60),
+            false,
+            GROUP_UNANSWERED_ACTIVE_SECONDS,
+            &ids(&["callee"]),
+        ),
+        VoiceCallExpireEffect::End {
+            state: call,
+            ended_reason: VoiceCallEndReason::Missed,
+        }
+    );
+}
+
+#[test]
 fn group_active_grace_deadline_is_cleared_when_someone_answered() {
     let call = VoiceCallState {
         phase: VoiceCallPhase::Active,
@@ -558,6 +620,7 @@ fn leaving_last_member_ends_call() {
     let call = VoiceCallState {
         phase: VoiceCallPhase::Active,
         expires_at: None,
+        ringing_recipients: ids(&[]),
         ..ringing_call("dm-channel", "caller")
     };
 
@@ -566,6 +629,7 @@ fn leaving_last_member_ends_call() {
         VoiceCallLeaveReason::ParticipantLeft {
             remaining_members_after_leave: &[],
             leave_policy: VoiceCallLeavePolicy::EndWhenEmpty,
+            left_at: Timestamp::UNIX_EPOCH,
         },
     );
 
@@ -588,6 +652,7 @@ fn leaving_unanswered_ringing_call_stops_only_ringing_recipients() {
         VoiceCallLeaveReason::ParticipantLeft {
             remaining_members_after_leave: &[],
             leave_policy: VoiceCallLeavePolicy::EndWhenEmpty,
+            left_at: Timestamp::UNIX_EPOCH,
         },
     );
 
@@ -614,6 +679,7 @@ fn group_call_keeps_running_when_members_remain_after_leave() {
         VoiceCallLeaveReason::ParticipantLeft {
             remaining_members_after_leave: &remaining_members,
             leave_policy: VoiceCallLeavePolicy::EndWhenEmpty,
+            left_at: Timestamp::UNIX_EPOCH,
         },
     );
 
@@ -621,28 +687,38 @@ fn group_call_keeps_running_when_members_remain_after_leave() {
 }
 
 #[test]
-fn dm_call_ends_when_any_participant_leaves() {
+fn dm_call_starts_lone_member_deadline_when_one_participant_leaves() {
     let call = VoiceCallState {
         phase: VoiceCallPhase::Active,
         expires_at: None,
+        ringing_recipients: ids(&[]),
         ..ringing_call("dm-channel", "caller")
     };
 
     let remaining_members = ids(&["callee"]);
+    let left_at = Timestamp::UNIX_EPOCH + Duration::seconds(42);
     let effect = voice_call_leave_effect(
         Some(&call),
         VoiceCallLeaveReason::ParticipantLeft {
             remaining_members_after_leave: &remaining_members,
-            leave_policy: VoiceCallLeavePolicy::EndWhenAnyParticipantLeaves,
+            leave_policy: VoiceCallLeavePolicy::EndAfterLoneMemberTimeout {
+                timeout_seconds: GROUP_UNANSWERED_ACTIVE_SECONDS,
+            },
+            left_at,
         },
     );
 
     assert_eq!(
         effect,
-        VoiceCallLeaveEffect::End {
-            state: call,
-            stop_ringing_recipients: ids(&[]),
-        }
+        VoiceCallLeaveEffect::StartActiveDeadline(VoiceCallState {
+            channel_id: "dm-channel".to_string(),
+            initiator_id: "caller".to_string(),
+            phase: VoiceCallPhase::Active,
+            started_at: Timestamp::UNIX_EPOCH,
+            expires_at: Some(left_at + Duration::seconds(GROUP_UNANSWERED_ACTIVE_SECONDS)),
+            declined_recipients: ids(&[]),
+            ringing_recipients: ids(&[]),
+        })
     );
 }
 

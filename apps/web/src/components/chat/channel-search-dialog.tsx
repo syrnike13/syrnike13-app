@@ -12,6 +12,7 @@ import {
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { searchChannelMessages } from '#/features/api/messages-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { cn } from '#/lib/utils'
@@ -21,6 +22,8 @@ type ChannelSearchDialogProps = {
   token: string
   users: Record<string, User>
   variant?: 'strip' | 'icon'
+  triggerClassName?: string
+  stripClassName?: string
 }
 
 export function ChannelSearchDialog({
@@ -28,8 +31,11 @@ export function ChannelSearchDialog({
   token,
   users,
   variant = 'icon',
+  triggerClassName,
+  stripClassName,
 }: ChannelSearchDialogProps) {
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -88,7 +94,7 @@ export function ChannelSearchDialog({
   function openMessage(messageId: string) {
     setOpen(false)
     void navigate({
-      to: '/app/c/$channelId',
+      to: `${prefix}/c/$channelId`,
       params: { channelId },
       search: { m: messageId },
     })
@@ -100,7 +106,10 @@ export function ChannelSearchDialog({
         {variant === 'strip' ? (
           <button
             type="button"
-            className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+            className={cn(
+              'flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted',
+              stripClassName,
+            )}
           >
             <SearchIcon className="size-4 shrink-0" />
             <span className="truncate">Поиск</span>
@@ -108,7 +117,10 @@ export function ChannelSearchDialog({
         ) : (
           <button
             type="button"
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            className={cn(
+              'inline-flex size-8 shrink-0 items-center justify-center rounded-md text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
+              triggerClassName,
+            )}
             title="Поиск по сообщениям"
           >
             <SearchIcon className="size-4" />

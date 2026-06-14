@@ -1,5 +1,5 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
-import { HeadphonesIcon, PinIcon } from '#/components/icons'
+import { PhoneFilledIcon, PhoneOffIcon, PinIcon } from '#/components/icons'
 import { useMemo, type ReactElement } from 'react'
 
 import {
@@ -103,16 +103,42 @@ function formatCallDuration(startedAt: Date, finishedAt: string) {
   return `${durationHours} ч`
 }
 
+function isSuccessfulVoiceCall(
+  system: Extract<Message['system'], { type: 'call_started' }>,
+) {
+  return (
+    Boolean(system.finished_at) &&
+    (system.ended_reason ?? 'completed') === 'completed'
+  )
+}
+
 function VoiceCallSystemCard({
   message,
   users,
+  serverId,
+  currentUserId,
 }: {
   message: Message
   users: Record<string, User>
+  serverId?: string
+  currentUserId?: string
 }) {
   if (message.system?.type !== 'call_started') return null
 
+  const server = useSyncStore((s) =>
+    serverId ? s.servers[serverId] : undefined,
+  )
+  const callerId = message.system.by
+  const callerUser = users[callerId]
+  const member = useSyncStore((s) =>
+    serverId ? s.members[`${serverId}:${callerId}`] : undefined,
+  )
+  const callerName = callParticipantName(callerId, users)
+  const callerRoles =
+    server && member ? memberRoleEntries(server, member) : undefined
+  const hideCallerMessage = callerUser?._id === currentUserId
   const startedAt = messageCreatedAt(message)
+  const timestamp = formatMessageTimestamp(startedAt)
   const duration = message.system.finished_at
     ? formatCallDuration(startedAt, message.system.finished_at)
     : null
@@ -123,26 +149,70 @@ function VoiceCallSystemCard({
       : endedReason === 'missed'
         ? 'Пропущен'
         : 'Завершён'
-  const status = message.system.finished_at
-    ? `${endedStatus}${duration ? ` · ${duration}` : ''}`
-    : 'Идёт сейчас'
+  const callInfo = message.system.finished_at
+    ? `начал звонок · ${endedStatus}${duration ? ` · ${duration}` : ''}`
+    : 'начал звонок · Идёт сейчас'
+  const successfulCall = isSuccessfulVoiceCall(message.system)
+
+  const callerNameButton = callerUser ? (
+    <MessageAuthorProfileTrigger
+      user={callerUser}
+      serverId={serverId}
+      serverName={server?.name}
+      roles={callerRoles}
+      hideMessage={hideCallerMessage}
+    >
+      <button
+        type="button"
+        className={cn(
+          'max-w-full truncate rounded-sm font-semibold text-left',
+          'hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+        )}
+      >
+        {callerName}
+      </button>
+    </MessageAuthorProfileTrigger>
+  ) : (
+    <span className="truncate font-semibold">{callerName}</span>
+  )
 
   return (
     <article
       data-message-id={message._id}
-      className={cn('-mx-4 px-6 py-1.5')}
+      className={cn(
+        'group relative -mx-4 flex items-center hover:bg-muted/40',
+        cn('mt-[17px] gap-4 py-0.5', MESSAGE_ROW_PADDING_X),
+      )}
     >
-      <div className="flex max-w-xl items-start gap-3 rounded-lg border border-shell-divider bg-card/80 p-3 text-card-foreground shadow-sm">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#23a559]/15 text-[#23a559]">
-          <HeadphonesIcon className="size-5" />
+      <div className={MESSAGE_AVATAR_COLUMN} aria-hidden>
+        <div
+          className={cn(
+            'flex size-10 items-center justify-center',
+            successfulCall ? 'text-[#23a559]' : 'text-muted-foreground',
+          )}
+          aria-label={successfulCall ? 'Успешный звонок' : 'Неуспешный звонок'}
+        >
+          {successfulCall ? (
+            <PhoneFilledIcon className="size-5" />
+          ) : (
+            <PhoneOffIcon className="size-5" />
+          )}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">Звонок</p>
-          <p className="truncate text-sm text-foreground">
-            {callParticipantName(message.system.by, users)} начал звонок
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{status}</p>
-        </div>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[15px] leading-snug">
+          <span className="min-w-0">
+            {callerNameButton}
+            <span className="text-muted-foreground">{` ${callInfo}`}</span>
+          </span>
+          <time
+            className="shrink-0 text-[11px] font-medium text-muted-foreground"
+            dateTime={timestamp}
+          >
+            {timestamp}
+          </time>
+        </p>
       </div>
     </article>
   )
@@ -260,7 +330,14 @@ export function MessageRow({
   )
 
   if (message.system?.type === 'call_started') {
-    return <VoiceCallSystemCard message={message} users={users} />
+    return (
+      <VoiceCallSystemCard
+        message={message}
+        users={users}
+        serverId={serverId}
+        currentUserId={currentUserId}
+      />
+    )
   }
 
   return (

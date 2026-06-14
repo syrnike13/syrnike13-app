@@ -22,6 +22,7 @@ import {
 import { Separator } from '#/components/ui/separator'
 import { useAuth } from '#/features/auth/auth-context'
 import { leaveServer } from '#/features/api/servers-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { getServerMenuPermissions } from '#/lib/permissions'
@@ -68,6 +69,7 @@ export function ServerHeaderMenu({
 }: ServerHeaderMenuProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
   const channels = useSyncStore((s) =>
@@ -173,7 +175,7 @@ export function ServerHeaderMenu({
               onClick={() => {
                 setMenuOpen(false)
                 void navigate({
-                  to: '/app/servers/$serverId/settings',
+                  to: `${prefix}/servers/$serverId/settings`,
                   params: { serverId },
                   search: { tab: 'general' },
                 })

@@ -300,8 +300,7 @@ export function StageMediaTile({
                       'size-24 sm:size-32',
                   )}
                   fallbackClassName={cn(
-                    variant === 'strip' &&
-                      'size-full text-[min(1.125rem,26cqh)]',
+                    variant === 'strip' && 'text-[min(1.125rem,26cqh)]',
                     variant === 'grid' && 'size-16 text-base sm:size-20',
                     variant !== 'strip' &&
                       variant !== 'grid' &&

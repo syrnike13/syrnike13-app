@@ -5,6 +5,7 @@ import { NotificationBadge } from '#/components/notifications/notification-badge
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import { listDmChannels } from '#/features/sync/selectors'
@@ -23,6 +24,7 @@ type DmChannelListProps = {
 
 export function DmChannelList({ activeChannelId, className }: DmChannelListProps) {
   const auth = useAuth()
+  const prefix = useAppRoutePrefix()
   const syncState = useSyncStore((s) => s)
   const ready = syncState.ready
   const users = syncState.users
@@ -84,7 +86,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
             asChild
           >
             <Link
-              to="/app/c/$channelId"
+              to={`${prefix}/c/$channelId`}
               params={{ channelId: channel._id }}
               search={{ m: undefined }}
             >

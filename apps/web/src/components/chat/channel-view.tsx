@@ -4,7 +4,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { HeadphonesIcon, UserIcon, UsersIcon } from '#/components/icons'
+import { useNavigate } from '@tanstack/react-router'
+import { ChevronLeftIcon, HeadphonesIcon, UserIcon, UsersIcon } from '#/components/icons'
 
 import { VoiceChannelShell } from '#/components/voice/voice-channel-shell'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
@@ -22,6 +23,7 @@ import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import { useVoice } from '#/features/voice/voice-context'
 import {
@@ -63,6 +65,10 @@ const EMPTY_ALIASES: string[] = []
 const INLINE_VOICE_STAGE_DEFAULT_HEIGHT = 360
 const INLINE_VOICE_STAGE_MIN_HEIGHT = 220
 const INLINE_CHAT_MIN_HEIGHT = 160
+const VOICE_STAGE_HEADER_ICON_CLASS =
+  'text-white/70 hover:bg-white/10 hover:text-white'
+const VOICE_STAGE_HEADER_SEARCH_STRIP_CLASS =
+  'border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
 
 export function clampInlineVoiceStageHeight(
   height: number,
@@ -129,6 +135,9 @@ export function ChannelView({
   channelId,
   highlightMessageId,
 }: ChannelViewProps) {
+  const navigate = useNavigate()
+  const routePrefix = useAppRoutePrefix()
+  const isMobileRoute = routePrefix === '/m'
   const voice = useVoice()
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
@@ -168,6 +177,22 @@ export function ChannelView({
     setInlineVoiceStageHeight(INLINE_VOICE_STAGE_DEFAULT_HEIGHT)
   }, [channelId])
 
+  useEffect(() => {
+    const container = channelContentRef.current
+    if (!container) return
+
+    const syncHeightToContainer = () => {
+      setInlineVoiceStageHeight((current) =>
+        clampInlineVoiceStageHeight(current, container.clientHeight),
+      )
+    }
+
+    syncHeightToContainer()
+    const observer = new ResizeObserver(syncHeightToContainer)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [channelId])
+
   const currentUserId = auth.user?._id
   const voiceCall = useSyncStore((s) => s.voiceCalls[channelId])
   const voiceCallRingingDismissed = useSyncStore((s) =>
@@ -181,6 +206,31 @@ export function ChannelView({
       ? listUserMutualServerNicknames(s, dmRecipientId, currentUserId)
       : EMPTY_ALIASES,
   )
+  const isDirectMessage = channel?.channel_type === 'DirectMessage'
+  const isGroupDirectMessage = channel?.channel_type === 'Group'
+  const isDmVoiceCallChannel =
+    channel?.channel_type === 'DirectMessage' || channel?.channel_type === 'Group'
+  const hasBotRecipient =
+    isDmVoiceCallChannel && channel
+      ? channel.recipients.some((recipientId) =>
+          Boolean(users[recipientId]?.bot),
+        )
+      : false
+  const hasVoice = Boolean(channel && channelHasVoice(channel) && !hasBotRecipient)
+  const inThisVoiceSession =
+    voice.channelId === channelId &&
+    (voice.status === 'connected' || voice.status === 'connecting')
+  const showInlineVoiceStage =
+    hasVoice &&
+    isDmVoiceCallChannel &&
+    (inThisVoiceSession || hasOngoingVoiceCall(voiceCall))
+  const dmInCallLayout = Boolean(isDirectMessage && showInlineVoiceStage)
+
+  useEffect(() => {
+    if (dmInCallLayout) {
+      setDmProfilePanelOpen(false)
+    }
+  }, [dmInCallLayout])
 
   if (!channel) {
     return (
@@ -200,26 +250,11 @@ export function ChannelView({
   }
 
   const title = getChannelLabel(channel, users, auth.user?._id)
-  const isDirectMessage = channel.channel_type === 'DirectMessage'
-  const isGroupDirectMessage = channel.channel_type === 'Group'
-  const isDmVoiceCallChannel =
-    channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
-  const hasBotRecipient = isDmVoiceCallChannel
-    ? channel.recipients.some((recipientId) => Boolean(users[recipientId]?.bot))
-    : false
-  const hasVoice = channelHasVoice(channel) && !hasBotRecipient
-  const inThisVoiceSession =
-    voice.channelId === channelId &&
-    (voice.status === 'connected' || voice.status === 'connecting')
   const inThisVoiceCall =
     voice.channelId === channelId &&
     voice.status === 'connected'
   const voiceCallIncoming = isIncomingVoiceCall(voiceCall, currentUserId)
-  const showInlineVoiceStage =
-    hasVoice &&
-    isDmVoiceCallChannel &&
-    (inThisVoiceSession || hasOngoingVoiceCall(voiceCall))
   let voiceActionLabel = isDmVoiceCallChannel ? 'Позвонить' : 'Голос'
   if (
     (isDmVoiceCallChannel && voiceCall?.phase === 'active') ||
@@ -310,10 +345,41 @@ export function ChannelView({
     window.addEventListener('pointerup', stopResize, { once: true })
   }
 
+  function handleMobileBack() {
+    if (isServerChannel && serverIdForSelection) {
+      syncStore.setSelectedServerId(serverIdForSelection)
+    } else {
+      syncStore.setSelectedServerId(null)
+    }
+    void navigate({
+      to: '/m',
+      search: { tab: 'online' },
+    })
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
-        <div className="flex min-w-0 flex-1 items-center gap-2 pl-4">
+      {!dmInCallLayout ? (
+        <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
+        <div
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-2',
+            isMobileRoute ? 'pl-2' : 'pl-4',
+          )}
+        >
+          {isMobileRoute ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              aria-label="Назад"
+              title="Назад"
+              onClick={handleMobileBack}
+            >
+              <ChevronLeftIcon className="size-5" />
+            </Button>
+          ) : null}
           {isDirectMessage && dmRecipient ? (
             <DirectMessageHeader
               user={dmRecipient}
@@ -433,6 +499,7 @@ export function ChannelView({
           </div>
         ) : null}
       </header>
+      ) : null}
 
       <div className="flex min-h-0 min-w-0 flex-1">
         <div
@@ -445,7 +512,7 @@ export function ChannelView({
             <section
               ref={inlineVoiceStageRef}
               aria-label="Голосовой звонок"
-              className="relative shrink-0 overflow-hidden border-b border-shell-divider bg-black"
+              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-black"
               style={{
                 height: inlineVoiceStageHeight,
                 minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,
@@ -463,6 +530,46 @@ export function ChannelView({
                   voiceCallIncoming && voiceCall?.phase === 'ringing'
                     ? dismissVoiceCallBanner
                     : undefined
+                }
+                dmHeader={
+                  dmInCallLayout && dmRecipient
+                    ? {
+                        user: dmRecipient,
+                        aliases: dmAliases,
+                        onOpenProfile: () => setFullProfileOpen(true),
+                        loading: historyQuery.isFetching,
+                      }
+                    : undefined
+                }
+                headerTrailing={
+                  dmInCallLayout && token ? (
+                    <>
+                      <ChannelPinnedDialog
+                        channelId={channelId}
+                        token={token}
+                        users={users}
+                        triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                      />
+                      <div className="lg:hidden">
+                        <ChannelSearchDialog
+                          channelId={channelId}
+                          token={token}
+                          users={users}
+                          variant="icon"
+                          triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                        />
+                      </div>
+                      <div className="hidden w-52 lg:flex">
+                        <ChannelSearchDialog
+                          channelId={channelId}
+                          token={token}
+                          users={users}
+                          variant="strip"
+                          stripClassName={VOICE_STAGE_HEADER_SEARCH_STRIP_CLASS}
+                        />
+                      </div>
+                    </>
+                  ) : undefined
                 }
               />
               <div
@@ -594,7 +701,7 @@ export function ChannelView({
             </div>
           </div>
         </div>
-        {isDirectMessage && dmRecipient && dmProfilePanelOpen ? (
+        {isDirectMessage && dmRecipient && dmProfilePanelOpen && !dmInCallLayout ? (
           <DirectMessageProfilePanel
             user={dmRecipient}
             currentUserId={auth.user?._id}

@@ -6,6 +6,7 @@ import {
   HeadphonesIcon,
   Loader2Icon,
   Maximize2Icon,
+  MessageSquareIcon,
   MicIcon,
   MicOffIcon,
   Minimize2Icon,
@@ -49,6 +50,10 @@ type VoiceStageControlsProps = {
   compact?: boolean
   /** Без внешней обёртки — позиционирование задаёт родитель (оверлей стейджа). */
   overlay?: boolean
+  /** Компактная однострочная панель для мобильного drawer. */
+  mobileDrawer?: boolean
+  chatOpen?: boolean
+  onToggleChat?: () => void
   incomingCall?: boolean
   declineLabel?: string
   onDeclineIncomingCall?: () => void
@@ -228,6 +233,9 @@ export function VoiceStageControls({
   joinLabel = 'Подключиться к голосу',
   compact = false,
   overlay = false,
+  mobileDrawer = false,
+  chatOpen = false,
+  onToggleChat,
   incomingCall = false,
   declineLabel = 'Отменить',
   onDeclineIncomingCall,
@@ -258,6 +266,34 @@ export function VoiceStageControls({
     inactiveTitle: 'Демонстрация экрана',
     busyTitle: 'Демонстрация запускается',
   })
+
+  if (mobileDrawer) {
+    return (
+      <VoiceStageMobileDrawerControlBar
+        channelId={channelId}
+        connecting={connecting}
+        inCall={inCall}
+        joinLabel={joinLabel}
+        micMuted={micMuted}
+        soundOff={soundOff}
+        cameraOn={cameraOn}
+        sharingScreen={sharingScreen}
+        screenShareStarting={screenShareStarting}
+        cameraControl={cameraControl}
+        screenShareControl={screenShareControl}
+        chatOpen={chatOpen}
+        onToggleChat={onToggleChat}
+        incomingCall={incomingCall}
+        declineLabel={declineLabel}
+        onDeclineIncomingCall={onDeclineIncomingCall}
+        onToggleMic={voice.toggleMic}
+        onToggleDeafen={voice.toggleDeafen}
+        onToggleCamera={voice.toggleCamera}
+        onToggleScreenShare={voice.toggleScreenShare}
+        onLeave={voice.leave}
+      />
+    )
+  }
 
   const controlBar = overlay ? (
     <VoiceStageOverlayControlBar
@@ -367,6 +403,224 @@ type ControlBarStateProps = {
   onToggleCamera: () => void
   onToggleScreenShare: () => void
   onLeave: () => void
+}
+
+function VoiceStageMobileDrawerControlBar({
+  channelId,
+  connecting,
+  inCall,
+  joinLabel,
+  micMuted,
+  soundOff,
+  cameraOn,
+  sharingScreen,
+  screenShareStarting,
+  cameraControl,
+  screenShareControl,
+  chatOpen,
+  onToggleChat,
+  incomingCall,
+  declineLabel,
+  onDeclineIncomingCall,
+  onToggleMic,
+  onToggleDeafen,
+  onToggleCamera,
+  onToggleScreenShare,
+  onLeave,
+}: ControlBarStateProps & {
+  channelId: string
+  joinLabel?: string
+  chatOpen?: boolean
+  onToggleChat?: () => void
+  incomingCall?: boolean
+  declineLabel?: string
+  onDeclineIncomingCall?: () => void
+}) {
+  const voice = useVoice()
+  const barClass =
+    'flex w-full min-w-0 items-center gap-2 rounded-2xl bg-[#111214]/95 p-2 shadow-lg ring-1 ring-white/10'
+  const sideButtonClass =
+    'flex size-11 shrink-0 items-center justify-center rounded-full bg-[#2b2d31] text-white transition-colors hover:bg-[#35373c] disabled:opacity-50'
+
+  if (!inCall && !connecting) {
+    const joinButton = (
+      <Button
+        type="button"
+        className="h-11 min-w-0 flex-1 rounded-full bg-[#23a559] px-4 text-sm font-semibold text-white hover:bg-[#1a9d4f]"
+        onClick={() => void voice.join(channelId)}
+      >
+        {joinLabel}
+      </Button>
+    )
+
+    return (
+      <div className={barClass}>
+        <button
+          type="button"
+          title={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+          aria-label={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+          className={cn(
+            sideButtonClass,
+            micMuted && 'bg-[#ed4245]/20 text-[#ff6b6b]',
+          )}
+          onClick={onToggleMic}
+        >
+          {micMuted ? (
+            <MicOffIcon className="size-5" />
+          ) : (
+            <MicIcon className="size-5" />
+          )}
+        </button>
+        {incomingCall && onDeclineIncomingCall ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 shrink-0 rounded-full border-white/20 bg-transparent px-4 text-white hover:bg-white/10"
+              onClick={onDeclineIncomingCall}
+            >
+              <PhoneOffIcon className="size-4" />
+              {declineLabel}
+            </Button>
+            {joinButton}
+          </>
+        ) : (
+          joinButton
+        )}
+        {onToggleChat ? (
+          <button
+            type="button"
+            title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            aria-label={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            aria-pressed={chatOpen}
+            className={cn(sideButtonClass, chatOpen && 'bg-white/15')}
+            onClick={onToggleChat}
+          >
+            <MessageSquareIcon className="size-5" />
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div className={barClass}>
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-1">
+          <MobileDrawerIconButton
+            title={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+            danger={micMuted}
+            disabled={connecting}
+            onClick={onToggleMic}
+          >
+            {micMuted ? (
+              <MicOffIcon className="size-5" />
+            ) : (
+              <MicIcon className="size-5" />
+            )}
+          </MobileDrawerIconButton>
+          <MobileDrawerIconButton
+            title={cameraControl.title}
+            success={cameraOn}
+            disabled={cameraControl.disabled}
+            onClick={onToggleCamera}
+          >
+            {cameraOn ? (
+              <VideoIcon className="size-5" />
+            ) : (
+              <VideoOffIcon className="size-5" />
+            )}
+          </MobileDrawerIconButton>
+          <MobileDrawerIconButton
+            title={screenShareControl.title}
+            highlight={sharingScreen || screenShareStarting}
+            disabled={screenShareControl.disabled}
+            onClick={onToggleScreenShare}
+          >
+            {screenShareStarting ? (
+              <Loader2Icon className="size-5 animate-spin" />
+            ) : sharingScreen ? (
+              <MonitorXIcon className="size-5" />
+            ) : (
+              <MonitorUpIcon className="size-5" />
+            )}
+          </MobileDrawerIconButton>
+          <MobileDrawerIconButton
+            title={soundOff ? 'Включить звук' : 'Отключить звук'}
+            danger={soundOff}
+            disabled={connecting}
+            onClick={onToggleDeafen}
+          >
+            {soundOff ? (
+              <HeadphoneOffIcon className="size-5" />
+            ) : (
+              <HeadphonesIcon className="size-5" />
+            )}
+          </MobileDrawerIconButton>
+          <StageViewSettings compact overlay trigger="more" />
+          <button
+            type="button"
+            title="Отключиться"
+            disabled={connecting}
+            onClick={onLeave}
+            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#ed4245] text-white transition-colors hover:bg-[#d84040] disabled:opacity-50"
+          >
+            <PhoneOffIcon className="size-5" />
+          </button>
+        </div>
+        {onToggleChat ? (
+          <button
+            type="button"
+            title={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            aria-label={chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+            aria-pressed={chatOpen}
+            className={cn(sideButtonClass, chatOpen && 'bg-white/15')}
+            onClick={onToggleChat}
+          >
+            <MessageSquareIcon className="size-5" />
+          </button>
+        ) : null}
+      </div>
+    </TooltipProvider>
+  )
+}
+
+function MobileDrawerIconButton({
+  title,
+  danger,
+  success,
+  highlight,
+  disabled,
+  onClick,
+  children,
+}: {
+  title: string
+  danger?: boolean
+  success?: boolean
+  highlight?: boolean
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <VoiceControlTooltip title={title}>
+      <button
+        type="button"
+        aria-disabled={disabled}
+        onClick={disabled ? undefined : onClick}
+        className={cn(
+          'flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors',
+          danger && 'bg-[#ed4245]/20 text-[#ff6b6b]',
+          success && 'bg-[#23a559]/20 text-[#4ade80]',
+          highlight && !danger && !success && 'bg-white/15 text-white',
+          !danger && !success && !highlight && 'bg-[#2b2d31] hover:bg-[#35373c]',
+          disabled && 'opacity-50',
+        )}
+      >
+        {children}
+      </button>
+    </VoiceControlTooltip>
+  )
 }
 
 function VoiceStageOverlayControlBar({

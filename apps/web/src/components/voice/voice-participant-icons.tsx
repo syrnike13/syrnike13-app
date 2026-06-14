@@ -38,6 +38,51 @@ export function VoiceOnAirBadge({
   )
 }
 
+type VoiceAvatarStatusBadgeProps = {
+  muted?: boolean
+  deafened?: boolean
+  serverMuted?: boolean
+  serverDeafened?: boolean
+  compact?: boolean
+  className?: string
+}
+
+export function VoiceAvatarStatusBadge({
+  muted,
+  deafened,
+  serverMuted,
+  serverDeafened,
+  compact = false,
+  className,
+}: VoiceAvatarStatusBadgeProps) {
+  if (!muted && !deafened) return null
+
+  const serverRestricted =
+    (deafened && serverDeafened) || (muted && !deafened && serverMuted)
+  const Icon = deafened ? HeadphoneOffIcon : MicOffIcon
+  const label = deafened ? 'Без звука' : 'Микрофон выключен'
+
+  return (
+    <span
+      className={cn(
+        'absolute right-0 bottom-0 z-10 flex items-center justify-center rounded-full ring-2 ring-black',
+        compact ? 'size-5' : 'size-6 sm:size-7',
+        serverRestricted ? 'bg-[#faa61a]' : 'bg-[#ed4245]',
+        className,
+      )}
+      aria-label={label}
+    >
+      <Icon
+        className={cn(
+          'text-white',
+          compact ? 'size-2.5' : 'size-3 sm:size-3.5',
+        )}
+        aria-hidden
+      />
+    </span>
+  )
+}
+
 type VoiceParticipantIconsProps = {
   muted?: boolean
   deafened?: boolean

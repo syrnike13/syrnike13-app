@@ -14,22 +14,27 @@ import {
   DialogTrigger,
 } from '#/components/ui/dialog'
 import { fetchPinnedMessages } from '#/features/api/messages-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
+import { cn } from '#/lib/utils'
 
 type ChannelPinnedDialogProps = {
   channelId: string
   token: string
   users: Record<string, User>
+  triggerClassName?: string
 }
 
 export function ChannelPinnedDialog({
   channelId,
   token,
   users,
+  triggerClassName,
 }: ChannelPinnedDialogProps) {
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
   const [open, setOpen] = useState(false)
 
@@ -64,7 +69,7 @@ export function ChannelPinnedDialog({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-8"
+          className={cn('size-8', triggerClassName)}
           title="Закреплённые сообщения"
         >
           <PinIcon className="size-4" />
@@ -106,7 +111,7 @@ export function ChannelPinnedDialog({
                 onClick={() => {
                   setOpen(false)
                   void navigate({
-                    to: '/app/c/$channelId',
+                    to: `${prefix}/c/$channelId`,
                     params: { channelId },
                     search: { m: message._id },
                   })
@@ -116,7 +121,7 @@ export function ChannelPinnedDialog({
                     event.preventDefault()
                     setOpen(false)
                     void navigate({
-                      to: '/app/c/$channelId',
+                      to: `${prefix}/c/$channelId`,
                       params: { channelId },
                       search: { m: message._id },
                     })

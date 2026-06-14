@@ -30,6 +30,8 @@ const openDirectMessageChannelMock = vi.hoisted(() =>
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: '/app/' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({

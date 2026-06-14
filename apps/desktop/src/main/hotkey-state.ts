@@ -32,16 +32,33 @@ export class HotkeyState {
     bindings: HotkeyBinding[],
   ): HotkeyActivationEvent[] {
     const pressedCodes = normalizeCodes(event.pressedCodes)
+    const pressedCodeSet = new Set(pressedCodes)
     const events = this.releaseMissingCombos(pressedCodes)
 
     if (event.type !== 'inputDown') return events
+
+    const matchingBindings: Array<{
+      binding: HotkeyBinding
+      bindingCodes: string[]
+    }> = []
 
     for (const binding of bindings) {
       if (!binding.enabled || !binding.combo) continue
       if (!REGISTERABLE_ACTIONS.has(binding.action)) continue
 
       const bindingCodes = normalizeCodes(binding.combo.codes)
-      if (!comboCodesMatchPressedCodes(bindingCodes, pressedCodes)) continue
+      if (!comboCodesArePressed(bindingCodes, pressedCodeSet)) continue
+
+      matchingBindings.push({ binding, bindingCodes })
+    }
+
+    const mostSpecificCodeCount = matchingBindings.reduce(
+      (count, match) => Math.max(count, match.bindingCodes.length),
+      0,
+    )
+
+    for (const { binding, bindingCodes } of matchingBindings) {
+      if (bindingCodes.length !== mostSpecificCodeCount) continue
 
       const key = comboKeyFromCodes(bindingCodes)
       if (this.activeCombos.has(key)) continue
@@ -92,8 +109,9 @@ function comboKeyFromCodes(codes: string[]) {
   return JSON.stringify({ codes }).toLowerCase()
 }
 
-function comboCodesMatchPressedCodes(comboCodes: string[], pressedCodes: string[]) {
-  return comboKeyFromCodes(comboCodes) === comboKeyFromCodes(pressedCodes)
+function comboCodesArePressed(comboCodes: string[], pressedCodeSet: Set<string>) {
+  if (comboCodes.length === 0) return false
+  return comboCodes.every((code) => pressedCodeSet.has(code))
 }
 
 function normalizeCodes(codes: string[]) {

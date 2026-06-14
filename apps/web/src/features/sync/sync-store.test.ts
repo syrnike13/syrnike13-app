@@ -758,3 +758,41 @@ describe('syncStore voice events', () => {
     }
   })
 })
+
+describe('syncStore applyReady', () => {
+  it('preserves null selectedServerId instead of auto-selecting the first server', () => {
+    syncStore.reset()
+
+    syncStore.applyReady({
+      servers: [{ _id: 'server-1', name: 'Alpha' }],
+      channels: [],
+      users: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+
+    expect(syncStore.getState().selectedServerId).toBeNull()
+  })
+
+  it('preserves an existing selected server across reconnect', () => {
+    syncStore.reset()
+    syncStore.setSelectedServerId('server-2')
+
+    syncStore.applyReady({
+      servers: [
+        { _id: 'server-1', name: 'Alpha' },
+        { _id: 'server-2', name: 'Beta' },
+      ],
+      channels: [],
+      users: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+
+    expect(syncStore.getState().selectedServerId).toBe('server-2')
+  })
+})

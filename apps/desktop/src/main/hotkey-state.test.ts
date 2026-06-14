@@ -25,15 +25,34 @@ describe('desktop hotkey state', () => {
     ).toEqual([{ action: 'push-to-talk', phase: 'pressed' }])
   })
 
-  it('blocks a combo when extra keys were pressed before activation', () => {
+  it('matches a combo when unrelated keys were pressed before activation', () => {
     const state = new HotkeyState()
 
     expect(
       state.handleInput(
-        inputDown('KeyM', 'M', ['ControlRight', 'KeyM', 'ShiftLeft']),
+        inputDown('KeyM', 'M', ['ControlRight', 'KeyA', 'KeyM', 'ShiftLeft']),
         [ctrlM],
       ),
-    ).toEqual([])
+    ).toEqual([{ action: 'push-to-talk', phase: 'pressed' }])
+  })
+
+  it('prefers the most specific matching combo', () => {
+    const state = new HotkeyState()
+    const ctrlShiftM: HotkeyBinding = {
+      id: 'ctrl-shift-m',
+      action: 'toggle-mic',
+      enabled: true,
+      combo: {
+        codes: ['ControlRight', 'KeyM', 'ShiftLeft'],
+      },
+    }
+
+    expect(
+      state.handleInput(
+        inputDown('KeyM', 'M', ['ControlRight', 'KeyM', 'ShiftLeft']),
+        [ctrlM, ctrlShiftM],
+      ),
+    ).toEqual([{ action: 'toggle-mic', phase: 'pressed' }])
   })
 
   it('keeps an active hold while extra keys are pressed after activation', () => {

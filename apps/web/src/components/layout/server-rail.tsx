@@ -13,6 +13,7 @@ import {
 } from '#/features/notifications/notification-selectors'
 import { listServerChannels, listServers } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
   railIconButtonClass,
@@ -22,87 +23,10 @@ import {
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
 
+type ServerRailVariant = 'desktop' | 'mobile'
+
 function railButtonClass(active: boolean) {
   return cn(railIconButtonClass, !active && railIconIdleClass)
-}
-
-function ServerRailButton({
-  server,
-  currentUserId,
-}: {
-  server: Server
-  currentUserId?: string
-}) {
-  const selectedServerId = useSyncStore((s) => s.selectedServerId)
-  const notificationBadge = useSyncStore((s) =>
-    selectServerNotificationBadge(s, server._id, currentUserId),
-  )
-  const firstChannelId = useSyncStore((s) => {
-    const channels = listServerChannels(s, server._id, currentUserId)
-    const text = channels.find((c) => c.channel_type === 'TextChannel')
-    return (text ?? channels[0])?._id
-  })
-
-  const homeMatch = useMatch({
-    from: '/app/',
-    shouldThrow: false,
-  })
-  const channelMatch = useMatch({
-    from: '/app/c/$channelId',
-    shouldThrow: false,
-  })
-  const active =
-    Boolean(channelMatch) &&
-    !homeMatch &&
-    selectedServerId === server._id
-
-  const content = (
-    <span className="relative flex size-full items-center justify-center">
-      <ServerInitial name={server.name} />
-      <NotificationBadge
-        badge={notificationBadge}
-        className="absolute -top-1 -right-1"
-      />
-    </span>
-  )
-
-  if (firstChannelId) {
-    return (
-      <Button
-        size="icon"
-        variant={active ? 'default' : 'ghost'}
-        className={railButtonClass(active)}
-        title={server.name}
-        asChild
-      >
-        <Link
-          to="/app/c/$channelId"
-          params={{ channelId: firstChannelId }}
-          search={{ m: undefined }}
-        >
-          {content}
-        </Link>
-      </Button>
-    )
-  }
-
-  return (
-    <Button
-      size="icon"
-      variant={active ? 'default' : 'ghost'}
-      className={railButtonClass(active)}
-      title={server.name}
-      asChild
-    >
-      <Link
-        to="/app"
-        search={{ tab: 'online' }}
-        onClick={() => syncStore.setSelectedServerId(server._id)}
-      >
-        {content}
-      </Link>
-    </Button>
-  )
 }
 
 function ServerInitial({ name }: { name: string }) {
@@ -113,7 +37,18 @@ function ServerInitial({ name }: { name: string }) {
   )
 }
 
-export function ServerRail() {
+/**
+ * Рельс серверов.
+ *
+ * `variant`:
+ *  - `desktop` — клик по серверу ведёт в первый канал (`/app/c/$id`);
+ *    активность определяется контекстным сервером активного канала.
+ *  - `mobile` — клик по серверу ведёт на `/m` + устанавливает `selectedServerId`;
+ *    активность определяется `selectedServerId` из syncStore.
+ *
+ * Различие только в навигации и формуле «активности», вёрстка общая.
+ */
+export function ServerRail({ variant }: { variant: ServerRailVariant }) {
   const auth = useAuth()
   const { capabilities } = usePlatform()
   const ready = useSyncStore((s) => s.ready)
@@ -122,16 +57,19 @@ export function ServerRail() {
     selectHomeNotificationBadge(s, auth.user?._id),
   )
 
-  const homeMatch = useMatch({
-    from: '/app/',
-    shouldThrow: false,
-  })
-  const channelMatch = useMatch({
-    from: '/app/c/$channelId',
-    shouldThrow: false,
-  })
+  const homePath = variant === 'mobile' ? '/m/' : '/app/'
+  const channelPath = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
+  const homeTo = variant === 'mobile' ? '/m' : '/app'
 
-  const homeActive = Boolean(homeMatch) && !channelMatch
+  const homeMatch = useMatch({ from: homePath, shouldThrow: false })
+  const channelMatch = useMatch({ from: channelPath, shouldThrow: false })
+  const activeChannelId = channelMatch ? channelMatch.params.channelId : undefined
+  const selectedServerId = useSyncStore((s) => s.selectedServerId)
+
+  const homeActive =
+    Boolean(homeMatch) &&
+    !channelMatch &&
+    (variant === 'desktop' || !selectedServerId)
 
   const railPaddingClass = capabilities.customWindowChrome ? 'pb-3' : 'py-3'
 
@@ -167,7 +105,7 @@ export function ServerRail() {
         asChild
       >
         <Link
-          to="/app"
+          to={homeTo}
           search={{ tab: 'online' }}
           onClick={() => syncStore.setSelectedServerId(null)}
         >
@@ -188,6 +126,10 @@ export function ServerRail() {
               key={server._id}
               server={server}
               currentUserId={auth.user?._id}
+              activeChannelId={activeChannelId}
+              variant={variant}
+              homeMatch={Boolean(homeMatch)}
+              channelMatch={Boolean(channelMatch)}
             />
           ))}
           {servers.length === 0 ? (
@@ -207,5 +149,96 @@ export function ServerRail() {
         </div>
       </ScrollArea>
     </div>
+  )
+}
+
+function ServerRailButton({
+  server,
+  currentUserId,
+  activeChannelId,
+  variant,
+  homeMatch,
+  channelMatch,
+}: {
+  server: Server
+  currentUserId?: string
+  activeChannelId?: string
+  variant: ServerRailVariant
+  homeMatch: boolean
+  channelMatch: boolean
+}) {
+  const selectedServerId = useSyncStore((s) => s.selectedServerId)
+  const activeChannel = useSyncStore((s) =>
+    activeChannelId ? s.channels[activeChannelId] : undefined,
+  )
+  const contextualServerId = activeChannelId
+    ? selectedServerIdForChannel(activeChannel)
+    : selectedServerId
+  const notificationBadge = useSyncStore((s) =>
+    selectServerNotificationBadge(s, server._id, currentUserId),
+  )
+  const firstChannelId = useSyncStore((s) => {
+    const channels = listServerChannels(s, server._id, currentUserId)
+    const text = channels.find((c) => c.channel_type === 'TextChannel')
+    return (text ?? channels[0])?._id
+  })
+
+  const active =
+    variant === 'mobile'
+      ? homeMatch && !channelMatch && selectedServerId === server._id
+      : channelMatch && !homeMatch && contextualServerId === server._id
+
+  const content = (
+    <span className="relative flex size-full items-center justify-center">
+      <ServerInitial name={server.name} />
+      <NotificationBadge
+        badge={notificationBadge}
+        className="absolute -top-1 -right-1"
+      />
+    </span>
+  )
+
+  const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
+  const homeTo = variant === 'mobile' ? '/m' : '/app'
+
+  // Desktop: ведём сразу в первый канал сервера.
+  // Mobile: ведём на home с установкой selectedServerId (sidebar каналов покажется рядом).
+  if (firstChannelId && variant === 'desktop') {
+    return (
+      <Button
+        size="icon"
+        variant={active ? 'default' : 'ghost'}
+        className={railButtonClass(active)}
+        title={server.name}
+        asChild
+      >
+        <Link
+          to={channelTo}
+          params={{ channelId: firstChannelId }}
+          search={{ m: undefined }}
+        >
+          {content}
+        </Link>
+      </Button>
+    )
+  }
+
+  return (
+    <Button
+      size="icon"
+      variant={active ? 'default' : 'ghost'}
+      className={railButtonClass(active)}
+      title={server.name}
+      asChild
+    >
+      <Link
+        to={homeTo}
+        search={{ tab: 'online' }}
+        replace={channelMatch}
+        onClick={() => syncStore.setSelectedServerId(server._id)}
+      >
+        {content}
+      </Link>
+    </Button>
   )
 }

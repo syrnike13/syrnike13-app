@@ -35,6 +35,22 @@ const chatState = vi.hoisted(() => ({
   channel: undefined as Channel | undefined,
   users: {} as Record<string, User>,
 }))
+const routerMocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  pathname: '/app/c/test',
+}))
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => routerMocks.navigate,
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: routerMocks.pathname } }),
+}))
+
+class FakeResizeObserver {
+  observe = vi.fn()
+  disconnect = vi.fn()
+  unobserve = vi.fn()
+}
 
 const currentUser = {
   _id: CURRENT_USER_ID,
@@ -120,8 +136,41 @@ vi.mock('#/components/voice/voice-channel-shell', () => ({
 }))
 
 vi.mock('#/components/voice/voice-stage-view', () => ({
-  VoiceStageView: ({ title }: { title: string }) => (
-    <div data-testid="inline-voice-stage">{title}</div>
+  VoiceStageView: ({
+    channel,
+    title,
+    dmHeader,
+    headerTrailing,
+    voiceCallIncoming,
+    onDeclineVoiceCall,
+  }: {
+    channel: Channel
+    title: string
+    dmHeader?: unknown
+    headerTrailing?: ReactNode
+    voiceCallIncoming?: boolean
+    onDeclineVoiceCall?: () => void
+  }) => (
+    <div data-testid="inline-voice-stage">
+      <span data-testid="inline-voice-stage-title">{title}</span>
+      {dmHeader ? <span data-testid="inline-voice-stage-dm-header" /> : null}
+      {headerTrailing ? (
+        <span data-testid="inline-voice-stage-header-trailing" />
+      ) : null}
+      {voiceCallIncoming ? (
+        <>
+          <button
+            type="button"
+            onClick={() => voiceJoinMock(channel._id)}
+          >
+            Ответить
+          </button>
+          <button type="button" onClick={onDeclineVoiceCall}>
+            Отклонить
+          </button>
+        </>
+      ) : null}
+    </div>
   ),
 }))
 
@@ -220,6 +269,8 @@ describe('ChannelView direct message header', () => {
     voiceJoinMock.mockClear()
     cancelDirectMessageCallMock.mockClear()
     declineDirectMessageCallMock.mockClear()
+    routerMocks.navigate.mockClear()
+    routerMocks.pathname = '/app/c/test'
     voiceState.channelId = null
     voiceState.status = 'idle'
     chatState.channel = directMessageChannel
@@ -228,6 +279,7 @@ describe('ChannelView direct message header', () => {
       [TARGET_USER_ID]: targetUser,
     }
     syncStore.reset()
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
     syncStore.applyReady({
       users: [currentUser, targetUser],
       servers: [
@@ -250,6 +302,7 @@ describe('ChannelView direct message header', () => {
   afterEach(() => {
     cleanup()
     syncStore.reset()
+    vi.unstubAllGlobals()
   })
 
   it('renders avatar, presence dot, name, and mutual server aliases', () => {
@@ -398,14 +451,23 @@ describe('ChannelView direct message header', () => {
     voiceState.channelId = CHANNEL_ID
     voiceState.status = 'connected'
 
-    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
+    const { container } = renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
 
+    expect(container.querySelector('header')).toBeNull()
     expect(screen.queryByTestId('voice-channel-shell')).toBeNull()
     expect(screen.queryByTestId('voice-text-channel-dock')).toBeNull()
-    expect(screen.getByTestId('inline-voice-stage').textContent).toBe('test_isa')
+    expect(screen.getByTestId('inline-voice-stage-title').textContent).toBe(
+      'test_isa',
+    )
+    expect(screen.getByTestId('inline-voice-stage-dm-header')).toBeTruthy()
+    expect(screen.getByTestId('inline-voice-stage-header-trailing')).toBeTruthy()
     expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
     expect(screen.getByLabelText('Изменить высоту звонка')).toBeTruthy()
     expect(screen.getByTestId('message-list')).toBeTruthy()
+    expect(screen.queryByLabelText('Профиль пользователя')).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Скрыть профиль' }),
+    ).toBeNull()
   })
 
   it('keeps group direct message chat visible with an inline voice stage while connected', () => {
@@ -439,12 +501,16 @@ describe('ChannelView direct message header', () => {
       started_at: 1,
     })
 
-    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
+    const { container } = renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
 
+    expect(container.querySelector('header')).toBeNull()
     expect(screen.queryByText('Звонок уже идёт')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Присоединиться' })).toBeTruthy()
-    expect(screen.getByTestId('inline-voice-stage').textContent).toBe('test_isa')
+    expect(screen.getByTestId('inline-voice-stage-dm-header')).toBeTruthy()
+    expect(screen.getByTestId('inline-voice-stage-title').textContent).toBe(
+      'test_isa',
+    )
     expect(screen.getByTestId('message-list')).toBeTruthy()
+    expect(screen.queryByLabelText('Профиль пользователя')).toBeNull()
   })
 
   it('keeps an inline voice stage visible after a dismissed ring becomes active', () => {
@@ -492,13 +558,16 @@ describe('ChannelView direct message header', () => {
       recipients: [CURRENT_USER_ID],
     })
 
-    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
+    const { container } = renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
 
-    expect(screen.getByTestId('inline-voice-stage').textContent).toBe('test_isa')
+    expect(container.querySelector('header')).toBeNull()
+    expect(screen.getByTestId('inline-voice-stage-title').textContent).toBe(
+      'test_isa',
+    )
+    expect(screen.getByTestId('inline-voice-stage-dm-header')).toBeTruthy()
     expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
     expect(screen.queryByText('Личный звонок')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Ответить' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Отклонить' })).toBeTruthy()
+    expect(screen.queryByLabelText('Профиль пользователя')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Ответить' }))
     expect(voiceJoinMock).toHaveBeenCalledWith(CHANNEL_ID)
@@ -538,6 +607,25 @@ describe('ChannelView direct message header', () => {
       )
     })
     expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
+  })
+
+  it('shows a back button on mobile routes that returns to the home list', () => {
+    routerMocks.pathname = '/m/c/dm-1'
+
+    const { container } = renderChannelView(
+      <ChannelView channelId={CHANNEL_ID} />,
+    )
+    const header = container.querySelector('header')
+
+    expect(header).toBeTruthy()
+    const backButton = within(header!).getByRole('button', { name: 'Назад' })
+    fireEvent.click(backButton)
+
+    expect(syncStore.getState().selectedServerId).toBeNull()
+    expect(routerMocks.navigate).toHaveBeenCalledWith({
+      to: '/m',
+      search: { tab: 'online' },
+    })
   })
 
 })

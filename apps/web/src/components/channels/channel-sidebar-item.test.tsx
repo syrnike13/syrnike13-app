@@ -11,6 +11,8 @@ import { syncStore } from '#/features/sync/sync-store'
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   join: vi.fn(async () => {}),
+  openVoiceChannelDrawer: vi.fn(),
+  pathname: '/app/',
   voice: {
     channelId: 'voice-main' as string | null,
     status: 'connected' as 'idle' | 'connecting' | 'connected',
@@ -34,6 +36,8 @@ vi.mock('@tanstack/react-router', () => ({
   ),
   useNavigate: () => mocks.navigate,
   useMatch: () => null,
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: mocks.pathname } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -45,6 +49,14 @@ vi.mock('#/features/auth/auth-context', () => ({
 
 vi.mock('#/features/voice/voice-context', () => ({
   useVoice: () => mocks.voice,
+}))
+
+vi.mock('#/features/navigation/mobile-voice-channel-drawer-context', () => ({
+  useMobileVoiceChannelDrawer: () => ({
+    openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
+    closeVoiceChannelDrawer: vi.fn(),
+    channelId: null,
+  }),
 }))
 
 vi.mock('#/components/channels/channel-settings-dialog', () => ({
@@ -108,6 +120,8 @@ describe('ChannelSidebarItem voice navigation', () => {
     syncStore.reset()
     mocks.navigate.mockClear()
     mocks.join.mockClear()
+    mocks.openVoiceChannelDrawer.mockClear()
+    mocks.pathname = '/app/'
     mocks.voice.channelId = 'voice-main'
     mocks.voice.status = 'connected'
     mocks.voice.join = mocks.join
@@ -157,6 +171,19 @@ describe('ChannelSidebarItem voice navigation', () => {
       params: { channelId: 'voice-main' },
       search: { m: undefined },
     })
+  })
+
+  it('opens mobile voice drawer instead of navigating on mobile route', () => {
+    mocks.pathname = '/m/'
+    mocks.voice.channelId = null
+    mocks.voice.status = 'idle'
+    renderVoiceItem('text-general')
+
+    fireEvent.click(screen.getByRole('link', { name: 'main' }))
+
+    expect(mocks.openVoiceChannelDrawer).toHaveBeenCalledWith('voice-main')
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    expect(mocks.join).not.toHaveBeenCalled()
   })
 
   it('keeps modifier-click navigation native', () => {

@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { PencilFillIcon } from '#/components/icons'
+import { PencilFillIcon, ChevronDownIcon } from '#/components/icons'
+import type { ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 
 import { FxImage } from '#/components/ui/fx-image'
+import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import {
@@ -22,6 +24,12 @@ type CurrentUserProfileMenuProps = {
   user: User
   onClose?: () => void
   onOpenGlobalProfile?: () => void
+  /** По тапу на аватар (например, drawer статуса на мобильной странице профиля). */
+  onAvatarPress?: () => void
+  /** Скрыть строку выбора presence в меню (если статус открывается с аватара). */
+  hidePresenceRow?: boolean
+  /** Кнопки поверх баннера (например, закрыть на мобильной странице профиля). */
+  bannerOverlay?: ReactNode
 }
 
 /** Поповер панели пользователя — отдельная вёрстка, не общая карточка чужого профиля. */
@@ -29,6 +37,9 @@ export function CurrentUserProfileMenu({
   user,
   onClose,
   onOpenGlobalProfile,
+  onAvatarPress,
+  hidePresenceRow = false,
+  bannerOverlay,
 }: CurrentUserProfileMenuProps) {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
@@ -51,6 +62,11 @@ export function CurrentUserProfileMenu({
   return (
     <div className="flex min-w-0 flex-col">
       <div className="relative">
+        {bannerOverlay ? (
+          <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)]">
+            {bannerOverlay}
+          </div>
+        ) : null}
         <div
           className={userProfileBannerClassName(
             !bannerUrl &&
@@ -78,11 +94,15 @@ export function CurrentUserProfileMenu({
           />
           <button
             type="button"
-            title="Открыть профиль"
-            aria-label="Открыть профиль"
+            title={onAvatarPress ? 'Выбрать статус' : 'Открыть профиль'}
+            aria-label={onAvatarPress ? 'Выбрать статус' : 'Открыть профиль'}
             className="group/avatar-button cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0"
             onClick={(event) => {
               event.stopPropagation()
+              if (onAvatarPress) {
+                onAvatarPress()
+                return
+              }
               onOpenGlobalProfile?.()
             }}
           >
@@ -105,9 +125,27 @@ export function CurrentUserProfileMenu({
       </div>
 
       <div className="px-3 pt-10 pb-3">
-        <h2 className="truncate text-lg font-semibold leading-snug text-foreground">
-          {displayName}
-        </h2>
+        {onAvatarPress ? (
+          <button
+            type="button"
+            title="Выбрать статус"
+            aria-label="Выбрать статус"
+            className="group/display-name flex w-full min-w-0 items-center gap-0.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onAvatarPress}
+          >
+            <span className="truncate text-lg font-semibold leading-snug text-foreground">
+              {displayName}
+            </span>
+            <ChevronDownIcon
+              className="size-4 shrink-0 opacity-50 transition-opacity group-hover/display-name:opacity-80"
+              aria-hidden
+            />
+          </button>
+        ) : (
+          <h2 className="truncate text-lg font-semibold leading-snug text-foreground">
+            {displayName}
+          </h2>
+        )}
         <p className="mt-0.5 truncate text-sm leading-snug text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
         </p>
@@ -118,23 +156,36 @@ export function CurrentUserProfileMenu({
         ) : null}
       </div>
 
-      <div className={profileMenuNestClass}>
-        <button
-          type="button"
-          className={profileMenuRowClass}
-          onClick={() => {
-            onClose?.()
-            openSettings('profile')
-          }}
-        >
-          <PencilFillIcon
-            className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
-            aria-hidden
-          />
-          <span className="truncate">Редактировать профиль</span>
-        </button>
-        <PresenceStatusSelect />
-      </div>
+      {hidePresenceRow ? (
+        <div className="px-3 pb-3">
+          <Button
+            type="button"
+            className="h-10 w-full rounded-full"
+            onClick={() => openSettings('profile')}
+          >
+            <PencilFillIcon className="size-4" aria-hidden />
+            Редактировать профиль
+          </Button>
+        </div>
+      ) : (
+        <div className={profileMenuNestClass}>
+          <button
+            type="button"
+            className={profileMenuRowClass}
+            onClick={() => {
+              onClose?.()
+              openSettings('profile')
+            }}
+          >
+            <PencilFillIcon
+              className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
+              aria-hidden
+            />
+            <span className="truncate">Редактировать профиль</span>
+          </button>
+          <PresenceStatusSelect />
+        </div>
+      )}
     </div>
   )
 }
