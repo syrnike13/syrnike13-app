@@ -63,6 +63,10 @@ const EMPTY_ALIASES: string[] = []
 const INLINE_VOICE_STAGE_DEFAULT_HEIGHT = 360
 const INLINE_VOICE_STAGE_MIN_HEIGHT = 220
 const INLINE_CHAT_MIN_HEIGHT = 160
+const VOICE_STAGE_HEADER_ICON_CLASS =
+  'text-white/70 hover:bg-white/10 hover:text-white'
+const VOICE_STAGE_HEADER_SEARCH_STRIP_CLASS =
+  'border-white/20 bg-white/10 text-white/70 hover:bg-white/15 hover:text-white'
 
 export function clampInlineVoiceStageHeight(
   height: number,
@@ -197,6 +201,31 @@ export function ChannelView({
       ? listUserMutualServerNicknames(s, dmRecipientId, currentUserId)
       : EMPTY_ALIASES,
   )
+  const isDirectMessage = channel?.channel_type === 'DirectMessage'
+  const isGroupDirectMessage = channel?.channel_type === 'Group'
+  const isDmVoiceCallChannel =
+    channel?.channel_type === 'DirectMessage' || channel?.channel_type === 'Group'
+  const hasBotRecipient =
+    isDmVoiceCallChannel && channel
+      ? channel.recipients.some((recipientId) =>
+          Boolean(users[recipientId]?.bot),
+        )
+      : false
+  const hasVoice = Boolean(channel && channelHasVoice(channel) && !hasBotRecipient)
+  const inThisVoiceSession =
+    voice.channelId === channelId &&
+    (voice.status === 'connected' || voice.status === 'connecting')
+  const showInlineVoiceStage =
+    hasVoice &&
+    isDmVoiceCallChannel &&
+    (inThisVoiceSession || hasOngoingVoiceCall(voiceCall))
+  const dmInCallLayout = Boolean(isDirectMessage && showInlineVoiceStage)
+
+  useEffect(() => {
+    if (dmInCallLayout) {
+      setDmProfilePanelOpen(false)
+    }
+  }, [dmInCallLayout])
 
   if (!channel) {
     return (
@@ -216,26 +245,11 @@ export function ChannelView({
   }
 
   const title = getChannelLabel(channel, users, auth.user?._id)
-  const isDirectMessage = channel.channel_type === 'DirectMessage'
-  const isGroupDirectMessage = channel.channel_type === 'Group'
-  const isDmVoiceCallChannel =
-    channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
-  const hasBotRecipient = isDmVoiceCallChannel
-    ? channel.recipients.some((recipientId) => Boolean(users[recipientId]?.bot))
-    : false
-  const hasVoice = channelHasVoice(channel) && !hasBotRecipient
-  const inThisVoiceSession =
-    voice.channelId === channelId &&
-    (voice.status === 'connected' || voice.status === 'connecting')
   const inThisVoiceCall =
     voice.channelId === channelId &&
     voice.status === 'connected'
   const voiceCallIncoming = isIncomingVoiceCall(voiceCall, currentUserId)
-  const showInlineVoiceStage =
-    hasVoice &&
-    isDmVoiceCallChannel &&
-    (inThisVoiceSession || hasOngoingVoiceCall(voiceCall))
   let voiceActionLabel = isDmVoiceCallChannel ? 'Позвонить' : 'Голос'
   if (
     (isDmVoiceCallChannel && voiceCall?.phase === 'active') ||
@@ -328,7 +342,8 @@ export function ChannelView({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
+      {!dmInCallLayout ? (
+        <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
         <div className="flex min-w-0 flex-1 items-center gap-2 pl-4">
           {isDirectMessage && dmRecipient ? (
             <DirectMessageHeader
@@ -449,6 +464,7 @@ export function ChannelView({
           </div>
         ) : null}
       </header>
+      ) : null}
 
       <div className="flex min-h-0 min-w-0 flex-1">
         <div
@@ -479,6 +495,46 @@ export function ChannelView({
                   voiceCallIncoming && voiceCall?.phase === 'ringing'
                     ? dismissVoiceCallBanner
                     : undefined
+                }
+                dmHeader={
+                  dmInCallLayout && dmRecipient
+                    ? {
+                        user: dmRecipient,
+                        aliases: dmAliases,
+                        onOpenProfile: () => setFullProfileOpen(true),
+                        loading: historyQuery.isFetching,
+                      }
+                    : undefined
+                }
+                headerTrailing={
+                  dmInCallLayout && token ? (
+                    <>
+                      <ChannelPinnedDialog
+                        channelId={channelId}
+                        token={token}
+                        users={users}
+                        triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                      />
+                      <div className="lg:hidden">
+                        <ChannelSearchDialog
+                          channelId={channelId}
+                          token={token}
+                          users={users}
+                          variant="icon"
+                          triggerClassName={VOICE_STAGE_HEADER_ICON_CLASS}
+                        />
+                      </div>
+                      <div className="hidden w-52 lg:flex">
+                        <ChannelSearchDialog
+                          channelId={channelId}
+                          token={token}
+                          users={users}
+                          variant="strip"
+                          stripClassName={VOICE_STAGE_HEADER_SEARCH_STRIP_CLASS}
+                        />
+                      </div>
+                    </>
+                  ) : undefined
                 }
               />
               <div
@@ -610,7 +666,7 @@ export function ChannelView({
             </div>
           </div>
         </div>
-        {isDirectMessage && dmRecipient && dmProfilePanelOpen ? (
+        {isDirectMessage && dmRecipient && dmProfilePanelOpen && !dmInCallLayout ? (
           <DirectMessageProfilePanel
             user={dmRecipient}
             currentUserId={auth.user?._id}

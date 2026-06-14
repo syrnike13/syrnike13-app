@@ -50,36 +50,37 @@ describe('MessageRow system call messages', () => {
     cleanup()
   })
 
-  it('renders an active call system message as a call card', () => {
+  it('renders an active call system message like a user message row', () => {
     renderCallMessage(callMessage(null))
 
-    expect(screen.getByText('Звонок')).toBeTruthy()
-    expect(screen.getByText('test_isa начал звонок')).toBeTruthy()
-    expect(screen.getByText('Идёт сейчас')).toBeTruthy()
+    expect(screen.getByLabelText('Неуспешный звонок')).toBeTruthy()
+    expect(screen.queryByText('Звонок')).toBeNull()
+    expect(screen.getByRole('button', { name: 'test_isa' })).toBeTruthy()
+    expect(screen.getByText(/начал звонок · Идёт сейчас/)).toBeTruthy()
     expect(screen.queryByText('[системное сообщение]')).toBeNull()
   })
 
   it('renders a finished call system message with duration', () => {
     renderCallMessage(callMessage('2026-06-03T18:58:36.043Z', 'completed'))
 
-    expect(screen.getByText('Звонок')).toBeTruthy()
-    expect(screen.getByText('test_isa начал звонок')).toBeTruthy()
-    expect(screen.getByText('Завершён · 3 мин')).toBeTruthy()
+    expect(screen.getByLabelText('Успешный звонок')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'test_isa' })).toBeTruthy()
+    expect(screen.getByText(/начал звонок · Завершён · 3 мин/)).toBeTruthy()
   })
 
   it('renders a cancelled call system message with duration', () => {
     renderCallMessage(callMessage('2026-06-03T18:58:36.043Z', 'cancelled'))
 
-    expect(screen.getByText('Звонок')).toBeTruthy()
-    expect(screen.getByText('test_isa начал звонок')).toBeTruthy()
-    expect(screen.getByText('Отменён · 3 мин')).toBeTruthy()
+    expect(screen.getByLabelText('Неуспешный звонок')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'test_isa' })).toBeTruthy()
+    expect(screen.getByText(/начал звонок · Отменён · 3 мин/)).toBeTruthy()
   })
 
   it('renders a missed call system message with duration', () => {
     renderCallMessage(callMessage('2026-06-03T18:58:36.043Z', 'missed'))
 
-    expect(screen.getByText('Звонок')).toBeTruthy()
-    expect(screen.getByText('test_isa начал звонок')).toBeTruthy()
-    expect(screen.getByText('Пропущен · 3 мин')).toBeTruthy()
+    expect(screen.getByLabelText('Неуспешный звонок')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'test_isa' })).toBeTruthy()
+    expect(screen.getByText(/начал звонок · Пропущен · 3 мин/)).toBeTruthy()
   })
 })

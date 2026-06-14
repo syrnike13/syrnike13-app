@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type Ref,
 } from 'react'
 import { MessageSquareIcon } from '#/components/icons'
@@ -61,6 +62,13 @@ import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { canInviteToChannel } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
+type VoiceStageDmHeader = {
+  user: User
+  aliases: string[]
+  onOpenProfile?: () => void
+  loading?: boolean
+}
+
 type VoiceStageViewProps = {
   channel: Channel
   title: string
@@ -70,6 +78,8 @@ type VoiceStageViewProps = {
   voiceCall?: VoiceCallState
   voiceCallIncoming?: boolean
   onDeclineVoiceCall?: () => void
+  dmHeader?: VoiceStageDmHeader
+  headerTrailing?: ReactNode
 }
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
@@ -83,6 +93,8 @@ export function VoiceStageView({
   voiceCall,
   voiceCallIncoming = false,
   onDeclineVoiceCall,
+  dmHeader,
+  headerTrailing,
 }: VoiceStageViewProps) {
   const auth = useAuth()
   const voice = useVoice()
@@ -457,45 +469,116 @@ export function VoiceStageView({
           voiceStageChromeMotion(chromeVisible, 'top'),
         )}
       >
-        <VoiceChannelIcon
-          channel={channel}
-          server={server}
-          className="size-5 text-white/60"
-        />
-        <h1
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
-          title={
-            focusedMediaHeader
-              ? `${title} · ${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`
-              : title
-          }
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
-            <span className="truncate">{title}</span>
-            {focusedMediaHeader ? (
-              <>
-                <span className="shrink-0 text-white/45" aria-hidden>
-                  •
-                </span>
-                <UserAvatar
-                  user={focusedMediaHeader.user}
-                  className="size-5"
-                  fallbackClassName="size-5 text-[10px]"
-                  showPresence={false}
-                />
-                <span className="shrink-0 text-white/70">
-                  {focusedMediaHeader.kindLabel}
-                </span>
-                <span className="min-w-0 truncate">
-                  {focusedMediaHeader.displayName}
-                </span>
-              </>
+        {dmHeader ? (
+          <>
+            <UserAvatar
+              user={dmHeader.user}
+              className="size-8 shrink-0"
+              fallbackClassName="size-8 text-xs"
+              showPresence
+              presenceRingClassName="border-black"
+            />
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <h1 className="min-w-0 text-sm font-semibold text-white">
+                {dmHeader.onOpenProfile ? (
+                  <button
+                    type="button"
+                    className="block max-w-full truncate rounded-sm text-left font-semibold text-white transition-colors hover:text-white/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                    onClick={dmHeader.onOpenProfile}
+                  >
+                    {title}
+                  </button>
+                ) : (
+                  <span className="block truncate">{title}</span>
+                )}
+              </h1>
+              {dmHeader.aliases.length > 0 ? (
+                <>
+                  <span className="shrink-0 text-white/35" aria-hidden>
+                    |
+                  </span>
+                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-white/55">
+                    AKA
+                  </span>
+                  <span className="min-w-0 truncate text-xs text-white/70">
+                    {dmHeader.aliases.join(', ')}
+                  </span>
+                </>
+              ) : null}
+              {dmHeader.loading ? (
+                <span className="shrink-0 text-xs text-white/50">загрузка…</span>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <>
+            <VoiceChannelIcon
+              channel={channel}
+              server={server}
+              className="size-5 text-white/60"
+            />
+            <h1
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold"
+              title={
+                focusedMediaHeader
+                  ? `${title} · ${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`
+                  : title
+              }
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">
+                <span className="truncate">{title}</span>
+                {focusedMediaHeader ? (
+                  <>
+                    <span className="shrink-0 text-white/45" aria-hidden>
+                      •
+                    </span>
+                    <UserAvatar
+                      user={focusedMediaHeader.user}
+                      className="size-5"
+                      fallbackClassName="size-5 text-[10px]"
+                      showPresence={false}
+                    />
+                    <span className="shrink-0 text-white/70">
+                      {focusedMediaHeader.kindLabel}
+                    </span>
+                    <span className="min-w-0 truncate">
+                      {focusedMediaHeader.displayName}
+                    </span>
+                  </>
+                ) : null}
+              </span>
+              {focusedMediaHeader?.showOnAir ? (
+                <VoiceOnAirBadge className="ml-1 shrink-0" />
+              ) : null}
+            </h1>
+          </>
+        )}
+        {dmHeader && focusedMediaHeader ? (
+          <div
+            className="flex min-w-0 max-w-[40%] items-center gap-1.5 truncate text-sm font-semibold text-white/80"
+            title={`${focusedMediaHeader.kindLabel} ${focusedMediaHeader.displayName}`}
+          >
+            <span className="shrink-0 text-white/45" aria-hidden>
+              •
+            </span>
+            <UserAvatar
+              user={focusedMediaHeader.user}
+              className="size-5"
+              fallbackClassName="size-5 text-[10px]"
+              showPresence={false}
+            />
+            <span className="shrink-0">{focusedMediaHeader.kindLabel}</span>
+            <span className="min-w-0 truncate">
+              {focusedMediaHeader.displayName}
+            </span>
+            {focusedMediaHeader.showOnAir ? (
+              <VoiceOnAirBadge className="ml-1 shrink-0" />
             ) : null}
-          </span>
-          {focusedMediaHeader?.showOnAir ? (
-            <VoiceOnAirBadge className="ml-1 shrink-0" />
-          ) : null}
-        </h1>
+          </div>
+        ) : null}
+        {headerTrailing ? (
+          <div className="flex shrink-0 items-center gap-1">{headerTrailing}</div>
+        ) : null}
         {presentation === 'embedded' && showChatToggle ? (
           <Button
             type="button"

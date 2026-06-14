@@ -51,6 +51,19 @@ export const PhoneOffIcon = defineIcon(iconifyIcon('f7:phone-down-fill'), {
   name: 'f7:phone-down-fill',
 })
 
+export const PhoneIcon = defineIcon(iconifyIcon('lucide:phone'), {
+  pack: 'iconify',
+  name: 'lucide:phone',
+})
+
+export const PhoneFilledIcon = defineIcon(
+  iconifyIcon('material-symbols:call'),
+  {
+    pack: 'iconify',
+    name: 'material-symbols:call',
+  },
+)
+
 export const MonitorUpIcon = defineIcon(iconifyIcon('ic:round-screen-share'), {
   pack: 'iconify',
   name: 'ic:round-screen-share',
