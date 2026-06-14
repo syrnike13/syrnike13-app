@@ -171,6 +171,7 @@ const DEVICE_SWITCH_TIMEOUT_MS = 5_000
 const VOICE_RECOVERY_HEALTH_INTERVAL_MS = 5_000
 const VOICE_RECOVERY_SERVER_STATE_GRACE_MS = 10_000
 const STAGE_MEDIA_FILTERS_STORAGE_KEY = 'syrnike13.voice.stageMediaFilters'
+type DisconnectIntent = 'none' | 'switch' | 'leave' | 'cleanup'
 const DEFAULT_STAGE_MEDIA_FILTERS: StageMediaFilters = {
   showOwnStream: true,
   showRemoteStreams: true,
@@ -341,7 +342,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     promise: Promise<boolean>
   } | null>(null)
   const voiceSessionControllerRef = useRef(createVoiceSessionController())
-  const disconnectIntentRef = useRef<'none' | 'switch' | 'leave'>('none')
+  const disconnectIntentRef = useRef<DisconnectIntent>('none')
   const selfMonitoringRef = useRef({
     active: false,
     restorePublishing: false,
@@ -951,7 +952,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [auth.user?._id, cleanupAudio, resetVoiceState])
 
   const leaveVoiceSession = useCallback(
-    async (intent: 'switch' | 'leave' = 'switch') => {
+    async (intent: Exclude<DisconnectIntent, 'none'> = 'switch') => {
       voiceRejoinRef.current.cancel()
       const leaveOperationId = voiceSessionControllerRef.current.requestLeave()
       const room = roomRef.current
@@ -993,6 +994,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const leave = useCallback(() => {
     void leaveVoiceSession('leave')
+  }, [leaveVoiceSession])
+
+  const leaveVoiceSessionRef = useRef(leaveVoiceSession)
+  useEffect(() => {
+    leaveVoiceSessionRef.current = leaveVoiceSession
   }, [leaveVoiceSession])
 
   const applyVoiceDevices = useCallback(async (room: Room) => {
@@ -1647,7 +1653,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
 
         const intent = disconnectIntentRef.current
-        if (intent === 'switch' || intent === 'leave') {
+        if (intent === 'switch' || intent === 'leave' || intent === 'cleanup') {
           disconnectIntentRef.current = 'none'
           return
         }
@@ -2581,9 +2587,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return () => {
-      leave()
+      void leaveVoiceSessionRef.current('cleanup')
     }
-  }, [leave])
+  }, [])
 
   useEffect(() => {
     void resolveVoiceNodeName()

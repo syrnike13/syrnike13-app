@@ -116,6 +116,21 @@ describe('createVoiceJoinRunner', () => {
     )
   })
 
+  it('cleans up voice silently on provider unmount instead of playing a manual leave sound', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toMatch(
+      /return \(\) => \{[\s\S]*void leaveVoiceSessionRef\.current\('cleanup'\)/,
+    )
+    expect(providerSource).not.toMatch(/return \(\) => \{[\s\S]*leave\(\)/)
+  })
+
   it('reports concrete phases while joining voice', async () => {
     const phases: string[] = []
     const requestJoinOperation = vi.fn(() => 'op-join')
