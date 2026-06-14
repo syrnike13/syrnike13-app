@@ -37,7 +37,7 @@ async function handleVoiceCallPush(data) {
 
   await self.registration.showNotification(data.title ?? 'syrnike13', {
     body: data.body,
-    icon: '/favicon.ico',
+    icon: '/app-logo.png',
     tag,
     renotify: Boolean(tag),
     data: url ? { url } : undefined,
@@ -77,7 +77,7 @@ self.addEventListener('push', (event) => {
       ? handleVoiceCallPush(data)
       : self.registration.showNotification(data.title ?? 'syrnike13', {
           body: data.body,
-          icon: '/favicon.ico',
+          icon: '/app-logo.png',
         }),
   )
 })

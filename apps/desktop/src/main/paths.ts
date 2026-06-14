@@ -16,3 +16,10 @@ export function resolveWebDistRoot() {
 export function resolvePreloadScript() {
   return path.join(mainDir, '../preload/index.cjs')
 }
+
+export function resolveDesktopAsset(name: string) {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'assets', name)
+  }
+  return path.resolve(mainDir, '../../assets', name)
+}
