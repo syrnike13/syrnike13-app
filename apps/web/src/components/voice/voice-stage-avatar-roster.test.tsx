@@ -30,7 +30,7 @@ describe('VoiceStageAvatarRoster', () => {
     cleanup()
   })
 
-  it('renders participant avatars without tile chrome', () => {
+  it('renders participant avatars without names or tile chrome', () => {
     render(
       <VoiceStageAvatarRoster
         participants={[participant]}
@@ -41,7 +41,21 @@ describe('VoiceStageAvatarRoster', () => {
       />,
     )
 
-    expect(screen.getByText('исочка')).toBeTruthy()
+    expect(screen.queryByText('исочка')).toBeNull()
     expect(document.querySelector('.aspect-video')).toBeNull()
+  })
+
+  it('shows mute status as an avatar badge', () => {
+    render(
+      <VoiceStageAvatarRoster
+        participants={[{ ...participant, self_mute: true }]}
+        users={{ 'user-1': user }}
+        speakingUserIds={new Set()}
+        displayName={() => 'исочка'}
+        speakingEnabled
+      />,
+    )
+
+    expect(screen.getByLabelText('Микрофон выключен')).toBeTruthy()
   })
 })

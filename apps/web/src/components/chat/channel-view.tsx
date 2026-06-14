@@ -168,6 +168,22 @@ export function ChannelView({
     setInlineVoiceStageHeight(INLINE_VOICE_STAGE_DEFAULT_HEIGHT)
   }, [channelId])
 
+  useEffect(() => {
+    const container = channelContentRef.current
+    if (!container) return
+
+    const syncHeightToContainer = () => {
+      setInlineVoiceStageHeight((current) =>
+        clampInlineVoiceStageHeight(current, container.clientHeight),
+      )
+    }
+
+    syncHeightToContainer()
+    const observer = new ResizeObserver(syncHeightToContainer)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [channelId])
+
   const currentUserId = auth.user?._id
   const voiceCall = useSyncStore((s) => s.voiceCalls[channelId])
   const voiceCallRingingDismissed = useSyncStore((s) =>
@@ -445,7 +461,7 @@ export function ChannelView({
             <section
               ref={inlineVoiceStageRef}
               aria-label="Голосовой звонок"
-              className="relative shrink-0 overflow-hidden border-b border-shell-divider bg-black"
+              className="relative flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden border-b border-shell-divider bg-black"
               style={{
                 height: inlineVoiceStageHeight,
                 minHeight: INLINE_VOICE_STAGE_MIN_HEIGHT,

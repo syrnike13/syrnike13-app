@@ -384,7 +384,7 @@ export function VoiceStageView({
       className={cn(
         'relative flex min-w-0 flex-col overflow-hidden bg-black text-white',
         presentation === 'popout' && 'h-[100dvh] w-full min-h-0',
-        presentation === 'embedded' && 'min-h-0 flex-1',
+        presentation === 'embedded' && 'h-full min-h-0 flex-1',
         presentation === 'popout' &&
           voice.stageFullscreen &&
           'fixed inset-0 z-[50]',
@@ -569,7 +569,7 @@ export function VoiceStageView({
         />
       ) : null}
       {!popoutOpen ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
           {renderStageSurface(stageRef, 'embedded')}
         </div>
       ) : null}

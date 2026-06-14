@@ -1,7 +1,7 @@
 import type { User } from '@syrnike13/api-types'
 
 import { UserAvatar } from '#/components/user/user-avatar'
-import { VoiceParticipantIcons } from '#/components/voice/voice-participant-icons'
+import { VoiceAvatarStatusBadge } from '#/components/voice/voice-participant-icons'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { cn } from '#/lib/utils'
 
@@ -68,14 +68,14 @@ export function VoiceStageAvatarRoster({
           return (
             <li
               key={participant.id}
+              title={name}
               className={cn(
-                'flex max-w-[9rem] flex-col items-center gap-2 text-center',
                 dimmedUserId === participant.id && 'opacity-50',
               )}
             >
               <div
                 className={cn(
-                  'rounded-full transition-[box-shadow]',
+                  'relative rounded-full transition-[box-shadow]',
                   speaking && 'ring-2 ring-[#23a559] ring-offset-2 ring-offset-black',
                 )}
               >
@@ -90,19 +90,13 @@ export function VoiceStageAvatarRoster({
                   speaking={speaking}
                   showPresence={false}
                 />
-              </div>
-              <div className="flex min-w-0 max-w-full items-center justify-center gap-1.5">
-                <VoiceParticipantIcons
+                <VoiceAvatarStatusBadge
                   muted={muted}
                   deafened={deafened}
                   serverMuted={participant.server_muted}
                   serverDeafened={participant.server_deafened}
-                  camera={participant.camera}
-                  className="shrink-0 text-white/80"
+                  compact={compact}
                 />
-                <span className="truncate text-sm font-medium text-white/90">
-                  {name}
-                </span>
               </div>
             </li>
           )
