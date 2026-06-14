@@ -101,22 +101,26 @@ export function buildStageMediaItems<TTrack = unknown, TPublication = unknown>({
     const userId = participant.id
     const isLocal = userId === currentUserId
 
-    if (isLocal && !filters.showOwnStream) continue
-    if (!isLocal && !filters.showRemoteStreams) continue
-
     const userTracks = tracksByUser.get(userId)
     const screen = userTracks?.screen
     const camera = userTracks?.camera
+    const showStreams = isLocal
+      ? filters.showOwnStream
+      : filters.showRemoteStreams
+    const visibleScreen =
+      screen && showStreams && shouldShowStageMediaTrack(screen, filters)
+    const visibleCamera =
+      camera && showStreams && shouldShowStageMediaTrack(camera, filters)
 
-    if (screen) {
+    if (visibleScreen) {
       items.push(mediaItem(userId, 'screen', screen, isLocal))
     }
 
-    if (camera) {
+    if (visibleCamera) {
       items.push(mediaItem(userId, 'camera', camera, isLocal))
     }
 
-    if (!camera && filters.showParticipantsWithoutMedia) {
+    if (!visibleCamera && filters.showParticipantsWithoutMedia) {
       items.push({
         id: stageMediaItemId(userId, 'avatar'),
         userId,
@@ -128,6 +132,21 @@ export function buildStageMediaItems<TTrack = unknown, TPublication = unknown>({
   }
 
   return items
+}
+
+function shouldShowStageMediaTrack<TTrack, TPublication>(
+  entry: StageMediaTrackEntry<TTrack, TPublication>,
+  filters: StageMediaFilters,
+) {
+  if (entry.subscribed === false) return false
+  if (
+    !filters.showParticipantsWithoutMedia &&
+    !entry.track &&
+    entry.source !== 'screen'
+  ) {
+    return false
+  }
+  return true
 }
 
 function selectStageMediaTrack<TTrack, TPublication>(
