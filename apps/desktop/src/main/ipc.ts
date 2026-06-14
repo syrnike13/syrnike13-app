@@ -1,4 +1,4 @@
-import { app, ipcMain, type BrowserWindow } from 'electron'
+import { app, clipboard, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
@@ -72,6 +72,13 @@ export function registerDesktopIpc(
     chrome: process.versions.chrome,
     node: process.versions.node,
   }))
+
+  ipcMain.handle(IPC.clipboardWriteText, (_event, text: string) => {
+    if (typeof text !== 'string') {
+      throw new Error('Clipboard text must be a string')
+    }
+    clipboard.writeText(text)
+  })
 
   ipcMain.on(IPC.windowMinimize, () => {
     getWindow()?.minimize()

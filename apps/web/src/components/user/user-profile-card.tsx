@@ -26,6 +26,7 @@ import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship, sendFriendRequestToUser } from '#/features/friends/friend-actions'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
+import { writeClipboardText } from '#/lib/clipboard'
 
 export type UserProfileCardProps = {
   user: User
@@ -99,7 +100,7 @@ export function UserProfileCard({
 
   async function copyUserId() {
     try {
-      await navigator.clipboard.writeText(profile._id)
+      await writeClipboardText(profile._id)
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')

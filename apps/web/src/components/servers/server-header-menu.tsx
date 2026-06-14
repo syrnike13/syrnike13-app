@@ -25,6 +25,7 @@ import { leaveServer } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { writeClipboardText } from '#/lib/clipboard'
 import { getServerMenuPermissions } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
@@ -125,7 +126,7 @@ export function ServerHeaderMenu({
 
   async function copyServerId() {
     try {
-      await navigator.clipboard.writeText(serverId)
+      await writeClipboardText(serverId)
       toast.success('ID сервера скопирован')
       setMenuOpen(false)
     } catch {

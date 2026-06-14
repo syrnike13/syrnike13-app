@@ -30,6 +30,7 @@ import { selectDirectMessageCallActionLabel } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { useVoice } from '#/features/voice/voice-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
+import { writeClipboardText } from '#/lib/clipboard'
 import {
   canBanServerMember,
   canKickServerMember,
@@ -160,7 +161,7 @@ export function UserContextMenuContent({
 
   async function copyUserId() {
     try {
-      await navigator.clipboard.writeText(user._id)
+      await writeClipboardText(user._id)
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')

@@ -49,6 +49,7 @@ import { useVoice } from '#/features/voice/voice-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { canManageChannel } from '#/lib/permissions'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
+import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 import { publicAppUrl } from '#/lib/public-origin'
 import { cn } from '#/lib/utils'
@@ -206,7 +207,7 @@ export function ChannelSidebarItem({
   async function copyLink() {
     const url = publicAppUrl(`/app/c/${channel._id}`)
     try {
-      await navigator.clipboard.writeText(url)
+      await writeClipboardText(url)
       toast.success('Ссылка скопирована')
     } catch {
       toast.error('Не удалось скопировать')
@@ -219,7 +220,7 @@ export function ChannelSidebarItem({
       const invite = await createChannelInvite(token, channel._id)
       const code = '_id' in invite ? invite._id : ''
       if (code) {
-        await navigator.clipboard.writeText(inviteUrl(code))
+        await writeClipboardText(inviteUrl(code))
         toast.success('Приглашение скопировано')
       }
     } catch (error) {

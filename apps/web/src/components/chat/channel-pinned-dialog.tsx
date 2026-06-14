@@ -18,6 +18,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
+import { writeClipboardText } from '#/lib/clipboard'
 import { cn } from '#/lib/utils'
 
 type ChannelPinnedDialogProps = {
@@ -144,8 +145,7 @@ export function ChannelPinnedDialog({
                   size="sm"
                   className="mt-2 h-auto px-0"
                   onClick={() => {
-                    void navigator.clipboard
-                      .writeText(message._id)
+                    void writeClipboardText(message._id)
                       .then(() => toast.success('ID скопирован'))
                       .catch(() => toast.error('Не удалось скопировать'))
                   }}

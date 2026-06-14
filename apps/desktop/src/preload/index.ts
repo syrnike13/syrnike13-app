@@ -54,6 +54,11 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   getVersions() {
     return ipcRenderer.invoke(IPC.versions)
   },
+  clipboard: {
+    writeText(text: string) {
+      return ipcRenderer.invoke(IPC.clipboardWriteText, text)
+    },
+  },
   window: {
     minimize() {
       ipcRenderer.send(IPC.windowMinimize)

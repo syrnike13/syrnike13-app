@@ -31,3 +31,11 @@ describe('desktop tray IPC contract', () => {
     )
   })
 })
+
+describe('desktop clipboard IPC contract', () => {
+  it('exposes clipboard text writes through the clipboard namespace', () => {
+    expect(IPC.clipboardWriteText).toBe(
+      'syrnike-desktop:clipboard:write-text',
+    )
+  })
+})

@@ -23,6 +23,7 @@ import {
   calculateServerPermissions,
   hasChannelPermission,
 } from '#/lib/permissions'
+import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 
 type ServerInviteDialogProps = {
@@ -91,7 +92,7 @@ export function ServerInviteDialog({
       const code = '_id' in invite ? invite._id : ''
       if (code) {
         setCodes((current) => [code, ...current])
-        await navigator.clipboard.writeText(inviteUrl(code))
+        await writeClipboardText(inviteUrl(code))
         toast.success('Ссылка скопирована в буфер')
       }
     } catch (error) {
@@ -147,8 +148,9 @@ export function ServerInviteDialog({
                     variant="ghost"
                     className="size-7"
                     onClick={() => {
-                      void navigator.clipboard.writeText(inviteUrl(code))
-                      toast.success('Скопировано')
+                      void writeClipboardText(inviteUrl(code))
+                        .then(() => toast.success('Скопировано'))
+                        .catch(() => toast.error('Не удалось скопировать'))
                     }}
                   >
                     <Link2Icon className="size-3.5" />

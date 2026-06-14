@@ -180,6 +180,9 @@ export interface SyrnikeDesktopApi {
   readonly runtime: 'desktop'
   readonly platform: DesktopPlatformInfo
   getVersions(): Promise<DesktopVersions>
+  clipboard: {
+    writeText(text: string): Promise<void>
+  }
   window: {
     minimize(): void
     maximize(): void
