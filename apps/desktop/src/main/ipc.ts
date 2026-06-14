@@ -6,6 +6,7 @@ import {
   type DesktopOverlaySnapshot,
   type DesktopLocalSettingsPatch,
   type DesktopStoredSession,
+  type DesktopTrayVoiceState,
   type DesktopWindowPreferences,
   type HotkeyBinding,
 } from '@syrnike13/platform'
@@ -53,6 +54,7 @@ export function registerDesktopIpc(
     getWindowPreferences: () => DesktopWindowPreferences
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
+    setTrayVoiceState: (state: DesktopTrayVoiceState) => void
     onLocalSettingsUpdated?: (settings: DesktopLocalSettings) => void
     showWindow: () => void
     localSettingsPath: string
@@ -123,6 +125,10 @@ export function registerDesktopIpc(
   ipcMain.handle(IPC.activityClear, () => {
     lastActivity = null
     console.info('[desktop] activity cleared')
+  })
+
+  ipcMain.handle(IPC.traySetVoiceState, (_event, state: DesktopTrayVoiceState) => {
+    options.setTrayVoiceState(state)
   })
 
   ipcMain.handle(IPC.authLoadSession, () =>

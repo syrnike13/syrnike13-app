@@ -15,6 +15,7 @@ export const IPC = {
   updatesStateChanged: 'syrnike-desktop:updates:state-changed',
   activitySet: 'syrnike-desktop:activity:set',
   activityClear: 'syrnike-desktop:activity:clear',
+  traySetVoiceState: 'syrnike-desktop:tray:set-voice-state',
   authLoadSession: 'syrnike-desktop:auth:load-session',
   authSaveSession: 'syrnike-desktop:auth:save-session',
   authClearSession: 'syrnike-desktop:auth:clear-session',

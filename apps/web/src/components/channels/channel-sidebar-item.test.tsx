@@ -52,7 +52,7 @@ vi.mock('#/features/voice/voice-context', () => ({
 }))
 
 vi.mock('#/features/navigation/mobile-voice-channel-drawer-context', () => ({
-  useMobileVoiceChannelDrawer: () => ({
+  useOptionalMobileVoiceChannelDrawer: () => ({
     openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
     closeVoiceChannelDrawer: vi.fn(),
     channelId: null,

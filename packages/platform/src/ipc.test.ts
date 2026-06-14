@@ -23,3 +23,11 @@ describe('desktop media IPC contract', () => {
     expect('mediaClearSystemAudio' in IPC).toBe(false)
   })
 })
+
+describe('desktop tray IPC contract', () => {
+  it('exposes voice state through the tray namespace', () => {
+    expect(IPC.traySetVoiceState).toBe(
+      'syrnike-desktop:tray:set-voice-state',
+    )
+  })
+})

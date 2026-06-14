@@ -44,7 +44,7 @@ import {
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
-import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
+import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoice } from '#/features/voice/voice-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { canManageChannel } from '#/lib/permissions'
@@ -84,7 +84,7 @@ export function ChannelSidebarItem({
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isMobile = pathname.startsWith('/m')
   const channelRoute = isMobile ? '/m/c/$channelId' : '/app/c/$channelId'
-  const { openVoiceChannelDrawer } = useMobileVoiceChannelDrawer()
+  const mobileVoiceChannelDrawer = useOptionalMobileVoiceChannelDrawer()
   const token = auth.session?.token
   const channelRouteMatch = useMatch({
     from: channelRoute,
@@ -251,7 +251,7 @@ export function ChannelSidebarItem({
     event.preventDefault()
 
     if (isMobile) {
-      openVoiceChannelDrawer(channel._id)
+      mobileVoiceChannelDrawer?.openVoiceChannelDrawer(channel._id)
       return
     }
 

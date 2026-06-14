@@ -7,6 +7,7 @@ import { CommandPaletteProvider } from '#/features/command-palette/command-palet
 import { DesktopUpdateBanner } from '#/features/desktop/desktop-update-banner'
 import { DesktopHotkeyProvider } from '#/features/hotkeys/desktop-hotkey-provider'
 import { DesktopOverlayPublisher } from '#/features/overlay/desktop-overlay-publisher'
+import { DesktopTrayVoicePublisher } from '#/features/voice/desktop-tray-voice-publisher'
 import { AuthedGate } from '#/features/auth/authed-gate'
 import { loadSession } from '#/lib/session'
 import { isDesktopRuntime } from '#/platform/runtime'
@@ -35,6 +36,7 @@ function DesktopLayout() {
       <CommandPaletteProvider>
         <DesktopHotkeyProvider>
           <DesktopOverlayPublisher />
+          <DesktopTrayVoicePublisher />
           <DesktopUpdateBanner />
           <DesktopShell />
           <CommandPalette />
