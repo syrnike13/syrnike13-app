@@ -41,10 +41,7 @@ export function withConnectingLocalAvatarItem<T extends StageMediaItem>(
   },
 ): T[] {
   if (!options.connecting || !options.localUserId) return [...items]
-  if (
-    !options.filters.showOwnStream ||
-    !options.filters.showParticipantsWithoutMedia
-  ) {
+  if (!options.filters.showParticipantsWithoutMedia) {
     return [...items]
   }
   if (items.some((item) => item.userId === options.localUserId)) {

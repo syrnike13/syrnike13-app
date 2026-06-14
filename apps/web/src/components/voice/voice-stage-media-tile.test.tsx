@@ -163,6 +163,32 @@ describe('StageMediaTile', () => {
     expect(onSetSubscribed).toHaveBeenCalledWith(screenItem.id, true)
   })
 
+  it('does not render a watch button for local screen tiles', () => {
+    render(
+      <StageMediaTile
+        item={{ ...screenItemWithTrack, isLocal: true, subscribed: false }}
+        displayName="test_isa"
+        variant="grid"
+        participant={{
+          id: 'remote-user',
+          joined_at: 1,
+          self_mute: false,
+          self_deaf: false,
+          version: 1,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: true,
+        }}
+        onFocus={vi.fn()}
+        onSetSubscribed={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Смотреть' })).toBeNull()
+    expect(document.querySelector('video')).toBeTruthy()
+  })
+
   it('keeps strip avatars compact instead of filling the tile', () => {
     render(
       <StageMediaTile
@@ -191,7 +217,9 @@ describe('StageMediaTile', () => {
       />,
     )
 
-    const avatar = screen.getByRole('button').querySelector('[data-slot="avatar"]')
+    const avatar = screen
+      .getByRole('button')
+      .querySelector('[data-slot="avatar"]')
     expect(avatar).toBeTruthy()
     expect(avatar?.className).toContain('size-[min(58cqh,36cqw,4.75rem)]')
     expect(avatar?.className).not.toContain('size-full')

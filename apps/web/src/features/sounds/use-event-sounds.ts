@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { fetchSyrnikeConfig } from '#/features/api/config-api'
 import { useAuth } from '#/features/auth/auth-context'
@@ -6,8 +6,11 @@ import { eventsGateway } from '#/features/events/gateway'
 import { syncStore } from '#/features/sync/sync-store'
 import type { GatewayServerEvent } from '#/features/sync/types'
 
-import { soundEventFromGatewayEvent } from './sound-event-map'
 import { playUiSound } from './sound-player'
+import {
+  createSoundEventResolver,
+  currentVoiceChannelIdFromParticipants,
+} from './sound-event-sequence'
 import { soundRuntimeConfigStore } from './sound-runtime-config'
 
 function activeChannelIdFromPath() {
@@ -31,6 +34,9 @@ function blockedUserIds() {
 
 export function useEventSounds() {
   const auth = useAuth()
+  const resolverRef = useRef<ReturnType<typeof createSoundEventResolver> | null>(
+    null,
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -48,17 +54,26 @@ export function useEventSounds() {
   }, [])
 
   useEffect(() => {
+    resolverRef.current = createSoundEventResolver(
+      syncStore.getState().voiceParticipants,
+    )
     const unsubscribe = eventsGateway.subscribeEvents((event) => {
-      const soundEvent = soundEventFromGatewayEvent(
-        event as GatewayServerEvent,
-        {
+      const resolver =
+        resolverRef.current ??
+        createSoundEventResolver(syncStore.getState().voiceParticipants)
+      resolverRef.current = resolver
+      const syncState = syncStore.getState()
+      const soundEvents = resolver.resolve(event as GatewayServerEvent, {
           currentUserId: auth.user?._id,
           activeChannelId: activeChannelIdFromPath(),
+          currentVoiceChannelId: currentVoiceChannelIdFromParticipants(
+            syncState.voiceParticipants,
+            auth.user?._id,
+          ),
           documentFocused: documentFocused(),
           blockedUserIds: blockedUserIds(),
-        },
-      )
-      if (soundEvent) playUiSound(soundEvent)
+        })
+      for (const soundEvent of soundEvents) playUiSound(soundEvent)
     })
 
     return () => {
