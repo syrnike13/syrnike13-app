@@ -21,6 +21,7 @@ import {
 } from '#/components/ui/select'
 import { useAuth } from '#/features/auth/auth-context'
 import { createServerChannel, editServer } from '#/features/api/servers-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
 import { appendChannelToCategory } from '#/lib/channel-sidebar-layout'
 import { isServerVoiceChannel, normalizeServerChannel } from '#/lib/channel-voice'
@@ -40,6 +41,7 @@ export function CreateChannelDialog({
 }: CreateChannelDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const [name, setName] = useState('')
   const [type, setType] = useState<'Text' | 'Voice'>('Text')
   const [saving, setSaving] = useState(false)
@@ -91,7 +93,7 @@ export function CreateChannelDialog({
       setType('Text')
       toast.success(`Канал «${trimmed}» создан`)
       await navigate({
-        to: '/app/c/$channelId',
+        to: `${prefix}/c/$channelId`,
         params: { channelId: channel._id },
         search: { m: undefined },
       })

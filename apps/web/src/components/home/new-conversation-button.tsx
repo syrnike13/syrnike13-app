@@ -23,6 +23,7 @@ import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { createGroupChannel } from '#/features/api/channels-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listUsersByRelationship } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
@@ -32,6 +33,7 @@ type DialogMode = 'dm' | 'group' | null
 export function NewConversationButton() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState<DialogMode>(null)
   const [filter, setFilter] = useState('')
@@ -86,7 +88,7 @@ export function NewConversationButton() {
       await openDirectMessageChannel(token, userId, (channelId) => {
         closeDialog()
         return navigate({
-          to: '/app/c/$channelId',
+          to: `${prefix}/c/$channelId`,
           params: { channelId },
           search: { m: undefined },
         })
@@ -111,7 +113,7 @@ export function NewConversationButton() {
       closeDialog()
       toast.success('Группа создана')
       await navigate({
-        to: '/app/c/$channelId',
+        to: `${prefix}/c/$channelId`,
         params: { channelId: channel._id },
         search: { m: undefined },
       })

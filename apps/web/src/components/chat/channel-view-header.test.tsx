@@ -35,6 +35,16 @@ const chatState = vi.hoisted(() => ({
   channel: undefined as Channel | undefined,
   users: {} as Record<string, User>,
 }))
+const routerMocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  pathname: '/app/c/test',
+}))
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => routerMocks.navigate,
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: routerMocks.pathname } }),
+}))
 
 class FakeResizeObserver {
   observe = vi.fn()
@@ -259,6 +269,8 @@ describe('ChannelView direct message header', () => {
     voiceJoinMock.mockClear()
     cancelDirectMessageCallMock.mockClear()
     declineDirectMessageCallMock.mockClear()
+    routerMocks.navigate.mockClear()
+    routerMocks.pathname = '/app/c/test'
     voiceState.channelId = null
     voiceState.status = 'idle'
     chatState.channel = directMessageChannel
@@ -595,6 +607,25 @@ describe('ChannelView direct message header', () => {
       )
     })
     expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
+  })
+
+  it('shows a back button on mobile routes that returns to the home list', () => {
+    routerMocks.pathname = '/m/c/dm-1'
+
+    const { container } = renderChannelView(
+      <ChannelView channelId={CHANNEL_ID} />,
+    )
+    const header = container.querySelector('header')
+
+    expect(header).toBeTruthy()
+    const backButton = within(header!).getByRole('button', { name: 'Назад' })
+    fireEvent.click(backButton)
+
+    expect(syncStore.getState().selectedServerId).toBeNull()
+    expect(routerMocks.navigate).toHaveBeenCalledWith({
+      to: '/m',
+      search: { tab: 'online' },
+    })
   })
 
 })

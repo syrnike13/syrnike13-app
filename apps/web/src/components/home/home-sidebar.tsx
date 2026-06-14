@@ -8,11 +8,13 @@ import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
 import { Button } from '#/components/ui/button'
 import { ScrollArea } from '#/components/ui/scroll-area'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 type HomeSidebarProps = {
   activeChannelId?: string
 }
 
 export function HomeSidebar({ activeChannelId }: HomeSidebarProps) {
+  const prefix = useAppRoutePrefix()
   return (
     <aside
       className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
@@ -25,7 +27,7 @@ export function HomeSidebar({ activeChannelId }: HomeSidebarProps) {
           className="h-9 w-full justify-start gap-2 px-2 font-medium"
           asChild
         >
-          <Link to="/app" search={{ tab: 'online' }}>
+          <Link to={prefix} search={{ tab: 'online' }}>
             <UsersIcon className="size-4 shrink-0" />
             Друзья
           </Link>

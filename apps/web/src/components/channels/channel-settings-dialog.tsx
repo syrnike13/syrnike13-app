@@ -4,6 +4,7 @@ import { useMatch, useNavigate } from '@tanstack/react-router'
 
 import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { canManageChannel, canManageChannelPermissions } from '#/lib/permissions'
@@ -26,8 +27,9 @@ export function ChannelSettingsDialog({
 }: ChannelSettingsDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const channelRouteMatch = useMatch({
-    from: '/app/c/$channelId',
+    from: `${prefix}/c/$channelId`,
     shouldThrow: false,
   })
   const server = useSyncStore((s) =>
@@ -55,14 +57,17 @@ export function ChannelSettingsDialog({
 
   function openSettings() {
     onOpenChange?.(false)
-    const hostChannelId = channelRouteMatch?.params?.channelId ?? channel._id
+    const match = channelRouteMatch
+    const hostChannelId =
+      (match && 'params' in match ? match.params.channelId : undefined) ??
+      channel._id
     void navigate({
-      to: '/app/c/$channelId',
+      to: `${prefix}/c/$channelId`,
       params: { channelId: hostChannelId },
       search: channelSettingsSearch({
         settingsChannel: channel._id,
         settingsTab: canManage ? 'overview' : 'permissions',
-        m: channelRouteMatch?.search?.m,
+        m: match && 'search' in match ? match.search?.m : undefined,
       }),
     })
   }

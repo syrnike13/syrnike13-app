@@ -16,6 +16,7 @@ import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   acceptIncomingFriendRequest,
   blockIncomingFriendRequest,
@@ -77,6 +78,7 @@ function FriendsSection({
 export function FriendsView() {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const [username, setUsername] = useState('')
   const [sending, setSending] = useState(false)
@@ -104,7 +106,7 @@ export function FriendsView() {
     if (!token) return
     await openDirectMessageChannel(token, userId, (channelId) =>
       navigate({
-        to: '/app/c/$channelId',
+        to: `${prefix}/c/$channelId`,
         params: { channelId },
         search: { m: undefined },
       })

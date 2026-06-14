@@ -16,6 +16,7 @@ import { ScrollArea } from '#/components/ui/scroll-area'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { useAuth } from '#/features/auth/auth-context'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
   canManageChannel,
@@ -79,9 +80,10 @@ function SettingsNavLink({
   label: string
   highlightMessageId?: string
 }) {
+  const prefix = useAppRoutePrefix()
   return (
     <Link
-      to="/app/c/$channelId"
+      to={`${prefix}/c/$channelId`}
       params={{ channelId: hostChannelId }}
       search={channelSettingsSearch({
         settingsChannel: channelId,
@@ -104,6 +106,7 @@ export function ChannelSettingsPage({
 }: ChannelSettingsPageProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) => s.channels[channelId])
   const server = useSyncStore((s) =>
     channel && 'server' in channel && channel.server
@@ -132,17 +135,17 @@ export function ChannelSettingsPage({
 
   const closeSettings = useCallback(() => {
     void navigate({
-      to: '/app/c/$channelId',
+      to: `${prefix}/c/$channelId`,
       params: { channelId: hostChannelId },
       search: clearChannelSettingsSearch(highlightMessageId),
     })
-  }, [highlightMessageId, hostChannelId, navigate])
+  }, [highlightMessageId, hostChannelId, navigate, prefix])
 
   useEffect(() => {
     if (!channel) return
 
     if (!isServerChannel) {
-      void navigate({ to: '/app', search: { tab: 'online' }, replace: true })
+      void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
       return
     }
 
@@ -150,7 +153,7 @@ export function ChannelSettingsPage({
 
     if (!canManage && !canManagePermissions) {
       void navigate({
-        to: '/app/c/$channelId',
+        to: `${prefix}/c/$channelId`,
         params: { channelId: hostChannelId },
         search: clearChannelSettingsSearch(highlightMessageId),
         replace: true,
@@ -166,6 +169,7 @@ export function ChannelSettingsPage({
     hostChannelId,
     isServerChannel,
     navigate,
+    prefix,
     server,
   ])
 

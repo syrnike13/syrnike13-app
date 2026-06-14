@@ -16,6 +16,7 @@ import {
 import { Button } from '#/components/ui/button'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { getServerMenuPermissions } from '#/lib/permissions'
@@ -73,9 +74,10 @@ function SettingsNavLink({
   icon: ReactNode
   label: string
 }) {
+  const prefix = useAppRoutePrefix()
   return (
     <Link
-      to="/app/servers/$serverId/settings"
+      to={`${prefix}/servers/$serverId/settings`}
       params={{ serverId }}
       search={{ tab }}
       className={settingsNavItemClass(activeTab === tab)}
@@ -89,6 +91,7 @@ function SettingsNavLink({
 export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
   const channels = useSyncStore((s) =>
@@ -103,21 +106,21 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     )
     if (textChannel) {
       void navigate({
-        to: '/app/c/$channelId',
+        to: `${prefix}/c/$channelId`,
         params: { channelId: textChannel._id },
         search: { m: undefined },
       })
       return
     }
-    void navigate({ to: '/app', search: { tab: 'online' } })
-  }, [channels, navigate])
+    void navigate({ to: prefix, search: { tab: 'online' } })
+  }, [channels, navigate, prefix])
 
   useEffect(() => {
     if (!server) return
     if (!menuPermissions?.settings) {
-      void navigate({ to: '/app', search: { tab: 'online' }, replace: true })
+      void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
     }
-  }, [menuPermissions?.settings, navigate, server])
+  }, [menuPermissions?.settings, navigate, prefix, server])
 
   useEffect(() => {
     syncStore.setSelectedServerId(serverId)

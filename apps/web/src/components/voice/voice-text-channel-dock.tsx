@@ -5,6 +5,7 @@ import { Link } from '@tanstack/react-router'
 import { Button } from '#/components/ui/button'
 import { VoiceStageTile } from '#/components/voice/voice-stage-tile'
 import { useAuth } from '#/features/auth/auth-context'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   getChannelVoiceParticipants,
   useChannelVoiceParticipantsWithLocalOverride,
@@ -23,6 +24,7 @@ type VoiceTextChannelDockProps = {
 export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   const auth = useAuth()
   const voice = useVoice()
+  const prefix = useAppRoutePrefix()
   const [expanded, setExpanded] = useState(false)
   const users = useSyncStore((s) => s.users)
   const storeParticipants = useSyncStore((s) =>
@@ -58,7 +60,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           className="h-8 shrink-0"
           asChild
         >
-          <Link to="/app/c/$channelId" params={{ channelId }} search={{ m: undefined }}>
+          <Link to={`${prefix}/c/$channelId`} params={{ channelId }} search={{ m: undefined }}>
             Открыть сцену
           </Link>
         </Button>

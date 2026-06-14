@@ -23,6 +23,7 @@ import {
   kickServerMember,
 } from '#/features/api/servers-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { selectDirectMessageCallActionLabel } from '#/features/sync/selectors'
@@ -52,6 +53,7 @@ export function UserContextMenuContent({
 }: UserContextMenuContentProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const voice = useVoice()
   const { openSettings } = useSettingsModal()
 
@@ -86,7 +88,7 @@ export function UserContextMenuContent({
     try {
       await openDirectMessageChannel(token, user._id, (channelId) =>
         navigate({
-          to: '/app/c/$channelId',
+          to: `${prefix}/c/$channelId`,
           params: { channelId },
           search: { m: undefined },
         }),
@@ -101,7 +103,7 @@ export function UserContextMenuContent({
     try {
       const channel = await openDirectMessageChannel(token, user._id, (channelId) =>
         navigate({
-          to: '/app/c/$channelId',
+          to: `${prefix}/c/$channelId`,
           params: { channelId },
           search: { m: undefined },
         }),
