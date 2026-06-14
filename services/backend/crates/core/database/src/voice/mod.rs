@@ -88,7 +88,10 @@ if intent_raw then
   if not ok or type(intent) ~= 'table' or type(intent.channel) ~= 'table' then
     return stale()
   end
-  local intent_server_id = intent.channel.server_id or ''
+  local intent_server_id = intent.channel.server_id
+  if type(intent_server_id) ~= 'string' then
+    intent_server_id = ''
+  end
   if intent.channel.id ~= target_channel_id or intent_server_id ~= target_server_id then
     return stale()
   end
@@ -1428,6 +1431,7 @@ pub struct RoomMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserVoiceChannel {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub server_id: Option<String>,
 }
 
@@ -1592,6 +1596,35 @@ mod tests {
             "session-old",
         ));
         assert!(!super::voice_session_is_current(None, "session-old"));
+    }
+
+    #[test]
+    fn direct_message_voice_intent_serializes_without_null_server_id() {
+        let intent = super::VoiceJoinIntent {
+            channel: super::UserVoiceChannel {
+                id: "dm-channel".to_string(),
+                server_id: None,
+            },
+            operation_id: Some("op-dm".to_string()),
+            self_mute: true,
+            self_deaf: false,
+        };
+
+        let value = serde_json::to_value(&intent).expect("serialize intent");
+
+        assert_eq!(
+            value["channel"],
+            serde_json::json!({
+                "id": "dm-channel",
+            })
+        );
+    }
+
+    #[test]
+    fn voice_join_commit_script_normalizes_json_null_server_id() {
+        assert!(super::COMMIT_VOICE_JOIN.contains(
+            "local intent_server_id = intent.channel.server_id\n  if type(intent_server_id) ~= 'string' then\n    intent_server_id = ''\n  end",
+        ));
     }
 
     #[test]

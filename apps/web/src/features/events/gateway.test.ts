@@ -225,6 +225,24 @@ describe('EventsGateway', () => {
     expect(mock.sockets).toHaveLength(2)
   })
 
+  it('treats Error without explicit fatal flag as fatal protocol violation', () => {
+    gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
+    gateway.connect('wss://example.test/ws', 'token-1')
+
+    const socket = mock.sockets.at(-1)!
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'Ready', users: [] }),
+    })
+    expect(gateway.state).toBe('connected')
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'Error', data: { type: 'InvalidOperation' } }),
+    })
+
+    expect(socket.close).toHaveBeenCalledTimes(1)
+    expect(gateway.state).toBe('reconnecting')
+  })
+
   it('does not reconnect after manual disconnect', () => {
     gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
     gateway.connect('wss://example.test/ws', 'token-1')

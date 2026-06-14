@@ -284,6 +284,25 @@ describe('voice gateway reliable state updates', () => {
     await expect(joinPromise).rejects.toThrow('Voice join rejected')
   })
 
+  it('rejects credentials wait immediately on malformed gateway errors', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+
+    const joinPromise = requestVoiceJoin('channel-1', false, false, {
+      operationId: 'op-join',
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    const rejection = expect(joinPromise).rejects.toThrow(
+      'Malformed voice error',
+    )
+
+    emitEvent({
+      type: 'Error',
+      data: { type: 'InvalidOperation', message: 'Malformed voice error' },
+    })
+
+    await rejection
+  })
+
   it('suppresses call notifications when refreshing voice credentials', async () => {
     const { requestVoiceCredentialsRefresh } = await import('./voice-gateway')
 

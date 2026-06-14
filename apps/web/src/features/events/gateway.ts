@@ -41,7 +41,7 @@ function gatewayClientKind() {
 }
 
 function gatewayErrorIsFatal(event: GatewayEvent) {
-  return event.type === 'Error' && event.fatal === true
+  return event.type === 'Error' && event.fatal !== false
 }
 
 /**

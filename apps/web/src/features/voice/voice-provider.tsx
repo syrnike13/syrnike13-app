@@ -1636,6 +1636,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
 
       room.on(RoomEvent.Disconnected, () => {
+        if (roomRef.current !== room) {
+          room.removeAllListeners()
+          return
+        }
+
         const intent = disconnectIntentRef.current
         if (intent === 'switch' || intent === 'leave') {
           disconnectIntentRef.current = 'none'
