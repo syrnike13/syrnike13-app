@@ -28,6 +28,7 @@ import {
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
 import { startEmbeddedWebServer, type EmbeddedWebServer } from './web-server'
+import { resolveDesktopAsset } from './paths'
 import {
   DEFAULT_DESKTOP_PREFERENCES,
   loadDesktopPreferences,
@@ -60,9 +61,6 @@ if (isDev) {
     path.join(app.getPath('appData'), 'syrnike13-desktop-dev'),
   )
 }
-
-const trayIconDataUrl =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAANklEQVR4nGP4//8/AyUYlwQuQJQBhABeA4gFWA0gFaAYQC4YNYCaBlAcjVRJSFRJylTJTCRhAJIsmJKjYcDEAAAAAElFTkSuQmCC'
 
 function configureChromium() {
   if (process.platform === 'linux') {
@@ -190,7 +188,7 @@ function quitApp() {
 }
 
 function trayIcon() {
-  const icon = nativeImage.createFromDataURL(trayIconDataUrl)
+  const icon = nativeImage.createFromPath(resolveDesktopAsset('app-logo.png'))
   if (process.platform === 'darwin') icon.setTemplateImage(true)
   return icon
 }

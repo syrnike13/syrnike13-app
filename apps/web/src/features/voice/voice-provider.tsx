@@ -159,6 +159,7 @@ import {
 } from '#/features/voice/voice-stage-subscription'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
 import { channelAudioBitrateKbps } from '#/lib/channel-audio-bitrate'
+import { playUiSound } from '#/features/sounds/sound-player'
 import {
   VoiceContext,
   type VoiceContextValue,
@@ -170,6 +171,7 @@ const DEVICE_SWITCH_TIMEOUT_MS = 5_000
 const VOICE_RECOVERY_HEALTH_INTERVAL_MS = 5_000
 const VOICE_RECOVERY_SERVER_STATE_GRACE_MS = 10_000
 const STAGE_MEDIA_FILTERS_STORAGE_KEY = 'syrnike13.voice.stageMediaFilters'
+type DisconnectIntent = 'none' | 'switch' | 'leave' | 'cleanup'
 const DEFAULT_STAGE_MEDIA_FILTERS: StageMediaFilters = {
   showOwnStream: true,
   showRemoteStreams: true,
@@ -340,7 +342,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     promise: Promise<boolean>
   } | null>(null)
   const voiceSessionControllerRef = useRef(createVoiceSessionController())
-  const disconnectIntentRef = useRef<'none' | 'switch' | 'leave'>('none')
+  const disconnectIntentRef = useRef<DisconnectIntent>('none')
   const selfMonitoringRef = useRef({
     active: false,
     restorePublishing: false,
@@ -950,7 +952,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [auth.user?._id, cleanupAudio, resetVoiceState])
 
   const leaveVoiceSession = useCallback(
-    async (intent: 'switch' | 'leave' = 'switch') => {
+    async (intent: Exclude<DisconnectIntent, 'none'> = 'switch') => {
       voiceRejoinRef.current.cancel()
       const leaveOperationId = voiceSessionControllerRef.current.requestLeave()
       const room = roomRef.current
@@ -967,6 +969,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       cleanupAudio()
       clearSessionVoiceGateThreshold()
       resetVoiceState()
+      if (intent === 'leave') {
+        playUiSound('voice.disconnect')
+      }
 
       if (intent === 'leave' && auth.gatewayState === 'connected') {
         requestVoiceLeave()
@@ -989,6 +994,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const leave = useCallback(() => {
     void leaveVoiceSession('leave')
+  }, [leaveVoiceSession])
+
+  const leaveVoiceSessionRef = useRef(leaveVoiceSession)
+  useEffect(() => {
+    leaveVoiceSessionRef.current = leaveVoiceSession
   }, [leaveVoiceSession])
 
   const applyVoiceDevices = useCallback(async (room: Room) => {
@@ -1627,6 +1637,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         statusRef.current = 'connected'
         voiceConnectedAtRef.current = Date.now()
         setStatus('connected')
+        playUiSound('voice.user_join')
         onParticipantsChanged()
       })
 
@@ -1642,7 +1653,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
 
         const intent = disconnectIntentRef.current
-        if (intent === 'switch' || intent === 'leave') {
+        if (intent === 'switch' || intent === 'leave' || intent === 'cleanup') {
           disconnectIntentRef.current = 'none'
           return
         }
@@ -2070,6 +2081,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       .setCameraEnabled(next)
       .then(() => {
         setCameraEnabled(next)
+        playUiSound(next ? 'camera.started' : 'camera.stopped')
         syncRoomParticipants()
       })
       .catch((error) => {
@@ -2127,6 +2139,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           setScreenShareEnabled(
             localParticipantVoiceFlags(room.localParticipant).screensharing,
           )
+          playUiSound('screen_share.stopped')
           syncRoomParticipants()
         })
       })
@@ -2183,6 +2196,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
           nativeScreenShareRef.current = session
           setScreenShareEnabled(true)
+          playUiSound('screen_share.started')
           setScreenShareStarting(false)
           syncRoomParticipants()
           return
@@ -2196,6 +2210,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setScreenShareEnabled(
           localParticipantVoiceFlags(room.localParticipant).screensharing,
         )
+        playUiSound('screen_share.started')
         setScreenShareStarting(false)
         syncRoomParticipants()
       } catch (error) {
@@ -2235,6 +2250,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         void stopNativeScreenShare()
           .then(() => {
             setScreenShareEnabled(false)
+            playUiSound('screen_share.stopped')
             syncRoomParticipants()
           })
           .catch((error) => {
@@ -2251,6 +2267,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         .setScreenShareEnabled(false)
         .then(() => {
           setScreenShareEnabled(false)
+          playUiSound('screen_share.stopped')
           syncRoomParticipants()
         })
         .catch((error) => {
@@ -2282,6 +2299,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const userId = auth.user?._id
     const nextMic = !voicePreferenceStore.getMicEnabled()
     voicePreferenceStore.setMicEnabled(nextMic)
+    playUiSound(nextMic ? 'voice.unmute' : 'voice.mute')
     setMicEnabled(nextMic)
     if (!nextMic) {
       setCurrentMicIssue(null)
@@ -2433,6 +2451,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const userId = auth.user?._id
     const nextDeafened = !voicePreferenceStore.getDeafened()
     voicePreferenceStore.setDeafened(nextDeafened)
+    playUiSound(nextDeafened ? 'voice.deafen' : 'voice.undeafen')
     setDeafened(nextDeafened)
     deafenedRef.current = nextDeafened
     applyRemoteAudio(nextDeafened)
@@ -2568,9 +2587,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return () => {
-      leave()
+      void leaveVoiceSessionRef.current('cleanup')
     }
-  }, [leave])
+  }, [])
 
   useEffect(() => {
     void resolveVoiceNodeName()

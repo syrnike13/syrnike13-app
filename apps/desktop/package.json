@@ -54,6 +54,13 @@
     ],
     "extraResources": [
       {
+        "from": "assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "../web/dist",
         "to": "web-dist",
         "filter": [
