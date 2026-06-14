@@ -51,7 +51,7 @@ function clipPath(packId: string, fileName: string) {
   return `/sounds/ui/${packId}/${fileName}`
 }
 
-const ZOVKORD_SOUND_FILES: Partial<Record<SoundEventId, string>> = {
+const DEFAULT_SOUND_FILES: Partial<Record<SoundEventId, string>> = {
   'voice.user_join': 'user-join.ogg',
   'voice.user_leave': 'user-leave.ogg',
   'voice.user_move': 'user-join.ogg',
@@ -78,14 +78,14 @@ function clipsForFiles(
   return clips
 }
 
-const ZOVKORD_SOUNDS = clipsForFiles('zovkord', ZOVKORD_SOUND_FILES)
+const DEFAULT_SOUNDS = clipsForFiles('default', DEFAULT_SOUND_FILES)
 
 const AUTHOR_SOUND_PACKS: SoundPack[] = [
   {
-    id: 'zovkord',
-    label: 'ZovKord',
+    id: 'default',
+    label: 'Default',
     kind: 'author',
-    sounds: ZOVKORD_SOUNDS,
+    sounds: DEFAULT_SOUNDS,
     easter: {},
   },
 ]

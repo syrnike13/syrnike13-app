@@ -50,9 +50,9 @@ export type DesktopOverlaySettings = {
   games: DesktopOverlayGameSettings[]
 }
 
-export const SOUND_AUTHOR_PACK_IDS = ['zovkord'] as const
+export const SOUND_AUTHOR_PACK_IDS = ['default'] as const
 export type SoundAuthorPackId = (typeof SOUND_AUTHOR_PACK_IDS)[number]
-export const DEFAULT_SOUND_AUTHOR_PACK_ID: SoundAuthorPackId = 'zovkord'
+export const DEFAULT_SOUND_AUTHOR_PACK_ID: SoundAuthorPackId = 'default'
 
 export type DesktopSoundSettings = {
   enabled: boolean

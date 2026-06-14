@@ -1,7 +1,6 @@
 import {
   SettingsBlock,
   SettingsRow,
-  SettingsToggleRow,
 } from '#/components/settings/settings-panels'
 import {
   Select,
@@ -36,19 +35,10 @@ export function SoundSettings() {
 
   return (
     <SettingsBlock
-      title="Звуки интерфейса"
-      description="Авторский пак выбирается здесь. Ивентовые паки включаются отдельно и не появляются в пользовательском выборе."
+      title="Звуки уведомлений"
     >
-      <SettingsToggleRow
-        label="Проигрывать UI-звуки"
-        hint="Сообщения, звонки, голосовые действия и другие короткие события приложения."
-        checked={preferences.enabled}
-        onCheckedChange={(enabled) => soundPreferenceStore.setEnabled(enabled)}
-      />
-
       <SettingsRow
-        label="Авторский пак"
-        hint="Набор обычных звуков интерфейса. Ивентовые переопределения управляются отдельно."
+        label="Выбор паков звуков уведомлений"
       >
         <Select
           value={preferences.authorPackId}
@@ -119,15 +109,6 @@ export function SoundSettings() {
         )
       })}
 
-      <SettingsToggleRow
-        label="Пасхальные звуки"
-        hint="Редкая альтернативная вариация для тех же UI-событий. Шанс срабатывания — 0.25%."
-        checked={preferences.easterEnabled}
-        onCheckedChange={(easterEnabled) =>
-          soundPreferenceStore.setEasterEnabled(easterEnabled)
-        }
-        disabled={!preferences.enabled}
-      />
     </SettingsBlock>
   )
 }
