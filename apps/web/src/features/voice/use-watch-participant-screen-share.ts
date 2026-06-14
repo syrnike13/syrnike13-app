@@ -11,8 +11,17 @@ export function useWatchParticipantScreenShare() {
 
   return useCallback(
     async (channelId: string, userId: string) => {
+      if (prefix === '/m') {
+        void navigate({
+          to: '/m/c/$channelId',
+          params: { channelId },
+          search: { m: undefined },
+        })
+        await voice.watchParticipantScreenShare(channelId, userId)
+        return
+      }
       void navigate({
-        to: `${prefix}/c/$channelId`,
+        to: '/app/c/$channelId',
         params: { channelId },
         search: { m: undefined },
       })

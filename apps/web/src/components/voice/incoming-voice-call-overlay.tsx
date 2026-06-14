@@ -131,8 +131,16 @@ export function IncomingVoiceCallOverlay({
               .join(call.channelId)
               .then((joined) => {
                 if (!joined) return
+                if (prefix === '/m') {
+                  void navigate({
+                    to: '/m/c/$channelId',
+                    params: { channelId: call.channelId },
+                    search: { m: undefined },
+                  })
+                  return
+                }
                 void navigate({
-                  to: `${prefix}/c/$channelId`,
+                  to: '/app/c/$channelId',
                   params: { channelId: call.channelId },
                   search: { m: undefined },
                 })

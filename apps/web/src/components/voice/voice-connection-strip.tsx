@@ -114,7 +114,7 @@ export function VoiceConnectionStrip() {
             {statusLabel}
           </p>
           <Link
-            to={`${prefix}/c/$channelId`}
+            to={prefix === '/m' ? '/m/c/$channelId' : '/app/c/$channelId'}
             params={{ channelId: voice.channelId }}
             search={{ m: undefined }}
             className="block truncate text-xs leading-4 text-muted-foreground hover:text-foreground hover:underline"

@@ -10,7 +10,7 @@ import { useRouterState } from '@tanstack/react-router'
  */
 export function useAppRoutePrefix(): '/app' | '/m' {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  return pathname.startsWith('/m') ? '/m' : '/app'
+  return pathname === '/m' || pathname.startsWith('/m/') ? '/m' : '/app'
 }
 
 /**
@@ -18,5 +18,5 @@ export function useAppRoutePrefix(): '/app' | '/m' {
  * (например, в статических конфигах). Предпочтайте хук.
  */
 export function appRoutePrefixForPath(pathname: string): '/app' | '/m' {
-  return pathname.startsWith('/m') ? '/m' : '/app'
+  return pathname === '/m' || pathname.startsWith('/m/') ? '/m' : '/app'
 }

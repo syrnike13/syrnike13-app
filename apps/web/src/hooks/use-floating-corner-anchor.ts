@@ -20,7 +20,7 @@ export function useFloatingCornerAnchor(
   storageKey: string,
   fallback: FloatingCorner = 'top-right',
 ) {
-  const [corner, setCorner] = useState<FloatingCorner>(() =>
+  const [corner, setCorner] = useState(() =>
     floatingCornerFromStorage(storageKey, fallback),
   )
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(
