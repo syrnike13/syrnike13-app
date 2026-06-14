@@ -37,6 +37,20 @@ describe('voice participant media flags', () => {
     expect(localParticipantVoiceFlags(participant as never).camera).toBe(true)
   })
 
+  it('ignores audio publications with a camera source', () => {
+    const participant = participantWithPublications([
+      {
+        kind: Track.Kind.Audio,
+        source: Track.Source.Camera,
+        isMuted: false,
+        track: {},
+      },
+    ])
+
+    expect(participantHasCamera(participant as never)).toBe(false)
+    expect(localParticipantVoiceFlags(participant as never).camera).toBe(false)
+  })
+
   it('treats a muted camera publication as camera disabled', () => {
     const participant = participantWithPublications([
       {

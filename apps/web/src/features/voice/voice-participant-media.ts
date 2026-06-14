@@ -34,6 +34,7 @@ function hasPublishedVideoSource(
   requireTrack = false,
 ) {
   for (const publication of participant.trackPublications.values()) {
+    if (publication.kind !== Track.Kind.Video) continue
     if (publication.source !== source) continue
     if (publication.isMuted) continue
     if (requireTrack && !publication.track) continue

@@ -2180,11 +2180,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             setScreenShareEnabled(false)
             syncRoomParticipants()
           }
+          let session: NativeScreenShareSession | null = null
           const handleNativeScreenEnded = () => {
             const active = nativeScreenShareRef.current
+            if (!active || active !== session) return
             nativeScreenShareRef.current = null
             stoppedNativeScreenIdentityRef.current =
-              active?.nativeParticipantIdentity ?? null
+              active.nativeParticipantIdentity ?? null
             nativeMediaEngineStatsStore.reset()
             setScreenShareEnabled(false)
             syncRoomParticipants()
@@ -2202,13 +2204,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               await refreshNativeLiveKitCredentials('screen', forceRefresh),
             )
 
-          let session: NativeScreenShareSession
           try {
             session = await startNative(false)
           } catch (error) {
             if (!isLiveKitTokenFailure(error)) throw error
             await stopNativeScreenShare()
             session = await startNative(true)
+          }
+          if (!session) {
+            throw new Error('Native screen share did not start')
           }
           nativeScreenShareRef.current = session
           setScreenShareEnabled(true)

@@ -139,7 +139,7 @@ export function ServerRail() {
     from: '/app/c/$channelId',
     shouldThrow: false,
   })
-  const activeChannelId = channelMatch?.params.channelId
+  const activeChannelId = channelMatch?.params?.channelId
 
   const homeActive = Boolean(homeMatch) && !channelMatch
 

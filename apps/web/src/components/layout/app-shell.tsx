@@ -32,7 +32,7 @@ export function AppShell() {
     from: '/app/servers/$serverId/settings',
     shouldThrow: false,
   })
-  const activeChannelId = channelMatch?.params.channelId
+  const activeChannelId = channelMatch?.params?.channelId
   const activeChannel = useSyncStore((s) =>
     activeChannelId ? s.channels[activeChannelId] : undefined,
   )
