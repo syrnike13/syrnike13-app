@@ -14,6 +14,7 @@ import {
 } from '#/features/api/messages-api'
 import { ackChannel } from '#/features/api/sync-api'
 import { useJumpToMessage } from '#/features/chat/use-jump-to-message'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useTypingIndicator } from '#/features/chat/use-typing-indicator'
 import { getChannelMessages } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
@@ -38,6 +39,7 @@ export function useChannelChat({
 }: UseChannelChatOptions) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const { notifyTyping } = useTypingIndicator(channelId)
   const channel = useSyncStore((s) => s.channels[channelId])
   const users = useSyncStore((s) => s.users)
@@ -189,13 +191,13 @@ export function useChannelChat({
   const jumpToMessage = useCallback(
     (messageId: string) => {
       void navigate({
-        to: '/app/c/$channelId',
+        to: `${prefix}/c/$channelId`,
         params: { channelId },
         search: { m: messageId },
         replace: true,
       })
     },
-    [channelId, navigate],
+    [channelId, navigate, prefix],
   )
 
   const handleUnpin = useCallback(

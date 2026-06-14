@@ -1,19 +1,13 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
 import {
-  BellIcon,
   AppWindowIcon,
   Gamepad2Icon,
   KeyboardIcon,
   LogOutIcon,
-  MonitorIcon,
-  PaletteIcon,
-  PencilFillIcon,
-  Volume2Icon,
   SearchIcon,
   XIcon,
 } from '#/components/icons'
-import type { AppIcon } from '#/components/icons'
 
 import {
   SettingsPanelContent,
@@ -21,6 +15,8 @@ import {
 } from '#/components/settings/settings-panels'
 import { ProfileDraftProvider } from '#/components/settings/profile-draft-context'
 import { ProfileUnsavedChangesBar } from '#/components/settings/profile-unsaved-changes-bar'
+import { GENERAL_SETTINGS_NAV } from '#/components/settings/settings-nav-config'
+import { SettingsMobileModal } from '#/components/settings/settings-mobile-modal'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import {
@@ -48,18 +44,6 @@ function settingsNavItemClass(active: boolean) {
   )
 }
 
-const NAV: {
-  id: Exclude<SettingsSection, 'profile'>
-  label: string
-  icon: AppIcon
-}[] = [
-  { id: 'account', label: 'Аккаунт', icon: PencilFillIcon },
-  { id: 'voice', label: 'Голос и видео', icon: Volume2Icon },
-  { id: 'sessions', label: 'Устройства', icon: MonitorIcon },
-  { id: 'notifications', label: 'Уведомления', icon: BellIcon },
-  { id: 'appearance', label: 'Оформление', icon: PaletteIcon },
-]
-
 const DESKTOP_NAV_ITEM = {
   id: 'desktop' as const,
   label: 'Приложение',
@@ -80,13 +64,30 @@ const DESKTOP_ONLY_NAV_ITEMS = [
   DESKTOP_NAV_ITEM,
 ]
 
+/**
+ * Модалка настроек.
+ *
+ * Вариант (desktop/mobile) выбирается по текущему пути: `/m/*` → mobile,
+ * иначе — desktop. Раньше использовался `useIsCompact`, но после разделения
+ * роутов каждая зона знает свой shell, и проверка media query избыточна.
+ */
 export function SettingsModal() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  if (pathname.startsWith('/m')) {
+    return <SettingsMobileModal />
+  }
+  return <SettingsDesktopModal />
+}
+
+function SettingsDesktopModal() {
   const auth = useAuth()
   const navigate = useNavigate()
   const { open, setOpen, section, setSection } = useSettingsModal()
   const user = auth.user
   const { isDesktop } = usePlatform()
-  const navItems = isDesktop ? [...NAV, ...DESKTOP_ONLY_NAV_ITEMS] : NAV
+  const navItems = isDesktop
+    ? [...GENERAL_SETTINGS_NAV, ...DESKTOP_ONLY_NAV_ITEMS]
+    : GENERAL_SETTINGS_NAV
   const [loggingOut, setLoggingOut] = useState(false)
 
   async function handleLogout() {
@@ -164,7 +165,7 @@ export function SettingsModal() {
                     key={item.id}
                     type="button"
                     className={cn(settingsNavItemClass(active), 'h-9 px-2')}
-                    onClick={() => setSection(item.id)}
+                    onClick={() => setSection(item.id as SettingsSection)}
                   >
                     <Icon className="size-4 shrink-0" />
                     {item.label}

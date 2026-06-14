@@ -374,7 +374,7 @@ export function SettingsProfilePanel() {
     Boolean(bannerPreview)
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid gap-8 max-lg:grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
       <input
         ref={avatarInputRef}
         type="file"
@@ -404,7 +404,7 @@ export function SettingsProfilePanel() {
         }}
       />
 
-      <div className="space-y-6">
+      <div className="order-2 space-y-6 lg:order-1">
         <section className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="profile-display-name">Отображаемое имя</Label>
@@ -439,7 +439,7 @@ export function SettingsProfilePanel() {
         </section>
       </div>
 
-      <aside className="lg:sticky lg:top-0 lg:self-start">
+      <aside className="order-1 lg:order-2 lg:sticky lg:top-0 lg:self-start">
         <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Предпросмотр
         </p>

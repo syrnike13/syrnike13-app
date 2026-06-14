@@ -1,4 +1,4 @@
-import { Link, useMatch, useNavigate } from '@tanstack/react-router'
+import { Link, useMatch, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   CheckCheckIcon,
   HashIcon,
@@ -44,6 +44,7 @@ import {
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
+import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoice } from '#/features/voice/voice-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { canManageChannel } from '#/lib/permissions'
@@ -80,9 +81,13 @@ export function ChannelSidebarItem({
   const auth = useAuth()
   const voice = useVoice()
   const navigate = useNavigate()
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const isMobile = pathname.startsWith('/m')
+  const channelRoute = isMobile ? '/m/c/$channelId' : '/app/c/$channelId'
+  const { openVoiceChannelDrawer } = useMobileVoiceChannelDrawer()
   const token = auth.session?.token
   const channelRouteMatch = useMatch({
-    from: '/app/c/$channelId',
+    from: channelRoute,
     shouldThrow: false,
   })
   const server = useSyncStore((s) =>
@@ -103,7 +108,7 @@ export function ChannelSidebarItem({
   function openChannelSettings() {
     const hostChannelId = activeChannelId ?? channel._id
     void navigate({
-      to: '/app/c/$channelId',
+      to: channelRoute,
       params: { channelId: hostChannelId },
       search: channelSettingsSearch({
         settingsChannel: channel._id,
@@ -141,12 +146,15 @@ export function ChannelSidebarItem({
       )
       if (fallback) {
         await navigate({
-          to: '/app/c/$channelId',
+          to: channelRoute,
           params: { channelId: fallback },
           search: { m: undefined },
         })
       } else {
-        await navigate({ to: '/app', search: { tab: 'online' } })
+        await navigate({
+          to: isMobile ? '/m' : '/app',
+          search: { tab: 'online' },
+        })
       }
     } catch (error) {
       toast.error(
@@ -241,8 +249,14 @@ export function ChannelSidebarItem({
     })
 
     event.preventDefault()
+
+    if (isMobile) {
+      openVoiceChannelDrawer(channel._id)
+      return
+    }
+
     void navigate({
-      to: '/app/c/$channelId',
+      to: channelRoute,
       params: { channelId: channel._id },
       search: { m: undefined },
     })
@@ -269,7 +283,7 @@ export function ChannelSidebarItem({
         )}
       >
         <Link
-          to="/app/c/$channelId"
+          to={channelRoute}
           params={{ channelId: channel._id }}
           search={{ m: undefined }}
           className={cn(

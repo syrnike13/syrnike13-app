@@ -502,3 +502,21 @@ body,
   display: inline;
   margin: 0;
 }
+
+/* Mobile safe-area helpers. Require viewport-fit=cover in the meta viewport. */
+.safe-pt {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Disable double-tap zoom delay on interactive controls in compact layout. */
+@media (max-width: 1023.98px) {
+  button,
+  a,
+  [role='button'] {
+    touch-action: manipulation;
+  }
+}
+

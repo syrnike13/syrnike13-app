@@ -11,6 +11,7 @@ import {
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
   searchServerMessages,
   type ServerMessageSearchHit,
@@ -34,6 +35,7 @@ export function ServerChannelSearchPopover({
 }: ServerChannelSearchPopoverProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -91,7 +93,7 @@ export function ServerChannelSearchPopover({
     setOpen(false)
     syncStore.setSelectedServerId(serverId)
     void navigate({
-      to: '/app/c/$channelId',
+      to: `${prefix}/c/$channelId`,
       params: { channelId: hit.channelId },
       search: { m: hit.message._id },
     })

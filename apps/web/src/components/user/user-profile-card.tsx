@@ -23,6 +23,7 @@ import {
 } from '#/components/ui/popover'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship, sendFriendRequestToUser } from '#/features/friends/friend-actions'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 
@@ -48,6 +49,7 @@ export function UserProfileCard({
 }: UserProfileCardProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
 
   const [busy, setBusy] = useState(false)
   const [messageDraft, setMessageDraft] = useState('')
@@ -113,7 +115,7 @@ export function UserProfileCard({
         dismiss()
         setMessageDraft('')
         return navigate({
-          to: '/app/c/$channelId',
+          to: `${prefix}/c/$channelId`,
           params: { channelId },
           search: { m: undefined },
         })

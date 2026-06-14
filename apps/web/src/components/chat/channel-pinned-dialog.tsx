@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from '#/components/ui/dialog'
 import { fetchPinnedMessages } from '#/features/api/messages-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { queryKeys } from '#/lib/api/query-keys'
@@ -33,6 +34,7 @@ export function ChannelPinnedDialog({
   triggerClassName,
 }: ChannelPinnedDialogProps) {
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
   const [open, setOpen] = useState(false)
 
@@ -109,7 +111,7 @@ export function ChannelPinnedDialog({
                 onClick={() => {
                   setOpen(false)
                   void navigate({
-                    to: '/app/c/$channelId',
+                    to: `${prefix}/c/$channelId`,
                     params: { channelId },
                     search: { m: message._id },
                   })
@@ -119,7 +121,7 @@ export function ChannelPinnedDialog({
                     event.preventDefault()
                     setOpen(false)
                     void navigate({
-                      to: '/app/c/$channelId',
+                      to: `${prefix}/c/$channelId`,
                       params: { channelId },
                       search: { m: message._id },
                     })

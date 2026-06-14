@@ -18,27 +18,34 @@ import { parseChannelSettingsTab } from '#/components/channels/channel-settings-
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
 import { cn } from '#/lib/utils'
 
-export function AppShell() {
+/**
+ * Десктопная раскладка: рельс серверов + сайдбар + контент + плавающий UserPanel.
+ *
+ * Используется на роутах `/app/*`. Монтируется напрямую из `app/route.tsx`,
+ * поэтому сам читает channel/settings match из активного роута.
+ */
+export function DesktopShell() {
   const { capabilities } = usePlatform()
+
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
-    shouldThrow: false,
-  })
-  const homeMatch = useMatch({
-    from: '/app/',
     shouldThrow: false,
   })
   const serverSettingsMatch = useMatch({
     from: '/app/servers/$serverId/settings',
     shouldThrow: false,
   })
-  const activeChannelId = channelMatch?.params.channelId
+
+  const activeChannelId = channelMatch ? channelMatch.params.channelId : undefined
+  const settingsChannelId = channelMatch ? channelMatch.search?.settingsChannel : undefined
+  const settingsTab = parseChannelSettingsTab(
+    channelMatch ? channelMatch.search?.settingsTab : undefined,
+  )
+  const highlightMessageId = channelMatch ? channelMatch.search?.m : undefined
+
   const activeChannel = useSyncStore((s) =>
     activeChannelId ? s.channels[activeChannelId] : undefined,
   )
-  const settingsChannelId = channelMatch?.search?.settingsChannel
-  const settingsTab = parseChannelSettingsTab(channelMatch?.search?.settingsTab)
-  const highlightMessageId = channelMatch?.search?.m
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isHomePath = pathname === '/app' || pathname === '/app/'
 
@@ -51,11 +58,13 @@ export function AppShell() {
     if (!activeChannel) return
     syncStore.setSelectedServerId(selectedServerIdForChannel(activeChannel))
   }, [activeChannel, activeChannelId, isHomePath])
-  const onHomeRoute =
-    !activeChannelId && (Boolean(homeMatch) || isHomePath)
 
+  const homeMatch = useMatch({
+    from: '/app/',
+    shouldThrow: false,
+  })
+  const onHomeRoute = !activeChannelId && Boolean(homeMatch || isHomePath)
   const dmContext = Boolean(activeChannel && isDmChannel(activeChannel))
-
   const showHomeSidebar = onHomeRoute || dmContext
 
   if (serverSettingsMatch) {
@@ -77,7 +86,7 @@ export function AppShell() {
       <ConnectionStatusBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
-        <ServerRail />
+        <ServerRail variant="desktop" />
 
         <div
           className={cn(

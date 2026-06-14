@@ -6,6 +6,7 @@ import { Popover, PopoverTrigger } from '#/components/ui/popover'
 import { VoicePingPopoverContent } from '#/components/voice/voice-ping-popover'
 import { formatVoicePingLabel } from '#/features/voice/voice-ping'
 import { useAuth } from '#/features/auth/auth-context'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { useSyncStore } from '#/features/sync/sync-store'
 import {
@@ -37,6 +38,7 @@ const VOICE_STATUS_FAILED = {
 export function VoiceConnectionStrip() {
   const auth = useAuth()
   const voice = useVoice()
+  const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) =>
     voice.channelId ? s.channels[voice.channelId] : undefined,
   )
@@ -112,7 +114,7 @@ export function VoiceConnectionStrip() {
             {statusLabel}
           </p>
           <Link
-            to="/app/c/$channelId"
+            to={prefix === '/m' ? '/m/c/$channelId' : '/app/c/$channelId'}
             params={{ channelId: voice.channelId }}
             search={{ m: undefined }}
             className="block truncate text-xs leading-4 text-muted-foreground hover:text-foreground hover:underline"
