@@ -48,6 +48,7 @@ import {
   normalizeDesktopTrayVoiceState,
   TRAY_ICON_ASSET_BY_STATE,
 } from './tray-icon'
+import { DESKTOP_APP_USER_MODEL_ID } from './desktop-app-identity'
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null
@@ -66,6 +67,10 @@ if (isDev) {
     'userData',
     path.join(app.getPath('appData'), 'syrnike13-desktop-dev'),
   )
+}
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId(DESKTOP_APP_USER_MODEL_ID)
 }
 
 function configureChromium() {
