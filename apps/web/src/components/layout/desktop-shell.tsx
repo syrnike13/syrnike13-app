@@ -36,12 +36,23 @@ export function DesktopShell() {
     shouldThrow: false,
   })
 
-  const activeChannelId = channelMatch ? channelMatch.params.channelId : undefined
-  const settingsChannelId = channelMatch ? channelMatch.search?.settingsChannel : undefined
+  const activeChannelId =
+    channelMatch && 'params' in channelMatch
+      ? channelMatch.params.channelId
+      : undefined
+  const settingsChannelId =
+    channelMatch && 'search' in channelMatch
+      ? channelMatch.search?.settingsChannel
+      : undefined
   const settingsTab = parseChannelSettingsTab(
-    channelMatch ? channelMatch.search?.settingsTab : undefined,
+    channelMatch && 'search' in channelMatch
+      ? channelMatch.search?.settingsTab
+      : undefined,
   )
-  const highlightMessageId = channelMatch ? channelMatch.search?.m : undefined
+  const highlightMessageId =
+    channelMatch && 'search' in channelMatch
+      ? channelMatch.search?.m
+      : undefined
 
   const activeChannel = useSyncStore((s) =>
     activeChannelId ? s.channels[activeChannelId] : undefined,

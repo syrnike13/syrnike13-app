@@ -241,7 +241,18 @@ export type NativeMediaStatsEvent = {
   videoFrames?: number
   videoIntervalFrames?: number
   videoLateFrames?: number
+  videoNoFrameCount?: number
+  videoRepeatedFrameCount?: number
+  videoRecoverableLostCount?: number
   videoAvgCaptureUs?: number
+  videoAvgReadbackUs?: number
+  videoAvgScaleUs?: number
+  videoAvgPublishUs?: number
+  videoSourceWidth?: number
+  videoSourceHeight?: number
+  videoContentWidth?: number
+  videoContentHeight?: number
+  captureThreadMmcss?: boolean
 }
 
 export type NativeMicrophoneMetricsEvent = {

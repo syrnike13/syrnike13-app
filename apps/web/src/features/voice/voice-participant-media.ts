@@ -17,9 +17,6 @@ export function participantMicPublishing(participant: Participant) {
 }
 
 export function participantHasCamera(participant: Participant) {
-  if ('isCameraEnabled' in participant && participant.isCameraEnabled) {
-    return true
-  }
   return hasPublishedVideoSource(participant, Track.Source.Camera)
 }
 
@@ -37,6 +34,7 @@ function hasPublishedVideoSource(
   requireTrack = false,
 ) {
   for (const publication of participant.trackPublications.values()) {
+    if (publication.kind !== Track.Kind.Video) continue
     if (publication.source !== source) continue
     if (publication.isMuted) continue
     if (requireTrack && !publication.track) continue
@@ -47,7 +45,11 @@ function hasPublishedVideoSource(
 
 export function localParticipantVoiceFlags(participant: LocalParticipant) {
   return {
-    camera: participantHasCamera(participant),
+    camera: hasPublishedVideoSource(
+      participant,
+      Track.Source.Camera,
+      true,
+    ),
     screensharing: hasPublishedVideoSource(
       participant,
       Track.Source.ScreenShare,

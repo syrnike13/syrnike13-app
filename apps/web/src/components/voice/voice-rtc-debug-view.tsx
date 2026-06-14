@@ -376,6 +376,63 @@ function ScreenShareSection({
               <MetricRow label="Simulcast" value={formatRtcValue(share.simulcast)} />
               <MetricRow label="Degradation Preference" value={share.degradationPreference ?? '—'} />
               <MetricRow label="Capture Backend" value={share.captureBackend ?? '—'} />
+              <MetricRow label="Capture Method" value={share.captureMethod ?? '—'} />
+              <MetricRow
+                label="Capture Video Published"
+                value={formatRtcValue(share.captureVideoPublished)}
+              />
+              <MetricRow
+                label="Capture Video Frames"
+                value={formatRtcInteger(share.captureVideoFrames)}
+              />
+              <MetricRow
+                label="Capture Interval Frames"
+                value={formatRtcInteger(share.captureVideoIntervalFrames)}
+              />
+              <MetricRow
+                label="Capture Late Frames"
+                value={formatRtcInteger(share.captureVideoLateFrames)}
+              />
+              <MetricRow
+                label="Capture No Frames"
+                value={formatRtcInteger(share.captureVideoNoFrameCount)}
+              />
+              <MetricRow
+                label="Capture Repeated Frames"
+                value={formatRtcInteger(share.captureVideoRepeatedFrameCount)}
+              />
+              <MetricRow
+                label="Capture Recoverable Lost"
+                value={formatRtcInteger(share.captureVideoRecoverableLostCount)}
+              />
+              <MetricRow
+                label="Avg Capture"
+                value={formatRtcMicroseconds(share.captureVideoAvgCaptureUs)}
+              />
+              <MetricRow
+                label="Avg Readback"
+                value={formatRtcMicroseconds(share.captureVideoAvgReadbackUs)}
+              />
+              <MetricRow
+                label="Avg Scale"
+                value={formatRtcMicroseconds(share.captureVideoAvgScaleUs)}
+              />
+              <MetricRow
+                label="Avg Publish"
+                value={formatRtcMicroseconds(share.captureVideoAvgPublishUs)}
+              />
+              <MetricRow
+                label="Capture Source Size"
+                value={formatFrameSize(share.captureVideoSourceWidth, share.captureVideoSourceHeight)}
+              />
+              <MetricRow
+                label="Capture Content Size"
+                value={formatFrameSize(share.captureVideoContentWidth, share.captureVideoContentHeight)}
+              />
+              <MetricRow
+                label="Capture Thread MMCSS"
+                value={formatRtcValue(share.captureThreadMmcss)}
+              />
               <MetricRow
                 label="Hybrid DXGI Frames"
                 value={formatHybridFrameCount(share.hybridDxgiFrames)}
@@ -555,4 +612,9 @@ function formatHybridFrameCount(
 function formatFrameSize(width?: number, height?: number) {
   if (width == null || height == null) return '—'
   return `${width}x${height}`
+}
+
+function formatRtcMicroseconds(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${Math.round(value)} us`
 }

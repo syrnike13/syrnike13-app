@@ -135,7 +135,7 @@ export function ChannelSidebarItem({
 
       const settingsChannelId = channelRouteMatch?.search?.settingsChannel
       const viewingDeletedChannel =
-        channelRouteMatch?.params.channelId === channel._id ||
+        channelRouteMatch?.params?.channelId === channel._id ||
         settingsChannelId === channel._id
 
       if (!viewingDeletedChannel) return

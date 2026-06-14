@@ -58,7 +58,9 @@ export function ChannelSettingsDialog({
   function openSettings() {
     onOpenChange?.(false)
     const match = channelRouteMatch
-    const hostChannelId = (match && 'params' in match ? match.params.channelId : undefined) ?? channel._id
+    const hostChannelId =
+      (match && 'params' in match ? match.params.channelId : undefined) ??
+      channel._id
     void navigate({
       to: `${prefix}/c/$channelId`,
       params: { channelId: hostChannelId },

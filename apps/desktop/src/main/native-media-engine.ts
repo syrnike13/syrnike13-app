@@ -90,7 +90,18 @@ type ActiveMediaEngineSession = {
   videoFrames?: number
   videoIntervalFrames?: number
   videoLateFrames?: number
+  videoNoFrameCount?: number
+  videoRepeatedFrameCount?: number
+  videoRecoverableLostCount?: number
   videoAvgCaptureUs?: number
+  videoAvgReadbackUs?: number
+  videoAvgScaleUs?: number
+  videoAvgPublishUs?: number
+  videoSourceWidth?: number
+  videoSourceHeight?: number
+  videoContentWidth?: number
+  videoContentHeight?: number
+  captureThreadMmcss?: boolean
   startOptions: NativeMediaSessionStartOptions
   effectiveMicrophoneConfig?: NativeMicrophoneRuntimeConfig
   effectiveMuted?: boolean
@@ -537,7 +548,18 @@ function buildMediaEngineStatsEvent(
     videoFrames: session.videoFrames,
     videoIntervalFrames: session.videoIntervalFrames,
     videoLateFrames: session.videoLateFrames,
+    videoNoFrameCount: session.videoNoFrameCount,
+    videoRepeatedFrameCount: session.videoRepeatedFrameCount,
+    videoRecoverableLostCount: session.videoRecoverableLostCount,
     videoAvgCaptureUs: session.videoAvgCaptureUs,
+    videoAvgReadbackUs: session.videoAvgReadbackUs,
+    videoAvgScaleUs: session.videoAvgScaleUs,
+    videoAvgPublishUs: session.videoAvgPublishUs,
+    videoSourceWidth: session.videoSourceWidth,
+    videoSourceHeight: session.videoSourceHeight,
+    videoContentWidth: session.videoContentWidth,
+    videoContentHeight: session.videoContentHeight,
+    captureThreadMmcss: session.captureThreadMmcss,
   }
 }
 
@@ -1017,7 +1039,18 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     session.videoFrames = undefined
     session.videoIntervalFrames = undefined
     session.videoLateFrames = undefined
+    session.videoNoFrameCount = undefined
+    session.videoRepeatedFrameCount = undefined
+    session.videoRecoverableLostCount = undefined
     session.videoAvgCaptureUs = undefined
+    session.videoAvgReadbackUs = undefined
+    session.videoAvgScaleUs = undefined
+    session.videoAvgPublishUs = undefined
+    session.videoSourceWidth = undefined
+    session.videoSourceHeight = undefined
+    session.videoContentWidth = undefined
+    session.videoContentHeight = undefined
+    session.captureThreadMmcss = undefined
     session.helper = helper
     session.reconnectHelper = undefined
     session.reader = mediaEngineHelperReaders.get(helper)
@@ -1367,6 +1400,27 @@ function spawnMediaEngineHelper(
       return
     }
 
+    if (event.type === 'screen_capture_ended') {
+      const endedSession = activeSessions.get(event.session_id)
+      console.info('[media-engine-helper] screen capture ended', event)
+      if (getWindowRef) {
+        const win = getWindowRef()
+        if (win && !win.isDestroyed()) {
+          win.webContents.send(IPC.mediaStreamEnded, event.session_id)
+        }
+      }
+      if (endedSession?.startOptions.kind === 'screen') {
+        const stopped = writeHelperCommand(endedSession.helper, {
+          cmd: 'stop_screen_capture',
+          sessionId: event.session_id,
+        })
+        if (!stopped) {
+          stopMediaEngineSession(event.session_id, true)
+        }
+      }
+      return
+    }
+
     if (event.type === 'frame_method' && session) {
       const method = mapFrameMethod(event.method)
       const activeMethod = mapFrameMethod(event.active_method ?? event.method)
@@ -1462,7 +1516,18 @@ function spawnMediaEngineHelper(
         videoSession.videoFrames = event.frames
         videoSession.videoIntervalFrames = event.interval_frames
         videoSession.videoLateFrames = event.late_frames
+        videoSession.videoNoFrameCount = event.no_frame_count
+        videoSession.videoRepeatedFrameCount = event.repeated_frame_count
+        videoSession.videoRecoverableLostCount = event.recoverable_lost_count
         videoSession.videoAvgCaptureUs = event.avg_capture_us
+        videoSession.videoAvgReadbackUs = event.avg_readback_us
+        videoSession.videoAvgScaleUs = event.avg_scale_us
+        videoSession.videoAvgPublishUs = event.avg_publish_us
+        videoSession.videoSourceWidth = event.source_width
+        videoSession.videoSourceHeight = event.source_height
+        videoSession.videoContentWidth = event.content_width
+        videoSession.videoContentHeight = event.content_height
+        videoSession.captureThreadMmcss = event.capture_thread_mmcss
         if (getWindowRef) {
           emitMediaEngineStats(getWindowRef, buildMediaEngineStatsEvent(videoSession))
         }
@@ -1981,7 +2046,18 @@ async function startNativeMediaSession(
     videoFrames: undefined,
     videoIntervalFrames: undefined,
     videoLateFrames: undefined,
+    videoNoFrameCount: undefined,
+    videoRepeatedFrameCount: undefined,
+    videoRecoverableLostCount: undefined,
     videoAvgCaptureUs: undefined,
+    videoAvgReadbackUs: undefined,
+    videoAvgScaleUs: undefined,
+    videoAvgPublishUs: undefined,
+    videoSourceWidth: undefined,
+    videoSourceHeight: undefined,
+    videoContentWidth: undefined,
+    videoContentHeight: undefined,
+    captureThreadMmcss: undefined,
     startOptions: options,
     reconnectAttempts: 0,
     reconnecting: false,
@@ -2250,7 +2326,18 @@ export function getActiveMediaEngineStats() {
         videoFrames: activeSession.videoFrames,
         videoIntervalFrames: activeSession.videoIntervalFrames,
         videoLateFrames: activeSession.videoLateFrames,
+        videoNoFrameCount: activeSession.videoNoFrameCount,
+        videoRepeatedFrameCount: activeSession.videoRepeatedFrameCount,
+        videoRecoverableLostCount: activeSession.videoRecoverableLostCount,
         videoAvgCaptureUs: activeSession.videoAvgCaptureUs,
+        videoAvgReadbackUs: activeSession.videoAvgReadbackUs,
+        videoAvgScaleUs: activeSession.videoAvgScaleUs,
+        videoAvgPublishUs: activeSession.videoAvgPublishUs,
+        videoSourceWidth: activeSession.videoSourceWidth,
+        videoSourceHeight: activeSession.videoSourceHeight,
+        videoContentWidth: activeSession.videoContentWidth,
+        videoContentHeight: activeSession.videoContentHeight,
+        captureThreadMmcss: activeSession.captureThreadMmcss,
       }
     : null
 }

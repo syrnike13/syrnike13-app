@@ -38,6 +38,7 @@ export async function publishNativeScreenShare(
   withAudio: boolean,
   audioBitrateKbps: number,
   onSidecarLost: ((message: string) => void) | undefined,
+  onEnded: (() => void) | undefined,
   livekit: NativeMicrophoneLiveKitCredentials,
 ): Promise<NativeScreenShareSession> {
   const desktop = getSyrnikeDesktop()
@@ -71,7 +72,30 @@ export async function publishNativeScreenShare(
     throw new Error('Native screen share did not start')
   }
 
-  const unsubscribeStats = desktop.media.onStats((event) => {
+  let stopped = false
+  const subscriptions: Array<() => void> = []
+
+  const cleanup = () => {
+    for (const unsubscribe of subscriptions) {
+      unsubscribe()
+    }
+    nativeMediaEngineStatsStore.reset()
+  }
+
+  const completeStopped = (stopNativeSession: boolean) => {
+    if (stopped) return Promise.resolve()
+    stopped = true
+    cleanup()
+    if (!stopNativeSession) {
+      onEnded?.()
+    }
+    return stopNativeSession
+      ? desktop.media.stopSession(session.sessionId)
+      : Promise.resolve()
+  }
+
+  subscriptions.push(desktop.media.onStats((event) => {
+    if (stopped) return
     if (event.sessionId !== session.sessionId) return
     const audio = session.audio
     nativeMediaEngineStatsStore.setNative(event.methods, event.activeMethod, {
@@ -92,28 +116,50 @@ export async function publishNativeScreenShare(
       videoFrames: event.videoFrames,
       videoIntervalFrames: event.videoIntervalFrames,
       videoLateFrames: event.videoLateFrames,
+      videoNoFrameCount: event.videoNoFrameCount,
+      videoRepeatedFrameCount: event.videoRepeatedFrameCount,
+      videoRecoverableLostCount: event.videoRecoverableLostCount,
       videoAvgCaptureUs: event.videoAvgCaptureUs,
+      videoAvgReadbackUs: event.videoAvgReadbackUs,
+      videoAvgScaleUs: event.videoAvgScaleUs,
+      videoAvgPublishUs: event.videoAvgPublishUs,
+      videoSourceWidth: event.videoSourceWidth,
+      videoSourceHeight: event.videoSourceHeight,
+      videoContentWidth: event.videoContentWidth,
+      videoContentHeight: event.videoContentHeight,
+      captureThreadMmcss: event.captureThreadMmcss,
     })
-  })
+  }))
 
-  const unsubscribeSidecarLost = desktop.media.onSidecarLost((event) => {
+  const unsubscribeStreamEnded = desktop.media.onStreamEnded?.((sessionId) => {
+    if (stopped) return
+    if (sessionId !== session.sessionId) return
+    void completeStopped(false)
+  })
+  if (unsubscribeStreamEnded) subscriptions.push(unsubscribeStreamEnded)
+
+  const unsubscribeStreamError = desktop.media.onStreamError?.((event) => {
+    if (stopped) return
     if (event.sessionId !== session.sessionId) return
     onSidecarLost?.(event.message)
+    void completeStopped(false)
   })
+  if (unsubscribeStreamError) subscriptions.push(unsubscribeStreamError)
+
+  const unsubscribeSidecarLost = desktop.media.onSidecarLost?.((event) => {
+    if (stopped) return
+    if (event.sessionId !== session.sessionId) return
+    onSidecarLost?.(event.message)
+    void completeStopped(false)
+  })
+  if (unsubscribeSidecarLost) subscriptions.push(unsubscribeSidecarLost)
 
   if (withAudio && session.audio?.mode === 'none') {
     toast.warning('Звук выбранного источника пока не подключён в native helper')
   }
 
-  const stop = () => {
-    unsubscribeStats()
-    unsubscribeSidecarLost()
-    nativeMediaEngineStatsStore.reset()
-    return desktop.media.stopSession(session.sessionId)
-  }
-
   return {
     nativeParticipantIdentity: session.nativeParticipantIdentity,
-    stop,
+    stop: () => completeStopped(true),
   }
 }

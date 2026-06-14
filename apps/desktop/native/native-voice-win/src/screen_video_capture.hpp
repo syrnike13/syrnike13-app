@@ -24,6 +24,34 @@ struct ScreenVideoFrame {
   std::string method;
 };
 
+enum class ScreenCaptureFrameStatus {
+  NewFrame,
+  NoFrame,
+  RepeatedFrame,
+  RecoverableLost,
+  TargetClosed,
+  FatalError,
+};
+
+struct ScreenCaptureFrameMetrics {
+  uint32_t source_width = 0;
+  uint32_t source_height = 0;
+  uint32_t content_width = 0;
+  uint32_t content_height = 0;
+  uint32_t output_width = 0;
+  uint32_t output_height = 0;
+  int capture_us = 0;
+  int readback_us = 0;
+  int scale_us = 0;
+  long hresult = 0;
+};
+
+struct ScreenCaptureFrameResult {
+  ScreenCaptureFrameStatus status = ScreenCaptureFrameStatus::NoFrame;
+  ScreenCaptureFrameMetrics metrics;
+  std::string method;
+};
+
 struct ScreenCaptureProbeResult {
   std::string source_id;
   std::string method;
@@ -55,7 +83,7 @@ public:
       uint32_t height);
 
   virtual ~ScreenVideoCapturer() = default;
-  virtual bool capture(ScreenVideoFrame& frame) = 0;
+  virtual ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) = 0;
   virtual const char* method() const = 0;
 };
 
