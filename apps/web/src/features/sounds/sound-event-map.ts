@@ -46,7 +46,7 @@ function voiceStateFlagChanged(
   const current = Boolean(event.state?.[flag])
   const previous =
     typeof event.previous_state === 'object' && event.previous_state
-      ? Boolean((event.previous_state as Record<string, unknown>)[flag])
+      ? Boolean(Reflect.get(event.previous_state, flag))
       : false
   if (current === previous) return null
   return current

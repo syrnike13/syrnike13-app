@@ -49,7 +49,8 @@ export function createSoundPlayer({
       try {
         void Promise.resolve(audio.play()).catch(() => {})
       } catch {
-        // Browser autoplay policy or a missing asset must not break the UI.
+        // audio.play() can throw synchronously or reject asynchronously.
+        // Autoplay policy or missing assets must not break the UI.
       }
     },
   }

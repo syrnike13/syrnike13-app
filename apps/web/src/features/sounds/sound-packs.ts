@@ -48,6 +48,7 @@ type ResolveSoundClipOptions = {
 }
 
 function clipPath(packId: string, fileName: string) {
+  // Public sound assets are served from the app root on syrnike13.ru.
   return `/sounds/ui/${packId}/${fileName}`
 }
 
@@ -188,10 +189,10 @@ export function validateSoundPackCatalog() {
   const errors: string[] = []
   for (const pack of AUTHOR_SOUND_PACKS) {
     for (const [eventId, clip] of Object.entries(pack.sounds)) {
-      if (!clip.src) errors.push(`${pack.id}:${eventId}:normal`)
+      if (!clip?.src) errors.push(`${pack.id}:${eventId}:normal`)
     }
     for (const [eventId, clip] of Object.entries(pack.easter)) {
-      if (!clip.src) errors.push(`${pack.id}:${eventId}:easter`)
+      if (!clip?.src) errors.push(`${pack.id}:${eventId}:easter`)
     }
   }
   return errors

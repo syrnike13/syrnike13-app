@@ -126,4 +126,6 @@ export function useSoundPreferences() {
   )
 }
 
-void hydrateSoundPreferencesFromDesktop()
+if (typeof window !== 'undefined') {
+  void hydrateSoundPreferencesFromDesktop()
+}

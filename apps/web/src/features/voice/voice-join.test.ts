@@ -128,7 +128,9 @@ describe('createVoiceJoinRunner', () => {
     expect(providerSource).toMatch(
       /return \(\) => \{[\s\S]*void leaveVoiceSessionRef\.current\('cleanup'\)/,
     )
-    expect(providerSource).not.toMatch(/return \(\) => \{[\s\S]*leave\(\)/)
+    expect(providerSource).toMatch(
+      /useEffect\(\(\) => \{[\s\S]*return \(\) => \{[\s\S]*leaveVoiceSessionRef\.current\('cleanup'\)[\s\S]*\}[\s\S]*\}, \[\]\)/,
+    )
   })
 
   it('reports concrete phases while joining voice', async () => {
