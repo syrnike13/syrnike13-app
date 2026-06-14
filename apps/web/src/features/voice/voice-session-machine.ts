@@ -64,6 +64,15 @@ function isCurrentOperation(state: VoiceSessionState, operationId: string) {
   return state.activeOperationId === operationId
 }
 
+function shouldClearDesiredAfterConnectFailure(state: VoiceSessionState) {
+  return (
+    state.desired.kind === 'channel' &&
+    state.previousChannelId === null &&
+    (state.desired.reason === 'manual_join' ||
+      state.desired.reason === 'dm_answer')
+  )
+}
+
 export function reduceVoiceSession(
   state: VoiceSessionState,
   event: VoiceSessionEvent,
@@ -122,6 +131,17 @@ export function reduceVoiceSession(
 
     case 'room_connect_failed':
       if (!isCurrentOperation(state, event.operationId)) return state
+      if (shouldClearDesiredAfterConnectFailure(state)) {
+        return {
+          ...state,
+          desired: { kind: 'none', operationId: null },
+          phase: 'idle',
+          connectedChannelId: null,
+          activeOperationId: null,
+          previousChannelId: null,
+          lastError: event.error,
+        }
+      }
       return { ...state, phase: 'failed_retrying', lastError: event.error }
 
     case 'room_disconnected':

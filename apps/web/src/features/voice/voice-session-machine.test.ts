@@ -51,6 +51,29 @@ describe('voice session machine', () => {
     expect(state.lastError).toBe('LiveKit timeout')
   })
 
+  it('clears desired channel when an initial direct message call connect fails', () => {
+    let state = createInitialVoiceSessionState()
+
+    state = reduceVoiceSession(state, {
+      type: 'join_requested',
+      channelId: 'dm-channel',
+      operationId: 'op-dm',
+      reason: 'dm_answer',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'room_connect_failed',
+      operationId: 'op-dm',
+      error: 'Voice join rejected',
+    })
+
+    expect(state.desired).toEqual({ kind: 'none', operationId: null })
+    expect(state.phase).toBe('idle')
+    expect(state.connectedChannelId).toBeNull()
+    expect(state.activeOperationId).toBeNull()
+    expect(state.previousChannelId).toBeNull()
+    expect(state.lastError).toBe('Voice join rejected')
+  })
+
   it('lets the latest operation ignore stale success and failure events', () => {
     let state = createInitialVoiceSessionState()
 

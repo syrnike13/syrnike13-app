@@ -26,8 +26,8 @@ export type VoiceStateUpdatePayload = {
 
 type GatewayErrorEvent = {
   type: 'Error'
-  fatal: boolean
-  scope: string
+  fatal?: boolean
+  scope?: string
   request?: {
     kind?: string
     operation_id?: string
@@ -120,9 +120,10 @@ function voiceErrorMatchesOperation(
 ) {
   if (event.type !== 'Error') return false
   const error = event as GatewayErrorEvent
-  if (error.fatal === true) return true
+  if (error.fatal !== false) return true
   if (error.scope !== 'VoiceStateUpdate') return false
-  if (error.request?.kind !== 'VoiceStateUpdate') return false
+  if (error.request?.kind !== 'VoiceStateUpdate') return true
+  if (typeof error.request.operation_id !== 'string') return true
   if (error.request.operation_id !== operationId) return false
   if (
     typeof error.request.channel_id === 'string' &&

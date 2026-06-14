@@ -102,6 +102,20 @@ describe('createVoiceJoinRunner', () => {
     )
   })
 
+  it('ignores stale room disconnect events after a newer room is active', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toMatch(
+      /room\.on\(RoomEvent\.Disconnected[\s\S]*if \(roomRef\.current !== room\) \{[\s\S]*room\.removeAllListeners\(\)[\s\S]*return[\s\S]*\}[\s\S]*const intent = disconnectIntentRef\.current/,
+    )
+  })
+
   it('reports concrete phases while joining voice', async () => {
     const phases: string[] = []
     const requestJoinOperation = vi.fn(() => 'op-join')
