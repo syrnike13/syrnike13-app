@@ -50,6 +50,17 @@ export type DesktopOverlaySettings = {
   games: DesktopOverlayGameSettings[]
 }
 
+export const SOUND_AUTHOR_PACK_IDS = ['zovkord'] as const
+export type SoundAuthorPackId = (typeof SOUND_AUTHOR_PACK_IDS)[number]
+export const DEFAULT_SOUND_AUTHOR_PACK_ID: SoundAuthorPackId = 'zovkord'
+
+export type DesktopSoundSettings = {
+  enabled: boolean
+  authorPackId: SoundAuthorPackId
+  volume: number
+  easterEnabled: boolean
+}
+
 export type { AppearanceSettings, AppearanceSettingsPatch, AppearanceColorMode } from './appearance'
 export {
   DEFAULT_APPEARANCE_SETTINGS,
@@ -65,21 +76,25 @@ export type DesktopLocalSettings = {
   voiceListener: DesktopVoiceListenerSettings
   overlay: DesktopOverlaySettings
   appearance: AppearanceSettings
+  sounds: DesktopSoundSettings
 }
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
 export type DesktopVoiceListenerSettingsPatch =
   Partial<DesktopVoiceListenerSettings>
 export type DesktopOverlaySettingsPatch = Partial<DesktopOverlaySettings>
+export type DesktopSoundSettingsPatch = Partial<DesktopSoundSettings>
 
 export type DesktopLocalSettingsPatch = {
   voice?: DesktopVoiceSettingsPatch
   voiceListener?: DesktopVoiceListenerSettingsPatch
   overlay?: DesktopOverlaySettingsPatch
   appearance?: AppearanceSettingsPatch
+  sounds?: DesktopSoundSettingsPatch
 }
 
 const VOICE_VOLUME_MAX = 3
+const SOUND_VOLUME_MAX = 1
 const DEFAULT_VOICE_GATE_THRESHOLD_DB = -28
 
 export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
@@ -110,12 +125,20 @@ export const DEFAULT_DESKTOP_OVERLAY_SETTINGS: DesktopOverlaySettings = {
   games: [],
 }
 
+export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
+  enabled: true,
+  authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+  volume: 1,
+  easterEnabled: true,
+}
+
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   version: 1,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   appearance: DEFAULT_APPEARANCE_SETTINGS,
+  sounds: DEFAULT_DESKTOP_SOUND_SETTINGS,
 }
 
 function objectRecord(value: unknown) {
@@ -133,6 +156,16 @@ function stringOrUndefined(value: unknown) {
 
 function stringOrNull(value: unknown) {
   return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function soundAuthorPackIdOrDefault(
+  value: unknown,
+  fallback: SoundAuthorPackId,
+): SoundAuthorPackId {
+  return typeof value === 'string' &&
+    (SOUND_AUTHOR_PACK_IDS as readonly string[]).includes(value)
+    ? (value as SoundAuthorPackId)
+    : fallback
 }
 
 function nonEmptyString(value: unknown): value is string {
@@ -288,6 +321,25 @@ export function normalizeDesktopOverlaySettings(
   }
 }
 
+export function normalizeDesktopSoundSettings(
+  value: unknown,
+  defaults: DesktopSoundSettings = DEFAULT_DESKTOP_SOUND_SETTINGS,
+): DesktopSoundSettings {
+  const settings = objectRecord(value)
+  return {
+    enabled: booleanOrDefault(settings.enabled, defaults.enabled),
+    authorPackId: soundAuthorPackIdOrDefault(
+      settings.authorPackId,
+      defaults.authorPackId,
+    ),
+    volume: clampNumber(settings.volume, defaults.volume, 0, SOUND_VOLUME_MAX),
+    easterEnabled: booleanOrDefault(
+      settings.easterEnabled,
+      defaults.easterEnabled,
+    ),
+  }
+}
+
 function normalizeDesktopOverlayGameSettings(
   value: unknown,
 ): DesktopOverlayGameSettings[] {
@@ -326,6 +378,7 @@ export function normalizeDesktopLocalSettings(
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
     appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
+    sounds: normalizeDesktopSoundSettings(settings.sounds, defaults.sounds),
   }
 }
 
@@ -454,6 +507,32 @@ export function normalizeDesktopOverlaySettingsPatch(
   return Object.keys(next).length > 0 ? next : undefined
 }
 
+export function normalizeDesktopSoundSettingsPatch(
+  value: unknown,
+): DesktopSoundSettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopSoundSettingsPatch = {}
+  if ('enabled' in patch && typeof patch.enabled === 'boolean') {
+    next.enabled = patch.enabled
+  }
+  if ('authorPackId' in patch) {
+    const authorPackId = soundAuthorPackIdOrDefault(
+      patch.authorPackId,
+      DEFAULT_SOUND_AUTHOR_PACK_ID,
+    )
+    if (authorPackId === patch.authorPackId) {
+      next.authorPackId = authorPackId
+    }
+  }
+  if ('volume' in patch) {
+    next.volume = clampNumber(patch.volume, 1, 0, SOUND_VOLUME_MAX)
+  }
+  if ('easterEnabled' in patch && typeof patch.easterEnabled === 'boolean') {
+    next.easterEnabled = patch.easterEnabled
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 export function normalizeDesktopLocalSettingsPatch(
   value: unknown,
 ): DesktopLocalSettingsPatch {
@@ -465,9 +544,11 @@ export function normalizeDesktopLocalSettingsPatch(
   )
   const overlay = normalizeDesktopOverlaySettingsPatch(patch.overlay)
   const appearance = normalizeAppearanceSettingsPatch(patch.appearance)
+  const sounds = normalizeDesktopSoundSettingsPatch(patch.sounds)
   if (voice) next.voice = voice
   if (voiceListener) next.voiceListener = voiceListener
   if (overlay) next.overlay = overlay
   if (appearance) next.appearance = appearance
+  if (sounds) next.sounds = sounds
   return next
 }

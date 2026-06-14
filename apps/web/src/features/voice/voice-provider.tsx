@@ -159,6 +159,7 @@ import {
 } from '#/features/voice/voice-stage-subscription'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
 import { channelAudioBitrateKbps } from '#/lib/channel-audio-bitrate'
+import { playUiSound } from '#/features/sounds/sound-player'
 import {
   VoiceContext,
   type VoiceContextValue,
@@ -967,6 +968,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       cleanupAudio()
       clearSessionVoiceGateThreshold()
       resetVoiceState()
+      if (intent === 'leave') {
+        playUiSound('voice.disconnect')
+      }
 
       if (intent === 'leave' && auth.gatewayState === 'connected') {
         requestVoiceLeave()
@@ -1627,6 +1631,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         statusRef.current = 'connected'
         voiceConnectedAtRef.current = Date.now()
         setStatus('connected')
+        playUiSound('voice.user_join')
         onParticipantsChanged()
       })
 
@@ -2070,6 +2075,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       .setCameraEnabled(next)
       .then(() => {
         setCameraEnabled(next)
+        playUiSound(next ? 'camera.started' : 'camera.stopped')
         syncRoomParticipants()
       })
       .catch((error) => {
@@ -2127,6 +2133,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           setScreenShareEnabled(
             localParticipantVoiceFlags(room.localParticipant).screensharing,
           )
+          playUiSound('screen_share.stopped')
           syncRoomParticipants()
         })
       })
@@ -2183,6 +2190,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
           nativeScreenShareRef.current = session
           setScreenShareEnabled(true)
+          playUiSound('screen_share.started')
           setScreenShareStarting(false)
           syncRoomParticipants()
           return
@@ -2196,6 +2204,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         setScreenShareEnabled(
           localParticipantVoiceFlags(room.localParticipant).screensharing,
         )
+        playUiSound('screen_share.started')
         setScreenShareStarting(false)
         syncRoomParticipants()
       } catch (error) {
@@ -2235,6 +2244,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         void stopNativeScreenShare()
           .then(() => {
             setScreenShareEnabled(false)
+            playUiSound('screen_share.stopped')
             syncRoomParticipants()
           })
           .catch((error) => {
@@ -2251,6 +2261,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         .setScreenShareEnabled(false)
         .then(() => {
           setScreenShareEnabled(false)
+          playUiSound('screen_share.stopped')
           syncRoomParticipants()
         })
         .catch((error) => {
@@ -2282,6 +2293,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const userId = auth.user?._id
     const nextMic = !voicePreferenceStore.getMicEnabled()
     voicePreferenceStore.setMicEnabled(nextMic)
+    playUiSound(nextMic ? 'voice.unmute' : 'voice.mute')
     setMicEnabled(nextMic)
     if (!nextMic) {
       setCurrentMicIssue(null)
@@ -2433,6 +2445,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const userId = auth.user?._id
     const nextDeafened = !voicePreferenceStore.getDeafened()
     voicePreferenceStore.setDeafened(nextDeafened)
+    playUiSound(nextDeafened ? 'voice.deafen' : 'voice.undeafen')
     setDeafened(nextDeafened)
     deafenedRef.current = nextDeafened
     applyRemoteAudio(nextDeafened)

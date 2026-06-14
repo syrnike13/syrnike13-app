@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_SOUND_AUTHOR_PACK_ID,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
 } from './settings'
@@ -114,6 +115,39 @@ describe('desktop local settings contract', () => {
       voice: {
         noiseSuppression: false,
         outputVolume: 3,
+      },
+    })
+  })
+
+  it('keeps saved UI sound settings', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        sounds: {
+          enabled: false,
+          authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+          volume: 0.4,
+          easterEnabled: false,
+        },
+      }).sounds,
+    ).toEqual({
+      enabled: false,
+      authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+      volume: 0.4,
+      easterEnabled: false,
+    })
+  })
+
+  it('normalizes UI sound setting patches', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        sounds: {
+          authorPackId: 'winter',
+          volume: 2,
+        },
+      }),
+    ).toEqual({
+      sounds: {
+        volume: 1,
       },
     })
   })

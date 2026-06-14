@@ -9,6 +9,7 @@ import { queryKeys } from '#/lib/api/query-keys'
 
 import { useMessageNotifications } from '#/features/notifications/use-message-notifications'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
+import { useEventSounds } from '#/features/sounds/use-event-sounds'
 
 import { ensureVoiceUsersLoaded } from './ensure-voice-users'
 import { refreshSyncAfterReconnect } from './refresh-sync-after-reconnect'
@@ -251,6 +252,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       unsubscribe()
     }
   }, [auth.session?.token, auth.user?._id, ready])
+
+  useEventSounds()
 
   return children
 }

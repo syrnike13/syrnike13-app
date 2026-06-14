@@ -16,6 +16,9 @@ export type SyrnikeConfig = {
   app?: string
   vapid?: string
   features?: SyrnikeFeatures
+  ui_sounds?: {
+    event_pack?: string | null
+  }
 }
 
 export async function fetchSyrnikeConfig() {

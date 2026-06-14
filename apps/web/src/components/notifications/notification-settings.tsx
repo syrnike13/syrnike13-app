@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '#/components/ui/card'
+import { SoundSettings } from '#/components/sounds/sound-settings'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchSyrnikeConfig } from '#/features/api/config-api'
 import { subscribePush, unsubscribePush } from '#/features/api/push-api'
@@ -145,6 +146,8 @@ export function NotificationSettings({
   if (layout === 'settings') {
     return (
       <div className="space-y-2">
+        <SoundSettings />
+
         <SettingsBlock title="Браузер">
           <SettingsRow
             label="Уведомления в браузере"
