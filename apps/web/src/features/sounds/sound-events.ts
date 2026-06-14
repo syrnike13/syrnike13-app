@@ -21,3 +21,25 @@ export const UI_SOUND_EVENTS = [
 ] as const
 
 export type SoundEventId = (typeof UI_SOUND_EVENTS)[number]
+
+export const UI_SOUND_EVENT_LABELS: Record<SoundEventId, string> = {
+  'message.default': 'Обычное сообщение',
+  'message.mention': 'Упоминание',
+  'message.reaction': 'Реакция',
+  'voice.user_join': 'Пользователь зашел в войс',
+  'voice.user_leave': 'Пользователь вышел из войса',
+  'voice.user_move': 'Перемещение в войсе',
+  'voice.mute': 'Микрофон выключен',
+  'voice.unmute': 'Микрофон включен',
+  'voice.deafen': 'Полный мут',
+  'voice.undeafen': 'Полный размут',
+  'voice.disconnect': 'Выход из голосового канала',
+  'call.incoming_ring': 'Входящий звонок',
+  'call.outgoing_ring': 'Исходящий звонок',
+  'call.connected': 'Звонок принят',
+  'call.ended': 'Звонок завершен',
+  'screen_share.started': 'Стрим включен',
+  'screen_share.stopped': 'Стрим выключен',
+  'camera.started': 'Камера включена',
+  'camera.stopped': 'Камера выключена',
+}

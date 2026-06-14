@@ -126,6 +126,11 @@ describe('desktop local settings contract', () => {
           enabled: false,
           authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
           volume: 0.4,
+          eventVolumes: {
+            'voice.mute': 0.25,
+            'voice.unmute': 2,
+            broken: 'nope',
+          },
           easterEnabled: false,
         },
       }).sounds,
@@ -133,6 +138,10 @@ describe('desktop local settings contract', () => {
       enabled: false,
       authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
       volume: 0.4,
+      eventVolumes: {
+        'voice.mute': 0.25,
+        'voice.unmute': 1,
+      },
       easterEnabled: false,
     })
   })
@@ -143,11 +152,20 @@ describe('desktop local settings contract', () => {
         sounds: {
           authorPackId: 'winter',
           volume: 2,
+          eventVolumes: {
+            'voice.mute': -1,
+            'voice.unmute': 0.35,
+            broken: Number.NaN,
+          },
         },
       }),
     ).toEqual({
       sounds: {
         volume: 1,
+        eventVolumes: {
+          'voice.mute': 0,
+          'voice.unmute': 0.35,
+        },
       },
     })
   })

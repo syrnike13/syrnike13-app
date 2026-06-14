@@ -58,6 +58,7 @@ export type DesktopSoundSettings = {
   enabled: boolean
   authorPackId: SoundAuthorPackId
   volume: number
+  eventVolumes: Record<string, number>
   easterEnabled: boolean
 }
 
@@ -129,6 +130,7 @@ export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
   enabled: true,
   authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
   volume: 1,
+  eventVolumes: {},
   easterEnabled: true,
 }
 
@@ -224,6 +226,16 @@ function normalizeBooleanRecord(value: unknown) {
   const next: Record<string, boolean> = {}
   for (const [key, entry] of Object.entries(objectRecord(value))) {
     if (entry === true) next[key] = true
+  }
+  return next
+}
+
+function normalizeSoundVolumeRecord(value: unknown) {
+  const next: Record<string, number> = {}
+  for (const [key, entry] of Object.entries(objectRecord(value))) {
+    if (!nonEmptyString(key)) continue
+    if (typeof entry !== 'number' || !Number.isFinite(entry)) continue
+    next[key] = clampNumber(entry, 1, 0, SOUND_VOLUME_MAX)
   }
   return next
 }
@@ -333,6 +345,10 @@ export function normalizeDesktopSoundSettings(
       defaults.authorPackId,
     ),
     volume: clampNumber(settings.volume, defaults.volume, 0, SOUND_VOLUME_MAX),
+    eventVolumes: {
+      ...defaults.eventVolumes,
+      ...normalizeSoundVolumeRecord(settings.eventVolumes),
+    },
     easterEnabled: booleanOrDefault(
       settings.easterEnabled,
       defaults.easterEnabled,
@@ -526,6 +542,9 @@ export function normalizeDesktopSoundSettingsPatch(
   }
   if ('volume' in patch) {
     next.volume = clampNumber(patch.volume, 1, 0, SOUND_VOLUME_MAX)
+  }
+  if ('eventVolumes' in patch) {
+    next.eventVolumes = normalizeSoundVolumeRecord(patch.eventVolumes)
   }
   if ('easterEnabled' in patch && typeof patch.easterEnabled === 'boolean') {
     next.easterEnabled = patch.easterEnabled

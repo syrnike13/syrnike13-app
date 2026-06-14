@@ -14,6 +14,7 @@ import { Slider } from '#/components/ui/slider'
 import {
   authorSoundPackOptions,
   isSoundAuthorPackId,
+  soundEventVolumeOptions,
 } from '#/features/sounds/sound-packs'
 import {
   soundPreferenceStore,
@@ -31,6 +32,7 @@ function sliderToVolume(value: number) {
 export function SoundSettings() {
   const preferences = useSoundPreferences()
   const authorPacks = authorSoundPackOptions()
+  const soundEvents = soundEventVolumeOptions(preferences.authorPackId)
 
   return (
     <SettingsBlock
@@ -88,6 +90,34 @@ export function SoundSettings() {
           }}
         />
       </SettingsRow>
+
+      {soundEvents.map((event) => {
+        const eventVolume = preferences.eventVolumes[event.id] ?? 1
+        return (
+          <SettingsRow
+            key={event.id}
+            label={event.label}
+            value={`${volumeToSlider(eventVolume)}%`}
+            stacked
+          >
+            <Slider
+              className="w-full"
+              value={[volumeToSlider(eventVolume)]}
+              min={0}
+              max={100}
+              step={1}
+              disabled={!preferences.enabled}
+              onValueChange={([next]) => {
+                if (next == null) return
+                soundPreferenceStore.setEventVolume(
+                  event.id,
+                  sliderToVolume(next),
+                )
+              }}
+            />
+          </SettingsRow>
+        )
+      })}
 
       <SettingsToggleRow
         label="Пасхальные звуки"

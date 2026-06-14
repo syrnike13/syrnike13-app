@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_EASTER_CHANCE,
   DEFAULT_SOUND_AUTHOR_PACK_ID,
-  UI_SOUND_EVENTS,
   authorSoundPackOptions,
   eventSoundPackOptions,
   resolveSoundClip,
+  soundEventVolumeOptions,
   validateSoundPackCatalog,
 } from './sound-packs'
 
@@ -23,25 +23,45 @@ describe('sound pack catalog', () => {
     )
   })
 
-  it('covers every UI sound event with normal and easter clips', () => {
+  it('keeps the catalog valid without pretending missing sounds exist', () => {
     expect(validateSoundPackCatalog()).toEqual([])
 
-    const resolvedEvents = new Set(
-      UI_SOUND_EVENTS.map((eventId) =>
-        resolveSoundClip({
-          eventId,
-          authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
-          random: () => 1,
-        })?.eventId,
-      ),
-    )
+    expect(
+      soundEventVolumeOptions(DEFAULT_SOUND_AUTHOR_PACK_ID).map((event) => event.id),
+    ).toEqual([
+      'voice.user_join',
+      'voice.user_leave',
+      'voice.user_move',
+      'voice.mute',
+      'voice.unmute',
+      'voice.deafen',
+      'voice.undeafen',
+      'voice.disconnect',
+      'call.connected',
+      'call.ended',
+      'screen_share.started',
+      'screen_share.stopped',
+    ])
 
-    expect(resolvedEvents).toEqual(new Set(UI_SOUND_EVENTS))
+    expect(
+      resolveSoundClip({
+        eventId: 'message.default',
+        authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+        random: () => 1,
+      }),
+    ).toBeNull()
+    expect(
+      resolveSoundClip({
+        eventId: 'camera.started',
+        authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+        random: () => 1,
+      }),
+    ).toBeNull()
   })
 
   it('ignores unknown event pack ids and keeps runtime event packs out of user options', () => {
     const normalMessage = resolveSoundClip({
-      eventId: 'message.default',
+      eventId: 'voice.mute',
       authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
       eventPackId: 'winter',
       random: () => 1,
@@ -51,7 +71,7 @@ describe('sound pack catalog', () => {
     expect(eventSoundPackOptions()).toEqual([])
   })
 
-  it('resolves easter variants with a 0.25 percent chance', () => {
+  it('keeps the 0.25 percent easter chance but stays normal until easter files exist', () => {
     const easter = resolveSoundClip({
       eventId: 'voice.user_join',
       authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
@@ -63,7 +83,7 @@ describe('sound pack catalog', () => {
       random: () => DEFAULT_EASTER_CHANCE + 0.0001,
     })
 
-    expect(easter?.variant).toBe('easter')
+    expect(easter?.variant).toBe('normal')
     expect(normal?.variant).toBe('normal')
   })
 })

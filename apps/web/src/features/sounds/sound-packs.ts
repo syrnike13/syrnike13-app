@@ -4,7 +4,11 @@ import {
   type SoundAuthorPackId,
 } from '@syrnike13/platform'
 
-import { UI_SOUND_EVENTS, type SoundEventId } from './sound-events'
+import {
+  UI_SOUND_EVENTS,
+  UI_SOUND_EVENT_LABELS,
+  type SoundEventId,
+} from './sound-events'
 
 export { DEFAULT_SOUND_AUTHOR_PACK_ID, UI_SOUND_EVENTS }
 
@@ -47,10 +51,7 @@ function clipPath(packId: string, fileName: string) {
   return `/sounds/ui/${packId}/${fileName}`
 }
 
-const ZOVKORD_SOUND_FILES: Record<SoundEventId, string> = {
-  'message.default': 'unmute.ogg',
-  'message.mention': 'user-join.ogg',
-  'message.reaction': 'unmute.ogg',
+const ZOVKORD_SOUND_FILES: Partial<Record<SoundEventId, string>> = {
   'voice.user_join': 'user-join.ogg',
   'voice.user_leave': 'user-leave.ogg',
   'voice.user_move': 'user-join.ogg',
@@ -59,22 +60,25 @@ const ZOVKORD_SOUND_FILES: Record<SoundEventId, string> = {
   'voice.deafen': 'deafen.ogg',
   'voice.undeafen': 'undeafen.ogg',
   'voice.disconnect': 'user-leave.ogg',
-  'call.incoming_ring': 'user-join.ogg',
-  'call.outgoing_ring': 'user-join.ogg',
   'call.connected': 'user-join.ogg',
   'call.ended': 'user-leave.ogg',
   'screen_share.started': 'screen-share-started.ogg',
   'screen_share.stopped': 'screen-share-stopped.ogg',
-  'camera.started': 'unmute.ogg',
-  'camera.stopped': 'mute.ogg',
 }
 
-const ZOVKORD_SOUNDS = Object.fromEntries(
-  UI_SOUND_EVENTS.map((eventId) => [
-    eventId,
-    { src: clipPath('zovkord', ZOVKORD_SOUND_FILES[eventId]) },
-  ]),
-) as Record<SoundEventId, SoundClip>
+function clipsForFiles(
+  packId: string,
+  files: Partial<Record<SoundEventId, string>>,
+) {
+  const clips: Partial<Record<SoundEventId, SoundClip>> = {}
+  for (const eventId of UI_SOUND_EVENTS) {
+    const fileName = files[eventId]
+    if (fileName) clips[eventId] = { src: clipPath(packId, fileName) }
+  }
+  return clips
+}
+
+const ZOVKORD_SOUNDS = clipsForFiles('zovkord', ZOVKORD_SOUND_FILES)
 
 const AUTHOR_SOUND_PACKS: SoundPack[] = [
   {
@@ -82,7 +86,7 @@ const AUTHOR_SOUND_PACKS: SoundPack[] = [
     label: 'ZovKord',
     kind: 'author',
     sounds: ZOVKORD_SOUNDS,
-    easter: ZOVKORD_SOUNDS,
+    easter: {},
   },
 ]
 
@@ -102,6 +106,22 @@ export function eventSoundPackOptions() {
     label: pack.label,
     kind: pack.kind,
   }))
+}
+
+export function soundEventVolumeOptions(authorPackId: string | null | undefined) {
+  const authorPack = findAuthorPack(authorPackId)
+  if (!authorPack) return []
+
+  return UI_SOUND_EVENTS.flatMap((eventId) =>
+    authorPack.sounds[eventId]
+      ? [
+          {
+            id: eventId,
+            label: UI_SOUND_EVENT_LABELS[eventId],
+          },
+        ]
+      : [],
+  )
 }
 
 export function isSoundAuthorPackId(value: unknown): value is SoundAuthorPackId {
@@ -167,9 +187,11 @@ export function resolveSoundClip({
 export function validateSoundPackCatalog() {
   const errors: string[] = []
   for (const pack of AUTHOR_SOUND_PACKS) {
-    for (const eventId of UI_SOUND_EVENTS) {
-      if (!pack.sounds[eventId]) errors.push(`${pack.id}:${eventId}:normal`)
-      if (!pack.easter[eventId]) errors.push(`${pack.id}:${eventId}:easter`)
+    for (const [eventId, clip] of Object.entries(pack.sounds)) {
+      if (!clip.src) errors.push(`${pack.id}:${eventId}:normal`)
+    }
+    for (const [eventId, clip] of Object.entries(pack.easter)) {
+      if (!clip.src) errors.push(`${pack.id}:${eventId}:easter`)
     }
   }
   return errors

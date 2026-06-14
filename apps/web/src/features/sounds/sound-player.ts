@@ -39,10 +39,11 @@ export function createSoundPlayer({
       if (!clip) return
 
       const audio = createAudio(clip.src)
+      const eventVolume = preferences.eventVolumes[eventId] ?? 1
       audio.preload = 'auto'
       audio.volume = Math.max(
         0,
-        Math.min(1, preferences.volume * (clip.volume ?? 1)),
+        Math.min(1, preferences.volume * eventVolume * (clip.volume ?? 1)),
       )
 
       try {

@@ -13,6 +13,31 @@ describe('sound player', () => {
         enabled: true,
         authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
         volume: 0.4,
+        eventVolumes: {
+          'voice.mute': 0.5,
+        },
+        easterEnabled: true,
+      }),
+      getEventPackId: () => null,
+      random: () => 1,
+    })
+
+    player.play('voice.mute')
+
+    expect(audio.volume).toBe(0.2)
+    expect(audio.preload).toBe('auto')
+    expect(play).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not create audio when the selected pack has no clip for an event', () => {
+    const createAudio = vi.fn()
+    const player = createSoundPlayer({
+      createAudio,
+      getPreferences: () => ({
+        enabled: true,
+        authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+        volume: 1,
+        eventVolumes: {},
         easterEnabled: true,
       }),
       getEventPackId: () => null,
@@ -21,9 +46,7 @@ describe('sound player', () => {
 
     player.play('message.default')
 
-    expect(audio.volume).toBe(0.4)
-    expect(audio.preload).toBe('auto')
-    expect(play).toHaveBeenCalledTimes(1)
+    expect(createAudio).not.toHaveBeenCalled()
   })
 
   it('does not create audio when sounds are disabled', () => {
@@ -34,6 +57,7 @@ describe('sound player', () => {
         enabled: false,
         authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
         volume: 1,
+        eventVolumes: {},
         easterEnabled: true,
       }),
       getEventPackId: () => null,

@@ -58,7 +58,13 @@ function persist() {
 }
 
 function patch(partial: DesktopSoundSettingsPatch) {
-  state = normalizeSoundPreferences({ ...state, ...partial })
+  state = normalizeSoundPreferences({
+    ...state,
+    ...partial,
+    eventVolumes: partial.eventVolumes
+      ? { ...state.eventVolumes, ...partial.eventVolumes }
+      : state.eventVolumes,
+  })
   stateRevision += 1
   persist()
   emit()
@@ -80,7 +86,7 @@ export const soundPreferenceStore = {
     }
   },
 
-  getState: () => ({ ...state }),
+  getState: () => state,
 
   setEnabled(enabled: boolean) {
     if (state.enabled === enabled) return
@@ -96,6 +102,14 @@ export const soundPreferenceStore = {
     const next = normalizeSoundPreferencesPatch({ volume })?.volume
     if (next == null || state.volume === next) return
     patch({ volume: next })
+  },
+
+  setEventVolume(eventId: string, volume: number) {
+    const next = normalizeSoundPreferencesPatch({
+      eventVolumes: { [eventId]: volume },
+    })?.eventVolumes?.[eventId]
+    if (next == null || state.eventVolumes[eventId] === next) return
+    patch({ eventVolumes: { [eventId]: next } })
   },
 
   setEasterEnabled(easterEnabled: boolean) {
