@@ -21,7 +21,9 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   )),
   useMatch: ({ from }: { from: string }) =>
-    from === '/app/' ? { routeId: from } : false,
+    from === '/app/' || from === '/m/'
+      ? { routeId: from, params: {}, search: {} }
+      : false,
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -76,7 +78,7 @@ describe('ServerRail', () => {
   })
 
   it('shows home notifications on the home rail button', () => {
-    render(<ServerRail />)
+    render(<ServerRail variant="desktop" />)
 
     expect(screen.getByTitle('Главная')).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()

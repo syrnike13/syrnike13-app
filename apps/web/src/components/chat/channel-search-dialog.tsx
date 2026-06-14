@@ -12,6 +12,7 @@ import {
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { searchChannelMessages } from '#/features/api/messages-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { cn } from '#/lib/utils'
@@ -34,6 +35,7 @@ export function ChannelSearchDialog({
   stripClassName,
 }: ChannelSearchDialogProps) {
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -92,7 +94,7 @@ export function ChannelSearchDialog({
   function openMessage(messageId: string) {
     setOpen(false)
     void navigate({
-      to: '/app/c/$channelId',
+      to: `${prefix}/c/$channelId`,
       params: { channelId },
       search: { m: messageId },
     })

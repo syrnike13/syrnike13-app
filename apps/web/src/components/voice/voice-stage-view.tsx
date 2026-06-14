@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { MessageSquareIcon } from '#/components/icons'
+import { MessageSquareIcon, ChevronDownIcon } from '#/components/icons'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import type { Channel, User } from '@syrnike13/api-types'
 import type { VoiceCallState } from '#/features/sync/voice-types'
@@ -76,6 +76,10 @@ type VoiceStageViewProps = {
   chatOpen: boolean
   onToggleChat: () => void
   showChatToggle?: boolean
+  /** Встроен в мобильный drawer — без popout/fullscreen. */
+  mobileDrawer?: boolean
+  onClose?: () => void
+  joinButtonLabel?: string
   voiceCall?: VoiceCallState
   voiceCallIncoming?: boolean
   onDeclineVoiceCall?: () => void
@@ -91,6 +95,9 @@ export function VoiceStageView({
   chatOpen,
   onToggleChat,
   showChatToggle = true,
+  mobileDrawer = false,
+  onClose,
+  joinButtonLabel,
   voiceCall,
   voiceCallIncoming = false,
   onDeclineVoiceCall,
@@ -119,7 +126,8 @@ export function VoiceStageView({
   const connecting = voice.status === 'connecting' && inVoiceSession
   const isDmVoiceStage =
     channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
-  const joinLabel = isDmVoiceStage ? 'Присоединиться' : undefined
+  const resolvedJoinLabel =
+    joinButtonLabel ?? (isDmVoiceStage ? 'Присоединиться' : undefined)
   const [requestedMode, setRequestedMode] =
     useState<VoiceStageLayoutMode>('grid')
   const [popoutWindow, setPopoutWindow] = useState<Window | null>(null)
@@ -228,7 +236,7 @@ export function VoiceStageView({
     }
   }, [auth.user, focusedItem, participantsById, users])
   const canToggleStageFullscreen =
-    participants.length > 0 || mediaItems.length > 0
+    !mobileDrawer && (participants.length > 0 || mediaItems.length > 0)
   const canInvite =
     server && channel.channel_type === 'TextChannel'
       ? canInviteToChannel(server, channel, member, auth.user?._id)
@@ -404,6 +412,7 @@ export function VoiceStageView({
         presentation === 'embedded' &&
           voice.stageFullscreen &&
           !popoutOpen &&
+          !mobileDrawer &&
           'fixed inset-0 z-[300]',
       )}
     >
@@ -470,6 +479,19 @@ export function VoiceStageView({
           voiceStageChromeMotion(chromeVisible, 'top'),
         )}
       >
+        {onClose ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-9 shrink-0 text-white/70 hover:bg-white/10 hover:text-white"
+            aria-label="Свернуть"
+            title="Свернуть"
+            onClick={onClose}
+          >
+            <ChevronDownIcon className="size-5" />
+          </Button>
+        ) : null}
         {dmHeader ? (
           <>
             <UserAvatar
@@ -580,7 +602,7 @@ export function VoiceStageView({
         {headerTrailing ? (
           <div className="flex shrink-0 items-center gap-1">{headerTrailing}</div>
         ) : null}
-        {presentation === 'embedded' && showChatToggle ? (
+        {presentation === 'embedded' && showChatToggle && !mobileDrawer ? (
           <Button
             type="button"
             variant="ghost"
@@ -601,42 +623,63 @@ export function VoiceStageView({
       <div
         data-voice-stage-chrome
         className={cn(
-          voiceStageControlsChromeClass,
+          mobileDrawer
+            ? 'absolute inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)]'
+            : voiceStageControlsChromeClass,
           voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
       >
-        <div aria-hidden />
-        <div className={voiceStageControlsChromeCenterClass}>
+        {mobileDrawer ? (
           <VoiceStageControls
             channelId={channelId}
             inCall={inThisVoiceCall}
             connecting={connecting}
-            joinLabel={joinLabel}
-            overlay
+            joinLabel={resolvedJoinLabel}
+            mobileDrawer
+            chatOpen={chatOpen}
+            onToggleChat={onToggleChat}
             incomingCall={voiceCallIncoming && voiceCall?.phase === 'ringing'}
             declineLabel={
               channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
             }
             onDeclineIncomingCall={onDeclineVoiceCall}
           />
-        </div>
-        <div className={voiceStageControlsChromeTrailingClass}>
-          <div className="flex items-center gap-1">
-            {focusedItem?.kind === 'screen' && !focusedItem.isLocal ? (
-              <VoiceStageStreamVolumeControl userId={focusedItem.userId} />
-            ) : null}
-            <VoiceStagePopoutButton
-              active={popoutOpen}
-              disabled={!canToggleStageFullscreen}
-              onClick={toggleStagePopout}
-            />
-            <VoiceStageFullscreenButton
-              active={voice.stageFullscreen}
-              disabled={!canToggleStageFullscreen}
-              onClick={voice.toggleStageFullscreen}
-            />
-          </div>
-        </div>
+        ) : (
+          <>
+            <div aria-hidden />
+            <div className={voiceStageControlsChromeCenterClass}>
+              <VoiceStageControls
+                channelId={channelId}
+                inCall={inThisVoiceCall}
+                connecting={connecting}
+                joinLabel={resolvedJoinLabel}
+                overlay
+                incomingCall={voiceCallIncoming && voiceCall?.phase === 'ringing'}
+                declineLabel={
+                  channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
+                }
+                onDeclineIncomingCall={onDeclineVoiceCall}
+              />
+            </div>
+            <div className={voiceStageControlsChromeTrailingClass}>
+              <div className="flex items-center gap-1">
+                {focusedItem?.kind === 'screen' && !focusedItem.isLocal ? (
+                  <VoiceStageStreamVolumeControl userId={focusedItem.userId} />
+                ) : null}
+                <VoiceStagePopoutButton
+                  active={popoutOpen}
+                  disabled={!canToggleStageFullscreen}
+                  onClick={toggleStagePopout}
+                />
+                <VoiceStageFullscreenButton
+                  active={voice.stageFullscreen}
+                  disabled={!canToggleStageFullscreen}
+                  onClick={voice.toggleStageFullscreen}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
     </div>

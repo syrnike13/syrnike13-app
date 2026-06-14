@@ -13,6 +13,7 @@ import {
 } from '#/components/ui/dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
@@ -34,6 +35,7 @@ export function UserGlobalProfileDialog({
 }: UserGlobalProfileDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const { openSettings } = useSettingsModal()
   const [busy, setBusy] = useState(false)
 
@@ -57,7 +59,7 @@ export function UserGlobalProfileDialog({
       await openDirectMessageChannel(token, user._id, (channelId) => {
         close()
         return navigate({
-          to: '/app/c/$channelId',
+          to: `${prefix}/c/$channelId`,
           params: { channelId },
           search: { m: undefined },
         })
@@ -102,7 +104,7 @@ export function UserGlobalProfileDialog({
     if (!channelId) return
     close()
     void navigate({
-      to: '/app/c/$channelId',
+      to: `${prefix}/c/$channelId`,
       params: { channelId },
       search: { m: undefined },
     })

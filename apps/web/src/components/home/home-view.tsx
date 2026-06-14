@@ -36,6 +36,7 @@ import {
   sendFriendRequestByUsername,
 } from '#/features/friends/friend-actions'
 import { selectFriendRequestNotificationBadge } from '#/features/notifications/notification-selectors'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listUsersByRelationship } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
@@ -223,6 +224,7 @@ type HomeViewProps = {
 export function HomeView({ tab }: HomeViewProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const [username, setUsername] = useState('')
   const [sending, setSending] = useState(false)
@@ -261,12 +263,12 @@ export function HomeView({ tab }: HomeViewProps) {
   useEffect(() => {
     if (tab === 'pending' && !hasPending) {
       void navigate({
-        to: '/app',
+        to: prefix,
         search: { tab: 'online' },
         replace: true,
       })
     }
-  }, [tab, hasPending, navigate])
+  }, [tab, hasPending, navigate, prefix])
 
   const visibleUsers = usersForTab(tab, lists).filter((user) => {
     const q = friendSearch.trim().toLowerCase()
@@ -279,7 +281,7 @@ export function HomeView({ tab }: HomeViewProps) {
     if (!token) return
     await openDirectMessageChannel(token, userId, (channelId) =>
       navigate({
-        to: '/app/c/$channelId',
+        to: `${prefix}/c/$channelId`,
         params: { channelId },
         search: { m: undefined },
       }),
@@ -330,7 +332,7 @@ export function HomeView({ tab }: HomeViewProps) {
                 )}
                 asChild
               >
-                <Link to="/app" search={{ tab: item.id }}>
+                <Link to={prefix} search={{ tab: item.id }}>
                   <span className="inline-flex items-center gap-1.5">
                     {item.label}
                     {item.id === 'pending' ? (

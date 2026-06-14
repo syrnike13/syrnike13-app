@@ -21,6 +21,7 @@ import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { isServerInviteJoin, joinInvite } from '#/features/api/invites-api'
 import { createServer } from '#/features/api/servers-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
 import { parseInviteCode } from '#/lib/invite-link'
 
@@ -31,6 +32,7 @@ type CreateServerDialogProps = {
 export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
   const auth = useAuth()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<'create' | 'join'>('create')
   const [name, setName] = useState('')
@@ -66,12 +68,12 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
       const firstChannel = channels[0]
       if (firstChannel) {
         await navigate({
-          to: '/app/c/$channelId',
+          to: `${prefix}/c/$channelId`,
           params: { channelId: firstChannel._id },
           search: { m: undefined },
         })
       } else {
-        await navigate({ to: '/app', search: { tab: 'online' } })
+        await navigate({ to: prefix, search: { tab: 'online' } })
       }
     } catch (error) {
       toast.error(
@@ -106,12 +108,12 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         const channel = response.channels[0]
         if (channel) {
           await navigate({
-            to: '/app/c/$channelId',
+            to: `${prefix}/c/$channelId`,
             params: { channelId: channel._id },
             search: { m: undefined },
           })
         } else {
-          await navigate({ to: '/app', search: { tab: 'online' } })
+          await navigate({ to: prefix, search: { tab: 'online' } })
         }
         return
       }

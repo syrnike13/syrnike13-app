@@ -12,6 +12,7 @@ import {
 } from '#/features/sync/voice-call-utils'
 import { declineDirectMessageCall } from '#/features/api/channels-api'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useVoice } from '#/features/voice/voice-context'
 
 type IncomingVoiceCallOverlayProps = {
@@ -24,6 +25,7 @@ export function IncomingVoiceCallOverlay({
   const auth = useAuth()
   const voice = useVoice()
   const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const currentUserId = auth.user?._id
   const currentVoiceSessionChannelId =
     voice.status === 'connected' || voice.status === 'connecting'
@@ -130,7 +132,7 @@ export function IncomingVoiceCallOverlay({
               .then((joined) => {
                 if (!joined) return
                 void navigate({
-                  to: '/app/c/$channelId',
+                  to: `${prefix}/c/$channelId`,
                   params: { channelId: call.channelId },
                   search: { m: undefined },
                 })
