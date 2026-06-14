@@ -1,10 +1,8 @@
 import {
   Outlet,
   useMatch,
-  useNavigate,
   useRouterState,
 } from '@tanstack/react-router'
-import { ChevronLeftIcon } from '#/components/icons'
 import { useEffect } from 'react'
 
 import { ConnectionStatusBanner } from '#/components/layout/connection-status-banner'
@@ -12,12 +10,12 @@ import { HomeSidebar } from '#/components/home/home-sidebar'
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
 import { ServerRail } from '#/components/layout/server-rail'
 import { MobileUserPanel } from '#/components/layout/mobile/mobile-user-panel'
+import { MobileVoiceFloatingTile } from '#/components/layout/mobile/mobile-voice-floating-tile'
 import { IncomingVoiceCallOverlay } from '#/components/voice/incoming-voice-call-overlay'
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { parseChannelSettingsTab } from '#/components/channels/channel-settings-types'
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
-import { Button } from '#/components/ui/button'
 import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
@@ -34,7 +32,6 @@ import { cn } from '#/lib/utils'
  * поэтому сама читает channel/settings match из активного роута.
  */
 export function MobileShell() {
-  const navigate = useNavigate()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isHomePath = pathname === '/m' || pathname === '/m/'
 
@@ -95,28 +92,6 @@ export function MobileShell() {
             !isProfileRoute && 'pt-[env(safe-area-inset-top)]',
           )}
         >
-          {isChannelRoute ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute top-[calc(env(safe-area-inset-top)+0.5rem)] left-2 z-30 size-8 shrink-0 rounded-full bg-black/40 text-white hover:bg-black/60 hover:text-white"
-              aria-label="Назад"
-              title="Назад"
-              onClick={() => {
-                const serverId = activeChannel
-                  ? selectedServerIdForChannel(activeChannel)
-                  : null
-                syncStore.setSelectedServerId(serverId)
-                void navigate({
-                  to: '/m',
-                  search: { tab: 'online' },
-                })
-              }}
-            >
-              <ChevronLeftIcon className="size-5" />
-            </Button>
-          ) : null}
           <Outlet />
         </div>
       ) : (
@@ -146,6 +121,7 @@ export function MobileShell() {
       )}
 
       <IncomingVoiceCallOverlay activeChannelId={activeChannelId} />
+      <MobileVoiceFloatingTile />
 
       {settingsChannelId && activeChannelId ? (
         <div className="fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">

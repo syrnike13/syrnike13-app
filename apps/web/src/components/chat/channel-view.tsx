@@ -4,7 +4,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { HeadphonesIcon, UserIcon, UsersIcon } from '#/components/icons'
+import { useNavigate } from '@tanstack/react-router'
+import { ChevronLeftIcon, HeadphonesIcon, UserIcon, UsersIcon } from '#/components/icons'
 
 import { VoiceChannelShell } from '#/components/voice/voice-channel-shell'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
@@ -22,6 +23,7 @@ import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import { useVoice } from '#/features/voice/voice-context'
 import {
@@ -133,6 +135,9 @@ export function ChannelView({
   channelId,
   highlightMessageId,
 }: ChannelViewProps) {
+  const navigate = useNavigate()
+  const routePrefix = useAppRoutePrefix()
+  const isMobileRoute = routePrefix === '/m'
   const voice = useVoice()
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
@@ -340,11 +345,41 @@ export function ChannelView({
     window.addEventListener('pointerup', stopResize, { once: true })
   }
 
+  function handleMobileBack() {
+    if (isServerChannel && serverIdForSelection) {
+      syncStore.setSelectedServerId(serverIdForSelection)
+    } else {
+      syncStore.setSelectedServerId(null)
+    }
+    void navigate({
+      to: '/m',
+      search: { tab: 'online' },
+    })
+  }
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {!dmInCallLayout ? (
         <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
-        <div className="flex min-w-0 flex-1 items-center gap-2 pl-4">
+        <div
+          className={cn(
+            'flex min-w-0 flex-1 items-center gap-2',
+            isMobileRoute ? 'pl-2' : 'pl-4',
+          )}
+        >
+          {isMobileRoute ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              aria-label="Назад"
+              title="Назад"
+              onClick={handleMobileBack}
+            >
+              <ChevronLeftIcon className="size-5" />
+            </Button>
+          ) : null}
           {isDirectMessage && dmRecipient ? (
             <DirectMessageHeader
               user={dmRecipient}

@@ -195,7 +195,10 @@ export function VoiceStageView({
     () => participants.filter((participant) => !videoUserIds.has(participant.id)),
     [participants, videoUserIds],
   )
-  const useAvatarRosterLayout = isDmVoiceStage && videoMediaItems.length === 0
+  const useAvatarRosterLayout =
+    videoMediaItems.length === 0 &&
+    gridMediaItems.length === 0 &&
+    participants.length > 0
 
   useEffect(() => {
     if (!voice.stageFocusNonce) return
@@ -403,8 +406,8 @@ export function VoiceStageView({
     <div
       ref={surfaceRef}
       className={cn(
-        'relative flex min-w-0 flex-col overflow-hidden bg-black text-white',
-        presentation === 'popout' && 'h-[100dvh] w-full min-h-0',
+        'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-black text-white',
+        presentation === 'popout' && 'h-[100dvh] w-full',
         presentation === 'embedded' && 'h-full min-h-0 flex-1',
         presentation === 'popout' &&
           voice.stageFullscreen &&
@@ -419,7 +422,9 @@ export function VoiceStageView({
       <div
         className={cn(
           'flex min-h-0 flex-1 flex-col overflow-hidden',
-          voiceStageContentInsetClass,
+          mobileDrawer
+            ? 'px-2 pt-12 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]'
+            : voiceStageContentInsetClass,
         )}
       >
         {participants.length === 0 && mediaItems.length === 0 ? (

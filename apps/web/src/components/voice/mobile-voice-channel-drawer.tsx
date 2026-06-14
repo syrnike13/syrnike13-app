@@ -71,19 +71,19 @@ export function MobileVoiceChannelDrawer() {
         className={cn(
           fullscreen
             ? 'inset-0 top-0 h-[100dvh] max-h-[100dvh] rounded-none border-0 pb-0'
-            : 'max-h-[min(92dvh,820px)]',
+            : 'h-[min(85dvh,720px)] max-h-[min(92dvh,820px)]',
           'flex flex-col gap-0 overflow-hidden p-0',
         )}
       >
         {channel && isServerVoiceChannel(channel) ? (
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div
               className={cn(
-                'flex min-h-0 flex-col',
+                'flex min-h-0 flex-col overflow-hidden',
                 chatOpen && !fullscreen
                   ? 'h-[min(52dvh,420px)] shrink-0'
                   : 'min-h-0 flex-1',
-                fullscreen && !chatOpen && 'h-full',
+                fullscreen && !chatOpen && 'min-h-0 flex-1',
                 fullscreen && chatOpen && 'h-[55%] shrink-0',
               )}
             >
