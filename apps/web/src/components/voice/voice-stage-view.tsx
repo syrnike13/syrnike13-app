@@ -18,6 +18,7 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
+import { VoiceStageStreamVolumeControl } from '#/components/voice/voice-stage-stream-volume-control'
 import {
   VoiceStageControls,
   VoiceStageFullscreenButton,
@@ -620,7 +621,10 @@ export function VoiceStageView({
           />
         </div>
         <div className={voiceStageControlsChromeTrailingClass}>
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1">
+            {focusedItem?.kind === 'screen' && !focusedItem.isLocal ? (
+              <VoiceStageStreamVolumeControl userId={focusedItem.userId} />
+            ) : null}
             <VoiceStagePopoutButton
               active={popoutOpen}
               disabled={!canToggleStageFullscreen}

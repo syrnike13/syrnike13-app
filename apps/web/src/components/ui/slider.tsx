@@ -22,6 +22,8 @@ export type SliderMark = SliderCheckpoint
 type SliderProps = React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
   showTooltip?: boolean
   tooltipContent?: (value: number) => React.ReactNode
+  tooltipSide?: React.ComponentProps<typeof TooltipContent>['side']
+  tooltipClassName?: string
   checkpoints?: SliderCheckpoint[]
   checkpointStep?: number
   checkpointLabel?: (value: number) => React.ReactNode
@@ -77,15 +79,19 @@ const Slider = React.forwardRef<
       step,
       showTooltip = true,
       tooltipContent,
+      tooltipSide,
+      tooltipClassName,
       checkpoints,
       checkpointStep,
       checkpointLabel,
       marks,
       onValueChange,
+      orientation = "horizontal",
       ...props
     },
     ref,
   ) => {
+    const isVertical = orientation === "vertical"
     const thumbCount = React.useMemo(() => {
       if (Array.isArray(value)) return value.length
       if (Array.isArray(defaultValue)) return defaultValue.length
@@ -152,7 +158,11 @@ const Slider = React.forwardRef<
       return (
         <Tooltip key={index} open={tooltipOpen}>
           <TooltipTrigger asChild>{thumb}</TooltipTrigger>
-          <TooltipContent sideOffset={8} className="px-2 py-1 text-xs">
+          <TooltipContent
+            side={tooltipSide}
+            sideOffset={8}
+            className={cn('px-2 py-1 text-xs tabular-nums', tooltipClassName)}
+          >
             {tooltipContent ? tooltipContent(thumbValue) : thumbValue}
           </TooltipContent>
         </Tooltip>
@@ -162,15 +172,25 @@ const Slider = React.forwardRef<
     const hasCheckpoints = checkpointItems.length > 0
 
     return (
-      <div className={cn("w-full", className)}>
+      <div
+        className={cn(isVertical ? "h-full w-auto" : "w-full", className)}
+      >
         <TooltipProvider delayDuration={0}>
           <div
             className={cn(
-              "relative w-full",
-              hasCheckpoints && "pt-4",
+              "relative",
+              isVertical ? "h-full w-auto" : "w-full",
+              hasCheckpoints && !isVertical && "pt-4",
             )}
           >
-            <div className="relative flex h-5 w-full items-center">
+            <div
+              className={cn(
+                "relative flex items-center",
+                isVertical
+                  ? "h-full min-h-28 w-5 flex-col justify-center"
+                  : "h-5 w-full",
+              )}
+            >
               {hasCheckpoints
                 ? checkpointItems.map((checkpoint) => {
                     const percent = valueToPercent(checkpoint.value, min, max)
@@ -200,7 +220,8 @@ const Slider = React.forwardRef<
                 min={min}
                 max={max}
                 step={step}
-                className="relative z-10 flex w-full touch-none items-center select-none data-[disabled]:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col"
+                orientation={orientation}
+                className="relative z-10 flex w-full touch-none items-center select-none data-[disabled]:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-28 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col"
                 onPointerDown={() => {
                   if (showTooltip) setTooltipOpen(true)
                 }}
