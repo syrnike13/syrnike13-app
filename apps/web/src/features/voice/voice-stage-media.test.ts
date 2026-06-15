@@ -150,7 +150,7 @@ describe('buildStageMediaItems', () => {
     )
   })
 
-  it('does not keep an unsubscribed remote screen as a watch tile', () => {
+  it('keeps an unsubscribed remote screen as a watch tile', () => {
     const items = buildStageMediaItems({
       participants: [{ id: REMOTE_USER_ID }],
       currentUserId: LOCAL_USER_ID,
@@ -165,10 +165,26 @@ describe('buildStageMediaItems', () => {
       filters: defaultFilters,
     })
 
-    expect(items.map((item) => item.id)).toEqual([`${REMOTE_USER_ID}:avatar`])
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: `${REMOTE_USER_ID}:screen`,
+        userId: REMOTE_USER_ID,
+        kind: 'screen',
+        source: 'screen',
+        track: null,
+        publication: { source: 'screen', sid: 'remote-screen-publication' },
+        subscribed: false,
+        live: true,
+      }),
+      expect.objectContaining({
+        id: `${REMOTE_USER_ID}:avatar`,
+        userId: REMOTE_USER_ID,
+        kind: 'avatar',
+      }),
+    ])
   })
 
-  it('hides an unsubscribed remote screen when participants without media are hidden', () => {
+  it('keeps an unsubscribed remote screen when participants without media are hidden', () => {
     const items = buildStageMediaItems({
       participants: [{ id: REMOTE_USER_ID }],
       currentUserId: LOCAL_USER_ID,
@@ -186,7 +202,16 @@ describe('buildStageMediaItems', () => {
       },
     })
 
-    expect(items).toEqual([])
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: `${REMOTE_USER_ID}:screen`,
+        userId: REMOTE_USER_ID,
+        kind: 'screen',
+        track: null,
+        subscribed: false,
+        live: true,
+      }),
+    ])
   })
 
   it('keeps a subscribed remote screen loading tile when participants without media are hidden', () => {
