@@ -9,7 +9,7 @@ use crate::{
         bson::{doc, from_bson, from_document, to_document, Bson, DateTime, Document},
         options::FindOptions,
     },
-    AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
+    initial_badges, AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
 };
 use bson::{oid::ObjectId, to_bson};
 use futures::StreamExt;
@@ -25,7 +25,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 50; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 51; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1306,6 +1306,67 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
                 .await
                 .unwrap();
         }
+    };
+
+    if revision <= 50 {
+        info!("Running migration [revision 50 / 15-06-2026]: Add user badge catalog.");
+
+        db.db().create_collection("badges").await.ok();
+        db.db().create_collection("user_badges").await.ok();
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "badges",
+                "indexes": [
+                    {
+                        "key": {
+                            "slug": 1_i32
+                        },
+                        "name": "slug_unique",
+                        "unique": true
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create badge slug index.");
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "user_badges",
+                "indexes": [
+                    {
+                        "key": {
+                            "user_id": 1_i32,
+                            "badge_id": 1_i32
+                        },
+                        "name": "user_badge_unique",
+                        "unique": true
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create user badge index.");
+
+        for badge in initial_badges() {
+            db.col::<Document>("badges")
+                .update_one(
+                    doc! {
+                        "slug": &badge.slug
+                    },
+                    doc! {
+                        "$setOnInsert": to_document(&badge)
+                            .expect("failed to serialise badge seed")
+                    },
+                )
+                .upsert(true)
+                .await
+                .expect("Failed to seed badge catalog.");
+        }
+
+        db.col::<Document>("users")
+            .update_many(doc! {}, doc! { "$unset": { "badges": 1_i32 } })
+            .await
+            .expect("Failed to unset legacy user badges.");
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

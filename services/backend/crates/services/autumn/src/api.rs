@@ -129,12 +129,18 @@ pub enum Tag {
     icons,
     banners,
     emojis,
+    badges,
 }
 
 const PROFILE_GIF_UPLOAD_SIZE_LIMIT: usize = 10_000_000;
+const BADGE_UPLOAD_SIZE_LIMIT: usize = 10_000_000;
+const BADGE_MIN_SIZE: isize = 64;
+const BADGE_MAX_SIZE: isize = 1024;
 
 fn effective_upload_size_limit(tag: &Tag, mime_type: &str, configured_limit: usize) -> usize {
-    if mime_type == "image/gif" && matches!(tag, Tag::avatars | Tag::backgrounds) {
+    if matches!(tag, Tag::badges) {
+        BADGE_UPLOAD_SIZE_LIMIT
+    } else if mime_type == "image/gif" && matches!(tag, Tag::avatars | Tag::backgrounds) {
         PROFILE_GIF_UPLOAD_SIZE_LIMIT
     } else {
         configured_limit
@@ -147,6 +153,26 @@ fn original_content_disposition(tag: &Tag, content_type: &str) -> &'static str {
     } else {
         "attachment"
     }
+}
+
+fn validate_badge_upload(mime_type: &str, metadata: &Metadata) -> Result<()> {
+    if !matches!(mime_type, "image/png" | "image/webp") {
+        return Err(create_error!(FileTypeNotAllowed));
+    }
+
+    let Metadata::Image { width, height, .. } = metadata else {
+        return Err(create_error!(FileTypeNotAllowed));
+    };
+
+    if width != height {
+        return Err(create_error!(FileTypeNotAllowed));
+    }
+
+    if *width < BADGE_MIN_SIZE || *width > BADGE_MAX_SIZE {
+        return Err(create_error!(FileTypeNotAllowed));
+    }
+
+    Ok(())
 }
 
 /// Request body for upload
@@ -177,6 +203,7 @@ pub struct UploadResponse {
 /// | icons | 2.5 MB | 40 MP or 10,000px | Image |
 /// | banners | 6 MB | 40 MP or 10,000px | Image |
 /// | emojis | 500 KB | 40 MP or 10,000px | Image |
+/// | badges | 10 MB | 64-1024px square | PNG/WebP |
 #[utoipa::path(
     post,
     path = "/{tag}",
@@ -265,6 +292,10 @@ async fn upload_file(
     // Block non-images for non-attachment uploads
     if !matches!(tag, Tag::attachments) && !matches!(metadata, Metadata::Image { .. }) {
         return Err(create_error!(FileTypeNotAllowed));
+    }
+
+    if matches!(tag, Tag::badges) {
+        validate_badge_upload(mime_type, &metadata)?;
     }
 
     // Find an existing hash and use that if possible
@@ -379,6 +410,7 @@ pub static CACHE_CONTROL: &str = "public, max-age=604800, immutable";
 /// | icons | Up to 128px on any axis | ✅ |
 /// | banners | Up to 480px on any axis | ❌ |
 /// | emojis | Up to 128px on any axis | ❌ |
+/// | badges | Up to 128px on any axis | ✅ |
 ///
 /// <sup>†</sup> aspect ratio will always be preserved
 ///
@@ -440,7 +472,7 @@ async fn fetch_preview(
 
     // Only process image files and don't process GIFs if not avatar or icon
     if !matches!(hash.metadata, Metadata::Image { .. })
-        || (is_animated && !matches!(tag, Tag::avatars | Tag::icons))
+        || (is_animated && !matches!(tag, Tag::avatars | Tag::icons | Tag::badges))
     {
         let safe_filename = encode_component(&file.filename);
 
@@ -545,9 +577,10 @@ async fn fetch_file(
 #[cfg(test)]
 mod tests {
     use super::{
-        effective_upload_size_limit, original_content_disposition, Tag, CACHE_CONTROL,
-        PROFILE_GIF_UPLOAD_SIZE_LIMIT,
+        effective_upload_size_limit, original_content_disposition, validate_badge_upload, Tag,
+        BADGE_UPLOAD_SIZE_LIMIT, CACHE_CONTROL, PROFILE_GIF_UPLOAD_SIZE_LIMIT,
     };
+    use syrnike_database::Metadata;
 
     #[test]
     fn gif_avatars_and_backgrounds_use_profile_gif_upload_limit() {
@@ -559,6 +592,60 @@ mod tests {
             effective_upload_size_limit(&Tag::backgrounds, "image/gif", 6_000_000),
             PROFILE_GIF_UPLOAD_SIZE_LIMIT,
         );
+    }
+
+    #[test]
+    fn badge_uploads_use_hard_size_limit() {
+        assert_eq!(
+            effective_upload_size_limit(&Tag::badges, "image/png", 1),
+            BADGE_UPLOAD_SIZE_LIMIT,
+        );
+    }
+
+    #[test]
+    fn badge_uploads_accept_square_png_and_webp() {
+        let metadata = Metadata::Image {
+            width: 128,
+            height: 128,
+            thumbhash: None,
+            animated: None,
+        };
+
+        assert!(validate_badge_upload("image/png", &metadata).is_ok());
+        assert!(validate_badge_upload("image/webp", &metadata).is_ok());
+    }
+
+    #[test]
+    fn badge_uploads_reject_wrong_type_shape_and_size() {
+        let valid_size = Metadata::Image {
+            width: 128,
+            height: 128,
+            thumbhash: None,
+            animated: None,
+        };
+        let non_square = Metadata::Image {
+            width: 128,
+            height: 64,
+            thumbhash: None,
+            animated: None,
+        };
+        let too_small = Metadata::Image {
+            width: 63,
+            height: 63,
+            thumbhash: None,
+            animated: None,
+        };
+        let too_large = Metadata::Image {
+            width: 1025,
+            height: 1025,
+            thumbhash: None,
+            animated: None,
+        };
+
+        assert!(validate_badge_upload("image/jpeg", &valid_size).is_err());
+        assert!(validate_badge_upload("image/png", &non_square).is_err());
+        assert!(validate_badge_upload("image/png", &too_small).is_err());
+        assert!(validate_badge_upload("image/png", &too_large).is_err());
     }
 
     #[test]
