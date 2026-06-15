@@ -4,6 +4,7 @@ use syrnike_database::User;
 use syrnike_result::{create_error, Result};
 
 mod badges;
+mod users;
 mod user_badges;
 
 fn require_privileged(user: &User) -> Result<()> {
@@ -20,6 +21,7 @@ pub fn routes() -> (Vec<Route>, OpenApi) {
         badges::create,
         badges::edit,
         badges::delete,
+        users::fetch,
         user_badges::list,
         user_badges::assign,
         user_badges::remove,
