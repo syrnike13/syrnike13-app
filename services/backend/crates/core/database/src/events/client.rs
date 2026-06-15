@@ -63,6 +63,42 @@ pub struct VoiceCall {
     pub declined_recipients: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MusicProviderId {
+    Spotify,
+    AppleMusic,
+    YandexMusic,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MusicPresenceSource {
+    SpotifyApi,
+    DesktopNowPlaying,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicPresence {
+    pub provider: MusicProviderId,
+    pub source: MusicPresenceSource,
+    pub title: String,
+    pub artists: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artwork_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress_ms: Option<u64>,
+    pub is_playing: bool,
+    pub observed_at: u64,
+}
+
 /// Fields provided in Ready payload
 #[derive(PartialEq, Debug, Clone, Deserialize)]
 pub struct ReadyPayloadFields {
@@ -280,6 +316,11 @@ pub enum EventV1 {
     UserRelationship {
         id: String,
         user: User,
+    },
+    /// User started, changed, paused, or cleared music presence.
+    UserMusicPresence {
+        id: String,
+        presence: Option<MusicPresence>,
     },
     /// Settings updated remotely
     UserSettingsUpdate {

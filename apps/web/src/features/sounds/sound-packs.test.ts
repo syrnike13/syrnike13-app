@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  DEFAULT_EASTER_CHANCE,
   DEFAULT_SOUND_AUTHOR_PACK_ID,
   authorSoundPackOptions,
   eventSoundPackOptions,
@@ -47,14 +46,12 @@ describe('sound pack catalog', () => {
       resolveSoundClip({
         eventId: 'message.default',
         authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
-        random: () => 1,
       }),
     ).toBeNull()
     expect(
       resolveSoundClip({
         eventId: 'camera.started',
         authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
-        random: () => 1,
       }),
     ).toBeNull()
   })
@@ -64,26 +61,57 @@ describe('sound pack catalog', () => {
       eventId: 'voice.mute',
       authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
       eventPackId: 'winter',
-      random: () => 1,
     })
 
     expect(normalMessage?.packKind).toBe('author')
     expect(eventSoundPackOptions()).toEqual([])
   })
 
-  it('keeps the 0.25 percent easter chance but stays normal until easter files exist', () => {
-    const easter = resolveSoundClip({
+  it('uses easter sounds deterministically while app easter mode is enabled', () => {
+    expect(
+      resolveSoundClip({
+        eventId: 'message.default',
+        authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+      }),
+    ).toBeNull()
+
+    const notification = resolveSoundClip({
+      eventId: 'message.default',
+      authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+      appEasterModeEnabled: true,
+    })
+    const voiceJoin = resolveSoundClip({
       eventId: 'voice.user_join',
       authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
-      random: () => DEFAULT_EASTER_CHANCE - 0.0001,
+      appEasterModeEnabled: true,
     })
+    const mute = resolveSoundClip({
+      eventId: 'voice.mute',
+      authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+      appEasterModeEnabled: true,
+    })
+
+    expect(notification).toMatchObject({
+      variant: 'easter',
+      src: '/sounds/ui/easter/notification.ogg',
+    })
+    expect(voiceJoin).toMatchObject({
+      variant: 'easter',
+      src: '/sounds/ui/easter/voice-channel-connected.ogg',
+    })
+    expect(mute).toMatchObject({
+      variant: 'easter',
+      src: '/sounds/ui/easter/microphone-muted.ogg',
+    })
+  })
+
+  it('keeps default sounds in regular mode even when easter sounds exist', () => {
     const normal = resolveSoundClip({
       eventId: 'voice.user_join',
       authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
-      random: () => DEFAULT_EASTER_CHANCE + 0.0001,
     })
 
-    expect(easter?.variant).toBe('normal')
     expect(normal?.variant).toBe('normal')
+    expect(normal?.src).toBe('/sounds/ui/default/user-join.ogg')
   })
 })

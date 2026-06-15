@@ -12,6 +12,7 @@ export type SettingsSection =
   | 'account'
   | 'voice'
   | 'sessions'
+  | 'integrations'
   | 'notifications'
   | 'appearance'
   | 'hotkeys'

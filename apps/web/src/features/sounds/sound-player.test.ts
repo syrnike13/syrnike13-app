@@ -19,7 +19,7 @@ describe('sound player', () => {
         easterEnabled: true,
       }),
       getEventPackId: () => null,
-      random: () => 1,
+      isAppEasterModeEnabled: () => false,
     })
 
     player.play('voice.mute')
@@ -41,7 +41,7 @@ describe('sound player', () => {
         easterEnabled: true,
       }),
       getEventPackId: () => null,
-      random: () => 1,
+      isAppEasterModeEnabled: () => false,
     })
 
     player.play('message.default')
@@ -61,11 +61,36 @@ describe('sound player', () => {
         easterEnabled: true,
       }),
       getEventPackId: () => null,
-      random: () => 1,
+      isAppEasterModeEnabled: () => false,
     })
 
     player.play('message.default')
 
     expect(createAudio).not.toHaveBeenCalled()
+  })
+
+  it('plays easter event clips while app easter mode is enabled', () => {
+    const play = vi.fn(() => Promise.resolve())
+    const audio = { volume: 0, preload: '', play }
+    const createAudio = vi.fn(() => audio)
+    const player = createSoundPlayer({
+      createAudio,
+      getPreferences: () => ({
+        enabled: true,
+        authorPackId: DEFAULT_SOUND_AUTHOR_PACK_ID,
+        volume: 1,
+        eventVolumes: {},
+        easterEnabled: true,
+      }),
+      getEventPackId: () => null,
+      isAppEasterModeEnabled: () => true,
+    })
+
+    player.play('message.default')
+
+    expect(createAudio).toHaveBeenCalledWith('/sounds/ui/easter/notification.ogg')
+    expect(audio.volume).toBe(1)
+    expect(audio.preload).toBe('auto')
+    expect(play).toHaveBeenCalledTimes(1)
   })
 })

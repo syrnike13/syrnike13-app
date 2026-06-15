@@ -152,6 +152,50 @@ describe('EventsGateway', () => {
     )
   })
 
+  it('sends the latest music presence reliably after Ready', async () => {
+    gateway.musicPresence({
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'Old',
+      artists: ['DK'],
+      isPlaying: true,
+      observedAt: 1,
+    })
+    gateway.musicPresence({
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'PRAXX',
+      artists: ['DK'],
+      isPlaying: true,
+      observedAt: 2,
+    })
+
+    gateway.connect('wss://example.test/ws', 'token-1')
+    const socket = mock.sockets.at(-1)!
+
+    await Promise.resolve()
+    socket.send.mockClear()
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'Ready', users: [] }),
+    })
+
+    expect(socket.send).toHaveBeenCalledTimes(1)
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'UserMusicPresenceUpdate',
+        presence: {
+          provider: 'spotify',
+          source: 'desktop_now_playing',
+          title: 'PRAXX',
+          artists: ['DK'],
+          isPlaying: true,
+          observedAt: 2,
+        },
+      }),
+    )
+  })
+
   it('schedules reconnect after unexpected close when auto-reconnect is enabled', () => {
     gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
     gateway.connect('wss://example.test/ws', 'token-1')

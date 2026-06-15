@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   join: vi.fn(async () => {}),
   openVoiceChannelDrawer: vi.fn(),
+  mobileDrawerProviderMounted: false,
   pathname: '/app/',
   voice: {
     channelId: 'voice-main' as string | null,
@@ -52,11 +53,18 @@ vi.mock('#/features/voice/voice-context', () => ({
 }))
 
 vi.mock('#/features/navigation/mobile-voice-channel-drawer-context', () => ({
-  useMobileVoiceChannelDrawer: () => ({
-    openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
-    closeVoiceChannelDrawer: vi.fn(),
-    channelId: null,
-  }),
+  useMobileVoiceChannelDrawer: () => {
+    if (!mocks.mobileDrawerProviderMounted) {
+      throw new Error(
+        'useMobileVoiceChannelDrawer must be used within MobileVoiceChannelDrawerProvider',
+      )
+    }
+    return {
+      openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
+      closeVoiceChannelDrawer: vi.fn(),
+      channelId: null,
+    }
+  },
 }))
 
 vi.mock('#/components/channels/channel-settings-dialog', () => ({
@@ -121,6 +129,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     mocks.navigate.mockClear()
     mocks.join.mockClear()
     mocks.openVoiceChannelDrawer.mockClear()
+    mocks.mobileDrawerProviderMounted = false
     mocks.pathname = '/app/'
     mocks.voice.channelId = 'voice-main'
     mocks.voice.status = 'connected'
@@ -175,6 +184,7 @@ describe('ChannelSidebarItem voice navigation', () => {
 
   it('opens mobile voice drawer instead of navigating on mobile route', () => {
     mocks.pathname = '/m/'
+    mocks.mobileDrawerProviderMounted = true
     mocks.voice.channelId = null
     mocks.voice.status = 'idle'
     renderVoiceItem('text-general')

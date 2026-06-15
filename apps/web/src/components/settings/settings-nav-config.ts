@@ -1,5 +1,6 @@
 import {
   BellIcon,
+  HeadphonesIcon,
   MonitorIcon,
   PaletteIcon,
   PencilFillIcon,
@@ -18,6 +19,7 @@ export const GENERAL_SETTINGS_NAV: {
   { id: 'account', label: 'Аккаунт', icon: PencilFillIcon },
   { id: 'voice', label: 'Голос и видео', icon: Volume2Icon },
   { id: 'sessions', label: 'Устройства', icon: MonitorIcon },
+  { id: 'integrations', label: 'Интеграции', icon: HeadphonesIcon },
   { id: 'notifications', label: 'Уведомления', icon: BellIcon },
   { id: 'appearance', label: 'Оформление', icon: PaletteIcon },
 ]

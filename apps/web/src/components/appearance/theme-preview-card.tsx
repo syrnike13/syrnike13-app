@@ -11,6 +11,7 @@ type ThemePreviewCardProps = {
   settings: AppearanceSettings
   prefersDark: boolean
   onSelect: () => void
+  onPlayNote?: () => void
 }
 
 export function ThemePreviewCard({
@@ -19,14 +20,13 @@ export function ThemePreviewCard({
   settings,
   prefersDark,
   onSelect,
+  onPlayNote,
 }: ThemePreviewCardProps) {
   const variant = previewVariantForTheme(theme, settings, prefersDark)
   const preview = themePreviewColors(theme, variant)
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <div
       className={cn(
         'group relative flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors',
         active
@@ -35,35 +35,47 @@ export function ThemePreviewCard({
       )}
     >
       <div className="flex gap-1.5">
-        <span
-          className="h-8 flex-1 rounded-md border border-black/10"
+        <button
+          type="button"
+          onClick={onSelect}
+          className="h-8 min-w-0 flex-1 rounded-md border border-black/10 text-left"
           style={{ backgroundColor: preview.background }}
-          aria-hidden
+          aria-label={`Выбрать палитру ${theme.name}`}
         />
-        <span
+        <button
+          type="button"
+          onClick={onSelect}
           className="h-8 w-8 rounded-md border border-black/10"
           style={{ backgroundColor: preview.primary }}
-          aria-hidden
+          aria-label={`Выбрать палитру ${theme.name}`}
         />
-        <span
-          className="h-8 w-8 rounded-md border border-black/10"
+        <button
+          type="button"
+          onClick={onPlayNote ?? onSelect}
+          className={cn(
+            'relative flex h-8 w-8 items-center justify-center rounded-md border border-black/10',
+            'transition-[box-shadow,transform] hover:ring-2 hover:ring-primary/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            onPlayNote && 'active:scale-95',
+          )}
           style={{ backgroundColor: preview.sidebar }}
-          aria-hidden
-        />
+          aria-label={`Сыграть ноту палитры ${theme.name}`}
+        >
+          <span className="sr-only">Сыграть ноту</span>
+        </button>
       </div>
-      <div>
+      <button type="button" onClick={onSelect} className="text-left">
         <p className="text-sm font-medium">{theme.name}</p>
         {theme.description ? (
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
             {theme.description}
           </p>
         ) : null}
-      </div>
+      </button>
       {active ? (
-        <span className="absolute top-2 right-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <span className="pointer-events-none absolute top-2 right-2 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
           <CheckIcon className="size-3" />
         </span>
       ) : null}
-    </button>
+    </div>
   )
 }

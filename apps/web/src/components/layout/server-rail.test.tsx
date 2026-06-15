@@ -6,7 +6,9 @@ import { forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerRail } from '#/components/layout/server-rail'
+import { easterModeStore } from '#/features/easter/easter-mode-store'
 import { syncStore } from '#/features/sync/sync-store'
+import { APP_LOADING_EASTER_EGG_SRC } from '#/lib/brand'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: forwardRef<
@@ -45,6 +47,8 @@ vi.mock('#/components/servers/create-server-dialog', () => ({
 
 describe('ServerRail', () => {
   beforeEach(() => {
+    localStorage.clear()
+    easterModeStore.setEnabled(false)
     syncStore.reset()
     syncStore.applyReady({
       users: [
@@ -74,6 +78,8 @@ describe('ServerRail', () => {
 
   afterEach(() => {
     cleanup()
+    easterModeStore.setEnabled(false)
+    localStorage.clear()
     syncStore.reset()
   })
 
@@ -82,5 +88,18 @@ describe('ServerRail', () => {
 
     expect(screen.getByTitle('Главная')).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()
+  })
+
+  it('replaces the home icon with the cat in easter mode', () => {
+    easterModeStore.setEnabled(true)
+
+    render(<ServerRail variant="desktop" />)
+
+    const homeButton = screen.getByTitle('Главная')
+    const cat = homeButton.querySelector('img')
+
+    expect(cat?.getAttribute('src')).toBe(APP_LOADING_EASTER_EGG_SRC)
+    expect(cat?.className).toContain('size-11')
+    expect(cat?.className).toContain('max-w-none')
   })
 })

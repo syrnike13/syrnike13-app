@@ -82,9 +82,14 @@ export function createMainWindow(loadUrl: string) {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      void shell.openExternal(url)
-      return { action: 'deny' }
+    try {
+      const protocol = new URL(url).protocol
+      if (protocol === 'http:' || protocol === 'https:' || protocol === 'spotify:') {
+        void shell.openExternal(url)
+        return { action: 'deny' }
+      }
+    } catch {
+      // Let Electron decide how to handle malformed internal URLs.
     }
     return { action: 'allow' }
   })

@@ -77,3 +77,6 @@ secrets.env
 /data/
 /data*/
 /.data/
+
+# Local design/mockup drafts
+/output/mockups/

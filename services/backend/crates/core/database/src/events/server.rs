@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::client::Ping;
+use super::client::{MusicPresence, Ping};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -15,6 +15,9 @@ pub enum ClientMessage {
         channel: String,
     },
     UserActivity,
+    UserMusicPresenceUpdate {
+        presence: Option<MusicPresence>,
+    },
     Subscribe {
         server_id: String,
     },
@@ -58,5 +61,47 @@ mod tests {
         };
 
         assert_eq!(operation_id, Some("op-join".to_string()));
+    }
+
+    #[test]
+    fn music_presence_update_deserializes_camel_case_payload() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "UserMusicPresenceUpdate",
+            "presence": {
+                "provider": "spotify",
+                "source": "desktop_now_playing",
+                "title": "PRAXX",
+                "artists": ["DK"],
+                "durationMs": 225000,
+                "progressMs": 15000,
+                "isPlaying": true,
+                "observedAt": 1781518000000u64
+            }
+        }))
+        .expect("music presence update deserializes");
+
+        let ClientMessage::UserMusicPresenceUpdate { presence } = message else {
+            panic!("expected UserMusicPresenceUpdate");
+        };
+
+        let presence = presence.expect("presence payload");
+        assert_eq!(presence.title, "PRAXX");
+        assert_eq!(presence.duration_ms, Some(225000));
+        assert!(presence.is_playing);
+    }
+
+    #[test]
+    fn music_presence_update_accepts_null_clear_signal() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "UserMusicPresenceUpdate",
+            "presence": null
+        }))
+        .expect("music presence clear deserializes");
+
+        let ClientMessage::UserMusicPresenceUpdate { presence } = message else {
+            panic!("expected UserMusicPresenceUpdate");
+        };
+
+        assert!(presence.is_none());
     }
 }

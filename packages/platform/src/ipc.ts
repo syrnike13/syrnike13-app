@@ -56,6 +56,8 @@ export const IPC = {
   mediaStreamEnded: 'syrnike-desktop:media:stream-ended',
   mediaStreamError: 'syrnike-desktop:media:stream-error',
   mediaEngineLost: 'syrnike-desktop:media:engine-lost',
+  musicGetCurrentPresence: 'syrnike-desktop:music:get-current-presence',
+  musicPresenceChanged: 'syrnike-desktop:music:presence-changed',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

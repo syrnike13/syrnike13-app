@@ -46,6 +46,12 @@ vi.mock('#/components/user/user-profile-card-header', () => ({
   UserProfileCardHeader: () => <div data-testid="profile-card-header" />,
 }))
 
+vi.mock('#/components/user/user-music-presence-card', () => ({
+  UserMusicPresenceCard: ({ className }: { className?: string }) => (
+    <div className={className} data-testid="music-presence-card" />
+  ),
+}))
+
 const targetUser = {
   _id: 'target-user',
   username: 'bob',
@@ -80,5 +86,19 @@ describe('UserProfileCard', () => {
       params: { channelId: 'dm-1' },
       search: { m: undefined },
     })
+  })
+
+  it('keeps music presence away from the popover bottom when it is the last block', () => {
+    render(
+      <UserProfileCard
+        user={{
+          ...targetUser,
+          _id: 'current-user',
+        }}
+      />,
+    )
+
+    const musicCard = screen.getByTestId('music-presence-card')
+    expect(musicCard.className).toContain('mb-4')
   })
 })

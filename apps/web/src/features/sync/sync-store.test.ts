@@ -796,3 +796,94 @@ describe('syncStore applyReady', () => {
     expect(syncStore.getState().selectedServerId).toBe('server-2')
   })
 })
+
+describe('syncStore music presence events', () => {
+  it('stores and clears user music presence updates', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'UserMusicPresence',
+      id: USER_ID,
+      presence: {
+        provider: 'spotify',
+        source: 'desktop_now_playing',
+        title: 'PRAXX',
+        artists: ['DK'],
+        album: 'Kino',
+        artworkUrl: 'https://cdn.example/praxx.jpg',
+        externalUrl: 'https://open.spotify.com/track/1',
+        durationMs: 225000,
+        progressMs: 15000,
+        isPlaying: true,
+        observedAt: 1_718_100_000_000,
+      },
+    })
+
+    expect(syncStore.getState().musicPresences[USER_ID]).toMatchObject({
+      provider: 'spotify',
+      title: 'PRAXX',
+      artists: ['DK'],
+    })
+
+    syncStore.handleGatewayEvent({
+      type: 'UserMusicPresence',
+      id: USER_ID,
+      presence: null,
+    })
+
+    expect(syncStore.getState().musicPresences[USER_ID]).toBeUndefined()
+  })
+
+  it('clears user music presence when a gateway patch says playback paused', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'UserMusicPresence',
+      id: USER_ID,
+      presence: {
+        provider: 'spotify',
+        source: 'desktop_now_playing',
+        title: 'PRAXX',
+        artists: ['DK'],
+        durationMs: 225000,
+        progressMs: 15000,
+        isPlaying: true,
+        observedAt: 1_718_100_000_000,
+      },
+    })
+
+    syncStore.handleGatewayEvent({
+      type: 'UserMusicPresence',
+      id: USER_ID,
+      presence: {
+        provider: 'spotify',
+        source: 'desktop_now_playing',
+        title: 'PRAXX',
+        artists: ['DK'],
+        durationMs: 225000,
+        progressMs: 45000,
+        isPlaying: false,
+        observedAt: 1_718_100_030_000,
+      },
+    })
+
+    expect(syncStore.getState().musicPresences[USER_ID]).toBeUndefined()
+  })
+
+  it('does not store paused music presence patches directly', () => {
+    syncStore.reset()
+
+    syncStore.setUserMusicPresence(USER_ID, {
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'Paused track',
+      artists: ['Artist'],
+      durationMs: 180000,
+      progressMs: 60000,
+      isPlaying: false,
+      observedAt: 1_718_100_000_000,
+    })
+
+    expect(syncStore.getState().musicPresences[USER_ID]).toBeUndefined()
+  })
+})

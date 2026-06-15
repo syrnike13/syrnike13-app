@@ -68,6 +68,36 @@ type ChannelSidebarItemProps = {
 }
 
 export function ChannelSidebarItem({
+  ...props
+}: ChannelSidebarItemProps) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const isMobile = pathname.startsWith('/m')
+
+  if (isMobile) {
+    return <MobileChannelSidebarItem {...props} />
+  }
+
+  return (
+    <ChannelSidebarItemContent
+      {...props}
+      isMobile={false}
+      openVoiceChannelDrawer={undefined}
+    />
+  )
+}
+
+function MobileChannelSidebarItem(props: ChannelSidebarItemProps) {
+  const { openVoiceChannelDrawer } = useMobileVoiceChannelDrawer()
+  return (
+    <ChannelSidebarItemContent
+      {...props}
+      isMobile
+      openVoiceChannelDrawer={openVoiceChannelDrawer}
+    />
+  )
+}
+
+function ChannelSidebarItemContent({
   channel,
   activeChannelId,
   users,
@@ -77,14 +107,16 @@ export function ChannelSidebarItem({
   canInvite = false,
   dragHandleProps,
   dragging = false,
-}: ChannelSidebarItemProps) {
+  isMobile,
+  openVoiceChannelDrawer,
+}: ChannelSidebarItemProps & {
+  isMobile: boolean
+  openVoiceChannelDrawer: ((channelId: string) => void) | undefined
+}) {
   const auth = useAuth()
   const voice = useVoice()
   const navigate = useNavigate()
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const isMobile = pathname.startsWith('/m')
   const channelRoute = isMobile ? '/m/c/$channelId' : '/app/c/$channelId'
-  const { openVoiceChannelDrawer } = useMobileVoiceChannelDrawer()
   const token = auth.session?.token
   const channelRouteMatch = useMatch({
     from: channelRoute,
@@ -251,7 +283,7 @@ export function ChannelSidebarItem({
     event.preventDefault()
 
     if (isMobile) {
-      openVoiceChannelDrawer(channel._id)
+      openVoiceChannelDrawer?.(channel._id)
       return
     }
 

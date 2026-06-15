@@ -9,6 +9,8 @@ import type {
   Server,
   User,
 } from '@syrnike13/api-types'
+import { normalizeMusicPresencePatch } from '@syrnike13/platform'
+import type { MusicPresence, MusicPresencePatch } from '@syrnike13/platform'
 
 import type { GatewayServerEvent, ReadyPayload, SyncState } from './types'
 import type { UserVoiceState, VoiceParticipantsByChannel } from './voice-types'
@@ -36,6 +38,7 @@ function emptyState(): SyncState {
     typingUsers: {},
     voiceParticipants: {},
     voiceCalls: {},
+    musicPresences: {},
     dismissedVoiceCallKeys: {},
   }
 }
@@ -236,6 +239,16 @@ function voiceChannelMapEquals(
     if (!voiceStateEquals(left?.[key], right[key])) return false
   }
   return true
+}
+
+function musicPresenceEquals(
+  left: MusicPresence | undefined,
+  right: MusicPresence | null,
+) {
+  if (left === undefined && right === null) return true
+  if (left === right) return true
+  if (!left || !right) return false
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 export const syncStore = {
@@ -501,6 +514,26 @@ export const syncStore = {
       declinedRecipients: call.declinedRecipients.includes(userId)
         ? call.declinedRecipients
         : [...call.declinedRecipients, userId],
+    })
+  },
+
+  setUserMusicPresence(userId: string, presence: MusicPresencePatch) {
+    const existing = state.musicPresences[userId]
+    const activePresence = presence?.isPlaying === false ? null : presence
+    if (musicPresenceEquals(existing, activePresence)) return
+
+    if (activePresence === null) {
+      if (!existing) return
+      const { [userId]: _, ...musicPresences } = state.musicPresences
+      setState({ musicPresences })
+      return
+    }
+
+    setState({
+      musicPresences: {
+        ...state.musicPresences,
+        [userId]: activePresence,
+      },
     })
   },
 
@@ -1266,6 +1299,21 @@ export const syncStore = {
         const existing = state.users[id]
         if (existing) {
           this.upsertUser({ ...existing, online })
+        }
+        if (!online) {
+          this.setUserMusicPresence(id, null)
+        }
+        break
+      }
+      case 'UserMusicPresence': {
+        const { id, presence } = event as {
+          id?: string
+          presence?: unknown
+        }
+        if (!id) break
+        const normalized = normalizeMusicPresencePatch(presence)
+        if (normalized !== undefined) {
+          this.setUserMusicPresence(id, normalized)
         }
         break
       }

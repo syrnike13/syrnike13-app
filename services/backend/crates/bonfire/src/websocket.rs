@@ -22,7 +22,9 @@ use redis_kiss::{get_connection, AsyncCommands, PayloadType, REDIS_PAYLOAD_TYPE,
 use syrnike_config::report_internal_error;
 use syrnike_database::{
     events::{
-        client::{EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind},
+        client::{
+            EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind, MusicPresence,
+        },
         server::ClientMessage,
     },
     iso8601_timestamp::Timestamp,
@@ -585,6 +587,16 @@ async fn worker(
                         touch_session(&user_id, presence_session_id, client_kind).await;
                         apply_system_activity_presence(db, &user_id, client_kind).await;
                     }
+                    ClientMessage::UserMusicPresenceUpdate { presence } => {
+                        touch_session(&user_id, presence_session_id, client_kind).await;
+                        apply_system_activity_presence(db, &user_id, client_kind).await;
+                        publish_music_presence_update(
+                            &user_id,
+                            presence,
+                            &active_servers,
+                        )
+                        .await;
+                    }
                     ClientMessage::Subscribe { server_id } => {
                         let mut servers = active_servers.lock().await;
                         let has_item = servers.contains_key(&server_id);
@@ -683,6 +695,30 @@ async fn worker(
                 }
             }
         }
+    }
+}
+
+async fn publish_music_presence_update(
+    user_id: &str,
+    presence: Option<MusicPresence>,
+    active_servers: &Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
+) {
+    let event = EventV1::UserMusicPresence {
+        id: user_id.to_string(),
+        presence,
+    };
+
+    event.clone().p(user_id.to_string()).await;
+
+    let server_ids = active_servers
+        .lock()
+        .await
+        .iter()
+        .map(|(server_id, _)| server_id.clone())
+        .collect::<Vec<_>>();
+
+    for server_id in server_ids {
+        event.clone().server(server_id).await;
     }
 }
 

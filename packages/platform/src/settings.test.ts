@@ -170,6 +170,114 @@ describe('desktop local settings contract', () => {
     })
   })
 
+  it('keeps saved easter mode settings', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        easter: {
+          enabled: true,
+        },
+      }).easter,
+    ).toEqual({
+      enabled: true,
+    })
+  })
+
+  it('normalizes easter mode setting patches', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        easter: {
+          enabled: true,
+          unknown: false,
+        },
+      }),
+    ).toEqual({
+      easter: {
+        enabled: true,
+      },
+    })
+  })
+
+  it('keeps saved desktop music integration settings', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        music: {
+          enabled: false,
+          showInProfile: false,
+          providers: {
+            spotify: {
+              enabled: true,
+              source: 'spotify_api',
+            },
+            apple_music: {
+              enabled: true,
+              source: 'desktop_now_playing',
+            },
+            yandex_music: {
+              enabled: true,
+              source: 'desktop_now_playing',
+              resolveExternalLinks: false,
+            },
+          },
+        },
+      }).music,
+    ).toEqual({
+      enabled: false,
+      showInProfile: false,
+      providers: {
+        spotify: {
+          enabled: true,
+          source: 'spotify_api',
+          resolveExternalLinks: true,
+        },
+        apple_music: {
+          enabled: true,
+          source: 'desktop_now_playing',
+          resolveExternalLinks: true,
+        },
+        yandex_music: {
+          enabled: true,
+          source: 'desktop_now_playing',
+          resolveExternalLinks: false,
+        },
+      },
+    })
+  })
+
+  it('normalizes desktop music integration setting patches', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        music: {
+          enabled: true,
+          providers: {
+            spotify: {
+              enabled: false,
+              source: 'desktop_now_playing',
+            },
+            yandex_music: {
+              enabled: true,
+              source: 'unknown',
+              resolveExternalLinks: true,
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      music: {
+        enabled: true,
+        providers: {
+          spotify: {
+            enabled: false,
+            source: 'desktop_now_playing',
+          },
+          yandex_music: {
+            enabled: true,
+            resolveExternalLinks: true,
+          },
+        },
+      },
+    })
+  })
+
   it('normalizes overlay patches without filling unrelated namespaces', () => {
     expect(
       normalizeDesktopLocalSettingsPatch({

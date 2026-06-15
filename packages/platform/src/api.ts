@@ -16,6 +16,7 @@ import type {
   DesktopOverlayState,
 } from './overlay'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
+import type { MusicPresencePatch } from './music'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -201,6 +202,10 @@ export interface SyrnikeDesktopApi {
     check(): Promise<DesktopUpdateState>
     install(): void
     onStateChange(handler: (state: DesktopUpdateState) => void): () => void
+  }
+  music: {
+    getCurrentPresence(): Promise<MusicPresencePatch>
+    onPresenceChange(handler: (presence: MusicPresencePatch) => void): () => void
   }
   hotkeys: {
     getBindings(): Promise<HotkeyBinding[]>

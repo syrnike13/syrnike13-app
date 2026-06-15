@@ -1,5 +1,6 @@
 import type { DesktopSoundSettings } from '@syrnike13/platform'
 
+import { easterModeStore } from '#/features/easter/easter-mode-store'
 import type { SoundEventId } from './sound-events'
 import { resolveSoundClip, type SoundEventPackId } from './sound-packs'
 import { soundPreferenceStore } from './sound-preference-store'
@@ -15,14 +16,14 @@ type SoundPlayerDeps = {
   createAudio: (src: string) => AudioLike
   getPreferences: () => DesktopSoundSettings
   getEventPackId: () => SoundEventPackId | null
-  random?: () => number
+  isAppEasterModeEnabled: () => boolean
 }
 
 export function createSoundPlayer({
   createAudio,
   getPreferences,
   getEventPackId,
-  random = Math.random,
+  isAppEasterModeEnabled,
 }: SoundPlayerDeps) {
   return {
     play(eventId: SoundEventId) {
@@ -33,8 +34,7 @@ export function createSoundPlayer({
         eventId,
         authorPackId: preferences.authorPackId,
         eventPackId: getEventPackId(),
-        easterEnabled: preferences.easterEnabled,
-        random,
+        appEasterModeEnabled: isAppEasterModeEnabled(),
       })
       if (!clip) return
 
@@ -64,6 +64,7 @@ export const soundPlayer = createSoundPlayer({
   createAudio: createBrowserAudio,
   getPreferences: () => soundPreferenceStore.getState(),
   getEventPackId: () => soundRuntimeConfigStore.getState().eventPackId,
+  isAppEasterModeEnabled: () => easterModeStore.getState(),
 })
 
 export function playUiSound(eventId: SoundEventId) {

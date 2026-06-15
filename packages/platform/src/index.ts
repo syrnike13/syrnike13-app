@@ -43,6 +43,14 @@ export {
   normalizeDesktopOverlaySnapshot,
 } from './overlay'
 export type {
+  MusicPresence,
+  MusicPresencePatch,
+} from './music'
+export {
+  normalizeMusicPresence,
+  normalizeMusicPresencePatch,
+} from './music'
+export type {
   ActivityDetails,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
@@ -70,11 +78,14 @@ export { IPC, type IpcChannel } from './ipc'
 export {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_DESKTOP_EASTER_SETTINGS,
+  DEFAULT_DESKTOP_MUSIC_SETTINGS,
   DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   DEFAULT_DESKTOP_SOUND_SETTINGS,
   DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   DEFAULT_DESKTOP_VOICE_SETTINGS,
   DEFAULT_SOUND_AUTHOR_PACK_ID,
+  MUSIC_PROVIDER_IDS,
   DEFAULT_THEME_ID,
   SOUND_AUTHOR_PACK_IDS,
   normalizeAppearanceColorMode,
@@ -82,6 +93,10 @@ export {
   normalizeAppearanceSettingsPatch,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
+  normalizeDesktopEasterSettings,
+  normalizeDesktopEasterSettingsPatch,
+  normalizeDesktopMusicSettings,
+  normalizeDesktopMusicSettingsPatch,
   normalizeDesktopOverlaySettings,
   normalizeDesktopOverlaySettingsPatch,
   normalizeDesktopSoundSettings,
@@ -93,6 +108,12 @@ export {
   type AppearanceSettingsPatch,
   type DesktopLocalSettings,
   type DesktopLocalSettingsPatch,
+  type DesktopEasterSettings,
+  type DesktopEasterSettingsPatch,
+  type DesktopMusicProviderSettings,
+  type DesktopMusicProviderSettingsPatch,
+  type DesktopMusicSettings,
+  type DesktopMusicSettingsPatch,
   type DesktopOverlayGameSettings,
   type DesktopOverlaySettings,
   type DesktopOverlaySettingsPatch,
@@ -105,5 +126,7 @@ export {
   type DesktopVoiceListenerSettingsPatch,
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
+  type MusicPresenceSource,
+  type MusicProviderId,
   type SoundAuthorPackId,
 } from './settings'

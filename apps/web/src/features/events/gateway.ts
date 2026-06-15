@@ -1,3 +1,5 @@
+import type { MusicPresencePatch } from '@syrnike13/platform'
+
 export type GatewayState =
   | 'idle'
   | 'connecting'
@@ -134,6 +136,13 @@ export class EventsGateway {
 
   userActivity() {
     this.#sendConnected({ type: 'UserActivity' })
+  }
+
+  musicPresence(presence: MusicPresencePatch) {
+    this.sendReliable(
+      { type: 'UserMusicPresenceUpdate', presence },
+      'music-presence',
+    )
   }
 
   #openSocket(isReconnect: boolean) {

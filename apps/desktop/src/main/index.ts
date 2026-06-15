@@ -133,6 +133,10 @@ function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
   desktopLocalSettings = settings
 }
 
+function getDesktopLocalSettings() {
+  return desktopLocalSettings
+}
+
 async function ensureAppCreated() {
   if (mainWindow && !mainWindow.isDestroyed()) return
   if (creatingApp) {
@@ -249,6 +253,7 @@ async function createApp() {
       setCloseToTray,
       setOpenAtLogin,
       onLocalSettingsUpdated: applyDesktopLocalSettings,
+      getLocalSettings: getDesktopLocalSettings,
       showWindow: showMainWindow,
       localSettingsPath: desktopLocalSettingsPath(),
       localSettingsDefaults: desktopLocalSettingsDefaults(),

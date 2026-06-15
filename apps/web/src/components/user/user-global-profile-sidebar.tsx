@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserMusicPresenceCard } from '#/components/user/user-music-presence-card'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { Button } from '#/components/ui/button'
 import {
@@ -359,6 +360,8 @@ export function UserGlobalProfileSidebar({
         </div>
 
         <div className="mt-4 border-t border-border/50" />
+
+        <UserMusicPresenceCard userId={user._id} className="mt-4" />
 
         {/* Bio */}
         {profileBio ? (

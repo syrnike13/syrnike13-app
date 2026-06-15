@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { SettingsDesktopPanel } from '#/components/settings/settings-desktop-panel'
 import { SettingsHotkeysPanel } from '#/components/settings/settings-hotkeys-panel'
+import { SettingsIntegrationsPanel } from '#/components/settings/settings-integrations-panel'
 import { SettingsOverlayPanel } from '#/components/settings/settings-overlay-panel'
 import { NotificationSettings } from '#/components/notifications/notification-settings'
 import { SettingsProfilePanel } from '#/components/settings/settings-profile-panel'
@@ -28,6 +29,7 @@ const SECTION_TITLES: Record<SettingsSection, string> = {
   account: 'Аккаунт',
   voice: 'Голос и видео',
   sessions: 'Устройства',
+  integrations: 'Интеграции',
   notifications: 'Уведомления',
   appearance: 'Оформление',
   hotkeys: 'Горячие клавиши',
@@ -276,6 +278,8 @@ export function SettingsPanelContent({ section }: { section: SettingsSection }) 
       return <SettingsVoicePanel />
     case 'sessions':
       return <SettingsSessionsPanel />
+    case 'integrations':
+      return <SettingsIntegrationsPanel />
     case 'notifications':
       return <SettingsNotificationsPanel />
     case 'appearance':

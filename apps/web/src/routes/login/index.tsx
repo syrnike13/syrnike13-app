@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
+import { useLoadingEasterEggPreviewGate } from '#/components/layout/gateway-loading-easter-egg'
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
 import { LoginForm } from '#/features/auth/login-form'
 import { useAuth } from '#/features/auth/auth-context'
@@ -16,8 +17,10 @@ function LoginPage() {
   const auth = useAuth()
   const navigate = useNavigate()
   const [authChecked, setAuthChecked] = useState(false)
+  const loadingEasterEggPreviewReady = useLoadingEasterEggPreviewGate()
 
   useEffect(() => {
+    if (!loadingEasterEggPreviewReady) return
     if (!auth.hydrated) return
 
     const stored = isDesktopRuntime() ? auth.session : loadSession()
@@ -33,6 +36,7 @@ function LoginPage() {
     setAuthChecked(true)
   }, [
     auth.hydrated,
+    loadingEasterEggPreviewReady,
     auth.mfaChallenge,
     auth.needsOnboarding,
     auth.onboardingChecked,
@@ -46,7 +50,12 @@ function LoginPage() {
       (Boolean(auth.session) && !auth.mfaChallenge)) &&
     auth.onboardingChecked
 
-  if (!auth.hydrated || !authChecked || redirectingToApp) {
+  if (
+    !loadingEasterEggPreviewReady ||
+    !auth.hydrated ||
+    !authChecked ||
+    redirectingToApp
+  ) {
     return <GatewayLoadingScreen gatewayState={auth.gatewayState} />
   }
 

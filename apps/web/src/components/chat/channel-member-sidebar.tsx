@@ -1,4 +1,5 @@
 import type { Channel, Server } from '@syrnike13/api-types'
+import type { MusicPresence } from '@syrnike13/platform'
 import { useMemo } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -59,6 +60,10 @@ function MemberSidebarRow({
   const { member, user } = entry
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
+  const musicPresence = useSyncStore((s) => s.musicPresences[user._id])
+  const musicStatus = musicStatusLabel(musicPresence)
+  const statusLine = showStatus ? musicStatus ?? customStatus : null
+  const isMusicStatus = Boolean(showStatus && musicStatus)
 
   return (
     <li>
@@ -74,7 +79,7 @@ function MemberSidebarRow({
         <button
           type="button"
           className={cn(
-            'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
+            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
             dimmed && 'opacity-60',
           )}
         >
@@ -86,9 +91,23 @@ function MemberSidebarRow({
             >
               {displayName}
             </p>
-            {showStatus && customStatus ? (
-              <p className="truncate text-[11px] text-muted-foreground">
-                {customStatus}
+            {statusLine ? (
+              <p
+                className={cn(
+                  'mt-0.5 flex min-w-0 items-center gap-1 text-[11px] leading-none text-muted-foreground',
+                  isMusicStatus && 'text-[#9aa0a6]',
+                )}
+                title={statusLine}
+              >
+                {isMusicStatus ? (
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 text-[12px] leading-none text-[#23a559]"
+                  >
+                    ♪
+                  </span>
+                ) : null}
+                <span className="truncate">{statusLine}</span>
               </p>
             ) : null}
           </div>
@@ -96,6 +115,17 @@ function MemberSidebarRow({
       </UserInteractiveShell>
     </li>
   )
+}
+
+function musicStatusLabel(presence: MusicPresence | undefined) {
+  const title = presence?.title.trim()
+  if (!title) return null
+
+  const artists = presence.artists
+    .map((artist) => artist.trim())
+    .filter(Boolean)
+    .join(', ')
+  return `Слушает: ${artists ? `${artists} — ${title}` : title}`
 }
 
 export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
