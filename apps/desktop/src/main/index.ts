@@ -10,6 +10,7 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron'
 import type { DesktopLocalSettings, DesktopOverlaySettings } from '@syrnike13/platform'
+import type { DesktopTrayVoiceState } from '@syrnike13/platform'
 
 import {
   disposeDesktopAutoUpdate,
@@ -43,6 +44,11 @@ import {
 import { desktopSessionPath } from './desktop-session'
 import { routeFromDeepLink } from './deep-links'
 import { applyLoginItemSettings } from './login-item'
+import {
+  normalizeDesktopTrayVoiceState,
+  TRAY_ICON_ASSET_BY_STATE,
+} from './tray-icon'
+import { DESKTOP_APP_USER_MODEL_ID } from './desktop-app-identity'
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null
@@ -52,6 +58,7 @@ let desktopIpcRegistered = false
 let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
 let desktopLocalSettings: DesktopLocalSettings = desktopLocalSettingsDefaults()
 let creatingApp: Promise<void> | null = null
+let trayVoiceState: DesktopTrayVoiceState = 'default'
 
 const isDev = !app.isPackaged
 
@@ -60,6 +67,10 @@ if (isDev) {
     'userData',
     path.join(app.getPath('appData'), 'syrnike13-desktop-dev'),
   )
+}
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId(DESKTOP_APP_USER_MODEL_ID)
 }
 
 function configureChromium() {
@@ -192,9 +203,17 @@ function quitApp() {
 }
 
 function trayIcon() {
-  const icon = nativeImage.createFromPath(resolveDesktopAsset('app-logo.png'))
+  const assetName = TRAY_ICON_ASSET_BY_STATE[trayVoiceState]
+  const icon = nativeImage.createFromPath(resolveDesktopAsset(assetName))
   if (process.platform === 'darwin') icon.setTemplateImage(true)
   return icon
+}
+
+function setTrayVoiceState(state: DesktopTrayVoiceState) {
+  const nextState = normalizeDesktopTrayVoiceState(state)
+  if (trayVoiceState === nextState) return
+  trayVoiceState = nextState
+  tray?.setImage(trayIcon())
 }
 
 function updateTrayMenu() {
@@ -252,6 +271,7 @@ async function createApp() {
       getWindowPreferences: getDesktopPreferences,
       setCloseToTray,
       setOpenAtLogin,
+      setTrayVoiceState,
       onLocalSettingsUpdated: applyDesktopLocalSettings,
       getLocalSettings: getDesktopLocalSettings,
       showWindow: showMainWindow,

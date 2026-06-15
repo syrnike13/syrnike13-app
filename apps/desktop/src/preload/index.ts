@@ -13,6 +13,7 @@ import type {
   DesktopPlatformInfo,
   DesktopStoredSession,
   DesktopUpdateState,
+  DesktopTrayVoiceState,
   HotkeyActivationEvent,
   HotkeyAction,
   HotkeyBinding,
@@ -54,6 +55,11 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   getVersions() {
     return ipcRenderer.invoke(IPC.versions)
   },
+  clipboard: {
+    writeText(text: string) {
+      return ipcRenderer.invoke(IPC.clipboardWriteText, text)
+    },
+  },
   window: {
     minimize() {
       ipcRenderer.send(IPC.windowMinimize)
@@ -86,6 +92,11 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
     clear() {
       return ipcRenderer.invoke(IPC.activityClear)
+    },
+  },
+  tray: {
+    setVoiceState(state: DesktopTrayVoiceState) {
+      return ipcRenderer.invoke(IPC.traySetVoiceState, state)
     },
   },
   auth: {

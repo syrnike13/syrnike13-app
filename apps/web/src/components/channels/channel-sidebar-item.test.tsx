@@ -53,18 +53,11 @@ vi.mock('#/features/voice/voice-context', () => ({
 }))
 
 vi.mock('#/features/navigation/mobile-voice-channel-drawer-context', () => ({
-  useMobileVoiceChannelDrawer: () => {
-    if (!mocks.mobileDrawerProviderMounted) {
-      throw new Error(
-        'useMobileVoiceChannelDrawer must be used within MobileVoiceChannelDrawerProvider',
-      )
-    }
-    return {
-      openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
-      closeVoiceChannelDrawer: vi.fn(),
-      channelId: null,
-    }
-  },
+  useOptionalMobileVoiceChannelDrawer: () => ({
+    openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
+    closeVoiceChannelDrawer: vi.fn(),
+    channelId: null,
+  }),
 }))
 
 vi.mock('#/components/channels/channel-settings-dialog', () => ({

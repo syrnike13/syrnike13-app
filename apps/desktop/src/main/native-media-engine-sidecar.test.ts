@@ -297,7 +297,18 @@ describe('native media engine sidecar protocol', () => {
         interval_frames: 60,
         target_fps: 60,
         late_frames: 0,
+        no_frame_count: 2,
+        repeated_frame_count: 3,
+        recoverable_lost_count: 1,
         avg_capture_us: 3200,
+        avg_readback_us: 1100,
+        avg_scale_us: 900,
+        avg_publish_us: 700,
+        source_width: 2560,
+        source_height: 1440,
+        content_width: 1920,
+        content_height: 1080,
+        capture_thread_mmcss: true,
         method: 'wgc',
       }),
     )
@@ -308,8 +319,37 @@ describe('native media engine sidecar protocol', () => {
       expect(event.interval_frames).toBe(60)
       expect(event.target_fps).toBe(60)
       expect(event.late_frames).toBe(0)
+      expect(event.no_frame_count).toBe(2)
+      expect(event.repeated_frame_count).toBe(3)
+      expect(event.recoverable_lost_count).toBe(1)
       expect(event.avg_capture_us).toBe(3200)
+      expect(event.avg_readback_us).toBe(1100)
+      expect(event.avg_scale_us).toBe(900)
+      expect(event.avg_publish_us).toBe(700)
+      expect(event.source_width).toBe(2560)
+      expect(event.source_height).toBe(1440)
+      expect(event.content_width).toBe(1920)
+      expect(event.content_height).toBe(1080)
+      expect(event.capture_thread_mmcss).toBe(true)
       expect(mapFrameMethod(event.method ?? '')).toBe('wgc')
+    }
+  })
+
+  it('parses native screen capture end events', () => {
+    const event = parseSidecarEvent(
+      JSON.stringify({
+        type: 'screen_capture_ended',
+        session_id: 'screen-session-1',
+        reason: 'target_closed',
+        method: 'wgc',
+      }),
+    )
+
+    expect(event?.type).toBe('screen_capture_ended')
+    if (event?.type === 'screen_capture_ended') {
+      expect(event.session_id).toBe('screen-session-1')
+      expect(event.reason).toBe('target_closed')
+      expect(event.method).toBe('wgc')
     }
   })
 

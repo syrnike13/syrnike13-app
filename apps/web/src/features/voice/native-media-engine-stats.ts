@@ -25,7 +25,18 @@ export type NativeMediaEngineDebugState = {
   videoFrames?: number
   videoIntervalFrames?: number
   videoLateFrames?: number
+  videoNoFrameCount?: number
+  videoRepeatedFrameCount?: number
+  videoRecoverableLostCount?: number
   videoAvgCaptureUs?: number
+  videoAvgReadbackUs?: number
+  videoAvgScaleUs?: number
+  videoAvgPublishUs?: number
+  videoSourceWidth?: number
+  videoSourceHeight?: number
+  videoContentWidth?: number
+  videoContentHeight?: number
+  captureThreadMmcss?: boolean
 }
 
 const emptyMethods = (): NativeMediaFrameStats => ({
@@ -83,7 +94,18 @@ export const nativeMediaEngineStatsStore = {
       videoFrames?: number
       videoIntervalFrames?: number
       videoLateFrames?: number
+      videoNoFrameCount?: number
+      videoRepeatedFrameCount?: number
+      videoRecoverableLostCount?: number
       videoAvgCaptureUs?: number
+      videoAvgReadbackUs?: number
+      videoAvgScaleUs?: number
+      videoAvgPublishUs?: number
+      videoSourceWidth?: number
+      videoSourceHeight?: number
+      videoContentWidth?: number
+      videoContentHeight?: number
+      captureThreadMmcss?: boolean
     },
   ) {
     state = snapshot({
@@ -106,7 +128,18 @@ export const nativeMediaEngineStatsStore = {
       videoFrames: video?.videoFrames,
       videoIntervalFrames: video?.videoIntervalFrames,
       videoLateFrames: video?.videoLateFrames,
+      videoNoFrameCount: video?.videoNoFrameCount,
+      videoRepeatedFrameCount: video?.videoRepeatedFrameCount,
+      videoRecoverableLostCount: video?.videoRecoverableLostCount,
       videoAvgCaptureUs: video?.videoAvgCaptureUs,
+      videoAvgReadbackUs: video?.videoAvgReadbackUs,
+      videoAvgScaleUs: video?.videoAvgScaleUs,
+      videoAvgPublishUs: video?.videoAvgPublishUs,
+      videoSourceWidth: video?.videoSourceWidth,
+      videoSourceHeight: video?.videoSourceHeight,
+      videoContentWidth: video?.videoContentWidth,
+      videoContentHeight: video?.videoContentHeight,
+      captureThreadMmcss: video?.captureThreadMmcss,
     })
     emit()
   },

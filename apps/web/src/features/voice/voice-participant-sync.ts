@@ -37,6 +37,16 @@ export function patchLocalVoiceDeafen(
   })
 }
 
+export function patchLocalVoiceCamera(
+  channelId: string,
+  userId: string,
+  cameraEnabled: boolean,
+) {
+  syncStore.patchVoiceParticipant(channelId, userId, {
+    camera: cameraEnabled,
+  })
+}
+
 /** Только id участников комнаты — для stage media, не для mute/deafen. */
 export function liveKitRoomParticipantIds(
   room: LiveKitRoomParticipantSource,

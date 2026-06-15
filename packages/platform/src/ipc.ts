@@ -1,6 +1,7 @@
 /** Каналы IPC между renderer (web) и main process. */
 export const IPC = {
   versions: 'syrnike-desktop:versions',
+  clipboardWriteText: 'syrnike-desktop:clipboard:write-text',
   windowMinimize: 'syrnike-desktop:window:minimize',
   windowMaximize: 'syrnike-desktop:window:maximize',
   windowClose: 'syrnike-desktop:window:close',
@@ -15,6 +16,7 @@ export const IPC = {
   updatesStateChanged: 'syrnike-desktop:updates:state-changed',
   activitySet: 'syrnike-desktop:activity:set',
   activityClear: 'syrnike-desktop:activity:clear',
+  traySetVoiceState: 'syrnike-desktop:tray:set-voice-state',
   authLoadSession: 'syrnike-desktop:auth:load-session',
   authSaveSession: 'syrnike-desktop:auth:save-session',
   authClearSession: 'syrnike-desktop:auth:clear-session',

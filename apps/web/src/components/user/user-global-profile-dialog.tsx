@@ -18,6 +18,7 @@ import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { writeClipboardText } from '#/lib/clipboard'
 
 type UserGlobalProfileDialogProps = {
   user: User
@@ -88,7 +89,7 @@ export function UserGlobalProfileDialog({
 
   async function copyUserId() {
     try {
-      await navigator.clipboard.writeText(user._id)
+      await writeClipboardText(user._id)
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')

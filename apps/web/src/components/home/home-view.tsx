@@ -39,6 +39,7 @@ import { selectFriendRequestNotificationBadge } from '#/features/notifications/n
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listUsersByRelationship } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
+import { writeClipboardText } from '#/lib/clipboard'
 import { isUserOnline, presenceLabel } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
@@ -81,7 +82,7 @@ function HomeFriendRow({
 
   async function copyUserId() {
     try {
-      await navigator.clipboard.writeText(user._id)
+      await writeClipboardText(user._id)
       toast.success('ID скопирован')
     } catch {
       toast.error('Не удалось скопировать')

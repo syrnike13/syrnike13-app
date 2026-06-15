@@ -44,11 +44,12 @@ import {
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
-import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
+import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoice } from '#/features/voice/voice-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { canManageChannel } from '#/lib/permissions'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
+import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 import { publicAppUrl } from '#/lib/public-origin'
 import { cn } from '#/lib/utils'
@@ -87,12 +88,12 @@ export function ChannelSidebarItem({
 }
 
 function MobileChannelSidebarItem(props: ChannelSidebarItemProps) {
-  const { openVoiceChannelDrawer } = useMobileVoiceChannelDrawer()
+  const mobileDrawer = useOptionalMobileVoiceChannelDrawer()
   return (
     <ChannelSidebarItemContent
       {...props}
       isMobile
-      openVoiceChannelDrawer={openVoiceChannelDrawer}
+      openVoiceChannelDrawer={mobileDrawer?.openVoiceChannelDrawer}
     />
   )
 }
@@ -167,7 +168,7 @@ function ChannelSidebarItemContent({
 
       const settingsChannelId = channelRouteMatch?.search?.settingsChannel
       const viewingDeletedChannel =
-        channelRouteMatch?.params.channelId === channel._id ||
+        channelRouteMatch?.params?.channelId === channel._id ||
         settingsChannelId === channel._id
 
       if (!viewingDeletedChannel) return
@@ -238,7 +239,7 @@ function ChannelSidebarItemContent({
   async function copyLink() {
     const url = publicAppUrl(`/app/c/${channel._id}`)
     try {
-      await navigator.clipboard.writeText(url)
+      await writeClipboardText(url)
       toast.success('Ссылка скопирована')
     } catch {
       toast.error('Не удалось скопировать')
@@ -251,7 +252,7 @@ function ChannelSidebarItemContent({
       const invite = await createChannelInvite(token, channel._id)
       const code = '_id' in invite ? invite._id : ''
       if (code) {
-        await navigator.clipboard.writeText(inviteUrl(code))
+        await writeClipboardText(inviteUrl(code))
         toast.success('Приглашение скопировано')
       }
     } catch (error) {

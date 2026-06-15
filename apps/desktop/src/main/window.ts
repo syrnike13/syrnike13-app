@@ -7,6 +7,7 @@ import {
 
 import { installMediaPermissions } from './media-permissions'
 import { resolveDesktopAsset, resolvePreloadScript } from './paths'
+import { desktopWindowIconAssetName } from './desktop-app-identity'
 
 const isMac = process.platform === 'darwin'
 
@@ -58,7 +59,7 @@ export function createMainWindow(loadUrl: string) {
     show: false,
     backgroundColor: DESKTOP_WINDOW_BACKGROUND,
     title: 'syrnike13',
-    icon: resolveDesktopAsset('app-logo.png'),
+    icon: resolveDesktopAsset(desktopWindowIconAssetName()),
     ...(isMac
       ? {
           titleBarStyle: 'hiddenInset' as const,

@@ -849,6 +849,21 @@ describe('native media engine entrypoint', () => {
     expect(source).toContain('await stopPromise')
   })
 
+  it('stops native screen capture when the selected window closes', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const endedBranch = source.match(
+      /if \(event\.type === 'screen_capture_ended'\) \{[\s\S]*?return\r?\n    \}/,
+    )?.[0]
+
+    expect(endedBranch).toBeDefined()
+    expect(endedBranch).toContain('IPC.mediaStreamEnded')
+    expect(endedBranch).toContain("cmd: 'stop_screen_capture'")
+    expect(endedBranch).toContain('stopMediaEngineSession(event.session_id, true)')
+  })
+
   it('requests borderless Windows Graphics Capture for window sessions when allowed', () => {
     const source = readFileSync(
       fileURLToPath(

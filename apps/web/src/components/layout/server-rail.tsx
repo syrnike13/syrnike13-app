@@ -66,7 +66,10 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
 
   const homeMatch = useMatch({ from: homePath, shouldThrow: false })
   const channelMatch = useMatch({ from: channelPath, shouldThrow: false })
-  const activeChannelId = channelMatch ? channelMatch.params.channelId : undefined
+  const activeChannelId =
+    channelMatch && 'params' in channelMatch
+      ? channelMatch.params.channelId
+      : undefined
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
 
   const homeActive =

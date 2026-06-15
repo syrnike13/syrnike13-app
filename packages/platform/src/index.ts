@@ -59,6 +59,7 @@ export type {
   DesktopOs,
   DesktopPlatformInfo,
   DesktopStoredSession,
+  DesktopTrayVoiceState,
   DesktopVersions,
   DesktopUpdateState,
   DesktopWindowPreferences,

@@ -56,3 +56,7 @@ export function useMobileVoiceChannelDrawer() {
   }
   return context
 }
+
+export function useOptionalMobileVoiceChannelDrawer() {
+  return useContext(MobileVoiceChannelDrawerContext)
+}

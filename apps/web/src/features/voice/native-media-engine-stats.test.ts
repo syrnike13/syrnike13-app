@@ -30,4 +30,56 @@ describe('nativeMediaEngineStatsStore', () => {
     }).toThrow(TypeError)
     expect(nativeMediaEngineStatsStore.getState().methods.wgc).toBe(0)
   })
+
+  it('stores native screen capture bottleneck counters', () => {
+    nativeMediaEngineStatsStore.reset()
+
+    nativeMediaEngineStatsStore.setNative(
+      {
+        wgc: 120,
+        dxgi: 0,
+        gdi_blt: 0,
+        gdi_print: 0,
+      },
+      'wgc',
+      undefined,
+      {
+        width: 1920,
+        height: 1080,
+        fps: 60,
+        videoFrames: 120,
+        videoIntervalFrames: 60,
+        videoLateFrames: 1,
+        videoNoFrameCount: 2,
+        videoRepeatedFrameCount: 3,
+        videoRecoverableLostCount: 1,
+        videoAvgCaptureUs: 3200,
+        videoAvgReadbackUs: 1100,
+        videoAvgScaleUs: 900,
+        videoAvgPublishUs: 700,
+        videoSourceWidth: 2560,
+        videoSourceHeight: 1440,
+        videoContentWidth: 1920,
+        videoContentHeight: 1080,
+        captureThreadMmcss: true,
+      },
+    )
+
+    expect(nativeMediaEngineStatsStore.getState()).toMatchObject({
+      backend: 'native',
+      activeMethod: 'wgc',
+      videoNoFrameCount: 2,
+      videoRepeatedFrameCount: 3,
+      videoRecoverableLostCount: 1,
+      videoAvgCaptureUs: 3200,
+      videoAvgReadbackUs: 1100,
+      videoAvgScaleUs: 900,
+      videoAvgPublishUs: 700,
+      videoSourceWidth: 2560,
+      videoSourceHeight: 1440,
+      videoContentWidth: 1920,
+      videoContentHeight: 1080,
+      captureThreadMmcss: true,
+    })
+  })
 })

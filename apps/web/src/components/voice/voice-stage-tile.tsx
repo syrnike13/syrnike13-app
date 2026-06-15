@@ -13,6 +13,7 @@ import {
 import { useVoiceTilePalette } from '#/features/voice/use-voice-tile-palette'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { tilePaletteStyle } from '#/lib/avatar-tile-palette'
+import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 import { cn } from '#/lib/utils'
 
@@ -132,7 +133,7 @@ export function VoiceStageInviteTile({
       const invite = await createChannelInvite(token, channelId)
       const code = '_id' in invite ? invite._id : ''
       if (!code) throw new Error('Пустой код приглашения')
-      await navigator.clipboard.writeText(inviteUrl(code))
+      await writeClipboardText(inviteUrl(code))
       toast.success('Ссылка приглашения скопирована')
     } catch (error) {
       toast.error(

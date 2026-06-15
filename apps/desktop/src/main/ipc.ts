@@ -1,4 +1,4 @@
-import { app, ipcMain, type BrowserWindow } from 'electron'
+import { app, clipboard, ipcMain, type BrowserWindow } from 'electron'
 import {
   IPC,
   type ActivityDetails,
@@ -6,6 +6,7 @@ import {
   type DesktopOverlaySnapshot,
   type DesktopLocalSettingsPatch,
   type DesktopStoredSession,
+  type DesktopTrayVoiceState,
   type DesktopWindowPreferences,
   type HotkeyBinding,
 } from '@syrnike13/platform'
@@ -54,6 +55,7 @@ export function registerDesktopIpc(
     getWindowPreferences: () => DesktopWindowPreferences
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
+    setTrayVoiceState: (state: DesktopTrayVoiceState) => void
     onLocalSettingsUpdated?: (settings: DesktopLocalSettings) => void
     getLocalSettings?: () => DesktopLocalSettings
     showWindow: () => void
@@ -79,6 +81,13 @@ export function registerDesktopIpc(
     chrome: process.versions.chrome,
     node: process.versions.node,
   }))
+
+  ipcMain.handle(IPC.clipboardWriteText, (_event, text: string) => {
+    if (typeof text !== 'string') {
+      throw new Error('Clipboard text must be a string')
+    }
+    clipboard.writeText(text)
+  })
 
   ipcMain.on(IPC.windowMinimize, () => {
     getWindow()?.minimize()
@@ -132,6 +141,10 @@ export function registerDesktopIpc(
   ipcMain.handle(IPC.activityClear, () => {
     lastActivity = null
     console.info('[desktop] activity cleared')
+  })
+
+  ipcMain.handle(IPC.traySetVoiceState, (_event, state: DesktopTrayVoiceState) => {
+    options.setTrayVoiceState(state)
   })
 
   ipcMain.handle(IPC.authLoadSession, () =>

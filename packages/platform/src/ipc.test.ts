@@ -32,3 +32,19 @@ describe('desktop media IPC contract', () => {
     )
   })
 })
+
+describe('desktop tray IPC contract', () => {
+  it('exposes voice state through the tray namespace', () => {
+    expect(IPC.traySetVoiceState).toBe(
+      'syrnike-desktop:tray:set-voice-state',
+    )
+  })
+})
+
+describe('desktop clipboard IPC contract', () => {
+  it('exposes clipboard text writes through the clipboard namespace', () => {
+    expect(IPC.clipboardWriteText).toBe(
+      'syrnike-desktop:clipboard:write-text',
+    )
+  })
+})

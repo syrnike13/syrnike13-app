@@ -69,7 +69,7 @@ export function CommandPalette() {
     from: '/app/c/$channelId',
     shouldThrow: false,
   })
-  const activeChannelId = channelMatch?.params.channelId
+  const activeChannelId = channelMatch?.params?.channelId
 
   const staticItems = useMemo(() => {
     if (!open) return []

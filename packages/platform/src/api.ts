@@ -47,6 +47,13 @@ export interface DesktopWindowPreferences {
   openAtLogin: boolean
 }
 
+export type DesktopTrayVoiceState =
+  | 'default'
+  | 'voice-idle'
+  | 'voice-speaking'
+  | 'voice-muted'
+  | 'voice-deafened'
+
 export interface DesktopStoredSession {
   _id: string
   token: string
@@ -174,6 +181,9 @@ export interface SyrnikeDesktopApi {
   readonly runtime: 'desktop'
   readonly platform: DesktopPlatformInfo
   getVersions(): Promise<DesktopVersions>
+  clipboard: {
+    writeText(text: string): Promise<void>
+  }
   window: {
     minimize(): void
     maximize(): void
@@ -187,6 +197,9 @@ export interface SyrnikeDesktopApi {
   activity: {
     set(details: ActivityDetails | null): Promise<void>
     clear(): Promise<void>
+  }
+  tray: {
+    setVoiceState(state: DesktopTrayVoiceState): Promise<void>
   }
   auth: {
     loadSession(): Promise<DesktopStoredSession | null>

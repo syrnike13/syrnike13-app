@@ -17,10 +17,15 @@
 #include <winrt/Windows.Security.Authorization.AppCapabilityAccess.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <cmath>
 #include <stdexcept>
+#include <thread>
+
+#include "screen_capture_priority.hpp"
 
 using Microsoft::WRL::ComPtr;
 namespace capture = winrt::Windows::Graphics::Capture;
@@ -126,19 +131,158 @@ uint32_t evenDimension(uint32_t value) {
   return std::max(2u, value & ~1u);
 }
 
+ScreenCaptureFrameResult captureResult(
+    ScreenCaptureFrameStatus status,
+    const char* method,
+    ScreenCaptureFrameMetrics metrics = {}) {
+  ScreenCaptureFrameResult result;
+  result.status = status;
+  result.method = method;
+  result.metrics = metrics;
+  return result;
+}
+
+ComPtr<ID3D11Texture2D> createReadbackTexture(
+    ID3D11Device* device,
+    uint32_t width,
+    uint32_t height) {
+  D3D11_TEXTURE2D_DESC desc{};
+  desc.Width = width;
+  desc.Height = height;
+  desc.MipLevels = 1;
+  desc.ArraySize = 1;
+  desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  desc.SampleDesc.Count = 1;
+  desc.Usage = D3D11_USAGE_STAGING;
+  desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+  ComPtr<ID3D11Texture2D> texture;
+  const HRESULT hr = device->CreateTexture2D(&desc, nullptr, &texture);
+  if (FAILED(hr)) throw std::runtime_error("failed to create d3d readback texture");
+  return texture;
+}
+
+class D3dReadbackRing {
+public:
+  void reset(ID3D11Device* device, uint32_t width, uint32_t height) {
+    width_ = width;
+    height_ = height;
+    write_slot_ = 0;
+    read_slot_ = 0;
+    for (auto& slot : slots_) {
+      slot.texture = createReadbackTexture(device, width, height);
+      slot.pending = false;
+      slot.metrics = {};
+    }
+  }
+
+  bool enqueue(
+      ID3D11DeviceContext* context,
+      ID3D11Texture2D* texture,
+      ScreenCaptureFrameMetrics metrics) {
+    auto& slot = slots_[write_slot_];
+    if (slot.pending || !slot.texture) return false;
+    context->CopyResource(slot.texture.Get(), texture);
+    slot.metrics = metrics;
+    slot.pending = true;
+    write_slot_ = (write_slot_ + 1) % slots_.size();
+    return true;
+  }
+
+  ScreenCaptureFrameResult tryRead(
+      ID3D11DeviceContext* context,
+      ScreenVideoFrame& frame,
+      const char* method,
+      uint32_t output_width,
+      uint32_t output_height) {
+    for (size_t attempt = 0; attempt < slots_.size(); ++attempt) {
+      auto& slot = slots_[read_slot_];
+      if (!slot.pending) {
+        read_slot_ = (read_slot_ + 1) % slots_.size();
+        continue;
+      }
+
+      D3D11_MAPPED_SUBRESOURCE mapped{};
+      const auto read_started_at = std::chrono::steady_clock::now();
+      const HRESULT hr = context->Map(
+          slot.texture.Get(),
+          0,
+          D3D11_MAP_READ,
+          D3D11_MAP_FLAG_DO_NOT_WAIT,
+          &mapped);
+      if (hr == DXGI_ERROR_WAS_STILL_DRAWING) {
+        return captureResult(ScreenCaptureFrameStatus::NoFrame, method, slot.metrics);
+      }
+      if (FAILED(hr)) {
+        auto metrics = slot.metrics;
+        metrics.hresult = static_cast<long>(hr);
+        return captureResult(ScreenCaptureFrameStatus::FatalError, method, metrics);
+      }
+
+      auto metrics = slot.metrics;
+      metrics.readback_us = static_cast<int>(
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              std::chrono::steady_clock::now() - read_started_at)
+              .count());
+      const auto scale_started_at = std::chrono::steady_clock::now();
+      const auto* source = static_cast<const uint8_t*>(mapped.pData);
+      const uint32_t source_width = metrics.content_width > 0 ? metrics.content_width : width_;
+      const uint32_t source_height = metrics.content_height > 0 ? metrics.content_height : height_;
+      copyScaledBgra(
+          frame,
+          source,
+          source_width,
+          source_height,
+          mapped.RowPitch,
+          output_width,
+          output_height);
+      metrics.scale_us = static_cast<int>(
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              std::chrono::steady_clock::now() - scale_started_at)
+              .count());
+      context->Unmap(slot.texture.Get(), 0);
+      slot.pending = false;
+      slot.metrics = {};
+      read_slot_ = (read_slot_ + 1) % slots_.size();
+      frame.method = method;
+      return captureResult(ScreenCaptureFrameStatus::NewFrame, method, metrics);
+    }
+
+    return captureResult(ScreenCaptureFrameStatus::NoFrame, method);
+  }
+
+private:
+  struct ReadbackSlot {
+    ComPtr<ID3D11Texture2D> texture;
+    bool pending = false;
+    ScreenCaptureFrameMetrics metrics;
+  };
+
+  std::array<ReadbackSlot, 3> slots_;
+  size_t write_slot_ = 0;
+  size_t read_slot_ = 0;
+  uint32_t width_ = 0;
+  uint32_t height_ = 0;
+};
+
 class GdiScreenVideoCapturer final : public ScreenVideoCapturer {
 public:
   GdiScreenVideoCapturer(ScreenCaptureTarget target, uint32_t width, uint32_t height)
       : target_(target), width_(width), height_(height) {}
 
-  bool capture(ScreenVideoFrame& frame) override {
+  ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) override {
+    const auto started_at = std::chrono::steady_clock::now();
+    if (target_.window && (!target_.hwnd || !IsWindow(target_.hwnd))) {
+      return captureResult(ScreenCaptureFrameStatus::TargetClosed, method());
+    }
+
     HDC source_dc = target_.window ? GetWindowDC(target_.hwnd) : GetDC(nullptr);
-    if (!source_dc) return false;
+    if (!source_dc) return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
 
     HDC memory_dc = CreateCompatibleDC(source_dc);
     if (!memory_dc) {
       ReleaseDC(target_.window ? target_.hwnd : nullptr, source_dc);
-      return false;
+      return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
     }
 
     BITMAPINFO info{};
@@ -154,7 +298,7 @@ public:
     if (!bitmap || !bits) {
       DeleteDC(memory_dc);
       ReleaseDC(target_.window ? target_.hwnd : nullptr, source_dc);
-      return false;
+      return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
     }
 
     HGDIOBJ old = SelectObject(memory_dc, bitmap);
@@ -185,7 +329,21 @@ public:
     DeleteObject(bitmap);
     DeleteDC(memory_dc);
     ReleaseDC(target_.window ? target_.hwnd : nullptr, source_dc);
-    return copied == TRUE;
+    if (copied != TRUE) {
+      return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
+    }
+    ScreenCaptureFrameMetrics metrics;
+    metrics.source_width = static_cast<uint32_t>(std::max(1, source_width));
+    metrics.source_height = static_cast<uint32_t>(std::max(1, source_height));
+    metrics.content_width = metrics.source_width;
+    metrics.content_height = metrics.source_height;
+    metrics.output_width = width_;
+    metrics.output_height = height_;
+    metrics.capture_us = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started_at)
+            .count());
+    return captureResult(ScreenCaptureFrameStatus::NewFrame, method(), metrics);
   }
 
   const char* method() const override { return "gdi_blt"; }
@@ -203,43 +361,59 @@ public:
     init();
   }
 
-  bool capture(ScreenVideoFrame& frame) override {
+  ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) override {
+    const auto started_at = std::chrono::steady_clock::now();
     DXGI_OUTDUPL_FRAME_INFO frame_info{};
     ComPtr<IDXGIResource> resource;
-    const UINT timeout_ms = last_bgra_.empty() ? 16 : 1;
-    HRESULT hr = duplication_->AcquireNextFrame(timeout_ms, &frame_info, &resource);
+    HRESULT hr = duplication_->AcquireNextFrame(1, &frame_info, &resource);
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
-      if (last_bgra_.empty()) return false;
-      frame.bgra = last_bgra_;
-      frame.method = method();
-      return true;
+      return readback_.tryRead(context_.Get(), frame, method(), width_, height_);
     }
-    if (FAILED(hr)) return false;
+    if (hr == DXGI_ERROR_ACCESS_LOST) {
+      ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = static_cast<long>(hr);
+      if (SUCCEEDED(recreateDuplication())) {
+        return captureResult(ScreenCaptureFrameStatus::RecoverableLost, method(), metrics);
+      }
+      return captureResult(ScreenCaptureFrameStatus::FatalError, method(), metrics);
+    }
+    if (FAILED(hr)) {
+      ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = static_cast<long>(hr);
+      return captureResult(ScreenCaptureFrameStatus::FatalError, method(), metrics);
+    }
 
     ComPtr<ID3D11Texture2D> texture;
     hr = resource.As(&texture);
     if (FAILED(hr)) {
       duplication_->ReleaseFrame();
-      return false;
+      ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = static_cast<long>(hr);
+      return captureResult(ScreenCaptureFrameStatus::FatalError, method(), metrics);
     }
 
-    context_->CopyResource(staging_.Get(), texture.Get());
-
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    hr = context_->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-    if (FAILED(hr)) {
+    ScreenCaptureFrameMetrics metrics;
+    metrics.source_width = native_width_;
+    metrics.source_height = native_height_;
+    metrics.content_width = native_width_;
+    metrics.content_height = native_height_;
+    metrics.output_width = width_;
+    metrics.output_height = height_;
+    metrics.capture_us = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started_at)
+            .count());
+    const bool queued = readback_.enqueue(context_.Get(), texture.Get(), metrics);
+    if (!queued) {
+      auto read_result = readback_.tryRead(context_.Get(), frame, method(), width_, height_);
+      if (read_result.status == ScreenCaptureFrameStatus::NewFrame) {
+        readback_.enqueue(context_.Get(), texture.Get(), metrics);
+      }
       duplication_->ReleaseFrame();
-      return false;
+      return read_result;
     }
-
-    const auto* source = static_cast<const uint8_t*>(mapped.pData);
-    copyScaledBgra(frame, source, native_width_, native_height_, mapped.RowPitch, width_, height_);
-    frame.method = method();
-    last_bgra_ = frame.bgra;
-
-    context_->Unmap(staging_.Get(), 0);
     duplication_->ReleaseFrame();
-    return true;
+    return readback_.tryRead(context_.Get(), frame, method(), width_, height_);
   }
 
   const char* method() const override { return "dxgi"; }
@@ -264,41 +438,39 @@ private:
     ComPtr<IDXGIDevice> dxgi_device;
     hr = device_.As(&dxgi_device);
     if (FAILED(hr)) throw std::runtime_error("failed to open dxgi device");
+    setD3dGpuThreadPriority(dxgi_device.Get(), 3);
 
-    ComPtr<IDXGIAdapter> adapter;
-    hr = dxgi_device->GetAdapter(&adapter);
+    hr = dxgi_device->GetAdapter(&adapter_);
     if (FAILED(hr)) throw std::runtime_error("failed to open dxgi adapter");
 
+    hr = recreateDuplication();
+    if (FAILED(hr)) throw std::runtime_error("failed to duplicate dxgi output");
+  }
+
+  HRESULT recreateDuplication() {
+    duplication_.Reset();
+
     ComPtr<IDXGIOutput> output;
-    hr = adapter->EnumOutputs(static_cast<UINT>(target_.screen_index - 1), &output);
-    if (FAILED(hr)) throw std::runtime_error("failed to open dxgi output");
+    HRESULT hr = adapter_->EnumOutputs(static_cast<UINT>(target_.screen_index - 1), &output);
+    if (FAILED(hr)) return hr;
 
     ComPtr<IDXGIOutput1> output1;
     hr = output.As(&output1);
-    if (FAILED(hr)) throw std::runtime_error("failed to open dxgi output1");
+    if (FAILED(hr)) return hr;
 
     DXGI_OUTPUT_DESC output_desc{};
     hr = output->GetDesc(&output_desc);
-    if (FAILED(hr)) throw std::runtime_error("failed to read dxgi output desc");
+    if (FAILED(hr)) return hr;
     native_width_ = static_cast<uint32_t>(
         output_desc.DesktopCoordinates.right - output_desc.DesktopCoordinates.left);
     native_height_ = static_cast<uint32_t>(
         output_desc.DesktopCoordinates.bottom - output_desc.DesktopCoordinates.top);
 
     hr = output1->DuplicateOutput(device_.Get(), &duplication_);
-    if (FAILED(hr)) throw std::runtime_error("failed to duplicate dxgi output");
+    if (FAILED(hr)) return hr;
 
-    D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = native_width_;
-    desc.Height = native_height_;
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.Usage = D3D11_USAGE_STAGING;
-    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    hr = device_->CreateTexture2D(&desc, nullptr, &staging_);
-    if (FAILED(hr)) throw std::runtime_error("failed to create dxgi staging texture");
+    readback_.reset(device_.Get(), native_width_, native_height_);
+    return S_OK;
   }
 
   ScreenCaptureTarget target_;
@@ -308,9 +480,9 @@ private:
   uint32_t native_height_ = 0;
   ComPtr<ID3D11Device> device_;
   ComPtr<ID3D11DeviceContext> context_;
+  ComPtr<IDXGIAdapter> adapter_;
   ComPtr<IDXGIOutputDuplication> duplication_;
-  ComPtr<ID3D11Texture2D> staging_;
-  std::vector<uint8_t> last_bgra_;
+  D3dReadbackRing readback_;
 };
 
 class WgcScreenVideoCapturer final : public ScreenVideoCapturer {
@@ -320,10 +492,21 @@ public:
     init();
   }
 
-  bool capture(ScreenVideoFrame& frame) override {
-    const auto timeout = last_bgra_.empty()
-        ? std::chrono::milliseconds(16)
-        : std::chrono::milliseconds(1);
+  ~WgcScreenVideoCapturer() override {
+    if (closed_subscribed_ && item_) {
+      item_.Closed(closed_token_);
+    }
+  }
+
+  ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) override {
+    const auto started_at = std::chrono::steady_clock::now();
+    if (target_closed_.load(std::memory_order_relaxed) ||
+        !target_.hwnd ||
+        !IsWindow(target_.hwnd)) {
+      return captureResult(ScreenCaptureFrameStatus::TargetClosed, method());
+    }
+
+    const auto timeout = std::chrono::milliseconds(1);
     auto deadline = std::chrono::steady_clock::now() + timeout;
     capture::Direct3D11CaptureFrame capture_frame{nullptr};
     while (std::chrono::steady_clock::now() < deadline) {
@@ -332,30 +515,56 @@ public:
       Sleep(1);
     }
     if (!capture_frame) {
-      if (last_bgra_.empty()) return false;
-      frame.bgra = last_bgra_;
-      frame.method = method();
-      return true;
+      return readback_.tryRead(context_.Get(), frame, method(), width_, height_);
+    }
+
+    const auto content_size = capture_frame.ContentSize();
+    if (content_size.Width > 0 && content_size.Height > 0 &&
+        (content_size.Width != pool_size_.Width || content_size.Height != pool_size_.Height)) {
+      ScreenCaptureFrameMetrics metrics;
+      metrics.source_width = static_cast<uint32_t>(std::max(1, content_size.Width));
+      metrics.source_height = static_cast<uint32_t>(std::max(1, content_size.Height));
+      metrics.content_width = metrics.source_width;
+      metrics.content_height = metrics.source_height;
+      metrics.output_width = width_;
+      metrics.output_height = height_;
+      try {
+        recreateFramePool(content_size);
+        return captureResult(ScreenCaptureFrameStatus::RecoverableLost, method(), metrics);
+      } catch (const winrt::hresult_error& error) {
+        metrics.hresult = static_cast<long>(error.code());
+        return captureResult(ScreenCaptureFrameStatus::FatalError, method(), metrics);
+      }
     }
 
     ComPtr<ID3D11Texture2D> texture;
     auto access = capture_frame.Surface().as<Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
     HRESULT hr = access->GetInterface(IID_PPV_ARGS(&texture));
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+      ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = static_cast<long>(hr);
+      return captureResult(ScreenCaptureFrameStatus::FatalError, method(), metrics);
+    }
 
-    context_->CopyResource(staging_.Get(), texture.Get());
-
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    hr = context_->Map(staging_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-    if (FAILED(hr)) return false;
-
-    const auto* source = static_cast<const uint8_t*>(mapped.pData);
-    copyScaledBgra(frame, source, native_width_, native_height_, mapped.RowPitch, width_, height_);
-    context_->Unmap(staging_.Get(), 0);
-
-    frame.method = method();
-    last_bgra_ = frame.bgra;
-    return true;
+    ScreenCaptureFrameMetrics metrics;
+    metrics.source_width = native_width_;
+    metrics.source_height = native_height_;
+    metrics.content_width = static_cast<uint32_t>(std::max(1, content_size.Width));
+    metrics.content_height = static_cast<uint32_t>(std::max(1, content_size.Height));
+    metrics.output_width = width_;
+    metrics.output_height = height_;
+    metrics.capture_us = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started_at)
+            .count());
+    if (!readback_.enqueue(context_.Get(), texture.Get(), metrics)) {
+      auto read_result = readback_.tryRead(context_.Get(), frame, method(), width_, height_);
+      if (read_result.status == ScreenCaptureFrameStatus::NewFrame) {
+        readback_.enqueue(context_.Get(), texture.Get(), metrics);
+      }
+      return read_result;
+    }
+    return readback_.tryRead(context_.Get(), frame, method(), width_, height_);
   }
 
   const char* method() const override { return "wgc"; }
@@ -388,6 +597,7 @@ private:
     ComPtr<IDXGIDevice> dxgi_device;
     hr = device_.As(&dxgi_device);
     if (FAILED(hr)) throw std::runtime_error("failed to open wgc dxgi device");
+    setD3dGpuThreadPriority(dxgi_device.Get(), 3);
 
     IInspectable* raw_device = nullptr;
     hr = CreateDirect3D11DeviceFromDXGIDevice(dxgi_device.Get(), &raw_device);
@@ -404,32 +614,40 @@ private:
         reinterpret_cast<void**>(raw_item.put()));
     if (FAILED(hr)) throw std::runtime_error("failed to create wgc item for window");
     item_ = raw_item.as<capture::GraphicsCaptureItem>();
+    closed_token_ = item_.Closed([this](auto const&, auto const&) {
+      target_closed_.store(true, std::memory_order_relaxed);
+    });
+    closed_subscribed_ = true;
 
     const auto size = item_.Size();
-    native_width_ = static_cast<uint32_t>(std::max(1, size.Width));
-    native_height_ = static_cast<uint32_t>(std::max(1, size.Height));
+    pool_size_ = size;
+    native_width_ = static_cast<uint32_t>(std::max(1, pool_size_.Width));
+    native_height_ = static_cast<uint32_t>(std::max(1, pool_size_.Height));
 
     frame_pool_ = capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrt_device_,
         directx::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-        2,
-        size);
+        3,
+        pool_size_);
     session_ = frame_pool_.CreateCaptureSession(item_);
     session_.IsCursorCaptureEnabled(true);
     disableCaptureBorderIfAllowed(session_);
     session_.StartCapture();
 
-    D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = native_width_;
-    desc.Height = native_height_;
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.Usage = D3D11_USAGE_STAGING;
-    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    hr = device_->CreateTexture2D(&desc, nullptr, &staging_);
-    if (FAILED(hr)) throw std::runtime_error("failed to create wgc staging texture");
+    readback_.reset(device_.Get(), native_width_, native_height_);
+  }
+
+  void recreateFramePool(winrt::Windows::Graphics::SizeInt32 size) {
+    if (size.Width <= 0 || size.Height <= 0) return;
+    pool_size_ = size;
+    native_width_ = static_cast<uint32_t>(std::max(1, pool_size_.Width));
+    native_height_ = static_cast<uint32_t>(std::max(1, pool_size_.Height));
+    frame_pool_.Recreate(
+        winrt_device_,
+        directx::DirectXPixelFormat::B8G8R8A8UIntNormalized,
+        3,
+        pool_size_);
+    readback_.reset(device_.Get(), native_width_, native_height_);
   }
 
   ScreenCaptureTarget target_;
@@ -439,12 +657,15 @@ private:
   uint32_t native_height_ = 0;
   ComPtr<ID3D11Device> device_;
   ComPtr<ID3D11DeviceContext> context_;
-  ComPtr<ID3D11Texture2D> staging_;
+  D3dReadbackRing readback_;
   d3dwinrt::IDirect3DDevice winrt_device_{nullptr};
   capture::GraphicsCaptureItem item_{nullptr};
   capture::Direct3D11CaptureFramePool frame_pool_{nullptr};
   capture::GraphicsCaptureSession session_{nullptr};
-  std::vector<uint8_t> last_bgra_;
+  winrt::Windows::Graphics::SizeInt32 pool_size_{};
+  winrt::event_token closed_token_{};
+  bool closed_subscribed_ = false;
+  std::atomic_bool target_closed_{false};
 };
 
 }  // namespace
@@ -540,12 +761,12 @@ ScreenCaptureProbeResult runScreenCaptureProbe(const StartCommand& command) {
 
   while (std::chrono::steady_clock::now() < deadline) {
     const auto capture_started_at = std::chrono::steady_clock::now();
-    const bool captured = capturer->capture(frame);
+    const auto capture_result = capturer->capture(frame);
     const auto capture_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - capture_started_at);
     capture_time_sum += capture_elapsed;
     attempts += 1;
-    if (captured) {
+    if (capture_result.status == ScreenCaptureFrameStatus::NewFrame) {
       captured_frames += 1;
     }
 

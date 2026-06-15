@@ -138,7 +138,7 @@ function shouldShowStageMediaTrack<TTrack, TPublication>(
   entry: StageMediaTrackEntry<TTrack, TPublication>,
   filters: StageMediaFilters,
 ) {
-  if (entry.subscribed === false) return false
+  if (entry.subscribed === false && entry.source !== 'screen') return false
   if (
     !filters.showParticipantsWithoutMedia &&
     !entry.track &&
