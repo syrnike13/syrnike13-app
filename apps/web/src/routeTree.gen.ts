@@ -11,10 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as MRouteRouteImport } from './routes/m/route'
 import { Route as AppRouteRouteImport } from './routes/app/route'
+import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MIndexRouteImport } from './routes/m/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as MSettingsRouteImport } from './routes/m/settings'
 import { Route as MProfileRouteImport } from './routes/m/profile'
@@ -29,6 +31,7 @@ import { Route as DesktopOverlayRouteImport } from './routes/desktop/overlay'
 import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
+import { Route as AdminBadgesRouteImport } from './routes/admin/badges'
 import { Route as MCChannelIdRouteImport } from './routes/m/c/$channelId'
 import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
 import { Route as AppCChannelIdRouteImport } from './routes/app/c/$channelId'
@@ -43,6 +46,11 @@ const MRouteRoute = MRouteRouteImport.update({
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRouteRoute = AdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -64,6 +72,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRouteRoute,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const VerifyTokenRoute = VerifyTokenRouteImport.update({
   id: '/verify/$token',
@@ -135,6 +148,11 @@ const AppFriendsRoute = AppFriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AdminBadgesRoute = AdminBadgesRouteImport.update({
+  id: '/badges',
+  path: '/badges',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const MCChannelIdRoute = MCChannelIdRouteImport.update({
   id: '/c/$channelId',
   path: '/c/$channelId',
@@ -165,8 +183,10 @@ const AppServersServerIdSettingsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
+  '/admin/badges': typeof AdminBadgesRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -181,6 +201,7 @@ export interface FileRoutesByFullPath {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
@@ -192,6 +213,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin/badges': typeof AdminBadgesRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -206,6 +228,7 @@ export interface FileRoutesByTo {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
+  '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/login': typeof LoginIndexRoute
   '/m': typeof MIndexRoute
@@ -218,8 +241,10 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
+  '/admin/badges': typeof AdminBadgesRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -234,6 +259,7 @@ export interface FileRoutesById {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
+  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
@@ -247,8 +273,10 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/app'
     | '/m'
+    | '/admin/badges'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -263,6 +291,7 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
+    | '/admin/'
     | '/app/'
     | '/login/'
     | '/m/'
@@ -274,6 +303,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin/badges'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -288,6 +318,7 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
+    | '/admin'
     | '/app'
     | '/login'
     | '/m'
@@ -299,8 +330,10 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/app'
     | '/m'
+    | '/admin/badges'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -315,6 +348,7 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
+    | '/admin/'
     | '/app/'
     | '/login/'
     | '/m/'
@@ -327,6 +361,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AppRouteRoute: typeof AppRouteRouteWithChildren
   MRouteRoute: typeof MRouteRouteWithChildren
   DesktopOverlayRoute: typeof DesktopOverlayRoute
@@ -356,6 +391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -383,6 +425,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     '/verify/$token': {
       id: '/verify/$token'
@@ -482,6 +531,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFriendsRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/admin/badges': {
+      id: '/admin/badges'
+      path: '/badges'
+      fullPath: '/admin/badges'
+      preLoaderRoute: typeof AdminBadgesRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/m/c/$channelId': {
       id: '/m/c/$channelId'
       path: '/c/$channelId'
@@ -519,6 +575,20 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AdminRouteRouteChildren {
+  AdminBadgesRoute: typeof AdminBadgesRoute
+  AdminIndexRoute: typeof AdminIndexRoute
+}
+
+const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminBadgesRoute: AdminBadgesRoute,
+  AdminIndexRoute: AdminIndexRoute,
+}
+
+const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
+  AdminRouteRouteChildren,
+)
 
 interface AppRouteRouteChildren {
   AppFriendsRoute: typeof AppFriendsRoute
@@ -577,6 +647,7 @@ const LoginResetRouteWithChildren = LoginResetRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRouteRoute: AdminRouteRouteWithChildren,
   AppRouteRoute: AppRouteRouteWithChildren,
   MRouteRoute: MRouteRouteWithChildren,
   DesktopOverlayRoute: DesktopOverlayRoute,

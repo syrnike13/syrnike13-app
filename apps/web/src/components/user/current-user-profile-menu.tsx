@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { PencilFillIcon, ChevronDownIcon } from '#/components/icons'
+import { PencilFillIcon, ChevronDownIcon, SettingsIcon } from '#/components/icons'
+import { useNavigate } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import type { User } from '@syrnike13/api-types'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import {
   profileMenuNestClass,
@@ -42,6 +44,7 @@ export function CurrentUserProfileMenu({
   bannerOverlay,
 }: CurrentUserProfileMenuProps) {
   const auth = useAuth()
+  const navigate = useNavigate()
   const { openSettings } = useSettingsModal()
   const token = auth.session?.token
   const displayName = user.display_name ?? user.username
@@ -149,6 +152,7 @@ export function CurrentUserProfileMenu({
         <p className="mt-0.5 truncate text-sm leading-snug text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
         </p>
+        <UserBadges badges={user.badges} size="sm" className="mt-2" />
         {profileBio ? (
           <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
             {profileBio}
@@ -183,6 +187,22 @@ export function CurrentUserProfileMenu({
             />
             <span className="truncate">Редактировать профиль</span>
           </button>
+          {auth.user?.privileged ? (
+            <button
+              type="button"
+              className={profileMenuRowClass}
+              onClick={() => {
+                onClose?.()
+                void navigate({ to: '/admin/badges' })
+              }}
+            >
+              <SettingsIcon
+                className="size-4 shrink-0 opacity-75 transition-opacity group-hover:opacity-100"
+                aria-hidden
+              />
+              <span className="truncate">Админка</span>
+            </button>
+          ) : null}
           <PresenceStatusSelect />
         </div>
       )}

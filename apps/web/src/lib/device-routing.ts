@@ -2,7 +2,7 @@ import { COMPACT_BREAKPOINT } from '#/hooks/use-layout-mode'
 
 export const MOBILE_ROUTE_PREFIX = '/m'
 
-const MOBILE_ROUTE_PREFIXES = [MOBILE_ROUTE_PREFIX] as const
+const MOBILE_ROUTE_PREFIXES = [MOBILE_ROUTE_PREFIX, '/admin'] as const
 
 /** Пути мобильной зоны. Используется для защиты от зацикленного редиректа. */
 export function isMobileAllowedPath(pathname: string): boolean {
