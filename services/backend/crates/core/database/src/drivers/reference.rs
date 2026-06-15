@@ -3,9 +3,9 @@ use std::{collections::HashMap, sync::Arc};
 use futures::lock::Mutex;
 
 use crate::{
-    Bot, Channel, ChannelCompositeKey, ChannelUnread, Emoji, File, FileHash, Invite, Member,
+    Badge, Bot, Channel, ChannelCompositeKey, ChannelUnread, Emoji, File, FileHash, Invite, Member,
     MemberCompositeKey, Message, PolicyChange, RatelimitEvent, Report, Server, ServerBan, Snapshot,
-    User, UserSettings, Webhook,
+    User, UserBadgeAssignment, UserSettings, Webhook,
 };
 
 database_derived!(
@@ -13,6 +13,7 @@ database_derived!(
     #[derive(Default, Debug)]
     pub struct ReferenceDb {
         pub bots: Arc<Mutex<HashMap<String, Bot>>>,
+        pub badges: Arc<Mutex<HashMap<String, Badge>>>,
         pub channels: Arc<Mutex<HashMap<String, Channel>>>,
         pub channel_invites: Arc<Mutex<HashMap<String, Invite>>>,
         pub channel_unreads: Arc<Mutex<HashMap<ChannelCompositeKey, ChannelUnread>>>,
@@ -25,6 +26,7 @@ database_derived!(
         pub ratelimit_events: Arc<Mutex<HashMap<String, RatelimitEvent>>>,
         pub user_settings: Arc<Mutex<HashMap<String, UserSettings>>>,
         pub users: Arc<Mutex<HashMap<String, User>>>,
+        pub user_badges: Arc<Mutex<HashMap<String, UserBadgeAssignment>>>,
         pub server_bans: Arc<Mutex<HashMap<MemberCompositeKey, ServerBan>>>,
         pub server_members: Arc<Mutex<HashMap<MemberCompositeKey, Member>>>,
         pub servers: Arc<Mutex<HashMap<String, Server>>>,

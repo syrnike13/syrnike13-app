@@ -36,7 +36,7 @@ pub async fn edit(
     })?;
 
     // Filter out invalid edit fields
-    if !user.privileged && (data.badges.is_some() || data.flags.is_some()) {
+    if !user.privileged && data.flags.is_some() {
         return Err(create_error!(NotPrivileged));
     }
 
@@ -62,11 +62,10 @@ pub async fn edit(
         && data.status.is_none()
         && data.profile.is_none()
         && data.avatar.is_none()
-        && data.badges.is_none()
         && data.flags.is_none()
         && data.remove.is_empty()
     {
-        return Ok(Json(user.into_self(false).await));
+        return Ok(Json(user.into_self_with_badges(db, false).await));
     }
 
     // 1. Remove fields from object
@@ -91,7 +90,6 @@ pub async fn edit(
 
     let mut partial: PartialUser = PartialUser {
         display_name: data.display_name,
-        badges: data.badges,
         flags: data.flags,
         ..Default::default()
     };
@@ -143,7 +141,7 @@ pub async fn edit(
     )
     .await?;
 
-    Ok(Json(user.into_self(false).await))
+    Ok(Json(user.into_self_with_badges(db, false).await))
 }
 
 #[cfg(test)]

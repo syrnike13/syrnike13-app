@@ -2,7 +2,7 @@ use iso8601_timestamp::Timestamp;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use super::File;
+use super::{File, UserBadge};
 
 #[cfg(feature = "validator")]
 use validator::Validate;
@@ -42,14 +42,12 @@ auto_derived_partial!(
         )]
         pub relations: Vec<Relationship>,
 
-        /// Bitfield of user badges
-        ///
-        /// https://docs.rs/syrnike-models/latest/syrnike_models/v0/enum.UserBadges.html
+        /// User badges
         #[cfg_attr(
             feature = "serde",
-            serde(skip_serializing_if = "crate::if_zero_u32", default)
+            serde(skip_serializing_if = "Vec::is_empty", default)
         )]
-        pub badges: u32,
+        pub badges: Vec<UserBadge>,
         /// User's current status
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub status: Option<UserStatus>,
@@ -169,33 +167,6 @@ auto_derived!(
         pub background: Option<File>,
     }
 
-    /// User badge bitfield
-    #[repr(u32)]
-    pub enum UserBadges {
-        /// syrnike13 Developer
-        Developer = 1,
-        /// Helped translate syrnike13
-        Translator = 2,
-        /// Monetarily supported syrnike13
-        Supporter = 4,
-        /// Responsibly disclosed a security issue
-        ResponsibleDisclosure = 8,
-        /// syrnike13 Founder
-        Founder = 16,
-        /// Platform moderator
-        PlatformModeration = 32,
-        /// Active monetary supporter
-        ActiveSupporter = 64,
-        /// 🦊🦝
-        Paw = 128,
-        /// Joined as one of the first 1000 users in 2021
-        EarlyAdopter = 256,
-        /// Amogus
-        ReservedRelevantJokeBadge1 = 512,
-        /// Low resolution troll face
-        ReservedRelevantJokeBadge2 = 1024,
-    }
-
     /// User flag enum
     #[repr(u32)]
     pub enum UserFlags {
@@ -244,9 +215,6 @@ auto_derived!(
         #[cfg_attr(feature = "validator", validate)]
         pub profile: Option<DataUserProfile>,
 
-        /// Bitfield of user badges
-        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-        pub badges: Option<i32>,
         /// Enum of user flags
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub flags: Option<i32>,

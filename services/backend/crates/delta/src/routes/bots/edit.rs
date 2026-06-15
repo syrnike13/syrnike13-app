@@ -41,7 +41,7 @@ pub async fn edit_bot(
     {
         return Ok(Json(v0::BotWithUserResponse {
             bot: bot.into(),
-            user: user.into_self(false).await,
+            user: user.into_self_with_badges(db, false).await,
         }));
     }
 
@@ -65,7 +65,7 @@ pub async fn edit_bot(
 
     Ok(Json(v0::BotWithUserResponse {
         bot: bot.into(),
-        user: user.into_self(false).await,
+        user: user.into_self_with_badges(db, false).await,
     }))
 }
 

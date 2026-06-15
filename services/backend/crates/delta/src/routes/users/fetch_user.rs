@@ -19,7 +19,7 @@ pub async fn fetch(
     target: Reference<'_>,
 ) -> Result<Json<v0::User>> {
     if user.id == target.id {
-        return Ok(Json(user.into_self(false).await));
+        return Ok(Json(user.into_self_with_badges(db, false).await));
     }
 
     let target = target.as_user(db).await?;
