@@ -33,7 +33,7 @@ describe('UserMusicPresenceCard', () => {
     expect(screen.getByText('Слушает Spotify')).toBeTruthy()
     expect(screen.getByText('PRAXX')).toBeTruthy()
     expect(screen.getByText('DK')).toBeTruthy()
-    expect(screen.getByRole('link').getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Открыть' }).getAttribute('href')).toBe(
       'spotify:track:1',
     )
     expect(container.querySelector('img')?.getAttribute('src')).toBe(
@@ -41,7 +41,7 @@ describe('UserMusicPresenceCard', () => {
     )
   })
 
-  it('does not render an open link when no direct track url exists', () => {
+  it('renders a Yandex Music search link when no track url exists', () => {
     syncStore.setUserMusicPresence('user-1', {
       provider: 'yandex_music',
       source: 'desktop_now_playing',
@@ -55,7 +55,9 @@ describe('UserMusicPresenceCard', () => {
 
     render(<UserMusicPresenceCard userId="user-1" />)
 
-    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Открыть' }).getAttribute('href')).toBe(
+      `yandexmusic://search?text=${encodeURIComponent('Грибы Тает лёд')}`,
+    )
   })
 
   it('formats zero playback progress as 0:00', () => {
@@ -95,6 +97,24 @@ describe('UserMusicPresenceCard', () => {
 
   it('keeps safe http music links', () => {
     syncStore.setUserMusicPresence('user-1', {
+      provider: 'apple_music',
+      source: 'desktop_now_playing',
+      title: 'Safe Link',
+      artists: ['Artist'],
+      externalUrl: 'https://music.apple.com/album/1?i=2',
+      isPlaying: true,
+      observedAt: Date.now(),
+    })
+
+    render(<UserMusicPresenceCard userId="user-1" />)
+
+    expect(screen.getByRole('link').getAttribute('href')).toBe(
+      'https://music.apple.com/album/1?i=2',
+    )
+  })
+
+  it('renders Yandex Music track links as app links', () => {
+    syncStore.setUserMusicPresence('user-1', {
       provider: 'yandex_music',
       source: 'desktop_now_playing',
       title: 'Safe Link',
@@ -106,8 +126,26 @@ describe('UserMusicPresenceCard', () => {
 
     render(<UserMusicPresenceCard userId="user-1" />)
 
-    expect(screen.getByRole('link').getAttribute('href')).toBe(
-      'https://music.yandex.ru/album/1/track/2',
+    expect(screen.getByRole('link', { name: 'Открыть' }).getAttribute('href')).toBe(
+      'yandexmusic://album/1/track/2',
+    )
+  })
+
+  it('renders Yandex Music track-only links as app links', () => {
+    syncStore.setUserMusicPresence('user-1', {
+      provider: 'yandex_music',
+      source: 'desktop_now_playing',
+      title: 'Safe Link',
+      artists: ['Artist'],
+      externalUrl: 'https://music.yandex.ru/track/2',
+      isPlaying: true,
+      observedAt: Date.now(),
+    })
+
+    render(<UserMusicPresenceCard userId="user-1" />)
+
+    expect(screen.getByRole('link', { name: 'Открыть' }).getAttribute('href')).toBe(
+      'yandexmusic://track/2',
     )
   })
 

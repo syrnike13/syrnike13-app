@@ -99,7 +99,7 @@ describe('ServerRail', () => {
     const cat = homeButton.querySelector('img')
 
     expect(cat?.getAttribute('src')).toBe(APP_LOADING_EASTER_EGG_SRC)
-    expect(cat?.className).toContain('size-11')
+    expect(cat?.className).toContain('size-25')
     expect(cat?.className).toContain('max-w-none')
   })
 })

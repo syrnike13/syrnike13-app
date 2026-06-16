@@ -63,12 +63,70 @@ function spotifyAppUrl(externalUrl: string) {
   }
 }
 
+const yandexMusicHosts = new Set(['music.yandex.ru', 'music.yandex.com'])
+const YANDEX_MUSIC_SEARCH_URL = 'yandexmusic://search'
+
+function yandexMusicRoutePath(url: URL) {
+  if (url.protocol === 'yandexmusic:') {
+    return `/${url.hostname}${url.pathname}`
+  }
+  return url.pathname
+}
+
+function isYandexMusicTrackRoute(path: string) {
+  return (
+    /^\/album\/[^/]+\/track\/[^/]+\/?$/.test(path) ||
+    /^\/track\/[^/]+\/?$/.test(path)
+  )
+}
+
+function yandexMusicAppUrl(externalUrl: string) {
+  try {
+    const directUrl = new URL(externalUrl)
+    if (directUrl.protocol === 'yandexmusic:') {
+      const routePath = yandexMusicRoutePath(directUrl)
+      return isYandexMusicTrackRoute(routePath)
+        ? `yandexmusic://${routePath.slice(1)}${directUrl.search}${directUrl.hash}`
+        : null
+    }
+  } catch {
+    // Keep falling through to the safe web URL parser.
+  }
+
+  const safeUrl = safeHttpUrl(externalUrl)
+  if (!safeUrl) return null
+
+  try {
+    const url = new URL(safeUrl)
+    if (!yandexMusicHosts.has(url.hostname)) return safeUrl
+    const routePath = yandexMusicRoutePath(url)
+    return isYandexMusicTrackRoute(routePath)
+      ? `yandexmusic://${routePath.slice(1)}${url.search}${url.hash}`
+      : safeUrl
+  } catch {
+    return null
+  }
+}
+
+function yandexMusicSearchUrl(presence: Pick<MusicPresence, 'artists' | 'title'>) {
+  const query = [...presence.artists, presence.title]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' ')
+  if (!query) return null
+  return `${YANDEX_MUSIC_SEARCH_URL}?text=${encodeURIComponent(query)}`
+}
+
 function providerOpenUrl(presence: MusicPresence) {
   const externalUrl = presence.externalUrl?.trim()
-  if (!externalUrl) return null
-  return presence.provider === 'spotify'
-    ? spotifyAppUrl(externalUrl)
-    : safeHttpUrl(externalUrl)
+  if (!externalUrl) {
+    return presence.provider === 'yandex_music'
+      ? yandexMusicSearchUrl(presence)
+      : null
+  }
+  if (presence.provider === 'spotify') return spotifyAppUrl(externalUrl)
+  if (presence.provider === 'yandex_music') return yandexMusicAppUrl(externalUrl)
+  return safeHttpUrl(externalUrl)
 }
 
 function useLiveNow(presence: MusicPresence | null) {

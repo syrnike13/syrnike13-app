@@ -8,6 +8,7 @@ import {
 import { installMediaPermissions } from './media-permissions'
 import { resolveDesktopAsset, resolvePreloadScript } from './paths'
 import { desktopWindowIconAssetName } from './desktop-app-identity'
+import { shouldOpenExternalUrl } from './external-open'
 
 const isMac = process.platform === 'darwin'
 
@@ -83,14 +84,9 @@ export function createMainWindow(loadUrl: string) {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const protocol = new URL(url).protocol
-      if (protocol === 'http:' || protocol === 'https:' || protocol === 'spotify:') {
-        void shell.openExternal(url)
-        return { action: 'deny' }
-      }
-    } catch {
-      // Let Electron decide how to handle malformed internal URLs.
+    if (shouldOpenExternalUrl(url)) {
+      void shell.openExternal(url).catch(() => {})
+      return { action: 'deny' }
     }
     return { action: 'allow' }
   })
