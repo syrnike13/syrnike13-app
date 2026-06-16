@@ -36,7 +36,7 @@ pub async fn list(
         )
         .await?
         .into_iter()
-        .map(|u| u.into_self(false)),
+        .map(|u| u.into_self_with_badges(db, false)),
     )
     .await;
 

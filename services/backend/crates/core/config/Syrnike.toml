@@ -180,6 +180,7 @@ backgrounds = [1280, 720]
 icons = [128, 128]
 banners = [480, 480]
 emojis = [128, 128]
+badges = [128, 128]
 
 [files.s3]
 # Configuration for S3
@@ -276,6 +277,7 @@ backgrounds = 6_000_000
 icons = 2_500_000
 banners = 6_000_000
 emojis = 500_000
+badges = 10_000_000
 
 [features.limits.default]
 # Limits imposed on users by default
@@ -315,6 +317,7 @@ backgrounds = 6_000_000
 icons = 2_500_000
 banners = 6_000_000
 emojis = 500_000
+badges = 10_000_000
 
 [features.advanced]
 # The max amount of messages the rabbitmq provider/db mention adder job will delay for before forcing handling of a channel.

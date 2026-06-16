@@ -1,4 +1,5 @@
 mod admin_migrations;
+mod badges;
 mod bots;
 mod channel_invites;
 mod channel_unreads;
@@ -19,6 +20,7 @@ mod user_settings;
 mod users;
 
 pub use admin_migrations::*;
+pub use badges::*;
 pub use bots::*;
 pub use channel_invites::*;
 pub use channel_unreads::*;
@@ -47,6 +49,7 @@ pub trait AbstractDatabase:
     Sync
     + Send
     + admin_migrations::AbstractMigrations
+    + badges::AbstractBadges
     + bots::AbstractBots
     + channels::AbstractChannels
     + channel_invites::AbstractChannelInvites

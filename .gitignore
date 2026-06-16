@@ -85,3 +85,5 @@ secrets.env
 
 # Local design/mockup drafts
 /output/mockups/
+
+.superpowers/

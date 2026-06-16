@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
@@ -283,6 +284,11 @@ export function UserProfileCardHeader({
         >
           {user.display_name ? `@${user.username}` : user.username}
         </p>
+        <UserBadges
+          badges={user.badges}
+          size={layout === 'compact' ? 'sm' : 'md'}
+          className="mt-2"
+        />
         {profileBio ? (
           <p
             className={cn(

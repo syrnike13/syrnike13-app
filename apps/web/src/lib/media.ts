@@ -77,3 +77,8 @@ export function roleIconUrl(icon: File | null | undefined) {
   if (!icon) return null
   return attachmentPreviewUrl(icon)
 }
+
+export function badgeIconUrl(icon: File | null | undefined) {
+  if (!icon) return null
+  return attachmentPreviewUrl(icon)
+}

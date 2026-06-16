@@ -9,6 +9,10 @@ export const queryKeys = {
   users: {
     profile: (userId: string) => ['users', userId, 'profile'] as const,
   },
+  admin: {
+    badges: ['admin', 'badges'] as const,
+    userBadges: (userId: string) => ['admin', 'users', userId, 'badges'] as const,
+  },
   channels: {
     messages: (channelId: string) =>
       ['channels', channelId, 'messages'] as const,

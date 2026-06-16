@@ -997,6 +997,24 @@ export interface components {
       /** @description Where this error occurred */
       location: string;
     };
+    /** @description Badge data attached to public user payloads */
+    UserBadge: {
+      /** @description Badge id */
+      _id: string;
+      /** @description Stable system slug */
+      slug: string;
+      /** @description Display name */
+      name: string;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Badge icon */
+      icon: components["schemas"]["File"];
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      order: number;
+    };
     /** @description User */
     User: {
       /** @description Unique Id */
@@ -1011,13 +1029,8 @@ export interface components {
       avatar?: components["schemas"]["File"] | null;
       /** @description Relationships with other users */
       relations?: components["schemas"]["Relationship"][];
-      /**
-       * Format: uint32
-       * @description Bitfield of user badges
-       *
-       * https://docs.rs/syrnike-models/latest/syrnike_models/v0/enum.UserBadges.html
-       */
-      badges?: number;
+      /** @description User badges */
+      badges?: components["schemas"]["UserBadge"][];
       /** @description User's current status */
       status?: components["schemas"]["UserStatus"] | null;
       /**
@@ -1062,6 +1075,38 @@ export interface components {
       server_id?: string | null;
       /** @description Id of the object this file is associated with */
       object_id?: string | null;
+    };
+    /** @description Badge catalog entry */
+    Badge: {
+      /** @description Unique Id */
+      _id: string;
+      /** @description Stable system slug */
+      slug: string;
+      /** @description Display name */
+      name: string;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Badge icon */
+      icon?: components["schemas"]["File"] | null;
+      /** @description Whether normal user-facing payloads can include this badge */
+      visible?: boolean;
+      /** @description Whether this badge is reserved for the premium system */
+      premium?: boolean;
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      display_order: number;
+      /**
+       * Format: date-time
+       * @description Creation timestamp
+       */
+      created_at: components["schemas"]["ISO8601 Timestamp"];
+      /**
+       * Format: date-time
+       * @description Update timestamp
+       */
+      updated_at: components["schemas"]["ISO8601 Timestamp"];
     };
     /** @description Metadata associated with a file */
     Metadata:
@@ -1167,11 +1212,6 @@ export interface components {
       profile?: components["schemas"]["DataUserProfile"] | null;
       /**
        * Format: int32
-       * @description Bitfield of user badges
-       */
-      badges?: number | null;
-      /**
-       * Format: int32
        * @description Enum of user flags
        */
       flags?: number | null;
@@ -1181,6 +1221,56 @@ export interface components {
        */
       remove?: components["schemas"]["FieldsUser"][];
     };
+    /** @description New badge catalog data */
+    DataCreateBadge: {
+      /** @description Stable system slug */
+      slug: string;
+      /** @description Display name */
+      name: string;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Uploaded badge icon file id */
+      icon_file_id?: string | null;
+      /** @description Whether normal user-facing payloads can include this badge */
+      visible: boolean;
+      /** @description Whether this badge is reserved for the premium system */
+      premium: boolean;
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      display_order: number;
+    };
+    /** @description Edited badge catalog data */
+    DataEditBadge: {
+      /** @description Stable system slug */
+      slug?: string | null;
+      /** @description Display name */
+      name?: string | null;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Uploaded badge icon file id */
+      icon_file_id?: string | null;
+      /** @description Whether normal user-facing payloads can include this badge */
+      visible?: boolean | null;
+      /** @description Whether this badge is reserved for the premium system */
+      premium?: boolean | null;
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      display_order?: number | null;
+      /**
+       * @description Fields to remove from badge object
+       * @default []
+       */
+      remove?: components["schemas"]["FieldsBadge"][];
+    };
+    /**
+     * @description Optional fields on badge object
+     * @enum {string}
+     */
+    FieldsBadge: "Description" | "Icon";
     /** @description New user profile data */
     DataUserProfile: {
       /** @description Text to set as user profile description */
