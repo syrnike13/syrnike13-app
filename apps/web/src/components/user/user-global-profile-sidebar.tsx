@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
+import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { Button } from '#/components/ui/button'
 import {
@@ -223,6 +224,7 @@ export function UserGlobalProfileSidebar({
         <p className="truncate text-sm text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
         </p>
+        <UserBadges badges={user.badges} className="mt-2" />
 
         {/* Action buttons */}
         <div className="mt-3 flex gap-1.5">

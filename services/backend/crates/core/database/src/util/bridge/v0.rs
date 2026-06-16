@@ -1012,10 +1012,20 @@ impl From<FieldsRole> for crate::FieldsRole {
 }
 
 impl crate::User {
+    async fn public_badges(db: &Database, user_id: &str) -> Vec<UserBadge> {
+        db.fetch_user_badges(user_id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(crate::Badge::into_public_user_badge)
+            .collect()
+    }
+
     pub async fn into<'a, P>(self, db: &Database, perspective: P) -> User
     where
         P: Into<Option<&'a crate::User>>,
     {
+        let user_id = self.id.clone();
         let perspective = perspective.into();
         let (relationship, can_see_profile) = if self.bot.is_some() {
             (RelationshipStatus::None, true)
@@ -1046,8 +1056,6 @@ impl crate::User {
             (RelationshipStatus::None, false)
         };
 
-        let badges = self.get_badges().await;
-
         User {
             username: self.username,
             discriminator: self.discriminator,
@@ -1066,7 +1074,7 @@ impl crate::User {
             } else {
                 vec![]
             },
-            badges,
+            badges: Self::public_badges(db, &user_id).await,
             online: can_see_profile
                 && syrnike_presence::is_online(&self.id).await
                 && !matches!(
@@ -1122,15 +1130,13 @@ impl crate::User {
             (RelationshipStatus::None, false)
         };
 
-        let badges = self.get_badges().await;
-
         User {
             username: self.username,
             discriminator: self.discriminator,
             display_name: self.display_name,
             avatar: self.avatar.map(|file| file.into()),
             relations: vec![],
-            badges,
+            badges: vec![],
             online: can_see_profile
                 && is_online
                 && !matches!(
@@ -1155,15 +1161,13 @@ impl crate::User {
 
     /// Convert user object into user model without presence information
     pub async fn into_known_static(self, is_online: bool) -> User {
-        let badges = self.get_badges().await;
-
         User {
             username: self.username,
             discriminator: self.discriminator,
             display_name: self.display_name,
             avatar: self.avatar.map(|file| file.into()),
             relations: vec![],
-            badges,
+            badges: vec![],
             online: is_online
                 && !matches!(
                     self.status,
@@ -1182,8 +1186,6 @@ impl crate::User {
     }
 
     pub async fn into_self(self, force_online: bool) -> User {
-        let badges = self.get_badges().await;
-
         User {
             username: self.username,
             discriminator: self.discriminator,
@@ -1198,7 +1200,7 @@ impl crate::User {
                         .collect()
                 })
                 .unwrap_or_default(),
-            badges,
+            badges: vec![],
             online: (force_online || syrnike_presence::is_online(&self.id).await)
                 && !matches!(
                     self.status,
@@ -1214,6 +1216,13 @@ impl crate::User {
             relationship: RelationshipStatus::User,
             id: self.id,
         }
+    }
+
+    pub async fn into_self_with_badges(self, db: &Database, force_online: bool) -> User {
+        let user_id = self.id.clone();
+        let mut user = self.into_self(force_online).await;
+        user.badges = Self::public_badges(db, &user_id).await;
+        user
     }
 
     pub fn as_author_for_system(&self) -> MessageAuthor {
@@ -1233,7 +1242,6 @@ impl From<User> for crate::User {
             display_name: value.display_name,
             avatar: value.avatar.map(Into::into),
             relations: None,
-            badges: Some(value.badges as i32),
             status: value.status.map(Into::into),
             profile: None,
             flags: Some(value.flags as i32),
@@ -1258,7 +1266,7 @@ impl From<crate::PartialUser> for PartialUser {
                     .map(|relationship| relationship.into())
                     .collect()
             }),
-            badges: value.badges.map(|badges| badges as u32),
+            badges: None,
             status: value.status.and_then(|status| status.into(false)),
             flags: value.flags.map(|flags| flags as u32),
             privileged: value.privileged,

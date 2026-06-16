@@ -10,7 +10,7 @@ use rand::seq::SliceRandom;
 use regex::{Regex, RegexBuilder};
 use serde_json::json;
 use syrnike_config::{config, FeaturesLimits};
-use syrnike_models::v0::{self, UserBadges, UserFlags};
+use syrnike_models::v0::{self, UserFlags};
 use syrnike_presence::filter_online;
 use syrnike_result::{create_error, Result};
 use ulid::Ulid;
@@ -35,9 +35,6 @@ auto_derived_partial!(
         #[serde(skip_serializing_if = "Option::is_none")]
         pub relations: Option<Vec<Relationship>>,
 
-        /// Bitfield of user badges
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub badges: Option<i32>,
         /// User's current status
         #[serde(skip_serializing_if = "Option::is_none")]
         pub status: Option<UserStatus>,
@@ -227,7 +224,6 @@ impl Default for User {
             display_name: Default::default(),
             avatar: Default::default(),
             relations: Default::default(),
-            badges: Default::default(),
             status: Default::default(),
             profile: Default::default(),
             flags: Default::default(),
@@ -918,19 +914,6 @@ impl User {
         .await
     }
 
-    /// Gets the user's badges along with calculating any dynamic badges
-    pub async fn get_badges(&self) -> u32 {
-        let config = config().await;
-        let badges = self.badges.unwrap_or_default() as u32;
-
-        if let Some(cutoff) = config.api.users.early_adopter_cutoff {
-            if Ulid::from_string(&self.id).unwrap().timestamp_ms() < cutoff {
-                return badges + UserBadges::EarlyAdopter as u32;
-            };
-        };
-
-        badges
-    }
 }
 
 #[cfg(test)]

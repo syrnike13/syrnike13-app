@@ -1,4 +1,5 @@
 mod bots;
+mod badges;
 mod channel_invites;
 mod channel_unreads;
 mod channel_webhooks;
@@ -16,6 +17,7 @@ mod user_settings;
 mod users;
 
 pub use bots::*;
+pub use badges::*;
 pub use channel_invites::*;
 pub use channel_unreads::*;
 pub use channel_webhooks::*;

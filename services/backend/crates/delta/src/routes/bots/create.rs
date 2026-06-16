@@ -25,7 +25,7 @@ pub async fn create_bot(
     let (bot, user) = Bot::create(db, info.name, &user, None).await?;
     Ok(Json(v0::BotWithUserResponse {
         bot: bot.into(),
-        user: user.into_self(false).await,
+        user: user.into_self_with_badges(db, false).await,
     }))
 }
 

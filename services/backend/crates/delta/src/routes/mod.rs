@@ -5,6 +5,7 @@ use rocket::{Build, Rocket};
 use syrnike_config::Settings;
 
 mod auth_account;
+mod admin;
 mod bots;
 mod channels;
 mod customisation;
@@ -28,6 +29,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             rocket, "/".to_owned(), settings,
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
+            "/admin" => admin::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
@@ -49,6 +51,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             rocket, "/".to_owned(), settings,
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
+            "/admin" => admin::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
@@ -71,6 +74,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             rocket, "/0.8".to_owned(), settings,
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
+            "/admin" => admin::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
@@ -91,6 +95,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             rocket, "/0.8".to_owned(), settings,
             "/" => (vec![], custom_openapi_spec()),
             "" => openapi_get_routes_spec![root::root],
+            "/admin" => admin::routes(),
             "/users" => users::routes(),
             "/bots" => bots::routes(),
             "/channels" => channels::routes(),
