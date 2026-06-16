@@ -42,6 +42,12 @@ auto_derived_partial!(
 );
 
 auto_derived!(
+    /// Optional fields on badge object
+    pub enum FieldsBadge {
+        Description,
+        Icon,
+    }
+
     /// Badge data attached to public user payloads
     pub struct UserBadge {
         /// Badge id
@@ -113,6 +119,9 @@ auto_derived!(
         /// Global display order
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub display_order: Option<i32>,
+        /// Fields to remove from badge object
+        #[cfg_attr(feature = "serde", serde(default))]
+        pub remove: Vec<FieldsBadge>,
     }
 );
 

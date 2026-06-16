@@ -1,6 +1,6 @@
 use syrnike_result::Result;
 
-use crate::{Badge, PartialBadge, UserBadgeAssignment};
+use crate::{Badge, FieldsBadge, PartialBadge, UserBadgeAssignment};
 
 #[cfg(feature = "mongodb")]
 mod mongodb;
@@ -21,7 +21,12 @@ pub trait AbstractBadges: Sync + Send {
     async fn fetch_badges(&self) -> Result<Vec<Badge>>;
 
     /// Update badge by id.
-    async fn update_badge(&self, badge_id: &str, partial: &PartialBadge) -> Result<()>;
+    async fn update_badge(
+        &self,
+        badge_id: &str,
+        partial: &PartialBadge,
+        remove: &[FieldsBadge],
+    ) -> Result<()>;
 
     /// Delete badge by id.
     async fn delete_badge(&self, badge_id: &str) -> Result<()>;

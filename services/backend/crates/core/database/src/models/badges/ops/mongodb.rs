@@ -1,8 +1,11 @@
 use bson::Document;
-use futures::StreamExt;
+use futures::TryStreamExt;
 use syrnike_result::Result;
 
-use crate::{sort_badges_for_display, Badge, MongoDb, PartialBadge, UserBadgeAssignment};
+use crate::{
+    sort_badges_for_display, Badge, FieldsBadge, IntoDocumentPath, MongoDb, PartialBadge,
+    UserBadgeAssignment,
+};
 
 use super::AbstractBadges;
 
@@ -37,18 +40,41 @@ impl AbstractBadges for MongoDb {
         Ok(badges)
     }
 
-    async fn update_badge(&self, badge_id: &str, partial: &PartialBadge) -> Result<()> {
-        query!(self, update_one_by_id, BADGES_COL, badge_id, partial, vec![], None).map(|_| ())
+    async fn update_badge(
+        &self,
+        badge_id: &str,
+        partial: &PartialBadge,
+        remove: &[FieldsBadge],
+    ) -> Result<()> {
+        query!(
+            self,
+            update_one_by_id,
+            BADGES_COL,
+            badge_id,
+            partial,
+            remove
+                .iter()
+                .map(|field| field as &dyn IntoDocumentPath)
+                .collect(),
+            None
+        )
+        .map(|_| ())
     }
 
     async fn delete_badge(&self, badge_id: &str) -> Result<()> {
-        self.col::<Document>(BADGES_COL)
+        let result = self
+            .col::<Document>(BADGES_COL)
             .delete_one(doc! {
                 "_id": badge_id
             })
             .await
-            .map(|_| ())
-            .map_err(|_| create_database_error!("delete_one", BADGES_COL))
+            .map_err(|_| create_database_error!("delete_one", BADGES_COL))?;
+
+        if result.deleted_count == 0 {
+            return Err(create_error!(NotFound));
+        }
+
+        Ok(())
     }
 
     async fn assign_user_badge(&self, assignment: &UserBadgeAssignment) -> Result<()> {
@@ -90,9 +116,9 @@ impl AbstractBadges for MongoDb {
             })
             .await
             .map_err(|_| create_database_error!("find", USER_BADGES_COL))?
-            .filter_map(|assignment| async { assignment.ok() })
-            .collect()
-            .await)
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|_| create_database_error!("deserialize", USER_BADGES_COL))?)
     }
 
     async fn fetch_user_badges(&self, user_id: &str) -> Result<Vec<Badge>> {
@@ -111,9 +137,9 @@ impl AbstractBadges for MongoDb {
             })
             .await
             .map_err(|_| create_database_error!("find", BADGES_COL))?
-            .filter_map(|badge| async { badge.ok() })
-            .collect::<Vec<_>>()
-            .await;
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|_| create_database_error!("deserialize", BADGES_COL))?;
 
         sort_badges_for_display(&mut badges);
         Ok(badges)
@@ -127,5 +153,14 @@ impl AbstractBadges for MongoDb {
             .await
             .map(|_| ())
             .map_err(|_| create_database_error!("delete_many", USER_BADGES_COL))
+    }
+}
+
+impl IntoDocumentPath for FieldsBadge {
+    fn as_path(&self) -> Option<&'static str> {
+        Some(match self {
+            FieldsBadge::Description => "description",
+            FieldsBadge::Icon => "icon",
+        })
     }
 }

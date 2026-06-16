@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import type { Badge, DataCreateBadge, DataEditBadge, User } from '@syrnike13/api-types'
+import type {
+  Badge,
+  DataCreateBadge,
+  DataEditBadge,
+  FieldsBadge,
+  User,
+} from '@syrnike13/api-types'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -81,15 +87,31 @@ function formToCreatePayload(form: BadgeFormState, iconFileId?: string): DataCre
   }
 }
 
-function formToEditPayload(form: BadgeFormState, iconFileId?: string): DataEditBadge {
+function formToEditPayload(
+  form: BadgeFormState,
+  iconFileId?: string,
+  removeIcon = false,
+): DataEditBadge {
+  const description = form.description.trim()
+  const remove: FieldsBadge[] = []
+
+  if (!description) {
+    remove.push('Description')
+  }
+
+  if (removeIcon) {
+    remove.push('Icon')
+  }
+
   return {
     slug: form.slug.trim(),
     name: form.name.trim(),
-    description: form.description.trim(),
+    description: description || undefined,
     icon_file_id: iconFileId,
     visible: form.visible,
     premium: form.premium,
     display_order: Number.parseInt(form.displayOrder, 10) || 0,
+    remove,
   }
 }
 
@@ -100,6 +122,7 @@ function AdminBadgesPage() {
   const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null)
   const [form, setForm] = useState<BadgeFormState>(emptyForm)
   const [iconFile, setIconFile] = useState<File | null>(null)
+  const [removeIcon, setRemoveIcon] = useState(false)
   const [userQuery, setUserQuery] = useState('')
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
 
@@ -128,6 +151,7 @@ function AdminBadgesPage() {
     setSelectedBadgeId(null)
     setForm(emptyForm)
     setIconFile(null)
+    setRemoveIcon(false)
   }
 
   const createMutation = useMutation({
@@ -146,6 +170,7 @@ function AdminBadgesPage() {
       setSelectedBadgeId(badge._id)
       setForm(badgeToForm(badge))
       setIconFile(null)
+      setRemoveIcon(false)
       toast.success('Бейдж создан')
     },
     onError: (error) => {
@@ -159,7 +184,11 @@ function AdminBadgesPage() {
       const iconFileId = iconFile
         ? await uploadMediaFile(token, 'badges', iconFile)
         : undefined
-      return updateAdminBadge(token, selectedBadge._id, formToEditPayload(form, iconFileId))
+      return updateAdminBadge(
+        token,
+        selectedBadge._id,
+        formToEditPayload(form, iconFileId, removeIcon && !iconFile),
+      )
     },
     onSuccess: (badge) => {
       queryClient.setQueryData<Badge[]>(queryKeys.admin.badges, (current = []) =>
@@ -167,6 +196,7 @@ function AdminBadgesPage() {
       )
       setForm(badgeToForm(badge))
       setIconFile(null)
+      setRemoveIcon(false)
       toast.success('Бейдж сохранён')
     },
     onError: (error) => {
@@ -221,6 +251,9 @@ function AdminBadgesPage() {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)
     },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Не удалось выдать бейдж')
+    },
   })
 
   const removeMutation = useMutation({
@@ -231,6 +264,9 @@ function AdminBadgesPage() {
     onSuccess: (assigned) => {
       if (!selectedUser) return
       queryClient.setQueryData(queryKeys.admin.userBadges(selectedUser._id), assigned)
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Не удалось снять бейдж')
     },
   })
 
@@ -289,6 +325,7 @@ function AdminBadgesPage() {
                         setSelectedBadgeId(badge._id)
                         setForm(badgeToForm(badge))
                         setIconFile(null)
+                        setRemoveIcon(false)
                       }}
                     >
                       <BadgeIconPreview badge={badge} />
@@ -335,7 +372,11 @@ function AdminBadgesPage() {
               </div>
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-dashed border-border px-3 py-2 text-sm transition-colors hover:bg-accent/50">
                 <span className="min-w-0 truncate text-muted-foreground">
-                  {iconFile ? iconFile.name : 'PNG/WebP icon'}
+                  {iconFile
+                    ? iconFile.name
+                    : removeIcon
+                      ? 'Иконка будет очищена'
+                      : 'PNG/WebP icon'}
                 </span>
                 <span className="inline-flex items-center gap-2 font-medium">
                   <FolderPlusIcon className="size-4" aria-hidden />
@@ -345,9 +386,26 @@ function AdminBadgesPage() {
                   type="file"
                   accept="image/png,image/webp"
                   className="sr-only"
-                  onChange={(event) => setIconFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => {
+                    setIconFile(event.target.files?.[0] ?? null)
+                    setRemoveIcon(false)
+                  }}
                 />
               </label>
+              {selectedBadge?.icon || removeIcon ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setIconFile(null)
+                    setRemoveIcon((current) => !current)
+                  }}
+                >
+                  <XIcon className="size-4" aria-hidden />
+                  {removeIcon ? 'Не очищать иконку' : 'Очистить иконку'}
+                </Button>
+              ) : null}
               <div className="flex justify-between gap-2 pt-1">
                 {selectedBadge ? (
                   <Button

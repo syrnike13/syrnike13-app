@@ -1,6 +1,8 @@
 use syrnike_result::Result;
 
-use crate::{sort_badges_for_display, Badge, PartialBadge, ReferenceDb, UserBadgeAssignment};
+use crate::{
+    sort_badges_for_display, Badge, FieldsBadge, PartialBadge, ReferenceDb, UserBadgeAssignment,
+};
 
 use super::AbstractBadges;
 
@@ -49,7 +51,12 @@ impl AbstractBadges for ReferenceDb {
         Ok(badges)
     }
 
-    async fn update_badge(&self, badge_id: &str, partial: &PartialBadge) -> Result<()> {
+    async fn update_badge(
+        &self,
+        badge_id: &str,
+        partial: &PartialBadge,
+        remove: &[FieldsBadge],
+    ) -> Result<()> {
         let mut badges = self.badges.lock().await;
 
         if let Some(slug) = &partial.slug {
@@ -62,6 +69,10 @@ impl AbstractBadges for ReferenceDb {
         }
 
         if let Some(badge) = badges.get_mut(badge_id) {
+            for field in remove {
+                badge.remove_field(field);
+            }
+
             badge.apply_partial(partial.clone());
             Ok(())
         } else {

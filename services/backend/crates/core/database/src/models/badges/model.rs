@@ -37,6 +37,12 @@ auto_derived_partial!(
 );
 
 auto_derived!(
+    /// Optional fields on badge object
+    pub enum FieldsBadge {
+        Description,
+        Icon,
+    }
+
     /// User badge assignment
     pub struct UserBadgeAssignment {
         /// User id
@@ -126,6 +132,13 @@ impl Badge {
         self.updated_at = Timestamp::now_utc();
     }
 
+    pub fn remove_field(&mut self, field: &FieldsBadge) {
+        match field {
+            FieldsBadge::Description => self.description = None,
+            FieldsBadge::Icon => self.icon = None,
+        }
+    }
+
     pub fn into_public_user_badge(self) -> Option<v0::UserBadge> {
         if !self.visible || self.premium {
             return None;
@@ -178,6 +191,24 @@ impl From<PartialBadge> for v0::PartialBadge {
     }
 }
 
+impl From<v0::FieldsBadge> for FieldsBadge {
+    fn from(value: v0::FieldsBadge) -> Self {
+        match value {
+            v0::FieldsBadge::Description => FieldsBadge::Description,
+            v0::FieldsBadge::Icon => FieldsBadge::Icon,
+        }
+    }
+}
+
+impl From<FieldsBadge> for v0::FieldsBadge {
+    fn from(value: FieldsBadge) -> Self {
+        match value {
+            FieldsBadge::Description => v0::FieldsBadge::Description,
+            FieldsBadge::Icon => v0::FieldsBadge::Icon,
+        }
+    }
+}
+
 pub fn initial_badges() -> Vec<Badge> {
     vec![
         Badge::new_seed("founder", "Основатель", 0, true, false),
@@ -201,7 +232,7 @@ pub fn sort_badges_for_display(badges: &mut [Badge]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{sort_badges_for_display, Badge, UserBadgeAssignment};
+    use super::{sort_badges_for_display, Badge, FieldsBadge, PartialBadge, UserBadgeAssignment};
     use iso8601_timestamp::Timestamp;
 
     #[async_std::test]
@@ -233,6 +264,25 @@ mod tests {
             db.assign_user_badge(&assignment).await.unwrap();
 
             assert_eq!(db.fetch_user_badge_assignments("user").await.unwrap().len(), 1);
+        });
+    }
+
+    #[async_std::test]
+    async fn update_badge_can_remove_description() {
+        database_test!(|db| async move {
+            let mut badge = Badge::new_seed("founder", "Основатель", 0, true, false);
+            badge.description = Some("old description".to_string());
+            db.insert_badge(&badge).await.unwrap();
+
+            db.update_badge(
+                &badge.id,
+                &PartialBadge::default(),
+                &[FieldsBadge::Description],
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(db.fetch_badge(&badge.id).await.unwrap().description, None);
         });
     }
 

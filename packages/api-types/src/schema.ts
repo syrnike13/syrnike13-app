@@ -1260,7 +1260,17 @@ export interface components {
        * @description Global display order
        */
       display_order?: number | null;
+      /**
+       * @description Fields to remove from badge object
+       * @default []
+       */
+      remove?: components["schemas"]["FieldsBadge"][];
     };
+    /**
+     * @description Optional fields on badge object
+     * @enum {string}
+     */
+    FieldsBadge: "Description" | "Icon";
     /** @description New user profile data */
     DataUserProfile: {
       /** @description Text to set as user profile description */

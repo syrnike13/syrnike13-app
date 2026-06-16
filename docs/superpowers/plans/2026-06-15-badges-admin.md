@@ -427,6 +427,39 @@ cargo check --manifest-path services/backend/Cargo.toml -p delta
 
 Expected: route crate compiles.
 
+## Task 6.5: Roll Out Badge-Aware User Conversion
+
+**Files:**
+
+- Modify: `services/backend/crates/delta/src/routes/users/fetch_self.rs`
+- Modify: `services/backend/crates/delta/src/routes/users/fetch_user.rs`
+- Modify: `services/backend/crates/delta/src/routes/users/edit_user.rs`
+- Modify: `services/backend/crates/delta/src/routes/onboard/complete.rs`
+- Modify: `services/backend/crates/delta/src/routes/bots/create.rs`
+- Modify: `services/backend/crates/delta/src/routes/bots/edit.rs`
+- Modify: `services/backend/crates/delta/src/routes/bots/fetch_owned.rs`
+- Modify: `services/backend/crates/delta/src/routes/servers/ban_list.rs`
+
+- [ ] **Step 1: Replace self-user conversion call sites**
+
+Replace route handlers that have database access and return the current user's full payload from:
+
+```rust
+into_self(false)
+```
+
+to:
+
+```rust
+into_self_with_badges(db, false).await?
+```
+
+Use `true` for the existing forced-online self conversion paths.
+
+- [ ] **Step 2: Preserve legacy conversion behavior where there is no database handle**
+
+Keep no-db conversion helpers returning an empty `badges` vector unless their call site can hydrate badges without adding unrelated database plumbing.
+
 ## Task 7: Regenerate API Types
 
 **Files:**
@@ -613,4 +646,3 @@ Verify:
 - profile sidebar shows visible assigned badge icons
 - popover/current-user menu show visible assigned badge icons
 - chat rows/member lists do not show badges
-

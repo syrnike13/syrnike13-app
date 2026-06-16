@@ -1,7 +1,7 @@
 use iso8601_timestamp::Timestamp;
 use rocket::serde::json::Json;
 use rocket::State;
-use syrnike_database::{Badge, Database, File, PartialBadge, User};
+use syrnike_database::{Badge, Database, FieldsBadge, File, PartialBadge, User};
 use syrnike_models::v0;
 use syrnike_result::{create_error, Result};
 use validator::Validate;
@@ -92,11 +92,21 @@ pub async fn edit(
     }
 
     let old_icon_id = current.icon.as_ref().map(|icon| icon.id.clone());
+    let mut remove = data
+        .remove
+        .into_iter()
+        .map(FieldsBadge::from)
+        .collect::<Vec<_>>();
     let next_icon = if let Some(icon_file_id) = data.icon_file_id {
         Some(File::use_badge_icon(db, &icon_file_id, &badge_id, &user.id).await?)
     } else {
         None
     };
+    let replacing_icon = next_icon.is_some();
+
+    if replacing_icon {
+        remove.retain(|field| field != &FieldsBadge::Icon);
+    }
 
     let partial = PartialBadge {
         slug: data.slug,
@@ -110,10 +120,16 @@ pub async fn edit(
         ..Default::default()
     };
 
-    db.update_badge(&badge_id, &partial).await?;
+    db.update_badge(&badge_id, &partial, &remove).await?;
 
-    if let (Some(old_icon_id), Some(new_icon)) = (old_icon_id, partial.icon.as_ref()) {
-        if old_icon_id != new_icon.id {
+    if let Some(old_icon_id) = old_icon_id {
+        let icon_removed = remove.contains(&FieldsBadge::Icon);
+        let icon_replaced = partial
+            .icon
+            .as_ref()
+            .is_some_and(|new_icon| old_icon_id != new_icon.id);
+
+        if icon_removed || icon_replaced {
             db.mark_attachment_as_deleted(&old_icon_id).await?;
         }
     }
