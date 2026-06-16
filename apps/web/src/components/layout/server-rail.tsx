@@ -120,7 +120,7 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
               <img
                 src={APP_LOADING_EASTER_EGG_SRC}
                 alt=""
-                className="size-30 max-w-none object-contain"
+                className="size-25 max-w-none object-contain"
                 draggable={false}
               />
             ) : (

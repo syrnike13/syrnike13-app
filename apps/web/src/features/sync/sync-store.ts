@@ -331,6 +331,7 @@ export const syncStore = {
       voiceParticipants,
       voiceCalls,
       dismissedVoiceCallKeys,
+      musicPresences: {},
       selectedServerId: state.selectedServerId,
     })
   },

@@ -145,7 +145,7 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     getCurrentPresence() {
       return ipcRenderer
         .invoke(IPC.musicGetCurrentPresence)
-        .then(normalizeMusicPresencePatch) as Promise<MusicPresencePatch>
+        .then((payload) => normalizeMusicPresencePatch(payload) ?? null)
     },
     onPresenceChange(handler: (presence: MusicPresencePatch) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {

@@ -53,11 +53,14 @@ vi.mock('#/features/voice/voice-context', () => ({
 }))
 
 vi.mock('#/features/navigation/mobile-voice-channel-drawer-context', () => ({
-  useOptionalMobileVoiceChannelDrawer: () => ({
-    openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
-    closeVoiceChannelDrawer: vi.fn(),
-    channelId: null,
-  }),
+  useOptionalMobileVoiceChannelDrawer: () =>
+    mocks.mobileDrawerProviderMounted
+      ? {
+          openVoiceChannelDrawer: mocks.openVoiceChannelDrawer,
+          closeVoiceChannelDrawer: vi.fn(),
+          channelId: null,
+        }
+      : null,
 }))
 
 vi.mock('#/components/channels/channel-settings-dialog', () => ({

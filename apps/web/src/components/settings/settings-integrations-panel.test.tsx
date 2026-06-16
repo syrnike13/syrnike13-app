@@ -8,10 +8,17 @@ import { SettingsIntegrationsPanel } from '#/components/settings/settings-integr
 
 const loadDesktopLocalSettingsMock = vi.hoisted(() => vi.fn())
 const updateDesktopLocalSettingsMock = vi.hoisted(() => vi.fn())
+const toastErrorMock = vi.hoisted(() => vi.fn())
 
 vi.mock('#/features/settings/desktop-local-settings-client', () => ({
   loadDesktopLocalSettings: loadDesktopLocalSettingsMock,
   updateDesktopLocalSettings: updateDesktopLocalSettingsMock,
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: toastErrorMock,
+  },
 }))
 
 describe('SettingsIntegrationsPanel', () => {
@@ -68,5 +75,19 @@ describe('SettingsIntegrationsPanel', () => {
         },
       })
     })
+  })
+
+  it('stops showing the loading state when desktop settings fail to load', async () => {
+    loadDesktopLocalSettingsMock.mockRejectedValueOnce(
+      new Error('settings exploded'),
+    )
+
+    render(<SettingsIntegrationsPanel />)
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith('settings exploded')
+    })
+
+    expect(screen.getByText(/Desktop-/)).toBeTruthy()
   })
 })

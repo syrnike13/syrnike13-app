@@ -795,6 +795,30 @@ describe('syncStore applyReady', () => {
 
     expect(syncStore.getState().selectedServerId).toBe('server-2')
   })
+
+  it('clears stale music presences because Ready has no music snapshot', () => {
+    syncStore.reset()
+    syncStore.setUserMusicPresence(USER_ID, {
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'PRAXX',
+      artists: ['DK'],
+      isPlaying: true,
+      observedAt: 1_718_100_000_000,
+    })
+
+    syncStore.applyReady({
+      servers: [],
+      channels: [],
+      users: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    })
+
+    expect(syncStore.getState().musicPresences).toEqual({})
+  })
 })
 
 describe('syncStore music presence events', () => {

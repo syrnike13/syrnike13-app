@@ -93,6 +93,7 @@ export function registerDesktopMusicPresenceIpc(
 
   return () => {
     if (timer) clearInterval(timer)
+    ipcMain.removeHandler(IPC.musicGetCurrentPresence)
     disposeWatcher?.()
     lastPresence = null
   }

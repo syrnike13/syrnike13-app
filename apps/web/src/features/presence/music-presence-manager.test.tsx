@@ -5,12 +5,20 @@ import type { SyrnikeDesktopApi, MusicPresencePatch } from '@syrnike13/platform'
 
 import { MusicPresenceManager } from './music-presence-manager'
 
-const mockState = vi.hoisted(() => ({
-  musicPresence: vi.fn(),
-  setUserMusicPresence: vi.fn(),
-  desktop: null as Pick<SyrnikeDesktopApi, 'music'> | null,
-  presenceHandler: null as ((presence: MusicPresencePatch) => void) | null,
-}))
+const mockState = vi.hoisted(() => {
+  const state: {
+    musicPresence: ReturnType<typeof vi.fn>
+    setUserMusicPresence: ReturnType<typeof vi.fn>
+    desktop: Pick<SyrnikeDesktopApi, 'music'> | null
+    presenceHandler: ((presence: MusicPresencePatch) => void) | null
+  } = {
+    musicPresence: vi.fn(),
+    setUserMusicPresence: vi.fn(),
+    desktop: null,
+    presenceHandler: null,
+  }
+  return state
+})
 
 vi.mock('#/features/auth/auth-context', () => ({
   useAuth: () => ({
@@ -125,6 +133,104 @@ describe('MusicPresenceManager', () => {
         title: 'Song',
       }),
     )
+  })
+
+  it('keeps a live update when the initial desktop probe resolves later', async () => {
+    let resolveInitialPresence = (_presence: MusicPresencePatch) => {}
+    const initialPresence = new Promise<MusicPresencePatch>((resolve) => {
+      resolveInitialPresence = resolve
+    })
+    mockState.desktop = {
+      music: {
+        getCurrentPresence: () => initialPresence,
+        onPresenceChange: (handler) => {
+          mockState.presenceHandler = handler
+          return () => {
+            mockState.presenceHandler = null
+          }
+        },
+      },
+    }
+
+    render(<MusicPresenceManager />)
+
+    await waitFor(() => {
+      expect(mockState.presenceHandler).toEqual(expect.any(Function))
+    })
+
+    mockState.presenceHandler?.({
+      provider: 'apple_music',
+      source: 'desktop_now_playing',
+      title: 'Fresh song',
+      artists: ['Artist'],
+      isPlaying: true,
+      observedAt: 1781518010000,
+    })
+    resolveInitialPresence({
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'Stale song',
+      artists: ['Artist'],
+      isPlaying: true,
+      observedAt: 1781518000000,
+    })
+    await initialPresence
+
+    await waitFor(() => {
+      expect(mockState.musicPresence).toHaveBeenCalledTimes(1)
+    })
+    expect(mockState.musicPresence).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        provider: 'apple_music',
+        title: 'Fresh song',
+      }),
+    )
+    expect(mockState.setUserMusicPresence).toHaveBeenLastCalledWith(
+      'user-1',
+      expect.objectContaining({
+        provider: 'apple_music',
+        title: 'Fresh song',
+      }),
+    )
+  })
+
+  it('continues publishing listener updates when the initial desktop probe rejects', async () => {
+    const initialError = new Error('probe failed')
+    mockState.desktop = {
+      music: {
+        getCurrentPresence: () => Promise.reject(initialError),
+        onPresenceChange: (handler) => {
+          mockState.presenceHandler = handler
+          return () => {
+            mockState.presenceHandler = null
+          }
+        },
+      },
+    }
+
+    render(<MusicPresenceManager />)
+
+    await waitFor(() => {
+      expect(mockState.presenceHandler).toEqual(expect.any(Function))
+    })
+
+    mockState.presenceHandler?.({
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'Listener song',
+      artists: ['Artist'],
+      isPlaying: true,
+      observedAt: 1781518010000,
+    })
+
+    await waitFor(() => {
+      expect(mockState.musicPresence).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'spotify',
+          title: 'Listener song',
+        }),
+      )
+    })
   })
 
   it('publishes null when desktop reports paused playback', async () => {

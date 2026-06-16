@@ -13,19 +13,25 @@ export function MusicPresenceManager() {
     const userId = auth.user?._id
     if (!userId || !desktop) return
 
+    const currentUserId = userId
     let cancelled = false
+    let receivedLivePresence = false
 
     function publishPresence(presence: Parameters<typeof eventsGateway.musicPresence>[0]) {
       const activePresence = presence?.isPlaying ? presence : null
-      syncStore.setUserMusicPresence(userId, activePresence)
+      syncStore.setUserMusicPresence(currentUserId, activePresence)
       eventsGateway.musicPresence(activePresence)
     }
 
-    void desktop.music.getCurrentPresence().then((presence) => {
-      if (!cancelled) publishPresence(presence)
-    })
+    void desktop.music
+      .getCurrentPresence()
+      .then((presence) => {
+        if (!cancelled && !receivedLivePresence) publishPresence(presence)
+      })
+      .catch(() => {})
 
     const unsubscribe = desktop.music.onPresenceChange((presence) => {
+      receivedLivePresence = true
       publishPresence(presence)
     })
 

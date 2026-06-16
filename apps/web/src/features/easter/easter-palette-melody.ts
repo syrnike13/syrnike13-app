@@ -27,7 +27,7 @@ export const PALETTE_EASTER_NOTES = {
   kontrast: 'decoy',
 } as const satisfies Record<string, EasterNoteId>
 
-export const EASTER_MELODY_SEQUENCE: EasterNoteId[] = [
+export const EASTER_MELODY_SEQUENCE = [
   'd6',
   'd6',
   'd7',
@@ -48,7 +48,13 @@ export const EASTER_MELODY_SEQUENCE: EasterNoteId[] = [
   'd6',
   'f6',
   'g-sharp-6',
-]
+] as const satisfies readonly EasterNoteId[]
+
+function isPaletteEasterThemeId(
+  themeId: string,
+): themeId is keyof typeof PALETTE_EASTER_NOTES {
+  return themeId in PALETTE_EASTER_NOTES
+}
 
 type AudioLike = {
   volume: number
@@ -100,8 +106,8 @@ export function createPaletteEasterMelody({
 
   return {
     handleThemeSelection(themeId: string) {
+      if (!isPaletteEasterThemeId(themeId)) return
       const noteId = PALETTE_EASTER_NOTES[themeId]
-      if (!noteId) return
 
       playNote(noteId)
 
@@ -124,7 +130,9 @@ export function createPaletteEasterMelody({
       progress = 0
       completionScheduled = true
       setEasterModeEnabled(true)
-      schedule(reload, EASTER_MODE_RELOAD_DELAY_MS)
+      schedule(() => {
+        if (isEasterModeEnabled()) reload()
+      }, EASTER_MODE_RELOAD_DELAY_MS)
     },
 
     getProgress() {

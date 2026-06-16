@@ -18,7 +18,7 @@ const providerLabel: Record<MusicProviderId, string> = {
 }
 
 function formatTrackTime(ms: number | undefined) {
-  if (!ms || !Number.isFinite(ms)) return null
+  if (ms === undefined || !Number.isFinite(ms)) return null
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = String(totalSeconds % 60).padStart(2, '0')
@@ -36,25 +36,39 @@ function currentProgress(presence: MusicPresence, now = Date.now()) {
   return Math.min(duration, Math.max(0, progress + elapsed))
 }
 
-function spotifyAppUrl(externalUrl: string) {
-  if (externalUrl.startsWith('spotify:track:')) return externalUrl
+function safeHttpUrl(externalUrl: string) {
   try {
     const url = new URL(externalUrl)
-    if (url.hostname !== 'open.spotify.com') return externalUrl
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.href
+      : null
+  } catch {
+    return null
+  }
+}
+
+function spotifyAppUrl(externalUrl: string) {
+  if (externalUrl.startsWith('spotify:track:')) return externalUrl
+  const safeUrl = safeHttpUrl(externalUrl)
+  if (!safeUrl) return null
+
+  try {
+    const url = new URL(safeUrl)
+    if (url.hostname !== 'open.spotify.com') return safeUrl
     const [, kind, id] = url.pathname.split('/')
-    if (kind !== 'track' || !id) return externalUrl
+    if (kind !== 'track' || !id) return safeUrl
     return `spotify:track:${id}`
   } catch {
-    return externalUrl
+    return null
   }
 }
 
 function providerOpenUrl(presence: MusicPresence) {
-  if (!presence.externalUrl) return null
-  if (presence.provider === 'spotify') {
-    return spotifyAppUrl(presence.externalUrl)
-  }
-  return presence.externalUrl
+  const externalUrl = presence.externalUrl?.trim()
+  if (!externalUrl) return null
+  return presence.provider === 'spotify'
+    ? spotifyAppUrl(externalUrl)
+    : safeHttpUrl(externalUrl)
 }
 
 function useLiveNow(presence: MusicPresence | null) {

@@ -1,13 +1,18 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MusicPresencePatch } from '@syrnike13/platform'
 
 vi.mock('electron', () => ({
   ipcMain: {
     handle: vi.fn(),
+    removeHandler: vi.fn(),
   },
 }))
 
 describe('desktop music presence IPC service', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('registers the current presence IPC handler', async () => {
     const { ipcMain } = await import('electron')
     const { IPC } = await import('@syrnike13/platform')
@@ -26,6 +31,26 @@ describe('desktop music presence IPC service', () => {
       expect.any(Function),
     )
     dispose()
+  })
+
+  it('removes the current presence IPC handler during dispose', async () => {
+    const { ipcMain } = await import('electron')
+    const { IPC } = await import('@syrnike13/platform')
+    const { registerDesktopMusicPresenceIpc } = await import(
+      './desktop-music-presence-service'
+    )
+
+    const dispose = registerDesktopMusicPresenceIpc(() => null, {
+      getSettings: () => musicSettings(),
+      probeMusicPresence: async () => null,
+      pollIntervalMs: 0,
+    })
+
+    dispose()
+
+    expect(ipcMain.removeHandler).toHaveBeenCalledWith(
+      IPC.musicGetCurrentPresence,
+    )
   })
 
   it('sends presence changes to the renderer during polling', async () => {

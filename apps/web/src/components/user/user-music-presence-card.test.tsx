@@ -58,6 +58,59 @@ describe('UserMusicPresenceCard', () => {
     expect(screen.queryByRole('link')).toBeNull()
   })
 
+  it('formats zero playback progress as 0:00', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    syncStore.setUserMusicPresence('user-1', {
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'Intro',
+      artists: ['Artist'],
+      durationMs: 60000,
+      progressMs: 0,
+      isPlaying: true,
+      observedAt: Date.now(),
+    })
+
+    render(<UserMusicPresenceCard userId="user-1" />)
+
+    expect(screen.getByText('0:00')).toBeTruthy()
+  })
+
+  it('filters unsafe outbound music links', () => {
+    syncStore.setUserMusicPresence('user-1', {
+      provider: 'spotify',
+      source: 'desktop_now_playing',
+      title: 'Bad Link',
+      artists: ['Artist'],
+      externalUrl: 'javascript:alert(1)',
+      isPlaying: true,
+      observedAt: Date.now(),
+    })
+
+    render(<UserMusicPresenceCard userId="user-1" />)
+
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+
+  it('keeps safe http music links', () => {
+    syncStore.setUserMusicPresence('user-1', {
+      provider: 'yandex_music',
+      source: 'desktop_now_playing',
+      title: 'Safe Link',
+      artists: ['Artist'],
+      externalUrl: 'https://music.yandex.ru/album/1/track/2',
+      isPlaying: true,
+      observedAt: Date.now(),
+    })
+
+    render(<UserMusicPresenceCard userId="user-1" />)
+
+    expect(screen.getByRole('link').getAttribute('href')).toBe(
+      'https://music.yandex.ru/album/1/track/2',
+    )
+  })
+
   it('updates the playback timer while the track is playing', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000_000)

@@ -34,8 +34,9 @@ describe('ChannelMemberSidebar', () => {
               name: 'Грабитель',
               colour: '#ff5c5c',
               hoist: true,
+              mentionable: false,
               rank: 1,
-              permissions: 0,
+              permissions: { a: 0, d: 0 },
             },
           },
         },
@@ -52,6 +53,7 @@ describe('ChannelMemberSidebar', () => {
         {
           _id: 'user-a',
           username: 'nioh13',
+          discriminator: '0001',
           display_name: 'Хан батый',
           online: true,
           relationship: 'User',
@@ -61,10 +63,11 @@ describe('ChannelMemberSidebar', () => {
       members: [
         {
           _id: { server: 'server-a', user: 'user-a' },
+          joined_at: '2026-06-15T10:00:00.000Z',
           roles: ['role-a'],
         },
       ],
-    } as never)
+    })
     syncStore.setUserMusicPresence('user-a', {
       provider: 'spotify',
       source: 'desktop_now_playing',
@@ -83,14 +86,12 @@ describe('ChannelMemberSidebar', () => {
   it('shows the current music track as the member status line', () => {
     render(
       <ChannelMemberSidebar
-        channel={
-          {
-            _id: 'channel-a',
-            channel_type: 'TextChannel',
-            server: 'server-a',
-            name: 'общий',
-          } as never
-        }
+        channel={{
+          _id: 'channel-a',
+          channel_type: 'TextChannel',
+          server: 'server-a',
+          name: 'общий',
+        }}
       />,
     )
 

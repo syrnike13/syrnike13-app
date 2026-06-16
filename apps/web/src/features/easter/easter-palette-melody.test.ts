@@ -87,7 +87,10 @@ describe('palette easter melody', () => {
       'g-sharp-6',
     ])
     expect(setEasterModeEnabled).toHaveBeenCalledWith(true)
-    expect(schedule).toHaveBeenCalledWith(reload, EASTER_MODE_RELOAD_DELAY_MS)
+    expect(schedule).toHaveBeenCalledWith(
+      expect.any(Function),
+      EASTER_MODE_RELOAD_DELAY_MS,
+    )
   })
 
   it('resets melody progress when the decoy is clicked', () => {
@@ -155,6 +158,34 @@ describe('palette easter melody', () => {
 
     expect(setEasterModeEnabled).toHaveBeenCalledTimes(2)
     expect(schedule).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips the delayed reload when easter mode is disabled before the callback runs', () => {
+    let easterModeEnabled = false
+    let scheduledCallback: (() => void) | undefined
+    const setEasterModeEnabled = vi.fn((enabled: boolean) => {
+      easterModeEnabled = enabled
+    })
+    const reload = vi.fn()
+
+    const melody = createPaletteEasterMelody({
+      playNote: vi.fn(),
+      isEasterModeEnabled: () => easterModeEnabled,
+      setEasterModeEnabled,
+      reload,
+      schedule: vi.fn((callback: () => void) => {
+        scheduledCallback = callback
+      }),
+    })
+
+    for (const themeId of MELODY_THEME_SEQUENCE) {
+      melody.handleThemeSelection(themeId)
+    }
+
+    easterModeEnabled = false
+    scheduledCallback?.()
+
+    expect(reload).not.toHaveBeenCalled()
   })
 
   it('plays the selected note audio without throwing on playback errors', () => {

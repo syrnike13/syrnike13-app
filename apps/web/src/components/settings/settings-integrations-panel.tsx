@@ -56,11 +56,23 @@ export function SettingsIntegrationsPanel() {
 
   useEffect(() => {
     let cancelled = false
-    void loadDesktopLocalSettings().then((settings) => {
-      if (cancelled) return
-      setMusic(settings?.music ?? null)
-      setLoaded(true)
-    })
+    void loadDesktopLocalSettings()
+      .then((settings) => {
+        if (cancelled) return
+        setMusic(settings?.music ?? null)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setMusic(null)
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Не удалось загрузить настройки интеграций',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true)
+      })
     return () => {
       cancelled = true
     }

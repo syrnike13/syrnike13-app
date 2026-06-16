@@ -4,23 +4,24 @@ import { useEasterMode } from '#/features/easter/easter-mode-store'
 
 export const LOADING_EASTER_EGG_PREVIEW_MS = 1200
 
-type LoadingEasterEggPreviewWindow = Window & {
-  __syrnikeLoadingEasterEggPreviewStartedAt?: number
+declare global {
+  interface Window {
+    __syrnikeLoadingEasterEggPreviewStartedAt?: number
+  }
 }
 
 function loadingEasterEggPreviewRemainingMs(easterModeEnabled: boolean) {
   if (!easterModeEnabled) return 0
   if (typeof window === 'undefined') return 0
 
-  const previewWindow = window as LoadingEasterEggPreviewWindow
   const now = window.performance.now()
+  const startedAt = window.__syrnikeLoadingEasterEggPreviewStartedAt ?? now
 
-  previewWindow.__syrnikeLoadingEasterEggPreviewStartedAt ??= now
+  window.__syrnikeLoadingEasterEggPreviewStartedAt = startedAt
 
   return Math.max(
     0,
-    LOADING_EASTER_EGG_PREVIEW_MS -
-      (now - previewWindow.__syrnikeLoadingEasterEggPreviewStartedAt),
+    LOADING_EASTER_EGG_PREVIEW_MS - (now - startedAt),
   )
 }
 

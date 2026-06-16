@@ -25,12 +25,13 @@ static async Task WatchAsync(GlobalSystemMediaTransportControlsSessionManager ma
 {
     using var writerLock = new SemaphoreSlim(1, 1);
     var currentSession = manager.GetCurrentSession();
-    AttachSessionEvents(manager, currentSession, writerLock);
+    var detachSessionEvents = AttachSessionEvents(manager, currentSession, writerLock);
 
     manager.CurrentSessionChanged += (_, _) =>
     {
+        detachSessionEvents?.Invoke();
         currentSession = manager.GetCurrentSession();
-        AttachSessionEvents(manager, currentSession, writerLock);
+        detachSessionEvents = AttachSessionEvents(manager, currentSession, writerLock);
         _ = WriteCurrentSessionAsync(manager, includeArtwork: true, writerLock);
     };
 
@@ -38,19 +39,38 @@ static async Task WatchAsync(GlobalSystemMediaTransportControlsSessionManager ma
     await Task.Delay(Timeout.InfiniteTimeSpan);
 }
 
-static void AttachSessionEvents(
+static Action? AttachSessionEvents(
     GlobalSystemMediaTransportControlsSessionManager manager,
     GlobalSystemMediaTransportControlsSession? session,
     SemaphoreSlim writerLock)
 {
-    if (session is null) return;
+    if (session is null) return null;
 
-    session.PlaybackInfoChanged += (_, _) =>
+    void OnPlaybackInfoChanged(
+        GlobalSystemMediaTransportControlsSession sender,
+        PlaybackInfoChangedEventArgs args) =>
         _ = WriteCurrentSessionAsync(manager, includeArtwork: true, writerLock);
-    session.MediaPropertiesChanged += (_, _) =>
+
+    void OnMediaPropertiesChanged(
+        GlobalSystemMediaTransportControlsSession sender,
+        MediaPropertiesChangedEventArgs args) =>
         _ = WriteCurrentSessionAsync(manager, includeArtwork: true, writerLock);
-    session.TimelinePropertiesChanged += (_, _) =>
+
+    void OnTimelinePropertiesChanged(
+        GlobalSystemMediaTransportControlsSession sender,
+        TimelinePropertiesChangedEventArgs args) =>
         _ = WriteCurrentSessionAsync(manager, includeArtwork: false, writerLock);
+
+    session.PlaybackInfoChanged += OnPlaybackInfoChanged;
+    session.MediaPropertiesChanged += OnMediaPropertiesChanged;
+    session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
+
+    return () =>
+    {
+        session.PlaybackInfoChanged -= OnPlaybackInfoChanged;
+        session.MediaPropertiesChanged -= OnMediaPropertiesChanged;
+        session.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
+    };
 }
 
 static async Task WriteCurrentSessionAsync(

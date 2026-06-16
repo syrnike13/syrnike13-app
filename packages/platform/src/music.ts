@@ -82,9 +82,19 @@ export function normalizeMusicPresence(value: unknown): MusicPresence | null {
   const provider = providerId(payload.provider)
   const source = musicPresenceSource(payload.source)
   const title = nonEmptyString(payload.title)
+  const isPlaying =
+    typeof payload.isPlaying === 'boolean' ? payload.isPlaying : undefined
   const observedAt = finiteNumber(payload.observedAt)
 
-  if (!provider || !source || !title || observedAt === undefined) return null
+  if (
+    !provider ||
+    !source ||
+    !title ||
+    isPlaying === undefined ||
+    observedAt === undefined
+  ) {
+    return null
+  }
 
   const durationMs = normalizeDurationMs(payload.durationMs)
   return {
@@ -97,7 +107,7 @@ export function normalizeMusicPresence(value: unknown): MusicPresence | null {
     externalUrl: optionalString(payload.externalUrl),
     durationMs,
     progressMs: normalizeProgressMs(payload.progressMs, durationMs),
-    isPlaying: payload.isPlaying === true,
+    isPlaying,
     observedAt: Math.max(0, Math.round(observedAt)),
   }
 }

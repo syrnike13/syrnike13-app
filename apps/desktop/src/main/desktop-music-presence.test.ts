@@ -375,6 +375,98 @@ describe('desktop music presence', () => {
     expect(child.kill).toHaveBeenCalled()
   })
 
+  it('reuses the Windows Spotify URI lookup for repeated watcher events on the same track', async () => {
+    const stdout = new PassThrough()
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      killed: false,
+      kill: vi.fn(function (this: { killed: boolean }) {
+        this.killed = true
+        return true
+      }),
+    })
+    const readWindowsSpotifyTrackUri = vi.fn(
+      () => 'spotify:track:5JHNg1hxZFT7TDEphhM4wj',
+    )
+    const onChange = vi.fn()
+
+    const dispose = watchDesktopMusicPresence({
+      platform: 'win32',
+      windowsHelperPath: 'C:/syrnike/syrnike-music-presence-win.exe',
+      getSettings: () => musicSettings(),
+      onChange,
+      spawnCommand: vi.fn(() => child as never),
+      readWindowsSpotifyTrackUri,
+      now: () => 1781518000000,
+    })
+
+    const payload = {
+      appUserModelId: 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify',
+      title: 'Watcher Track',
+      artist: 'Artist',
+      albumTitle: 'Album',
+      playbackStatus: 'Playing',
+    }
+    stdout.write(`${JSON.stringify(payload)}\n${JSON.stringify(payload)}\n`)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(readWindowsSpotifyTrackUri).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledTimes(2)
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        externalUrl: 'spotify:track:5JHNg1hxZFT7TDEphhM4wj',
+      }),
+    )
+
+    dispose?.()
+  })
+
+  it('clears watcher presence when music profile sharing is disabled', async () => {
+    const stdout = new PassThrough()
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      killed: false,
+      kill: vi.fn(function (this: { killed: boolean }) {
+        this.killed = true
+        return true
+      }),
+    })
+    const readWindowsSpotifyTrackUri = vi.fn(
+      () => 'spotify:track:5JHNg1hxZFT7TDEphhM4wj',
+    )
+    const onChange = vi.fn()
+
+    const dispose = watchDesktopMusicPresence({
+      platform: 'win32',
+      windowsHelperPath: 'C:/syrnike/syrnike-music-presence-win.exe',
+      getSettings: () => ({
+        music: {
+          ...musicSettings().music,
+          showInProfile: false,
+        },
+      }),
+      onChange,
+      spawnCommand: vi.fn(() => child as never),
+      readWindowsSpotifyTrackUri,
+      now: () => 1781518000000,
+    })
+
+    stdout.write(
+      `${JSON.stringify({
+        appUserModelId: 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify',
+        title: 'Private Track',
+        artist: 'Artist',
+        playbackStatus: 'Playing',
+      })}\n`,
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(onChange).toHaveBeenCalledWith(null)
+    expect(readWindowsSpotifyTrackUri).not.toHaveBeenCalled()
+
+    dispose?.()
+  })
+
   it('adds a direct Spotify app URI from the Windows Spotify state when enabled', async () => {
     await expect(
       getCurrentDesktopMusicPresence({

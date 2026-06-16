@@ -19,13 +19,15 @@ export type MusicProbeCommand = (
   timeoutMs: number,
 ) => Promise<string>
 
+type WindowsSpotifyTrackUriReader = (presence: MusicPresence) => string | undefined
+
 type DesktopMusicPresenceOptions = {
   platform?: NodeJS.Platform
   settings: Pick<DesktopLocalSettings, 'music'>
   now?: () => number
   runCommand?: MusicProbeCommand
   windowsHelperPath?: string | null
-  readWindowsSpotifyTrackUri?: (presence: MusicPresence) => string | undefined
+  readWindowsSpotifyTrackUri?: WindowsSpotifyTrackUriReader
 }
 
 type WindowsNowPlayingPayload = {
@@ -66,6 +68,7 @@ type MusicPresenceWatchProcess = {
 const PROBE_TIMEOUT_MS = 2_500
 const PROBE_MAX_BUFFER_BYTES = 4 * 1024 * 1024
 const SPOTIFY_STATE_MAX_BYTES = 64 * 1024
+const WINDOWS_SPOTIFY_TRACK_URI_CACHE_TTL_MS = 1_000
 const SPOTIFY_CONTEXT_STATE_FILE = 'context_player_state_restore'
 const WINDOWS_MUSIC_HELPER_EXE = 'syrnike-music-presence-win.exe'
 const SPOTIFY_TRACK_URI_PATTERN = /\bspotify:track:[A-Za-z0-9]{22}\b/g
@@ -91,7 +94,7 @@ export type DesktopMusicPresenceWatcherOptions = {
     args: string[],
   ) => MusicPresenceWatchProcess
   windowsHelperPath?: string | null
-  readWindowsSpotifyTrackUri?: (presence: MusicPresence) => string | undefined
+  readWindowsSpotifyTrackUri?: WindowsSpotifyTrackUriReader
 }
 
 const WINDOWS_GSMTC_SCRIPT = String.raw`
@@ -273,13 +276,16 @@ export function watchDesktopMusicPresence({
     onUnavailable?.()
   }
 
+  const readCachedWindowsSpotifyTrackUri =
+    createCachedWindowsSpotifyTrackUriReader(readWindowsSpotifyTrackUri, now)
+
   lines.on('line', (line) => {
     const presence = finalizeDesktopMusicPresence(
       getSettings(),
       normalizeWindowsNowPlayingPayload(parseProbeJson(line), now()),
       {
         platform,
-        readWindowsSpotifyTrackUri,
+        readWindowsSpotifyTrackUri: readCachedWindowsSpotifyTrackUri,
       },
     )
     onChange(presence)
@@ -365,9 +371,10 @@ function finalizeDesktopMusicPresence(
   presence: MusicPresence | null,
   options: {
     platform: NodeJS.Platform
-    readWindowsSpotifyTrackUri: (presence: MusicPresence) => string | undefined
+    readWindowsSpotifyTrackUri: WindowsSpotifyTrackUriReader
   },
 ) {
+  if (!settings.music.enabled || !settings.music.showInProfile) return null
   if (!providerEnabledForDesktop(settings, presence)) return null
   if (!presence.isPlaying) return null
   return withResolvedExternalUrl(settings, presence, options)
@@ -381,7 +388,7 @@ function withResolvedExternalUrl(
     readWindowsSpotifyTrackUri,
   }: {
     platform: NodeJS.Platform
-    readWindowsSpotifyTrackUri: (presence: MusicPresence) => string | undefined
+    readWindowsSpotifyTrackUri: WindowsSpotifyTrackUriReader
   },
 ) {
   if (presence.externalUrl) return presence
@@ -511,6 +518,46 @@ export function spotifyTrackUriFromStateText(
   }
 
   return bestMatch?.uri
+}
+
+function createCachedWindowsSpotifyTrackUriReader(
+  readTrackUri: WindowsSpotifyTrackUriReader,
+  now: () => number,
+): WindowsSpotifyTrackUriReader {
+  let cache:
+    | {
+        key: string
+        expiresAt: number
+        value: string | undefined
+      }
+    | null = null
+
+  return (presence) => {
+    const key = windowsSpotifyTrackUriCacheKey(presence)
+    const observedAt = now()
+    if (cache && cache.key === key && cache.expiresAt > observedAt) {
+      return cache.value
+    }
+
+    const value = readTrackUri(presence)
+    cache = {
+      key,
+      expiresAt: observedAt + WINDOWS_SPOTIFY_TRACK_URI_CACHE_TTL_MS,
+      value,
+    }
+    return value
+  }
+}
+
+function windowsSpotifyTrackUriCacheKey(presence: MusicPresence) {
+  return [
+    presence.provider,
+    presence.source,
+    presence.title,
+    presence.artists.join('\u0000'),
+    presence.album ?? '',
+    presence.durationMs ?? '',
+  ].join('\u0001')
 }
 
 function readDefaultWindowsSpotifyTrackUri(presence: MusicPresence) {

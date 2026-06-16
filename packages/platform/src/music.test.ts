@@ -64,6 +64,29 @@ describe('music presence contract', () => {
     ).toBe(1000)
   })
 
+  it('requires an explicit boolean playback state', () => {
+    expect(
+      normalizeMusicPresence({
+        provider: 'spotify',
+        source: 'desktop_now_playing',
+        title: 'Track',
+        artists: ['Artist'],
+        observedAt: 1,
+      }),
+    ).toBeNull()
+
+    expect(
+      normalizeMusicPresence({
+        provider: 'spotify',
+        source: 'desktop_now_playing',
+        title: 'Track',
+        artists: ['Artist'],
+        isPlaying: 'false',
+        observedAt: 1,
+      }),
+    ).toBeNull()
+  })
+
   it('normalizes gateway patches and accepts null as clear signal', () => {
     expect(normalizeMusicPresencePatch(null)).toBeNull()
     expect(
@@ -98,5 +121,28 @@ describe('music presence contract', () => {
         observedAt: 1781518000000,
       }),
     ).toBeNull()
+  })
+
+  it('rejects malformed patches instead of clearing presence', () => {
+    expect(
+      normalizeMusicPresencePatch({
+        provider: 'spotify',
+        source: 'desktop_now_playing',
+        title: 'Missing playback state',
+        artists: ['Artist'],
+        observedAt: 1781518000000,
+      }),
+    ).toBeUndefined()
+
+    expect(
+      normalizeMusicPresencePatch({
+        provider: 'spotify',
+        source: 'desktop_now_playing',
+        title: 'Malformed playback state',
+        artists: ['Artist'],
+        isPlaying: 'false',
+        observedAt: 1781518000000,
+      }),
+    ).toBeUndefined()
   })
 })
