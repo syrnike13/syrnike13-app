@@ -8,7 +8,7 @@ import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
 import { ActivityPresenceManager } from '#/features/presence/activity-presence-manager'
-import { MusicPresenceManager } from '#/features/presence/music-presence-manager'
+import { DesktopActivityManager } from '#/features/presence/desktop-activity-manager'
 import { VoiceProvider } from '#/features/voice/voice-provider'
 import { useSyncReady } from '#/features/sync/sync-store'
 import { postLoginPath } from '#/lib/auth-post-login-path'
@@ -101,7 +101,7 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
   return (
     <SettingsModalProvider>
       <ActivityPresenceManager />
-      <MusicPresenceManager />
+      <DesktopActivityManager />
       {children}
     </SettingsModalProvider>
   )

@@ -5,11 +5,12 @@ use std::{
 };
 
 use crate::{
+    initial_badges,
     mongodb::{
         bson::{doc, from_bson, from_document, to_document, Bson, DateTime, Document},
         options::FindOptions,
     },
-    initial_badges, AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
+    AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
 };
 use bson::{oid::ObjectId, to_bson};
 use futures::StreamExt;
@@ -25,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 51; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 52; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1367,6 +1368,37 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             .update_many(doc! {}, doc! { "$unset": { "badges": 1_i32 } })
             .await
             .expect("Failed to unset legacy user badges.");
+    };
+
+    if revision <= 51 {
+        info!("Running migration [revision 51 / 16-06-2026]: Add activity sessions.");
+
+        db.db().create_collection("activity_sessions").await.ok();
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "activity_sessions",
+                "indexes": [
+                    {
+                        "key": {
+                            "user_id": 1_i32,
+                            "activity_source_id": 1_i32,
+                            "ended_at": -1_i32
+                        },
+                        "name": "user_source_ended_at"
+                    },
+                    {
+                        "key": {
+                            "user_id": 1_i32,
+                            "verified_game_id": 1_i32,
+                            "started_at": -1_i32
+                        },
+                        "name": "user_game_started_at"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create activity_sessions indexes.");
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

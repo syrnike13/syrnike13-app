@@ -68,12 +68,12 @@ describe('ChannelMemberSidebar', () => {
         },
       ],
     })
-    syncStore.setUserMusicPresence('user-a', {
-      provider: 'spotify',
-      source: 'desktop_now_playing',
-      title: 'PRAXX',
-      artists: ['DK'],
-      isPlaying: true,
+    syncStore.setUserActivity('user-a', {
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      details: 'PRAXX',
+      state: 'DK',
       observedAt: 1781518000000,
     })
   })

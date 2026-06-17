@@ -1,5 +1,5 @@
 import type { Channel, Server } from '@syrnike13/api-types'
-import type { MusicPresence } from '@syrnike13/platform'
+import type { Activity } from '@syrnike13/platform'
 import { useMemo } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -60,10 +60,12 @@ function MemberSidebarRow({
   const { member, user } = entry
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
-  const musicPresence = useSyncStore((s) => s.musicPresences[user._id])
-  const musicStatus = musicStatusLabel(musicPresence)
-  const statusLine = showStatus ? musicStatus ?? customStatus : null
-  const isMusicStatus = Boolean(showStatus && musicStatus)
+  const activities = useSyncStore((s) =>
+    Object.values(s.activities[user._id] ?? {}),
+  )
+  const activityStatus = activityStatusLabel(activities)
+  const statusLine = showStatus ? activityStatus?.label ?? customStatus : null
+  const isActivityStatus = Boolean(showStatus && activityStatus)
 
   return (
     <li>
@@ -95,11 +97,11 @@ function MemberSidebarRow({
               <p
                 className={cn(
                   'mt-0.5 flex min-w-0 items-center gap-1 text-[11px] leading-none text-muted-foreground',
-                  isMusicStatus && 'text-[#9aa0a6]',
+                  isActivityStatus && 'text-[#9aa0a6]',
                 )}
                 title={statusLine}
               >
-                {isMusicStatus ? (
+                {activityStatus?.kind === 'listening' ? (
                   <span
                     aria-hidden="true"
                     className="shrink-0 text-[12px] leading-none text-[#23a559]"
@@ -117,15 +119,38 @@ function MemberSidebarRow({
   )
 }
 
-function musicStatusLabel(presence: MusicPresence | undefined) {
-  const title = presence?.title.trim()
-  if (!title) return null
+function activityStatusLabel(activities: Activity[]) {
+  const activity = [...activities].sort(
+    (left, right) => activityStatusPriority(left) - activityStatusPriority(right),
+  )[0]
+  if (!activity) return null
 
-  const artists = presence.artists
-    .map((artist) => artist.trim())
-    .filter(Boolean)
-    .join(', ')
-  return `Слушает: ${artists ? `${artists} — ${title}` : title}`
+  if (activity.type === 'playing') {
+    return {
+      kind: activity.type,
+      label: `Играет: ${activity.name}`,
+    }
+  }
+
+  if (activity.type === 'listening') {
+    const title = activity.details?.trim() || activity.name.trim()
+    const artists = activity.state?.trim()
+    return {
+      kind: activity.type,
+      label: `Слушает: ${artists ? `${artists} — ${title}` : title}`,
+    }
+  }
+
+  return {
+    kind: activity.type,
+    label: activity.details?.trim() || activity.name,
+  }
+}
+
+function activityStatusPriority(activity: Activity) {
+  if (activity.type === 'playing') return 0
+  if (activity.type === 'listening') return 1
+  return 2
 }
 
 export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {

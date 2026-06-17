@@ -51,6 +51,20 @@ export {
   normalizeMusicPresencePatch,
 } from './music'
 export type {
+  Activity,
+  ActivityAssets,
+  ActivityButton,
+  ActivityParty,
+  ActivityPatch,
+  ActivityTimestamps,
+  ActivityType,
+} from './activity'
+export {
+  ACTIVITY_TYPES,
+  normalizeActivity,
+  normalizeActivityPatch,
+} from './activity'
+export type {
   ActivityDetails,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,

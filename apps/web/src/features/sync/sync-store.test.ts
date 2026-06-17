@@ -796,14 +796,13 @@ describe('syncStore applyReady', () => {
     expect(syncStore.getState().selectedServerId).toBe('server-2')
   })
 
-  it('clears stale music presences because Ready has no music snapshot', () => {
+  it('clears stale activities because Ready has no activity snapshot', () => {
     syncStore.reset()
-    syncStore.setUserMusicPresence(USER_ID, {
-      provider: 'spotify',
-      source: 'desktop_now_playing',
-      title: 'PRAXX',
-      artists: ['DK'],
-      isPlaying: true,
+    syncStore.setUserActivity(USER_ID, {
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      details: 'PRAXX',
       observedAt: 1_718_100_000_000,
     })
 
@@ -817,97 +816,90 @@ describe('syncStore applyReady', () => {
       voice_states: [],
     })
 
-    expect(syncStore.getState().musicPresences).toEqual({})
+    expect(syncStore.getState().activities).toEqual({})
   })
 })
 
-describe('syncStore music presence events', () => {
-  it('stores and clears user music presence updates', () => {
+describe('syncStore activity events', () => {
+  it('stores and clears user activity updates by source id', () => {
     syncStore.reset()
 
     syncStore.handleGatewayEvent({
-      type: 'UserMusicPresence',
+      type: 'UserActivity',
       id: USER_ID,
-      presence: {
-        provider: 'spotify',
-        source: 'desktop_now_playing',
-        title: 'PRAXX',
-        artists: ['DK'],
-        album: 'Kino',
-        artworkUrl: 'https://cdn.example/praxx.jpg',
-        externalUrl: 'https://open.spotify.com/track/1',
-        durationMs: 225000,
-        progressMs: 15000,
-        isPlaying: true,
+      activity: {
+        activitySourceId: 'desktop:music',
+        type: 'listening',
+        name: 'Spotify',
+        details: 'PRAXX',
+        state: 'DK',
+        assets: { largeImageUrl: 'https://cdn.example/praxx.jpg' },
+        timestamps: { start: 1_718_099_985_000, end: 1_718_100_210_000 },
         observedAt: 1_718_100_000_000,
       },
     })
 
-    expect(syncStore.getState().musicPresences[USER_ID]).toMatchObject({
-      provider: 'spotify',
-      title: 'PRAXX',
-      artists: ['DK'],
+    expect(syncStore.getState().activities[USER_ID]?.['desktop:music']).toMatchObject({
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      details: 'PRAXX',
     })
 
     syncStore.handleGatewayEvent({
-      type: 'UserMusicPresence',
+      type: 'UserActivity',
       id: USER_ID,
-      presence: null,
+      activity: null,
+      activitySourceId: 'desktop:music',
     })
 
-    expect(syncStore.getState().musicPresences[USER_ID]).toBeUndefined()
+    expect(syncStore.getState().activities[USER_ID]).toBeUndefined()
   })
 
-  it('clears user music presence when a gateway patch says playback paused', () => {
+  it('stores multiple activity sources for the same user independently', () => {
     syncStore.reset()
 
+    syncStore.setUserActivity(USER_ID, {
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      observedAt: 1,
+    })
+    syncStore.setUserActivity(USER_ID, {
+      activitySourceId: 'desktop:game',
+      type: 'playing',
+      name: 'Counter-Strike 2',
+      observedAt: 2,
+    })
+
+    expect(Object.keys(syncStore.getState().activities[USER_ID] ?? {})).toEqual([
+      'desktop:music',
+      'desktop:game',
+    ])
+  })
+
+  it('ignores malformed activity patches instead of clearing a valid slot', () => {
+    syncStore.reset()
+
+    syncStore.setUserActivity(USER_ID, {
+      activitySourceId: 'desktop:game',
+      type: 'playing',
+      name: 'Counter-Strike 2',
+      observedAt: 1,
+    })
+
     syncStore.handleGatewayEvent({
-      type: 'UserMusicPresence',
+      type: 'UserActivity',
       id: USER_ID,
-      presence: {
-        provider: 'spotify',
-        source: 'desktop_now_playing',
-        title: 'PRAXX',
-        artists: ['DK'],
-        durationMs: 225000,
-        progressMs: 15000,
-        isPlaying: true,
-        observedAt: 1_718_100_000_000,
+      activity: {
+        activitySourceId: 'desktop:game',
+        type: 'playing',
+        observedAt: 2,
       },
     })
 
-    syncStore.handleGatewayEvent({
-      type: 'UserMusicPresence',
-      id: USER_ID,
-      presence: {
-        provider: 'spotify',
-        source: 'desktop_now_playing',
-        title: 'PRAXX',
-        artists: ['DK'],
-        durationMs: 225000,
-        progressMs: 45000,
-        isPlaying: false,
-        observedAt: 1_718_100_030_000,
-      },
-    })
-
-    expect(syncStore.getState().musicPresences[USER_ID]).toBeUndefined()
-  })
-
-  it('does not store paused music presence patches directly', () => {
-    syncStore.reset()
-
-    syncStore.setUserMusicPresence(USER_ID, {
-      provider: 'spotify',
-      source: 'desktop_now_playing',
-      title: 'Paused track',
-      artists: ['Artist'],
-      durationMs: 180000,
-      progressMs: 60000,
-      isPlaying: false,
-      observedAt: 1_718_100_000_000,
-    })
-
-    expect(syncStore.getState().musicPresences[USER_ID]).toBeUndefined()
+    expect(syncStore.getState().activities[USER_ID]?.['desktop:game']?.name).toBe(
+      'Counter-Strike 2',
+    )
   })
 })

@@ -152,22 +152,26 @@ describe('EventsGateway', () => {
     )
   })
 
-  it('sends the latest music presence reliably after Ready', async () => {
-    gateway.musicPresence({
-      provider: 'spotify',
-      source: 'desktop_now_playing',
-      title: 'Old',
-      artists: ['DK'],
-      isPlaying: true,
+  it('sends the latest activity update per source reliably after Ready', async () => {
+    gateway.activity({
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      details: 'Old',
       observedAt: 1,
     })
-    gateway.musicPresence({
-      provider: 'spotify',
-      source: 'desktop_now_playing',
-      title: 'PRAXX',
-      artists: ['DK'],
-      isPlaying: true,
+    gateway.activity({
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      details: 'PRAXX',
       observedAt: 2,
+    })
+    gateway.activity({
+      activitySourceId: 'desktop:game',
+      type: 'playing',
+      name: 'Counter-Strike 2',
+      observedAt: 3,
     })
 
     gateway.connect('wss://example.test/ws', 'token-1')
@@ -180,17 +184,27 @@ describe('EventsGateway', () => {
       data: JSON.stringify({ type: 'Ready', users: [] }),
     })
 
-    expect(socket.send).toHaveBeenCalledTimes(1)
+    expect(socket.send).toHaveBeenCalledTimes(2)
     expect(socket.send).toHaveBeenCalledWith(
       JSON.stringify({
-        type: 'UserMusicPresenceUpdate',
-        presence: {
-          provider: 'spotify',
-          source: 'desktop_now_playing',
-          title: 'PRAXX',
-          artists: ['DK'],
-          isPlaying: true,
+        type: 'UserActivityUpdate',
+        activity: {
+          activitySourceId: 'desktop:music',
+          type: 'listening',
+          name: 'Spotify',
+          details: 'PRAXX',
           observedAt: 2,
+        },
+      }),
+    )
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'UserActivityUpdate',
+        activity: {
+          activitySourceId: 'desktop:game',
+          type: 'playing',
+          name: 'Counter-Strike 2',
+          observedAt: 3,
         },
       }),
     )

@@ -634,6 +634,22 @@ describe('desktop music presence', () => {
     ).toBeUndefined()
   })
 
+  it('falls back to a title-only Spotify URI match when artist metadata is stored elsewhere', () => {
+    const stateText = [
+      'spotify:track:5JHNg1hxZFT7TDEphhM4wj',
+      'title Episode X',
+      'x'.repeat(5_000),
+      'artist Ado',
+    ].join('\u0012')
+
+    expect(
+      spotifyTrackUriFromStateText(stateText, {
+        title: 'Episode X',
+        artists: ['Ado'],
+      }),
+    ).toBe('spotify:track:5JHNg1hxZFT7TDEphhM4wj')
+  })
+
   it('falls back to the latest Spotify URI when non-ASCII titles are missing from Spotify state', () => {
     const stateText = [
       'spotify:track:5JHNg1hxZFT7TDEphhM4wj',

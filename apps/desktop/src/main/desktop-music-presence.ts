@@ -492,32 +492,34 @@ export function spotifyTrackUriFromStateText(
     )
     .filter((position) => position >= 0)
 
-  let bestMatch: { uri: string; distance: number } | null = null
+  let bestArtistMatch: { uri: string; distance: number } | null = null
+  let bestTitleMatch: { uri: string; distance: number } | null = null
   for (const match of matches) {
     const uri = match[0]
     const uriIndex = match.index ?? 0
     for (const titleIndex of titlePositions) {
       const distance = Math.abs(uriIndex - titleIndex)
       if (distance > SPOTIFY_STATE_MATCH_WINDOW_CHARS) continue
-      if (
-        artistPositions.length > 0 &&
-        !artistPositions.some(
+
+      if (!bestTitleMatch || distance < bestTitleMatch.distance) {
+        bestTitleMatch = { uri, distance }
+      }
+
+      const hasNearbyArtist =
+        artistPositions.length === 0 ||
+        artistPositions.some(
           (artistIndex) =>
             Math.abs(artistIndex - titleIndex) <=
               SPOTIFY_STATE_MATCH_WINDOW_CHARS ||
             Math.abs(artistIndex - uriIndex) <= SPOTIFY_STATE_MATCH_WINDOW_CHARS,
         )
-      ) {
-        continue
-      }
-
-      if (!bestMatch || distance < bestMatch.distance) {
-        bestMatch = { uri, distance }
+      if (hasNearbyArtist && (!bestArtistMatch || distance < bestArtistMatch.distance)) {
+        bestArtistMatch = { uri, distance }
       }
     }
   }
 
-  return bestMatch?.uri
+  return bestArtistMatch?.uri ?? bestTitleMatch?.uri
 }
 
 function createCachedWindowsSpotifyTrackUriReader(

@@ -1,4 +1,4 @@
-import type { MusicPresencePatch } from '@syrnike13/platform'
+import type { ActivityPatch } from '@syrnike13/platform'
 
 export type GatewayState =
   | 'idle'
@@ -138,10 +138,18 @@ export class EventsGateway {
     this.#sendConnected({ type: 'UserActivity' })
   }
 
-  musicPresence(presence: MusicPresencePatch) {
+  activity(activity: ActivityPatch, activitySourceId?: string) {
+    const sourceId = activity?.activitySourceId ?? activitySourceId
+    if (!sourceId) return
+
+    const event =
+      activity === null
+        ? { type: 'UserActivityUpdate', activity: null, activitySourceId: sourceId }
+        : { type: 'UserActivityUpdate', activity }
+
     this.sendReliable(
-      { type: 'UserMusicPresenceUpdate', presence },
-      'music-presence',
+      event,
+      `activity:${sourceId}`,
     )
   }
 

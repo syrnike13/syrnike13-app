@@ -9,8 +9,8 @@ import type {
   Server,
   User,
 } from '@syrnike13/api-types'
-import { normalizeMusicPresencePatch } from '@syrnike13/platform'
-import type { MusicPresence, MusicPresencePatch } from '@syrnike13/platform'
+import { normalizeActivityPatch } from '@syrnike13/platform'
+import type { Activity, ActivityPatch } from '@syrnike13/platform'
 
 import type { GatewayServerEvent, ReadyPayload, SyncState } from './types'
 import type { UserVoiceState, VoiceParticipantsByChannel } from './voice-types'
@@ -38,7 +38,7 @@ function emptyState(): SyncState {
     typingUsers: {},
     voiceParticipants: {},
     voiceCalls: {},
-    musicPresences: {},
+    activities: {},
     dismissedVoiceCallKeys: {},
   }
 }
@@ -241,9 +241,9 @@ function voiceChannelMapEquals(
   return true
 }
 
-function musicPresenceEquals(
-  left: MusicPresence | undefined,
-  right: MusicPresence | null,
+function activityEquals(
+  left: Activity | undefined,
+  right: Activity | null,
 ) {
   if (left === undefined && right === null) return true
   if (left === right) return true
@@ -331,7 +331,7 @@ export const syncStore = {
       voiceParticipants,
       voiceCalls,
       dismissedVoiceCallKeys,
-      musicPresences: {},
+      activities: {},
       selectedServerId: state.selectedServerId,
     })
   },
@@ -518,22 +518,43 @@ export const syncStore = {
     })
   },
 
-  setUserMusicPresence(userId: string, presence: MusicPresencePatch) {
-    const existing = state.musicPresences[userId]
-    const activePresence = presence?.isPlaying === false ? null : presence
-    if (musicPresenceEquals(existing, activePresence)) return
+  setUserActivity(
+    userId: string,
+    activity: ActivityPatch,
+    activitySourceId?: string,
+  ) {
+    const sourceId = activity?.activitySourceId ?? activitySourceId
+    if (!sourceId) return
 
-    if (activePresence === null) {
+    const userActivities = state.activities[userId]
+    const existing = userActivities?.[sourceId]
+    if (activityEquals(existing, activity)) return
+
+    if (activity === null) {
       if (!existing) return
-      const { [userId]: _, ...musicPresences } = state.musicPresences
-      setState({ musicPresences })
+      const { [sourceId]: _, ...remainingUserActivities } = userActivities ?? {}
+      if (Object.keys(remainingUserActivities).length === 0) {
+        const { [userId]: __, ...activities } = state.activities
+        setState({ activities })
+        return
+      }
+
+      setState({
+        activities: {
+          ...state.activities,
+          [userId]: remainingUserActivities,
+        },
+      })
       return
     }
 
     setState({
-      musicPresences: {
-        ...state.musicPresences,
-        [userId]: activePresence,
+      activities: {
+        ...state.activities,
+        [userId]: {
+          ...(userActivities ?? {}),
+          [sourceId]: activity,
+        },
       },
     })
   },
@@ -1302,19 +1323,21 @@ export const syncStore = {
           this.upsertUser({ ...existing, online })
         }
         if (!online) {
-          this.setUserMusicPresence(id, null)
+          const { [id]: _, ...activities } = state.activities
+          setState({ activities })
         }
         break
       }
-      case 'UserMusicPresence': {
-        const { id, presence } = event as {
+      case 'UserActivity': {
+        const { id, activity, activitySourceId } = event as {
           id?: string
-          presence?: unknown
+          activity?: unknown
+          activitySourceId?: string
         }
         if (!id) break
-        const normalized = normalizeMusicPresencePatch(presence)
+        const normalized = normalizeActivityPatch(activity)
         if (normalized !== undefined) {
-          this.setUserMusicPresence(id, normalized)
+          this.setUserActivity(id, normalized, activitySourceId)
         }
         break
       }

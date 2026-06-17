@@ -46,9 +46,9 @@ vi.mock('#/components/user/user-profile-card-header', () => ({
   UserProfileCardHeader: () => <div data-testid="profile-card-header" />,
 }))
 
-vi.mock('#/components/user/user-music-presence-card', () => ({
-  UserMusicPresenceCard: ({ className }: { className?: string }) => (
-    <div className={className} data-testid="music-presence-card" />
+vi.mock('#/components/user/user-activity-cards', () => ({
+  UserActivityCards: ({ className }: { className?: string }) => (
+    <div className={className} data-testid="activity-cards" />
   ),
 }))
 
@@ -88,7 +88,7 @@ describe('UserProfileCard', () => {
     })
   })
 
-  it('keeps music presence away from the popover bottom when it is the last block', () => {
+  it('keeps activity cards away from the popover bottom when they are the last block', () => {
     render(
       <UserProfileCard
         user={{
@@ -98,7 +98,7 @@ describe('UserProfileCard', () => {
       />,
     )
 
-    const musicCard = screen.getByTestId('music-presence-card')
-    expect(musicCard.className).toContain('mb-4')
+    const activityCards = screen.getByTestId('activity-cards')
+    expect(activityCards.className).toContain('mb-4')
   })
 })
