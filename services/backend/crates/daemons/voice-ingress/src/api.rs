@@ -18,8 +18,9 @@ use syrnike_database::{
         create_voice_call_started_system_message, delete_channel_voice_state_for_room,
         delete_voice_state_for_session, finish_voice_call_started_system_message,
         get_call_notification_recipients, get_user_moved_from_voice, get_voice_channel_members,
-        is_desktop_native_voice_identity, publish_voice_state_snapshot, update_voice_state_tracks,
-        update_voice_state_tracks_for_session, user_voice_join_intent_matches, RoomMetadata,
+        is_desktop_native_voice_identity, native_voice_participant_matches_current_operation,
+        publish_voice_state_snapshot, reconcile_voice_channel_members_with_call_cleanup,
+        update_voice_state_tracks, update_voice_state_tracks_for_session, RoomMetadata,
         UserVoiceChannel, VoiceClient, VoiceJoinCommitResult,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
@@ -29,6 +30,7 @@ use syrnike_result::{Result, ToSyrnikeError};
 use crate::{guard::AuthHeader, webhook_body::WebhookBody};
 
 const VOICE_CALL_MUTATION_RETRY_LIMIT: usize = 8;
+const TRACK_SOURCE_SCREEN_SHARE: i32 = 3;
 
 fn room_metadata_from_webhook(metadata: &str) -> Option<RoomMetadata> {
     let metadata = metadata.trim();
@@ -37,6 +39,27 @@ fn room_metadata_from_webhook(metadata: &str) -> Option<RoomMetadata> {
     }
 
     serde_json::from_str::<RoomMetadata>(metadata).ok()
+}
+
+fn forbidden_track_removal_identity<'a>(
+    participant_identity: &'a str,
+    base_user_id: &'a str,
+) -> &'a str {
+    if is_desktop_native_voice_identity(participant_identity) {
+        participant_identity
+    } else {
+        base_user_id
+    }
+}
+
+fn video_resolution_limit_for_track_source(
+    limits: &syrnike_config::FeaturesLimits,
+    track_source: i32,
+) -> [u32; 2] {
+    if track_source == TRACK_SOURCE_SCREEN_SHARE {
+        return limits.screen_share_resolution;
+    }
+    limits.video_resolution
 }
 
 async fn voice_channel_from_webhook(
@@ -401,9 +424,15 @@ pub async fn ingress(
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
 
             if is_desktop_native_voice_identity(participant_identity) {
-                if !user_voice_join_intent_matches(user_id, &channel).await? {
+                if !native_voice_participant_matches_current_operation(
+                    &channel,
+                    user_id,
+                    participant_identity,
+                )
+                .await?
+                {
                     log::debug!(
-                        "Removing native participant {participant_identity} from stale LiveKit join in channel {channel_id}; latest join intent targets another channel."
+                        "Removing native participant {participant_identity} from stale LiveKit join in channel {channel_id}; operation is not current."
                     );
                     let _ = voice_client
                         .remove_user(node, participant_identity, channel_id)
@@ -496,6 +525,8 @@ pub async fn ingress(
                 log::debug!(
                     "Ignoring stale participant_left for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}."
                 );
+                reconcile_voice_channel_members_with_call_cleanup(db, voice_client, amqp, &channel)
+                    .await?;
                 return Ok(EmptyResponse);
             }
 
@@ -540,6 +571,25 @@ pub async fn ingress(
             let participant_id = participant_id.to_internal_error()?;
             let track = event.track.as_ref().to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
+            let is_native_participant = is_desktop_native_voice_identity(participant_identity);
+
+            if is_native_participant
+                && !native_voice_participant_matches_current_operation(
+                    &channel,
+                    user_id,
+                    participant_identity,
+                )
+                .await?
+            {
+                log::debug!(
+                    "Removing native participant {participant_identity} from stale LiveKit {} in channel {channel_id}; operation is not current.",
+                    event.event
+                );
+                let _ = voice_client
+                    .remove_user(node, participant_identity, channel_id)
+                    .await;
+                return Ok(EmptyResponse);
+            }
 
             let user = Reference::from_unchecked(user_id).as_user(db).await?;
 
@@ -557,31 +607,43 @@ pub async fn ingress(
                 };
 
                 if track.r#type == TrackType::Video as i32 {
-                    if user_limits.video_resolution[0] != 0
-                        && user_limits.video_resolution[1] != 0
+                    let has_known_video_size = track.width > 0 && track.height > 0;
+                    let video_resolution_limit =
+                        video_resolution_limit_for_track_source(&user_limits, track.source);
+                    if video_resolution_limit[0] != 0
+                        && video_resolution_limit[1] != 0
                         && track.width * track.height
-                            > user_limits.video_resolution[0] * user_limits.video_resolution[1]
+                            > video_resolution_limit[0] * video_resolution_limit[1]
                     {
                         log::debug!("User published video with out of bounds resolution");
                         disconnect = true;
                     };
 
-                    if user_limits.video_aspect_ratio[0] != user_limits.video_aspect_ratio[1]
-                        && !(user_limits.video_aspect_ratio[0]..=user_limits.video_aspect_ratio[1])
-                            .contains(&(track.width as f32 / track.height as f32))
-                    {
-                        log::debug!("User published video with out of bounds aspect ratio");
-                        disconnect = true;
+                    if has_known_video_size {
+                        if user_limits.video_aspect_ratio[0] != user_limits.video_aspect_ratio[1]
+                            && !(user_limits.video_aspect_ratio[0]
+                                ..=user_limits.video_aspect_ratio[1])
+                                .contains(&(track.width as f32 / track.height as f32))
+                        {
+                            log::debug!("User published video with out of bounds aspect ratio");
+                            disconnect = true;
+                        };
                     };
                 };
 
                 if disconnect {
+                    let removal_identity =
+                        forbidden_track_removal_identity(participant_identity, user_id);
                     log::debug!(
-                        "Removing user {user_id} from channel {channel_id} {event:?} due to forbidden track."
+                        "Removing LiveKit participant {removal_identity} for base user {user_id} from channel {channel_id} {event:?} due to forbidden track."
                     );
 
-                    let _ = voice_client.remove_user(node, user_id, channel_id).await;
-                    if delete_voice_state_for_session(&channel, user_id, participant_id).await? {
+                    let _ = voice_client
+                        .remove_user(node, removal_identity, channel_id)
+                        .await;
+                    if !is_native_participant
+                        && delete_voice_state_for_session(&channel, user_id, participant_id).await?
+                    {
                         EventV1::VoiceChannelLeave {
                             id: channel_id.clone(),
                             user: user_id.to_string(),
@@ -615,7 +677,7 @@ pub async fn ingress(
             };
 
             let added = event.event == "track_published" || event.event == "track_unmuted";
-            let state = if is_desktop_native_voice_identity(participant_identity) {
+            let state = if is_native_participant {
                 update_voice_state_tracks(&channel, user_id, added, track.source).await?
             } else {
                 update_voice_state_tracks_for_session(
@@ -650,6 +712,8 @@ pub async fn ingress(
                 log::debug!(
                     "Ignoring stale room_finished for channel {channel_id} from LiveKit room {room_id}."
                 );
+                reconcile_voice_channel_members_with_call_cleanup(db, voice_client, amqp, &channel)
+                    .await?;
                 return Ok(EmptyResponse);
             }
 
@@ -682,7 +746,12 @@ pub async fn ingress(
 
 #[cfg(test)]
 mod tests {
-    use super::room_metadata_from_webhook;
+    use super::{
+        forbidden_track_removal_identity, room_metadata_from_webhook,
+        video_resolution_limit_for_track_source,
+    };
+    use std::collections::HashMap;
+    use syrnike_config::FeaturesLimits;
 
     #[test]
     fn empty_room_metadata_is_absent_not_invalid() {
@@ -701,5 +770,54 @@ mod tests {
     #[test]
     fn invalid_room_metadata_is_ignored_for_fallback_resolution() {
         assert_eq!(room_metadata_from_webhook("{"), None);
+    }
+
+    #[test]
+    fn forbidden_desktop_native_track_removes_only_native_participant() {
+        assert_eq!(
+            forbidden_track_removal_identity("user-a:desktop-native:op-join:screen", "user-a"),
+            "user-a:desktop-native:op-join:screen"
+        );
+    }
+
+    #[test]
+    fn forbidden_browser_track_removes_base_participant() {
+        assert_eq!(
+            forbidden_track_removal_identity("user-a", "user-a"),
+            "user-a"
+        );
+    }
+
+    fn test_limits() -> FeaturesLimits {
+        FeaturesLimits {
+            outgoing_friend_requests: 0,
+            bots: 0,
+            message_length: 0,
+            message_attachments: 0,
+            servers: 0,
+            voice_quality: 0,
+            video: true,
+            video_resolution: [1280, 720],
+            video_aspect_ratio: [0.3, 2.5],
+            screen_share_resolution: [1920, 1080],
+            screen_share_bitrate: 8_000_000,
+            file_upload_size_limit: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn camera_track_uses_camera_video_resolution_limit() {
+        assert_eq!(
+            video_resolution_limit_for_track_source(&test_limits(), 1),
+            [1280, 720]
+        );
+    }
+
+    #[test]
+    fn screen_share_track_uses_screen_share_resolution_limit() {
+        assert_eq!(
+            video_resolution_limit_for_track_source(&test_limits(), 3),
+            [1920, 1080]
+        );
     }
 }

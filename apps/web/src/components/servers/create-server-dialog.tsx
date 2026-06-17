@@ -56,8 +56,9 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
 
     setSaving(true)
     try {
-      const { server, channels } = await createServer(token, { name: trimmed })
+      const { server, member, channels } = await createServer(token, { name: trimmed })
       syncStore.upsertServer(server)
+      syncStore.upsertMembers([member])
       for (const channel of channels) {
         syncStore.upsertChannel(channel)
       }
@@ -98,6 +99,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
       const response = await joinInvite(token, code)
       if (isServerInviteJoin(response)) {
         syncStore.upsertServer(response.server)
+        syncStore.upsertMembers([response.member])
         for (const channel of response.channels) {
           syncStore.upsertChannel(channel)
         }

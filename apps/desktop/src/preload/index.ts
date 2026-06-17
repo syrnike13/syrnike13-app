@@ -276,6 +276,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     startSession(options: NativeMediaSessionStartOptions) {
       return ipcRenderer.invoke(IPC.mediaStartSession, options) as Promise<NativeMediaSession>
     },
+    cancelPendingStarts(kind?: NativeMediaSessionStartOptions['kind']) {
+      return ipcRenderer.invoke(IPC.mediaCancelPendingStarts, kind)
+    },
     configureMicrophoneRuntime(
       sessionId: string,
       config: NativeMicrophoneRuntimeConfig,

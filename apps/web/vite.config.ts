@@ -13,6 +13,7 @@ const apiTypesEntry = path.resolve(webRoot, '../../packages/api-types/src/index.
 const platformEntry = path.resolve(webRoot, '../../packages/platform/src/index.ts')
 
 const config = defineConfig({
+  envDir: path.resolve(webRoot, 'env'),
   server: {
     port: 3000,
     /** IPv4 + IPv6: иначе Electron (127.0.0.1) и браузер (localhost) попадают на разные сокеты. */

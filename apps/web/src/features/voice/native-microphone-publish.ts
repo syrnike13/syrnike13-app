@@ -65,12 +65,14 @@ export function shouldRestartNativeMicrophonePublisher(
 export function nativeMicrophoneSessionOptions(
   prefs: NativeMicrophonePreferences,
   livekit: NativeMicrophoneLiveKitCredentials,
+  requestId: string,
   deviceId = prefs.preferredAudioInputDevice,
   muted = false,
   audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ) {
   return {
     kind: 'microphone' as const,
+    requestId,
     deviceId,
     sampleRate: 48_000 as const,
     channels: 1 as const,
@@ -89,6 +91,7 @@ export function nativeMicrophoneSessionOptions(
 export async function startNativeMicrophonePublisher(
   prefs: NativeMicrophonePreferences,
   livekit: NativeMicrophoneLiveKitCredentials,
+  requestId: string,
   deviceId?: string,
   muted = false,
   audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
@@ -102,6 +105,7 @@ export async function startNativeMicrophonePublisher(
     nativeMicrophoneSessionOptions(
       prefs,
       livekit,
+      requestId,
       deviceId,
       muted,
       audioBitrateKbps,
@@ -119,6 +123,7 @@ export async function publishNativeMicrophone(
   _participant: LocalParticipant,
   onStopped: NativeMicrophoneStoppedHandler | undefined,
   livekit: NativeMicrophoneLiveKitCredentials,
+  requestId: string,
   muted = false,
   audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ): Promise<NativeMicrophoneSession> {
@@ -129,6 +134,7 @@ export async function publishNativeMicrophone(
   const { desktop, session } = await startNativeMicrophonePublisher(
     prefs,
     livekit,
+    requestId,
     undefined,
     muted,
     audioBitrateKbps,

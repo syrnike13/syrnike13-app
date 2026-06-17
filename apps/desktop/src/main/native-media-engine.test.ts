@@ -678,6 +678,124 @@ describe('native media engine entrypoint', () => {
     )
   })
 
+  it('disposes the previous warmed microphone helper before replacing it', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const disposeBody = source.match(
+      /function disposePrewarmedMicrophoneHelper[\s\S]*?function keepMicrophoneHelperWarmed/,
+    )?.[0]
+    const keepBody = source.match(
+      /function keepMicrophoneHelperWarmed[\s\S]*?function selectPrimaryActiveSession/,
+    )?.[0]
+
+    expect(disposeBody).toBeDefined()
+    expect(disposeBody).toContain('prewarmedMediaEngineReader?.close()')
+    expect(disposeBody).toContain("writeHelperCommand(helper, { cmd: 'stop' })")
+    expect(disposeBody).toContain('helper.kill()')
+    expect(keepBody).toBeDefined()
+    expect(keepBody).toContain('const previousHelper = prewarmedMediaEngineHelper')
+    expect(keepBody).toContain('previousHelper !== helper')
+    expect(keepBody).toContain('disposePrewarmedMicrophoneHelper(previousHelper)')
+  })
+
+  it('stops an existing native microphone sidecar before starting another one', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const startBody = source.match(
+      /async function startNativeMediaSession[\s\S]*?activeSessions\.set\(sessionId, session\)/,
+    )?.[0]
+
+    expect(startBody).toBeDefined()
+    expect(source).toContain('function stopActiveMicrophoneSessions()')
+    expect(startBody).toContain('stopActiveMicrophoneSessions()')
+  })
+
+  it('stops existing native screen sidecars before starting another one', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const stopScreenBody = source.match(
+      /function stopActiveScreenSessions[\s\S]*?function cancelPendingMediaStarts/,
+    )?.[0]
+    const startHandler = source.match(
+      /IPC\.mediaStartSession[\s\S]*?const start = startSessionQueues\[options\.kind\]\.then/,
+    )?.[0]
+
+    expect(stopScreenBody).toBeDefined()
+    expect(stopScreenBody).toContain("session.startOptions.kind === 'screen'")
+    expect(stopScreenBody).toContain('stopMediaEngineSession(session.sessionId, true)')
+    expect(startHandler).toBeDefined()
+    expect(startHandler).toContain('cancelPendingMediaStarts(options.kind)')
+    expect(startHandler).toContain('stopActiveScreenSessions()')
+  })
+
+  it('only force-stops native microphone sessions that are still starting', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const stopActiveBody = source.match(
+      /function stopActiveMicrophoneSessions[\s\S]*?function stopActiveScreenSessions/,
+    )?.[0]
+
+    expect(stopActiveBody).toBeDefined()
+    expect(stopActiveBody).toContain(
+      'const force = pendingStartResolvers.count(session.sessionId) > 0',
+    )
+    expect(stopActiveBody).toContain('stopMediaEngineSession(session.sessionId, force)')
+    expect(stopActiveBody).not.toContain('stopMediaEngineSession(session.sessionId, true)')
+  })
+
+  it('cancels pending native microphone starts before queueing a newer one', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const stopBody = source.match(
+      /function stopMediaEngineSession[\s\S]*?function stopActiveMicrophoneSessions/,
+    )?.[0]
+    const startHandler = source.match(
+      /IPC\.mediaStartSession[\s\S]*?const start = startSessionQueues\[options\.kind\]\.then/,
+    )?.[0]
+
+    expect(stopBody).toBeDefined()
+    expect(stopBody).toContain('const pendingStart = pendingStartResolvers.get(sessionId)')
+    expect(stopBody).toContain("message: 'Native media engine start cancelled'")
+    expect(source).toContain('const startSessionQueues')
+    expect(source).not.toContain('let startSessionQueue: Promise<unknown>')
+    expect(startHandler).toBeDefined()
+    expect(startHandler).toContain("if (options.kind === 'microphone')")
+    expect(startHandler).toContain('stopActiveMicrophoneSessions()')
+  })
+
+  it('drops stale queued native media starts before spawning sidecars', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const startHandler = source.match(
+      /IPC\.mediaStartSession[\s\S]*?startSessionQueues\[options\.kind\] = start\.catch/,
+    )?.[0]
+    const cancelBody = source.match(
+      /function cancelPendingMediaStarts[\s\S]*?function assertMediaStartRequestCurrent/,
+    )?.[0]
+
+    expect(source).toContain('let latestStartRequestIds')
+    expect(source).toContain('const startSessionQueues')
+    expect(source).toContain('function assertMediaStartRequestCurrent')
+    expect(startHandler).toBeDefined()
+    expect(startHandler).toContain('latestStartRequestIds[options.kind] = options.requestId')
+    expect(startHandler).toContain('assertMediaStartRequestCurrent(options)')
+    expect(cancelBody).toBeDefined()
+    expect(cancelBody).toContain('stopMediaEngineSession(session.sessionId, true)')
+    expect(source).toContain('IPC.mediaCancelPendingStarts')
+  })
+
   it('does not reuse the prewarmed microphone helper for screen sessions', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
@@ -722,6 +840,26 @@ describe('native media engine entrypoint', () => {
     expect(source).not.toContain('await getPreconnectedScreenHelper(options.livekit)')
   })
 
+  it('stops abandoned prepared screen helpers instead of disconnecting and leaking them', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const clearBody = source.match(
+      /function clearPreconnectedScreenSession[\s\S]*?function spawnNativeMediaEngineProcess/,
+    )?.[0]
+    const disconnectHandler = source.match(
+      /IPC\.mediaDisconnectPreparedScreenSession[\s\S]*?\r?\n  \)/,
+    )?.[0]
+
+    expect(clearBody).toBeDefined()
+    expect(clearBody).toContain("cmd: 'stop'")
+    expect(clearBody).not.toContain('disconnect_screen')
+    expect(clearBody).toContain('helper.kill()')
+    expect(disconnectHandler).toBeDefined()
+    expect(disconnectHandler).toContain('clearPreconnectedScreenSession(false)')
+  })
+
   it('routes native microphone mute through a helper command without stopping the session', () => {
     const source = readFileSync(
       fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
@@ -761,6 +899,7 @@ describe('native media engine entrypoint', () => {
     expect(nativeSource).toContain('commandMatches(line, "connect_microphone")')
     expect(nativeSource).toContain('commandMatches(line, "disconnect_microphone")')
     expect(nativeSource).toContain('disconnectMicrophoneRoom')
+    expect(nativeSource).toContain('connected.room->disconnect()')
     expect(nativeSource).not.toContain('g_running.store(false);\n      break;\n    }\n    if (commandMatches(line, "set_microphone_muted"))')
   })
 
@@ -847,6 +986,95 @@ describe('native media engine entrypoint', () => {
     expect(source).toContain('waitForMediaEngineSessionStopped(sessionId)')
     expect(source).toContain('resolvePendingStop(event.session_id)')
     expect(source).toContain('await stopPromise')
+  })
+
+  it('keeps the native screen helper reader open until graceful stop acknowledgement', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const stopBody = source.match(
+      /function stopMediaEngineSession[\s\S]*?function stopActiveMicrophoneSessions/,
+    )?.[0]
+    const stoppedBranch = source.match(
+      /if \(event\.status === 'stopped'\) \{[\s\S]*?return\r?\n      \}/,
+    )?.[0]
+
+    expect(stopBody).toBeDefined()
+    expect(stopBody).toContain('const waitsForScreenStop')
+    expect(stopBody).toContain("session.startOptions.kind === 'screen'")
+    expect(stopBody).toContain('session.stopping = true')
+    expect(stopBody).toContain('if (!waitsForScreenStop)')
+    expect(stoppedBranch).toBeDefined()
+    expect(stoppedBranch).toContain('resolvePendingStop(event.session_id)')
+    expect(stoppedBranch).toContain('activeSessions.delete(event.session_id)')
+    expect(stoppedBranch).toContain('closeIdleMediaEngineHelperReader(helper)')
+  })
+
+  it('tracks stopping native screen sessions for cleanup without exposing them as running', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const selectPrimaryBody = source.match(
+      /function selectPrimaryActiveSession[\s\S]*?function runningStatusForSession/,
+    )?.[0]
+    const stopBody = source.match(
+      /function stopMediaEngineSession[\s\S]*?function stopActiveMicrophoneSessions/,
+    )?.[0]
+
+    expect(source).toContain('stopping: boolean')
+    expect(selectPrimaryBody).toBeDefined()
+    expect(selectPrimaryBody).toContain(
+      'Array.from(activeSessions.values()).filter',
+    )
+    expect(selectPrimaryBody).toContain('!active.stopping')
+    expect(stopBody).toBeDefined()
+    expect(stopBody).toContain('if (session.stopping)')
+    expect(stopBody).toContain('if (!force) return true')
+    expect(stopBody).toContain('resolvePendingStop(sessionId)')
+    expect(stopBody).not.toContain('Native media engine force-stopped while stopping')
+    expect(stopBody).toContain('session.stopping = true')
+    expect(stopBody).toContain('activeSessions.delete(sessionId)')
+  })
+
+  it('force-cleans a native screen helper when graceful stop acknowledgement times out', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const waitBody = source.match(
+      /async function waitForMediaEngineSessionStopped[\s\S]*?async function prepareNativeScreenSession/,
+    )?.[0]
+
+    expect(waitBody).toBeDefined()
+    expect(waitBody).toContain('const existing = pendingStopResolvers.get(sessionId)')
+    expect(waitBody).toContain('if (existing) return existing.wait')
+    expect(waitBody).toContain("event: 'native-stop-timeout-force-kill'")
+    expect(waitBody).toContain('stopMediaEngineSession(sessionId, true)')
+  })
+
+  it('stops orphan native helpers that keep emitting diagnostics after their session is gone', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const reconcileBody = source.match(
+      /function reconcileUnownedMediaEngineHelperEvent[\s\S]*?function clearPreconnectedScreenSession/,
+    )?.[0]
+
+    expect(source).toContain('const orphanMediaEngineHelpers')
+    expect(reconcileBody).toBeDefined()
+    expect(reconcileBody).toContain('helperHasActiveSession(helper)')
+    expect(reconcileBody).toContain('preconnectedScreenSession?.helper === helper')
+    expect(reconcileBody).toContain('prewarmedMediaEngineHelper === helper')
+    expect(reconcileBody).toContain('closeMediaEngineHelperReader(helper)')
+    expect(reconcileBody).toContain("event: 'native-orphan-helper-stopped'")
+    expect(reconcileBody).toContain("writeHelperCommand(helper, { cmd: 'stop' })")
+    expect(reconcileBody).toContain('helper.kill()')
+    expect(source).toContain('!session &&')
+    expect(source).toContain('reconcileUnownedMediaEngineHelperEvent(')
+    expect(source).toContain("'microphone-diagnostics-without-session'")
   })
 
   it('stops native screen capture when the selected window closes', () => {

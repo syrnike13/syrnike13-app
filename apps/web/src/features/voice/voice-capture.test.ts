@@ -6,6 +6,7 @@ import { AudioPresets, Track } from 'livekit-client'
 
 import {
   createVoiceRoomOptions,
+  fitScreenShareResolutionToLimits,
   screenShareAudioCaptureOptions,
   screenShareAudioPublishOptions,
   screenShareCaptureOptions,
@@ -104,13 +105,45 @@ describe('screenShareCaptureOptions', () => {
     })
     expect(options.capture.contentHint).toBe('motion')
     expect(options.publish.screenShareEncoding).toEqual({
-      maxBitrate: 4_000_000,
+      maxBitrate: 8_000_000,
       maxFramerate: 30,
       priority: 'high',
     })
     expect(options.publish.simulcast).toBe(false)
     expect(options.publish.videoCodec).toBe('vp8')
     expect(options.publish.degradationPreference).toBe('maintain-resolution')
+  })
+
+  it('fits screen share resolution under server limits without changing aspect ratio wildly', () => {
+    const resolution = fitScreenShareResolutionToLimits(
+      { width: 1920, height: 1080, frameRate: 60 },
+      { maxWidth: 1080, maxHeight: 720, maxPixels: 1080 * 720 },
+    )
+
+    expect(resolution.width).toBeLessThanOrEqual(1080)
+    expect(resolution.height).toBeLessThanOrEqual(720)
+    expect(resolution.width * resolution.height).toBeLessThanOrEqual(1080 * 720)
+    expect(resolution.frameRate).toBe(60)
+  })
+
+  it('keeps FullHD screen share when server limits allow FullHD', () => {
+    const resolution = fitScreenShareResolutionToLimits(
+      { width: 1920, height: 1080, frameRate: 60 },
+      { maxWidth: 1920, maxHeight: 1080, maxPixels: 1920 * 1080 },
+    )
+
+    expect(resolution).toEqual({ width: 1920, height: 1080, frameRate: 60 })
+  })
+
+  it('caps screen share bitrate with server screen-share limits', () => {
+    const options = screenShareCaptureOptions('high', {
+      maxWidth: 1920,
+      maxHeight: 1080,
+      maxPixels: 1920 * 1080,
+      maxBitrate: 4_000_000,
+    })
+
+    expect(options.publish.screenShareEncoding?.maxBitrate).toBe(4_000_000)
   })
 
   it('uses av1 when the experimental toggle is enabled and av1 is advertised', () => {
@@ -203,6 +236,7 @@ describe('screenShareCaptureOptions', () => {
     const options = screenShareCaptureOptions('text')
 
     expect(options.capture.contentHint).toBe('text')
+    expect(options.publish.screenShareEncoding?.maxBitrate).toBe(8_000_000)
     expect(options.publish.screenShareEncoding?.maxFramerate).toBe(5)
   })
 })
@@ -227,6 +261,6 @@ describe('screenShareCombinedPublishOptions', () => {
       ...AudioPresets.musicStereo,
       maxBitrate: 96_000,
     })
-    expect(options.screenShareEncoding?.maxBitrate).toBe(4_000_000)
+    expect(options.screenShareEncoding?.maxBitrate).toBe(8_000_000)
   })
 })

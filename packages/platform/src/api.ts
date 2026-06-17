@@ -256,6 +256,7 @@ export interface SyrnikeDesktopApi {
     ): Promise<void>
     disconnectPreparedScreenSession(): Promise<void>
     startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
+    cancelPendingStarts(kind?: import('./media').NativeMediaSessionKind): Promise<void>
     configureMicrophoneRuntime(
       sessionId: string,
       config: NativeMicrophoneRuntimeConfig,

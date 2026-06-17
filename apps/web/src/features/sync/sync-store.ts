@@ -1184,11 +1184,15 @@ export const syncStore = {
         const payload = event as {
           server?: Server
           channels?: Channel[]
+          member?: Member
           id?: string
         }
         batchUpdates(() => {
           if (payload.server) {
             this.upsertServer(payload.server)
+          }
+          if (payload.member) {
+            this.upsertMembers([payload.member])
           }
           for (const channel of payload.channels ?? []) {
             this.upsertChannel(channel)
@@ -1322,17 +1326,16 @@ export const syncStore = {
         break
       }
       case 'ServerMemberJoin': {
-        const { id: serverId, user: userId } = event as {
+        const { id: serverId, user: userId, member } = event as {
           id: string
           user: string
+          member?: Member
         }
-        const key = `${serverId}:${userId}`
+        const joinedMember =
+          member ?? ({ _id: { server: serverId, user: userId } } as Member)
+        const key = memberKey(joinedMember)
         if (state.members[key]) break
-        this.upsertMembers([
-          {
-            _id: { server: serverId, user: userId },
-          } as Member,
-        ])
+        this.upsertMembers([joinedMember])
         break
       }
       case 'ServerMemberLeave': {

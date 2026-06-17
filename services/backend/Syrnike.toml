@@ -29,7 +29,7 @@ voso_legacy_ws = ""
 # Public urls for livekit nodes
 # each entry here should have a corresponding entry under `api.livekit.nodes`
 [hosts.livekit]
-worldwide = "ws://localhost:14706"
+worldwide = "ws://127.0.0.1:7880"
 
 [api]
 
@@ -51,7 +51,7 @@ use_starttls = false
 # Make sure to change the secret when deploying
 # The key and secret should match the values livekit is using
 [api.livekit.nodes.worldwide]
-url = "http://livekit"
+url = "http://127.0.0.1:7880"
 lat = 0.0
 lon = 0.0
 key = "worldwide"

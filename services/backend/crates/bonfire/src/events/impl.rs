@@ -8,7 +8,7 @@ use syrnike_database::{
         call_lifecycle::{get_channel_voice_call, VoiceCallPhase as StoredVoiceCallPhase},
         get_channel_voice_state, UserVoiceChannel,
     },
-    Channel, Database, Member, MemberCompositeKey, Presence, RelationshipStatus,
+    Channel, Database, Member, Presence, RelationshipStatus,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
@@ -561,6 +561,7 @@ impl State {
                 id,
                 server,
                 channels,
+                member,
                 emojis: _,
                 voice_states: _,
             } => {
@@ -571,14 +572,7 @@ impl State {
                 }
 
                 self.cache.servers.insert(id.clone(), server.clone().into());
-                let member = Member {
-                    id: MemberCompositeKey {
-                        server: server.id.clone(),
-                        user: self.cache.user_id.clone(),
-                    },
-                    ..Default::default()
-                };
-                self.cache.members.insert(id.clone(), member);
+                self.cache.members.insert(id.clone(), member.clone().into());
 
                 for channel in channels {
                     self.cache

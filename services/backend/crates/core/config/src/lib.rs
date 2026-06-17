@@ -373,6 +373,8 @@ pub struct FeaturesLimits {
     pub video: bool,
     pub video_resolution: [u32; 2],
     pub video_aspect_ratio: [f32; 2],
+    pub screen_share_resolution: [u32; 2],
+    pub screen_share_bitrate: u32,
 
     pub file_upload_size_limit: HashMap<String, usize>,
 }

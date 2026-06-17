@@ -90,9 +90,10 @@ describe('native microphone publish', () => {
         url: 'wss://livekit.example',
         token: 'livekit-token',
         participantIdentity: 'user-1:desktop-native',
-      }, undefined, false, 48),
+      }, 'mic-request-1', undefined, false, 48),
     ).toEqual({
       kind: 'microphone',
+      requestId: 'mic-request-1',
       deviceId: 'mic-1',
       sampleRate: 48_000,
       channels: 1,
@@ -153,7 +154,7 @@ describe('native microphone publish', () => {
       url: 'wss://livekit.example',
       token: 'native-livekit-token',
       participantIdentity: 'user-1:desktop-native',
-    }, false, 32)
+    }, 'mic-request-1', false, 32)
 
     expect(session.nativeParticipantIdentity).toBe(
       'user-1:desktop-native:native-mic-1',
@@ -161,6 +162,7 @@ describe('native microphone publish', () => {
     expect(startSession).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'microphone',
+        requestId: 'mic-request-1',
         audioBitrate: 32_000,
         livekit: {
           url: 'wss://livekit.example',
@@ -206,7 +208,7 @@ describe('native microphone publish', () => {
       url: 'wss://livekit.example',
       token: 'native-livekit-token',
       participantIdentity: 'user-1:desktop-native',
-    })
+    }, 'mic-request-1')
     session.disconnect()
 
     expect(stopSession).toHaveBeenCalledWith('native-mic-1')
@@ -252,6 +254,7 @@ describe('native microphone publish', () => {
         token: 'native-livekit-token',
         participantIdentity: 'user-1:desktop-native',
       },
+      'mic-request-1',
     )
     session.disconnect()
 
@@ -291,6 +294,7 @@ describe('native microphone publish', () => {
         token: 'native-livekit-token',
         participantIdentity: 'user-1:desktop-native',
       },
+      'mic-request-1',
       true,
     )
 
@@ -358,6 +362,7 @@ describe('native microphone publish', () => {
         token: 'native-livekit-token',
         participantIdentity: 'user-1:desktop-native',
       },
+      'mic-request-1',
     )
 
     onStreamEndedHandler?.('other-session')
@@ -544,6 +549,29 @@ describe('native microphone provider boundary', () => {
     expect(providerSource).toContain("statusRef.current === 'connected'")
     expect(providerSource).toContain('void startNativeMicrophone(room, false)')
     expect(providerSource).toContain('syncVoiceFlagsToGateway(')
+  })
+
+  it('coalesces concurrent native microphone starts before publishing resolves', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toContain(
+      'const nativeMicrophoneStartRef = useRef<Promise<boolean> | null>(null)',
+    )
+    expect(providerSource).toContain('const targetChannelId = channelIdRef.current')
+    expect(providerSource).toContain(
+      'if (!started || !isCurrentVoiceSession(room, targetChannelId))',
+    )
+    expect(providerSource).toContain(
+      'const pendingNativeMicrophoneStart = nativeMicrophoneStartRef.current',
+    )
+    expect(providerSource).toContain('await pendingNativeMicrophoneStart')
+    expect(providerSource).toContain('nativeMicrophoneStartRef.current = start')
   })
 
   it('suppresses native microphone stop side effects during controlled voice disconnects', () => {

@@ -58,6 +58,7 @@ export type NativeMediaLiveKitCredentials = {
 
 export type NativeMediaScreenSessionStartOptions = {
   kind: 'screen'
+  requestId: string
   sourceId: string
   width: number
   height: number
@@ -76,6 +77,7 @@ export type NativeMediaScreenSessionPrepareOptions = {
 
 export type NativeMediaMicrophoneSessionStartOptions = {
   kind: 'microphone'
+  requestId: string
   deviceId?: string
   sampleRate: 48_000
   channels: 1

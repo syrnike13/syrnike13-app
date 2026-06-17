@@ -5,11 +5,12 @@ use std::{
 };
 
 use crate::{
+    initial_badges,
     mongodb::{
         bson::{doc, from_bson, from_document, to_document, Bson, DateTime, Document},
         options::FindOptions,
     },
-    initial_badges, AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
+    AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
 };
 use bson::{oid::ObjectId, to_bson};
 use futures::StreamExt;

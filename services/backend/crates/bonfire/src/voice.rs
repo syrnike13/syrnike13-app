@@ -6,7 +6,8 @@ use syrnike_database::{
     voice::{
         get_user_voice_channels, join_voice_channel, publish_voice_state_snapshot,
         refresh_voice_credentials, remove_user_from_voice_channel_with_call_cleanup,
-        set_user_voice_join_intent, update_client_voice_flags, VoiceClient, VoiceJoinOptions,
+        set_current_voice_operation_id, set_user_voice_join_intent, update_client_voice_flags,
+        VoiceClient, VoiceJoinOptions,
     },
     Database, User, AMQP,
 };
@@ -77,7 +78,9 @@ pub async fn handle_voice_state_update(
         }
 
         let operation_id = operation_id.ok_or_else(|| create_error!(InvalidOperation))?;
-        let credentials = refresh_voice_credentials(db, voice_client, user, &channel_id).await?;
+        set_current_voice_operation_id(&user_voice_channel, &user.id, &operation_id).await?;
+        let credentials =
+            refresh_voice_credentials(db, voice_client, user, &channel_id, &operation_id).await?;
         return Ok(Some(EventV1::VoiceServerUpdate {
             operation_id,
             channel_id: credentials.channel_id,
@@ -94,6 +97,7 @@ pub async fn handle_voice_state_update(
     let credentials = join_voice_channel(
         db,
         voice_client,
+        amqp,
         user,
         &channel_id,
         VoiceJoinOptions {

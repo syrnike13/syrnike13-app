@@ -46,6 +46,7 @@ export const IPC = {
   mediaDisconnectPreparedScreenSession:
     'syrnike-desktop:media:disconnect-prepared-screen-session',
   mediaStartSession: 'syrnike-desktop:media:start-session',
+  mediaCancelPendingStarts: 'syrnike-desktop:media:cancel-pending-starts',
   mediaConfigureMicrophoneRuntime:
     'syrnike-desktop:media:configure-microphone-runtime',
   mediaSetMicrophoneMuted: 'syrnike-desktop:media:set-microphone-muted',

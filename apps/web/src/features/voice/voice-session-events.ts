@@ -6,6 +6,23 @@ export type VoiceServerCommit = {
   operationId?: string
 }
 
+export type LocalVoiceSupersede =
+  | {
+      type: 'joined_elsewhere'
+      channelId: string
+      operationId?: string
+    }
+  | {
+      type: 'moved_elsewhere'
+      channelId: string
+      operationId?: string
+    }
+  | {
+      type: 'left_current_channel'
+      channelId: string
+      operationId?: string
+    }
+
 export function voiceCommitFromGatewayEvent(
   event: GatewayServerEvent,
   localUserId: string | null | undefined,
@@ -25,6 +42,49 @@ export function voiceCommitFromGatewayEvent(
     const userId = voiceEventUserId(event)
     if (channelId && userId === localUserId) {
       return { channelId, operationId: voiceEventOperationId(event) }
+    }
+  }
+
+  return null
+}
+
+export function localVoiceSupersedeFromGatewayEvent(
+  event: GatewayServerEvent,
+  localUserId: string | null | undefined,
+  activeChannelId: string | null | undefined,
+  activeOperationId: string | null | undefined,
+): LocalVoiceSupersede | null {
+  if (!localUserId || !activeChannelId) return null
+
+  const commit = voiceCommitFromGatewayEvent(event, localUserId)
+  if (commit) {
+    if (commit.operationId && commit.operationId === activeOperationId) {
+      return null
+    }
+    if (commit.channelId === activeChannelId) return null
+    return {
+      type:
+        event.type === 'VoiceChannelMove'
+          ? 'moved_elsewhere'
+          : 'joined_elsewhere',
+      channelId: commit.channelId,
+      operationId: commit.operationId,
+    }
+  }
+
+  if (event.type === 'VoiceChannelLeave') {
+    const channelId = voiceJoinChannelId(event)
+    const userId = voiceEventUserId(event)
+    if (channelId === activeChannelId && userId === localUserId) {
+      const operationId = voiceEventOperationId(event)
+      if (!operationId || operationId === activeOperationId) {
+        return null
+      }
+      return {
+        type: 'left_current_channel',
+        channelId,
+        operationId,
+      }
     }
   }
 

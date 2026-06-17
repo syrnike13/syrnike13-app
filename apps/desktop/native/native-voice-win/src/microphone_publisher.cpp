@@ -340,6 +340,15 @@ void disconnectMicrophoneRoom(
     connected.audio_track.reset();
   }
   state->publishing.store(false);
+  if (connected.room) {
+    try {
+      connected.room->disconnect();
+    } catch (const std::exception& error) {
+      emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(connected.session_id) +
+           "\",\"kind\":\"microphone\",\"status\":\"stopped\",\"message\":\"disconnect_failed:" +
+           jsonEscape(error.what()) + "\"}");
+    }
+  }
   connected.room.reset();
   connected.delegate.reset();
   if (!connected.session_id.empty()) {

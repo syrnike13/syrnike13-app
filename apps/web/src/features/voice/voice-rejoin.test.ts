@@ -36,6 +36,24 @@ describe('createVoiceRejoinController', () => {
     expect(attemptRejoin).toHaveBeenCalledWith('channel-1')
   })
 
+  it('starts the first recoverable rejoin after 500ms', async () => {
+    const attemptRejoin = vi.fn(async () => true)
+
+    const controller = createVoiceRejoinController({
+      attemptRejoin,
+      onGiveUp: vi.fn(),
+      isGatewayConnected: () => true,
+    })
+
+    controller.onUnexpectedDisconnect('channel-1')
+
+    await vi.advanceTimersByTimeAsync(499)
+    expect(attemptRejoin).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(attemptRejoin).toHaveBeenCalledWith('channel-1')
+  })
+
   it('continues recoverable retries after the initial backoff window', async () => {
     const attemptRejoin = vi.fn(async () => false)
     const onGiveUp = vi.fn()

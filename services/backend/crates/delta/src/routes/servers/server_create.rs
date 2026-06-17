@@ -49,10 +49,11 @@ pub async fn create_server(
     user.can_acquire_server(db).await?;
 
     let (server, channels) = Server::create(db, data, &user, true).await?;
-    let (_, channels) = Member::create(db, &server, &user, Some(channels)).await?;
+    let (member, channels) = Member::create(db, &server, &user, Some(channels)).await?;
 
     Ok(Json(v0::CreateServerLegacyResponse {
         server: server.into(),
+        member: member.into(),
         channels: channels.into_iter().map(|channel| channel.into()).collect(),
     }))
 }

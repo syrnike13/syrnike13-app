@@ -1,4 +1,10 @@
-import type { Channel, InviteJoinResponse, InviteResponse, Server } from '@syrnike13/api-types'
+import type {
+  Channel,
+  InviteJoinResponse,
+  InviteResponse,
+  Member,
+  Server,
+} from '@syrnike13/api-types'
 
 import { apiRequest } from '#/lib/api/client'
 
@@ -23,6 +29,7 @@ export async function deleteInvite(token: string, code: string) {
 export type ServerInviteJoinResult = {
   type: 'Server'
   server: Server
+  member: Member
   channels: Channel[]
 }
 

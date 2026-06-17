@@ -9,7 +9,7 @@ use crate::{
     Database, Server,
 };
 use iso8601_timestamp::{Duration, Timestamp};
-use livekit_protocol::ParticipantPermission;
+use livekit_protocol::{participant_info, ParticipantInfo, ParticipantPermission};
 use redis_kiss::{
     get_connection as _get_connection,
     redis::{cmd, FromRedisValue, Pipeline, RedisError, RedisWrite, ToRedisArgs, Value},
@@ -165,6 +165,7 @@ for _, previous in ipairs(previous_channels) do
       'screensharing:' .. previous_unique_key,
       'camera:' .. previous_unique_key,
       'version:' .. previous_unique_key,
+      'operation:' .. previous_unique_key,
       'session:' .. previous_unique_key,
       previous_unique_key
     )
@@ -189,6 +190,11 @@ redis.call('SET', 'camera:' .. target_unique_key, camera)
 redis.call('SET', 'version:' .. target_unique_key, version)
 if session_id ~= '' then
   redis.call('SET', 'session:' .. target_unique_key, session_id)
+end
+if operation_id ~= '' then
+  redis.call('SET', 'operation:' .. target_unique_key, operation_id)
+else
+  redis.call('DEL', 'operation:' .. target_unique_key)
 end
 if room_id ~= '' then
   redis.call('SET', 'room_session:' .. target_channel_id, room_id)
@@ -223,6 +229,7 @@ redis.call(
   'screensharing:' .. unique_key,
   'camera:' .. unique_key,
   'version:' .. unique_key,
+  'operation:' .. unique_key,
   KEYS[1],
   unique_key
 )
@@ -230,15 +237,19 @@ redis.call(
 return 1
 "#;
 
-pub fn desktop_native_voice_identity(user_id: &str, media_kind: &str) -> String {
-    format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}:{media_kind}")
+pub fn desktop_native_voice_identity(
+    user_id: &str,
+    media_kind: &str,
+    operation_id: &str,
+) -> String {
+    format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}:{operation_id}:{media_kind}")
 }
 
-pub fn desktop_native_voice_identities(user_id: &str) -> [String; 3] {
+pub fn desktop_native_voice_identities(user_id: &str, operation_id: &str) -> [String; 3] {
     [
-        desktop_native_voice_identity(user_id, "microphone"),
-        desktop_native_voice_identity(user_id, "screen"),
-        desktop_native_voice_identity(user_id, "camera"),
+        desktop_native_voice_identity(user_id, "microphone", operation_id),
+        desktop_native_voice_identity(user_id, "screen", operation_id),
+        desktop_native_voice_identity(user_id, "camera", operation_id),
     ]
 }
 
@@ -253,10 +264,93 @@ pub fn is_desktop_native_voice_identity(identity: &str) -> bool {
     identity.contains(DESKTOP_NATIVE_IDENTITY_SUFFIX)
 }
 
-fn voice_transport_identities(user_id: &str) -> Vec<String> {
+pub fn desktop_native_voice_operation_id(identity: &str) -> Option<&str> {
+    let suffix_index = identity.find(DESKTOP_NATIVE_IDENTITY_SUFFIX)?;
+    let rest = identity[suffix_index + DESKTOP_NATIVE_IDENTITY_SUFFIX.len()..].strip_prefix(':')?;
+    let (operation_id, media_kind) = rest.rsplit_once(':')?;
+    if operation_id.is_empty() || media_kind.is_empty() {
+        return None;
+    }
+    Some(operation_id)
+}
+
+fn native_voice_operation_is_current(identity: &str, current_operation_id: Option<&str>) -> bool {
+    desktop_native_voice_operation_id(identity)
+        .zip(current_operation_id)
+        .is_some_and(|(identity_operation_id, current_operation_id)| {
+            identity_operation_id == current_operation_id
+        })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceParticipantReconciliation {
+    pub livekit_members: Vec<String>,
+    pub stale_members: Vec<String>,
+}
+
+pub fn voice_participant_reconciliation(
+    redis_members: &[String],
+    livekit_participants: &[ParticipantInfo],
+) -> VoiceParticipantReconciliation {
+    let mut livekit_members = Vec::new();
+    for participant in livekit_participants {
+        if is_desktop_native_voice_identity(&participant.identity) {
+            continue;
+        }
+        let state = participant_info::State::try_from(participant.state)
+            .unwrap_or(participant_info::State::Disconnected);
+        if state == participant_info::State::Disconnected {
+            continue;
+        }
+        let user_id = base_voice_identity(&participant.identity).to_string();
+        if !livekit_members.contains(&user_id) {
+            livekit_members.push(user_id);
+        }
+    }
+
+    let stale_members = redis_members
+        .iter()
+        .filter(|user_id| !livekit_members.contains(user_id))
+        .cloned()
+        .collect();
+
+    VoiceParticipantReconciliation {
+        livekit_members,
+        stale_members,
+    }
+}
+
+fn push_unique_identity(identities: &mut Vec<String>, identity: String) {
+    if !identities.contains(&identity) {
+        identities.push(identity);
+    }
+}
+
+fn voice_transport_identities(user_id: &str, operation_id: &str) -> Vec<String> {
     let mut identities = Vec::with_capacity(4);
     identities.push(user_id.to_string());
-    identities.extend(desktop_native_voice_identities(user_id));
+    identities.extend(desktop_native_voice_identities(user_id, operation_id));
+    identities
+}
+
+fn voice_transport_identities_to_remove<'a>(
+    user_id: &str,
+    operation_id: Option<&str>,
+    livekit_participant_identities: impl IntoIterator<Item = &'a str>,
+) -> Vec<String> {
+    let mut identities = operation_id
+        .map(|operation_id| voice_transport_identities(user_id, operation_id))
+        .unwrap_or_else(|| vec![user_id.to_string()]);
+
+    for identity in livekit_participant_identities {
+        if identity == user_id
+            || (is_desktop_native_voice_identity(identity)
+                && base_voice_identity(identity) == user_id)
+        {
+            push_unique_identity(&mut identities, identity.to_string());
+        }
+    }
+
     identities
 }
 
@@ -390,6 +484,61 @@ pub async fn clear_user_voice_join_intent_if_matches(
     }
 
     Ok(())
+}
+
+pub async fn set_current_voice_operation_id(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    operation_id: &str,
+) -> Result<()> {
+    let unique_key = voice_state_unique_key(channel, user_id);
+
+    get_connection()
+        .await?
+        .set(voice_operation_key(&unique_key), operation_id)
+        .await
+        .to_internal_error()
+}
+
+pub async fn get_current_voice_operation_id(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+) -> Result<Option<String>> {
+    let unique_key = voice_state_unique_key(channel, user_id);
+
+    get_connection()
+        .await?
+        .get(voice_operation_key(&unique_key))
+        .await
+        .to_internal_error()
+}
+
+pub async fn native_voice_participant_matches_current_operation(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    participant_identity: &str,
+) -> Result<bool> {
+    if desktop_native_voice_operation_id(participant_identity).is_none() {
+        return Ok(false);
+    }
+
+    if let Some(intent) = get_user_voice_join_intent(user_id).await? {
+        return Ok(intent.channel == *channel
+            && native_voice_operation_is_current(
+                participant_identity,
+                intent.operation_id.as_deref(),
+            ));
+    }
+
+    if !is_in_voice_channel(user_id, channel).await? {
+        return Ok(false);
+    }
+
+    let current_operation_id = get_current_voice_operation_id(channel, user_id).await?;
+    Ok(native_voice_operation_is_current(
+        participant_identity,
+        current_operation_id.as_deref(),
+    ))
 }
 
 pub async fn set_user_moved_from_voice(
@@ -613,6 +762,15 @@ pub async fn create_voice_state(
         pipeline.set(voice_session_key(&unique_key), session_id);
     }
 
+    if let Some(operation_id) = join_intent
+        .as_ref()
+        .filter(|intent| intent.channel == *channel)
+        .and_then(|intent| intent.operation_id.as_deref())
+        .filter(|operation_id| !operation_id.is_empty())
+    {
+        pipeline.set(voice_operation_key(&unique_key), operation_id);
+    }
+
     if let Some(room_id) = room_id.filter(|room_id| !room_id.is_empty()) {
         pipeline.set(voice_room_session_key(&channel.id), room_id);
     }
@@ -714,6 +872,7 @@ pub async fn delete_voice_state(channel: &UserVoiceChannel, user_id: &str) -> Re
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
             format!("version:{unique_key}"),
+            voice_operation_key(&unique_key),
             voice_session_key(&unique_key),
             unique_key.clone(),
         ])
@@ -769,6 +928,7 @@ pub async fn delete_channel_voice_state(
             format!("screensharing:{unique_key}"),
             format!("camera:{unique_key}"),
             format!("version:{unique_key}"),
+            voice_operation_key(&unique_key),
             voice_session_key(&unique_key),
             unique_key.clone(),
         ]);
@@ -940,6 +1100,38 @@ pub async fn get_voice_channel_members(channel: &UserVoiceChannel) -> Result<Opt
         .map(|opt| opt.and_then(|v| if v.is_empty() { None } else { Some(v) }))
 }
 
+pub async fn get_voice_participant_reconciliation(
+    voice_client: &VoiceClient,
+    channel: &UserVoiceChannel,
+) -> Result<Option<VoiceParticipantReconciliation>> {
+    let redis_members = get_voice_channel_members(channel)
+        .await?
+        .unwrap_or_default();
+    let Some(node) = get_channel_node(&channel.id).await? else {
+        return Ok(None);
+    };
+
+    let livekit_participants = match voice_client
+        .list_room_participants(&node, &channel.id)
+        .await
+    {
+        Ok(Some(participants)) => participants,
+        Ok(None) => Vec::new(),
+        Err(error) => {
+            log::warn!(
+                "Skipping voice reconciliation for channel {} on node {node}: {error}",
+                channel.id
+            );
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(voice_participant_reconciliation(
+        &redis_members,
+        &livekit_participants,
+    )))
+}
+
 pub async fn get_voice_state(
     channel: &UserVoiceChannel,
     user_id: &str,
@@ -1025,6 +1217,10 @@ fn voice_state_unique_key(channel: &UserVoiceChannel, user_id: &str) -> String {
 
 fn voice_session_key(unique_key: &str) -> String {
     format!("session:{unique_key}")
+}
+
+fn voice_operation_key(unique_key: &str) -> String {
+    format!("operation:{unique_key}")
 }
 
 fn voice_room_session_key(channel_id: &str) -> String {
@@ -1388,7 +1584,22 @@ pub async fn remove_user_voice_transport(
     user_id: &str,
 ) -> Result<()> {
     if let Some(node) = get_channel_node(&channel.id).await? {
-        for identity in voice_transport_identities(user_id) {
+        let current_operation_id = get_current_voice_operation_id(channel, user_id).await?;
+        let livekit_participants = voice_client
+            .list_room_participants(&node, &channel.id)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let livekit_identities = livekit_participants
+            .iter()
+            .map(|participant| participant.identity.as_str());
+
+        for identity in voice_transport_identities_to_remove(
+            user_id,
+            current_operation_id.as_deref(),
+            livekit_identities,
+        ) {
             let _ = voice_client
                 .remove_user(&node, &identity, &channel.id)
                 .await;
@@ -1543,19 +1754,19 @@ mod tests {
     #[test]
     fn desktop_native_voice_identity_maps_to_base_user() {
         assert_eq!(
-            super::desktop_native_voice_identity("user-a", "microphone"),
-            "user-a:desktop-native:microphone"
+            super::desktop_native_voice_identity("user-a", "microphone", "op-join"),
+            "user-a:desktop-native:op-join:microphone"
         );
         assert_eq!(
-            super::desktop_native_voice_identities("user-a"),
+            super::desktop_native_voice_identities("user-a", "op-join"),
             [
-                "user-a:desktop-native:microphone".to_string(),
-                "user-a:desktop-native:screen".to_string(),
-                "user-a:desktop-native:camera".to_string()
+                "user-a:desktop-native:op-join:microphone".to_string(),
+                "user-a:desktop-native:op-join:screen".to_string(),
+                "user-a:desktop-native:op-join:camera".to_string()
             ]
         );
         assert_eq!(
-            super::base_voice_identity("user-a:desktop-native:microphone"),
+            super::base_voice_identity("user-a:desktop-native:op-join:microphone"),
             "user-a"
         );
         assert_eq!(
@@ -1564,25 +1775,75 @@ mod tests {
         );
         assert_eq!(super::base_voice_identity("user-a"), "user-a");
         assert!(super::is_desktop_native_voice_identity(
-            "user-a:desktop-native:screen"
+            "user-a:desktop-native:op-join:screen"
         ));
         assert!(super::is_desktop_native_voice_identity(
             "user-a:desktop-native"
         ));
         assert!(!super::is_desktop_native_voice_identity("user-a"));
+        assert_eq!(
+            super::desktop_native_voice_operation_id("user-a:desktop-native:op-join:screen"),
+            Some("op-join")
+        );
+        assert_eq!(
+            super::desktop_native_voice_operation_id("user-a:desktop-native:screen"),
+            None
+        );
     }
 
     #[test]
-    fn voice_transport_identities_include_base_and_desktop_native_participants() {
+    fn voice_transport_identities_include_base_and_current_desktop_native_participants() {
         assert_eq!(
-            super::voice_transport_identities("user-a"),
+            super::voice_transport_identities("user-a", "op-join"),
             vec![
                 "user-a".to_string(),
-                "user-a:desktop-native:microphone".to_string(),
-                "user-a:desktop-native:screen".to_string(),
-                "user-a:desktop-native:camera".to_string(),
+                "user-a:desktop-native:op-join:microphone".to_string(),
+                "user-a:desktop-native:op-join:screen".to_string(),
+                "user-a:desktop-native:op-join:camera".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn voice_transport_removal_includes_live_native_participants_for_base_user() {
+        assert_eq!(
+            super::voice_transport_identities_to_remove(
+                "user-a",
+                Some("op-new"),
+                [
+                    "user-a",
+                    "user-a:desktop-native:op-old:screen",
+                    "user-b:desktop-native:op-new:screen",
+                ],
+            ),
+            vec![
+                "user-a".to_string(),
+                "user-a:desktop-native:op-new:microphone".to_string(),
+                "user-a:desktop-native:op-new:screen".to_string(),
+                "user-a:desktop-native:op-new:camera".to_string(),
+                "user-a:desktop-native:op-old:screen".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn native_voice_operation_match_requires_current_operation() {
+        assert!(super::native_voice_operation_is_current(
+            "user-a:desktop-native:op-new:screen",
+            Some("op-new")
+        ));
+        assert!(!super::native_voice_operation_is_current(
+            "user-a:desktop-native:op-old:screen",
+            Some("op-new")
+        ));
+        assert!(!super::native_voice_operation_is_current(
+            "user-a:desktop-native:screen",
+            Some("op-new")
+        ));
+        assert!(!super::native_voice_operation_is_current(
+            "user-a:desktop-native:op-new:screen",
+            None
+        ));
     }
 
     #[test]

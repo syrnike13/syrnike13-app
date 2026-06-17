@@ -4,8 +4,8 @@ use syrnike_database::User;
 use syrnike_result::{create_error, Result};
 
 mod badges;
-mod users;
 mod user_badges;
+mod users;
 
 fn require_privileged(user: &User) -> Result<()> {
     if user.privileged {

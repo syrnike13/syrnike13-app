@@ -27,6 +27,7 @@ describe('native media session contract', () => {
     >()
     expectTypeOf<ScreenStartOptions>().toMatchTypeOf<{
       kind: 'screen'
+      requestId: string
       sourceId: string
       audioBitrate?: number
       audio?: {
@@ -113,6 +114,7 @@ describe('native media session contract', () => {
     >()
     expectTypeOf<MicrophoneStartOptions>().toMatchTypeOf<{
       kind: 'microphone'
+      requestId: string
       deviceId?: string
       sampleRate: 48000
       channels: 1
@@ -156,6 +158,7 @@ describe('native media session contract', () => {
   it('models separate microphone processing toggles and statuses', () => {
     const microphoneStart = {
       kind: 'microphone',
+      requestId: 'mic-request-1',
       sampleRate: 48_000,
       channels: 1,
       noiseSuppression: true,

@@ -6,7 +6,9 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3000",
+    "dev": "pnpm run dev:prod",
+    "dev:prod": "vite dev --port 3000 --mode production",
+    "dev:local": "vite dev --port 3000 --mode localbackend",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run"

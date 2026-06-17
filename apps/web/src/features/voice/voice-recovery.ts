@@ -5,13 +5,24 @@ export type VoiceRecoveryReason =
   | 'idle'
   | 'gateway_disconnected'
   | 'healthy'
+  | 'local_not_connected'
   | 'missing_server_state'
+  | 'server_state_moved_elsewhere'
   | 'publisher_unhealthy'
   | 'flags_mismatch'
 
 export type VoiceRecoveryAction =
   | { type: 'none'; reason: VoiceRecoveryReason }
-  | { type: 'rejoin'; reason: 'missing_server_state' }
+  | {
+      type: 'stop_superseded'
+      reason: 'server_state_moved_elsewhere'
+      channelId: string
+    }
+  | {
+      type: 'rejoin'
+      reason: 'missing_server_state' | 'local_not_connected'
+      channelId: string
+    }
   | { type: 'repair_publisher'; reason: 'publisher_unhealthy' }
   | {
       type: 'send_flags'
@@ -23,6 +34,7 @@ export type VoiceRecoveryAction =
 export type VoiceRecoveryInput = {
   gatewayConnected: boolean
   channelId: string | null
+  desiredChannelId: string | null
   userId: string | undefined
   status: VoiceStatus
   voiceParticipants: VoiceParticipantsByChannel
@@ -34,6 +46,16 @@ export type VoiceRecoveryInput = {
   publisherHealthy: boolean
 }
 
+function findUserVoiceChannel(
+  voiceParticipants: VoiceParticipantsByChannel,
+  userId: string,
+) {
+  for (const [channelId, channelMap] of Object.entries(voiceParticipants)) {
+    if (channelMap?.[userId]) return channelId
+  }
+  return null
+}
+
 export function decideVoiceRecoveryAction(
   input: VoiceRecoveryInput,
 ): VoiceRecoveryAction {
@@ -41,15 +63,41 @@ export function decideVoiceRecoveryAction(
     return { type: 'none', reason: 'gateway_disconnected' }
   }
 
-  if (input.status !== 'connected' || !input.channelId || !input.userId) {
+  const recoveryChannelId = input.channelId ?? input.desiredChannelId
+
+  if (!recoveryChannelId || !input.userId) {
     return { type: 'none', reason: 'idle' }
   }
 
   const serverState =
-    input.voiceParticipants[input.channelId]?.[input.userId]
+    input.voiceParticipants[recoveryChannelId]?.[input.userId]
+  const serverChannelId = findUserVoiceChannel(
+    input.voiceParticipants,
+    input.userId,
+  )
+
+  if (serverChannelId && serverChannelId !== recoveryChannelId) {
+    return {
+      type: 'stop_superseded',
+      reason: 'server_state_moved_elsewhere',
+      channelId: serverChannelId,
+    }
+  }
 
   if (!serverState && input.canTrustServerState) {
-    return { type: 'rejoin', reason: 'missing_server_state' }
+    return {
+      type: 'rejoin',
+      reason: 'missing_server_state',
+      channelId: recoveryChannelId,
+    }
+  }
+
+  if (input.status !== 'connected') {
+    return {
+      type: 'rejoin',
+      reason: 'local_not_connected',
+      channelId: recoveryChannelId,
+    }
   }
   if (!serverState) {
     return { type: 'none', reason: 'healthy' }

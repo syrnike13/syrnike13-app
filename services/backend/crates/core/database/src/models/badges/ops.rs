@@ -38,7 +38,8 @@ pub trait AbstractBadges: Sync + Send {
     async fn remove_user_badge(&self, user_id: &str, badge_id: &str) -> Result<()>;
 
     /// Fetch raw user badge assignments.
-    async fn fetch_user_badge_assignments(&self, user_id: &str) -> Result<Vec<UserBadgeAssignment>>;
+    async fn fetch_user_badge_assignments(&self, user_id: &str)
+        -> Result<Vec<UserBadgeAssignment>>;
 
     /// Fetch assigned badge catalog rows for a user.
     async fn fetch_user_badges(&self, user_id: &str) -> Result<Vec<Badge>>;

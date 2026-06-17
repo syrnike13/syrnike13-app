@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  localVoiceSupersedeFromGatewayEvent,
   voiceCommitFromGatewayEvent,
   voiceCommitOperationIdToObserve,
 } from './voice-session-events'
@@ -106,5 +107,100 @@ describe('voice session gateway events', () => {
         'user-a',
       ),
     ).toBeNull()
+  })
+
+  it('treats a local move from another operation as a remote supersede', () => {
+    expect(
+      localVoiceSupersedeFromGatewayEvent(
+        {
+          type: 'VoiceChannelMove',
+          user: 'user-a',
+          from: 'voice-a',
+          to: 'voice-b',
+          operation_id: 'op-other-client',
+          state: { id: 'user-a' },
+        },
+        'user-a',
+        'voice-a',
+        'op-current-client',
+      ),
+    ).toEqual({
+      type: 'moved_elsewhere',
+      channelId: 'voice-b',
+      operationId: 'op-other-client',
+    })
+  })
+
+  it('does not supersede the active local operation', () => {
+    expect(
+      localVoiceSupersedeFromGatewayEvent(
+        {
+          type: 'VoiceChannelMove',
+          user: 'user-a',
+          from: 'voice-a',
+          to: 'voice-b',
+          operation_id: 'op-current-client',
+          state: { id: 'user-a' },
+        },
+        'user-a',
+        'voice-a',
+        'op-current-client',
+      ),
+    ).toBeNull()
+  })
+
+  it('treats a local join in another channel as a remote supersede', () => {
+    expect(
+      localVoiceSupersedeFromGatewayEvent(
+        {
+          type: 'VoiceChannelJoin',
+          id: 'voice-b',
+          operation_id: 'op-other-client',
+          state: { id: 'user-a' },
+        },
+        'user-a',
+        'voice-a',
+        'op-current-client',
+      ),
+    ).toEqual({
+      type: 'joined_elsewhere',
+      channelId: 'voice-b',
+      operationId: 'op-other-client',
+    })
+  })
+
+  it('ignores a local leave from the current channel when the event has no operation id', () => {
+    expect(
+      localVoiceSupersedeFromGatewayEvent(
+        {
+          type: 'VoiceChannelLeave',
+          id: 'voice-a',
+          user: 'user-a',
+        },
+        'user-a',
+        'voice-a',
+        'op-current-client',
+      ),
+    ).toBeNull()
+  })
+
+  it('treats a local leave from another operation as a supersede', () => {
+    expect(
+      localVoiceSupersedeFromGatewayEvent(
+        {
+          type: 'VoiceChannelLeave',
+          id: 'voice-a',
+          user: 'user-a',
+          operation_id: 'op-other-client',
+        },
+        'user-a',
+        'voice-a',
+        'op-current-client',
+      ),
+    ).toEqual({
+      type: 'left_current_channel',
+      channelId: 'voice-a',
+      operationId: 'op-other-client',
+    })
   })
 })

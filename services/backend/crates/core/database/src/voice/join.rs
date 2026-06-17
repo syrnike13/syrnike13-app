@@ -9,10 +9,10 @@ use crate::{
             VoiceCallStateMutation, VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
         desktop_native_voice_identity, finish_voice_call_started_system_message, get_channel_node,
-        get_voice_channel_members, is_in_voice_channel, raise_if_in_voice,
-        remove_user_from_voice_channel, remove_user_voice_transport,
+        get_voice_channel_members, get_voice_participant_reconciliation, is_in_voice_channel,
+        raise_if_in_voice, remove_user_from_voice_channel, remove_user_voice_transport,
         set_call_notification_recipients, set_channel_node, set_user_voice_join_intent,
-        UserVoiceChannel, VoiceClient,
+        UserVoiceChannel, VoiceClient, VoiceParticipantReconciliation,
     },
     Database, User, VoiceCallEndReason, AMQP,
 };
@@ -47,6 +47,7 @@ pub struct VoiceJoinOptions {
 pub async fn join_voice_channel(
     db: &Database,
     voice_client: &VoiceClient,
+    amqp: &AMQP,
     user: &User,
     channel_id: &str,
     options: VoiceJoinOptions,
@@ -80,14 +81,33 @@ pub async fn join_voice_channel(
 
     let user_voice_channel = UserVoiceChannel::from_channel(&channel);
 
-    let current_voice_members = get_voice_channel_members(&user_voice_channel).await?;
+    let mut current_voice_members = get_voice_channel_members(&user_voice_channel).await?;
     if should_reject_voice_join_for_capacity(
         current_voice_members.as_deref(),
         voice_info.max_users,
         &user.id,
     ) && !current_permissions.has(ChannelPermission::ManageChannel as u64)
     {
-        return Err(create_error!(CannotJoinCall));
+        if let Some(reconciliation) = reconcile_voice_channel_members_with_call_cleanup(
+            db,
+            voice_client,
+            amqp,
+            &user_voice_channel,
+        )
+        .await?
+        {
+            if !reconciliation.stale_members.is_empty() {
+                current_voice_members = get_voice_channel_members(&user_voice_channel).await?;
+            }
+        }
+
+        if should_reject_voice_join_for_capacity(
+            current_voice_members.as_deref(),
+            voice_info.max_users,
+            &user.id,
+        ) {
+            return Err(create_error!(CannotJoinCall));
+        }
     }
 
     let existing_node = get_channel_node(channel.id()).await?;
@@ -98,6 +118,10 @@ pub async fn join_voice_channel(
         .ok_or_else(|| create_error!(UnknownNode))?;
 
     let config = config().await;
+    let operation_id = options
+        .operation_id
+        .as_deref()
+        .ok_or_else(|| create_error!(InvalidOperation))?;
 
     let node_host = config
         .hosts
@@ -127,6 +151,7 @@ pub async fn join_voice_channel(
         db,
         user,
         "microphone",
+        operation_id,
         current_permissions,
         &channel,
     )
@@ -137,6 +162,7 @@ pub async fn join_voice_channel(
         db,
         user,
         "screen",
+        operation_id,
         current_permissions,
         &channel,
     )
@@ -147,6 +173,7 @@ pub async fn join_voice_channel(
         db,
         user,
         "camera",
+        operation_id,
         current_permissions,
         &channel,
     )
@@ -207,6 +234,25 @@ pub async fn cleanup_committed_voice_member_removal(
 ) -> Result<()> {
     remove_user_voice_transport(voice_client, channel, user_id).await?;
     cleanup_removed_voice_member_call(db, amqp, channel).await
+}
+
+pub async fn reconcile_voice_channel_members_with_call_cleanup(
+    db: &Database,
+    voice_client: &VoiceClient,
+    amqp: &AMQP,
+    channel: &UserVoiceChannel,
+) -> Result<Option<VoiceParticipantReconciliation>> {
+    let Some(reconciliation) = get_voice_participant_reconciliation(voice_client, channel).await?
+    else {
+        return Ok(None);
+    };
+
+    for user_id in &reconciliation.stale_members {
+        remove_user_from_voice_channel_with_call_cleanup(db, voice_client, amqp, channel, user_id)
+            .await?;
+    }
+
+    Ok(Some(reconciliation))
 }
 
 async fn cleanup_removed_voice_member_call(
@@ -325,6 +371,7 @@ pub async fn refresh_voice_credentials(
     voice_client: &VoiceClient,
     user: &User,
     channel_id: &str,
+    operation_id: &str,
 ) -> Result<VoiceJoinCredentials> {
     if !voice_client.is_enabled() {
         return Err(create_error!(LiveKitUnavailable));
@@ -373,6 +420,7 @@ pub async fn refresh_voice_credentials(
         db,
         user,
         "microphone",
+        operation_id,
         current_permissions,
         &channel,
     )
@@ -383,6 +431,7 @@ pub async fn refresh_voice_credentials(
         db,
         user,
         "screen",
+        operation_id,
         current_permissions,
         &channel,
     )
@@ -393,6 +442,7 @@ pub async fn refresh_voice_credentials(
         db,
         user,
         "camera",
+        operation_id,
         current_permissions,
         &channel,
     )
@@ -415,10 +465,11 @@ async fn create_native_credentials(
     db: &Database,
     user: &User,
     media_kind: &str,
+    operation_id: &str,
     current_permissions: PermissionValue,
     channel: &Channel,
 ) -> Result<NativeVoiceCredentials> {
-    let identity = desktop_native_voice_identity(&user.id, media_kind);
+    let identity = desktop_native_voice_identity(&user.id, media_kind, operation_id);
     let token = voice_client
         .create_token_for_identity(node, db, user, &identity, current_permissions, channel)
         .await?;
