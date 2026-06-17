@@ -3,10 +3,12 @@ import { RiRefreshLine } from '@remixicon/react'
 import { type ReactNode, useEffect } from 'react'
 
 import { GatewayLoadingScreen } from '#/components/layout/gateway-loading-screen'
+import { useLoadingEasterEggPreviewGate } from '#/components/layout/gateway-loading-easter-egg'
 import { Button } from '#/components/ui/button'
 import { useAuth } from '#/features/auth/auth-context'
 import { SettingsModalProvider } from '#/features/settings/settings-modal-context'
 import { ActivityPresenceManager } from '#/features/presence/activity-presence-manager'
+import { DesktopActivityManager } from '#/features/presence/desktop-activity-manager'
 import { VoiceProvider } from '#/features/voice/voice-provider'
 import { useSyncReady } from '#/features/sync/sync-store'
 import { postLoginPath } from '#/lib/auth-post-login-path'
@@ -34,8 +36,10 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
   const ready = useSyncReady()
   const auth = useAuth()
   const navigate = useNavigate()
+  const loadingEasterEggPreviewReady = useLoadingEasterEggPreviewGate()
 
   useEffect(() => {
+    if (!loadingEasterEggPreviewReady) return
     if (!auth.hydrated) return
     if (!auth.session) {
       void navigate({ to: '/login', replace: true })
@@ -46,6 +50,7 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
     }
   }, [
     auth.hydrated,
+    loadingEasterEggPreviewReady,
     auth.needsOnboarding,
     auth.onboardingChecked,
     auth.session,
@@ -82,6 +87,7 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
   }
 
   if (
+    !loadingEasterEggPreviewReady ||
     !auth.hydrated ||
     !auth.session ||
     !auth.onboardingChecked ||
@@ -95,6 +101,7 @@ function AuthedGateInner({ children }: { children: ReactNode }) {
   return (
     <SettingsModalProvider>
       <ActivityPresenceManager />
+      <DesktopActivityManager />
       {children}
     </SettingsModalProvider>
   )

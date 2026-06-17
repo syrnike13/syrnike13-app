@@ -13,6 +13,7 @@ import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
+import { UserActivityCards } from '#/components/user/user-activity-cards'
 import { Button } from '#/components/ui/button'
 import { FloatingMenuItem } from '#/components/ui/floating-menu'
 import { Input } from '#/components/ui/input'
@@ -27,6 +28,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship, sendFriendRequestToUser } from '#/features/friends/friend-actions'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import { writeClipboardText } from '#/lib/clipboard'
+import { cn } from '#/lib/utils'
 
 export type UserProfileCardProps = {
   user: User
@@ -182,6 +184,11 @@ export function UserProfileCard({
             </div>
           ) : undefined
         }
+      />
+
+      <UserActivityCards
+        userId={profile._id}
+        className={cn('mx-4 mt-3', !canMessage && 'mb-4')}
       />
 
       {canMessage ? (

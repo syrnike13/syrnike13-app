@@ -63,6 +63,150 @@ pub struct VoiceCall {
     pub declined_recipients: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MusicProviderId {
+    Spotify,
+    AppleMusic,
+    YandexMusic,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MusicPresenceSource {
+    SpotifyApi,
+    DesktopNowPlaying,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicPresence {
+    pub provider: MusicProviderId,
+    pub source: MusicPresenceSource,
+    pub title: String,
+    pub artists: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artwork_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress_ms: Option<u64>,
+    pub is_playing: bool,
+    pub observed_at: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityType {
+    Playing,
+    Streaming,
+    Listening,
+    Watching,
+    Custom,
+    Competing,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityStatusDisplayType {
+    Name,
+    State,
+    Details,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityTimestamps {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityAssets {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub large_image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub large_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub large_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small_image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invite_cover_image_url: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityPartySize {
+    pub current: u64,
+    pub max: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityParty {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<ActivityPartySize>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityButton {
+    pub label: String,
+    pub url: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Activity {
+    pub activity_source_id: String,
+    #[serde(rename = "type")]
+    pub activity_type: ActivityType,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<u64>,
+    pub observed_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamps: Option<ActivityTimestamps>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub application_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_display_type: Option<ActivityStatusDisplayType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assets: Option<ActivityAssets>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub party: Option<ActivityParty>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flags: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buttons: Option<Vec<ActivityButton>>,
+}
+
 /// Fields provided in Ready payload
 #[derive(PartialEq, Debug, Clone, Deserialize)]
 pub struct ReadyPayloadFields {
@@ -281,6 +425,14 @@ pub enum EventV1 {
         id: String,
         user: User,
     },
+    /// User started, changed, or cleared an activity slot.
+    UserActivity {
+        id: String,
+        #[serde(rename = "activitySourceId")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        activity_source_id: Option<String>,
+        activity: Option<Activity>,
+    },
     /// Settings updated remotely
     UserSettingsUpdate {
         id: String,
@@ -493,7 +645,9 @@ impl EventV1 {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind};
+    use super::{
+        Activity, ActivityType, EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind,
+    };
     use iso8601_timestamp::Timestamp;
     use serde_json::json;
     use syrnike_models::v0::{NativeVoiceCredentials, UserVoiceState};
@@ -598,5 +752,58 @@ mod tests {
         assert_eq!(value["type"], json!("VoiceChannelMove"));
         assert_eq!(value["to"], json!("channel-2"));
         assert_eq!(value["operation_id"], json!("op-move"));
+    }
+
+    #[test]
+    fn user_activity_serializes_camel_case_payload() {
+        let event = EventV1::UserActivity {
+            id: "user-1".to_string(),
+            activity_source_id: None,
+            activity: Some(Activity {
+                activity_source_id: "desktop:game".to_string(),
+                activity_type: ActivityType::Playing,
+                name: "Counter-Strike 2".to_string(),
+                url: None,
+                created_at: None,
+                observed_at: 1781518000000,
+                timestamps: None,
+                application_id: None,
+                status_display_type: None,
+                details: Some("Premier".to_string()),
+                details_url: None,
+                state: Some("Mirage".to_string()),
+                state_url: None,
+                assets: None,
+                party: None,
+                instance: None,
+                flags: None,
+                buttons: None,
+            }),
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+
+        assert_eq!(value["type"], json!("UserActivity"));
+        assert_eq!(value["id"], json!("user-1"));
+        assert_eq!(value["activity"]["activitySourceId"], json!("desktop:game"));
+        assert_eq!(value["activity"]["type"], json!("playing"));
+        assert_eq!(value["activity"]["name"], json!("Counter-Strike 2"));
+        assert_eq!(value["activity"]["details"], json!("Premier"));
+    }
+
+    #[test]
+    fn user_activity_clear_serializes_source_id_as_camel_case() {
+        let event = EventV1::UserActivity {
+            id: "user-1".to_string(),
+            activity_source_id: Some("desktop:game".to_string()),
+            activity: None,
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+
+        assert_eq!(value["type"], json!("UserActivity"));
+        assert_eq!(value["id"], json!("user-1"));
+        assert_eq!(value["activitySourceId"], json!("desktop:game"));
+        assert!(value["activity"].is_null());
     }
 }

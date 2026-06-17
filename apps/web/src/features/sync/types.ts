@@ -14,6 +14,7 @@ import type {
   VoiceCallsByChannel,
   VoiceParticipantsByChannel,
 } from './voice-types'
+import type { Activity } from '@syrnike13/platform'
 
 export type GatewayServerEvent = {
   type?: string
@@ -61,6 +62,8 @@ export type SyncState = {
   voiceParticipants: VoiceParticipantsByChannel
   /** channelId -> lifecycle of a DM/group voice call. */
   voiceCalls: VoiceCallsByChannel
+  /** userId -> activitySourceId -> currently published activity. */
+  activities: Record<string, Record<string, Activity>>
   /** In-memory call UI keys hidden by the current client session. */
   dismissedVoiceCallKeys: Record<string, true>
 }

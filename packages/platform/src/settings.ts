@@ -62,6 +62,30 @@ export type DesktopSoundSettings = {
   easterEnabled: boolean
 }
 
+export type DesktopEasterSettings = {
+  enabled: boolean
+}
+
+export const MUSIC_PROVIDER_IDS = [
+  'spotify',
+  'apple_music',
+  'yandex_music',
+] as const
+export type MusicProviderId = (typeof MUSIC_PROVIDER_IDS)[number]
+export type MusicPresenceSource = 'spotify_api' | 'desktop_now_playing'
+
+export type DesktopMusicProviderSettings = {
+  enabled: boolean
+  source: MusicPresenceSource
+  resolveExternalLinks: boolean
+}
+
+export type DesktopMusicSettings = {
+  enabled: boolean
+  showInProfile: boolean
+  providers: Record<MusicProviderId, DesktopMusicProviderSettings>
+}
+
 export type { AppearanceSettings, AppearanceSettingsPatch, AppearanceColorMode } from './appearance'
 export {
   DEFAULT_APPEARANCE_SETTINGS,
@@ -78,6 +102,8 @@ export type DesktopLocalSettings = {
   overlay: DesktopOverlaySettings
   appearance: AppearanceSettings
   sounds: DesktopSoundSettings
+  easter: DesktopEasterSettings
+  music: DesktopMusicSettings
 }
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
@@ -85,6 +111,14 @@ export type DesktopVoiceListenerSettingsPatch =
   Partial<DesktopVoiceListenerSettings>
 export type DesktopOverlaySettingsPatch = Partial<DesktopOverlaySettings>
 export type DesktopSoundSettingsPatch = Partial<DesktopSoundSettings>
+export type DesktopEasterSettingsPatch = Partial<DesktopEasterSettings>
+export type DesktopMusicProviderSettingsPatch =
+  Partial<DesktopMusicProviderSettings>
+export type DesktopMusicSettingsPatch = Partial<
+  Omit<DesktopMusicSettings, 'providers'>
+> & {
+  providers?: Partial<Record<MusicProviderId, DesktopMusicProviderSettingsPatch>>
+}
 
 export type DesktopLocalSettingsPatch = {
   voice?: DesktopVoiceSettingsPatch
@@ -92,6 +126,8 @@ export type DesktopLocalSettingsPatch = {
   overlay?: DesktopOverlaySettingsPatch
   appearance?: AppearanceSettingsPatch
   sounds?: DesktopSoundSettingsPatch
+  easter?: DesktopEasterSettingsPatch
+  music?: DesktopMusicSettingsPatch
 }
 
 const VOICE_VOLUME_MAX = 3
@@ -134,6 +170,32 @@ export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
   easterEnabled: true,
 }
 
+export const DEFAULT_DESKTOP_EASTER_SETTINGS: DesktopEasterSettings = {
+  enabled: false,
+}
+
+export const DEFAULT_DESKTOP_MUSIC_SETTINGS: DesktopMusicSettings = {
+  enabled: true,
+  showInProfile: true,
+  providers: {
+    spotify: {
+      enabled: false,
+      source: 'desktop_now_playing',
+      resolveExternalLinks: true,
+    },
+    apple_music: {
+      enabled: false,
+      source: 'desktop_now_playing',
+      resolveExternalLinks: true,
+    },
+    yandex_music: {
+      enabled: false,
+      source: 'desktop_now_playing',
+      resolveExternalLinks: true,
+    },
+  },
+}
+
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   version: 1,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
@@ -141,6 +203,8 @@ export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   appearance: DEFAULT_APPEARANCE_SETTINGS,
   sounds: DEFAULT_DESKTOP_SOUND_SETTINGS,
+  easter: DEFAULT_DESKTOP_EASTER_SETTINGS,
+  music: DEFAULT_DESKTOP_MUSIC_SETTINGS,
 }
 
 function objectRecord(value: unknown) {
@@ -167,6 +231,15 @@ function soundAuthorPackIdOrDefault(
   return typeof value === 'string' &&
     (SOUND_AUTHOR_PACK_IDS as readonly string[]).includes(value)
     ? (value as SoundAuthorPackId)
+    : fallback
+}
+
+function musicPresenceSourceOrDefault(
+  value: unknown,
+  fallback: MusicPresenceSource,
+): MusicPresenceSource {
+  return value === 'spotify_api' || value === 'desktop_now_playing'
+    ? value
     : fallback
 }
 
@@ -356,6 +429,61 @@ export function normalizeDesktopSoundSettings(
   }
 }
 
+export function normalizeDesktopEasterSettings(
+  value: unknown,
+  defaults: DesktopEasterSettings = DEFAULT_DESKTOP_EASTER_SETTINGS,
+): DesktopEasterSettings {
+  const settings = objectRecord(value)
+  return {
+    enabled: booleanOrDefault(settings.enabled, defaults.enabled),
+  }
+}
+
+export function normalizeDesktopMusicSettings(
+  value: unknown,
+  defaults: DesktopMusicSettings = DEFAULT_DESKTOP_MUSIC_SETTINGS,
+): DesktopMusicSettings {
+  const settings = objectRecord(value)
+  const providers = objectRecord(settings.providers)
+
+  return {
+    enabled: booleanOrDefault(settings.enabled, defaults.enabled),
+    showInProfile: booleanOrDefault(
+      settings.showInProfile,
+      defaults.showInProfile,
+    ),
+    providers: {
+      spotify: normalizeDesktopMusicProviderSettings(
+        providers.spotify,
+        defaults.providers.spotify,
+      ),
+      apple_music: normalizeDesktopMusicProviderSettings(
+        providers.apple_music,
+        defaults.providers.apple_music,
+      ),
+      yandex_music: normalizeDesktopMusicProviderSettings(
+        providers.yandex_music,
+        defaults.providers.yandex_music,
+      ),
+    },
+  }
+}
+
+function normalizeDesktopMusicProviderSettings(
+  value: unknown,
+  defaults: DesktopMusicProviderSettings,
+): DesktopMusicProviderSettings {
+  const settings = objectRecord(value)
+  return {
+    enabled: booleanOrDefault(settings.enabled, defaults.enabled),
+    source: musicPresenceSourceOrDefault(settings.source, defaults.source),
+    resolveExternalLinks: booleanOrDefault(
+      settings.resolveExternalLinks,
+      defaults.resolveExternalLinks,
+    ),
+  }
+}
+
 function normalizeDesktopOverlayGameSettings(
   value: unknown,
 ): DesktopOverlayGameSettings[] {
@@ -395,6 +523,8 @@ export function normalizeDesktopLocalSettings(
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
     appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
     sounds: normalizeDesktopSoundSettings(settings.sounds, defaults.sounds),
+    easter: normalizeDesktopEasterSettings(settings.easter, defaults.easter),
+    music: normalizeDesktopMusicSettings(settings.music, defaults.music),
   }
 }
 
@@ -552,6 +682,78 @@ export function normalizeDesktopSoundSettingsPatch(
   return Object.keys(next).length > 0 ? next : undefined
 }
 
+export function normalizeDesktopEasterSettingsPatch(
+  value: unknown,
+): DesktopEasterSettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopEasterSettingsPatch = {}
+  if ('enabled' in patch && typeof patch.enabled === 'boolean') {
+    next.enabled = patch.enabled
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
+export function normalizeDesktopMusicSettingsPatch(
+  value: unknown,
+): DesktopMusicSettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopMusicSettingsPatch = {}
+
+  if ('enabled' in patch && typeof patch.enabled === 'boolean') {
+    next.enabled = patch.enabled
+  }
+  if ('showInProfile' in patch && typeof patch.showInProfile === 'boolean') {
+    next.showInProfile = patch.showInProfile
+  }
+
+  const providerPatch = normalizeDesktopMusicProviderSettingsPatches(
+    patch.providers,
+  )
+  if (providerPatch) next.providers = providerPatch
+
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
+function normalizeDesktopMusicProviderSettingsPatches(value: unknown) {
+  const providers = objectRecord(value)
+  const next: DesktopMusicSettingsPatch['providers'] = {}
+
+  for (const providerId of MUSIC_PROVIDER_IDS) {
+    const patch = normalizeDesktopMusicProviderSettingsPatch(
+      providers[providerId],
+    )
+    if (patch) next[providerId] = patch
+  }
+
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
+function normalizeDesktopMusicProviderSettingsPatch(
+  value: unknown,
+): DesktopMusicProviderSettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopMusicProviderSettingsPatch = {}
+
+  if ('enabled' in patch && typeof patch.enabled === 'boolean') {
+    next.enabled = patch.enabled
+  }
+  if (
+    'source' in patch &&
+    (patch.source === 'spotify_api' ||
+      patch.source === 'desktop_now_playing')
+  ) {
+    next.source = patch.source
+  }
+  if (
+    'resolveExternalLinks' in patch &&
+    typeof patch.resolveExternalLinks === 'boolean'
+  ) {
+    next.resolveExternalLinks = patch.resolveExternalLinks
+  }
+
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 export function normalizeDesktopLocalSettingsPatch(
   value: unknown,
 ): DesktopLocalSettingsPatch {
@@ -564,10 +766,14 @@ export function normalizeDesktopLocalSettingsPatch(
   const overlay = normalizeDesktopOverlaySettingsPatch(patch.overlay)
   const appearance = normalizeAppearanceSettingsPatch(patch.appearance)
   const sounds = normalizeDesktopSoundSettingsPatch(patch.sounds)
+  const easter = normalizeDesktopEasterSettingsPatch(patch.easter)
+  const music = normalizeDesktopMusicSettingsPatch(patch.music)
   if (voice) next.voice = voice
   if (voiceListener) next.voiceListener = voiceListener
   if (overlay) next.overlay = overlay
   if (appearance) next.appearance = appearance
   if (sounds) next.sounds = sounds
+  if (easter) next.easter = easter
+  if (music) next.music = music
   return next
 }

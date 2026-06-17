@@ -46,6 +46,12 @@ vi.mock('#/components/user/user-profile-card-header', () => ({
   UserProfileCardHeader: () => <div data-testid="profile-card-header" />,
 }))
 
+vi.mock('#/components/user/user-activity-cards', () => ({
+  UserActivityCards: ({ className }: { className?: string }) => (
+    <div className={className} data-testid="activity-cards" />
+  ),
+}))
+
 const targetUser = {
   _id: 'target-user',
   username: 'bob',
@@ -80,5 +86,19 @@ describe('UserProfileCard', () => {
       params: { channelId: 'dm-1' },
       search: { m: undefined },
     })
+  })
+
+  it('keeps activity cards away from the popover bottom when they are the last block', () => {
+    render(
+      <UserProfileCard
+        user={{
+          ...targetUser,
+          _id: 'current-user',
+        }}
+      />,
+    )
+
+    const activityCards = screen.getByTestId('activity-cards')
+    expect(activityCards.className).toContain('mb-4')
   })
 })

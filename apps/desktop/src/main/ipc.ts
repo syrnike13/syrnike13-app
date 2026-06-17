@@ -30,6 +30,7 @@ import {
   loadDesktopSession,
   saveDesktopSession,
 } from './desktop-session'
+import { registerDesktopMusicPresenceIpc } from './desktop-music-presence-service'
 import {
   desktopLocalSettingsDefaults,
   loadDesktopLocalSettings,
@@ -56,6 +57,7 @@ export function registerDesktopIpc(
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
     setTrayVoiceState: (state: DesktopTrayVoiceState) => void
     onLocalSettingsUpdated?: (settings: DesktopLocalSettings) => void
+    getLocalSettings?: () => DesktopLocalSettings
     showWindow: () => void
     localSettingsPath: string
     localSettingsDefaults?: ReturnType<typeof desktopLocalSettingsDefaults>
@@ -65,6 +67,13 @@ export function registerDesktopIpc(
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
   registerNativeMediaEngineIpc(getWindow)
+  const disposeMusicPresenceIpc = registerDesktopMusicPresenceIpc(getWindow, {
+    getSettings:
+      options.getLocalSettings ??
+      (() =>
+        options.localSettingsDefaults ??
+        desktopLocalSettingsDefaults()),
+  })
 
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),
@@ -214,6 +223,7 @@ export function registerDesktopIpc(
 
   return () => {
     lastActivity = null
+    disposeMusicPresenceIpc()
   }
 }
 

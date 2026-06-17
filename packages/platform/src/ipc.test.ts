@@ -22,6 +22,15 @@ describe('desktop media IPC contract', () => {
     expect('mediaPrepareSystemAudio' in IPC).toBe(false)
     expect('mediaClearSystemAudio' in IPC).toBe(false)
   })
+
+  it('exposes desktop music presence through its own namespace', () => {
+    expect(IPC.musicGetCurrentPresence).toBe(
+      'syrnike-desktop:music:get-current-presence',
+    )
+    expect(IPC.musicPresenceChanged).toBe(
+      'syrnike-desktop:music:presence-changed',
+    )
+  })
 })
 
 describe('desktop tray IPC contract', () => {

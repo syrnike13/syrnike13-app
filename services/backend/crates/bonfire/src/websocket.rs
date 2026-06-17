@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     net::SocketAddr,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use async_tungstenite::WebSocketStream;
@@ -22,7 +22,10 @@ use redis_kiss::{get_connection, AsyncCommands, PayloadType, REDIS_PAYLOAD_TYPE,
 use syrnike_config::report_internal_error;
 use syrnike_database::{
     events::{
-        client::{EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind},
+        client::{
+            Activity, ActivityType, EventV1, GatewayErrorRequest, GatewayErrorScope,
+            GatewayRequestKind,
+        },
         server::ClientMessage,
     },
     iso8601_timestamp::Timestamp,
@@ -36,7 +39,7 @@ use syrnike_presence::{
 use async_std::{
     net::TcpStream,
     sync::{Mutex, RwLock},
-    task::spawn,
+    task::{sleep, spawn},
 };
 use sentry::Level;
 use syrnike_result::create_error;
@@ -48,6 +51,7 @@ use syrnike_models::v0;
 type WsReader = SplitStream<WebSocketStream<TcpStream>>;
 pub(crate) type WsWriter =
     SplitSink<WebSocketStream<TcpStream>, async_tungstenite::tungstenite::Message>;
+const ACTIVITY_SLOT_TTL_SECONDS: usize = 90;
 
 /// Start a new WebSocket client worker given access to the database,
 /// the relevant TCP stream and the remote address of the client.
@@ -585,6 +589,35 @@ async fn worker(
                         touch_session(&user_id, presence_session_id, client_kind).await;
                         apply_system_activity_presence(db, &user_id, client_kind).await;
                     }
+                    ClientMessage::UserActivityUpdate {
+                        activity,
+                        activity_source_id,
+                    } => {
+                        touch_session(&user_id, presence_session_id, client_kind).await;
+                        apply_system_activity_presence(db, &user_id, client_kind).await;
+                        record_activity_history(
+                            db,
+                            &user_id,
+                            client_kind,
+                            activity.as_ref(),
+                            activity_source_id.as_deref(),
+                        )
+                        .await;
+                        refresh_realtime_activity_slot(
+                            &user_id,
+                            activity.as_ref(),
+                            activity_source_id.as_deref(),
+                            &active_servers,
+                        )
+                        .await;
+                        publish_activity_update(
+                            &user_id,
+                            activity,
+                            activity_source_id,
+                            &active_servers,
+                        )
+                        .await;
+                    }
                     ClientMessage::Subscribe { server_id } => {
                         let mut servers = active_servers.lock().await;
                         let has_item = servers.contains_key(&server_id);
@@ -684,6 +717,178 @@ async fn worker(
             }
         }
     }
+}
+
+async fn publish_activity_update(
+    user_id: &str,
+    activity: Option<Activity>,
+    activity_source_id: Option<String>,
+    active_servers: &Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
+) {
+    let event = EventV1::UserActivity {
+        id: user_id.to_string(),
+        activity_source_id,
+        activity,
+    };
+
+    event.clone().p(user_id.to_string()).await;
+
+    let server_ids = active_servers
+        .lock()
+        .await
+        .iter()
+        .map(|(server_id, _)| server_id.clone())
+        .collect::<Vec<_>>();
+
+    for server_id in server_ids {
+        event.clone().server(server_id).await;
+    }
+}
+
+async fn refresh_realtime_activity_slot(
+    user_id: &str,
+    activity: Option<&Activity>,
+    activity_source_id: Option<&str>,
+    active_servers: &Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
+) {
+    match activity {
+        Some(activity) => {
+            let source_id = activity.activity_source_id.clone();
+            let key = activity_slot_key(user_id, &source_id);
+            let token = ulid::Ulid::new().to_string();
+
+            if let Ok(mut conn) = get_connection().await.map(|conn| conn.into_inner()) {
+                conn.set_ex::<_, _, ()>(&key, token.clone(), ACTIVITY_SLOT_TTL_SECONDS)
+                    .await
+                    .ok();
+            }
+
+            let user_id = user_id.to_string();
+            let active_servers = active_servers.clone();
+            spawn(async move {
+                sleep(Duration::from_secs(ACTIVITY_SLOT_TTL_SECONDS as u64)).await;
+
+                let Ok(mut conn) = get_connection().await.map(|conn| conn.into_inner()) else {
+                    return;
+                };
+                let latest = conn.get::<_, Option<String>>(&key).await.ok().flatten();
+                if latest.as_deref() != Some(token.as_str()) {
+                    return;
+                }
+
+                conn.del::<_, ()>(&key).await.ok();
+                publish_activity_expired(&user_id, &source_id, &active_servers).await;
+            });
+        }
+        None => {
+            let Some(source_id) = activity_source_id else {
+                return;
+            };
+
+            if let Ok(mut conn) = get_connection().await.map(|conn| conn.into_inner()) {
+                conn.del::<_, ()>(activity_slot_key(user_id, source_id))
+                    .await
+                    .ok();
+            }
+        }
+    }
+}
+
+async fn publish_activity_expired(
+    user_id: &str,
+    activity_source_id: &str,
+    active_servers: &Arc<Mutex<lru_time_cache::LruCache<String, ()>>>,
+) {
+    let event = EventV1::UserActivity {
+        id: user_id.to_string(),
+        activity_source_id: Some(activity_source_id.to_string()),
+        activity: None,
+    };
+
+    event.clone().p(user_id.to_string()).await;
+
+    let server_ids = active_servers
+        .lock()
+        .await
+        .iter()
+        .map(|(server_id, _)| server_id.clone())
+        .collect::<Vec<_>>();
+
+    for server_id in server_ids {
+        event.clone().server(server_id).await;
+    }
+}
+
+fn activity_slot_key(user_id: &str, activity_source_id: &str) -> String {
+    format!("activity_slot:{user_id}:{activity_source_id}")
+}
+
+async fn record_activity_history(
+    db: &Database,
+    user_id: &str,
+    client_kind: PresenceClientKind,
+    activity: Option<&Activity>,
+    activity_source_id: Option<&str>,
+) {
+    if client_kind != PresenceClientKind::Desktop {
+        return;
+    }
+
+    match activity {
+        Some(activity) => {
+            if activity.activity_source_id != "desktop:game" {
+                return;
+            }
+            if activity.activity_type != ActivityType::Playing {
+                return;
+            }
+
+            let Some(verified_game_id) = activity.application_id.as_deref() else {
+                return;
+            };
+            let verified_game_id = verified_game_id.trim();
+            let name = activity.name.trim();
+            if verified_game_id.is_empty() || name.is_empty() {
+                return;
+            }
+
+            let Ok(observed_at) = i64::try_from(activity.observed_at) else {
+                return;
+            };
+
+            if let Err(error) = db
+                .record_verified_game_activity_session(
+                    user_id,
+                    &activity.activity_source_id,
+                    verified_game_id,
+                    name,
+                    observed_at,
+                )
+                .await
+            {
+                warn!("Failed to record game activity session: {:?}", error);
+            }
+        }
+        None => {
+            if activity_source_id != Some("desktop:game") {
+                return;
+            }
+
+            if let Err(error) = db
+                .finish_activity_session_source(user_id, "desktop:game", now_unix_ms())
+                .await
+            {
+                warn!("Failed to finish game activity session: {:?}", error);
+            }
+        }
+    }
+}
+
+fn now_unix_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+        .unwrap_or(0)
 }
 
 async fn apply_system_activity_presence(

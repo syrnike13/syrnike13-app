@@ -88,6 +88,10 @@ pub async fn create_database(db: &MongoDb) {
         .await
         .expect("Failed to create ratelimit_events collection.");
 
+    db.create_collection("activity_sessions")
+        .await
+        .expect("Failed to create activity_sessions collection.");
+
     db.create_collection("pubsub")
         .with_options(
             CreateCollectionOptions::builder()
@@ -238,6 +242,30 @@ pub async fn create_database(db: &MongoDb) {
     })
     .await
     .expect("Failed to create attachment_hashes index.");
+
+    db.run_command(doc! {
+        "createIndexes": "activity_sessions",
+        "indexes": [
+            {
+                "key": {
+                    "user_id": 1_i32,
+                    "activity_source_id": 1_i32,
+                    "ended_at": -1_i32
+                },
+                "name": "user_source_ended_at"
+            },
+            {
+                "key": {
+                    "user_id": 1_i32,
+                    "verified_game_id": 1_i32,
+                    "started_at": -1_i32
+                },
+                "name": "user_game_started_at"
+            }
+        ]
+    })
+    .await
+    .expect("Failed to create activity_sessions indexes.");
 
     db.collection("migrations")
         .insert_one(doc! {

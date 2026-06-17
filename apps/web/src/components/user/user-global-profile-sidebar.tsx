@@ -16,6 +16,7 @@ import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
+import { UserActivityCards } from '#/components/user/user-activity-cards'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserBadges } from '#/components/user/user-badges'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
@@ -361,6 +362,8 @@ export function UserGlobalProfileSidebar({
         </div>
 
         <div className="mt-4 border-t border-border/50" />
+
+        <UserActivityCards userId={user._id} className="mt-4" />
 
         {/* Bio */}
         {profileBio ? (

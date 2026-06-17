@@ -152,6 +152,64 @@ describe('EventsGateway', () => {
     )
   })
 
+  it('sends the latest activity update per source reliably after Ready', async () => {
+    gateway.activity({
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      details: 'Old',
+      observedAt: 1,
+    })
+    gateway.activity({
+      activitySourceId: 'desktop:music',
+      type: 'listening',
+      name: 'Spotify',
+      details: 'PRAXX',
+      observedAt: 2,
+    })
+    gateway.activity({
+      activitySourceId: 'desktop:game',
+      type: 'playing',
+      name: 'Counter-Strike 2',
+      observedAt: 3,
+    })
+
+    gateway.connect('wss://example.test/ws', 'token-1')
+    const socket = mock.sockets.at(-1)!
+
+    await Promise.resolve()
+    socket.send.mockClear()
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'Ready', users: [] }),
+    })
+
+    expect(socket.send).toHaveBeenCalledTimes(2)
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'UserActivityUpdate',
+        activity: {
+          activitySourceId: 'desktop:music',
+          type: 'listening',
+          name: 'Spotify',
+          details: 'PRAXX',
+          observedAt: 2,
+        },
+      }),
+    )
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'UserActivityUpdate',
+        activity: {
+          activitySourceId: 'desktop:game',
+          type: 'playing',
+          name: 'Counter-Strike 2',
+          observedAt: 3,
+        },
+      }),
+    )
+  })
+
   it('schedules reconnect after unexpected close when auto-reconnect is enabled', () => {
     gateway.enableAutoReconnect('wss://example.test/ws', 'token-1')
     gateway.connect('wss://example.test/ws', 'token-1')

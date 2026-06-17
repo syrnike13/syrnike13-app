@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC } from '@syrnike13/platform'
+import { IPC, normalizeMusicPresencePatch } from '@syrnike13/platform'
 
 import type {
   DesktopOverlaySnapshot,
@@ -30,6 +30,7 @@ import type {
   NativeMicrophoneMetricsEvent,
   NativeMicrophoneRuntimeConfig,
   NativeInputEvent,
+  MusicPresencePatch,
   SyrnikeDesktopApi,
 } from '@syrnike13/platform'
 
@@ -137,6 +138,23 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.updatesStateChanged, listener)
       return () => {
         ipcRenderer.removeListener(IPC.updatesStateChanged, listener)
+      }
+    },
+  },
+  music: {
+    getCurrentPresence() {
+      return ipcRenderer
+        .invoke(IPC.musicGetCurrentPresence)
+        .then((payload) => normalizeMusicPresencePatch(payload) ?? null)
+    },
+    onPresenceChange(handler: (presence: MusicPresencePatch) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        const presence = normalizeMusicPresencePatch(payload)
+        if (presence !== undefined) handler(presence)
+      }
+      ipcRenderer.on(IPC.musicPresenceChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.musicPresenceChanged, listener)
       }
     },
   },

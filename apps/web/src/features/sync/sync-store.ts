@@ -9,6 +9,8 @@ import type {
   Server,
   User,
 } from '@syrnike13/api-types'
+import { normalizeActivityPatch } from '@syrnike13/platform'
+import type { Activity, ActivityPatch } from '@syrnike13/platform'
 
 import type { GatewayServerEvent, ReadyPayload, SyncState } from './types'
 import type { UserVoiceState, VoiceParticipantsByChannel } from './voice-types'
@@ -36,6 +38,7 @@ function emptyState(): SyncState {
     typingUsers: {},
     voiceParticipants: {},
     voiceCalls: {},
+    activities: {},
     dismissedVoiceCallKeys: {},
   }
 }
@@ -238,6 +241,16 @@ function voiceChannelMapEquals(
   return true
 }
 
+function activityEquals(
+  left: Activity | undefined,
+  right: Activity | null,
+) {
+  if (left === undefined && right === null) return true
+  if (left === right) return true
+  if (!left || !right) return false
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
 export const syncStore = {
   getState: () => state,
 
@@ -318,6 +331,7 @@ export const syncStore = {
       voiceParticipants,
       voiceCalls,
       dismissedVoiceCallKeys,
+      activities: {},
       selectedServerId: state.selectedServerId,
     })
   },
@@ -501,6 +515,47 @@ export const syncStore = {
       declinedRecipients: call.declinedRecipients.includes(userId)
         ? call.declinedRecipients
         : [...call.declinedRecipients, userId],
+    })
+  },
+
+  setUserActivity(
+    userId: string,
+    activity: ActivityPatch,
+    activitySourceId?: string,
+  ) {
+    const sourceId = activity?.activitySourceId ?? activitySourceId
+    if (!sourceId) return
+
+    const userActivities = state.activities[userId]
+    const existing = userActivities?.[sourceId]
+    if (activityEquals(existing, activity)) return
+
+    if (activity === null) {
+      if (!existing) return
+      const { [sourceId]: _, ...remainingUserActivities } = userActivities ?? {}
+      if (Object.keys(remainingUserActivities).length === 0) {
+        const { [userId]: __, ...activities } = state.activities
+        setState({ activities })
+        return
+      }
+
+      setState({
+        activities: {
+          ...state.activities,
+          [userId]: remainingUserActivities,
+        },
+      })
+      return
+    }
+
+    setState({
+      activities: {
+        ...state.activities,
+        [userId]: {
+          ...(userActivities ?? {}),
+          [sourceId]: activity,
+        },
+      },
     })
   },
 
@@ -1266,6 +1321,23 @@ export const syncStore = {
         const existing = state.users[id]
         if (existing) {
           this.upsertUser({ ...existing, online })
+        }
+        if (!online) {
+          const { [id]: _, ...activities } = state.activities
+          setState({ activities })
+        }
+        break
+      }
+      case 'UserActivity': {
+        const { id, activity, activitySourceId } = event as {
+          id?: string
+          activity?: unknown
+          activitySourceId?: string
+        }
+        if (!id) break
+        const normalized = normalizeActivityPatch(activity)
+        if (normalized !== undefined) {
+          this.setUserActivity(id, normalized, activitySourceId)
         }
         break
       }

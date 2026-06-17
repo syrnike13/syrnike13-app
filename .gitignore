@@ -43,6 +43,11 @@ coverage/
 __unconfig*
 *.tsbuildinfo
 
+# Native desktop build output
+apps/desktop/native/music-presence-win/bin/
+apps/desktop/native/music-presence-win/obj/
+apps/desktop/native/music-presence-win/publish/
+
 # Rust
 target/
 
@@ -77,5 +82,8 @@ secrets.env
 /data/
 /data*/
 /.data/
+
+# Local design/mockup drafts
+/output/mockups/
 
 .superpowers/

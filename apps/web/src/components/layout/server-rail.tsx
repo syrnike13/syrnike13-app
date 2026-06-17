@@ -15,11 +15,13 @@ import { listServerChannels, listServers } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
+import { useEasterMode } from '#/features/easter/easter-mode-store'
 import {
   railIconButtonClass,
   railIconIdleClass,
   shellNavSurface,
 } from '#/components/layout/shell-chrome'
+import { APP_LOADING_EASTER_EGG_SRC } from '#/lib/brand'
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
 
@@ -51,6 +53,7 @@ function ServerInitial({ name }: { name: string }) {
 export function ServerRail({ variant }: { variant: ServerRailVariant }) {
   const auth = useAuth()
   const { capabilities } = usePlatform()
+  const easterModeEnabled = useEasterMode()
   const ready = useSyncStore((s) => s.ready)
   const servers = useSyncStore(listServers)
   const homeBadge = useSyncStore((s) =>
@@ -113,7 +116,16 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
           onClick={() => syncStore.setSelectedServerId(null)}
         >
           <span className="relative flex size-full items-center justify-center">
-            <HomeIcon />
+            {easterModeEnabled ? (
+              <img
+                src={APP_LOADING_EASTER_EGG_SRC}
+                alt=""
+                className="size-25 max-w-none object-contain"
+                draggable={false}
+              />
+            ) : (
+              <HomeIcon />
+            )}
             <NotificationBadge
               badge={homeBadge}
               className="absolute -top-1 -right-1"

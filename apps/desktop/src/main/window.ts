@@ -8,6 +8,7 @@ import {
 import { installMediaPermissions } from './media-permissions'
 import { resolveDesktopAsset, resolvePreloadScript } from './paths'
 import { desktopWindowIconAssetName } from './desktop-app-identity'
+import { shouldOpenExternalUrl } from './external-open'
 
 const isMac = process.platform === 'darwin'
 
@@ -83,8 +84,8 @@ export function createMainWindow(loadUrl: string) {
   })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      void shell.openExternal(url)
+    if (shouldOpenExternalUrl(url)) {
+      void shell.openExternal(url).catch(() => {})
       return { action: 'deny' }
     }
     return { action: 'allow' }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::client::Ping;
+use super::client::{Activity, Ping};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -15,6 +15,12 @@ pub enum ClientMessage {
         channel: String,
     },
     UserActivity,
+    UserActivityUpdate {
+        activity: Option<Activity>,
+        #[serde(rename = "activitySourceId")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        activity_source_id: Option<String>,
+    },
     Subscribe {
         server_id: String,
     },
@@ -58,5 +64,62 @@ mod tests {
         };
 
         assert_eq!(operation_id, Some("op-join".to_string()));
+    }
+
+    #[test]
+    fn user_activity_update_deserializes_discord_like_payload() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "UserActivityUpdate",
+            "activity": {
+                "activitySourceId": "desktop:game",
+                "type": "playing",
+                "name": "Counter-Strike 2",
+                "details": "Premier",
+                "state": "Mirage",
+                "timestamps": {
+                    "start": 1781517900000u64
+                },
+                "assets": {
+                    "largeImageUrl": "https://cdn.example.test/cs2.jpg",
+                    "largeText": "Counter-Strike 2"
+                },
+                "secrets": {
+                    "join": "must-not-be-modeled"
+                },
+                "observedAt": 1781518000000u64
+            }
+        }))
+        .expect("activity update deserializes");
+
+        let ClientMessage::UserActivityUpdate { activity, .. } = message else {
+            panic!("expected UserActivityUpdate");
+        };
+
+        let activity = activity.expect("activity payload");
+        assert_eq!(activity.activity_source_id, "desktop:game");
+        assert_eq!(activity.name, "Counter-Strike 2");
+        assert_eq!(activity.details.as_deref(), Some("Premier"));
+        assert_eq!(activity.timestamps.unwrap().start, Some(1781517900000));
+    }
+
+    #[test]
+    fn user_activity_update_accepts_null_clear_signal() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "UserActivityUpdate",
+            "activitySourceId": "desktop:game",
+            "activity": null
+        }))
+        .expect("activity clear deserializes");
+
+        let ClientMessage::UserActivityUpdate {
+            activity,
+            activity_source_id,
+        } = message
+        else {
+            panic!("expected UserActivityUpdate");
+        };
+
+        assert!(activity.is_none());
+        assert_eq!(activity_source_id.as_deref(), Some("desktop:game"));
     }
 }

@@ -1,4 +1,5 @@
 import type { Channel, Server } from '@syrnike13/api-types'
+import type { Activity } from '@syrnike13/platform'
 import { useMemo } from 'react'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -59,6 +60,12 @@ function MemberSidebarRow({
   const { member, user } = entry
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
+  const activities = useSyncStore((s) =>
+    Object.values(s.activities[user._id] ?? {}),
+  )
+  const activityStatus = activityStatusLabel(activities)
+  const statusLine = showStatus ? activityStatus?.label ?? customStatus : null
+  const isActivityStatus = Boolean(showStatus && activityStatus)
 
   return (
     <li>
@@ -74,7 +81,7 @@ function MemberSidebarRow({
         <button
           type="button"
           className={cn(
-            'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
+            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none data-[state=open]:bg-accent',
             dimmed && 'opacity-60',
           )}
         >
@@ -86,9 +93,23 @@ function MemberSidebarRow({
             >
               {displayName}
             </p>
-            {showStatus && customStatus ? (
-              <p className="truncate text-[11px] text-muted-foreground">
-                {customStatus}
+            {statusLine ? (
+              <p
+                className={cn(
+                  'mt-0.5 flex min-w-0 items-center gap-1 text-[11px] leading-none text-muted-foreground',
+                  isActivityStatus && 'text-[#9aa0a6]',
+                )}
+                title={statusLine}
+              >
+                {activityStatus?.kind === 'listening' ? (
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 text-[12px] leading-none text-[#23a559]"
+                  >
+                    ♪
+                  </span>
+                ) : null}
+                <span className="truncate">{statusLine}</span>
               </p>
             ) : null}
           </div>
@@ -96,6 +117,40 @@ function MemberSidebarRow({
       </UserInteractiveShell>
     </li>
   )
+}
+
+function activityStatusLabel(activities: Activity[]) {
+  const activity = [...activities].sort(
+    (left, right) => activityStatusPriority(left) - activityStatusPriority(right),
+  )[0]
+  if (!activity) return null
+
+  if (activity.type === 'playing') {
+    return {
+      kind: activity.type,
+      label: `Играет: ${activity.name}`,
+    }
+  }
+
+  if (activity.type === 'listening') {
+    const title = activity.details?.trim() || activity.name.trim()
+    const artists = activity.state?.trim()
+    return {
+      kind: activity.type,
+      label: `Слушает: ${artists ? `${artists} — ${title}` : title}`,
+    }
+  }
+
+  return {
+    kind: activity.type,
+    label: activity.details?.trim() || activity.name,
+  }
+}
+
+function activityStatusPriority(activity: Activity) {
+  if (activity.type === 'playing') return 0
+  if (activity.type === 'listening') return 1
+  return 2
 }
 
 export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {

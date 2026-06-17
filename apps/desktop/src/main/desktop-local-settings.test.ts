@@ -108,4 +108,71 @@ describe('desktop local settings', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('merges music integration updates into the persisted settings file', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      const next = await updateDesktopLocalSettings(filePath, {
+        music: {
+          enabled: true,
+          showInProfile: false,
+          providers: {
+            spotify: {
+              enabled: true,
+              source: 'spotify_api',
+            },
+            apple_music: {
+              enabled: true,
+              source: 'desktop_now_playing',
+            },
+          },
+        },
+      })
+
+      expect(next.music).toMatchObject({
+        enabled: true,
+        showInProfile: false,
+        providers: {
+          spotify: {
+            enabled: true,
+            source: 'spotify_api',
+          },
+          apple_music: {
+            enabled: true,
+            source: 'desktop_now_playing',
+          },
+          yandex_music: DEFAULT_DESKTOP_LOCAL_SETTINGS.music.providers.yandex_music,
+        },
+      })
+
+      const saved = JSON.parse(await readFile(filePath, 'utf8')) as DesktopLocalSettings
+      expect(saved).toEqual(next)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('merges easter mode updates into the persisted settings file', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      const next = await updateDesktopLocalSettings(filePath, {
+        easter: {
+          enabled: true,
+        },
+      })
+
+      expect(next.easter).toEqual({
+        enabled: true,
+      })
+
+      const saved = JSON.parse(await readFile(filePath, 'utf8')) as DesktopLocalSettings
+      expect(saved).toEqual(next)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

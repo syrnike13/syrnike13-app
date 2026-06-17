@@ -1,3 +1,4 @@
+mod activity_sessions;
 mod admin_migrations;
 mod badges;
 mod bots;
@@ -19,6 +20,7 @@ mod servers;
 mod user_settings;
 mod users;
 
+pub use activity_sessions::*;
 pub use admin_migrations::*;
 pub use badges::*;
 pub use bots::*;
@@ -49,6 +51,7 @@ pub trait AbstractDatabase:
     Sync
     + Send
     + admin_migrations::AbstractMigrations
+    + activity_sessions::AbstractActivitySessions
     + badges::AbstractBadges
     + bots::AbstractBots
     + channels::AbstractChannels

@@ -1,3 +1,5 @@
+import type { ActivityPatch } from '@syrnike13/platform'
+
 export type GatewayState =
   | 'idle'
   | 'connecting'
@@ -134,6 +136,21 @@ export class EventsGateway {
 
   userActivity() {
     this.#sendConnected({ type: 'UserActivity' })
+  }
+
+  activity(activity: ActivityPatch, activitySourceId?: string) {
+    const sourceId = activity?.activitySourceId ?? activitySourceId
+    if (!sourceId) return
+
+    const event =
+      activity === null
+        ? { type: 'UserActivityUpdate', activity: null, activitySourceId: sourceId }
+        : { type: 'UserActivityUpdate', activity }
+
+    this.sendReliable(
+      event,
+      `activity:${sourceId}`,
+    )
   }
 
   #openSocket(isReconnect: boolean) {

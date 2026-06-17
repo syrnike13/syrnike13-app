@@ -75,6 +75,28 @@ export async function updateDesktopLocalSettings(
       ...current.sounds,
       ...normalizedPatch.sounds,
     },
+    easter: {
+      ...current.easter,
+      ...normalizedPatch.easter,
+    },
+    music: {
+      ...current.music,
+      ...normalizedPatch.music,
+      providers: {
+        spotify: {
+          ...current.music.providers.spotify,
+          ...normalizedPatch.music?.providers?.spotify,
+        },
+        apple_music: {
+          ...current.music.providers.apple_music,
+          ...normalizedPatch.music?.providers?.apple_music,
+        },
+        yandex_music: {
+          ...current.music.providers.yandex_music,
+          ...normalizedPatch.music?.providers?.yandex_music,
+        },
+      },
+    },
   }
   await saveDesktopLocalSettings(filePath, next)
   return next

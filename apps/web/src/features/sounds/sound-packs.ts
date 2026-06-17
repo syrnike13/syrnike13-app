@@ -12,8 +12,6 @@ import {
 
 export { DEFAULT_SOUND_AUTHOR_PACK_ID, UI_SOUND_EVENTS }
 
-export const DEFAULT_EASTER_CHANCE = 0.0025
-
 export type SoundPackKind = 'author' | 'event'
 
 export type SoundClip = {
@@ -43,8 +41,7 @@ type ResolveSoundClipOptions = {
   eventId: SoundEventId
   authorPackId: string | null | undefined
   eventPackId?: string | null
-  easterEnabled?: boolean
-  random?: () => number
+  appEasterModeEnabled?: boolean
 }
 
 function clipPath(packId: string, fileName: string) {
@@ -67,6 +64,28 @@ const DEFAULT_SOUND_FILES: Partial<Record<SoundEventId, string>> = {
   'screen_share.stopped': 'screen-share-stopped.ogg',
 }
 
+const EASTER_SOUND_FILES: Partial<Record<SoundEventId, string>> = {
+  'message.default': 'notification.ogg',
+  'message.mention': 'notification.ogg',
+  'message.reaction': 'notification.ogg',
+  'voice.user_join': 'voice-channel-connected.ogg',
+  'voice.user_leave': 'voice-channel-disconnected.ogg',
+  'voice.user_move': 'voice-channel-connected.ogg',
+  'voice.mute': 'microphone-muted.ogg',
+  'voice.unmute': 'microphone-unmuted.ogg',
+  'voice.deafen': 'headphones-deafened.ogg',
+  'voice.undeafen': 'headphones-undeafened.ogg',
+  'voice.disconnect': 'voice-channel-disconnected.ogg',
+  'call.incoming_ring': 'call-ring.ogg',
+  'call.outgoing_ring': 'call-ring.ogg',
+  'call.connected': 'voice-channel-connected.ogg',
+  'call.ended': 'voice-channel-disconnected.ogg',
+  'screen_share.started': 'screen-share-started.ogg',
+  'screen_share.stopped': 'screen-share-stopped.ogg',
+  'camera.started': 'screen-share-started.ogg',
+  'camera.stopped': 'screen-share-stopped.ogg',
+}
+
 function clipsForFiles(
   packId: string,
   files: Partial<Record<SoundEventId, string>>,
@@ -80,6 +99,7 @@ function clipsForFiles(
 }
 
 const DEFAULT_SOUNDS = clipsForFiles('default', DEFAULT_SOUND_FILES)
+const EASTER_SOUNDS = clipsForFiles('easter', EASTER_SOUND_FILES)
 
 const AUTHOR_SOUND_PACKS: SoundPack[] = [
   {
@@ -87,7 +107,7 @@ const AUTHOR_SOUND_PACKS: SoundPack[] = [
     label: 'Default',
     kind: 'author',
     sounds: DEFAULT_SOUNDS,
-    easter: {},
+    easter: EASTER_SOUNDS,
   },
 ]
 
@@ -165,22 +185,21 @@ export function resolveSoundClip({
   eventId,
   authorPackId,
   eventPackId,
-  easterEnabled = true,
-  random = Math.random,
+  appEasterModeEnabled = false,
 }: ResolveSoundClipOptions): ResolvedSoundClip | null {
   const authorPack = findAuthorPack(authorPackId)
   if (!authorPack) return null
 
   const eventPack = findEventPack(eventPackId)
+  const easterPack = eventPack?.easter[eventId] ? eventPack : authorPack
+  const easter = easterPack.easter[eventId]
+  if (appEasterModeEnabled && easter) {
+    return resolvedClip(easterPack, eventId, 'easter', easter)
+  }
+
   const normalPack = eventPack?.sounds[eventId] ? eventPack : authorPack
   const normal = normalPack.sounds[eventId]
   if (!normal) return null
-
-  const easterPack = eventPack?.easter[eventId] ? eventPack : authorPack
-  const easter = easterPack.easter[eventId]
-  if (easterEnabled && easter && random() < DEFAULT_EASTER_CHANCE) {
-    return resolvedClip(easterPack, eventId, 'easter', easter)
-  }
 
   return resolvedClip(normalPack, eventId, 'normal', normal)
 }
