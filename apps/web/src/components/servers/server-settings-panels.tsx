@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Trash2Icon } from '#/components/icons'
-import type { Emoji } from '@syrnike13/api-types'
+import type { DataEditServer, Emoji, FieldsServer } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
@@ -11,12 +11,13 @@ import { ServerSettingsMembersPanel } from '#/components/servers/server-settings
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
 import { Button } from '#/components/ui/button'
+import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { Textarea } from '#/components/ui/textarea'
 import { getServerDescription } from '#/lib/channel-meta'
 import { useAuth } from '#/features/auth/auth-context'
-import { uploadEmoji } from '#/features/api/media-api'
+import { uploadEmoji, uploadMediaFile } from '#/features/api/media-api'
 import {
   createServerEmoji,
   deleteServerEmoji,
@@ -24,6 +25,7 @@ import {
   fetchServerEmojis,
 } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { serverBannerUrl, serverIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
 type ServerSettingsPanelsProps = {
@@ -60,6 +62,21 @@ function SettingsField({
   )
 }
 
+function createFilePreviewUrl(file: File) {
+  if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+    return null
+  }
+  return URL.createObjectURL(file)
+}
+
+function revokeFilePreviewUrl(url: string | null) {
+  if (!url) return
+  if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
+    return
+  }
+  URL.revokeObjectURL(url)
+}
+
 function ServerSettingsGeneralPanel({
   serverId,
   serverName,
@@ -73,12 +90,62 @@ function ServerSettingsGeneralPanel({
   const [description, setDescription] = useState(
     getServerDescription(server) ?? '',
   )
+  const [iconFile, setIconFile] = useState<File | null>(null)
+  const [bannerFile, setBannerFile] = useState<File | null>(null)
+  const [iconPreviewUrl, setIconPreviewUrl] = useState<string | null>(null)
+  const [bannerPreviewUrl, setBannerPreviewUrl] = useState<string | null>(null)
+  const [removeIcon, setRemoveIcon] = useState(false)
+  const [removeBanner, setRemoveBanner] = useState(false)
   const [saving, setSaving] = useState(false)
+  const iconInputRef = useRef<HTMLInputElement>(null)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setName(serverName)
     setDescription(getServerDescription(server) ?? '')
+    setIconFile(null)
+    setBannerFile(null)
+    setIconPreviewUrl(null)
+    setBannerPreviewUrl(null)
+    setRemoveIcon(false)
+    setRemoveBanner(false)
+    if (iconInputRef.current) iconInputRef.current.value = ''
+    if (bannerInputRef.current) bannerInputRef.current.value = ''
   }, [server, serverName])
+
+  useEffect(() => {
+    return () => revokeFilePreviewUrl(iconPreviewUrl)
+  }, [iconPreviewUrl])
+
+  useEffect(() => {
+    return () => revokeFilePreviewUrl(bannerPreviewUrl)
+  }, [bannerPreviewUrl])
+
+  function selectIconFile(file: File) {
+    setIconFile(file)
+    setIconPreviewUrl(createFilePreviewUrl(file))
+    setRemoveIcon(false)
+  }
+
+  function selectBannerFile(file: File) {
+    setBannerFile(file)
+    setBannerPreviewUrl(createFilePreviewUrl(file))
+    setRemoveBanner(false)
+  }
+
+  function clearIconDraft() {
+    setIconFile(null)
+    setIconPreviewUrl(null)
+    setRemoveIcon(Boolean(server?.icon))
+    if (iconInputRef.current) iconInputRef.current.value = ''
+  }
+
+  function clearBannerDraft() {
+    setBannerFile(null)
+    setBannerPreviewUrl(null)
+    setRemoveBanner(Boolean(server?.banner))
+    if (bannerInputRef.current) bannerInputRef.current.value = ''
+  }
 
   async function saveSettings() {
     const token = auth.session?.token
@@ -89,18 +156,43 @@ function ServerSettingsGeneralPanel({
     const currentDescription = getServerDescription(server) ?? ''
     const nameChanged = trimmedName !== serverName
     const descriptionChanged = trimmedDescription !== currentDescription
+    const mediaChanged = Boolean(
+      iconFile || bannerFile || removeIcon || removeBanner,
+    )
 
-    if (!nameChanged && !descriptionChanged) return
+    if (!nameChanged && !descriptionChanged && !mediaChanged) return
 
     setSaving(true)
     try {
-      const updated = await editServer(token, serverId, {
-        ...(nameChanged ? { name: trimmedName } : {}),
-        ...(descriptionChanged
-          ? { description: trimmedDescription || null }
-          : {}),
-      })
+      const patch: DataEditServer = {}
+      const remove: FieldsServer[] = []
+
+      if (nameChanged) patch.name = trimmedName
+      if (descriptionChanged) {
+        patch.description = trimmedDescription || null
+      }
+      if (iconFile) {
+        patch.icon = await uploadMediaFile(token, 'avatars', iconFile)
+      } else if (removeIcon) {
+        remove.push('Icon')
+      }
+      if (bannerFile) {
+        patch.banner = await uploadMediaFile(token, 'backgrounds', bannerFile)
+      } else if (removeBanner) {
+        remove.push('Banner')
+      }
+      if (remove.length) patch.remove = remove
+
+      const updated = await editServer(token, serverId, patch)
       syncStore.upsertServer(updated)
+      setIconFile(null)
+      setBannerFile(null)
+      setIconPreviewUrl(null)
+      setBannerPreviewUrl(null)
+      setRemoveIcon(false)
+      setRemoveBanner(false)
+      if (iconInputRef.current) iconInputRef.current.value = ''
+      if (bannerInputRef.current) bannerInputRef.current.value = ''
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось сохранить',
@@ -109,6 +201,15 @@ function ServerSettingsGeneralPanel({
       setSaving(false)
     }
   }
+
+  const iconUrl = removeIcon
+    ? null
+    : iconPreviewUrl ?? serverIconUrl(server?.icon ?? null, { animated: true })
+  const bannerUrl = removeBanner
+    ? null
+    : bannerPreviewUrl ??
+      serverBannerUrl(server?.banner ?? null, { animated: true })
+  const serverInitial = name.trim().slice(0, 1).toUpperCase() || 'S'
 
   return (
     <form
@@ -128,6 +229,138 @@ function ServerSettingsGeneralPanel({
             maxLength={32}
             onChange={(event) => setName(event.target.value)}
           />
+        </div>
+      </SettingsField>
+
+      <SettingsField
+        label="Иконка сервера"
+        description="Квадратная картинка для списка серверов и заголовков."
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted text-2xl font-semibold text-muted-foreground">
+            {iconUrl ? (
+              <FxImage
+                src={iconUrl}
+                alt="Иконка сервера"
+                wrapperClassName="size-full"
+                className="size-full"
+              />
+            ) : (
+              <span>{serverInitial}</span>
+            )}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <Label htmlFor="server-icon">Иконка сервера</Label>
+            <Input
+              ref={iconInputRef}
+              id="server-icon"
+              type="file"
+              accept="image/*"
+              disabled={saving}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) selectIconFile(file)
+              }}
+            />
+            <p className="text-sm text-muted-foreground">
+              {iconFile
+                ? `Выбран файл: ${iconFile.name}`
+                : removeIcon
+                  ? 'Иконка будет удалена после сохранения.'
+                  : 'PNG, JPG или GIF.'}
+            </p>
+            {iconFile || (server?.icon && !removeIcon) ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-fit text-destructive hover:text-destructive"
+                disabled={saving}
+                onClick={clearIconDraft}
+              >
+                <Trash2Icon className="size-4" />
+                Удалить иконку
+              </Button>
+            ) : null}
+            {removeIcon ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                disabled={saving}
+                onClick={() => setRemoveIcon(false)}
+              >
+                Вернуть иконку
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </SettingsField>
+
+      <SettingsField
+        label="Баннер сервера"
+        description="Широкая обложка для профиля сервера."
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex h-32 w-full max-w-xl items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-sm font-medium text-muted-foreground">
+            {bannerUrl ? (
+              <FxImage
+                src={bannerUrl}
+                alt="Баннер сервера"
+                wrapperClassName="h-full w-full"
+                className="h-full w-full"
+              />
+            ) : (
+              <span>Баннер сервера</span>
+            )}
+          </div>
+          <div className="flex max-w-xl flex-col gap-2">
+            <Label htmlFor="server-banner">Баннер сервера</Label>
+            <Input
+              ref={bannerInputRef}
+              id="server-banner"
+              type="file"
+              accept="image/*"
+              disabled={saving}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) selectBannerFile(file)
+              }}
+            />
+            <p className="text-sm text-muted-foreground">
+              {bannerFile
+                ? `Выбран файл: ${bannerFile.name}`
+                : removeBanner
+                  ? 'Баннер будет удалён после сохранения.'
+                  : 'Лучше смотрятся широкие изображения.'}
+            </p>
+            {bannerFile || (server?.banner && !removeBanner) ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-fit text-destructive hover:text-destructive"
+                disabled={saving}
+                onClick={clearBannerDraft}
+              >
+                <Trash2Icon className="size-4" />
+                Удалить баннер
+              </Button>
+            ) : null}
+            {removeBanner ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit"
+                disabled={saving}
+                onClick={() => setRemoveBanner(false)}
+              >
+                Вернуть баннер
+              </Button>
+            ) : null}
+          </div>
         </div>
       </SettingsField>
 
