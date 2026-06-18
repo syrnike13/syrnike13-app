@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
-import type { Channel } from '@syrnike13/api-types'
+import type {
+  Channel,
+  DataEditChannel,
+  FieldsChannel,
+} from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -15,6 +19,7 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Slider } from '#/components/ui/slider'
+import { Textarea } from '#/components/ui/textarea'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import {
   useDraftRegistration,
@@ -109,6 +114,9 @@ export function ChannelSettingsOverviewPanel({
   const [slowmode, setSlowmode] = useState(
     textChannel ? (channel.slowmode ?? 0) : 0,
   )
+  const [topic, setTopic] = useState(
+    textChannel ? (channel.description ?? '') : '',
+  )
   const [nsfw, setNsfw] = useState(textChannel ? Boolean(channel.nsfw) : false)
   const [audioBitrateKbps, setAudioBitrateKbps] = useState(() =>
     channelAudioBitrateKbps(channel),
@@ -123,6 +131,7 @@ export function ChannelSettingsOverviewPanel({
     setName(channel.name)
     if (textChannel) {
       setSlowmode(channel.slowmode ?? 0)
+      setTopic(channel.description ?? '')
       setNsfw(Boolean(channel.nsfw))
     }
     if (voiceChannel) {
@@ -133,6 +142,8 @@ export function ChannelSettingsOverviewPanel({
 
   const isDirty = useMemo(() => {
     const trimmedName = name.trim()
+    const currentTopic = textChannel ? (channel.description ?? '') : ''
+    const topicChanged = textChannel && topic.trim() !== currentTopic.trim()
     const nameChanged = trimmedName !== channel.name
     const slowmodeChanged = textChannel && slowmode !== (channel.slowmode ?? 0)
     const nsfwChanged = textChannel && nsfw !== Boolean(channel.nsfw)
@@ -143,6 +154,7 @@ export function ChannelSettingsOverviewPanel({
 
     return (
       nameChanged ||
+      topicChanged ||
       slowmodeChanged ||
       nsfwChanged ||
       audioBitrateChanged ||
@@ -156,6 +168,7 @@ export function ChannelSettingsOverviewPanel({
     nsfw,
     slowmode,
     textChannel,
+    topic,
     voiceChannel,
   ])
 
@@ -163,6 +176,7 @@ export function ChannelSettingsOverviewPanel({
     setName(channel.name)
     if (textChannel) {
       setSlowmode(channel.slowmode ?? 0)
+      setTopic(channel.description ?? '')
       setNsfw(Boolean(channel.nsfw))
     }
     if (voiceChannel) {
@@ -175,6 +189,7 @@ export function ChannelSettingsOverviewPanel({
   const save = useCallback(async (): Promise<boolean> => {
     const token = auth.session?.token
     const trimmedName = name.trim()
+    const trimmedTopic = topic.trim()
     if (!token || !trimmedName) {
       toast.error('Укажите название канала')
       return false
@@ -183,6 +198,8 @@ export function ChannelSettingsOverviewPanel({
     if (!isDirty) return true
 
     const nameChanged = trimmedName !== channel.name
+    const currentTopic = textChannel ? (channel.description ?? '') : ''
+    const topicChanged = textChannel && trimmedTopic !== currentTopic.trim()
     const slowmodeChanged = textChannel && slowmode !== (channel.slowmode ?? 0)
     const nsfwChanged = textChannel && nsfw !== Boolean(channel.nsfw)
     const audioBitrateChanged =
@@ -192,19 +209,33 @@ export function ChannelSettingsOverviewPanel({
 
     setSaving(true)
     try {
-      const updated = await editChannel(token, channel._id, {
-        ...(nameChanged ? { name: trimmedName } : {}),
-        ...(slowmodeChanged ? { slowmode } : {}),
-        ...(nsfwChanged ? { nsfw } : {}),
-        ...(voiceChannel && (audioBitrateChanged || maxUsersChanged)
-          ? buildVoiceChannelVoicePatch(channel, {
-              ...(audioBitrateChanged
-                ? { audio_bitrate_kbps: audioBitrateKbps }
-                : {}),
-              ...(maxUsersChanged ? { max_users: maxUsers } : {}),
-            })
-          : {}),
-      })
+      const patch: DataEditChannel = {}
+      const remove: FieldsChannel[] = []
+
+      if (nameChanged) patch.name = trimmedName
+      if (topicChanged) {
+        if (trimmedTopic) {
+          patch.description = trimmedTopic
+        } else {
+          remove.push('Description')
+        }
+      }
+      if (slowmodeChanged) patch.slowmode = slowmode
+      if (nsfwChanged) patch.nsfw = nsfw
+      if (voiceChannel && (audioBitrateChanged || maxUsersChanged)) {
+        Object.assign(
+          patch,
+          buildVoiceChannelVoicePatch(channel, {
+            ...(audioBitrateChanged
+              ? { audio_bitrate_kbps: audioBitrateKbps }
+              : {}),
+            ...(maxUsersChanged ? { max_users: maxUsers } : {}),
+          }),
+        )
+      }
+      if (remove.length) patch.remove = remove
+
+      const updated = await editChannel(token, channel._id, patch)
       syncStore.patchChannel(channel._id, updated)
       return true
     } catch (error) {
@@ -225,6 +256,7 @@ export function ChannelSettingsOverviewPanel({
     nsfw,
     slowmode,
     textChannel,
+    topic,
     voiceChannel,
   ])
 
@@ -302,6 +334,27 @@ export function ChannelSettingsOverviewPanel({
             />
           </div>
         </SettingsField>
+
+        {textChannel ? (
+          <SettingsField
+            label="Тема канала"
+            description="Коротко опишите, для чего этот канал."
+          >
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="channel-topic" className="sr-only">
+                Тема канала
+              </Label>
+              <Textarea
+                id="channel-topic"
+                value={topic}
+                rows={3}
+                maxLength={1024}
+                placeholder="О чём этот канал"
+                onChange={(event) => setTopic(event.target.value)}
+              />
+            </div>
+          </SettingsField>
+        ) : null}
 
         {textChannel ? (
           <SettingsField label="Медленный режим">

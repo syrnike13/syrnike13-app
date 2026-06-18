@@ -11,6 +11,8 @@ import type { Channel } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSettingsOverviewPanel } from '#/components/channels/channel-settings-overview-panel'
+import { DraftProvider } from '#/components/settings/draft-controller-context'
+import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { syncStore } from '#/features/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
@@ -52,7 +54,11 @@ vi.mock('#/features/navigation/route-prefix', () => ({
   useAppRoutePrefix: () => '/app',
 }))
 
-function textChannel(id: string, name: string) {
+function textChannel(
+  id: string,
+  name: string,
+  overrides: Partial<Extract<Channel, { channel_type: 'TextChannel' }>> = {},
+) {
   return {
     _id: id,
     channel_type: 'TextChannel',
@@ -62,7 +68,19 @@ function textChannel(id: string, name: string) {
     nsfw: false,
     slowmode: 0,
     default_permissions: null,
+    ...overrides,
   } satisfies Extract<Channel, { channel_type: 'TextChannel' }>
+}
+
+function renderWithDraft(
+  channel: Extract<Channel, { channel_type: 'TextChannel' }>,
+) {
+  return render(
+    <DraftProvider>
+      <ChannelSettingsOverviewPanel channel={channel} />
+      <UnsavedChangesBar saveLabel="Сохранить" />
+    </DraftProvider>,
+  )
 }
 
 describe('ChannelSettingsOverviewPanel', () => {
@@ -119,6 +137,51 @@ describe('ChannelSettingsOverviewPanel', () => {
         params: { channelId: 'channel-2' },
         search: { m: undefined },
       })
+    })
+  })
+
+  it('saves the text channel topic from overview settings', async () => {
+    const channel = textChannel('channel-1', 'general')
+    mocks.editChannel.mockResolvedValue({
+      ...channel,
+      description: 'Читайте закреп перед вопросами',
+    })
+
+    renderWithDraft(channel)
+
+    fireEvent.change(screen.getByLabelText('Тема канала'), {
+      target: { value: 'Читайте закреп перед вопросами' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(mocks.editChannel).toHaveBeenCalledWith(
+        'session-token',
+        'channel-1',
+        { description: 'Читайте закреп перед вопросами' },
+      )
+    })
+  })
+
+  it('removes the text channel topic when the field is cleared', async () => {
+    const channel = textChannel('channel-1', 'general', {
+      description: 'Старый топик',
+    })
+    mocks.editChannel.mockResolvedValue({ ...channel, description: null })
+
+    renderWithDraft(channel)
+
+    fireEvent.change(screen.getByLabelText('Тема канала'), {
+      target: { value: '' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(mocks.editChannel).toHaveBeenCalledWith(
+        'session-token',
+        'channel-1',
+        { remove: ['Description'] },
+      )
     })
   })
 })
