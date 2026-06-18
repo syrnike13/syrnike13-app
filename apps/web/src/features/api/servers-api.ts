@@ -19,7 +19,9 @@ import type {
   NewRoleResponse,
   Role,
   Server,
+  ServerAuditLogAction,
   ServerAuditLogPage,
+  ServerAuditLogTarget,
   User,
 } from '@syrnike13/api-types'
 
@@ -68,11 +70,21 @@ export async function fetchServerBans(token: string, serverId: string) {
 export async function fetchServerAuditLog(
   token: string,
   serverId: string,
-  params: { before?: string; actor?: string; limit?: number } = {},
+  params: {
+    before?: string
+    actor?: string
+    action?: ServerAuditLogAction['type']
+    target_type?: ServerAuditLogTarget['type']
+    target_id?: string
+    limit?: number
+  } = {},
 ) {
   const search = new URLSearchParams()
   if (params.before) search.set('before', params.before)
   if (params.actor) search.set('actor', params.actor)
+  if (params.action) search.set('action', params.action)
+  if (params.target_type) search.set('target_type', params.target_type)
+  if (params.target_id) search.set('target_id', params.target_id)
   if (params.limit) search.set('limit', String(params.limit))
   const suffix = search.toString() ? `?${search}` : ''
 

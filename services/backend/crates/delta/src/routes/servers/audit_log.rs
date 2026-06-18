@@ -1,22 +1,50 @@
 use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    Database, ServerAuditLogQuery, User,
+    Database, ServerAuditLogAction, ServerAuditLogQuery, User,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
-use syrnike_result::Result;
+use syrnike_result::{create_error, Result};
+
+fn parse_audit_action(action: Option<String>) -> Result<Option<ServerAuditLogAction>> {
+    let action = match action.as_deref() {
+        None | Some("") => return Ok(None),
+        Some("ServerUpdate") => ServerAuditLogAction::ServerUpdate,
+        Some("RoleCreate") => ServerAuditLogAction::RoleCreate,
+        Some("RoleUpdate") => ServerAuditLogAction::RoleUpdate,
+        Some("RoleDelete") => ServerAuditLogAction::RoleDelete,
+        Some("RoleReorder") => ServerAuditLogAction::RoleReorder,
+        Some("MemberUpdate") => ServerAuditLogAction::MemberUpdate,
+        Some("MemberKick") => ServerAuditLogAction::MemberKick,
+        Some("MemberBan") => ServerAuditLogAction::MemberBan,
+        Some("MemberUnban") => ServerAuditLogAction::MemberUnban,
+        Some("MemberTimeout") => ServerAuditLogAction::MemberTimeout,
+        Some("InviteCreate") => ServerAuditLogAction::InviteCreate,
+        Some("InviteUpdate") => ServerAuditLogAction::InviteUpdate,
+        Some("InviteRevoke") => ServerAuditLogAction::InviteRevoke,
+        Some("InviteDelete") => ServerAuditLogAction::InviteDelete,
+        Some("ChannelPermissionUpdate") => ServerAuditLogAction::ChannelPermissionUpdate,
+        Some("ServerPermissionUpdate") => ServerAuditLogAction::ServerPermissionUpdate,
+        Some(_) => return Err(create_error!(InvalidOperation)),
+    };
+
+    Ok(Some(action))
+}
 
 /// # Fetch Server Audit Log
 ///
 /// Fetch server audit log entries.
 #[openapi(tag = "Server Audit Log")]
-#[get("/<server>/audit-log?<actor>&<before>&<limit>")]
+#[get("/<server>/audit-log?<actor>&<action>&<target_type>&<target_id>&<before>&<limit>")]
 pub async fn fetch_audit_log(
     db: &State<Database>,
     user: User,
     server: Reference<'_>,
     actor: Option<String>,
+    action: Option<String>,
+    target_type: Option<String>,
+    target_id: Option<String>,
     before: Option<String>,
     limit: Option<usize>,
 ) -> Result<Json<v0::ServerAuditLogPage>> {
@@ -30,7 +58,10 @@ pub async fn fetch_audit_log(
         .fetch_server_audit_logs(
             &server.id,
             ServerAuditLogQuery {
+                action: parse_audit_action(action)?,
                 actor_id: actor,
+                target_type,
+                target_id,
                 before,
                 limit: limit.unwrap_or(50).clamp(1, 100),
                 ..Default::default()
@@ -153,6 +184,21 @@ mod tests {
         }
     }
 
+    fn audit_entry_with_action_and_target(
+        id: &str,
+        server_id: &str,
+        actor_id: &str,
+        created_at: u64,
+        action: ServerAuditLogAction,
+        target: ServerAuditLogTarget,
+    ) -> ServerAuditLogEntry {
+        ServerAuditLogEntry {
+            action,
+            target,
+            ..audit_entry(id, server_id, actor_id, created_at)
+        }
+    }
+
     async fn insert_audit_entry(context: &AuditLogTestContext, entry: ServerAuditLogEntry) {
         context
             .db
@@ -258,5 +304,82 @@ mod tests {
             page.next_before.as_deref(),
             Some("01ARZ3NDEKTSV4RRFFQ69G5FAX")
         );
+    }
+
+    #[rocket::async_test]
+    async fn audit_log_filters_by_action_and_target() {
+        let context = AuditLogTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            member user 2
+            server server 4);
+
+        insert_audit_entry(
+            &context,
+            audit_entry_with_action_and_target(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                &server.id,
+                &owner.id,
+                100,
+                ServerAuditLogAction::MemberBan,
+                ServerAuditLogTarget::User {
+                    id: member.id.clone(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &context,
+            audit_entry_with_action_and_target(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                &server.id,
+                &owner.id,
+                200,
+                ServerAuditLogAction::MemberKick,
+                ServerAuditLogTarget::Member {
+                    user_id: member.id.clone(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &context,
+            audit_entry_with_action_and_target(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAX",
+                &server.id,
+                &owner.id,
+                300,
+                ServerAuditLogAction::MemberBan,
+                ServerAuditLogTarget::User {
+                    id: owner.id.clone(),
+                },
+            ),
+        )
+        .await;
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let response = context
+            .client
+            .get(format!(
+                "/servers/{}/audit-log?action=MemberBan&target_type=User&target_id={}",
+                server.id, member.id
+            ))
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+        let page: v0::ServerAuditLogPage = response.into_json().await.expect("audit log page");
+        let ids = page
+            .entries
+            .iter()
+            .map(|entry| entry.id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids, vec!["01ARZ3NDEKTSV4RRFFQ69G5FAV"]);
     }
 }

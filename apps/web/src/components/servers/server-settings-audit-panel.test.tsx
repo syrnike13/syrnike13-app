@@ -64,8 +64,8 @@ describe('ServerSettingsAuditPanel', () => {
   it('renders audit entries returned by the API', async () => {
     renderWithQuery(<ServerSettingsAuditPanel serverId="server-1" />)
 
-    expect(await screen.findByText('RoleCreate')).toBeTruthy()
-    expect(screen.getByText('actor-1')).toBeTruthy()
+    expect(await screen.findByText('actor-1')).toBeTruthy()
+    expect(screen.getAllByText('RoleCreate').length).toBeGreaterThan(0)
     expect(screen.getByText('role-1')).toBeTruthy()
     expect(screen.getByText('setup')).toBeTruthy()
 
@@ -117,15 +117,83 @@ describe('ServerSettingsAuditPanel', () => {
 
     renderWithQuery(<ServerSettingsAuditPanel serverId="server-1" />)
 
-    expect(await screen.findByText('RoleCreate')).toBeTruthy()
+    expect(await screen.findByText('role-1')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }))
 
-    expect(await screen.findByText('MemberBan')).toBeTruthy()
+    expect(await screen.findByText('actor-2')).toBeTruthy()
     expect(mocks.fetchServerAuditLog).toHaveBeenLastCalledWith(
       'session-token',
       'server-1',
       { limit: 50, before: 'audit-1' },
     )
+  })
+
+  it('passes audit filters to the API and keeps them for pagination', async () => {
+    mocks.fetchServerAuditLog.mockResolvedValue({
+      entries: [
+        {
+          _id: 'audit-1',
+          server_id: 'server-1',
+          actor_id: 'actor-2',
+          action: { type: 'MemberBan' },
+          target: { type: 'User', id: 'user-2' },
+          reason: 'spam',
+          changes: {},
+          status: 'Succeeded',
+          created_at: 0,
+          completed_at: 1,
+        },
+      ],
+      next_before: 'audit-1',
+    })
+
+    renderWithQuery(<ServerSettingsAuditPanel serverId="server-1" />)
+
+    expect(await screen.findByText('actor-2')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Действие'), {
+      target: { value: 'MemberBan' },
+    })
+    fireEvent.change(screen.getByLabelText('Автор'), {
+      target: { value: 'actor-2' },
+    })
+    fireEvent.change(screen.getByLabelText('Тип объекта'), {
+      target: { value: 'User' },
+    })
+    fireEvent.change(screen.getByLabelText('ID объекта'), {
+      target: { value: 'user-2' },
+    })
+
+    await waitFor(() => {
+      expect(mocks.fetchServerAuditLog).toHaveBeenLastCalledWith(
+        'session-token',
+        'server-1',
+        {
+          limit: 50,
+          actor: 'actor-2',
+          action: 'MemberBan',
+          target_type: 'User',
+          target_id: 'user-2',
+        },
+      )
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: /Загрузить/ }))
+
+    await waitFor(() => {
+      expect(mocks.fetchServerAuditLog).toHaveBeenLastCalledWith(
+        'session-token',
+        'server-1',
+        {
+          limit: 50,
+          actor: 'actor-2',
+          action: 'MemberBan',
+          target_type: 'User',
+          target_id: 'user-2',
+          before: 'audit-1',
+        },
+      )
+    })
   })
 })

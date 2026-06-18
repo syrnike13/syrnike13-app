@@ -1,16 +1,52 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import type {
+  ServerAuditLogAction,
   ServerAuditLogEntry,
   ServerAuditLogTarget,
 } from '@syrnike13/api-types'
 
 import { Button } from '#/components/ui/button'
+import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchServerAuditLog } from '#/features/api/servers-api'
 
 type ServerSettingsAuditPanelProps = {
   serverId: string
 }
+
+type AuditActionType = ServerAuditLogAction['type']
+type AuditTargetType = ServerAuditLogTarget['type']
+
+const AUDIT_ACTIONS: AuditActionType[] = [
+  'ServerUpdate',
+  'RoleCreate',
+  'RoleUpdate',
+  'RoleDelete',
+  'RoleReorder',
+  'MemberUpdate',
+  'MemberKick',
+  'MemberBan',
+  'MemberUnban',
+  'MemberTimeout',
+  'InviteCreate',
+  'InviteUpdate',
+  'InviteRevoke',
+  'InviteDelete',
+  'ChannelPermissionUpdate',
+  'ServerPermissionUpdate',
+]
+
+const AUDIT_TARGET_TYPES: AuditTargetType[] = [
+  'Server',
+  'Role',
+  'Member',
+  'User',
+  'Invite',
+  'Channel',
+  'Category',
+]
 
 function targetLabel(target: ServerAuditLogTarget) {
   switch (target.type) {
@@ -79,13 +115,38 @@ export function ServerSettingsAuditPanel({
 }: ServerSettingsAuditPanelProps) {
   const auth = useAuth()
   const token = auth.session?.token
+  const [actorFilter, setActorFilter] = useState('')
+  const [actionFilter, setActionFilter] = useState<AuditActionType | ''>('')
+  const [targetTypeFilter, setTargetTypeFilter] = useState<AuditTargetType | ''>(
+    '',
+  )
+  const [targetIdFilter, setTargetIdFilter] = useState('')
+
+  const filters = useMemo(
+    () => ({
+      ...(actorFilter.trim() ? { actor: actorFilter.trim() } : {}),
+      ...(actionFilter ? { action: actionFilter } : {}),
+      ...(targetTypeFilter ? { target_type: targetTypeFilter } : {}),
+      ...(targetIdFilter.trim() ? { target_id: targetIdFilter.trim() } : {}),
+    }),
+    [actionFilter, actorFilter, targetIdFilter, targetTypeFilter],
+  )
+  const hasFilters = Object.keys(filters).length > 0
   const auditQuery = useInfiniteQuery({
-    queryKey: ['server-audit-log', serverId],
+    queryKey: [
+      'server-audit-log',
+      serverId,
+      filters.actor,
+      filters.action,
+      filters.target_type,
+      filters.target_id,
+    ],
     enabled: Boolean(token),
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       fetchServerAuditLog(token!, serverId, {
         limit: 50,
+        ...filters,
         ...(pageParam ? { before: pageParam } : {}),
       }),
     getNextPageParam: (lastPage) => lastPage.next_before ?? undefined,
@@ -101,6 +162,81 @@ export function ServerSettingsAuditPanel({
           Последние административные действия на сервере.
         </p>
       </div>
+
+      <section className="grid gap-3 border-b border-border/60 pb-4 md:grid-cols-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-action-filter">Действие</Label>
+          <select
+            id="audit-action-filter"
+            value={actionFilter}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            onChange={(event) =>
+              setActionFilter(event.target.value as AuditActionType | '')
+            }
+          >
+            <option value="">Все</option>
+            {AUDIT_ACTIONS.map((action) => (
+              <option key={action} value={action}>
+                {action}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-actor-filter">Автор</Label>
+          <Input
+            id="audit-actor-filter"
+            value={actorFilter}
+            placeholder="user id"
+            onChange={(event) => setActorFilter(event.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-target-type-filter">Тип объекта</Label>
+          <select
+            id="audit-target-type-filter"
+            value={targetTypeFilter}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            onChange={(event) =>
+              setTargetTypeFilter(event.target.value as AuditTargetType | '')
+            }
+          >
+            <option value="">Все</option>
+            {AUDIT_TARGET_TYPES.map((targetType) => (
+              <option key={targetType} value={targetType}>
+                {targetType}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="audit-target-id-filter">ID объекта</Label>
+          <div className="flex gap-2">
+            <Input
+              id="audit-target-id-filter"
+              value={targetIdFilter}
+              placeholder="target id"
+              onChange={(event) => setTargetIdFilter(event.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!hasFilters}
+              onClick={() => {
+                setActorFilter('')
+                setActionFilter('')
+                setTargetTypeFilter('')
+                setTargetIdFilter('')
+              }}
+            >
+              Сбросить
+            </Button>
+          </div>
+        </div>
+      </section>
 
       {auditQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Загрузка...</p>
