@@ -70,6 +70,7 @@ impl IntoResponse for Error {
             ErrorType::DatabaseError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorType::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorType::InvalidOperation => StatusCode::BAD_REQUEST,
+            ErrorType::InvalidInvite => StatusCode::BAD_REQUEST,
             ErrorType::InvalidCredentials => StatusCode::UNAUTHORIZED,
             ErrorType::InvalidProperty => StatusCode::BAD_REQUEST,
             ErrorType::InvalidSession => StatusCode::UNAUTHORIZED,

@@ -10,7 +10,8 @@ use schemars::{
 use syrnike_result::Result;
 
 use crate::{
-    Bot, Channel, Database, Emoji, Invite, Member, Message, Server, ServerBan, User, Webhook,
+    audit_timestamp, Bot, Channel, Database, Emoji, Invite, Member, Message, Server, ServerBan,
+    User, Webhook,
 };
 
 /// Reference to some object in the database
@@ -62,6 +63,13 @@ impl<'a> Reference<'a> {
                     .into_iter()
                     .next()
                     .ok_or(create_error!(NotFound))?,
+                created_at: audit_timestamp(),
+                expires_at: None,
+                max_uses: None,
+                uses: 0,
+                revoked_at: None,
+                revoked_by: None,
+                temporary: false,
             })
         } else {
             db.fetch_invite(self.id).await

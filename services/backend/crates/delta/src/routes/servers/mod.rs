@@ -2,7 +2,7 @@ use revolt_okapi::openapi3::OpenApi;
 use rocket::Route;
 
 mod audit_log;
-mod audit_mutation;
+pub(crate) mod audit_mutation;
 mod ban_create;
 mod ban_list;
 mod ban_remove;

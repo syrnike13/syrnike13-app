@@ -84,7 +84,7 @@ pub async fn fetch(
 #[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
-    use rocket::http::Status;
+    use rocket::http::{ContentType, Status};
     use syrnike_database::{Channel, Server};
     use syrnike_models::v0::{
         DataCreateGroup, DataCreateServerChannel, Invite, InviteResponse, LegacyServerChannelType,
@@ -108,7 +108,9 @@ mod test {
             session,
             harness
                 .client
-                .post(format!("/channels/{}/invites", group.id())),
+                .post(format!("/channels/{}/invites", group.id()))
+                .header(ContentType::JSON)
+                .body(serde_json::json!({}).to_string()),
         )
         .await;
         assert_eq!(create_response.status(), Status::Ok);
@@ -160,7 +162,9 @@ mod test {
             session,
             harness
                 .client
-                .post(format!("/channels/{}/invites", channel.id())),
+                .post(format!("/channels/{}/invites", channel.id()))
+                .header(ContentType::JSON)
+                .body(serde_json::json!({}).to_string()),
         )
         .await;
         assert_eq!(create_response.status(), Status::Ok);
@@ -216,7 +220,9 @@ mod test {
             session,
             harness
                 .client
-                .post(format!("/channels/{}/invites", channel.id())),
+                .post(format!("/channels/{}/invites", channel.id()))
+                .header(ContentType::JSON)
+                .body(serde_json::json!({}).to_string()),
         )
         .await;
         assert_eq!(create_response.status(), Status::Ok);

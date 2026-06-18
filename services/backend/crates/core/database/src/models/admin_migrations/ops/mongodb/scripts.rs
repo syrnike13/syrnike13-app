@@ -5,11 +5,12 @@ use std::{
 };
 
 use crate::{
+    audit_timestamp, initial_badges,
     mongodb::{
         bson::{doc, from_bson, from_document, to_document, Bson, DateTime, Document},
         options::FindOptions,
     },
-    initial_badges, AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
+    AbstractServers, Invite, MongoDb, User, DISCRIMINATOR_SEARCH_SPACE,
 };
 use bson::{oid::ObjectId, to_bson};
 use futures::StreamExt;
@@ -25,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 52; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 53; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -964,6 +965,13 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
                     server,
                     creator,
                     channel,
+                    created_at: audit_timestamp(),
+                    expires_at: None,
+                    max_uses: None,
+                    uses: 0,
+                    revoked_at: None,
+                    revoked_by: None,
+                    temporary: false,
                 },
                 OldInvite::Group {
                     code,
@@ -973,6 +981,13 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
                     code,
                     creator,
                     channel,
+                    created_at: audit_timestamp(),
+                    expires_at: None,
+                    max_uses: None,
+                    uses: 0,
+                    revoked_at: None,
+                    revoked_by: None,
+                    temporary: false,
                 },
             })
             .collect::<Vec<Invite>>();
@@ -1399,6 +1414,30 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             })
             .await
             .expect("Failed to create server_audit_logs index.");
+    };
+
+    if revision <= 52 {
+        info!("Running migration [revision 52 / 18-06-2026]: Add invite lifecycle fields.");
+
+        let now = audit_timestamp() as i64;
+
+        db.col::<Document>("channel_invites")
+            .update_many(
+                doc! {},
+                doc! {
+                    "$set": {
+                        "created_at": now,
+                        "uses": 0_i64,
+                        "expires_at": Bson::Null,
+                        "max_uses": Bson::Null,
+                        "revoked_at": Bson::Null,
+                        "revoked_by": Bson::Null,
+                        "temporary": false,
+                    }
+                },
+            )
+            .await
+            .expect("Failed to add invite lifecycle fields.");
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.
