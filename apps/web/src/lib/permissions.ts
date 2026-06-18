@@ -249,6 +249,51 @@ export function canTimeoutServerMember(
   )
 }
 
+export function canMuteServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.MuteMembers,
+  )
+}
+
+export function canDeafenServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.DeafenMembers,
+  )
+}
+
+export function canMoveServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.MoveMembers,
+  )
+}
+
 export function canEditMember(
   server: Server,
   actorMember: Member | undefined,

@@ -5,9 +5,12 @@ import {
   calculateChannelPermissions,
   calculateServerPermissions,
   canBanServerMember,
+  canDeafenServerMember,
   canEditMember,
   canInviteToChannel,
   canKickServerMember,
+  canMoveServerMember,
+  canMuteServerMember,
   canTimeoutServerMember,
   canOpenServerSettings,
   canViewChannel,
@@ -459,6 +462,62 @@ describe('canTimeoutServerMember', () => {
 
     expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(true)
     expect(canTimeoutServerMember(server, makeMember(), 'user-1', target)).toBe(
+      false,
+    )
+  })
+})
+
+describe('server voice moderation permissions', () => {
+  it('requires the matching voice moderation permission and higher role rank', () => {
+    const server = makeServer({
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.MuteMembers,
+                ChannelPermission.DeafenMembers,
+              ),
+              ChannelPermission.MoveMembers,
+            ),
+            d: 0,
+          },
+          rank: 2,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canMuteServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canDeafenServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canMoveServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canMuteServerMember(server, target, 'user-2', actor)).toBe(false)
+  })
+
+  it('does not allow voice moderation against self or the server owner', () => {
+    const server = makeServer({ owner: 'owner-1' })
+    const actor = makeMember()
+    const targetOwner = makeMember({
+      _id: { server: 'server-1', user: 'owner-1' },
+    })
+
+    expect(canMuteServerMember(server, actor, 'user-1', actor)).toBe(false)
+    expect(canDeafenServerMember(server, actor, 'user-1', targetOwner)).toBe(
+      false,
+    )
+    expect(canMoveServerMember(server, actor, 'user-1', targetOwner)).toBe(
       false,
     )
   })

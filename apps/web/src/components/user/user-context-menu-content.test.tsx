@@ -10,6 +10,7 @@ import { syncStore } from '#/features/sync/sync-store'
 
 const navigateMock = vi.hoisted(() => vi.fn())
 const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
+const voiceControlsPropsMock = vi.hoisted(() => vi.fn())
 const openDirectMessageChannelMock = vi.hoisted(() =>
   vi.fn(
     async (
@@ -22,7 +23,7 @@ const openDirectMessageChannelMock = vi.hoisted(() =>
         _id: 'dm-1',
         channel_type: 'DirectMessage',
         active: true,
-        recipients: ['current-user', 'target-user'],
+        recipients: ['current-user', '01JVOICETARGET0000001'],
       } as Channel
     },
   ),
@@ -60,7 +61,10 @@ vi.mock('#/components/friends/friendship-action', () => ({
 }))
 
 vi.mock('#/components/user/user-context-menu-voice-controls', () => ({
-  UserContextMenuVoiceControls: () => null,
+  UserContextMenuVoiceControls: (props: unknown) => {
+    voiceControlsPropsMock(props)
+    return <div data-testid="voice-controls" />
+  },
 }))
 
 vi.mock('#/components/ui/context-menu', () => ({
@@ -82,7 +86,7 @@ vi.mock('#/components/ui/context-menu', () => ({
 }))
 
 const targetUser = {
-  _id: 'target-user',
+  _id: '01JVOICETARGET0000001',
   username: 'bob',
   discriminator: '0002',
   relationship: 'Friend',
@@ -109,7 +113,7 @@ describe('UserContextMenuContent', () => {
     await waitFor(() => {
       expect(openDirectMessageChannelMock).toHaveBeenCalledWith(
         'session-token',
-        'target-user',
+        '01JVOICETARGET0000001',
         expect.any(Function),
       )
     })
@@ -119,5 +123,69 @@ describe('UserContextMenuContent', () => {
       search: { m: undefined },
     })
     expect(voiceJoinMock).toHaveBeenCalledWith('dm-1')
+  })
+
+  it('passes server voice moderation context to voice controls', () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-user',
+      channels: ['voice-1'],
+      default_permissions: 0,
+      roles: {},
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'voice-1',
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'Voice',
+      default_permissions: null,
+      voice: { max_users: null },
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'current-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+      } as never,
+      {
+        _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        joined_at: '2024-01-01T00:00:00Z',
+      } as never,
+    ])
+    syncStore.patchVoiceParticipant('voice-1', '01JVOICETARGET0000001', {
+      joined_at: 1,
+      self_mute: false,
+      self_deaf: false,
+      server_muted: false,
+      server_deafened: false,
+      screensharing: false,
+      camera: false,
+      version: 1,
+    })
+
+    render(
+      <UserContextMenuContent
+        user={targetUser}
+        serverId="server-1"
+        inVoice
+      />,
+    )
+
+    expect(screen.getByTestId('voice-controls')).toBeTruthy()
+    expect(voiceControlsPropsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: '01JVOICETARGET0000001',
+        token: 'session-token',
+        actorUserId: 'current-user',
+        server: expect.objectContaining({ _id: 'server-1' }),
+        actorMember: expect.objectContaining({
+          _id: { server: 'server-1', user: 'current-user' },
+        }),
+        targetMember: expect.objectContaining({
+          _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        }),
+        voiceChannelId: 'voice-1',
+      }),
+    )
   })
 })

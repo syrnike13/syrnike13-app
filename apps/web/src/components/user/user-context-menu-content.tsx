@@ -31,6 +31,7 @@ import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { useVoice } from '#/features/voice/voice-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
 import { writeClipboardText } from '#/lib/clipboard'
+import { serverChannelServerId } from '#/lib/channel-voice'
 import {
   canBanServerMember,
   canKickServerMember,
@@ -69,6 +70,16 @@ export function UserContextMenuContent({
   const targetMember = useSyncStore((s) =>
     serverId ? s.members[`${serverId}:${user._id}`] : undefined,
   )
+  const targetVoiceChannelId = useSyncStore((s) => {
+    if (!serverId) return undefined
+    for (const [channelId, channelMap] of Object.entries(s.voiceParticipants)) {
+      if (!channelMap[user._id]) continue
+      if (serverChannelServerId(s.channels[channelId]) === serverId) {
+        return channelId
+      }
+    }
+    return undefined
+  })
   const directCallActionLabel = useSyncStore((s) =>
     selectDirectMessageCallActionLabel(s, auth.user?._id, user._id),
   )
@@ -174,7 +185,15 @@ export function UserContextMenuContent({
   return (
     <ContextMenuContent className="z-[200] w-56">
       {showVoiceControls ? (
-        <UserContextMenuVoiceControls userId={user._id} />
+        <UserContextMenuVoiceControls
+          userId={user._id}
+          token={token}
+          server={server}
+          actorMember={actorMember}
+          actorUserId={auth.user?._id}
+          targetMember={targetMember}
+          voiceChannelId={targetVoiceChannelId}
+        />
       ) : null}
       <ContextMenuItem onSelect={() => onOpenProfile?.()}>
         <UserIcon />
