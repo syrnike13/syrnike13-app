@@ -92,212 +92,6 @@ export interface paths {
     /** Fetch all of the bots that you have control over. */
     get: operations["fetch_owned_fetch_owned_bots"];
   };
-  "/channels/{target}/ack/{message}": {
-    /** Lets the server and all other clients know that we've seen this message id in this channel. */
-    put: operations["channel_ack_ack"];
-  };
-  "/channels/{target}": {
-    /** Fetch channel by its id. */
-    get: operations["channel_fetch_fetch"];
-    /** Deletes a server channel, leaves a group or closes a group. */
-    delete: operations["channel_delete_delete"];
-    /** Edit a channel object by its id. */
-    patch: operations["channel_edit_edit"];
-  };
-  "/channels/{target}/members": {
-    /**
-     * Retrieves all users who are part of this group.
-     *
-     * This may not return full user information if users are not friends but have mutual connections.
-     */
-    get: operations["members_fetch_fetch_members"];
-  };
-  "/channels/{target}/invites": {
-    /**
-     * Creates an invite to this channel.
-     *
-     * Channel must be a `TextChannel`.
-     */
-    post: operations["invite_create_create_invite"];
-  };
-  "/channels/{target}/messages": {
-    /** Fetch multiple messages. */
-    get: operations["message_query_query"];
-    /** Sends a message to the given channel. */
-    post: operations["message_send_message_send"];
-  };
-  "/channels/{target}/search": {
-    /** This route searches for messages within the given parameters. */
-    post: operations["message_search_search"];
-  };
-  "/channels/{target}/messages/{msg}/pin": {
-    /** Pins a message by its id. */
-    post: operations["message_pin_message_pin"];
-    /** Unpins a message by its id. */
-    delete: operations["message_unpin_message_unpin"];
-  };
-  "/channels/{target}/messages/{msg}": {
-    /** Retrieves a message by its id. */
-    get: operations["message_fetch_fetch"];
-    /** Delete a message you've sent or one you have permission to delete. */
-    delete: operations["message_delete_delete"];
-    /** Edits a message that you've previously sent. */
-    patch: operations["message_edit_edit"];
-  };
-  "/channels/{target}/messages/bulk": {
-    /**
-     * Delete multiple messages you've sent or one you have permission to delete.
-     *
-     * This will always require `ManageMessages` permission regardless of whether you own the message or not.
-     *
-     * Messages must have been sent within the past 1 week.
-     */
-    delete: operations["message_bulk_delete_bulk_delete_messages"];
-  };
-  "/channels/create": {
-    /** Create a new group channel. */
-    post: operations["group_create_create_group"];
-  };
-  "/channels/{group_id}/recipients/{member_id}": {
-    /** Adds another user to the group. */
-    put: operations["group_add_member_add_member"];
-    /** Removes a user from the group. */
-    delete: operations["group_remove_member_remove_member"];
-  };
-  "/channels/{target}/voice/cancel": {
-    /** Cancels a ringing one-to-one DM call. The authenticated user must be the call initiator. */
-    put: operations["voice_cancel_call_cancel_call"];
-  };
-  "/channels/{target}/voice/decline": {
-    /** Declines an incoming one-to-one DM call without ending the call. The declined call remains joinable while the caller stays connected. */
-    put: operations["voice_decline_call_decline_call"];
-  };
-  "/channels/{target}/permissions/{role_id}": {
-    /**
-     * Sets permissions for the specified role in this channel.
-     *
-     * Channel must be a `TextChannel`.
-     */
-    put: operations["permissions_set_set_role_permissions"];
-  };
-  "/channels/{target}/permissions/default": {
-    /**
-     * Sets permissions for the default role in this channel.
-     *
-     * Channel must be a `Group` or `TextChannel`.
-     */
-    put: operations["permissions_set_default_set_default_channel_permissions"];
-  };
-  "/channels/{target}/messages/{msg}/reactions/{emoji}": {
-    /** React to a given message. */
-    put: operations["message_react_react_message"];
-    /**
-     * Remove your own, someone else's or all of a given reaction.
-     *
-     * Requires `ManageMessages` if changing others' reactions.
-     */
-    delete: operations["message_unreact_unreact_message"];
-  };
-  "/channels/{target}/messages/{msg}/reactions": {
-    /**
-     * Remove your own, someone else's or all of a given reaction.
-     *
-     * Requires `ManageMessages` permission.
-     */
-    delete: operations["message_clear_reactions_clear_reactions"];
-  };
-  "/channels/{channel_id}/webhooks": {
-    /** Gets all webhooks inside the channel */
-    get: operations["webhook_fetch_all_fetch_webhooks"];
-    /** Creates a webhook which 3rd party platforms can use to send messages */
-    post: operations["webhook_create_create_webhook"];
-  };
-  "/servers/create": {
-    /** Create a new server. */
-    post: operations["server_create_create_server"];
-  };
-  "/servers/{target}": {
-    /** Fetch a server by its id. */
-    get: operations["server_fetch_fetch"];
-    /** Deletes a server if owner otherwise leaves. */
-    delete: operations["server_delete_delete"];
-    /** Edit a server by its id. */
-    patch: operations["server_edit_edit"];
-  };
-  "/servers/{target}/ack": {
-    /** Mark all channels in a server as read. */
-    put: operations["server_ack_ack"];
-  };
-  "/servers/{server}/channels": {
-    /** Create a new Text or Voice channel. */
-    post: operations["channel_create_create_server_channel"];
-  };
-  "/servers/{target}/members": {
-    /** Fetch all server members. */
-    get: operations["member_fetch_all_fetch_all"];
-  };
-  "/servers/{server_id}/members/{member_id}": {
-    /** Retrieve a member. */
-    get: operations["member_fetch_fetch"];
-    /** Removes a member from the server. */
-    delete: operations["member_remove_kick"];
-    /** Edit a member by their id. */
-    patch: operations["member_edit_edit"];
-  };
-  "/servers/{target}/members_experimental_query": {
-    /** Query members by a given name, this API is not stable and will be removed in the future. */
-    get: operations["member_experimental_query_member_experimental_query"];
-  };
-  "/servers/{server}/bans/{target}": {
-    /** Ban a user by their id. */
-    put: operations["ban_create_ban"];
-    /** Remove a user's ban. */
-    delete: operations["ban_remove_unban"];
-  };
-  "/servers/{target}/bans": {
-    /** Fetch all bans on a server. */
-    get: operations["ban_list_list"];
-  };
-  "/servers/{target}/invites": {
-    /** Fetch all server invites. */
-    get: operations["invites_fetch_invites"];
-  };
-  "/servers/{target}/roles": {
-    /** Creates a new server role. */
-    post: operations["roles_create_create"];
-  };
-  "/servers/{target}/roles/{role_id}": {
-    /** Fetch a role by its id. */
-    get: operations["roles_fetch_fetch"];
-    /** Delete a server role by its id. */
-    delete: operations["roles_delete_delete"];
-    /** Edit a role by its id. */
-    patch: operations["roles_edit_edit"];
-  };
-  "/servers/{target}/permissions/{role_id}": {
-    /** Sets permissions for the specified role in the server. */
-    put: operations["permissions_set_set_role_permission"];
-  };
-  "/servers/{target}/permissions/default": {
-    /** Sets permissions for the default role in this server. */
-    put: operations["permissions_set_default_set_default_server_permissions"];
-  };
-  "/servers/{target}/emojis": {
-    /** Fetch all emoji on a server. */
-    get: operations["emoji_list_list_emoji"];
-  };
-  "/servers/{target}/roles/ranks": {
-    /** Edit's server role's ranks. */
-    patch: operations["roles_edit_positions_edit_role_ranks"];
-  };
-  "/invites/{target}": {
-    /** Fetch an invite by its id. */
-    get: operations["invite_fetch_fetch"];
-    /** Join an invite by its ID */
-    post: operations["invite_join_join"];
-    /** Delete an invite by its id. */
-    delete: operations["invite_delete_delete"];
-  };
   "/custom/emoji/{emoji_id}": {
     /** Fetch an emoji by its id. */
     get: operations["emoji_fetch_fetch_emoji"];
@@ -465,6 +259,234 @@ export interface paths {
   "/webhooks/{webhook_id}/{token}/github": {
     /** Executes a webhook specific to github and sends a message containing the relevant info about the event */
     post: operations["webhook_execute_github_webhook_execute_github"];
+  };
+  "/admin/badges": {
+    get: operations["badges_list"];
+    post: operations["badges_create"];
+  };
+  "/admin/badges/{badge_id}": {
+    delete: operations["badges_delete"];
+    patch: operations["badges_edit"];
+  };
+  "/admin/users/{query}": {
+    get: operations["users_fetch"];
+  };
+  "/admin/users/{user_id}/badges": {
+    get: operations["user_badges_list"];
+  };
+  "/admin/users/{user_id}/badges/{badge_id}": {
+    put: operations["user_badges_assign"];
+    delete: operations["user_badges_remove"];
+  };
+  "/servers/create": {
+    /** Create a new server. */
+    post: operations["server_create_create_server"];
+  };
+  "/servers/{target}": {
+    /** Fetch a server by its id. */
+    get: operations["server_fetch_fetch"];
+    /** Deletes a server if owner otherwise leaves. */
+    delete: operations["server_delete_delete"];
+    /** Edit a server by its id. */
+    patch: operations["server_edit_edit"];
+  };
+  "/servers/{server}/audit-log": {
+    /** Fetch server audit log entries. */
+    get: operations["audit_log_fetch_audit_log"];
+  };
+  "/servers/{target}/ack": {
+    /** Mark all channels in a server as read. */
+    put: operations["server_ack_ack"];
+  };
+  "/servers/{server}/channels": {
+    /** Create a new Text or Voice channel. */
+    post: operations["channel_create_create_server_channel"];
+  };
+  "/servers/{target}/members": {
+    /** Fetch all server members. */
+    get: operations["member_fetch_all_fetch_all"];
+  };
+  "/servers/{server_id}/members/{member_id}": {
+    /** Retrieve a member. */
+    get: operations["member_fetch_fetch"];
+    /** Removes a member from the server. */
+    delete: operations["member_remove_kick"];
+    /** Edit a member by their id. */
+    patch: operations["member_edit_edit"];
+  };
+  "/servers/{target}/members_experimental_query": {
+    /** Query members by a given name, this API is not stable and will be removed in the future. */
+    get: operations["member_experimental_query_member_experimental_query"];
+  };
+  "/servers/{server}/bans/{target}": {
+    /** Ban a user by their id. */
+    put: operations["ban_create_ban"];
+    /** Remove a user's ban. */
+    delete: operations["ban_remove_unban"];
+  };
+  "/servers/{target}/bans": {
+    /** Fetch all bans on a server. */
+    get: operations["ban_list_list"];
+  };
+  "/servers/{target}/invites": {
+    /** Fetch all server invites. */
+    get: operations["invites_fetch_invites"];
+  };
+  "/servers/{target}/roles": {
+    /** Creates a new server role. */
+    post: operations["roles_create_create"];
+  };
+  "/servers/{target}/roles/{role_id}": {
+    /** Fetch a role by its id. */
+    get: operations["roles_fetch_fetch"];
+    /** Delete a server role by its id. */
+    delete: operations["roles_delete_delete"];
+    /** Edit a role by its id. */
+    patch: operations["roles_edit_edit"];
+  };
+  "/servers/{target}/permissions/{role_id}": {
+    /** Sets permissions for the specified role in the server. */
+    put: operations["permissions_set_set_role_permission"];
+  };
+  "/servers/{target}/permissions/default": {
+    /** Sets permissions for the default role in this server. */
+    put: operations["permissions_set_default_set_default_server_permissions"];
+  };
+  "/servers/{target}/emojis": {
+    /** Fetch all emoji on a server. */
+    get: operations["emoji_list_list_emoji"];
+  };
+  "/servers/{target}/roles/ranks": {
+    /** Edit's server role's ranks. */
+    patch: operations["roles_edit_positions_edit_role_ranks"];
+  };
+  "/channels/{target}/ack/{message}": {
+    /** Lets the server and all other clients know that we've seen this message id in this channel. */
+    put: operations["channel_ack_ack"];
+  };
+  "/channels/{target}": {
+    /** Fetch channel by its id. */
+    get: operations["channel_fetch_fetch"];
+    /** Deletes a server channel, leaves a group or closes a group. */
+    delete: operations["channel_delete_delete"];
+    /** Edit a channel object by its id. */
+    patch: operations["channel_edit_edit"];
+  };
+  "/channels/{target}/members": {
+    /**
+     * Retrieves all users who are part of this group.
+     *
+     * This may not return full user information if users are not friends but have mutual connections.
+     */
+    get: operations["members_fetch_fetch_members"];
+  };
+  "/channels/{target}/invites": {
+    /**
+     * Creates an invite to this channel.
+     *
+     * Channel must be a `TextChannel`.
+     */
+    post: operations["invite_create_create_invite"];
+  };
+  "/channels/{target}/messages": {
+    /** Fetch multiple messages. */
+    get: operations["message_query_query"];
+    /** Sends a message to the given channel. */
+    post: operations["message_send_message_send"];
+  };
+  "/channels/{target}/search": {
+    /** This route searches for messages within the given parameters. */
+    post: operations["message_search_search"];
+  };
+  "/channels/{target}/messages/{msg}/pin": {
+    /** Pins a message by its id. */
+    post: operations["message_pin_message_pin"];
+    /** Unpins a message by its id. */
+    delete: operations["message_unpin_message_unpin"];
+  };
+  "/channels/{target}/messages/{msg}": {
+    /** Retrieves a message by its id. */
+    get: operations["message_fetch_fetch"];
+    /** Delete a message you've sent or one you have permission to delete. */
+    delete: operations["message_delete_delete"];
+    /** Edits a message that you've previously sent. */
+    patch: operations["message_edit_edit"];
+  };
+  "/channels/{target}/messages/bulk": {
+    /**
+     * Delete multiple messages you've sent or one you have permission to delete.
+     *
+     * This will always require `ManageMessages` permission regardless of whether you own the message or not.
+     *
+     * Messages must have been sent within the past 1 week.
+     */
+    delete: operations["message_bulk_delete_bulk_delete_messages"];
+  };
+  "/channels/create": {
+    /** Create a new group channel. */
+    post: operations["group_create_create_group"];
+  };
+  "/channels/{group_id}/recipients/{member_id}": {
+    /** Adds another user to the group. */
+    put: operations["group_add_member_add_member"];
+    /** Removes a user from the group. */
+    delete: operations["group_remove_member_remove_member"];
+  };
+  "/channels/{target}/voice/cancel": {
+    /** Cancels a ringing one-to-one DM call. The authenticated user must be the call initiator. */
+    put: operations["voice_cancel_call_cancel_call"];
+  };
+  "/channels/{target}/voice/decline": {
+    /** Declines an incoming one-to-one DM call without ending the call. The declined call remains joinable while the caller stays connected. */
+    put: operations["voice_decline_call_decline_call"];
+  };
+  "/channels/{target}/permissions/{role_id}": {
+    /**
+     * Sets permissions for the specified role in this channel.
+     *
+     * Channel must be a `TextChannel`.
+     */
+    put: operations["permissions_set_set_role_permissions"];
+  };
+  "/channels/{target}/permissions/default": {
+    /**
+     * Sets permissions for the default role in this channel.
+     *
+     * Channel must be a `Group` or `TextChannel`.
+     */
+    put: operations["permissions_set_default_set_default_channel_permissions"];
+  };
+  "/channels/{target}/messages/{msg}/reactions/{emoji}": {
+    /** React to a given message. */
+    put: operations["message_react_react_message"];
+    /**
+     * Remove your own, someone else's or all of a given reaction.
+     *
+     * Requires `ManageMessages` if changing others' reactions.
+     */
+    delete: operations["message_unreact_unreact_message"];
+  };
+  "/channels/{target}/messages/{msg}/reactions": {
+    /**
+     * Remove your own, someone else's or all of a given reaction.
+     *
+     * Requires `ManageMessages` permission.
+     */
+    delete: operations["message_clear_reactions_clear_reactions"];
+  };
+  "/channels/{channel_id}/webhooks": {
+    /** Gets all webhooks inside the channel */
+    get: operations["webhook_fetch_all_fetch_webhooks"];
+    /** Creates a webhook which 3rd party platforms can use to send messages */
+    post: operations["webhook_create_create_webhook"];
+  };
+  "/invites/{target}": {
+    /** Fetch an invite by its id. */
+    get: operations["invite_fetch_fetch"];
+    /** Join an invite by its ID */
+    post: operations["invite_join_join"];
+    /** Delete an invite by its id. */
+    delete: operations["invite_delete_delete"];
   };
 }
 
@@ -997,24 +1019,6 @@ export interface components {
       /** @description Where this error occurred */
       location: string;
     };
-    /** @description Badge data attached to public user payloads */
-    UserBadge: {
-      /** @description Badge id */
-      _id: string;
-      /** @description Stable system slug */
-      slug: string;
-      /** @description Display name */
-      name: string;
-      /** @description Optional display description */
-      description?: string | null;
-      /** @description Badge icon */
-      icon: components["schemas"]["File"];
-      /**
-       * Format: int32
-       * @description Global display order
-       */
-      order: number;
-    };
     /** @description User */
     User: {
       /** @description Unique Id */
@@ -1029,8 +1033,13 @@ export interface components {
       avatar?: components["schemas"]["File"] | null;
       /** @description Relationships with other users */
       relations?: components["schemas"]["Relationship"][];
-      /** @description User badges */
-      badges?: components["schemas"]["UserBadge"][];
+      /**
+       * Format: uint32
+       * @description Bitfield of user badges
+       *
+       * https://docs.rs/syrnike-models/latest/syrnike_models/v0/enum.UserBadges.html
+       */
+      badges?: number;
       /** @description User's current status */
       status?: components["schemas"]["UserStatus"] | null;
       /**
@@ -1075,38 +1084,6 @@ export interface components {
       server_id?: string | null;
       /** @description Id of the object this file is associated with */
       object_id?: string | null;
-    };
-    /** @description Badge catalog entry */
-    Badge: {
-      /** @description Unique Id */
-      _id: string;
-      /** @description Stable system slug */
-      slug: string;
-      /** @description Display name */
-      name: string;
-      /** @description Optional display description */
-      description?: string | null;
-      /** @description Badge icon */
-      icon?: components["schemas"]["File"] | null;
-      /** @description Whether normal user-facing payloads can include this badge */
-      visible?: boolean;
-      /** @description Whether this badge is reserved for the premium system */
-      premium?: boolean;
-      /**
-       * Format: int32
-       * @description Global display order
-       */
-      display_order: number;
-      /**
-       * Format: date-time
-       * @description Creation timestamp
-       */
-      created_at: components["schemas"]["ISO8601 Timestamp"];
-      /**
-       * Format: date-time
-       * @description Update timestamp
-       */
-      updated_at: components["schemas"]["ISO8601 Timestamp"];
     };
     /** @description Metadata associated with a file */
     Metadata:
@@ -1212,6 +1189,11 @@ export interface components {
       profile?: components["schemas"]["DataUserProfile"] | null;
       /**
        * Format: int32
+       * @description Bitfield of user badges
+       */
+      badges?: number | null;
+      /**
+       * Format: int32
        * @description Enum of user flags
        */
       flags?: number | null;
@@ -1221,56 +1203,6 @@ export interface components {
        */
       remove?: components["schemas"]["FieldsUser"][];
     };
-    /** @description New badge catalog data */
-    DataCreateBadge: {
-      /** @description Stable system slug */
-      slug: string;
-      /** @description Display name */
-      name: string;
-      /** @description Optional display description */
-      description?: string | null;
-      /** @description Uploaded badge icon file id */
-      icon_file_id?: string | null;
-      /** @description Whether normal user-facing payloads can include this badge */
-      visible: boolean;
-      /** @description Whether this badge is reserved for the premium system */
-      premium: boolean;
-      /**
-       * Format: int32
-       * @description Global display order
-       */
-      display_order: number;
-    };
-    /** @description Edited badge catalog data */
-    DataEditBadge: {
-      /** @description Stable system slug */
-      slug?: string | null;
-      /** @description Display name */
-      name?: string | null;
-      /** @description Optional display description */
-      description?: string | null;
-      /** @description Uploaded badge icon file id */
-      icon_file_id?: string | null;
-      /** @description Whether normal user-facing payloads can include this badge */
-      visible?: boolean | null;
-      /** @description Whether this badge is reserved for the premium system */
-      premium?: boolean | null;
-      /**
-       * Format: int32
-       * @description Global display order
-       */
-      display_order?: number | null;
-      /**
-       * @description Fields to remove from badge object
-       * @default []
-       */
-      remove?: components["schemas"]["FieldsBadge"][];
-    };
-    /**
-     * @description Optional fields on badge object
-     * @enum {string}
-     */
-    FieldsBadge: "Description" | "Icon";
     /** @description New user profile data */
     DataUserProfile: {
       /** @description Text to set as user profile description */
@@ -1576,30 +1508,22 @@ export interface components {
      * @enum {string}
      */
     FieldsChannel: "Description" | "Icon" | "DefaultPermissions" | "Voice";
-    /** @description Invite */
-    Invite:
-      | {
-          /** @enum {string} */
-          type: "Server";
-          /** @description Invite code */
-          _id: string;
-          /** @description Id of the server this invite points to */
-          server: string;
-          /** @description Id of user who created this invite */
-          creator: string;
-          /** @description Id of the server channel this invite points to */
-          channel: string;
-        }
-      | {
-          /** @enum {string} */
-          type: "Group";
-          /** @description Invite code */
-          _id: string;
-          /** @description Id of user who created this invite */
-          creator: string;
-          /** @description Id of the group channel this invite points to */
-          channel: string;
-        };
+    /** @description Webhook information */
+    ResponseWebhook: {
+      /** @description Webhook Id */
+      id: string;
+      /** @description Webhook name */
+      name: string;
+      /** @description Avatar ID */
+      avatar?: string | null;
+      /** @description The channel this webhook belongs to */
+      channel_id: string;
+      /**
+       * Format: uint64
+       * @description The permissions for the webhook
+       */
+      permissions: number;
+    };
     /** @description Message */
     Message: {
       /** @description Unique Id */
@@ -3019,22 +2943,344 @@ export interface components {
      * @enum {string}
      */
     FieldsWebhook: "Avatar";
-    /** @description Webhook information */
-    ResponseWebhook: {
-      /** @description Webhook Id */
-      id: string;
-      /** @description Webhook name */
+    /** @description Badge catalog entry */
+    Badge: {
+      /** @description Unique Id */
+      _id: string;
+      /** @description Stable system slug */
+      slug: string;
+      /** @description Display name */
       name: string;
-      /** @description Avatar ID */
-      avatar?: string | null;
-      /** @description The channel this webhook belongs to */
-      channel_id: string;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Badge icon */
+      icon?: components["schemas"]["File"] | null;
+      /** @description Whether normal user-facing payloads can include this badge */
+      visible?: boolean;
+      /** @description Whether this badge is reserved for the premium system */
+      premium?: boolean;
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      display_order: number;
+      /** @description Creation timestamp */
+      created_at: components["schemas"]["ISO8601 Timestamp"];
+      /** @description Update timestamp */
+      updated_at: components["schemas"]["ISO8601 Timestamp"];
+    };
+    /** @description New badge catalog data */
+    DataCreateBadge: {
+      /** @description Stable system slug */
+      slug: string;
+      /** @description Display name */
+      name: string;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Uploaded badge icon file id */
+      icon_file_id?: string | null;
+      /** @description Whether normal user-facing payloads can include this badge */
+      visible: boolean;
+      /** @description Whether this badge is reserved for the premium system */
+      premium: boolean;
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      display_order: number;
+    };
+    /** @description Edited badge catalog data */
+    DataEditBadge: {
+      /** @description Stable system slug */
+      slug?: string | null;
+      /** @description Display name */
+      name?: string | null;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Uploaded badge icon file id */
+      icon_file_id?: string | null;
+      /** @description Whether normal user-facing payloads can include this badge */
+      visible?: boolean | null;
+      /** @description Whether this badge is reserved for the premium system */
+      premium?: boolean | null;
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      display_order?: number | null;
+      /**
+       * @description Fields to remove from badge object
+       * @default []
+       */
+      remove?: components["schemas"]["FieldsBadge"][];
+    };
+    /**
+     * @description Optional fields on badge object
+     * @enum {string}
+     */
+    FieldsBadge: "Description" | "Icon";
+    /** @description Badge data attached to public user payloads */
+    UserBadge: {
+      /** @description Badge id */
+      _id: string;
+      /** @description Stable system slug */
+      slug: string;
+      /** @description Display name */
+      name: string;
+      /** @description Optional display description */
+      description?: string | null;
+      /** @description Badge icon */
+      icon: components["schemas"]["File"];
+      /**
+       * Format: int32
+       * @description Global display order
+       */
+      order: number;
+    };
+    /** @description Server audit log page. */
+    ServerAuditLogPage: {
+      entries: components["schemas"]["ServerAuditLogEntry"][];
+      next_before?: string | null;
+    };
+    /** @description Server audit log entry. */
+    ServerAuditLogEntry: {
+      _id: string;
+      server_id: string;
+      actor_id: string;
+      action: components["schemas"]["ServerAuditLogAction"];
+      target: components["schemas"]["ServerAuditLogTarget"];
+      reason?: string | null;
+      changes: { [key: string]: components["schemas"]["ServerAuditLogChange"] };
+      status: components["schemas"]["ServerAuditLogStatus"];
+      error?: string | null;
+      request_id?: string | null;
+      /** Format: uint64 */
+      created_at: number;
+      /** Format: uint64 */
+      completed_at?: number | null;
+    };
+    /** @description Server audit action. */
+    ServerAuditLogAction:
+      | {
+          /** @enum {string} */
+          type: "ServerUpdate";
+        }
+      | {
+          /** @enum {string} */
+          type: "RoleCreate";
+        }
+      | {
+          /** @enum {string} */
+          type: "RoleUpdate";
+        }
+      | {
+          /** @enum {string} */
+          type: "RoleDelete";
+        }
+      | {
+          /** @enum {string} */
+          type: "RoleReorder";
+        }
+      | {
+          /** @enum {string} */
+          type: "MemberUpdate";
+        }
+      | {
+          /** @enum {string} */
+          type: "MemberKick";
+        }
+      | {
+          /** @enum {string} */
+          type: "MemberBan";
+        }
+      | {
+          /** @enum {string} */
+          type: "MemberUnban";
+        }
+      | {
+          /** @enum {string} */
+          type: "MemberTimeout";
+        }
+      | {
+          /** @enum {string} */
+          type: "InviteCreate";
+        }
+      | {
+          /** @enum {string} */
+          type: "InviteUpdate";
+        }
+      | {
+          /** @enum {string} */
+          type: "InviteRevoke";
+        }
+      | {
+          /** @enum {string} */
+          type: "InviteDelete";
+        }
+      | {
+          /** @enum {string} */
+          type: "ChannelPermissionUpdate";
+        }
+      | {
+          /** @enum {string} */
+          type: "ServerPermissionUpdate";
+        };
+    /** @description Server audit target. */
+    ServerAuditLogTarget:
+      | {
+          /** @enum {string} */
+          type: "Server";
+          id: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "Role";
+          id: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "Member";
+          user_id: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "User";
+          id: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "Invite";
+          code: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "Channel";
+          id: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "Category";
+          id: string;
+        };
+    /** @description Server audit change value. */
+    ServerAuditLogChange: {
+      before?: unknown | null;
+      after?: unknown | null;
+    };
+    /**
+     * @description Server audit entry status.
+     * @enum {string}
+     */
+    ServerAuditLogStatus: "Pending" | "Succeeded" | "Failed";
+    /** @description Reason for a moderation action. */
+    DataModerationAction: {
+      /** @description Audit log reason */
+      reason?: string | null;
+    };
+    /** @description Invite */
+    Invite:
+      | {
+          /** @enum {string} */
+          type: "Server";
+          /** @description Invite code */
+          _id: string;
+          /** @description Id of the server this invite points to */
+          server: string;
+          /** @description Id of user who created this invite */
+          creator: string;
+          /** @description Id of the server channel this invite points to */
+          channel: string;
+          /**
+           * Format: uint64
+           * @description Invite creation time in milliseconds since Unix epoch
+           */
+          created_at: number;
+          /**
+           * Format: uint64
+           * @description Invite expiry time in milliseconds since Unix epoch
+           */
+          expires_at?: number | null;
+          /**
+           * Format: uint64
+           * @description Maximum number of successful joins
+           */
+          max_uses?: number | null;
+          /**
+           * Format: uint64
+           * @description Number of successful joins through this invite
+           */
+          uses: number;
+          /**
+           * Format: uint64
+           * @description Invite revocation time in milliseconds since Unix epoch
+           */
+          revoked_at?: number | null;
+          /** @description Id of user who revoked this invite */
+          revoked_by?: string | null;
+          /** @description Whether membership should be temporary */
+          temporary: boolean;
+        }
+      | {
+          /** @enum {string} */
+          type: "Group";
+          /** @description Invite code */
+          _id: string;
+          /** @description Id of user who created this invite */
+          creator: string;
+          /** @description Id of the group channel this invite points to */
+          channel: string;
+          /**
+           * Format: uint64
+           * @description Invite creation time in milliseconds since Unix epoch
+           */
+          created_at: number;
+          /**
+           * Format: uint64
+           * @description Invite expiry time in milliseconds since Unix epoch
+           */
+          expires_at?: number | null;
+          /**
+           * Format: uint64
+           * @description Maximum number of successful joins
+           */
+          max_uses?: number | null;
+          /**
+           * Format: uint64
+           * @description Number of successful joins through this invite
+           */
+          uses: number;
+          /**
+           * Format: uint64
+           * @description Invite revocation time in milliseconds since Unix epoch
+           */
+          revoked_at?: number | null;
+          /** @description Id of user who revoked this invite */
+          revoked_by?: string | null;
+          /** @description Whether membership should be temporary */
+          temporary: boolean;
+        };
+    /** @description Information for new channel invite */
+    DataCreateInvite: {
       /**
        * Format: uint64
-       * @description The permissions for the webhook
+       * @description Invite lifetime in seconds. Zero means no expiry.
        */
-      permissions: number;
+      max_age_seconds?: number | null;
+      /**
+       * Format: uint64
+       * @description Maximum number of successful joins. Zero means unlimited.
+       */
+      max_uses?: number | null;
+      /** @description Whether membership should be temporary */
+      temporary?: boolean | null;
+      /** @description Audit log reason */
+      reason?: string | null;
     };
+    /**
+     * @description Voice call end reason.
+     * @enum {string}
+     */
+    VoiceCallEndReason: "completed" | "cancelled" | "missed";
   };
 }
 
@@ -3506,1257 +3752,6 @@ export interface operations {
           "application/json": components["schemas"]["OwnedBotsResponse"];
         };
       };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Lets the server and all other clients know that we've seen this message id in this channel. */
-  channel_ack_ack: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        message: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Fetch channel by its id. */
-  channel_fetch_fetch: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Channel"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Deletes a server channel, leaves a group or closes a group. */
-  channel_delete_delete: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-      query: {
-        /** Whether to not send a leave message */
-        leave_silently?: boolean | null;
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Edit a channel object by its id. */
-  channel_edit_edit: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Channel"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataEditChannel"];
-      };
-    };
-  };
-  /**
-   * Retrieves all users who are part of this group.
-   *
-   * This may not return full user information if users are not friends but have mutual connections.
-   */
-  members_fetch_fetch_members: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["User"][];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /**
-   * Creates an invite to this channel.
-   *
-   * Channel must be a `TextChannel`.
-   */
-  invite_create_create_invite: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Invite"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Fetch multiple messages. */
-  message_query_query: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-      query: {
-        /**
-         * Maximum number of messages to fetch
-         *
-         * For fetching nearby messages, this is \`(limit + 2)\`.
-         */
-        limit?: number | null;
-        /** Message id before which messages should be fetched */
-        before?: string | null;
-        /** Message id after which messages should be fetched */
-        after?: string | null;
-        /** Message sort direction */
-        sort?: components["schemas"]["MessageSort"] | null;
-        /**
-         * Message id to search around
-         *
-         * Specifying 'nearby' ignores 'before', 'after' and 'sort'. It will also take half of limit rounded as the limits to each side. It also fetches the message ID specified.
-         */
-        nearby?: string | null;
-        /** Whether to include user (and member, if server channel) objects */
-        include_users?: boolean | null;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["BulkMessageResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Sends a message to the given channel. */
-  message_send_message_send: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-      header: {
-        /** Unique key to prevent duplicate requests */
-        "Idempotency-Key"?: string;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Message"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataMessageSend"];
-      };
-    };
-  };
-  /** This route searches for messages within the given parameters. */
-  message_search_search: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["BulkMessageResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataMessageSearch"];
-      };
-    };
-  };
-  /** Pins a message by its id. */
-  message_pin_message_pin: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Unpins a message by its id. */
-  message_unpin_message_unpin: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Retrieves a message by its id. */
-  message_fetch_fetch: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Message"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Delete a message you've sent or one you have permission to delete. */
-  message_delete_delete: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Edits a message that you've previously sent. */
-  message_edit_edit: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Message"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataEditMessage"];
-      };
-    };
-  };
-  /**
-   * Delete multiple messages you've sent or one you have permission to delete.
-   *
-   * This will always require `ManageMessages` permission regardless of whether you own the message or not.
-   *
-   * Messages must have been sent within the past 1 week.
-   */
-  message_bulk_delete_bulk_delete_messages: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["OptionsBulkDelete"];
-      };
-    };
-  };
-  /** Create a new group channel. */
-  group_create_create_group: {
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Channel"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataCreateGroup"];
-      };
-    };
-  };
-  /** Adds another user to the group. */
-  group_add_member_add_member: {
-    parameters: {
-      path: {
-        group_id: components["schemas"]["Id"];
-        member_id: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Removes a user from the group. */
-  group_remove_member_remove_member: {
-    parameters: {
-      path: {
-        group_id: components["schemas"]["Id"];
-        member_id: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Cancels a ringing one-to-one DM call. The authenticated user must be the call initiator. */
-  voice_cancel_call_cancel_call: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Declines an incoming one-to-one DM call without ending the call. The declined call remains joinable while the caller stays connected. */
-  voice_decline_call_decline_call: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /**
-   * Sets permissions for the specified role in this channel.
-   *
-   * Channel must be a `TextChannel`.
-   */
-  permissions_set_set_role_permissions: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        role_id: string;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Channel"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataSetRolePermissions"];
-      };
-    };
-  };
-  /**
-   * Sets permissions for the default role in this channel.
-   *
-   * Channel must be a `Group` or `TextChannel`.
-   */
-  permissions_set_default_set_default_channel_permissions: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Channel"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataDefaultChannelPermissions"];
-      };
-    };
-  };
-  /** React to a given message. */
-  message_react_react_message: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-        emoji: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /**
-   * Remove your own, someone else's or all of a given reaction.
-   *
-   * Requires `ManageMessages` if changing others' reactions.
-   */
-  message_unreact_unreact_message: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-        emoji: components["schemas"]["Id"];
-      };
-      query: {
-        /** Remove a specific user's reaction */
-        user_id?: string | null;
-        /** Remove all reactions */
-        remove_all?: boolean | null;
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /**
-   * Remove your own, someone else's or all of a given reaction.
-   *
-   * Requires `ManageMessages` permission.
-   */
-  message_clear_reactions_clear_reactions: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        msg: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Gets all webhooks inside the channel */
-  webhook_fetch_all_fetch_webhooks: {
-    parameters: {
-      path: {
-        channel_id: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Webhook"][];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Creates a webhook which 3rd party platforms can use to send messages */
-  webhook_create_create_webhook: {
-    parameters: {
-      path: {
-        channel_id: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Webhook"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateWebhookBody"];
-      };
-    };
-  };
-  /** Create a new server. */
-  server_create_create_server: {
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["CreateServerLegacyResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataCreateServer"];
-      };
-    };
-  };
-  /** Fetch a server by its id. */
-  server_fetch_fetch: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-      query: {
-        /** Whether to include channels */
-        include_channels?: boolean | null;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["FetchServerResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Deletes a server if owner otherwise leaves. */
-  server_delete_delete: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-      query: {
-        /** Whether to not send a leave message */
-        leave_silently?: boolean | null;
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Edit a server by its id. */
-  server_edit_edit: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Server"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataEditServer"];
-      };
-    };
-  };
-  /** Mark all channels in a server as read. */
-  server_ack_ack: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Create a new Text or Voice channel. */
-  channel_create_create_server_channel: {
-    parameters: {
-      path: {
-        server: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Channel"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataCreateServerChannel"];
-      };
-    };
-  };
-  /** Fetch all server members. */
-  member_fetch_all_fetch_all: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-      query: {
-        /** Whether to exclude offline users */
-        exclude_offline?: boolean | null;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["AllMemberResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Retrieve a member. */
-  member_fetch_fetch: {
-    parameters: {
-      path: {
-        server_id: components["schemas"]["Id"];
-        member_id: components["schemas"]["Id"];
-      };
-      query: {
-        roles?: boolean | null;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["MemberResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Removes a member from the server. */
-  member_remove_kick: {
-    parameters: {
-      path: {
-        server_id: components["schemas"]["Id"];
-        member_id: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Edit a member by their id. */
-  member_edit_edit: {
-    parameters: {
-      path: {
-        server_id: components["schemas"]["Id"];
-        member_id: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Member"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataMemberEdit"];
-      };
-    };
-  };
-  /** Query members by a given name, this API is not stable and will be removed in the future. */
-  member_experimental_query_member_experimental_query: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-      query: {
-        /** String to search for */
-        query: string;
-        /** Discourage use of this API */
-        experimental_api: boolean;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["MemberQueryResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Ban a user by their id. */
-  ban_create_ban: {
-    parameters: {
-      path: {
-        server: components["schemas"]["Id"];
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["ServerBan"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataBanCreate"];
-      };
-    };
-  };
-  /** Remove a user's ban. */
-  ban_remove_unban: {
-    parameters: {
-      path: {
-        server: components["schemas"]["Id"];
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Fetch all bans on a server. */
-  ban_list_list: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["BanListResult"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Fetch all server invites. */
-  invites_fetch_invites: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Invite"][];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Creates a new server role. */
-  roles_create_create: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["NewRoleResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataCreateRole"];
-      };
-    };
-  };
-  /** Fetch a role by its id. */
-  roles_fetch_fetch: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        role_id: string;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Role"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Delete a server role by its id. */
-  roles_delete_delete: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        role_id: string;
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Edit a role by its id. */
-  roles_edit_edit: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        role_id: string;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Role"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataEditRole"];
-      };
-    };
-  };
-  /** Sets permissions for the specified role in the server. */
-  permissions_set_set_role_permission: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-        role_id: string;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Server"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataSetServerRolePermission"];
-      };
-    };
-  };
-  /** Sets permissions for the default role in this server. */
-  permissions_set_default_set_default_server_permissions: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Server"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataPermissionsValue"];
-      };
-    };
-  };
-  /** Fetch all emoji on a server. */
-  emoji_list_list_emoji: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Emoji"][];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Edit's server role's ranks. */
-  roles_edit_positions_edit_role_ranks: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["Server"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataEditRoleRanks"];
-      };
-    };
-  };
-  /** Fetch an invite by its id. */
-  invite_fetch_fetch: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["InviteResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Join an invite by its ID */
-  invite_join_join: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["InviteJoinResponse"];
-        };
-      };
-      /** An error occurred. */
-      default: {
-        content: {
-          "application/json": components["schemas"]["Error"];
-        };
-      };
-    };
-  };
-  /** Delete an invite by its id. */
-  invite_delete_delete: {
-    parameters: {
-      path: {
-        target: components["schemas"]["Id"];
-      };
-    };
-    responses: {
-      /** Success */
-      204: never;
       /** An error occurred. */
       default: {
         content: {
@@ -5685,6 +4680,1458 @@ export interface operations {
     requestBody: {
       content: {
         "application/octet-stream": string;
+      };
+    };
+  };
+  badges_list: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Badge"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  badges_create: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Badge"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataCreateBadge"];
+      };
+    };
+  };
+  badges_delete: {
+    parameters: {
+      path: {
+        badge_id: string;
+      };
+    };
+    responses: {
+      200: unknown;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  badges_edit: {
+    parameters: {
+      path: {
+        badge_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Badge"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataEditBadge"];
+      };
+    };
+  };
+  users_fetch: {
+    parameters: {
+      path: {
+        query: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["User"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  user_badges_list: {
+    parameters: {
+      path: {
+        user_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Badge"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  user_badges_assign: {
+    parameters: {
+      path: {
+        user_id: string;
+        badge_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Badge"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  user_badges_remove: {
+    parameters: {
+      path: {
+        user_id: string;
+        badge_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Badge"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Create a new server. */
+  server_create_create_server: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["CreateServerLegacyResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataCreateServer"];
+      };
+    };
+  };
+  /** Fetch a server by its id. */
+  server_fetch_fetch: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+      query: {
+        /** Whether to include channels */
+        include_channels?: boolean | null;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FetchServerResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Deletes a server if owner otherwise leaves. */
+  server_delete_delete: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+      query: {
+        /** Whether to not send a leave message */
+        leave_silently?: boolean | null;
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Edit a server by its id. */
+  server_edit_edit: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Server"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataEditServer"];
+      };
+    };
+  };
+  /** Fetch server audit log entries. */
+  audit_log_fetch_audit_log: {
+    parameters: {
+      path: {
+        server: components["schemas"]["Id"];
+      };
+      query: {
+        actor?: string | null;
+        before?: string | null;
+        limit?: number | null;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["ServerAuditLogPage"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Mark all channels in a server as read. */
+  server_ack_ack: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Create a new Text or Voice channel. */
+  channel_create_create_server_channel: {
+    parameters: {
+      path: {
+        server: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Channel"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataCreateServerChannel"];
+      };
+    };
+  };
+  /** Fetch all server members. */
+  member_fetch_all_fetch_all: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+      query: {
+        /** Whether to exclude offline users */
+        exclude_offline?: boolean | null;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["AllMemberResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Retrieve a member. */
+  member_fetch_fetch: {
+    parameters: {
+      path: {
+        server_id: components["schemas"]["Id"];
+        member_id: components["schemas"]["Id"];
+      };
+      query: {
+        roles?: boolean | null;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["MemberResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Removes a member from the server. */
+  member_remove_kick: {
+    parameters: {
+      path: {
+        server_id: components["schemas"]["Id"];
+        member_id: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataModerationAction"];
+      };
+    };
+  };
+  /** Edit a member by their id. */
+  member_edit_edit: {
+    parameters: {
+      path: {
+        server_id: components["schemas"]["Id"];
+        member_id: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Member"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataMemberEdit"];
+      };
+    };
+  };
+  /** Query members by a given name, this API is not stable and will be removed in the future. */
+  member_experimental_query_member_experimental_query: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+      query: {
+        /** String to search for */
+        query: string;
+        /** Discourage use of this API */
+        experimental_api: boolean;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["MemberQueryResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Ban a user by their id. */
+  ban_create_ban: {
+    parameters: {
+      path: {
+        server: components["schemas"]["Id"];
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["ServerBan"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataBanCreate"];
+      };
+    };
+  };
+  /** Remove a user's ban. */
+  ban_remove_unban: {
+    parameters: {
+      path: {
+        server: components["schemas"]["Id"];
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataModerationAction"];
+      };
+    };
+  };
+  /** Fetch all bans on a server. */
+  ban_list_list: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["BanListResult"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Fetch all server invites. */
+  invites_fetch_invites: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Invite"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Creates a new server role. */
+  roles_create_create: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["NewRoleResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataCreateRole"];
+      };
+    };
+  };
+  /** Fetch a role by its id. */
+  roles_fetch_fetch: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        role_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Role"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Delete a server role by its id. */
+  roles_delete_delete: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        role_id: string;
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Edit a role by its id. */
+  roles_edit_edit: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        role_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Role"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataEditRole"];
+      };
+    };
+  };
+  /** Sets permissions for the specified role in the server. */
+  permissions_set_set_role_permission: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        role_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Server"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataSetServerRolePermission"];
+      };
+    };
+  };
+  /** Sets permissions for the default role in this server. */
+  permissions_set_default_set_default_server_permissions: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Server"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataPermissionsValue"];
+      };
+    };
+  };
+  /** Fetch all emoji on a server. */
+  emoji_list_list_emoji: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Emoji"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Edit's server role's ranks. */
+  roles_edit_positions_edit_role_ranks: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Server"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataEditRoleRanks"];
+      };
+    };
+  };
+  /** Lets the server and all other clients know that we've seen this message id in this channel. */
+  channel_ack_ack: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        message: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Fetch channel by its id. */
+  channel_fetch_fetch: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Channel"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Deletes a server channel, leaves a group or closes a group. */
+  channel_delete_delete: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+      query: {
+        /** Whether to not send a leave message */
+        leave_silently?: boolean | null;
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Edit a channel object by its id. */
+  channel_edit_edit: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Channel"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataEditChannel"];
+      };
+    };
+  };
+  /**
+   * Retrieves all users who are part of this group.
+   *
+   * This may not return full user information if users are not friends but have mutual connections.
+   */
+  members_fetch_fetch_members: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["User"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /**
+   * Creates an invite to this channel.
+   *
+   * Channel must be a `TextChannel`.
+   */
+  invite_create_create_invite: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Invite"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataCreateInvite"];
+      };
+    };
+  };
+  /** Fetch multiple messages. */
+  message_query_query: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+      query: {
+        /**
+         * Maximum number of messages to fetch
+         *
+         * For fetching nearby messages, this is \`(limit + 2)\`.
+         */
+        limit?: number | null;
+        /** Message id before which messages should be fetched */
+        before?: string | null;
+        /** Message id after which messages should be fetched */
+        after?: string | null;
+        /** Message sort direction */
+        sort?: components["schemas"]["MessageSort"] | null;
+        /**
+         * Message id to search around
+         *
+         * Specifying 'nearby' ignores 'before', 'after' and 'sort'. It will also take half of limit rounded as the limits to each side. It also fetches the message ID specified.
+         */
+        nearby?: string | null;
+        /** Whether to include user (and member, if server channel) objects */
+        include_users?: boolean | null;
+        /** Whether to only fetch pinned messages */
+        pinned?: boolean | null;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["BulkMessageResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Sends a message to the given channel. */
+  message_send_message_send: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+      header: {
+        /** Unique key to prevent duplicate requests */
+        "Idempotency-Key"?: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Message"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataMessageSend"];
+      };
+    };
+  };
+  /** This route searches for messages within the given parameters. */
+  message_search_search: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["BulkMessageResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataMessageSearch"];
+      };
+    };
+  };
+  /** Pins a message by its id. */
+  message_pin_message_pin: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Unpins a message by its id. */
+  message_unpin_message_unpin: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Retrieves a message by its id. */
+  message_fetch_fetch: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Message"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Delete a message you've sent or one you have permission to delete. */
+  message_delete_delete: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Edits a message that you've previously sent. */
+  message_edit_edit: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Message"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataEditMessage"];
+      };
+    };
+  };
+  /**
+   * Delete multiple messages you've sent or one you have permission to delete.
+   *
+   * This will always require `ManageMessages` permission regardless of whether you own the message or not.
+   *
+   * Messages must have been sent within the past 1 week.
+   */
+  message_bulk_delete_bulk_delete_messages: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OptionsBulkDelete"];
+      };
+    };
+  };
+  /** Create a new group channel. */
+  group_create_create_group: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Channel"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataCreateGroup"];
+      };
+    };
+  };
+  /** Adds another user to the group. */
+  group_add_member_add_member: {
+    parameters: {
+      path: {
+        group_id: components["schemas"]["Id"];
+        member_id: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Removes a user from the group. */
+  group_remove_member_remove_member: {
+    parameters: {
+      path: {
+        group_id: components["schemas"]["Id"];
+        member_id: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Cancels a ringing one-to-one DM call. The authenticated user must be the call initiator. */
+  voice_cancel_call_cancel_call: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Declines an incoming one-to-one DM call without ending the call. The declined call remains joinable while the caller stays connected. */
+  voice_decline_call_decline_call: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /**
+   * Sets permissions for the specified role in this channel.
+   *
+   * Channel must be a `TextChannel`.
+   */
+  permissions_set_set_role_permissions: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        role_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Channel"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataSetRolePermissions"];
+      };
+    };
+  };
+  /**
+   * Sets permissions for the default role in this channel.
+   *
+   * Channel must be a `Group` or `TextChannel`.
+   */
+  permissions_set_default_set_default_channel_permissions: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Channel"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataDefaultChannelPermissions"];
+      };
+    };
+  };
+  /** React to a given message. */
+  message_react_react_message: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+        emoji: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /**
+   * Remove your own, someone else's or all of a given reaction.
+   *
+   * Requires `ManageMessages` if changing others' reactions.
+   */
+  message_unreact_unreact_message: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+        emoji: components["schemas"]["Id"];
+      };
+      query: {
+        /** Remove a specific user's reaction */
+        user_id?: string | null;
+        /** Remove all reactions */
+        remove_all?: boolean | null;
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /**
+   * Remove your own, someone else's or all of a given reaction.
+   *
+   * Requires `ManageMessages` permission.
+   */
+  message_clear_reactions_clear_reactions: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        msg: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Gets all webhooks inside the channel */
+  webhook_fetch_all_fetch_webhooks: {
+    parameters: {
+      path: {
+        channel_id: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Webhook"][];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Creates a webhook which 3rd party platforms can use to send messages */
+  webhook_create_create_webhook: {
+    parameters: {
+      path: {
+        channel_id: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Webhook"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateWebhookBody"];
+      };
+    };
+  };
+  /** Fetch an invite by its id. */
+  invite_fetch_fetch: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["InviteResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Join an invite by its ID */
+  invite_join_join: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["InviteJoinResponse"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  /** Delete an invite by its id. */
+  invite_delete_delete: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+      };
+    };
+    responses: {
+      /** Success */
+      204: never;
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
       };
     };
   };

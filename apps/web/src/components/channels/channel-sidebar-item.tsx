@@ -25,7 +25,7 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { ackChannel } from '#/features/api/sync-api'
 import { deleteChannel } from '#/features/api/channels-api'
-import { createChannelInvite } from '#/features/api/servers-api'
+import { createChannelInvite } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
 import {
   getChannelLabel,

@@ -11,10 +11,9 @@ import {
 } from '#/components/ui/dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  createChannelInvite,
   fetchServerInvites,
 } from '#/features/api/servers-api'
-import { deleteInvite } from '#/features/api/invites-api'
+import { createChannelInvite, deleteInvite } from '#/features/api/invites-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import {

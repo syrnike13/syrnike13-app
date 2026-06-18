@@ -3,10 +3,12 @@ import type {
   DataCreateRole,
   DataCreateServer,
   DataCreateServerChannel,
+  DataBanCreate,
   DataEditRole,
   DataEditRoleRanks,
   DataEditServer,
   DataMemberEdit,
+  DataModerationAction,
   DataPermissionsValue,
   DataSetServerRolePermission,
   MemberResponse,
@@ -16,6 +18,7 @@ import type {
   NewRoleResponse,
   Role,
   Server,
+  ServerAuditLogPage,
   User,
 } from '@syrnike13/api-types'
 
@@ -55,6 +58,23 @@ export async function fetchServerMembers(token: string, serverId: string) {
 
 export async function fetchServerInvites(token: string, serverId: string) {
   return apiRequest<Invite[]>(`/servers/${serverId}/invites`, { token })
+}
+
+export async function fetchServerAuditLog(
+  token: string,
+  serverId: string,
+  params: { before?: string; actor?: string; limit?: number } = {},
+) {
+  const search = new URLSearchParams()
+  if (params.before) search.set('before', params.before)
+  if (params.actor) search.set('actor', params.actor)
+  if (params.limit) search.set('limit', String(params.limit))
+  const suffix = search.toString() ? `?${search}` : ''
+
+  return apiRequest<ServerAuditLogPage>(
+    `/servers/${serverId}/audit-log${suffix}`,
+    { token },
+  )
 }
 
 export async function createServerChannel(
@@ -141,10 +161,12 @@ export async function kickServerMember(
   token: string,
   serverId: string,
   userId: string,
+  body: DataModerationAction = {},
 ) {
   return apiRequest<void>(`/servers/${serverId}/members/${userId}`, {
     method: 'DELETE',
     token,
+    body,
   })
 }
 
@@ -152,17 +174,25 @@ export async function banServerMember(
   token: string,
   serverId: string,
   userId: string,
+  body: DataBanCreate = {},
 ) {
   return apiRequest<void>(`/servers/${serverId}/bans/${userId}`, {
     method: 'PUT',
     token,
+    body,
   })
 }
 
-export async function createChannelInvite(token: string, channelId: string) {
-  return apiRequest<Invite>(`/channels/${channelId}/invites`, {
-    method: 'POST',
+export async function unbanServerMember(
+  token: string,
+  serverId: string,
+  userId: string,
+  body: DataModerationAction = {},
+) {
+  return apiRequest<void>(`/servers/${serverId}/bans/${userId}`, {
+    method: 'DELETE',
     token,
+    body,
   })
 }
 
