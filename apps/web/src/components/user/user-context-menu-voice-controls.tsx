@@ -1,8 +1,14 @@
 import { useState } from 'react'
-import type { DataMemberEdit, Member, Server } from '@syrnike13/api-types'
+import type {
+  Channel,
+  DataMemberEdit,
+  Member,
+  Server,
+} from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import {
+  HeadphonesIcon,
   HeadphoneOffIcon,
   MicOffIcon,
   PhoneOffIcon,
@@ -12,6 +18,9 @@ import {
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
 } from '#/components/ui/context-menu'
 import { Slider } from '#/components/ui/slider'
 import { editServerMember } from '#/features/api/servers-api'
@@ -22,6 +31,7 @@ import {
   voiceListenerStore,
   useVoiceListenerStore,
 } from '#/features/voice/voice-listener-store'
+import { runtimeChannelName } from '#/lib/channel-voice'
 import {
   canDeafenServerMember,
   canMoveServerMember,
@@ -36,9 +46,10 @@ type UserContextMenuVoiceControlsProps = {
   actorUserId?: string
   targetMember?: Member
   voiceChannelId?: string
+  moveVoiceChannels?: Channel[]
 }
 
-type ServerVoiceAction = 'mute' | 'deafen' | 'disconnect'
+type ServerVoiceAction = 'mute' | 'deafen' | 'disconnect' | 'move'
 
 export function UserContextMenuVoiceControls({
   userId,
@@ -48,6 +59,7 @@ export function UserContextMenuVoiceControls({
   actorUserId,
   targetMember,
   voiceChannelId,
+  moveVoiceChannels = [],
 }: UserContextMenuVoiceControlsProps) {
   const volume = useVoiceListenerStore((s) => s.getUserVolume(userId))
   const muted = useVoiceListenerStore((s) => s.getUserMuted(userId))
@@ -60,17 +72,20 @@ export function UserContextMenuVoiceControls({
   const canServerDeafen =
     server &&
     canDeafenServerMember(server, actorMember, actorUserId, targetMember)
-  const canServerDisconnect =
+  const canServerMove =
     server &&
     voiceChannelId &&
     canMoveServerMember(server, actorMember, actorUserId, targetMember)
+  const moveTargets = moveVoiceChannels.filter(
+    (channel) => channel._id !== voiceChannelId,
+  )
   const serverMuted = targetMember?.can_publish === false
   const serverDeafened = targetMember?.can_receive === false
   const showServerControls = Boolean(
     token &&
       server &&
       targetMember &&
-      (canServerMute || canServerDeafen || canServerDisconnect),
+      (canServerMute || canServerDeafen || canServerMove),
   )
 
   async function editTargetMember(
@@ -91,6 +106,20 @@ export function UserContextMenuVoiceControls({
       syncStore.upsertMembers([updated])
       if (data.remove?.includes('VoiceChannel') && voiceChannelId) {
         syncStore.removeVoiceParticipant(voiceChannelId, targetMember._id.user)
+      }
+      if (data.voice_channel && voiceChannelId) {
+        const participant =
+          syncStore.getState().voiceParticipants[voiceChannelId]?.[
+            targetMember._id.user
+          ]
+        if (participant) {
+          syncStore.removeVoiceParticipant(voiceChannelId, targetMember._id.user)
+          syncStore.patchVoiceParticipant(
+            data.voice_channel,
+            targetMember._id.user,
+            participant,
+          )
+        }
       }
       toast.success(successMessage)
     } catch (error) {
@@ -184,7 +213,36 @@ export function UserContextMenuVoiceControls({
               Отключить звук
             </ContextMenuCheckboxItem>
           ) : null}
-          {canServerDisconnect ? (
+          {canServerMove && moveTargets.length > 0 ? (
+            <ContextMenuSub>
+              <ContextMenuSubTrigger disabled={pendingAction !== null}>
+                <HeadphonesIcon />
+                Переместить в
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                {moveTargets.map((channel) => {
+                  const channelName =
+                    runtimeChannelName(channel) ?? 'Голосовой канал'
+                  return (
+                    <ContextMenuItem
+                      key={channel._id}
+                      disabled={pendingAction !== null}
+                      onSelect={() => {
+                        void editTargetMember(
+                          'move',
+                          { voice_channel: channel._id },
+                          `Участник перемещён в ${channelName}`,
+                        )
+                      }}
+                    >
+                      {channelName}
+                    </ContextMenuItem>
+                  )
+                })}
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+          ) : null}
+          {canServerMove ? (
             <ContextMenuItem
               variant="destructive"
               disabled={pendingAction !== null}

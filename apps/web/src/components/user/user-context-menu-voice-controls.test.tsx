@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import type { Member, Server } from '@syrnike13/api-types'
+import type { Channel, Member, Server } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
@@ -73,6 +73,23 @@ vi.mock('#/components/ui/context-menu', () => ({
     <div>{children}</div>
   ),
   ContextMenuSeparator: () => <hr />,
+  ContextMenuSub: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuSubContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuSubTrigger: ({
+    children,
+    disabled,
+  }: {
+    children: ReactNode
+    disabled?: boolean
+  }) => (
+    <button type="button" disabled={disabled}>
+      {children}
+    </button>
+  ),
 }))
 
 vi.mock('#/components/ui/slider', () => ({
@@ -122,12 +139,25 @@ function makeMember(userId: string, roles: string[]): Member {
   } as Member
 }
 
+function makeVoiceChannel(id: string, name: string): Channel {
+  return {
+    _id: id,
+    channel_type: 'TextChannel',
+    server: 'server-1',
+    name,
+    default_permissions: null,
+    voice: { max_users: null },
+  } as Channel
+}
+
 const ACTOR_USER_ID = '01JVOICEACTOR00000001'
 const TARGET_USER_ID = '01JVOICETARGET0000001'
 const server = makeServer()
 const actorMember = makeMember(ACTOR_USER_ID, ['mod'])
 
-function renderControls(targetMember: Member = makeMember(TARGET_USER_ID, ['member'])) {
+function renderControls(
+  targetMember: Member = makeMember(TARGET_USER_ID, ['member']),
+) {
   render(
     <UserContextMenuVoiceControls
       userId={TARGET_USER_ID}
@@ -137,6 +167,10 @@ function renderControls(targetMember: Member = makeMember(TARGET_USER_ID, ['memb
       actorUserId={ACTOR_USER_ID}
       targetMember={targetMember}
       voiceChannelId="voice-1"
+      moveVoiceChannels={[
+        makeVoiceChannel('voice-1', 'Lobby'),
+        makeVoiceChannel('voice-2', 'Raid Room'),
+      ]}
     />,
   )
 }
@@ -228,5 +262,34 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     expect(
       syncStore.getState().voiceParticipants['voice-1']?.[TARGET_USER_ID],
     ).toBeUndefined()
+  })
+
+  it('moves a voice participant to another voice channel', async () => {
+    mocks.editServerMember.mockResolvedValue(
+      makeMember(TARGET_USER_ID, ['member']),
+    )
+
+    renderControls()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Raid Room' }))
+
+    await waitFor(() => {
+      expect(mocks.editServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        TARGET_USER_ID,
+        { voice_channel: 'voice-2' },
+      )
+    })
+    expect(
+      syncStore.getState().voiceParticipants['voice-1']?.[TARGET_USER_ID],
+    ).toBeUndefined()
+    expect(
+      syncStore.getState().voiceParticipants['voice-2']?.[TARGET_USER_ID],
+    ).toEqual(
+      expect.objectContaining({
+        id: TARGET_USER_ID,
+      }),
+    )
   })
 })

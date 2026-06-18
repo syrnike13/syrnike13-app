@@ -129,7 +129,7 @@ describe('UserContextMenuContent', () => {
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',
-      owner: 'owner-user',
+      owner: 'current-user',
       channels: ['voice-1'],
       default_permissions: 0,
       roles: {},
@@ -141,6 +141,21 @@ describe('UserContextMenuContent', () => {
       name: 'Voice',
       default_permissions: null,
       voice: { max_users: null },
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'voice-2',
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'Raid Room',
+      default_permissions: null,
+      voice: { max_users: null },
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'text-1',
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'general',
+      default_permissions: null,
     } as never)
     syncStore.upsertMembers([
       {
@@ -185,6 +200,10 @@ describe('UserContextMenuContent', () => {
           _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
         }),
         voiceChannelId: 'voice-1',
+        moveVoiceChannels: [
+          expect.objectContaining({ _id: 'voice-1' }),
+          expect.objectContaining({ _id: 'voice-2' }),
+        ],
       }),
     )
   })

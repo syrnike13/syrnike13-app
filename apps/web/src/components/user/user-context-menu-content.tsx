@@ -26,12 +26,18 @@ import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { selectDirectMessageCallActionLabel } from '#/features/sync/selectors'
+import {
+  listServerChannels,
+  selectDirectMessageCallActionLabel,
+} from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { useVoice } from '#/features/voice/voice-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
 import { writeClipboardText } from '#/lib/clipboard'
-import { serverChannelServerId } from '#/lib/channel-voice'
+import {
+  isServerVoiceChannel,
+  serverChannelServerId,
+} from '#/lib/channel-voice'
 import {
   canBanServerMember,
   canKickServerMember,
@@ -80,6 +86,13 @@ export function UserContextMenuContent({
     }
     return undefined
   })
+  const moveVoiceChannels = useSyncStore((s) =>
+    serverId
+      ? listServerChannels(s, serverId, auth.user?._id).filter(
+          isServerVoiceChannel,
+        )
+      : [],
+  )
   const directCallActionLabel = useSyncStore((s) =>
     selectDirectMessageCallActionLabel(s, auth.user?._id, user._id),
   )
@@ -193,6 +206,7 @@ export function UserContextMenuContent({
           actorUserId={auth.user?._id}
           targetMember={targetMember}
           voiceChannelId={targetVoiceChannelId}
+          moveVoiceChannels={moveVoiceChannels}
         />
       ) : null}
       <ContextMenuItem onSelect={() => onOpenProfile?.()}>
