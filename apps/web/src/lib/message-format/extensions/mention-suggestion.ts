@@ -1,4 +1,4 @@
-import type { User } from '@syrnike13/api-types'
+import type { Role, User } from '@syrnike13/api-types'
 import { Extension } from '@tiptap/core'
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion'
 
@@ -10,6 +10,14 @@ export type MentionSuggestionItem =
       serverName: string
       username: string
       nameColour?: string
+    }
+  | {
+      kind: 'role'
+      id: string
+      role: Role
+      label: string
+      description: string
+      colour?: string
     }
   | {
       kind: 'everyone' | 'online'
@@ -43,6 +51,18 @@ export function createMentionSuggestionExtension(
                 .focus()
                 .insertContentAt(range, [
                   { type: 'massMention', attrs: { kind: props.kind } },
+                  { type: 'text', text: ' ' },
+                ])
+                .run()
+              return
+            }
+
+            if (props.kind === 'role') {
+              editor
+                .chain()
+                .focus()
+                .insertContentAt(range, [
+                  { type: 'roleMention', attrs: { id: props.id } },
                   { type: 'text', text: ' ' },
                 ])
                 .run()
