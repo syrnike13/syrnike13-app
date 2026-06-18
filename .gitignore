@@ -79,3 +79,4 @@ secrets.env
 /.data/
 
 .superpowers/
+.worktrees/
