@@ -52,6 +52,10 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const prevGatewayStateRef = useRef(eventsGateway.state)
 
   useEffect(() => {
+    syncStore.setCurrentUserId(auth.user?._id)
+  }, [auth.user?._id])
+
+  useEffect(() => {
     const token = auth.session?.token
     const currentUserId = auth.user?._id
 

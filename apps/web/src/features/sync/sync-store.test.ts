@@ -759,6 +759,83 @@ describe('syncStore voice events', () => {
   })
 })
 
+describe('syncStore member events', () => {
+  it('stores the full member payload from ServerMemberJoin', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerMemberJoin',
+      id: 'server-1',
+      user: 'user-1',
+      member: {
+        _id: { server: 'server-1', user: 'user-1' },
+        roles: ['role-1'],
+        nickname: 'Ava',
+      },
+    } as never)
+
+    expect(syncStore.getState().members['server-1:user-1']).toEqual({
+      _id: { server: 'server-1', user: 'user-1' },
+      roles: ['role-1'],
+      nickname: 'Ava',
+    })
+  })
+
+  it('applies ServerMemberUpdate clear fields to unloaded members', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerMemberUpdate',
+      id: { server: 'server-1', user: 'user-1' },
+      data: { nickname: 'Ava', roles: ['role-1'] },
+      clear: ['Nickname', 'Roles'],
+    } as never)
+
+    expect(syncStore.getState().members['server-1:user-1']).toEqual({
+      _id: { server: 'server-1', user: 'user-1' },
+      roles: [],
+      nickname: undefined,
+    })
+  })
+
+  it('removes the server state when the current user leaves it', () => {
+    syncStore.reset()
+    syncStore.setCurrentUserId('user-1')
+    syncStore.applyReady({
+      servers: [{ _id: 'server-1', name: 'Alpha' }],
+      channels: [
+        {
+          _id: 'channel-1',
+          name: 'general',
+          channel_type: 'TextChannel',
+          server: 'server-1',
+        },
+      ],
+      users: [],
+      members: [
+        {
+          _id: { server: 'server-1', user: 'user-1' },
+        },
+      ],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+    syncStore.setSelectedServerId('server-1')
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerMemberLeave',
+      id: 'server-1',
+      user: 'user-1',
+    })
+
+    expect(syncStore.getState().servers['server-1']).toBeUndefined()
+    expect(syncStore.getState().channels['channel-1']).toBeUndefined()
+    expect(syncStore.getState().members['server-1:user-1']).toBeUndefined()
+    expect(syncStore.getState().selectedServerId).toBeNull()
+  })
+})
+
 describe('syncStore applyReady', () => {
   it('preserves null selectedServerId instead of auto-selecting the first server', () => {
     syncStore.reset()

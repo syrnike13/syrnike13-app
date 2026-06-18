@@ -71,6 +71,25 @@ impl MassMessageConsumer {
     }
 }
 
+async fn visible_unmentioned_member_ids(
+    query: &BulkDatabasePermissionQuery<'_>,
+    chunk: &[Member],
+    existing_mentions: &HashSet<String, RandomState>,
+) -> Vec<String> {
+    let mut q = query.clone().members(chunk);
+    q.members_can_see_channel()
+        .await
+        .iter()
+        .filter_map(|(uid, viewable)| {
+            if *viewable && !existing_mentions.contains(uid) {
+                Some(uid.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 #[async_trait]
 impl Consumer for MassMessageConsumer {
     async fn create(
@@ -139,7 +158,7 @@ impl Consumer for MassMessageConsumer {
                         .await?;
 
                     let mut exhausted = false;
-                    let ack_chnl = vec![push.channel.id().to_string()];
+                    let message_ids = vec![push.message.id.clone()];
                     loop {
                         let mut chunk: Vec<Member> = vec![];
                         for _ in 0..config.pushd.mass_mention_chunk_size {
@@ -151,26 +170,26 @@ impl Consumer for MassMessageConsumer {
                             }
                         }
 
-                        let userids: Vec<String> =
-                            chunk.iter().map(|member| member.id.user.clone()).collect();
-
-                        debug!("Userids in chunk: {:?}", userids);
+                        let viewing_members =
+                            visible_unmentioned_member_ids(query, &chunk, &existing_mentions).await;
 
                         if let Err(err) = self
                             .db
-                            .add_mention_to_many_unreads(push.channel.id(), &userids, &ack_chnl)
+                            .add_mention_to_many_unreads(
+                                push.channel.id(),
+                                &viewing_members,
+                                &message_ids,
+                            )
                             .await
                         {
                             syrnike_config::capture_error(&err);
                         }
 
                         // ignore anyone in this list
-                        let online_users = syrnike_presence::filter_online(&userids).await;
-                        let target_users: Vec<String> = userids
+                        let online_users = syrnike_presence::filter_online(&viewing_members).await;
+                        let target_users: Vec<String> = viewing_members
                             .iter()
-                            .filter(|id| {
-                                !online_users.contains(*id) && !existing_mentions.contains(*id)
-                            })
+                            .filter(|id| !online_users.contains(*id))
                             .cloned()
                             .collect();
 
@@ -208,19 +227,8 @@ impl Consumer for MassMessageConsumer {
                             }
                         }
 
-                        let mut q = query.clone().members(&chunk);
-                        let viewing_members: Vec<String> = q
-                            .members_can_see_channel()
-                            .await
-                            .iter()
-                            .filter_map(|(uid, viewable)| {
-                                if *viewable && !existing_mentions.contains(uid) {
-                                    Some(uid.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
+                        let viewing_members =
+                            visible_unmentioned_member_ids(query, &chunk, &existing_mentions).await;
 
                         debug!("viewing members: {:?}", viewing_members);
 
@@ -242,5 +250,134 @@ impl Consumer for MassMessageConsumer {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use syrnike_database::{Channel, DatabaseInfo, Member, MemberCompositeKey, Role, Server, User};
+    use syrnike_permissions::{ChannelPermission, OverrideField};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn everyone_mentions_only_target_members_who_can_view_the_channel() {
+        let db = DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let server_id = "server-1".to_string();
+        let channel_id = "channel-1".to_string();
+        let message_id = "message-1".to_string();
+        let visible_user_id = "user-visible".to_string();
+        let hidden_user_id = "user-hidden".to_string();
+        let viewer_role_id = "role-viewer".to_string();
+        let view_channel = ChannelPermission::ViewChannel as i64;
+
+        let visible_user = User {
+            id: visible_user_id.clone(),
+            username: "visible".to_string(),
+            discriminator: "0001".to_string(),
+            ..Default::default()
+        };
+        let hidden_user = User {
+            id: hidden_user_id.clone(),
+            username: "hidden".to_string(),
+            discriminator: "0002".to_string(),
+            ..Default::default()
+        };
+        db.insert_user(&visible_user).await.unwrap();
+        db.insert_user(&hidden_user).await.unwrap();
+
+        let server = Server {
+            id: server_id.clone(),
+            owner: "owner-1".to_string(),
+            name: "Server".to_string(),
+            description: None,
+            channels: vec![channel_id.clone()],
+            categories: None,
+            system_messages: None,
+            roles: HashMap::from([(
+                viewer_role_id.clone(),
+                Role {
+                    id: viewer_role_id.clone(),
+                    name: "Viewer".to_string(),
+                    permissions: OverrideField::default(),
+                    colour: None,
+                    hoist: false,
+                    mentionable: true,
+                    rank: 0,
+                    icon: None,
+                },
+            )]),
+            default_permissions: 0,
+            icon: None,
+            banner: None,
+            flags: None,
+            nsfw: false,
+            analytics: false,
+            discoverable: false,
+        };
+        let channel = Channel::TextChannel {
+            id: channel_id.clone(),
+            server: server_id.clone(),
+            name: "hidden".to_string(),
+            description: None,
+            icon: None,
+            last_message_id: None,
+            default_permissions: Some(OverrideField {
+                a: 0,
+                d: view_channel,
+            }),
+            role_permissions: HashMap::from([(
+                viewer_role_id.clone(),
+                OverrideField {
+                    a: view_channel,
+                    d: 0,
+                },
+            )]),
+            nsfw: false,
+            voice: None,
+            slowmode: None,
+        };
+        let visible_member = Member {
+            id: MemberCompositeKey {
+                server: server_id.clone(),
+                user: visible_user_id.clone(),
+            },
+            roles: vec![viewer_role_id],
+            ..Default::default()
+        };
+        let hidden_member = Member {
+            id: MemberCompositeKey {
+                server: server_id,
+                user: hidden_user_id.clone(),
+            },
+            ..Default::default()
+        };
+        let query = BulkDatabasePermissionQuery::new(&db, server).channel(&channel);
+
+        let targets = visible_unmentioned_member_ids(
+            &query,
+            &[visible_member, hidden_member],
+            &HashSet::new(),
+        )
+        .await;
+        db.add_mention_to_many_unreads(&channel_id, &targets, &[message_id.clone()])
+            .await
+            .unwrap();
+
+        assert_eq!(targets, vec![visible_user_id.clone()]);
+        let visible_unread = db
+            .fetch_unread(&visible_user_id, &channel_id)
+            .await
+            .unwrap()
+            .expect("visible unread");
+        assert_eq!(visible_unread.mentions, Some(vec![message_id]));
+        assert!(db
+            .fetch_unread(&hidden_user_id, &channel_id)
+            .await
+            .unwrap()
+            .is_none());
     }
 }

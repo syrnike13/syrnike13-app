@@ -94,6 +94,142 @@ impl Cache {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use syrnike_database::{DatabaseInfo, Role, Server, User};
+    use syrnike_permissions::OverrideField;
+
+    use super::*;
+
+    #[async_std::test]
+    async fn server_role_ranks_update_recalculates_current_user_channel_visibility() {
+        let db = DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let user = User {
+            id: "user-1".to_string(),
+            username: "user".to_string(),
+            discriminator: "0001".to_string(),
+            ..Default::default()
+        };
+        let server_id = "server-1".to_string();
+        let channel_id = "channel-1".to_string();
+        let allow_role_id = "role-allow".to_string();
+        let deny_role_id = "role-deny".to_string();
+        let view_channel = ChannelPermission::ViewChannel as i64;
+
+        let mut state = State::from(user.clone(), "session-1".to_string());
+        let server = Server {
+            id: server_id.clone(),
+            owner: "owner-1".to_string(),
+            name: "Server".to_string(),
+            description: None,
+            channels: vec![channel_id.clone()],
+            categories: None,
+            system_messages: None,
+            roles: HashMap::from([
+                (
+                    allow_role_id.clone(),
+                    Role {
+                        id: allow_role_id.clone(),
+                        name: "Allow".to_string(),
+                        permissions: OverrideField::default(),
+                        colour: None,
+                        hoist: false,
+                        mentionable: true,
+                        rank: 0,
+                        icon: None,
+                    },
+                ),
+                (
+                    deny_role_id.clone(),
+                    Role {
+                        id: deny_role_id.clone(),
+                        name: "Deny".to_string(),
+                        permissions: OverrideField::default(),
+                        colour: None,
+                        hoist: false,
+                        mentionable: true,
+                        rank: 1,
+                        icon: None,
+                    },
+                ),
+            ]),
+            default_permissions: 0,
+            icon: None,
+            banner: None,
+            flags: None,
+            nsfw: false,
+            analytics: false,
+            discoverable: false,
+        };
+        let member = Member {
+            id: MemberCompositeKey {
+                server: server_id.clone(),
+                user: user.id.clone(),
+            },
+            roles: vec![allow_role_id.clone(), deny_role_id.clone()],
+            ..Default::default()
+        };
+        let channel = Channel::TextChannel {
+            id: channel_id.clone(),
+            server: server_id.clone(),
+            name: "hidden".to_string(),
+            description: None,
+            icon: None,
+            last_message_id: None,
+            default_permissions: Some(OverrideField {
+                a: 0,
+                d: view_channel,
+            }),
+            role_permissions: HashMap::from([
+                (
+                    allow_role_id.clone(),
+                    OverrideField {
+                        a: view_channel,
+                        d: 0,
+                    },
+                ),
+                (
+                    deny_role_id.clone(),
+                    OverrideField {
+                        a: 0,
+                        d: view_channel,
+                    },
+                ),
+            ]),
+            nsfw: false,
+            voice: None,
+            slowmode: None,
+        };
+
+        state.cache.servers.insert(server_id.clone(), server);
+        state.cache.members.insert(server_id.clone(), member);
+        state.cache.channels.insert(channel_id.clone(), channel);
+        state.insert_subscription(server_id.clone()).await;
+        state.insert_subscription(channel_id.clone()).await;
+        state.apply_state().await;
+
+        let mut event = EventV1::ServerRoleRanksUpdate {
+            id: server_id.clone(),
+            ranks: vec![deny_role_id, allow_role_id],
+        };
+
+        assert!(state.handle_incoming_event_v1(&db, &mut event).await);
+        assert!(matches!(
+            event,
+            EventV1::Bulk { ref v }
+                if v.iter().any(|event| matches!(
+                    event,
+                    EventV1::ChannelDelete { id } if id == &channel_id
+                ))
+        ));
+        assert!(!state.subscribed.read().await.contains(&channel_id));
+        assert!(!state.cache.channels.contains_key(&channel_id));
+    }
+}
+
 /// State Manager
 impl State {
     /// Generate a Ready packet for the current user
@@ -677,6 +813,21 @@ impl State {
 
                 if let Some(member) = self.cache.members.get(id) {
                     if member.roles.contains(role_id) {
+                        queue_server = Some(id.clone());
+                    }
+                }
+            }
+            EventV1::ServerRoleRanksUpdate { id, ranks } => {
+                if let Some(server) = self.cache.servers.get_mut(id) {
+                    for (rank, role_id) in ranks.iter().enumerate() {
+                        if let Some(role) = server.roles.get_mut(role_id) {
+                            role.rank = rank as i64;
+                        }
+                    }
+                }
+
+                if let Some(member) = self.cache.members.get(id) {
+                    if ranks.iter().any(|role_id| member.roles.contains(role_id)) {
                         queue_server = Some(id.clone());
                     }
                 }

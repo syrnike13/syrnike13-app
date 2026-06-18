@@ -41,6 +41,7 @@ function emptyState(): SyncState {
 }
 
 let state = emptyState()
+let currentUserId: string | undefined
 const listeners = new Set<() => void>()
 const voiceCallExpiryTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const GROUP_UNANSWERED_ACTIVE_MS = 10 * 60 * 1000
@@ -250,8 +251,13 @@ export const syncStore = {
 
   reset() {
     clearVoiceCallExpiryTimers()
+    currentUserId = undefined
     state = emptyState()
     emit()
+  },
+
+  setCurrentUserId(userId: string | undefined) {
+    currentUserId = userId
   },
 
   setSelectedServerId(serverId: string | null) {
@@ -740,12 +746,44 @@ export const syncStore = {
   removeServer(serverId: string) {
     const { [serverId]: _, ...servers } = state.servers
     const channels = { ...state.channels }
+    const messages = { ...state.messages }
+    const unreads = { ...state.unreads }
+    const typingUsers = { ...state.typingUsers }
+    const voiceParticipants = { ...state.voiceParticipants }
+    const voiceCalls = { ...state.voiceCalls }
+    const members = { ...state.members }
+    const emojis = { ...state.emojis }
     for (const [id, channel] of Object.entries(channels)) {
       if (serverChannelServerId(channel) === serverId) {
         delete channels[id]
+        delete messages[id]
+        delete unreads[id]
+        delete typingUsers[id]
+        delete voiceParticipants[id]
+        delete voiceCalls[id]
       }
     }
-    setState({ servers, channels })
+    for (const key of Object.keys(members)) {
+      if (key.startsWith(`${serverId}:`)) {
+        delete members[key]
+      }
+    }
+    for (const [id, emoji] of Object.entries(emojis)) {
+      if (emoji.parent.type === 'Server' && emoji.parent.id === serverId) {
+        delete emojis[id]
+      }
+    }
+    setState({
+      servers,
+      channels,
+      messages,
+      unreads,
+      typingUsers,
+      voiceParticipants,
+      voiceCalls,
+      members,
+      emojis,
+    })
   },
 
   upsertChannel(channel: Channel) {
@@ -1284,8 +1322,11 @@ export const syncStore = {
           clear?: string[]
         }
         const key = `${id.server}:${id.user}`
-        const existing = state.members[key]
-        if (!existing) break
+        const existing =
+          state.members[key] ??
+          ({
+            _id: { server: id.server, user: id.user },
+          } as Member)
 
         let member: Member = {
           ...existing,
@@ -1322,23 +1363,25 @@ export const syncStore = {
         break
       }
       case 'ServerMemberJoin': {
-        const { id: serverId, user: userId } = event as {
+        const { member } = event as {
           id: string
           user: string
+          member: Member
         }
-        const key = `${serverId}:${userId}`
-        if (state.members[key]) break
-        this.upsertMembers([
-          {
-            _id: { server: serverId, user: userId },
-          } as Member,
-        ])
+        this.upsertMembers([member])
         break
       }
       case 'ServerMemberLeave': {
         const { id: serverId, user: userId } = event as {
           id: string
           user: string
+        }
+        if (userId === currentUserId) {
+          this.removeServer(serverId)
+          if (state.selectedServerId === serverId) {
+            this.setSelectedServerId(null)
+          }
+          break
         }
         this.removeServerMember(serverId, userId)
         break
