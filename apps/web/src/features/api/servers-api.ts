@@ -113,7 +113,7 @@ export async function ackServer(token: string, serverId: string) {
   })
 }
 
-export async function leaveServer(token: string, serverId: string) {
+export async function deleteOrLeaveServer(token: string, serverId: string) {
   return apiRequest<void>(`/servers/${serverId}`, {
     method: 'DELETE',
     token,

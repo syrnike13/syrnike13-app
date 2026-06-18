@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
 import type { DataEditServer, Emoji, FieldsServer } from '@syrnike13/api-types'
 import { toast } from 'sonner'
@@ -20,10 +21,12 @@ import { useAuth } from '#/features/auth/auth-context'
 import { uploadEmoji, uploadMediaFile } from '#/features/api/media-api'
 import {
   createServerEmoji,
+  deleteOrLeaveServer,
   deleteServerEmoji,
   editServer,
   fetchServerEmojis,
 } from '#/features/api/servers-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { serverBannerUrl, serverIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
@@ -85,6 +88,8 @@ function ServerSettingsGeneralPanel({
   serverName: string
 }) {
   const auth = useAuth()
+  const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
   const [name, setName] = useState(serverName)
   const [description, setDescription] = useState(
@@ -97,6 +102,7 @@ function ServerSettingsGeneralPanel({
   const [removeIcon, setRemoveIcon] = useState(false)
   const [removeBanner, setRemoveBanner] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deletingServer, setDeletingServer] = useState(false)
   const iconInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
 
@@ -199,6 +205,33 @@ function ServerSettingsGeneralPanel({
       )
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function deleteOwnedServer() {
+    const token = auth.session?.token
+    if (!token || !server || server.owner !== auth.user?._id) return
+    if (
+      !window.confirm(
+        `Удалить сервер «${server.name}»? Это действие необратимо.`,
+      )
+    ) {
+      return
+    }
+
+    setDeletingServer(true)
+    try {
+      await deleteOrLeaveServer(token, serverId)
+      syncStore.removeServer(serverId)
+      syncStore.setSelectedServerId(null)
+      toast.success('Сервер удалён')
+      await navigate({ to: prefix, search: { tab: 'online' } })
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось удалить сервер',
+      )
+    } finally {
+      setDeletingServer(false)
     }
   }
 
@@ -388,6 +421,32 @@ function ServerSettingsGeneralPanel({
           Сохранить
         </Button>
       </div>
+
+      {server?.owner === auth.user?._id ? (
+        <SettingsField
+          label="Опасная зона"
+          description="Удаление сервера невозможно отменить."
+          className="mt-6"
+        >
+          <div className="flex flex-col gap-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium text-destructive">Удалить сервер</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Сервер, каналы и участники будут удалены для всех.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={saving || deletingServer}
+              onClick={() => void deleteOwnedServer()}
+            >
+              <Trash2Icon className="size-4" />
+              Удалить сервер
+            </Button>
+          </div>
+        </SettingsField>
+      ) : null}
     </form>
   )
 }

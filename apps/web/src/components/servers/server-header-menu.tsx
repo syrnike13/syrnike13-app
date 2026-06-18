@@ -6,6 +6,7 @@ import {
   LogOutIcon,
   PlusCircleIcon,
   SettingsIcon,
+  Trash2Icon,
   UserPlusIcon,
 } from '#/components/icons'
 import { useNavigate } from '@tanstack/react-router'
@@ -21,7 +22,7 @@ import {
 } from '#/components/ui/popover'
 import { Separator } from '#/components/ui/separator'
 import { useAuth } from '#/features/auth/auth-context'
-import { leaveServer } from '#/features/api/servers-api'
+import { deleteOrLeaveServer } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
@@ -83,38 +84,45 @@ export function ServerHeaderMenu({
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
-  const [leaving, setLeaving] = useState(false)
+  const [removingServer, setRemovingServer] = useState(false)
 
   function openDialog(action: () => void) {
     setMenuOpen(false)
     action()
   }
 
-  async function handleLeave() {
+  async function handleRemoveServer() {
     const token = auth.session?.token
-    if (!token) return
+    const isOwner = server?.owner === auth.user?._id
+    if (!token || !server) return
     if (
       !window.confirm(
-        `Покинуть сервер «${serverName}»? Вы потеряете доступ к его каналам.`,
+        isOwner
+          ? `Удалить сервер «${serverName}»? Это действие необратимо.`
+          : `Покинуть сервер «${serverName}»? Вы потеряете доступ к его каналам.`,
       )
     ) {
       return
     }
 
     setMenuOpen(false)
-    setLeaving(true)
+    setRemovingServer(true)
     try {
-      await leaveServer(token, serverId)
+      await deleteOrLeaveServer(token, serverId)
       syncStore.removeServer(serverId)
       syncStore.setSelectedServerId(null)
-      toast.success('Вы покинули сервер')
+      toast.success(isOwner ? 'Сервер удалён' : 'Вы покинули сервер')
       await navigate({ to: '/app', search: { tab: 'online' } })
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Не удалось покинуть сервер',
+        error instanceof Error
+          ? error.message
+          : isOwner
+            ? 'Не удалось удалить сервер'
+            : 'Не удалось покинуть сервер',
       )
     } finally {
-      setLeaving(false)
+      setRemovingServer(false)
     }
   }
 
@@ -207,12 +215,20 @@ export function ServerHeaderMenu({
           ) : null}
           {menuPermissions?.leave ? (
             <ServerHeaderMenuItem
-              icon={<LogOutIcon className="size-4" />}
+              icon={
+                server?.owner === auth.user?._id ? (
+                  <Trash2Icon className="size-4" />
+                ) : (
+                  <LogOutIcon className="size-4" />
+                )
+              }
               destructive
-              disabled={leaving}
-              onClick={() => void handleLeave()}
+              disabled={removingServer}
+              onClick={() => void handleRemoveServer()}
             >
-              Покинуть сервер
+              {server?.owner === auth.user?._id
+                ? 'Удалить сервер'
+                : 'Покинуть сервер'}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.leave && menuPermissions?.copyId ? (

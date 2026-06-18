@@ -16,16 +16,25 @@ import { syncStore } from '#/features/sync/sync-store'
 const mocks = vi.hoisted(() => ({
   editServer: vi.fn(),
   uploadMediaFile: vi.fn(),
+  deleteOrLeaveServer: vi.fn(),
   createServerEmoji: vi.fn(),
   deleteServerEmoji: vi.fn(),
   fetchServerEmojis: vi.fn(),
+  navigate: vi.fn(),
   toastError: vi.fn(),
+  toastSuccess: vi.fn(),
+}))
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => mocks.navigate,
 }))
 
 vi.mock('sonner', () => ({
   toast: {
     error: (...args: Parameters<typeof mocks.toastError>) =>
       mocks.toastError(...args),
+    success: (...args: Parameters<typeof mocks.toastSuccess>) =>
+      mocks.toastSuccess(...args),
   },
 }))
 
@@ -34,6 +43,10 @@ vi.mock('#/features/auth/auth-context', () => ({
     session: { token: 'session-token' },
     user: { _id: 'user-1', username: 'alice' },
   }),
+}))
+
+vi.mock('#/features/navigation/route-prefix', () => ({
+  useAppRoutePrefix: () => '/app',
 }))
 
 vi.mock('#/features/api/media-api', () => ({
@@ -45,6 +58,9 @@ vi.mock('#/features/api/media-api', () => ({
 vi.mock('#/features/api/servers-api', () => ({
   createServerEmoji: (...args: Parameters<typeof mocks.createServerEmoji>) =>
     mocks.createServerEmoji(...args),
+  deleteOrLeaveServer: (
+    ...args: Parameters<typeof mocks.deleteOrLeaveServer>
+  ) => mocks.deleteOrLeaveServer(...args),
   deleteServerEmoji: (...args: Parameters<typeof mocks.deleteServerEmoji>) =>
     mocks.deleteServerEmoji(...args),
   editServer: (...args: Parameters<typeof mocks.editServer>) =>
@@ -86,6 +102,8 @@ describe('ServerSettingsPanelContent overview', () => {
     upsertServer()
     mocks.fetchServerEmojis.mockResolvedValue([])
     mocks.uploadMediaFile.mockResolvedValue('file-id')
+    mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
+    mocks.navigate.mockResolvedValue(undefined)
     mocks.editServer.mockImplementation((_token, _serverId, patch) =>
       Promise.resolve({
         _id: 'server-1',
@@ -101,6 +119,7 @@ describe('ServerSettingsPanelContent overview', () => {
   afterEach(() => {
     cleanup()
     syncStore.reset()
+    vi.restoreAllMocks()
     vi.clearAllMocks()
   })
 
@@ -159,5 +178,38 @@ describe('ServerSettingsPanelContent overview', () => {
       })
     })
     expect(mocks.uploadMediaFile).not.toHaveBeenCalled()
+  })
+
+  it('deletes an owned server from the overview danger zone', async () => {
+    upsertServer({ owner: 'user-1' })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить сервер' }))
+
+    await waitFor(() => {
+      expect(mocks.deleteOrLeaveServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+      )
+    })
+    expect(syncStore.getState().servers['server-1']).toBeUndefined()
+    await waitFor(() => {
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        to: '/app',
+        search: { tab: 'online' },
+      })
+    })
+  })
+
+  it('does not expose server deletion to non-owners in overview settings', () => {
+    upsertServer({ owner: 'owner-2' })
+
+    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+
+    expect(
+      screen.queryByRole('button', { name: 'Удалить сервер' }),
+    ).toBeNull()
   })
 })
