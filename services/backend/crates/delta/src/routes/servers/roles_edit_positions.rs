@@ -1,12 +1,14 @@
-use rocket::{serde::json::Json, State};
+use rocket::{State, serde::json::Json};
 use syrnike_database::{
+    Database, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{sync_voice_permissions, VoiceClient},
-    Database, User,
+    voice::{VoiceClient, sync_voice_permissions},
 };
 use syrnike_models::v0;
-use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
-use syrnike_result::{create_error, Result};
+use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
+use syrnike_result::{Result, create_error};
+
+use super::audit_mutation;
 
 /// # Edits server roles ranks
 ///
@@ -70,36 +72,145 @@ pub async fn edit_role_ranks(
         }
     }
 
-    server.set_role_ordering(db, new_order).await?;
+    let before_order = server
+        .ordered_roles()
+        .into_iter()
+        .map(|(id, role)| (id, role.rank))
+        .collect::<Vec<_>>();
+    let after_order = new_order
+        .iter()
+        .enumerate()
+        .map(|(rank, id)| (id.clone(), rank as i64))
+        .collect::<Vec<_>>();
+    let mut audit = audit_mutation::insert_pending_audit(
+        db,
+        server.id.clone(),
+        user.id.clone(),
+        ServerAuditLogAction::RoleReorder,
+        ServerAuditLogTarget::Server {
+            id: server.id.clone(),
+        },
+        None,
+        audit_mutation::audit_changes(vec![(
+            "ranks",
+            audit_mutation::audit_change(Some(before_order), Some(after_order))?,
+        )]),
+    )
+    .await?;
+
+    if let Err(error) = server.set_role_ordering(db, new_order).await {
+        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+    }
 
     for channel_id in &server.channels {
-        let channel = Reference::from_unchecked(channel_id).as_channel(db).await?;
+        let channel = match Reference::from_unchecked(channel_id).as_channel(db).await {
+            Ok(channel) => channel,
+            Err(error) => {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+        };
 
-        sync_voice_permissions(db, voice_client, &channel, Some(&server), None).await?;
+        if let Err(error) =
+            sync_voice_permissions(db, voice_client, &channel, Some(&server), None).await
+        {
+            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+        }
     }
+
+    audit.mark_succeeded(db).await?;
 
     Ok(Json(server.into()))
 }
 
 #[cfg(test)]
-mod test {
-    use rocket::http::{ContentType, Header, Status};
-    use syrnike_database::fixture;
-    use syrnike_models::v0;
+fn routes_under_test() -> Vec<rocket::Route> {
+    routes![edit_role_ranks]
+}
 
-    use crate::util::test::TestHarness;
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+
+    use authifier::{
+        Authifier,
+        models::{Account, EmailVerification, Session},
+    };
+    use rocket::http::{ContentType, Header, Status};
+    use rocket::local::asynchronous::Client;
+    use syrnike_database::{Database, DatabaseInfo, fixture, voice::VoiceClient};
+    use syrnike_models::v0;
+    use ulid::Ulid;
+
+    struct RoleRanksTestContext {
+        client: Client,
+        db: Database,
+        authifier: Authifier,
+    }
+
+    impl RoleRanksTestContext {
+        async fn new() -> Self {
+            let db = DatabaseInfo::Reference
+                .connect()
+                .await
+                .expect("reference database");
+            let authifier = db.clone().to_authifier().await;
+            let client = Client::tracked(
+                rocket::build()
+                    .mount("/servers", super::routes_under_test())
+                    .manage(authifier.clone())
+                    .manage(db.clone())
+                    .manage(VoiceClient::new(HashMap::new())),
+            )
+            .await
+            .expect("valid rocket instance");
+
+            Self {
+                client,
+                db,
+                authifier,
+            }
+        }
+
+        async fn account_from_user(&self, id: String) -> (Account, Session) {
+            let account = Account {
+                id,
+                email: format!("{}@syrnike13.ru", Ulid::new()),
+                password: Default::default(),
+                email_normalised: Default::default(),
+                deletion: None,
+                disabled: false,
+                lockout: None,
+                mfa: Default::default(),
+                password_reset: None,
+                verification: EmailVerification::Verified,
+            };
+
+            self.authifier
+                .database
+                .save_account(&account)
+                .await
+                .expect("account saved");
+
+            let session = account
+                .create_session(&self.authifier, String::new())
+                .await
+                .expect("session created");
+
+            (account, session)
+        }
+    }
 
     #[rocket::async_test]
     async fn edit_role_rankings() {
-        let harness = TestHarness::new().await;
+        let context = RoleRanksTestContext::new().await;
 
-        fixture!(harness.db, "server_with_many_roles",
+        fixture!(context.db, "server_with_many_roles",
             owner user 0
             moderator user 1
             server server 4);
 
         // Moderator can re-order the roles below them
-        let (_, moderator_session) = harness.account_from_user(moderator.id).await;
+        let (_, moderator_session) = context.account_from_user(moderator.id).await;
         let mut target_order: Vec<String> = server
             .ordered_roles()
             .into_iter()
@@ -109,7 +220,7 @@ mod test {
         // Swap the two lower ranked roles
         target_order.swap(2, 3);
 
-        let response = harness
+        let response = context
             .client
             .patch(format!("/servers/{}/roles/ranks", server.id))
             .header(ContentType::JSON)
@@ -139,7 +250,7 @@ mod test {
         // Swap the two lower ranked roles
         target_order.swap(0, 1);
 
-        let response = harness
+        let response = context
             .client
             .patch(format!("/servers/{}/roles/ranks", server.id))
             .header(ContentType::JSON)
@@ -160,9 +271,9 @@ mod test {
         drop(response);
 
         // The owner can set any order they want
-        let (_, owner_session) = harness.account_from_user(owner.id).await;
+        let (_, owner_session) = context.account_from_user(owner.id).await;
 
-        let response = harness
+        let response = context
             .client
             .patch(format!("/servers/{}/roles/ranks", server.id))
             .header(ContentType::JSON)

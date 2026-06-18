@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use syrnike_models::v0::{self, DataCreateServerChannel};
-use syrnike_permissions::{OverrideField, DEFAULT_PERMISSION_SERVER};
+use syrnike_permissions::{DEFAULT_PERMISSION_SERVER, OverrideField};
 use syrnike_result::Result;
 use ulid::Ulid;
 
-use crate::{events::client::EventV1, Channel, Database, File, User};
+use crate::{Channel, Database, File, User, events::client::EventV1};
 
 fn default_role_mentionable() -> bool {
     true
@@ -323,8 +323,18 @@ impl Role {
 
     /// Create a role
     pub async fn create(db: &Database, server: &Server, name: String) -> Result<Self> {
+        Self::create_with_id(db, server, Ulid::new().to_string(), name).await
+    }
+
+    /// Create a role with a caller-provided id.
+    pub async fn create_with_id(
+        db: &Database,
+        server: &Server,
+        id: String,
+        name: String,
+    ) -> Result<Self> {
         let role = Role {
-            id: Ulid::new().to_string(),
+            id,
             name,
             // Rank of the new role should be below the lowest role
             rank: server.roles.len() as i64,
@@ -425,7 +435,7 @@ impl SystemMessageChannels {
 
 #[cfg(test)]
 mod tests {
-    use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
+    use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
 
     use crate::{fixture, util::permissions::DatabasePermissionQuery};
 
@@ -439,19 +449,25 @@ mod tests {
                 server server 4);
 
             let mut query = DatabasePermissionQuery::new(&db, &owner).server(&server);
-            assert!(calculate_server_permissions(&mut query)
-                .await
-                .has_channel_permission(ChannelPermission::GrantAllSafe));
+            assert!(
+                calculate_server_permissions(&mut query)
+                    .await
+                    .has_channel_permission(ChannelPermission::GrantAllSafe)
+            );
 
             let mut query = DatabasePermissionQuery::new(&db, &moderator).server(&server);
-            assert!(calculate_server_permissions(&mut query)
-                .await
-                .has_channel_permission(ChannelPermission::BanMembers));
+            assert!(
+                calculate_server_permissions(&mut query)
+                    .await
+                    .has_channel_permission(ChannelPermission::BanMembers)
+            );
 
             let mut query = DatabasePermissionQuery::new(&db, &user).server(&server);
-            assert!(!calculate_server_permissions(&mut query)
-                .await
-                .has_channel_permission(ChannelPermission::BanMembers));
+            assert!(
+                !calculate_server_permissions(&mut query)
+                    .await
+                    .has_channel_permission(ChannelPermission::BanMembers)
+            );
         });
     }
 }
