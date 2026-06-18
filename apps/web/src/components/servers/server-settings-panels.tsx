@@ -4,6 +4,9 @@ import type { Emoji } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
+import { ServerSettingsAuditPanel } from '#/components/servers/server-settings-audit-panel'
+import { ServerSettingsBansPanel } from '#/components/servers/server-settings-bans-panel'
+import { ServerSettingsInvitesPanel } from '#/components/servers/server-settings-invites-panel'
 import { ServerSettingsMembersPanel } from '#/components/servers/server-settings-members-panel'
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
@@ -312,22 +315,6 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
   )
 }
 
-function ServerSettingsPlaceholderPanel({
-  title,
-  description,
-}: {
-  title: string
-  description: string
-}) {
-  return (
-    <SettingsField label={title} description={description}>
-      <div className="rounded-md border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        Раздел появится в следующих обновлениях настроек сервера.
-      </div>
-    </SettingsField>
-  )
-}
-
 export function ServerSettingsPanelContent({
   serverId,
   tab,
@@ -349,26 +336,11 @@ export function ServerSettingsPanelContent({
     case 'members':
       return <ServerSettingsMembersPanel serverId={serverId} />
     case 'bans':
-      return (
-        <ServerSettingsPlaceholderPanel
-          title="Баны"
-          description="Управление заблокированными участниками сервера."
-        />
-      )
+      return <ServerSettingsBansPanel serverId={serverId} />
     case 'invites':
-      return (
-        <ServerSettingsPlaceholderPanel
-          title="Приглашения"
-          description="Просмотр и отзыв приглашений сервера."
-        />
-      )
+      return <ServerSettingsInvitesPanel serverId={serverId} />
     case 'audit':
-      return (
-        <ServerSettingsPlaceholderPanel
-          title="Журнал аудита"
-          description="История административных действий на сервере."
-        />
-      )
+      return <ServerSettingsAuditPanel serverId={serverId} />
     default:
       return null
   }

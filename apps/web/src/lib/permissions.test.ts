@@ -480,4 +480,30 @@ describe('getServerSettingsAccess', () => {
     expect(canViewServerSettingsTab(access, 'bans')).toBe(true)
     expect(canViewServerSettingsTab(access, 'audit')).toBe(false)
   })
+
+  it('does not expose invite settings for channel-only invite permission', () => {
+    const server = makeServer({
+      default_permissions: ChannelPermission.ViewChannel,
+    })
+    const member = makeMember()
+    const inviteChannel = makeTextChannel({
+      default_permissions: {
+        a: permissionOr(
+          ChannelPermission.ViewChannel,
+          ChannelPermission.InviteOthers,
+        ),
+        d: 0,
+      },
+    })
+
+    const access = getServerSettingsAccess(
+      server,
+      [inviteChannel],
+      member,
+      'user-1',
+    )
+
+    expect(canOpenServerSettings(access)).toBe(false)
+    expect(canViewServerSettingsTab(access, 'invites')).toBe(false)
+  })
 })

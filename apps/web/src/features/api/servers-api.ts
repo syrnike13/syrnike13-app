@@ -12,6 +12,7 @@ import type {
   DataPermissionsValue,
   DataSetServerRolePermission,
   MemberResponse,
+  BanListResult,
   Emoji,
   Invite,
   Member,
@@ -58,6 +59,10 @@ export async function fetchServerMembers(token: string, serverId: string) {
 
 export async function fetchServerInvites(token: string, serverId: string) {
   return apiRequest<Invite[]>(`/servers/${serverId}/invites`, { token })
+}
+
+export async function fetchServerBans(token: string, serverId: string) {
+  return apiRequest<BanListResult>(`/servers/${serverId}/bans`, { token })
 }
 
 export async function fetchServerAuditLog(

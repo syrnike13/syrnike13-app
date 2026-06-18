@@ -312,7 +312,7 @@ export function getServerSettingsAccess(
       has(ChannelPermission.ManageNicknames) ||
       has(ChannelPermission.ManageServer),
     bans: has(ChannelPermission.BanMembers),
-    invites: has(ChannelPermission.ManageServer) || canInvite,
+    invites: has(ChannelPermission.ManageServer),
     audit: has(ChannelPermission.ManageServer),
   }
 }
