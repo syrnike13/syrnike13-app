@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Member, Server, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
@@ -18,6 +18,7 @@ import { canEditAnyMemberRole } from '#/lib/member-roles'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   canBanServerMember,
+  canChangeMemberNickname,
   canKickServerMember,
   canTimeoutServerMember,
 } from '#/lib/permissions'
@@ -29,6 +30,89 @@ type ServerSettingsMembersPanelProps = {
 
 function memberDisplayName(user: User) {
   return user.display_name ?? user.username
+}
+
+function ServerMemberNicknamePanel({
+  server,
+  actorMember,
+  targetMember,
+  token,
+  userId,
+}: {
+  server: Server
+  actorMember: Member | undefined
+  targetMember: Member
+  token: string | undefined
+  userId: string | undefined
+}) {
+  const [nickname, setNickname] = useState(targetMember.nickname ?? '')
+  const [saving, setSaving] = useState(false)
+  const canChangeNickname = canChangeMemberNickname(
+    server,
+    actorMember,
+    userId,
+    targetMember,
+  )
+
+  useEffect(() => {
+    setNickname(targetMember.nickname ?? '')
+  }, [targetMember._id.user, targetMember.nickname])
+
+  if (!canChangeNickname) return null
+
+  const currentNickname = targetMember.nickname ?? ''
+  const normalizedNickname = nickname.trim()
+  const changed = normalizedNickname !== currentNickname
+
+  async function saveNickname() {
+    if (!token || !changed) return
+
+    setSaving(true)
+    try {
+      const updated = await editServerMember(
+        token,
+        server._id,
+        targetMember._id.user,
+        normalizedNickname
+          ? { nickname: normalizedNickname }
+          : { remove: ['Nickname'] },
+      )
+      syncStore.upsertMembers([updated])
+      toast.success('Никнейм обновлён')
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось обновить никнейм',
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor={`member-nickname-${targetMember._id.user}`}>
+          Никнейм на сервере
+        </Label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            id={`member-nickname-${targetMember._id.user}`}
+            value={nickname}
+            maxLength={32}
+            onChange={(event) => setNickname(event.target.value)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={saving || !changed}
+            onClick={() => void saveNickname()}
+          >
+            Сохранить ник
+          </Button>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 function ServerMemberModerationPanel({
@@ -219,7 +303,7 @@ export function ServerSettingsMembersPanel({
       <div>
         <h3 className="text-base font-semibold">Участники</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Назначайте роли участникам сервера.
+          Назначайте роли, никнеймы и модераторские ограничения.
         </p>
       </div>
 
@@ -243,6 +327,12 @@ export function ServerSettingsMembersPanel({
                 : false
               const canManage =
                 canManageRoles ||
+                canChangeMemberNickname(
+                  server,
+                  actorMember,
+                  auth.user?._id,
+                  member,
+                ) ||
                 canKickServerMember(server, actorMember, auth.user?._id, member) ||
                 canBanServerMember(server, actorMember, auth.user?._id, member) ||
                 canTimeoutServerMember(
@@ -297,6 +387,13 @@ export function ServerSettingsMembersPanel({
                   </p>
                 </div>
               </div>
+              <ServerMemberNicknamePanel
+                server={server}
+                actorMember={actorMember}
+                targetMember={selectedEntry.member}
+                token={auth.session?.token}
+                userId={auth.user?._id}
+              />
               <MemberRolesEditor
                 server={server}
                 targetMember={selectedEntry.member}

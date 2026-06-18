@@ -294,6 +294,38 @@ export function canMoveServerMember(
   )
 }
 
+export function canChangeMemberNickname(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  if (!actorUserId || !targetMember) return false
+
+  const serverPermissions = calculateServerPermissions(
+    server,
+    actorMember,
+    actorUserId,
+  )
+
+  if (actorUserId === targetMember._id.user) {
+    return hasChannelPermission(
+      serverPermissions,
+      ChannelPermission.ChangeNickname,
+    )
+  }
+
+  if (
+    !hasChannelPermission(serverPermissions, ChannelPermission.ManageNicknames)
+  ) {
+    return false
+  }
+
+  if (server.owner === actorUserId) return true
+
+  return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
+}
+
 export function canEditMember(
   server: Server,
   actorMember: Member | undefined,

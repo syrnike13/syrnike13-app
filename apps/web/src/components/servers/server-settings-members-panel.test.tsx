@@ -36,7 +36,12 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.editServerMember(...args),
 }))
 
-function setupMembers() {
+function setupMembers(
+  actorPermissions =
+    ChannelPermission.KickMembers |
+    ChannelPermission.BanMembers |
+    ChannelPermission.TimeoutMembers,
+) {
   syncStore.reset()
   syncStore.upsertUsers([
     {
@@ -61,10 +66,7 @@ function setupMembers() {
         _id: 'mod',
         name: 'Mod',
         permissions: {
-          a:
-            ChannelPermission.KickMembers |
-            ChannelPermission.BanMembers |
-            ChannelPermission.TimeoutMembers,
+          a: actorPermissions,
           d: 0,
         },
         rank: 1,
@@ -171,6 +173,33 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
         'server-1',
         'target-user',
         { timeout: '2026-06-19T11:00:00.000Z' },
+      )
+    })
+  })
+
+  it('lets a nickname manager rename a lower-ranked member', async () => {
+    setupMembers(ChannelPermission.ManageNicknames)
+    mocks.editServerMember.mockResolvedValue({
+      _id: { server: 'server-1', user: 'target-user' },
+      joined_at: '2024-01-01T00:00:00Z',
+      roles: ['member'],
+      nickname: 'Renamed',
+    })
+
+    render(<ServerSettingsMembersPanel serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /target/i }))
+    fireEvent.change(screen.getByLabelText('Никнейм на сервере'), {
+      target: { value: 'Renamed' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить ник' }))
+
+    await waitFor(() => {
+      expect(mocks.editServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        'target-user',
+        { nickname: 'Renamed' },
       )
     })
   })

@@ -10,6 +10,7 @@ import {
   canInviteToChannel,
   canKickServerMember,
   canMoveServerMember,
+  canChangeMemberNickname,
   canMuteServerMember,
   canTimeoutServerMember,
   canOpenServerSettings,
@@ -433,6 +434,76 @@ describe('canBanServerMember', () => {
     })
 
     expect(canBanServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
+})
+
+describe('canChangeMemberNickname', () => {
+  it('allows nickname managers to rename lower-ranked members', () => {
+    const server = makeServer({
+      roles: {
+        manager: makeRole({
+          _id: 'manager',
+          name: 'Manager',
+          permissions: { a: ChannelPermission.ManageNicknames, d: 0 },
+          rank: 2,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['manager'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canChangeMemberNickname(server, actor, 'user-1', target)).toBe(true)
+  })
+
+  it('does not allow nickname managers to rename equal or higher-ranked members', () => {
+    const server = makeServer({
+      roles: {
+        manager: makeRole({
+          _id: 'manager',
+          name: 'Manager',
+          permissions: { a: ChannelPermission.ManageNicknames, d: 0 },
+          rank: 2,
+        }),
+        admin: makeRole({
+          _id: 'admin',
+          name: 'Admin',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['manager'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['admin'],
+    })
+
+    expect(canChangeMemberNickname(server, actor, 'user-1', target)).toBe(false)
+  })
+
+  it('allows members to change their own nickname with ChangeNickname', () => {
+    const server = makeServer({
+      roles: {
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: ChannelPermission.ChangeNickname, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['member'] })
+
+    expect(canChangeMemberNickname(server, actor, 'user-1', actor)).toBe(true)
   })
 })
 
