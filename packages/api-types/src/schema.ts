@@ -3083,6 +3083,18 @@ export interface components {
         }
       | {
           /** @enum {string} */
+          type: "ChannelCreate";
+        }
+      | {
+          /** @enum {string} */
+          type: "ChannelUpdate";
+        }
+      | {
+          /** @enum {string} */
+          type: "ChannelDelete";
+        }
+      | {
+          /** @enum {string} */
           type: "MemberUpdate";
         }
       | {

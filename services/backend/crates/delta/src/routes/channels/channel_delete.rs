@@ -3,7 +3,7 @@ use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{delete_voice_channel, UserVoiceChannel, VoiceClient},
-    Channel, Database, PartialChannel, User, AMQP,
+    Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User, AMQP,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
@@ -13,6 +13,7 @@ use super::voice_call_cleanup::{
     delete_group_voice_call, remove_group_member_from_voice_call,
     stop_ringing_for_removed_group_member,
 };
+use crate::routes::servers::audit_mutation;
 
 /// # Close Channel
 ///
@@ -76,9 +77,35 @@ pub async fn delete(
         }
         Channel::TextChannel { .. } => {
             permissions.throw_if_lacking_channel_permission(ChannelPermission::ManageChannel)?;
-            channel.delete(db).await?;
+            let server_id = channel.server().expect("server channel").to_string();
+            let channel_id = channel.id().to_string();
+            let mut audit = audit_mutation::insert_pending_audit(
+                db,
+                server_id,
+                user.id.clone(),
+                ServerAuditLogAction::ChannelDelete,
+                ServerAuditLogTarget::Channel {
+                    id: channel_id.clone(),
+                },
+                None,
+                audit_mutation::audit_changes(vec![(
+                    "channel",
+                    audit_mutation::audit_change(Some(channel.clone()), None::<Channel>)?,
+                )]),
+            )
+            .await?;
 
-            delete_voice_channel(voice_client, &UserVoiceChannel::from_channel(&channel)).await?;
+            if let Err(error) = channel.delete(db).await {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+
+            if let Err(error) =
+                delete_voice_channel(voice_client, &UserVoiceChannel::from_channel(&channel)).await
+            {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+
+            audit.mark_succeeded(db).await?;
         }
     };
 

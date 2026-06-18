@@ -2,12 +2,15 @@ use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{delete_voice_channel, UserVoiceChannel, VoiceClient},
-    Channel, Database, File, PartialChannel, SystemMessage, User, AMQP,
+    Channel, Database, File, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget,
+    SystemMessage, User, AMQP,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
 use validator::Validate;
+
+use crate::routes::servers::audit_mutation;
 
 /// # Edit Channel
 ///
@@ -52,6 +55,111 @@ pub async fn edit(
     }
 
     let mut partial: PartialChannel = Default::default();
+    let database_remove = data
+        .remove
+        .iter()
+        .cloned()
+        .map(Into::into)
+        .collect::<Vec<_>>();
+    let mut audit = match &channel {
+        Channel::TextChannel {
+            id,
+            server,
+            name,
+            description,
+            icon,
+            nsfw,
+            voice,
+            slowmode,
+            default_permissions,
+            ..
+        } => {
+            let mut change_entries = Vec::new();
+            if let Some(new_name) = data.name.clone() {
+                change_entries.push((
+                    "name",
+                    audit_mutation::audit_change(Some(name.clone()), Some(new_name))?,
+                ));
+            }
+            if data.remove.contains(&v0::FieldsChannel::Description) {
+                change_entries.push((
+                    "description",
+                    audit_mutation::audit_change(description.clone(), None::<String>)?,
+                ));
+            } else if let Some(new_description) = data.description.clone() {
+                change_entries.push((
+                    "description",
+                    audit_mutation::audit_change(description.clone(), Some(new_description))?,
+                ));
+            }
+            if data.remove.contains(&v0::FieldsChannel::Icon) {
+                change_entries.push((
+                    "icon",
+                    audit_mutation::audit_change(
+                        icon.as_ref().map(|icon| icon.id.clone()),
+                        None::<String>,
+                    )?,
+                ));
+            } else if let Some(new_icon) = data.icon.clone() {
+                change_entries.push((
+                    "icon",
+                    audit_mutation::audit_change(
+                        icon.as_ref().map(|icon| icon.id.clone()),
+                        Some(new_icon),
+                    )?,
+                ));
+            }
+            if let Some(new_nsfw) = data.nsfw {
+                change_entries.push((
+                    "nsfw",
+                    audit_mutation::audit_change(Some(*nsfw), Some(new_nsfw))?,
+                ));
+            }
+            if data.remove.contains(&v0::FieldsChannel::Voice) {
+                change_entries.push((
+                    "voice",
+                    audit_mutation::audit_change(
+                        voice.as_ref().map(|voice| serde_json::json!(voice)),
+                        None::<serde_json::Value>,
+                    )?,
+                ));
+            } else if let Some(new_voice) = &data.voice {
+                change_entries.push((
+                    "voice",
+                    audit_mutation::audit_change(
+                        voice.as_ref().map(|voice| serde_json::json!(voice)),
+                        Some(serde_json::json!(new_voice)),
+                    )?,
+                ));
+            }
+            if data.remove.contains(&v0::FieldsChannel::DefaultPermissions) {
+                change_entries.push((
+                    "default_permissions",
+                    audit_mutation::audit_change(*default_permissions, None::<_>)?,
+                ));
+            }
+            if let Some(new_slowmode) = data.slowmode {
+                change_entries.push((
+                    "slowmode",
+                    audit_mutation::audit_change(*slowmode, Some(new_slowmode))?,
+                ));
+            }
+
+            Some(
+                audit_mutation::insert_pending_audit(
+                    db,
+                    server.clone(),
+                    user.id.clone(),
+                    ServerAuditLogAction::ChannelUpdate,
+                    ServerAuditLogTarget::Channel { id: id.clone() },
+                    None,
+                    audit_mutation::audit_changes(change_entries),
+                )
+                .await?,
+            )
+        }
+        _ => None,
+    };
 
     // Transfer group ownership
     if let Some(new_owner) = data.owner {
@@ -79,7 +187,12 @@ pub async fn edit(
                 to: new_owner,
             }
         } else {
-            return Err(create_error!(InvalidOperation));
+            let error = create_error!(InvalidOperation);
+            if let Some(audit) = &mut audit {
+                return audit_mutation::mark_failed_and_return(db, audit, error).await;
+            }
+
+            return Err(error);
         }
         .into_message(channel.id().to_string())
         .send(
@@ -106,7 +219,13 @@ pub async fn edit(
         } => {
             if data.remove.contains(&v0::FieldsChannel::Icon) {
                 if let Some(icon) = &icon {
-                    db.mark_attachment_as_deleted(&icon.id).await?;
+                    if let Err(error) = db.mark_attachment_as_deleted(&icon.id).await {
+                        if let Some(audit) = &mut audit {
+                            return audit_mutation::mark_failed_and_return(db, audit, error).await;
+                        }
+
+                        return Err(error);
+                    }
                 }
             }
 
@@ -123,7 +242,16 @@ pub async fn edit(
             }
 
             if let Some(icon_id) = data.icon {
-                partial.icon = Some(File::use_channel_icon(db, &icon_id, id, &user.id).await?);
+                partial.icon = match File::use_channel_icon(db, &icon_id, id, &user.id).await {
+                    Ok(icon) => Some(icon),
+                    Err(error) => {
+                        if let Some(audit) = &mut audit {
+                            return audit_mutation::mark_failed_and_return(db, audit, error).await;
+                        }
+
+                        return Err(error);
+                    }
+                };
                 *icon = partial.icon.clone();
             }
 
@@ -210,7 +338,13 @@ pub async fn edit(
         } => {
             if data.remove.contains(&v0::FieldsChannel::Icon) {
                 if let Some(icon) = &icon {
-                    db.mark_attachment_as_deleted(&icon.id).await?;
+                    if let Err(error) = db.mark_attachment_as_deleted(&icon.id).await {
+                        if let Some(audit) = &mut audit {
+                            return audit_mutation::mark_failed_and_return(db, audit, error).await;
+                        }
+
+                        return Err(error);
+                    }
                 }
             }
 
@@ -230,7 +364,16 @@ pub async fn edit(
             }
 
             if let Some(icon_id) = data.icon {
-                partial.icon = Some(File::use_channel_icon(db, &icon_id, id, &user.id).await?);
+                partial.icon = match File::use_channel_icon(db, &icon_id, id, &user.id).await {
+                    Ok(icon) => Some(icon),
+                    Err(error) => {
+                        if let Some(audit) = &mut audit {
+                            return audit_mutation::mark_failed_and_return(db, audit, error).await;
+                        }
+
+                        return Err(error);
+                    }
+                };
                 *icon = partial.icon.clone();
             }
 
@@ -262,16 +405,28 @@ pub async fn edit(
         _ => return Err(create_error!(InvalidOperation)),
     };
 
-    channel
-        .update(
-            db,
-            partial,
-            data.remove.into_iter().map(|f| f.into()).collect(),
-        )
-        .await?;
+    if let Err(error) = channel.update(db, partial, database_remove).await {
+        if let Some(audit) = &mut audit {
+            return audit_mutation::mark_failed_and_return(db, audit, error).await;
+        }
+
+        return Err(error);
+    }
 
     if channel.voice().is_none() {
-        delete_voice_channel(voice_client, &UserVoiceChannel::from_channel(&channel)).await?;
+        if let Err(error) =
+            delete_voice_channel(voice_client, &UserVoiceChannel::from_channel(&channel)).await
+        {
+            if let Some(audit) = &mut audit {
+                return audit_mutation::mark_failed_and_return(db, audit, error).await;
+            }
+
+            return Err(error);
+        }
+    }
+
+    if let Some(audit) = &mut audit {
+        audit.mark_succeeded(db).await?;
     }
 
     Ok(Json(channel.into()))
