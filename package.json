@@ -16,6 +16,11 @@
     "desktop:package": "pnpm version:sync && pnpm --filter @syrnike13/desktop package",
     "desktop:test": "pnpm --filter @syrnike13/desktop test",
     "desktop:typecheck": "pnpm --filter @syrnike13/desktop typecheck",
+    "mobile:pub": "cd apps/mobile && flutter pub get",
+    "mobile:test": "cd apps/mobile && flutter test",
+    "mobile:analyze": "cd apps/mobile && flutter analyze",
+    "mobile:build:android": "cd apps/mobile && flutter build apk --debug",
+    "mobile:build:macos": "cd apps/mobile && flutter build macos",
     "platform:build": "pnpm --filter @syrnike13/platform build",
     "backend:check": "cargo check --manifest-path services/backend/Cargo.toml --workspace",
     "livekit:check": "cd services/livekit-server && go test ./..."

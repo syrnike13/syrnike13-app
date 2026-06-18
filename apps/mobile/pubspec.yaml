@@ -1,0 +1,35 @@
+name: syrnike13_mobile
+description: Flutter client for syrnike13 on iOS, Android, and macOS.
+publish_to: 'none'
+version: 0.4.13+1
+
+environment:
+  sdk: ^3.13.0-201.0.dev
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  dio: ^5.9.2
+  flutter_riverpod: ^3.3.2
+  flutter_secure_storage: ^10.3.1
+  go_router: ^17.3.0
+  livekit_client: ^2.8.0
+  permission_handler: ^12.0.3
+  web_socket_channel: ^3.0.3
+  flutter_webrtc: 1.4.0
+  image_picker: ^1.2.2
+  audioplayers: ^6.7.1
+  record: ^7.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sounds/
