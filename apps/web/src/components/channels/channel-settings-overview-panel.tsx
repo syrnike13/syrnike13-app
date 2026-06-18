@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { Trash2Icon } from '#/components/icons'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
+import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import {
@@ -18,7 +21,9 @@ import {
   type DraftController,
 } from '#/components/settings/draft-controller-context'
 import { useAuth } from '#/features/auth/auth-context'
-import { editChannel } from '#/features/api/channels-api'
+import { deleteChannel, editChannel } from '#/features/api/channels-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import { pickDefaultChannelId } from '#/features/sync/selectors'
 import {
   buildVoiceChannelVoicePatch,
   channelAudioBitrateKbps,
@@ -96,6 +101,8 @@ export function ChannelSettingsOverviewPanel({
   channel: ServerChannel
 }) {
   const auth = useAuth()
+  const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const voiceChannel = isServerVoiceChannel(channel)
   const textChannel = channel.channel_type === 'TextChannel'
   const [name, setName] = useState(channel.name)
@@ -110,6 +117,7 @@ export function ChannelSettingsOverviewPanel({
     channelMaxUsers(channel),
   )
   const [saving, setSaving] = useState(false)
+  const [deletingChannel, setDeletingChannel] = useState(false)
 
   useEffect(() => {
     setName(channel.name)
@@ -232,6 +240,45 @@ export function ChannelSettingsOverviewPanel({
 
   useDraftRegistration(draftRegistration)
 
+  async function deleteCurrentChannel() {
+    const token = auth.session?.token
+    if (!token) return
+    if (
+      !window.confirm(
+        `Удалить канал «${channel.name}»? Это действие необратимо.`,
+      )
+    ) {
+      return
+    }
+
+    setDeletingChannel(true)
+    try {
+      await deleteChannel(token, channel._id)
+      syncStore.removeChannel(channel._id)
+      toast.success('Канал удалён')
+
+      const fallback = pickDefaultChannelId(
+        syncStore.getState(),
+        auth.user?._id,
+      )
+      if (fallback) {
+        await navigate({
+          to: `${prefix}/c/$channelId`,
+          params: { channelId: fallback },
+          search: { m: undefined },
+        })
+      } else {
+        await navigate({ to: prefix, search: { tab: 'online' } })
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось удалить канал',
+      )
+    } finally {
+      setDeletingChannel(false)
+    }
+  }
+
   return (
     <div>
       <div className="mb-6">
@@ -353,6 +400,30 @@ export function ChannelSettingsOverviewPanel({
             />
           </SettingsField>
         ) : null}
+
+        <SettingsField
+          label="Опасная зона"
+          description="Удаление канала невозможно отменить."
+          className="mt-6"
+        >
+          <div className="flex flex-col gap-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium text-destructive">Удалить канал</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Канал и его сообщения будут удалены для всех.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={saving || deletingChannel}
+              onClick={() => void deleteCurrentChannel()}
+            >
+              <Trash2Icon className="size-4" />
+              Удалить канал
+            </Button>
+          </div>
+        </SettingsField>
       </div>
     </div>
   )
