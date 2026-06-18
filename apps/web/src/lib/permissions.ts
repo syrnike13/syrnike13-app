@@ -234,6 +234,21 @@ export function canBanServerMember(
   )
 }
 
+export function canTimeoutServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.TimeoutMembers,
+  )
+}
+
 export function canEditMember(
   server: Server,
   actorMember: Member | undefined,

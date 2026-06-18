@@ -8,6 +8,7 @@ import {
   canEditMember,
   canInviteToChannel,
   canKickServerMember,
+  canTimeoutServerMember,
   canOpenServerSettings,
   canViewChannel,
   canViewServerSettingsTab,
@@ -429,6 +430,37 @@ describe('canBanServerMember', () => {
     })
 
     expect(canBanServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
+})
+
+describe('canTimeoutServerMember', () => {
+  it('requires timeout permission and higher role rank than the target', () => {
+    const server = makeServer({
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: ChannelPermission.TimeoutMembers, d: 0 },
+          rank: 2,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canTimeoutServerMember(server, makeMember(), 'user-1', target)).toBe(
+      false,
+    )
   })
 })
 

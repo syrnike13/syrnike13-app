@@ -1,16 +1,187 @@
 import { useMemo, useState } from 'react'
+import type { Member, Server, User } from '@syrnike13/api-types'
+import { toast } from 'sonner'
 
 import { MemberRolesEditor } from '#/components/servers/member-roles-editor'
+import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
 import { UserAvatar } from '#/components/user/user-avatar'
+import {
+  banServerMember,
+  editServerMember,
+  kickServerMember,
+} from '#/features/api/servers-api'
 import { listServerMembers } from '#/features/sync/selectors'
-import { useSyncStore } from '#/features/sync/sync-store'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canEditAnyMemberRole } from '#/lib/member-roles'
 import { useAuth } from '#/features/auth/auth-context'
+import {
+  canBanServerMember,
+  canKickServerMember,
+  canTimeoutServerMember,
+} from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
 type ServerSettingsMembersPanelProps = {
   serverId: string
+}
+
+function memberDisplayName(user: User) {
+  return user.display_name ?? user.username
+}
+
+function ServerMemberModerationPanel({
+  server,
+  actorMember,
+  targetMember,
+  targetUser,
+  token,
+  userId,
+}: {
+  server: Server
+  actorMember: Member | undefined
+  targetMember: Member
+  targetUser: User
+  token: string | undefined
+  userId: string | undefined
+}) {
+  const [reason, setReason] = useState('')
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+
+  const canKick = canKickServerMember(server, actorMember, userId, targetMember)
+  const canBan = canBanServerMember(server, actorMember, userId, targetMember)
+  const canTimeout = canTimeoutServerMember(
+    server,
+    actorMember,
+    userId,
+    targetMember,
+  )
+
+  const targetLabel = memberDisplayName(targetUser)
+  const reasonBody = reason.trim() ? { reason: reason.trim() } : {}
+
+  async function kickMember() {
+    if (!token || !canKick) return
+    if (!window.confirm(`Исключить ${targetLabel} с сервера?`)) return
+
+    setPendingAction('kick')
+    try {
+      await kickServerMember(token, server._id, targetMember._id.user, reasonBody)
+      syncStore.removeServerMember(server._id, targetMember._id.user)
+      toast.success('Участник исключён')
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось исключить',
+      )
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  async function banMember() {
+    if (!token || !canBan) return
+    if (!window.confirm(`Забанить ${targetLabel}?`)) return
+
+    setPendingAction('ban')
+    try {
+      await banServerMember(token, server._id, targetMember._id.user, reasonBody)
+      syncStore.removeServerMember(server._id, targetMember._id.user)
+      toast.success('Участник забанен')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Не удалось забанить')
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  async function timeoutMember(durationMs: number) {
+    if (!token || !canTimeout) return
+
+    const timeout = new Date(Date.now() + durationMs).toISOString()
+    setPendingAction('timeout')
+    try {
+      const updated = await editServerMember(
+        token,
+        server._id,
+        targetMember._id.user,
+        { timeout },
+      )
+      syncStore.upsertMembers([updated])
+      toast.success('Тайм-аут выдан')
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось выдать тайм-аут',
+      )
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
+  if (!canKick && !canBan && !canTimeout) {
+    return null
+  }
+
+  return (
+    <section className="space-y-3 border-t border-border/60 pt-4">
+      <div>
+        <h4 className="text-sm font-semibold">Модерация</h4>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Действия пишутся в журнал аудита сервера.
+        </p>
+      </div>
+
+      {(canKick || canBan) ? (
+        <div className="space-y-1.5">
+          <Label htmlFor={`member-moderation-reason-${targetMember._id.user}`}>
+            Причина модерации
+          </Label>
+          <Input
+            id={`member-moderation-reason-${targetMember._id.user}`}
+            value={reason}
+            maxLength={256}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        {canTimeout ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={pendingAction !== null}
+            onClick={() => void timeoutMember(60 * 60 * 1000)}
+          >
+            Тайм-аут на 1 час
+          </Button>
+        ) : null}
+        {canKick ? (
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            disabled={pendingAction !== null}
+            onClick={() => void kickMember()}
+          >
+            Исключить
+          </Button>
+        ) : null}
+        {canBan ? (
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            disabled={pendingAction !== null}
+            onClick={() => void banMember()}
+          >
+            Забанить
+          </Button>
+        ) : null}
+      </div>
+    </section>
+  )
 }
 
 export function ServerSettingsMembersPanel({
@@ -62,7 +233,7 @@ export function ServerSettingsMembersPanel({
           />
           <ul className="max-h-[24rem] space-y-1 overflow-y-auto pr-1">
             {filteredMembers.map(({ member, user }) => {
-              const canManage = auth.user?._id
+              const canManageRoles = auth.user?._id
                 ? canEditAnyMemberRole(
                     server,
                     actorMember,
@@ -70,6 +241,16 @@ export function ServerSettingsMembersPanel({
                     member,
                   )
                 : false
+              const canManage =
+                canManageRoles ||
+                canKickServerMember(server, actorMember, auth.user?._id, member) ||
+                canBanServerMember(server, actorMember, auth.user?._id, member) ||
+                canTimeoutServerMember(
+                  server,
+                  actorMember,
+                  auth.user?._id,
+                  member,
+                )
 
               return (
                 <li key={user._id}>
@@ -119,6 +300,14 @@ export function ServerSettingsMembersPanel({
               <MemberRolesEditor
                 server={server}
                 targetMember={selectedEntry.member}
+              />
+              <ServerMemberModerationPanel
+                server={server}
+                actorMember={actorMember}
+                targetMember={selectedEntry.member}
+                targetUser={selectedEntry.user}
+                token={auth.session?.token}
+                userId={auth.user?._id}
               />
             </div>
           ) : (
