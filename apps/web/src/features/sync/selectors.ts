@@ -327,7 +327,9 @@ export function memberRoleEntries(
   }
 
   return entries.sort(
-    (a, b) => (server.roles?.[b.id]?.rank ?? 0) - (server.roles?.[a.id]?.rank ?? 0),
+    (a, b) =>
+      (server.roles?.[a.id]?.rank ?? Number.MAX_SAFE_INTEGER) -
+      (server.roles?.[b.id]?.rank ?? Number.MAX_SAFE_INTEGER),
   )
 }
 
