@@ -36,6 +36,10 @@ pub async fn create_database(db: &MongoDb) {
         .await
         .expect("Failed to create server_bans collection.");
 
+    db.create_collection("server_audit_logs")
+        .await
+        .expect("Failed to create server_audit_logs collection.");
+
     db.create_collection("channel_invites")
         .await
         .expect("Failed to create channel_invites collection.");
@@ -204,6 +208,31 @@ pub async fn create_database(db: &MongoDb) {
     })
     .await
     .expect("Failed to create server_members index.");
+
+    db.run_command(doc! {
+        "createIndexes": "server_audit_logs",
+        "indexes": [
+            {
+                "key": {
+                    "server_id": 1_i32,
+                    "created_at": -1_i32,
+                    "_id": -1_i32
+                },
+                "name": "server_created_id"
+            },
+            {
+                "key": {
+                    "server_id": 1_i32,
+                    "actor_id": 1_i32,
+                    "created_at": -1_i32,
+                    "_id": -1_i32
+                },
+                "name": "server_actor_created_id"
+            }
+        ]
+    })
+    .await
+    .expect("Failed to create server_audit_logs index.");
 
     db.run_command(doc! {
         "createIndexes": "attachments",

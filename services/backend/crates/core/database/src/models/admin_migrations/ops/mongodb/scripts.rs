@@ -25,7 +25,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 51; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 52; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1367,6 +1367,38 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             .update_many(doc! {}, doc! { "$unset": { "badges": 1_i32 } })
             .await
             .expect("Failed to unset legacy user badges.");
+    };
+
+    if revision <= 51 {
+        info!("Running migration [revision 51 / 18-06-2026]: Add server audit logs.");
+
+        db.db().create_collection("server_audit_logs").await.ok();
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "server_audit_logs",
+                "indexes": [
+                    {
+                        "key": {
+                            "server_id": 1_i32,
+                            "created_at": -1_i32,
+                            "_id": -1_i32
+                        },
+                        "name": "server_created_id"
+                    },
+                    {
+                        "key": {
+                            "server_id": 1_i32,
+                            "actor_id": 1_i32,
+                            "created_at": -1_i32,
+                            "_id": -1_i32
+                        },
+                        "name": "server_actor_created_id"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create server_audit_logs index.");
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

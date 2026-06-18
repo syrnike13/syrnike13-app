@@ -81,6 +81,8 @@ impl AbstractServerAuditLogs for ReferenceDb {
         if let Some(before) = query.before {
             if let Some(index) = entries.iter().position(|entry| entry.id == before) {
                 entries = entries.into_iter().skip(index + 1).collect();
+            } else {
+                return Ok(Vec::new());
             }
         }
 

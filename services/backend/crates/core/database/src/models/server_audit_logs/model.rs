@@ -529,6 +529,62 @@ mod tests {
     }
 
     #[async_std::test]
+    async fn reference_audit_log_missing_or_filtered_before_cursor_returns_empty_page() {
+        let db = Database::Reference(ReferenceDb::default());
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                100,
+                ServerAuditLogAction::RoleCreate,
+                ServerAuditLogTarget::Role {
+                    id: "role-1".to_string(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                90,
+                ServerAuditLogAction::MemberKick,
+                ServerAuditLogTarget::User {
+                    id: "user-1".to_string(),
+                },
+            ),
+        )
+        .await;
+
+        let missing_cursor = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    before: Some("missing-cursor".to_string()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+        assert!(missing_cursor.is_empty());
+
+        let filtered_out_cursor = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::RoleCreate),
+                    before: Some("01ARZ3NDEKTSV4RRFFQ69G5FAW".to_string()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+        assert!(filtered_out_cursor.is_empty());
+    }
+
+    #[async_std::test]
     async fn reference_audit_log_limit_is_clamped() {
         let db = Database::Reference(ReferenceDb::default());
         for index in 0..101 {
