@@ -1,27 +1,29 @@
 use std::collections::HashSet;
 
 use syrnike_database::{
+    Database, File, PartialMember, ServerAuditLogAction, ServerAuditLogTarget, User,
     events::client::EventV1,
     util::{
-        permissions::{perms, DatabasePermissionQuery},
+        permissions::{DatabasePermissionQuery, perms},
         reference::Reference,
     },
     voice::{
-        get_channel_node, get_user_voice_channel_in_server, get_voice_state,
-        remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
-        set_user_moved_to_voice, set_user_voice_join_intent, sync_user_voice_permissions,
-        UserVoiceChannel, VoiceClient,
+        UserVoiceChannel, VoiceClient, get_channel_node, get_user_voice_channel_in_server,
+        get_voice_state, remove_user_from_voice_channel, set_channel_node,
+        set_user_moved_from_voice, set_user_moved_to_voice, set_user_voice_join_intent,
+        sync_user_voice_permissions,
     },
-    Database, File, PartialMember, User,
 };
 use syrnike_models::v0::{self, FieldsMember};
 
-use rocket::{form::validate::Contains, serde::json::Json, State};
+use rocket::{State, form::validate::Contains, serde::json::Json};
 use syrnike_permissions::{
-    calculate_channel_permissions, calculate_server_permissions, ChannelPermission, UserPermission,
+    ChannelPermission, calculate_channel_permissions, calculate_server_permissions,
 };
-use syrnike_result::{create_error, Result};
+use syrnike_result::{Result, create_error};
 use validator::Validate;
+
+use super::audit_mutation;
 
 /// # Edit Member
 ///
@@ -173,161 +175,443 @@ pub async fn edit(
         }
     }
 
-    // Apply edits to the member object
-    let v0::DataMemberEdit {
-        nickname,
-        avatar,
-        roles,
-        timeout,
-        remove,
-        can_publish,
-        can_receive,
-        voice_channel: _,
-    } = data;
+    let mut change_entries = Vec::new();
+    if data.nickname.is_some() || data.remove.contains(&v0::FieldsMember::Nickname) {
+        change_entries.push((
+            "nickname",
+            audit_mutation::audit_change(member.nickname.clone(), data.nickname.clone())?,
+        ));
+    }
 
-    let mut partial = PartialMember {
-        nickname,
-        roles,
-        timeout,
-        can_publish,
-        can_receive,
-        ..Default::default()
+    if data.avatar.is_some() || data.remove.contains(&v0::FieldsMember::Avatar) {
+        change_entries.push((
+            "avatar",
+            audit_mutation::audit_change(
+                member.avatar.as_ref().map(|avatar| avatar.id.clone()),
+                data.avatar.clone(),
+            )?,
+        ));
+    }
+
+    if data.roles.is_some() || data.remove.contains(&v0::FieldsMember::Roles) {
+        let roles_after = data.roles.clone().or_else(|| {
+            data.remove
+                .contains(&v0::FieldsMember::Roles)
+                .then(Vec::<String>::new)
+        });
+        change_entries.push((
+            "roles",
+            audit_mutation::audit_change(Some(member.roles.clone()), roles_after)?,
+        ));
+    }
+
+    if data.timeout.is_some() || data.remove.contains(&v0::FieldsMember::Timeout) {
+        change_entries.push((
+            "timeout",
+            audit_mutation::audit_change(member.timeout, data.timeout)?,
+        ));
+    }
+
+    if data.can_publish.is_some() || data.remove.contains(&v0::FieldsMember::CanPublish) {
+        let can_publish_after = data.can_publish.or_else(|| {
+            data.remove
+                .contains(&v0::FieldsMember::CanPublish)
+                .then_some(true)
+        });
+        change_entries.push((
+            "can_publish",
+            audit_mutation::audit_change(Some(member.can_publish), can_publish_after)?,
+        ));
+    }
+
+    if data.can_receive.is_some() || data.remove.contains(&v0::FieldsMember::CanReceive) {
+        let can_receive_after = data.can_receive.or_else(|| {
+            data.remove
+                .contains(&v0::FieldsMember::CanReceive)
+                .then_some(true)
+        });
+        change_entries.push((
+            "can_receive",
+            audit_mutation::audit_change(Some(member.can_receive), can_receive_after)?,
+        ));
+    }
+
+    if data.voice_channel.is_some() || data.remove.contains(&FieldsMember::VoiceChannel) {
+        change_entries.push((
+            "voice_channel",
+            audit_mutation::audit_change(None::<String>, data.voice_channel.clone())?,
+        ));
+    }
+
+    let action = if data.timeout.is_some() || data.remove.contains(&v0::FieldsMember::Timeout) {
+        ServerAuditLogAction::MemberTimeout
+    } else {
+        ServerAuditLogAction::MemberUpdate
     };
+    let mut audit = audit_mutation::insert_pending_audit(
+        db,
+        server.id.clone(),
+        user.id.clone(),
+        action,
+        ServerAuditLogTarget::Member {
+            user_id: member.id.user.clone(),
+        },
+        None,
+        audit_mutation::audit_changes(change_entries),
+    )
+    .await?;
 
-    // 1. Remove fields from object
-    if remove.contains(&v0::FieldsMember::Avatar) {
-        if let Some(avatar) = &member.avatar {
-            db.mark_attachment_as_deleted(&avatar.id).await?;
+    let mutation_result: Result<_> = async {
+        // Apply edits to the member object
+        let v0::DataMemberEdit {
+            nickname,
+            avatar,
+            roles,
+            timeout,
+            remove,
+            can_publish,
+            can_receive,
+            voice_channel: _,
+        } = data;
+
+        let mut partial = PartialMember {
+            nickname,
+            roles,
+            timeout,
+            can_publish,
+            can_receive,
+            ..Default::default()
+        };
+
+        // 1. Remove fields from object
+        if remove.contains(&v0::FieldsMember::Avatar) {
+            if let Some(avatar) = &member.avatar {
+                db.mark_attachment_as_deleted(&avatar.id).await?;
+            }
         }
-    }
 
-    // 2. Apply new avatar
-    if let Some(avatar) = avatar {
-        partial.avatar = Some(File::use_user_avatar(db, &avatar, &user.id, &user.id).await?);
-    }
+        // 2. Apply new avatar
+        if let Some(avatar) = avatar {
+            partial.avatar = Some(File::use_user_avatar(db, &avatar, &user.id, &user.id).await?);
+        }
 
-    member
-        .update(
-            db,
-            partial,
-            remove.clone().into_iter().map(Into::into).collect(),
-        )
-        .await?;
-
-    if let Some(new_voice_channel) = new_voice_channel {
-        if let Some(channel) = get_user_voice_channel_in_server(&target_user.id, &server.id).await?
-        {
-            let old_node = get_channel_node(&channel)
-                .await?
-                .ok_or_else(|| create_error!(UnknownNode))?;
-
-            let new_node = match get_channel_node(new_voice_channel.id()).await? {
-                Some(node) => node,
-                None => {
-                    set_channel_node(new_voice_channel.id(), &old_node).await?;
-                    old_node.clone()
-                }
-            };
-
-            let new_user_voice_channel = UserVoiceChannel::from_channel(&new_voice_channel);
-            let old_user_voice_channel = UserVoiceChannel {
-                id: channel.clone(),
-                server_id: new_user_voice_channel.server_id.clone(),
-            };
-
-            set_user_moved_from_voice(&channel, &new_user_voice_channel, &target_user.id).await?;
-            set_user_moved_to_voice(
-                new_voice_channel.id(),
-                &old_user_voice_channel,
-                &target_user.id,
-            )
-            .await?;
-            let existing_voice_state =
-                get_voice_state(&old_user_voice_channel, &target_user.id).await?;
-            set_user_voice_join_intent(
-                &target_user.id,
-                &new_user_voice_channel,
-                None,
-                existing_voice_state
-                    .as_ref()
-                    .map(|state| state.self_mute)
-                    .unwrap_or(false),
-                existing_voice_state
-                    .as_ref()
-                    .map(|state| state.self_deaf)
-                    .unwrap_or(false),
+        member
+            .update(
+                db,
+                partial,
+                remove.clone().into_iter().map(Into::into).collect(),
             )
             .await?;
 
-            let mut query = perms(db, &target_user).channel(&new_voice_channel);
-            let permissions = calculate_channel_permissions(&mut query).await;
+        if let Some(new_voice_channel) = new_voice_channel {
+            if let Some(channel) =
+                get_user_voice_channel_in_server(&target_user.id, &server.id).await?
+            {
+                let old_node = get_channel_node(&channel)
+                    .await?
+                    .ok_or_else(|| create_error!(UnknownNode))?;
 
-            voice_client
-                .create_room(&new_node, &new_voice_channel)
-                .await?;
-            let token = voice_client
-                .create_token_for_identity(
-                    &new_node,
-                    db,
-                    &target_user,
+                let new_node = match get_channel_node(new_voice_channel.id()).await? {
+                    Some(node) => node,
+                    None => {
+                        set_channel_node(new_voice_channel.id(), &old_node).await?;
+                        old_node.clone()
+                    }
+                };
+
+                let new_user_voice_channel = UserVoiceChannel::from_channel(&new_voice_channel);
+                let old_user_voice_channel = UserVoiceChannel {
+                    id: channel.clone(),
+                    server_id: new_user_voice_channel.server_id.clone(),
+                };
+
+                set_user_moved_from_voice(&channel, &new_user_voice_channel, &target_user.id)
+                    .await?;
+                set_user_moved_to_voice(
+                    new_voice_channel.id(),
+                    &old_user_voice_channel,
                     &target_user.id,
-                    permissions,
-                    &new_voice_channel,
+                )
+                .await?;
+                let existing_voice_state =
+                    get_voice_state(&old_user_voice_channel, &target_user.id).await?;
+                set_user_voice_join_intent(
+                    &target_user.id,
+                    &new_user_voice_channel,
+                    None,
+                    existing_voice_state
+                        .as_ref()
+                        .map(|state| state.self_mute)
+                        .unwrap_or(false),
+                    existing_voice_state
+                        .as_ref()
+                        .map(|state| state.self_deaf)
+                        .unwrap_or(false),
                 )
                 .await?;
 
-            voice_client
-                .remove_user(&old_node, &target_user.id, &channel)
-                .await?;
+                let mut query = perms(db, &target_user).channel(&new_voice_channel);
+                let permissions = calculate_channel_permissions(&mut query).await;
 
-            EventV1::UserMoveVoiceChannel {
-                node: new_node,
-                from: channel,
-                to: new_voice_channel.id().to_string(),
-                token,
-            }
-            .private(target_user.id.clone())
-            .await;
-        };
-    } else if can_publish.is_some()
-        || can_receive.is_some()
-        || remove.contains(FieldsMember::CanPublish)
-        || remove.contains(FieldsMember::CanReceive)
-    {
-        if let Some(channel) = get_user_voice_channel_in_server(&target_user.id, &server.id).await?
+                voice_client
+                    .create_room(&new_node, &new_voice_channel)
+                    .await?;
+                let token = voice_client
+                    .create_token_for_identity(
+                        &new_node,
+                        db,
+                        &target_user,
+                        &target_user.id,
+                        permissions,
+                        &new_voice_channel,
+                    )
+                    .await?;
+
+                voice_client
+                    .remove_user(&old_node, &target_user.id, &channel)
+                    .await?;
+
+                EventV1::UserMoveVoiceChannel {
+                    node: new_node,
+                    from: channel,
+                    to: new_voice_channel.id().to_string(),
+                    token,
+                }
+                .private(target_user.id.clone())
+                .await;
+            };
+        } else if voice_client.is_enabled()
+            && (can_publish.is_some()
+                || can_receive.is_some()
+                || remove.contains(FieldsMember::CanPublish)
+                || remove.contains(FieldsMember::CanReceive))
         {
-            let node = get_channel_node(&channel)
-                .await?
-                .ok_or_else(|| create_error!(UnknownNode))?;
-            let channel = Reference::from_unchecked(&channel).as_channel(db).await?;
+            if let Some(channel) =
+                get_user_voice_channel_in_server(&target_user.id, &server.id).await?
+            {
+                let node = get_channel_node(&channel)
+                    .await?
+                    .ok_or_else(|| create_error!(UnknownNode))?;
+                let channel = Reference::from_unchecked(&channel).as_channel(db).await?;
 
-            sync_user_voice_permissions(
-                db,
-                voice_client,
-                &node,
-                &target_user,
-                &channel,
-                Some(&server),
-                None,
-            )
-            .await?;
+                sync_user_voice_permissions(
+                    db,
+                    voice_client,
+                    &node,
+                    &target_user,
+                    &channel,
+                    Some(&server),
+                    None,
+                )
+                .await?;
+            };
         };
+
+        if remove.contains(&FieldsMember::VoiceChannel) {
+            if let Some(channel) =
+                get_user_voice_channel_in_server(&target_user.id, &server.id).await?
+            {
+                remove_user_from_voice_channel(
+                    voice_client,
+                    &UserVoiceChannel {
+                        id: channel,
+                        server_id: Some(server.id.clone()),
+                    },
+                    &target_user.id,
+                )
+                .await?;
+            };
+        }
+
+        Ok(member)
+    }
+    .await;
+
+    let member = match mutation_result {
+        Ok(member) => member,
+        Err(error) => return audit_mutation::mark_failed_and_return(db, &mut audit, error).await,
     };
 
-    if remove.contains(&FieldsMember::VoiceChannel) {
-        if let Some(channel) = get_user_voice_channel_in_server(&target_user.id, &server.id).await?
-        {
-            remove_user_from_voice_channel(
-                voice_client,
-                &UserVoiceChannel {
-                    id: channel,
-                    server_id: Some(server.id.clone()),
-                },
-                &target_user.id,
-            )
-            .await?;
-        };
-    }
+    audit.mark_succeeded(db).await?;
 
     Ok(Json(member.into()))
+}
+
+#[cfg(test)]
+fn routes_under_test() -> Vec<rocket::Route> {
+    routes![edit]
+}
+
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+
+    use authifier::{
+        Authifier,
+        models::{Account, EmailVerification, Session},
+    };
+    use rocket::http::{ContentType, Header, Status};
+    use rocket::local::asynchronous::Client;
+    use syrnike_database::voice::VoiceClient;
+    use syrnike_database::{
+        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
+        ServerAuditLogTarget, fixture,
+    };
+    use ulid::Ulid;
+
+    struct MemberEditTestContext {
+        client: Client,
+        db: Database,
+        authifier: Authifier,
+    }
+
+    impl MemberEditTestContext {
+        async fn new() -> Self {
+            let db = DatabaseInfo::Reference
+                .connect()
+                .await
+                .expect("reference database");
+            let authifier = db.clone().to_authifier().await;
+            let client = Client::tracked(
+                rocket::build()
+                    .mount("/servers", super::routes_under_test())
+                    .manage(authifier.clone())
+                    .manage(db.clone())
+                    .manage(VoiceClient::new(HashMap::new())),
+            )
+            .await
+            .expect("valid rocket instance");
+
+            Self {
+                client,
+                db,
+                authifier,
+            }
+        }
+
+        async fn account_from_user(&self, id: String) -> (Account, Session) {
+            let account = Account {
+                id,
+                email: format!("{}@syrnike13.ru", Ulid::new()),
+                password: Default::default(),
+                email_normalised: Default::default(),
+                deletion: None,
+                disabled: false,
+                lockout: None,
+                mfa: Default::default(),
+                password_reset: None,
+                verification: EmailVerification::Verified,
+            };
+
+            self.authifier
+                .database
+                .save_account(&account)
+                .await
+                .expect("account saved");
+
+            let session = account
+                .create_session(&self.authifier, String::new())
+                .await
+                .expect("session created");
+
+            (account, session)
+        }
+    }
+
+    #[rocket::async_test]
+    async fn member_nickname_edit_writes_audit_entry() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            target user 2
+            server server 4);
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, target.id))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "nickname": "Renamed" }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let entries = context
+            .db
+            .fetch_server_audit_logs(
+                &server.id,
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::MemberUpdate),
+                    target_type: Some("Member".to_string()),
+                    target_id: Some(target.id.clone()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].actor_id, owner.id);
+        assert_eq!(entries[0].status, ServerAuditLogStatus::Succeeded);
+        assert_eq!(
+            entries[0].target,
+            ServerAuditLogTarget::Member { user_id: target.id }
+        );
+        assert_eq!(
+            entries[0].changes["nickname"].after,
+            Some(serde_json::json!("Renamed"))
+        );
+    }
+
+    #[rocket::async_test]
+    async fn member_timeout_edit_uses_timeout_audit_action() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            target user 2
+            server server 4);
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let timeout = "2030-01-01T00:00:00+0000";
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, target.id))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "timeout": timeout }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let entries = context
+            .db
+            .fetch_server_audit_logs(
+                &server.id,
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::MemberTimeout),
+                    target_type: Some("Member".to_string()),
+                    target_id: Some(target.id.clone()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].actor_id, owner.id);
+        assert_eq!(entries[0].status, ServerAuditLogStatus::Succeeded);
+    }
 }

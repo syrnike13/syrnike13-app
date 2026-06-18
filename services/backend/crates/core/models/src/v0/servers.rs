@@ -320,4 +320,12 @@ auto_derived!(
     pub struct DataEditRoleRanks {
         pub ranks: Vec<String>,
     }
+
+    /// Reason for a moderation action.
+    #[cfg_attr(feature = "validator", derive(Validate))]
+    pub struct DataModerationAction {
+        /// Audit log reason
+        #[cfg_attr(feature = "validator", validate(length(max = 512)))]
+        pub reason: Option<String>,
+    }
 );
