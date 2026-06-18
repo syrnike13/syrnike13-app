@@ -312,6 +312,22 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
   )
 }
 
+function ServerSettingsPlaceholderPanel({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
+  return (
+    <SettingsField label={title} description={description}>
+      <div className="rounded-md border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        Раздел появится в следующих обновлениях настроек сервера.
+      </div>
+    </SettingsField>
+  )
+}
+
 export function ServerSettingsPanelContent({
   serverId,
   tab,
@@ -319,7 +335,7 @@ export function ServerSettingsPanelContent({
   const serverName = useSyncStore((s) => s.servers[serverId]?.name ?? '')
 
   switch (tab) {
-    case 'general':
+    case 'overview':
       return (
         <ServerSettingsGeneralPanel
           serverId={serverId}
@@ -332,6 +348,27 @@ export function ServerSettingsPanelContent({
       return <ServerSettingsRolesPanel serverId={serverId} />
     case 'members':
       return <ServerSettingsMembersPanel serverId={serverId} />
+    case 'bans':
+      return (
+        <ServerSettingsPlaceholderPanel
+          title="Баны"
+          description="Управление заблокированными участниками сервера."
+        />
+      )
+    case 'invites':
+      return (
+        <ServerSettingsPlaceholderPanel
+          title="Приглашения"
+          description="Просмотр и отзыв приглашений сервера."
+        />
+      )
+    case 'audit':
+      return (
+        <ServerSettingsPlaceholderPanel
+          title="Журнал аудита"
+          description="История административных действий на сервере."
+        />
+      )
     default:
       return null
   }

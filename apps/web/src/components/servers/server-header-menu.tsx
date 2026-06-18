@@ -178,7 +178,7 @@ export function ServerHeaderMenu({
                 void navigate({
                   to: `${prefix}/servers/$serverId/settings`,
                   params: { serverId },
-                  search: { tab: 'general' },
+                  search: { tab: 'overview' },
                 })
               }}
             >

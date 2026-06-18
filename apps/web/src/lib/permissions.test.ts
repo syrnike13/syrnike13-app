@@ -8,9 +8,12 @@ import {
   canEditMember,
   canInviteToChannel,
   canKickServerMember,
+  canOpenServerSettings,
   canViewChannel,
+  canViewServerSettingsTab,
   getMemberRank,
   getServerMenuPermissions,
+  getServerSettingsAccess,
   hasChannelPermission,
   isChannelAccessRestricted,
 } from '#/lib/permissions'
@@ -442,5 +445,39 @@ describe('getServerMenuPermissions', () => {
       leave: true,
       copyId: true,
     })
+  })
+})
+
+describe('getServerSettingsAccess', () => {
+  it('allows role managers to open server settings without ManageServer', () => {
+    const server = makeServer({
+      roles: {
+        'role-1': makeRole({
+          _id: 'role-1',
+          permissions: { a: ChannelPermission.ManageRole, d: 0 },
+          rank: 1,
+        }),
+      },
+    })
+    const member = makeMember({ roles: ['role-1'] })
+
+    const access = getServerSettingsAccess(server, [], member, 'user-1')
+
+    expect(canOpenServerSettings(access)).toBe(true)
+    expect(canViewServerSettingsTab(access, 'roles')).toBe(true)
+    expect(canViewServerSettingsTab(access, 'overview')).toBe(false)
+  })
+
+  it('allows ban managers to open the bans tab without ManageServer', () => {
+    const server = makeServer({
+      default_permissions: ChannelPermission.BanMembers,
+    })
+    const member = makeMember()
+
+    const access = getServerSettingsAccess(server, [], member, 'user-1')
+
+    expect(canOpenServerSettings(access)).toBe(true)
+    expect(canViewServerSettingsTab(access, 'bans')).toBe(true)
+    expect(canViewServerSettingsTab(access, 'audit')).toBe(false)
   })
 })

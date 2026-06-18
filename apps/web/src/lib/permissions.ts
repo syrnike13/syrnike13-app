@@ -1,5 +1,6 @@
 import type { Channel, Member, Server } from '@syrnike13/api-types'
 
+import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
 import {
   hasPermissionBit,
   maskPermissionBits,
@@ -136,6 +137,16 @@ export type ServerMenuPermissions = {
   copyId: boolean
 }
 
+export type ServerSettingsAccess = {
+  overview: boolean
+  emoji: boolean
+  roles: boolean
+  members: boolean
+  bans: boolean
+  invites: boolean
+  audit: boolean
+}
+
 export function getMemberRank(
   server: Server,
   member: Member | undefined,
@@ -269,6 +280,54 @@ export function canManageRole(
   return roleRank > getMemberRank(server, member)
 }
 
+export function getServerSettingsAccess(
+  server: Server,
+  channels: Channel[],
+  member: Member | undefined,
+  userId: string | undefined,
+): ServerSettingsAccess {
+  const serverPermissions = calculateServerPermissions(server, member, userId)
+  const has = (permission: number) =>
+    hasChannelPermission(serverPermissions, permission)
+  const canInvite = channels.some(
+    (channel) =>
+      channel.channel_type === 'TextChannel' &&
+      hasChannelPermission(
+        calculateChannelPermissions(server, channel, member, userId),
+        ChannelPermission.InviteOthers,
+      ),
+  )
+
+  return {
+    overview: has(ChannelPermission.ManageServer),
+    emoji: has(ChannelPermission.ManageCustomisation),
+    roles:
+      has(ChannelPermission.ManageRole) ||
+      has(ChannelPermission.ManagePermissions),
+    members:
+      has(ChannelPermission.KickMembers) ||
+      has(ChannelPermission.BanMembers) ||
+      has(ChannelPermission.TimeoutMembers) ||
+      has(ChannelPermission.AssignRoles) ||
+      has(ChannelPermission.ManageNicknames) ||
+      has(ChannelPermission.ManageServer),
+    bans: has(ChannelPermission.BanMembers),
+    invites: has(ChannelPermission.ManageServer) || canInvite,
+    audit: has(ChannelPermission.ManageServer),
+  }
+}
+
+export function canOpenServerSettings(access: ServerSettingsAccess): boolean {
+  return Object.values(access).some(Boolean)
+}
+
+export function canViewServerSettingsTab(
+  access: ServerSettingsAccess,
+  tab: ServerSettingsTab,
+): boolean {
+  return access[tab]
+}
+
 export function getServerMenuPermissions(
   server: Server,
   channels: Channel[],
@@ -280,6 +339,7 @@ export function getServerMenuPermissions(
     serverPermissions,
     ChannelPermission.ManageServer,
   )
+  const settingsAccess = getServerSettingsAccess(server, channels, member, userId)
   const canInvite =
     canManageServer ||
     channels.some(
@@ -293,7 +353,7 @@ export function getServerMenuPermissions(
 
   return {
     invite: canInvite,
-    settings: canManageServer,
+    settings: canOpenServerSettings(settingsAccess),
     createChannel: hasChannelPermission(
       serverPermissions,
       ChannelPermission.ManageChannel,
