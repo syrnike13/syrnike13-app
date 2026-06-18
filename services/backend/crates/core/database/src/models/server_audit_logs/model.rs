@@ -126,29 +126,31 @@ impl ServerAuditLogEntry {
     }
 
     pub async fn mark_succeeded(&mut self, db: &Database) -> Result<()> {
-        self.status = ServerAuditLogStatus::Succeeded;
-        self.error = None;
-        self.completed_at = Some(audit_timestamp());
-        db.update_server_audit_log_status(
-            &self.id,
-            self.status.clone(),
-            self.error.clone(),
-            self.completed_at,
-        )
-        .await
+        let status = ServerAuditLogStatus::Succeeded;
+        let error = None;
+        let completed_at = Some(audit_timestamp());
+
+        db.update_server_audit_log_status(&self.id, status.clone(), error.clone(), completed_at)
+            .await?;
+
+        self.status = status;
+        self.error = error;
+        self.completed_at = completed_at;
+        Ok(())
     }
 
     pub async fn mark_failed(&mut self, db: &Database, error: String) -> Result<()> {
-        self.status = ServerAuditLogStatus::Failed;
-        self.error = Some(error);
-        self.completed_at = Some(audit_timestamp());
-        db.update_server_audit_log_status(
-            &self.id,
-            self.status.clone(),
-            self.error.clone(),
-            self.completed_at,
-        )
-        .await
+        let status = ServerAuditLogStatus::Failed;
+        let error = Some(error);
+        let completed_at = Some(audit_timestamp());
+
+        db.update_server_audit_log_status(&self.id, status.clone(), error.clone(), completed_at)
+            .await?;
+
+        self.status = status;
+        self.error = error;
+        self.completed_at = completed_at;
+        Ok(())
     }
 }
 
@@ -239,6 +241,41 @@ mod tests {
         Database, ReferenceDb, ServerAuditLogAction, ServerAuditLogEntry, ServerAuditLogQuery,
         ServerAuditLogStatus, ServerAuditLogTarget,
     };
+    use bson::{doc, to_bson, to_document, Bson};
+    use syrnike_result::ErrorType;
+
+    fn audit_entry(
+        id: &str,
+        created_at: u64,
+        action: ServerAuditLogAction,
+        target: ServerAuditLogTarget,
+    ) -> ServerAuditLogEntry {
+        ServerAuditLogEntry {
+            id: id.to_string(),
+            server_id: "server-1".to_string(),
+            actor_id: "actor-1".to_string(),
+            action,
+            target,
+            reason: None,
+            changes: HashMap::new(),
+            status: ServerAuditLogStatus::Pending,
+            error: None,
+            request_id: None,
+            created_at,
+            completed_at: None,
+        }
+    }
+
+    async fn insert_audit_entry(db: &Database, entry: ServerAuditLogEntry) -> ServerAuditLogEntry {
+        db.insert_server_audit_log(&entry)
+            .await
+            .expect("audit entry inserted");
+        entry
+    }
+
+    fn ids(entries: Vec<ServerAuditLogEntry>) -> Vec<String> {
+        entries.into_iter().map(|entry| entry.id).collect()
+    }
 
     #[async_std::test]
     async fn reference_audit_log_insert_finalize_and_fetch() {
@@ -274,5 +311,345 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].status, ServerAuditLogStatus::Succeeded);
         assert_eq!(entries[0].reason.as_deref(), Some("initial setup"));
+    }
+
+    #[async_std::test]
+    async fn reference_audit_log_filters_by_action() {
+        let db = Database::Reference(ReferenceDb::default());
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                10,
+                ServerAuditLogAction::RoleCreate,
+                ServerAuditLogTarget::Role {
+                    id: "role-1".to_string(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                20,
+                ServerAuditLogAction::MemberKick,
+                ServerAuditLogTarget::User {
+                    id: "user-1".to_string(),
+                },
+            ),
+        )
+        .await;
+
+        let entries = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::RoleCreate),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(ids(entries), vec!["01ARZ3NDEKTSV4RRFFQ69G5FAV"]);
+    }
+
+    #[async_std::test]
+    async fn reference_audit_log_filters_by_target_type() {
+        let db = Database::Reference(ReferenceDb::default());
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                10,
+                ServerAuditLogAction::RoleCreate,
+                ServerAuditLogTarget::Role {
+                    id: "role-1".to_string(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                20,
+                ServerAuditLogAction::InviteCreate,
+                ServerAuditLogTarget::Invite {
+                    code: "invite-1".to_string(),
+                },
+            ),
+        )
+        .await;
+
+        let entries = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    target_type: Some("Role".to_string()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(ids(entries), vec!["01ARZ3NDEKTSV4RRFFQ69G5FAV"]);
+    }
+
+    #[async_std::test]
+    async fn reference_audit_log_filters_by_target_id() {
+        let db = Database::Reference(ReferenceDb::default());
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                10,
+                ServerAuditLogAction::RoleCreate,
+                ServerAuditLogTarget::Role {
+                    id: "role-1".to_string(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                20,
+                ServerAuditLogAction::InviteCreate,
+                ServerAuditLogTarget::Invite {
+                    code: "role-1".to_string(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAX",
+                30,
+                ServerAuditLogAction::MemberUpdate,
+                ServerAuditLogTarget::Member {
+                    user_id: "user-1".to_string(),
+                },
+            ),
+        )
+        .await;
+
+        let target_id_entries = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    target_id: Some("role-1".to_string()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+        assert_eq!(
+            ids(target_id_entries),
+            vec!["01ARZ3NDEKTSV4RRFFQ69G5FAW", "01ARZ3NDEKTSV4RRFFQ69G5FAV"]
+        );
+
+        let combined_entries = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    target_type: Some("Role".to_string()),
+                    target_id: Some("role-1".to_string()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+        assert_eq!(ids(combined_entries), vec!["01ARZ3NDEKTSV4RRFFQ69G5FAV"]);
+    }
+
+    #[async_std::test]
+    async fn reference_audit_log_before_cursor_uses_sorted_position() {
+        let db = Database::Reference(ReferenceDb::default());
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                100,
+                ServerAuditLogAction::RoleCreate,
+                ServerAuditLogTarget::Role {
+                    id: "role-1".to_string(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAZ",
+                100,
+                ServerAuditLogAction::RoleUpdate,
+                ServerAuditLogTarget::Role {
+                    id: "role-2".to_string(),
+                },
+            ),
+        )
+        .await;
+        insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAY",
+                90,
+                ServerAuditLogAction::RoleDelete,
+                ServerAuditLogTarget::Role {
+                    id: "role-3".to_string(),
+                },
+            ),
+        )
+        .await;
+
+        let entries = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    before: Some("01ARZ3NDEKTSV4RRFFQ69G5FAZ".to_string()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(
+            ids(entries),
+            vec!["01ARZ3NDEKTSV4RRFFQ69G5FAV", "01ARZ3NDEKTSV4RRFFQ69G5FAY"]
+        );
+    }
+
+    #[async_std::test]
+    async fn reference_audit_log_limit_is_clamped() {
+        let db = Database::Reference(ReferenceDb::default());
+        for index in 0..101 {
+            insert_audit_entry(
+                &db,
+                audit_entry(
+                    &format!("audit-{index:03}"),
+                    index,
+                    ServerAuditLogAction::RoleCreate,
+                    ServerAuditLogTarget::Role {
+                        id: format!("role-{index}"),
+                    },
+                ),
+            )
+            .await;
+        }
+
+        let zero_limit = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    limit: 0,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+        assert_eq!(zero_limit.len(), 1);
+
+        let large_limit = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    limit: 500,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+        assert_eq!(large_limit.len(), 100);
+    }
+
+    #[async_std::test]
+    async fn reference_audit_log_missing_finalize_returns_not_found_without_mutating_entry() {
+        let db = Database::Reference(ReferenceDb::default());
+        let mut entry = audit_entry(
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            10,
+            ServerAuditLogAction::RoleCreate,
+            ServerAuditLogTarget::Role {
+                id: "role-1".to_string(),
+            },
+        );
+
+        let error = entry
+            .mark_succeeded(&db)
+            .await
+            .expect_err("missing audit entry returns error");
+
+        assert!(matches!(error.error_type, ErrorType::NotFound));
+        assert_eq!(entry.status, ServerAuditLogStatus::Pending);
+        assert_eq!(entry.error, None);
+        assert_eq!(entry.completed_at, None);
+    }
+
+    #[async_std::test]
+    async fn reference_audit_log_mark_failed_stores_failure_details() {
+        let db = Database::Reference(ReferenceDb::default());
+        let mut entry = insert_audit_entry(
+            &db,
+            audit_entry(
+                "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                10,
+                ServerAuditLogAction::RoleCreate,
+                ServerAuditLogTarget::Role {
+                    id: "role-1".to_string(),
+                },
+            ),
+        )
+        .await;
+
+        entry
+            .mark_failed(&db, "role name already exists".to_string())
+            .await
+            .expect("audit failed");
+
+        let entries = db
+            .fetch_server_audit_logs(
+                "server-1",
+                ServerAuditLogQuery {
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries[0].status, ServerAuditLogStatus::Failed);
+        assert_eq!(
+            entries[0].error.as_deref(),
+            Some("role name already exists")
+        );
+        assert_eq!(entry.status, ServerAuditLogStatus::Failed);
+        assert_eq!(entry.error.as_deref(), Some("role name already exists"));
+    }
+
+    #[test]
+    fn mongo_audit_log_filters_use_expected_bson_shape() {
+        let action = to_bson(&ServerAuditLogAction::RoleCreate).expect("action serializes");
+        let target = to_document(&ServerAuditLogTarget::Member {
+            user_id: "user-1".to_string(),
+        })
+        .expect("target serializes");
+
+        assert_eq!(action, Bson::Document(doc! { "type": "RoleCreate" }));
+        assert_eq!(
+            target,
+            doc! {
+                "type": "Member",
+                "user_id": "user-1"
+            }
+        );
     }
 }

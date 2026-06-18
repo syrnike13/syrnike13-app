@@ -1,6 +1,9 @@
 use syrnike_result::Result;
 
-use crate::{ReferenceDb, ServerAuditLogEntry, ServerAuditLogQuery, ServerAuditLogStatus};
+use crate::{
+    ReferenceDb, ServerAuditLogEntry, ServerAuditLogQuery, ServerAuditLogStatus,
+    ServerAuditLogTarget,
+};
 
 use super::AbstractServerAuditLogs;
 
@@ -44,9 +47,27 @@ impl AbstractServerAuditLogs for ReferenceDb {
             .filter(|entry| entry.server_id == server_id)
             .filter(|entry| {
                 query
+                    .action
+                    .as_ref()
+                    .is_none_or(|action| &entry.action == action)
+            })
+            .filter(|entry| {
+                query
                     .actor_id
                     .as_ref()
                     .is_none_or(|id| &entry.actor_id == id)
+            })
+            .filter(|entry| {
+                query
+                    .target_type
+                    .as_ref()
+                    .is_none_or(|target_type| target_type_matches(&entry.target, target_type))
+            })
+            .filter(|entry| {
+                query
+                    .target_id
+                    .as_ref()
+                    .is_none_or(|target_id| target_id_matches(&entry.target, target_id))
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -65,5 +86,29 @@ impl AbstractServerAuditLogs for ReferenceDb {
 
         entries.truncate(query.limit.clamp(1, 100));
         Ok(entries)
+    }
+}
+
+fn target_type_matches(target: &ServerAuditLogTarget, target_type: &str) -> bool {
+    match target {
+        ServerAuditLogTarget::Server { .. } => target_type == "Server",
+        ServerAuditLogTarget::Role { .. } => target_type == "Role",
+        ServerAuditLogTarget::Member { .. } => target_type == "Member",
+        ServerAuditLogTarget::User { .. } => target_type == "User",
+        ServerAuditLogTarget::Invite { .. } => target_type == "Invite",
+        ServerAuditLogTarget::Channel { .. } => target_type == "Channel",
+        ServerAuditLogTarget::Category { .. } => target_type == "Category",
+    }
+}
+
+fn target_id_matches(target: &ServerAuditLogTarget, target_id: &str) -> bool {
+    match target {
+        ServerAuditLogTarget::Server { id }
+        | ServerAuditLogTarget::Role { id }
+        | ServerAuditLogTarget::User { id }
+        | ServerAuditLogTarget::Channel { id }
+        | ServerAuditLogTarget::Category { id } => id == target_id,
+        ServerAuditLogTarget::Member { user_id } => user_id == target_id,
+        ServerAuditLogTarget::Invite { code } => code == target_id,
     }
 }
