@@ -163,6 +163,7 @@ function ServerSettingsGeneralPanel({
   const [removeIcon, setRemoveIcon] = useState(false)
   const [removeBanner, setRemoveBanner] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingServer, setDeletingServer] = useState(false)
   const iconInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
@@ -299,19 +300,13 @@ function ServerSettingsGeneralPanel({
   async function deleteOwnedServer() {
     const token = auth.session?.token
     if (!token || !server || server.owner !== auth.user?._id) return
-    if (
-      !window.confirm(
-        `Удалить сервер «${server.name}»? Это действие необратимо.`,
-      )
-    ) {
-      return
-    }
 
     setDeletingServer(true)
     try {
       await deleteOrLeaveServer(token, serverId)
       syncStore.removeServer(serverId)
       syncStore.setSelectedServerId(null)
+      setDeleteDialogOpen(false)
       toast.success('Сервер удалён')
       await navigate({ to: prefix, search: { tab: 'online' } })
     } catch (error) {
@@ -563,7 +558,7 @@ function ServerSettingsGeneralPanel({
               type="button"
               variant="destructive"
               disabled={saving || deletingServer}
-              onClick={() => void deleteOwnedServer()}
+              onClick={() => setDeleteDialogOpen(true)}
             >
               <Trash2Icon className="size-4" />
               Удалить сервер
@@ -571,6 +566,42 @@ function ServerSettingsGeneralPanel({
           </div>
         </SettingsField>
       ) : null}
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deletingServer) {
+            setDeleteDialogOpen(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удалить сервер «{server?.name}»?</DialogTitle>
+            <DialogDescription>
+              Сервер, каналы и участники будут удалены для всех. Это действие
+              невозможно отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingServer}
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingServer}
+              onClick={() => void deleteOwnedServer()}
+            >
+              Удалить сервер
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   )
 }

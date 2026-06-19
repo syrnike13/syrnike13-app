@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -271,13 +272,22 @@ describe('ServerSettingsPanelContent overview', () => {
     })
   })
 
-  it('deletes an owned server from the overview danger zone', async () => {
+  it('deletes an owned server from the overview danger zone through a dialog', async () => {
     upsertServer({ owner: 'user-1' })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Удалить сервер' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Server')
+    expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Удалить сервер' }),
+    )
 
     await waitFor(() => {
       expect(mocks.deleteOrLeaveServer).toHaveBeenCalledWith(

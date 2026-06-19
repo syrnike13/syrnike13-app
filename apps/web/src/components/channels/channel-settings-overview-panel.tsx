@@ -9,6 +9,14 @@ import type {
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import {
@@ -125,6 +133,7 @@ export function ChannelSettingsOverviewPanel({
     channelMaxUsers(channel),
   )
   const [saving, setSaving] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingChannel, setDeletingChannel] = useState(false)
 
   useEffect(() => {
@@ -275,18 +284,12 @@ export function ChannelSettingsOverviewPanel({
   async function deleteCurrentChannel() {
     const token = auth.session?.token
     if (!token) return
-    if (
-      !window.confirm(
-        `Удалить канал «${channel.name}»? Это действие необратимо.`,
-      )
-    ) {
-      return
-    }
 
     setDeletingChannel(true)
     try {
       await deleteChannel(token, channel._id)
       syncStore.removeChannel(channel._id)
+      setDeleteDialogOpen(false)
       toast.success('Канал удалён')
 
       const fallback = pickDefaultChannelId(
@@ -312,7 +315,8 @@ export function ChannelSettingsOverviewPanel({
   }
 
   return (
-    <div>
+    <>
+      <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold">Обзор</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -470,7 +474,7 @@ export function ChannelSettingsOverviewPanel({
               type="button"
               variant="destructive"
               disabled={saving || deletingChannel}
-              onClick={() => void deleteCurrentChannel()}
+              onClick={() => setDeleteDialogOpen(true)}
             >
               <Trash2Icon className="size-4" />
               Удалить канал
@@ -478,6 +482,43 @@ export function ChannelSettingsOverviewPanel({
           </div>
         </SettingsField>
       </div>
-    </div>
+      </div>
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deletingChannel) {
+            setDeleteDialogOpen(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удалить канал «{channel.name}»?</DialogTitle>
+            <DialogDescription>
+              Канал и его сообщения будут удалены для всех. Это действие
+              невозможно отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingChannel}
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingChannel}
+              onClick={() => void deleteCurrentChannel()}
+            >
+              Удалить канал
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

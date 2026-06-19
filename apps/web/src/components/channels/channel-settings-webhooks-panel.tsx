@@ -12,6 +12,14 @@ import {
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import {
@@ -51,6 +59,8 @@ export function ChannelSettingsWebhooksPanel({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [webhookPendingDeletion, setWebhookPendingDeletion] =
+    useState<Webhook | null>(null)
   const token = auth.session?.token
 
   useEffect(() => {
@@ -113,9 +123,9 @@ export function ChannelSettingsWebhooksPanel({
     }
   }
 
-  async function deleteSelectedWebhook(webhook: Webhook) {
-    if (!token) return
-    if (!window.confirm(`Удалить вебхук «${webhook.name}»?`)) return
+  async function deleteSelectedWebhook() {
+    const webhook = webhookPendingDeletion
+    if (!token || !webhook) return
 
     setDeletingId(webhook.id)
     try {
@@ -123,6 +133,7 @@ export function ChannelSettingsWebhooksPanel({
       setWebhooks((current) =>
         current.filter((currentWebhook) => currentWebhook.id !== webhook.id),
       )
+      setWebhookPendingDeletion(null)
       toast.success('Вебхук удалён')
     } catch (error) {
       toast.error(
@@ -202,7 +213,8 @@ export function ChannelSettingsWebhooksPanel({
   }
 
   return (
-    <div>
+    <>
+      <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold">Вебхуки</h2>
         <p className="mt-1 text-sm text-muted-foreground">#{channel.name}</p>
@@ -364,7 +376,7 @@ export function ChannelSettingsWebhooksPanel({
                               deletingId === webhook.id ||
                               savingId === webhook.id
                             }
-                            onClick={() => void deleteSelectedWebhook(webhook)}
+                            onClick={() => setWebhookPendingDeletion(webhook)}
                           >
                             <Trash2Icon className="size-4" />
                           </Button>
@@ -381,6 +393,45 @@ export function ChannelSettingsWebhooksPanel({
           </TooltipProvider>
         )}
       </section>
-    </div>
+      </div>
+      <Dialog
+        open={webhookPendingDeletion !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) {
+            setWebhookPendingDeletion(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Удалить вебхук «{webhookPendingDeletion?.name}»?
+            </DialogTitle>
+            <DialogDescription>
+              Интеграции, которые используют этот URL, больше не смогут
+              отправлять сообщения в канал.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingId !== null}
+              onClick={() => setWebhookPendingDeletion(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingId !== null}
+              onClick={() => void deleteSelectedWebhook()}
+            >
+              Удалить вебхук
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

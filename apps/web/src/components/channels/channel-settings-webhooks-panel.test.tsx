@@ -5,8 +5,10 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import type { Channel, Webhook } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,6 +31,18 @@ vi.mock('sonner', () => ({
     success: (...args: Parameters<typeof mocks.toastSuccess>) =>
       mocks.toastSuccess(...args),
   },
+}))
+
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
+    open ? <div role="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -140,8 +154,8 @@ describe('ChannelSettingsWebhooksPanel', () => {
     expect(await screen.findByText('Build bot')).not.toBeNull()
   })
 
-  it('deletes a webhook after confirmation', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('deletes a webhook through a confirmation dialog', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     render(
       <ChannelSettingsWebhooksPanel
@@ -151,6 +165,15 @@ describe('ChannelSettingsWebhooksPanel', () => {
 
     fireEvent.click(
       await screen.findByRole('button', { name: 'Удалить Deploy bot' }),
+    )
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Deploy bot')
+    expect(mocks.deleteWebhook).not.toHaveBeenCalled()
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Удалить вебхук' }),
     )
 
     await waitFor(() => {
