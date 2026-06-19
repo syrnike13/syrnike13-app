@@ -16,6 +16,15 @@ import { toast } from 'sonner'
 import { CreateChannelDialog } from '#/components/servers/create-channel-dialog'
 import { CreateCategoryDialog } from '#/components/channels/create-category-dialog'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
+import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import {
   Popover,
   PopoverContent,
@@ -78,6 +87,7 @@ export function ServerHeaderMenu({
   const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
+  const isOwner = server?.owner === auth.user?._id
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
   )
@@ -94,6 +104,7 @@ export function ServerHeaderMenu({
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
   const [markingRead, setMarkingRead] = useState(false)
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [removingServer, setRemovingServer] = useState(false)
 
   function openDialog(action: () => void) {
@@ -103,17 +114,7 @@ export function ServerHeaderMenu({
 
   async function handleRemoveServer() {
     const token = auth.session?.token
-    const isOwner = server?.owner === auth.user?._id
     if (!token || !server) return
-    if (
-      !window.confirm(
-        isOwner
-          ? `Удалить сервер «${serverName}»? Это действие необратимо.`
-          : `Покинуть сервер «${serverName}»? Вы потеряете доступ к его каналам.`,
-      )
-    ) {
-      return
-    }
 
     setMenuOpen(false)
     setRemovingServer(true)
@@ -122,6 +123,7 @@ export function ServerHeaderMenu({
       syncStore.removeServer(serverId)
       syncStore.setSelectedServerId(null)
       toast.success(isOwner ? 'Сервер удалён' : 'Вы покинули сервер')
+      setRemoveDialogOpen(false)
       await navigate({ to: '/app', search: { tab: 'online' } })
     } catch (error) {
       toast.error(
@@ -259,7 +261,7 @@ export function ServerHeaderMenu({
           {menuPermissions?.leave ? (
             <ServerHeaderMenuItem
               icon={
-                server?.owner === auth.user?._id ? (
+                isOwner ? (
                   <Trash2Icon className="size-4" />
                 ) : (
                   <LogOutIcon className="size-4" />
@@ -267,11 +269,12 @@ export function ServerHeaderMenu({
               }
               destructive
               disabled={removingServer}
-              onClick={() => void handleRemoveServer()}
+              onClick={() => {
+                setMenuOpen(false)
+                setRemoveDialogOpen(true)
+              }}
             >
-              {server?.owner === auth.user?._id
-                ? 'Удалить сервер'
-                : 'Покинуть сервер'}
+              {isOwner ? 'Удалить сервер' : 'Покинуть сервер'}
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.leave && menuPermissions?.copyId ? (
@@ -287,6 +290,48 @@ export function ServerHeaderMenu({
           ) : null}
         </PopoverContent>
       </Popover>
+
+      {menuPermissions?.leave ? (
+        <Dialog
+          open={removeDialogOpen}
+          onOpenChange={(open) => {
+            if (!removingServer) setRemoveDialogOpen(open)
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {isOwner
+                  ? `Удалить сервер «${serverName}»?`
+                  : `Покинуть сервер «${serverName}»?`}
+              </DialogTitle>
+              <DialogDescription>
+                {isOwner
+                  ? 'Это действие необратимо. Сервер и его каналы будут удалены.'
+                  : 'Вы потеряете доступ к каналам этого сервера.'}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={removingServer}
+                onClick={() => setRemoveDialogOpen(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={removingServer}
+                onClick={() => void handleRemoveServer()}
+              >
+                {isOwner ? 'Удалить сервер' : 'Покинуть сервер'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {menuPermissions?.invite ? (
         <ServerInviteDialog

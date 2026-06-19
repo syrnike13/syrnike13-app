@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import type { Channel } from '@syrnike13/api-types'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   join: vi.fn(async () => {}),
   openVoiceChannelDrawer: vi.fn(),
+  deleteChannel: vi.fn(async () => {}),
   pathname: '/app/',
   voice: {
     channelId: 'voice-main' as string | null,
@@ -47,6 +55,29 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}))
+
+vi.mock('#/features/api/channels-api', () => ({
+  deleteChannel: (...args: [string, string]) => mocks.deleteChannel(...args),
+}))
+
+vi.mock('#/features/api/sync-api', () => ({
+  ackChannel: vi.fn(),
+}))
+
+vi.mock('#/features/api/invites-api', () => ({
+  createChannelInvite: vi.fn(),
+}))
+
+vi.mock('#/lib/clipboard', () => ({
+  writeClipboardText: vi.fn(),
+}))
+
 vi.mock('#/features/voice/voice-context', () => ({
   useVoice: () => mocks.voice,
 }))
@@ -69,14 +100,47 @@ vi.mock('#/components/voice/voice-channel-preview', () => ({
 
 vi.mock('#/components/ui/context-menu', () => ({
   ContextMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
-  ContextMenuContent: () => null,
-  ContextMenuItem: ({ children }: { children: ReactNode }) => (
+  ContextMenuContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
+  ),
+  ContextMenuItem: ({
+    children,
+    onSelect,
+  }: {
+    children: ReactNode
+    onSelect?: () => void
+  }) => (
+    <button type="button" onClick={() => onSelect?.()}>
+      {children}
+    </button>
   ),
   ContextMenuSeparator: () => null,
   ContextMenuTrigger: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
+}))
+
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({
+    children,
+    open,
+  }: {
+    children: ReactNode
+    open?: boolean
+  }) => (open ? <>{children}</> : null),
+  DialogContent: ({ children }: { children: ReactNode }) => (
+    <div role="dialog">{children}</div>
+  ),
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogHeader: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
 const voiceChannel = {
@@ -86,6 +150,17 @@ const voiceChannel = {
   name: 'main',
   voice: { max_users: null },
 } as Channel
+
+const textServerChannel = {
+  _id: 'text-general',
+  channel_type: 'TextChannel',
+  server: 'server-1',
+  name: 'general',
+  description: null,
+  nsfw: false,
+  slowmode: 0,
+  default_permissions: null,
+} satisfies Extract<Channel, { channel_type: 'TextChannel' }>
 
 const directMessageChannel = {
   _id: 'dm-call',
@@ -115,12 +190,31 @@ function renderVoiceItem(activeChannelId = 'text-general') {
   )
 }
 
+function upsertTextServerChannel(channel = textServerChannel) {
+  syncStore.upsertServer({
+    _id: 'server-1',
+    name: 'Server',
+    owner: 'user-1',
+    channels: [channel._id],
+    default_permissions: 0,
+  } as never)
+  syncStore.upsertMembers([
+    {
+      _id: { server: 'server-1', user: 'user-1' },
+      joined_at: '2024-01-01T00:00:00Z',
+    } as never,
+  ])
+  syncStore.upsertChannel(channel)
+}
+
 describe('ChannelSidebarItem voice navigation', () => {
   beforeEach(() => {
     syncStore.reset()
     mocks.navigate.mockClear()
     mocks.join.mockClear()
     mocks.openVoiceChannelDrawer.mockClear()
+    mocks.deleteChannel.mockResolvedValue(undefined)
+    mocks.deleteChannel.mockClear()
     mocks.pathname = '/app/'
     mocks.voice.channelId = 'voice-main'
     mocks.voice.status = 'connected'
@@ -130,6 +224,7 @@ describe('ChannelSidebarItem voice navigation', () => {
   afterEach(() => {
     cleanup()
     syncStore.reset()
+    vi.restoreAllMocks()
   })
 
   it('explicitly opens the connected voice channel from another channel', () => {
@@ -345,5 +440,41 @@ describe('ChannelSidebarItem voice navigation', () => {
 
     expect(screen.getByRole('link', { name: 'Команда' })).toBeTruthy()
     expect(screen.getByTitle('Групповой чат')).toBeTruthy()
+  })
+
+  it('opens a delete confirmation dialog from the channel context menu', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    upsertTextServerChannel()
+
+    render(
+      <ChannelSidebarItem
+        channel={textServerChannel}
+        activeChannelId="other-channel"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{}}
+        canManage
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить канал' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(mocks.deleteChannel).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('general')
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Удалить канал' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.deleteChannel).toHaveBeenCalledWith(
+        'session-token',
+        'text-general',
+      )
+    })
+    expect(syncStore.getState().channels['text-general']).toBeUndefined()
   })
 })

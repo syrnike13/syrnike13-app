@@ -6,8 +6,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import type { Channel } from '@syrnike13/api-types'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
@@ -40,6 +42,29 @@ vi.mock('#/components/servers/create-channel-dialog', () => ({
 
 vi.mock('#/components/servers/server-invite-dialog', () => ({
   ServerInviteDialog: () => null,
+}))
+
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({
+    children,
+    open,
+  }: {
+    children: ReactNode
+    open?: boolean
+  }) => (open ? <>{children}</> : null),
+  DialogContent: ({ children }: { children: ReactNode }) => (
+    <div role="dialog">{children}</div>
+  ),
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogHeader: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({
@@ -106,6 +131,7 @@ describe('ServerHeaderMenu', () => {
   afterEach(() => {
     cleanup()
     syncStore.reset()
+    vi.restoreAllMocks()
     vi.clearAllMocks()
   })
 
@@ -136,6 +162,60 @@ describe('ServerHeaderMenu', () => {
     expect(
       screen.queryByRole('button', { name: 'Удалить сервер' }),
     ).toBeNull()
+  })
+
+  it('confirms server deletion in a dialog before calling the API', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить сервер' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Server')
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Удалить сервер' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.deleteOrLeaveServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+      )
+    })
+  })
+
+  it('confirms leaving a server in a dialog before calling the API', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    syncStore.reset()
+    upsertServer('owner-2')
+
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Покинуть сервер' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Server')
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Покинуть сервер' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.deleteOrLeaveServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+      )
+    })
   })
 
   it('marks all server channels as read from the server menu', async () => {
