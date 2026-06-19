@@ -5,6 +5,8 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
+import { DraftProvider } from '#/components/settings/draft-controller-context'
+import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { syncStore } from '#/features/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
@@ -159,6 +161,15 @@ function setupServer() {
   ])
 }
 
+function renderWithDraft() {
+  return render(
+    <DraftProvider>
+      <ServerSettingsRolesPanel serverId="server-1" />
+      <UnsavedChangesBar saveLabel="Сохранить" />
+    </DraftProvider>,
+  )
+}
+
 describe('ServerSettingsRolesPanel', () => {
   beforeEach(() => {
     setupServer()
@@ -195,5 +206,40 @@ describe('ServerSettingsRolesPanel', () => {
       )
     })
     expect(syncStore.getState().servers['server-1']?.roles?.member).toBeUndefined()
+  })
+
+  it('removes a role colour without sending a null colour value', async () => {
+    syncStore.upsertServer({
+      ...syncStore.getState().servers['server-1']!,
+      roles: {
+        ...syncStore.getState().servers['server-1']!.roles,
+        member: {
+          ...syncStore.getState().servers['server-1']!.roles.member,
+          colour: '#ff00aa',
+        },
+      },
+    } as never)
+    mocks.editServerRole.mockResolvedValue({
+      _id: 'member',
+      name: 'Member',
+      permissions: { a: 0, d: 0 },
+      rank: 5,
+      colour: null,
+    })
+
+    renderWithDraft()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Member' }))
+    fireEvent.click(screen.getByTitle('Без цвета'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(mocks.editServerRole).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        'member',
+        { remove: ['Colour'] },
+      )
+    })
   })
 })

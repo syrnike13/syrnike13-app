@@ -230,17 +230,18 @@ export function ServerSettingsRoleEditor({
         if (iconFile) {
           iconAttachmentId = await uploadAttachment(token, iconFile)
         }
+        const trimmedColour = colour.trim()
 
         const updatedRole = await editServerRole(token, serverId, role._id, {
           ...(nameChanged ? { name: trimmedName } : {}),
-          ...(colourChanged ? { colour: colour.trim() || null } : {}),
+          ...(colourChanged && trimmedColour ? { colour: trimmedColour } : {}),
           ...(hoistChanged ? { hoist } : {}),
           ...(mentionableChanged ? { mentionable } : {}),
           ...(iconAttachmentId ? { icon: iconAttachmentId } : {}),
-          ...((colourChanged && !colour.trim()) || removeIcon
+          ...((colourChanged && !trimmedColour) || removeIcon
             ? {
                 remove: [
-                  ...(colourChanged && !colour.trim()
+                  ...(colourChanged && !trimmedColour
                     ? (['Colour'] as const)
                     : []),
                   ...(removeIcon ? (['Icon'] as const) : []),
