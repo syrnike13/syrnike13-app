@@ -1,5 +1,7 @@
 import { ulidToDate } from '#/lib/ulid'
 
+const MESSAGE_GROUP_WINDOW_MS = 7 * 60 * 1000
+
 function startOfLocalDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 }
@@ -54,13 +56,20 @@ function isSystemMessage(message: { system?: unknown }) {
  */
 export function shouldCompactMessage(
   previous:
-    | { author: string; system?: unknown; replies?: readonly unknown[] | null }
+    | { _id: string; author: string; system?: unknown; replies?: readonly unknown[] | null }
     | undefined,
-  current: { author: string; system?: unknown; replies?: readonly unknown[] | null },
+  current: { _id: string; author: string; system?: unknown; replies?: readonly unknown[] | null },
 ): boolean {
   if (!previous) return false
   if (previous.author !== current.author) return false
   if (isSystemMessage(previous) || isSystemMessage(current)) return false
   if (current.replies?.length) return false
+  if (
+    Math.abs(
+      messageCreatedAt(current).getTime() - messageCreatedAt(previous).getTime(),
+    ) > MESSAGE_GROUP_WINDOW_MS
+  ) {
+    return false
+  }
   return true
 }
