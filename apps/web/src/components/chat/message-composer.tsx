@@ -224,19 +224,8 @@ export function MessageComposer({
     composerRef.current?.insertText(text)
   }
 
-  function buildOutboundContent(raw: string) {
-    const trimmed = raw.trim()
-    if (!replyTo || !replyMention || isEditing) return trimmed
-
-    const mention = `<@${replyTo.author}>`
-    if (!trimmed.includes(mention)) {
-      return trimmed ? `${mention} ${trimmed}` : mention
-    }
-    return trimmed
-  }
-
   async function submit() {
-    const content = buildOutboundContent(value)
+    const content = value.trim()
     if ((!content && files.length === 0 && !isEditing) || sending || disabled) {
       return
     }
