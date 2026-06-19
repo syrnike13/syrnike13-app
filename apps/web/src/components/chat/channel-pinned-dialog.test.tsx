@@ -68,6 +68,44 @@ describe('ChannelPinnedDialog', () => {
     vi.clearAllMocks()
   })
 
+  it('shows a BOT badge only next to bot pinned message authors', () => {
+    const { rerender } = render(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'deploybot',
+            display_name: 'Deploy Bot',
+            bot: { owner: 'owner-user' },
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('BOT')).toBeTruthy()
+
+    rerender(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'alice',
+            display_name: 'Alice',
+            bot: null,
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.queryByText('BOT')).toBeNull()
+  })
+
   it('copies a message id without jumping to the pinned message', async () => {
     render(
       <ChannelPinnedDialog

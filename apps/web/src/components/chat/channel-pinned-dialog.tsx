@@ -129,8 +129,13 @@ export function ChannelPinnedDialog({
                   }
                 }}
               >
-                <p className="mb-1 text-xs font-medium text-muted-foreground">
-                  {name}
+                <p className="mb-1 flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <span className="min-w-0 truncate">{name}</span>
+                  {author?.bot ? (
+                    <span className="shrink-0 rounded-sm bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground">
+                      BOT
+                    </span>
+                  ) : null}
                 </p>
                 {message.content ? (
                   <div>
