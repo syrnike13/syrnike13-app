@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
+import { MessageSearchPreview } from '#/components/chat/message-search-preview'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
@@ -17,7 +18,6 @@ import {
   type ServerMessageSearchHit,
 } from '#/features/search/server-message-search'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { renderMessageContent } from '#/lib/message-markdown'
 import { cn } from '#/lib/utils'
 
 type ServerChannelSearchPopoverProps = {
@@ -170,15 +170,11 @@ export function ServerChannelSearchPopover({
                   <p className="truncate text-xs font-medium text-muted-foreground">
                     {hit.channelLabel} · {name}
                   </p>
-                  {hit.message.content ? (
-                    <div className="line-clamp-2 text-sm">
-                      {renderMessageContent(hit.message.content, users, emojis)}
-                    </div>
-                  ) : (
-                    <p className="text-sm italic text-muted-foreground">
-                      [без текста]
-                    </p>
-                  )}
+                  <MessageSearchPreview
+                    message={hit.message}
+                    users={users}
+                    emojis={emojis}
+                  />
                 </button>
               )
             })}
