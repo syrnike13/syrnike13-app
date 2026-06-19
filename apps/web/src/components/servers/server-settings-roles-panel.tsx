@@ -28,6 +28,14 @@ import {
 } from '#/components/settings/draft-controller-context'
 import { Button } from '#/components/ui/button'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
+import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -394,6 +402,10 @@ export function ServerSettingsRolesPanel({
   const [selectedId, setSelectedId] = useState(DEFAULT_PERMISSIONS_ID)
   const [creating, setCreating] = useState(false)
   const [reordering, setReordering] = useState(false)
+  const [rolePendingDeletion, setRolePendingDeletion] = useState<Role | null>(
+    null,
+  )
+  const [deletingRole, setDeletingRole] = useState(false)
 
   const token = auth.session?.token
   const userId = auth.user?._id
@@ -456,30 +468,47 @@ export function ServerSettingsRolesPanel({
     }
   }
 
-  async function removeRole(role: Role) {
+  function requestRoleDeletion(role: Role) {
     if (!token || !userId) return
     if (!canManageRole(server, member, userId, role.rank ?? 0)) return
 
+    setRolePendingDeletion(role)
+  }
+
+  async function confirmRoleDeletion() {
+    if (!token || !userId || !rolePendingDeletion) return
     if (
-      !window.confirm(`Удалить роль «${role.name}»? Это действие необратимо.`)
+      !canManageRole(
+        server,
+        member,
+        userId,
+        rolePendingDeletion.rank ?? 0,
+      )
     ) {
       return
     }
 
+    setDeletingRole(true)
     try {
-      await deleteServerRole(token, serverId, role._id)
+      await deleteServerRole(token, serverId, rolePendingDeletion._id)
       const currentServer = syncStore.getState().servers[serverId]
       if (currentServer?.roles) {
-        const { [role._id]: _, ...remainingRoles } = currentServer.roles
+        const {
+          [rolePendingDeletion._id]: _,
+          ...remainingRoles
+        } = currentServer.roles
         syncStore.upsertServer({ ...currentServer, roles: remainingRoles })
       }
-      if (effectiveSelectedId === role._id) {
-        setSelectedId(DEFAULT_PERMISSIONS_ID)
-      }
+      setSelectedId((current) =>
+        current === rolePendingDeletion._id ? DEFAULT_PERMISSIONS_ID : current,
+      )
+      setRolePendingDeletion(null)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось удалить роль',
       )
+    } finally {
+      setDeletingRole(false)
     }
   }
 
@@ -548,7 +577,7 @@ export function ServerSettingsRolesPanel({
                 canReorder={canReorderRoles}
                 onSelect={setSelectedId}
                 onReorder={(reordered) => void persistRoleOrder(reordered)}
-                onDeleteRole={(role) => void removeRole(role)}
+                onDeleteRole={requestRoleDeletion}
               />
             )}
           </div>
@@ -574,12 +603,49 @@ export function ServerSettingsRolesPanel({
                 token={token}
                 userId={userId}
                 member={member}
-                onDeleted={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
+                onDeleteRequested={() => requestRoleDeletion(selectedRole)}
               />
             )}
           </div>
         </div>
       </div>
+      <Dialog
+        open={rolePendingDeletion !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingRole) {
+            setRolePendingDeletion(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Удалить роль «{rolePendingDeletion?.name}»?
+            </DialogTitle>
+            <DialogDescription>
+              Участники потеряют эту роль. Это действие необратимо.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingRole}
+              onClick={() => setRolePendingDeletion(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingRole}
+              onClick={() => void confirmRoleDeletion()}
+            >
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

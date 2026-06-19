@@ -19,7 +19,6 @@ import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { uploadAttachment } from '#/features/api/media-api'
 import {
-  deleteServerRole,
   editServerRole,
   setServerRolePermissions,
 } from '#/features/api/servers-api'
@@ -77,7 +76,7 @@ export function ServerSettingsRoleEditor({
   token,
   userId,
   member,
-  onDeleted,
+  onDeleteRequested,
 }: {
   server: Server
   serverId: string
@@ -85,7 +84,7 @@ export function ServerSettingsRoleEditor({
   token: string
   userId: string
   member: Member | undefined
-  onDeleted: () => void
+  onDeleteRequested: () => void
 }) {
   const canEditRole = canManageRole(
     server,
@@ -111,7 +110,6 @@ export function ServerSettingsRoleEditor({
   const [iconFile, setIconFile] = useState<File | null>(null)
   const [removeIcon, setRemoveIcon] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const memberCount = useSyncStore((state) =>
@@ -306,31 +304,6 @@ export function ServerSettingsRoleEditor({
 
   useDraftRegistration(draftRegistration)
 
-  async function remove() {
-    if (
-      !window.confirm(`Удалить роль «${role.name}»? Это действие необратимо.`)
-    ) {
-      return
-    }
-
-    setDeleting(true)
-    try {
-      await deleteServerRole(token, serverId, role._id)
-      const currentServer = syncStore.getState().servers[serverId]
-      if (currentServer?.roles) {
-        const { [role._id]: _, ...roles } = currentServer.roles
-        syncStore.upsertServer({ ...currentServer, roles })
-      }
-      onDeleted()
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить роль',
-      )
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="space-y-0">
@@ -356,10 +329,9 @@ export function ServerSettingsRoleEditor({
                   type="button"
                   variant="ghost"
                   className="h-9 w-full justify-start px-2 font-normal text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  disabled={deleting}
                   onClick={() => {
                     setMenuOpen(false)
-                    void remove()
+                    onDeleteRequested()
                   }}
                 >
                   <Trash2Icon className="size-4" />
