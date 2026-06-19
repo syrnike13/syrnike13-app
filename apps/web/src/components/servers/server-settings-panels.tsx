@@ -17,6 +17,14 @@ import { ServerSettingsMembersPanel } from '#/components/servers/server-settings
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -573,6 +581,9 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
   const [emojiLoading, setEmojiLoading] = useState(false)
   const [emojiName, setEmojiName] = useState('')
   const [emojiUploading, setEmojiUploading] = useState(false)
+  const [emojiPendingDeletion, setEmojiPendingDeletion] =
+    useState<Emoji | null>(null)
+  const [emojiDeleting, setEmojiDeleting] = useState(false)
   const emojiFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -638,19 +649,23 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     }
   }
 
-  async function handleEmojiDelete(emojiId: string) {
+  async function handleEmojiDelete() {
     const token = auth.session?.token
-    if (!token) return
-    if (!window.confirm('Удалить этот emoji?')) return
+    const emoji = emojiPendingDeletion
+    if (!token || !emoji) return
 
+    setEmojiDeleting(true)
     try {
-      await deleteServerEmoji(token, emojiId)
-      syncStore.removeEmoji(emojiId)
-      setEmojis((prev) => prev.filter((emoji) => emoji._id !== emojiId))
+      await deleteServerEmoji(token, emoji._id)
+      syncStore.removeEmoji(emoji._id)
+      setEmojis((prev) => prev.filter((entry) => entry._id !== emoji._id))
+      setEmojiPendingDeletion(null)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось удалить',
       )
+    } finally {
+      setEmojiDeleting(false)
     }
   }
 
@@ -710,7 +725,7 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
                   size="icon"
                   className="size-8 shrink-0"
                   title="Удалить"
-                  onClick={() => void handleEmojiDelete(emoji._id)}
+                  onClick={() => setEmojiPendingDeletion(emoji)}
                 >
                   <Trash2Icon className="size-4" />
                 </Button>
@@ -719,6 +734,43 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
           </ul>
         )}
       </SettingsField>
+      <Dialog
+        open={emojiPendingDeletion !== null}
+        onOpenChange={(open) => {
+          if (!open && !emojiDeleting) {
+            setEmojiPendingDeletion(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Удалить emoji :{emojiPendingDeletion?.name}:?
+            </DialogTitle>
+            <DialogDescription>
+              Emoji исчезнет с сервера и из новых сообщений.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={emojiDeleting}
+              onClick={() => setEmojiPendingDeletion(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={emojiDeleting}
+              onClick={() => void handleEmojiDelete()}
+            >
+              Удалить emoji
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

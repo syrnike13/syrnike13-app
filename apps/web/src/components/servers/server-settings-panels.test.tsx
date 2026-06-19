@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import type { Channel, File as ApiFile } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -75,6 +76,18 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.editServer(...args),
   fetchServerEmojis: (...args: Parameters<typeof mocks.fetchServerEmojis>) =>
     mocks.fetchServerEmojis(...args),
+}))
+
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
+    open ? <div role="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
 function imageFile(overrides: Partial<ApiFile> = {}) {
@@ -289,5 +302,34 @@ describe('ServerSettingsPanelContent overview', () => {
     expect(
       screen.queryByRole('button', { name: 'Удалить сервер' }),
     ).toBeNull()
+  })
+
+  it('deletes a server emoji through a confirmation dialog', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    mocks.fetchServerEmojis.mockResolvedValue([
+      {
+        _id: 'emoji-1',
+        parent: { type: 'Server', id: 'server-1' },
+        creator_id: 'user-1',
+        name: 'party',
+      },
+    ])
+
+    render(<ServerSettingsPanelContent serverId="server-1" tab="emoji" />)
+
+    expect(await screen.findByText(':party:')).toBeTruthy()
+    fireEvent.click(screen.getByTitle('Удалить'))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog').textContent).toContain(':party:')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить emoji' }))
+
+    await waitFor(() => {
+      expect(mocks.deleteServerEmoji).toHaveBeenCalledWith(
+        'session-token',
+        'emoji-1',
+      )
+    })
   })
 })
