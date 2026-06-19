@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { syncStore } from '#/features/sync/sync-store'
+import { ChannelPermission } from '#/lib/permissions'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -476,6 +477,46 @@ describe('ChannelSidebarItem voice navigation', () => {
     expect(
       screen.getByRole('button', { name: 'Прочитано' }),
     ).toBeTruthy()
+  })
+
+  it('marks restricted text channels with a locked text icon', () => {
+    const channel = {
+      ...textServerChannel,
+      _id: 'text-private',
+      name: 'private',
+      default_permissions: {
+        a: 0,
+        d: ChannelPermission.ViewChannel,
+      },
+    } satisfies Extract<Channel, { channel_type: 'TextChannel' }>
+
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'other-user',
+      channels: [channel._id],
+      default_permissions: ChannelPermission.ViewChannel,
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'user-1' },
+        joined_at: '2024-01-01T00:00:00Z',
+      } as never,
+    ])
+    syncStore.upsertChannel(channel)
+
+    render(
+      <ChannelSidebarItem
+        channel={channel}
+        activeChannelId="other-channel"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: 'private' })).toBeTruthy()
+    expect(screen.getByTitle('Закрытый текстовый канал')).toBeTruthy()
   })
 
   it('opens a delete confirmation dialog from the channel context menu', async () => {

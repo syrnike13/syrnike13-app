@@ -13,6 +13,7 @@ import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
+import { RestrictedTextChannelIcon } from '#/components/icons/restricted-text-channel-icon'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import { Button } from '#/components/ui/button'
 import {
@@ -60,7 +61,7 @@ import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-chan
 import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoice } from '#/features/voice/voice-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
-import { canManageChannel } from '#/lib/permissions'
+import { canManageChannel, isChannelAccessRestricted } from '#/lib/permissions'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
@@ -193,6 +194,11 @@ export function ChannelSidebarItem({
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
   const isServerChannel = channel.channel_type === 'TextChannel'
   const serverVoice = isServerVoiceChannel(channel)
+  const restrictedTextChannel =
+    channel.channel_type === 'TextChannel' &&
+    !serverVoice &&
+    server != null &&
+    isChannelAccessRestricted(server, channel)
   const incomingVoiceCall =
     !voiceCallRingingDismissed && isIncomingVoiceCall(voiceCall, currentUserId)
   const voiceCallMarkerTitle =
@@ -324,6 +330,13 @@ export function ChannelSidebarItem({
             </span>
           ) : serverVoice ? (
             <VoiceChannelIcon channel={channel} server={server} />
+          ) : restrictedTextChannel ? (
+            <span
+              title="Закрытый текстовый канал"
+              className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+            >
+              <RestrictedTextChannelIcon className="size-4" />
+            </span>
           ) : (
             <HashIcon className="size-4 shrink-0 text-muted-foreground" />
           )}
