@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import {
+  CheckCheckIcon,
   ChevronDownIcon,
   CopyIcon,
   FolderPlusIcon,
@@ -31,9 +32,12 @@ import {
 } from '#/components/ui/popover'
 import { Separator } from '#/components/ui/separator'
 import { useAuth } from '#/features/auth/auth-context'
-import { deleteOrLeaveServer } from '#/features/api/servers-api'
+import { ackServer, deleteOrLeaveServer } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { listServerChannels } from '#/features/sync/selectors'
+import {
+  isChannelUnread,
+  listServerChannels,
+} from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardText } from '#/lib/clipboard'
 import { getServerMenuPermissions } from '#/lib/permissions'
@@ -87,6 +91,11 @@ export function ServerHeaderMenu({
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
   )
+  const hasUnreadChannels = useSyncStore((s) =>
+    listServerChannels(s, serverId, auth.user?._id).some((channel) =>
+      isChannelUnread(channel, s.unreads[channel._id]),
+    ),
+  )
   const menuPermissions = server
     ? getServerMenuPermissions(server, channels, member, auth.user?._id)
     : null
@@ -94,6 +103,7 @@ export function ServerHeaderMenu({
   const [inviteOpen, setInviteOpen] = useState(false)
   const [createChannelOpen, setCreateChannelOpen] = useState(false)
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false)
+  const [markingRead, setMarkingRead] = useState(false)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [removingServer, setRemovingServer] = useState(false)
 
@@ -125,6 +135,27 @@ export function ServerHeaderMenu({
       )
     } finally {
       setRemovingServer(false)
+    }
+  }
+
+  async function markServerRead() {
+    const token = auth.session?.token
+    if (!token || !hasUnreadChannels) return
+
+    setMenuOpen(false)
+    syncStore.markServerChannelsRead(serverId)
+    setMarkingRead(true)
+    try {
+      await ackServer(token, serverId)
+      toast.success('Сервер отмечен прочитанным')
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось отметить сервер прочитанным',
+      )
+    } finally {
+      setMarkingRead(false)
     }
   }
 
@@ -172,6 +203,18 @@ export function ServerHeaderMenu({
           sideOffset={4}
           className="w-[var(--radix-popover-trigger-width)] p-1"
         >
+          {hasUnreadChannels ? (
+            <ServerHeaderMenuItem
+              icon={<CheckCheckIcon className="size-4" />}
+              disabled={markingRead}
+              onClick={() => void markServerRead()}
+            >
+              Пометить как прочитанное
+            </ServerHeaderMenuItem>
+          ) : null}
+          {hasUnreadChannels && showAdminSection ? (
+            <Separator className="my-1" />
+          ) : null}
           {menuPermissions?.invite ? (
             <ServerHeaderMenuItem
               icon={<UserPlusIcon className="size-4" />}

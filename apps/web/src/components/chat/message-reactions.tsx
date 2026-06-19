@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
 
 import { MessageReactionPicker } from '#/components/chat/message-reaction-picker'
@@ -37,11 +38,22 @@ export function MessageReactions({
   currentUserId,
   onToggle,
 }: MessageReactionsProps) {
+  const [pickerOpen, setPickerOpen] = useState(false)
   const emojis = useSyncStore((s) => s.emojis)
-  const entries = Object.entries(message.reactions ?? {})
+  const entries = Object.entries(message.reactions ?? {}).filter(
+    ([, userIds]) => userIds.length > 0,
+  )
 
   if (entries.length === 0) {
     return null
+  }
+
+  function pickReaction(emoji: string) {
+    const active = currentUserId
+      ? (message.reactions?.[emoji] ?? []).includes(currentUserId)
+      : false
+    onToggle(emoji, active)
+    setPickerOpen(false)
   }
 
   return (
@@ -75,12 +87,9 @@ export function MessageReactions({
         )
       })}
       <MessageReactionPicker
-        onPick={(emoji) => {
-          const active = currentUserId
-            ? (message.reactions?.[emoji] ?? []).includes(currentUserId)
-            : false
-          onToggle(emoji, active)
-        }}
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onPick={pickReaction}
         align="start"
         trigger={
           <Button

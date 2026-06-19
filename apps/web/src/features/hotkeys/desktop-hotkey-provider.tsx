@@ -101,7 +101,10 @@ function runHotkeyAction(
       }
       break
     case 'priority-push-to-talk':
+      break
     case 'toggle-vad':
+      if (event.phase === 'released') break
+      context.voice.toggleInputMode()
       break
   }
 }

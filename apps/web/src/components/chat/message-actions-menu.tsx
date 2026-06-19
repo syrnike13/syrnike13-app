@@ -36,6 +36,7 @@ type MessageActionsMenuProps = {
   onBlock?: () => void
   onPin?: () => void
   onUnpin?: () => void
+  onClearReactions?: () => void
 }
 
 async function copyText(label: string, value: string) {
@@ -61,10 +62,24 @@ export function MessageActionsMenu({
   onBlock,
   onPin,
   onUnpin,
+  onClearReactions,
 }: MessageActionsMenuProps) {
   const canEdit = own && Boolean(message.content?.trim())
   const pinned = Boolean(message.pinned)
   const hasText = Boolean(message.content?.trim())
+  const hasReactions = Object.values(message.reactions ?? {}).some(
+    (users) => users.length > 0,
+  )
+
+  function runAction(action: () => void) {
+    action()
+    onOpenChange?.(false)
+  }
+
+  function copyAndClose(label: string, value: string) {
+    void copyText(label, value)
+    onOpenChange?.(false)
+  }
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -84,7 +99,7 @@ export function MessageActionsMenu({
           type="button"
           variant="ghost"
           className="h-8 w-full justify-start px-2 font-normal"
-          onClick={onReply}
+          onClick={() => runAction(onReply)}
         >
           <ReplyIcon className="size-3.5" />
           Ответить
@@ -94,7 +109,7 @@ export function MessageActionsMenu({
             type="button"
             variant="ghost"
             className="h-8 w-full justify-start px-2 font-normal"
-            onClick={() => void copyText('Текст скопирован', message.content!)}
+            onClick={() => copyAndClose('Текст скопирован', message.content!)}
           >
             <CopyIcon className="size-3.5" />
             Копировать текст
@@ -104,7 +119,7 @@ export function MessageActionsMenu({
           type="button"
           variant="ghost"
           className="h-8 w-full justify-start px-2 font-normal"
-          onClick={() => void copyText('ID скопирован', message._id)}
+          onClick={() => copyAndClose('ID скопирован', message._id)}
         >
           <CopyIcon className="size-3.5" />
           Копировать ID
@@ -114,7 +129,7 @@ export function MessageActionsMenu({
           variant="ghost"
           className="h-8 w-full justify-start px-2 font-normal"
           onClick={() =>
-            void copyText(
+            copyAndClose(
               'Ссылка скопирована',
               messageDeepLink(channelId, message._id),
             )
@@ -128,7 +143,7 @@ export function MessageActionsMenu({
             type="button"
             variant="ghost"
             className="h-8 w-full justify-start px-2 font-normal"
-            onClick={onUnpin}
+            onClick={() => runAction(onUnpin)}
           >
             <PinOffIcon className="size-3.5" />
             Открепить
@@ -139,10 +154,21 @@ export function MessageActionsMenu({
             type="button"
             variant="ghost"
             className="h-8 w-full justify-start px-2 font-normal"
-            onClick={onPin}
+            onClick={() => runAction(onPin)}
           >
             <PinIcon className="size-3.5" />
             Закрепить
+          </Button>
+        ) : null}
+        {hasReactions && onClearReactions ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-8 w-full justify-start px-2 font-normal text-destructive hover:text-destructive"
+            onClick={() => runAction(onClearReactions)}
+          >
+            <Trash2Icon className="size-3.5" />
+            Очистить реакции
           </Button>
         ) : null}
         {canEdit && onEdit ? (
@@ -150,7 +176,7 @@ export function MessageActionsMenu({
             type="button"
             variant="ghost"
             className="h-8 w-full justify-start px-2 font-normal"
-            onClick={onEdit}
+            onClick={() => runAction(onEdit)}
           >
             <PencilIcon className="size-3.5" />
             Изменить
@@ -161,7 +187,7 @@ export function MessageActionsMenu({
             type="button"
             variant="ghost"
             className="h-8 w-full justify-start px-2 font-normal text-destructive hover:text-destructive"
-            onClick={onDelete}
+            onClick={() => runAction(onDelete)}
           >
             <Trash2Icon className="size-3.5" />
             Удалить
@@ -172,7 +198,7 @@ export function MessageActionsMenu({
             type="button"
             variant="ghost"
             className="h-8 w-full justify-start px-2 font-normal text-destructive hover:text-destructive"
-            onClick={onBlock}
+            onClick={() => runAction(onBlock)}
           >
             <BanIcon className="size-3.5" />
             Заблокировать

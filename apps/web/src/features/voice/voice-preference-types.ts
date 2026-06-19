@@ -4,6 +4,8 @@ export type ScreenShareCodec = 'auto' | 'av1'
 
 export type ScreenShareCaptureMode = 'auto' | 'native'
 
+export type VoiceInputMode = 'voice-activity' | 'push-to-talk'
+
 export const SCREEN_SHARE_CAPTURE_MODE_LABELS: Record<
   ScreenShareCaptureMode,
   string

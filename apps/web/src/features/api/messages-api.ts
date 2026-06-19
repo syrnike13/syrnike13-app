@@ -243,3 +243,14 @@ export async function unreactFromMessage(
     { method: 'DELETE', token },
   )
 }
+
+export async function clearMessageReactions(
+  token: string,
+  channelId: string,
+  messageId: string,
+) {
+  return apiRequest<void>(
+    `/channels/${channelId}/messages/${messageId}/reactions`,
+    { method: 'DELETE', token },
+  )
+}

@@ -11,6 +11,7 @@ import {
 import { InlineReplyQuote } from '#/components/chat/message-reply-preview'
 import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
 import { MessageAttachments } from '#/components/chat/message-attachments'
+import { MessageContextMenu } from '#/components/chat/message-context-menu'
 import { MessageReactions } from '#/components/chat/message-reactions'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
@@ -48,6 +49,7 @@ export type MessageRowProps = {
   onBlock?: (message: Message) => void
   onPin?: (message: Message) => void
   onUnpin?: (message: Message) => void
+  onClearReactions?: (message: Message) => void
   onToggleReaction?: (
     messageId: string,
     emoji: string,
@@ -266,6 +268,7 @@ export function MessageRow({
   onBlock,
   onPin,
   onUnpin,
+  onClearReactions,
   onToggleReaction,
 }: MessageRowProps) {
   const server = useSyncStore((s) =>
@@ -346,7 +349,7 @@ export function MessageRow({
     )
   }
 
-  return (
+  const row = (
     <article
       data-message-id={message._id}
       className={cn(
@@ -485,6 +488,9 @@ export function MessageRow({
             onBlock={onBlock && !own ? () => onBlock(message) : undefined}
             onPin={onPin ? () => onPin(message) : undefined}
             onUnpin={onUnpin ? () => onUnpin(message) : undefined}
+            onClearReactions={
+              onClearReactions ? () => onClearReactions(message) : undefined
+            }
             onToggleReaction={(emoji, active) =>
               onToggleReaction(message._id, emoji, active)
             }
@@ -493,7 +499,14 @@ export function MessageRow({
 
         <div className="flex flex-col gap-1 text-[15px] leading-snug text-foreground">
           {hasContent ? (
-            <div className="break-words">{renderedContent}</div>
+            <div className="break-words">
+              {renderedContent}
+              {compact && edited ? (
+                <span className="ml-1 text-[10px] text-muted-foreground">
+                  (изменено)
+                </span>
+              ) : null}
+            </div>
           ) : null}
           {hasAttachments ? (
             <MessageAttachments attachments={message.attachments!} />
@@ -519,5 +532,25 @@ export function MessageRow({
         ) : null}
       </div>
     </article>
+  )
+
+  return (
+    <MessageContextMenu
+      message={message}
+      channelId={channelId}
+      own={own}
+      canDelete={canDeleteMessage}
+      onReply={onReply ? () => onReply(message) : undefined}
+      onEdit={onEdit ? () => onEdit(message) : undefined}
+      onDelete={onDelete ? () => onDelete(message) : undefined}
+      onBlock={onBlock && !own ? () => onBlock(message) : undefined}
+      onPin={onPin ? () => onPin(message) : undefined}
+      onUnpin={onUnpin ? () => onUnpin(message) : undefined}
+      onClearReactions={
+        onClearReactions ? () => onClearReactions(message) : undefined
+      }
+    >
+      {row}
+    </MessageContextMenu>
   )
 }

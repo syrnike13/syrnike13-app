@@ -89,6 +89,18 @@ function SettingsDesktopModal() {
     ? [...GENERAL_SETTINGS_NAV, ...DESKTOP_ONLY_NAV_ITEMS]
     : GENERAL_SETTINGS_NAV
   const [loggingOut, setLoggingOut] = useState(false)
+  const [settingsSearch, setSettingsSearch] = useState('')
+  const normalizedSettingsSearch = settingsSearch.trim().toLocaleLowerCase('ru')
+  const filteredNavItems = normalizedSettingsSearch
+    ? navItems.filter((item) => {
+        const label = item.label.toLocaleLowerCase('ru')
+        const id = item.id.toLocaleLowerCase('ru')
+        return (
+          label.includes(normalizedSettingsSearch) ||
+          id.includes(normalizedSettingsSearch)
+        )
+      })
+    : navItems
 
   async function handleLogout() {
     if (loggingOut) return
@@ -145,10 +157,22 @@ function SettingsDesktopModal() {
             <div className="relative mt-3">
               <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                disabled
-                placeholder="Поиск — скоро"
-                className="h-8 bg-background/60 pl-8 text-xs"
+                aria-label="Поиск настроек"
+                value={settingsSearch}
+                placeholder="Поиск настроек"
+                className="h-8 bg-background/60 pr-8 pl-8 text-xs"
+                onChange={(event) => setSettingsSearch(event.target.value)}
               />
+              {settingsSearch ? (
+                <button
+                  type="button"
+                  className="absolute top-1/2 right-1.5 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="Очистить поиск"
+                  onClick={() => setSettingsSearch('')}
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -157,7 +181,7 @@ function SettingsDesktopModal() {
               <p className="px-2 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
                 Настройки пользователя
               </p>
-              {navItems.map((item) => {
+              {filteredNavItems.map((item) => {
                 const Icon = item.icon
                 const active = section === item.id
                 return (
@@ -172,6 +196,11 @@ function SettingsDesktopModal() {
                   </button>
                 )
               })}
+              {filteredNavItems.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-muted-foreground">
+                  Ничего не найдено
+                </p>
+              ) : null}
               <div className="mt-2 border-t border-border/60 pt-2">
                 <button
                   type="button"

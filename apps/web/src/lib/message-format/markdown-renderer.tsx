@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import ReactMarkdown, {
   defaultUrlTransform,
   type Components,
@@ -14,6 +14,32 @@ import {
   prepareMessageMarkdown,
 } from '#/lib/message-format/entity-markdown-bridge'
 import type { MessageFormatContext } from '#/lib/message-format/types'
+import { normalizeRoleColour } from '#/lib/server-permissions'
+
+function MessageSpoiler({ text }: { text: string }) {
+  const [revealed, setRevealed] = useState(false)
+
+  return (
+    <button
+      type="button"
+      aria-pressed={revealed}
+      aria-label={revealed ? 'Спойлер раскрыт' : 'Показать спойлер'}
+      className={[
+        'inline cursor-pointer rounded border-0 bg-foreground/10 px-1 py-0 font-inherit align-baseline transition',
+        revealed ? 'text-inherit' : 'text-transparent hover:text-inherit',
+      ].join(' ')}
+      title={revealed ? 'Спойлер раскрыт' : 'Спойлер — нажмите, чтобы показать'}
+      onClick={() => setRevealed(true)}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        setRevealed(true)
+      }}
+    >
+      {text}
+    </button>
+  )
+}
 
 function SyrnikeEntityLink({
   href,
@@ -47,7 +73,12 @@ function SyrnikeEntityLink({
 
   if (parsed.kind === 'role') {
     const role = context.roles?.[parsed.id]
-    return <MentionPill label={`@${role?.name ?? parsed.id}`} />
+    return (
+      <MentionPill
+        label={role?.name ?? parsed.id}
+        nameColour={role?.colour ? normalizeRoleColour(role.colour) : undefined}
+      />
+    )
   }
 
   if (parsed.kind === 'channel') {
@@ -56,11 +87,11 @@ function SyrnikeEntityLink({
       channel && 'name' in channel && channel.name
         ? channel.name
         : parsed.id
-    return <MentionPill label={`#${channelName}`} />
+    return <MentionPill label={channelName} prefix="#" />
   }
 
   if (parsed.kind === 'mass') {
-    const label = parsed.id === 'online' ? '@online' : '@everyone'
+    const label = parsed.id === 'online' ? 'online' : 'everyone'
     return <MentionPill label={label} />
   }
 
@@ -71,14 +102,7 @@ function SyrnikeEntityLink({
 
   if (parsed.kind === 'spoiler') {
     const text = decodeURIComponent(parsed.id)
-    return (
-      <span
-        className="cursor-pointer rounded bg-foreground/10 px-1 text-transparent transition hover:text-inherit"
-        title="Спойлер — наведите, чтобы показать"
-      >
-        {text}
-      </span>
-    )
+    return <MessageSpoiler text={text} />
   }
 
   return null

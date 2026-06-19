@@ -1,10 +1,15 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import type { Message } from '@syrnike13/api-types'
 import { MessageSquareIcon, XIcon } from '#/components/icons'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
 import { MessageComposer } from '#/components/chat/message-composer'
 import { MessageList } from '#/components/chat/message-list'
+import {
+  MessageActionConfirmationDialog,
+  type ChatMessageAction,
+} from '#/components/chat/message-action-confirmation-dialog'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { Button } from '#/components/ui/button'
@@ -41,12 +46,15 @@ export function ChannelChatPanel({
     highlightMessageId,
     enabled: true,
   })
+  const [pendingMessageAction, setPendingMessageAction] =
+    useState<ChatMessageAction | null>(null)
 
   const {
     auth,
     channel,
     users,
     messages,
+    lastReadMessageId,
     token,
     historyQuery,
     serverIdForSelection,
@@ -57,6 +65,8 @@ export function ChannelChatPanel({
     handleDelete,
     handlePin,
     handleUnpin,
+    handleClearReactions,
+    canClearMessageReactions,
     jumpToMessage,
     replyTo,
     editingMessage,
@@ -76,6 +86,35 @@ export function ChannelChatPanel({
   }
 
   const title = getChannelLabel(channel, users, auth.user?._id)
+
+  function requestBlockMessageAuthor(message: Message) {
+    if (!token || message.author === auth.user?._id) return
+
+    setPendingMessageAction({
+      type: 'block',
+      message,
+      user: users[message.author],
+    })
+  }
+
+  function confirmMessageAction(action: ChatMessageAction) {
+    setPendingMessageAction(null)
+
+    if (action.type === 'delete') {
+      void handleDelete(action.message)
+      return
+    }
+
+    if (action.type === 'clearReactions') {
+      void handleClearReactions(action.message)
+      return
+    }
+
+    if (!token || action.message.author === auth.user?._id) return
+    void blockUserRelationship(token, action.message.author).catch(
+      () => undefined,
+    )
+  }
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col border-l border-shell-divider bg-background">
@@ -111,6 +150,7 @@ export function ChannelChatPanel({
             replyTo && 'pb-[88px]',
           )}
           highlightMessageId={listHighlightMessageId}
+          lastReadMessageId={lastReadMessageId}
           messages={messages}
           users={users}
           currentUserId={auth.user?._id}
@@ -120,16 +160,21 @@ export function ChannelChatPanel({
           onJumpToMessage={jumpToMessage}
           onReply={(message) => setComposerAction({ type: 'reply', message })}
           onEdit={(message) => setComposerAction({ type: 'edit', message })}
-          onDelete={(message) => void handleDelete(message)}
-          onBlock={(message) => {
-            if (!token || message.author === auth.user?._id) return
-            if (!window.confirm('Заблокировать этого пользователя?')) return
-            void blockUserRelationship(token, message.author).catch(
-              () => undefined,
-            )
-          }}
+          onDelete={(message) =>
+            setPendingMessageAction({ type: 'delete', message })
+          }
+          onBlock={requestBlockMessageAuthor}
           onPin={(message) => void handlePin(message)}
           onUnpin={(message) => void handleUnpin(message)}
+          onClearReactions={
+            canClearMessageReactions
+              ? (message) =>
+                  setPendingMessageAction({
+                    type: 'clearReactions',
+                    message,
+                  })
+              : undefined
+          }
           onToggleReaction={async (messageId, emoji, active) => {
             if (!token || !auth.user?._id) return
 
@@ -194,6 +239,13 @@ export function ChannelChatPanel({
           />
         </div>
       </div>
+      <MessageActionConfirmationDialog
+        action={pendingMessageAction}
+        onOpenChange={(open) => {
+          if (!open) setPendingMessageAction(null)
+        }}
+        onConfirm={confirmMessageAction}
+      />
     </aside>
   )
 }

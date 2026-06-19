@@ -1,12 +1,24 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import type { ReactNode } from 'react'
 import type { Channel, User } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserProfileCard } from './user-profile-card'
 
 const navigateMock = vi.hoisted(() => vi.fn())
+const friendActionMocks = vi.hoisted(() => ({
+  blockUserRelationship: vi.fn(),
+  sendFriendRequestToUser: vi.fn(),
+}))
 const openDirectMessageChannelMock = vi.hoisted(() =>
   vi.fn(
     async (
@@ -42,8 +54,42 @@ vi.mock('#/features/dm/dm-actions', () => ({
   openDirectMessageChannel: openDirectMessageChannelMock,
 }))
 
+vi.mock('#/features/friends/friend-actions', () => ({
+  blockUserRelationship: (
+    ...args: Parameters<typeof friendActionMocks.blockUserRelationship>
+  ) => friendActionMocks.blockUserRelationship(...args),
+  sendFriendRequestToUser: (
+    ...args: Parameters<typeof friendActionMocks.sendFriendRequestToUser>
+  ) => friendActionMocks.sendFriendRequestToUser(...args),
+}))
+
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({
+    children,
+    open,
+  }: {
+    children: ReactNode
+    open?: boolean
+  }) => (open ? <>{children}</> : null),
+  DialogContent: ({ children }: { children: ReactNode }) => (
+    <div role="dialog">{children}</div>
+  ),
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogHeader: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
+}))
+
 vi.mock('#/components/user/user-profile-card-header', () => ({
-  UserProfileCardHeader: () => <div data-testid="profile-card-header" />,
+  UserProfileCardHeader: ({ bannerActions }: { bannerActions?: ReactNode }) => (
+    <div data-testid="profile-card-header">{bannerActions}</div>
+  ),
 }))
 
 const targetUser = {
@@ -57,10 +103,13 @@ const targetUser = {
 describe('UserProfileCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    friendActionMocks.blockUserRelationship.mockResolvedValue(undefined)
+    friendActionMocks.sendFriendRequestToUser.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
   it('opens a direct message from the profile popover', async () => {
@@ -79,6 +128,34 @@ describe('UserProfileCard', () => {
       to: '/app/c/$channelId',
       params: { channelId: 'dm-1' },
       search: { m: undefined },
+    })
+  })
+
+  it('opens a block confirmation dialog from the profile banner menu', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    render(<UserProfileCard user={targetUser} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Действия профиля' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Заблокировать' }))
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(friendActionMocks.blockUserRelationship).not.toHaveBeenCalled()
+
+    const dialog = screen
+      .getAllByRole('dialog')
+      .find((element) => element.textContent?.includes('@bob'))!
+    expect(dialog.textContent).toContain('@bob')
+
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Заблокировать' }),
+    )
+
+    await waitFor(() => {
+      expect(friendActionMocks.blockUserRelationship).toHaveBeenCalledWith(
+        'session-token',
+        'target-user',
+      )
     })
   })
 })

@@ -30,6 +30,7 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
+import { BlockUserConfirmationDialog } from '#/components/user/block-user-confirmation-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   banServerMember,
@@ -93,6 +94,8 @@ export function UserContextMenuContent({
   const [banReason, setBanReason] = useState('')
   const [banDeleteMessageSeconds, setBanDeleteMessageSeconds] = useState('0')
   const [banning, setBanning] = useState(false)
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
+  const [blocking, setBlocking] = useState(false)
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -237,11 +240,15 @@ export function UserContextMenuContent({
 
   async function handleBlock() {
     if (!token || isSelf) return
-    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+
+    setBlocking(true)
     try {
       await blockUserRelationship(token, user._id)
+      setBlockDialogOpen(false)
     } catch {
       // friend-actions already shows the concrete error toast.
+    } finally {
+      setBlocking(false)
     }
   }
 
@@ -343,7 +350,10 @@ export function UserContextMenuContent({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onSelect={() => void handleBlock()}
+            onSelect={(event) => {
+              event.preventDefault()
+              setBlockDialogOpen(true)
+            }}
           >
             <BanIcon />
             Заблокировать
@@ -401,6 +411,17 @@ export function UserContextMenuContent({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      ) : null}
+      {canBlock ? (
+        <BlockUserConfirmationDialog
+          open={blockDialogOpen}
+          username={user.username}
+          disabled={blocking}
+          onOpenChange={(open) => {
+            if (!blocking) setBlockDialogOpen(open)
+          }}
+          onConfirm={() => void handleBlock()}
+        />
       ) : null}
       {canBan ? (
         <Dialog open={banDialogOpen} onOpenChange={handleBanDialogOpenChange}>

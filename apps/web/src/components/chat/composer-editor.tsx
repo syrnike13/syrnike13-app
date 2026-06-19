@@ -9,7 +9,7 @@ import {
   type RefObject,
 } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
-import type { SuggestionProps } from '@tiptap/suggestion'
+import { exitSuggestion, type SuggestionProps } from '@tiptap/suggestion'
 
 import {
   MentionSuggestionMenu,
@@ -124,6 +124,8 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       }
 
       if (event.key === 'Escape') {
+        event.preventDefault()
+        exitSuggestion(props.editor.view)
         return true
       }
 
@@ -168,6 +170,11 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
             if (handleMentionKeyDown(event)) {
               return true
             }
+          }
+
+          if (event.key === 'Escape') {
+            onKeyDown?.(event as unknown as ReactKeyboardEvent)
+            return true
           }
 
           if (event.key === 'Enter' && !event.shiftKey) {

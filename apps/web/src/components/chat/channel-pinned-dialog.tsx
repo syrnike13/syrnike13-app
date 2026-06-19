@@ -144,10 +144,14 @@ export function ChannelPinnedDialog({
                   variant="link"
                   size="sm"
                   className="mt-2 h-auto px-0"
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.stopPropagation()
                     void writeClipboardText(message._id)
                       .then(() => toast.success('ID скопирован'))
                       .catch(() => toast.error('Не удалось скопировать'))
+                  }}
+                  onKeyDown={(event) => {
+                    event.stopPropagation()
                   }}
                 >
                   Копировать ID
