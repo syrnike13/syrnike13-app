@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import type { DataCreateInvite } from '@syrnike13/api-types'
 import { Link2Icon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
+import { Label } from '#/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,22 @@ type ServerInviteDialogProps = {
   onOpenChange: (open: boolean) => void
 }
 
+const INVITE_MAX_AGE_OPTIONS = [
+  { label: '1 час', value: '3600' },
+  { label: '1 день', value: '86400' },
+  { label: '7 дней', value: '604800' },
+  { label: 'Без срока', value: '0' },
+]
+
+const INVITE_MAX_USES_OPTIONS = [
+  { label: 'Без лимита', value: '0' },
+  { label: '1', value: '1' },
+  { label: '5', value: '5' },
+  { label: '10', value: '10' },
+  { label: '25', value: '25' },
+  { label: '100', value: '100' },
+]
+
 export function ServerInviteDialog({
   serverId,
   open,
@@ -48,6 +66,9 @@ export function ServerInviteDialog({
     : false
   const [loading, setLoading] = useState(false)
   const [codes, setCodes] = useState<string[]>([])
+  const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
+  const [maxUses, setMaxUses] = useState('0')
+  const [temporary, setTemporary] = useState(false)
 
   const textChannels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id).filter(
@@ -87,7 +108,12 @@ export function ServerInviteDialog({
 
     setLoading(true)
     try {
-      const invite = await createChannelInvite(token, defaultChannelId)
+      const body: DataCreateInvite = {
+        max_age_seconds: Number(maxAgeSeconds),
+        max_uses: Number(maxUses),
+        temporary,
+      }
+      const invite = await createChannelInvite(token, defaultChannelId, body)
       const code = '_id' in invite ? invite._id : ''
       if (code) {
         setCodes((current) => [code, ...current])
@@ -116,6 +142,51 @@ export function ServerInviteDialog({
           <DialogTitle>Приглашения на сервер</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="server-invite-max-age">Срок действия</Label>
+              <select
+                id="server-invite-max-age"
+                value={maxAgeSeconds}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                onChange={(event) => setMaxAgeSeconds(event.target.value)}
+              >
+                {INVITE_MAX_AGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="server-invite-max-uses">
+                Максимум использований
+              </Label>
+              <select
+                id="server-invite-max-uses"
+                value={maxUses}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                onChange={(event) => setMaxUses(event.target.value)}
+              >
+                {INVITE_MAX_USES_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={temporary}
+                className="size-4 rounded border-border"
+                onChange={(event) => setTemporary(event.target.checked)}
+              />
+              Временное членство
+            </label>
+          </div>
           <Button
             type="button"
             disabled={loading || !defaultChannelId}
