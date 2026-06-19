@@ -165,13 +165,8 @@ export function DirectMessageProfilePanel({
 
         <div className="flex min-h-0 flex-1 flex-col px-4 pt-14 pb-4">
           <div className="min-w-0">
-            <h2 className="flex min-w-0 items-center gap-1.5 text-xl font-bold leading-tight text-foreground">
-              <span className="min-w-0 truncate">{displayName}</span>
-              {user.bot ? (
-                <span className="shrink-0 rounded-sm bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground">
-                  BOT
-                </span>
-              ) : null}
+            <h2 className="truncate text-xl font-bold leading-tight text-foreground">
+              {displayName}
             </h2>
             <p className="truncate text-sm text-muted-foreground">
               {user.display_name ? `@${user.username}` : user.username}

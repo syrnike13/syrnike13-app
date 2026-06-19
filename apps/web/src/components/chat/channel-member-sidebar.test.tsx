@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 import type { Channel, Member, Server, User } from '@syrnike13/api-types'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
 import { syncStore } from '#/features/sync/sync-store'
@@ -61,48 +61,10 @@ function member(userId: string, overrides: Partial<Member> = {}): Member {
 }
 
 describe('ChannelMemberSidebar', () => {
-  beforeEach(() => {
-    syncStore.reset()
-    syncStore.applyReady({
-      users: [
-        user({
-          _id: 'bot-user',
-          username: 'deploybot',
-          display_name: 'Deploy Bot',
-          discriminator: '0002',
-          bot: { owner: 'owner-user' },
-        }),
-        user({
-          _id: 'human-user',
-          username: 'alice',
-          display_name: 'Alice',
-          discriminator: '0003',
-          bot: null,
-        }),
-      ],
-      members: [member('bot-user'), member('human-user')],
-      servers: [server()],
-      channels: [channel],
-    })
-  })
-
   afterEach(() => {
     cleanup()
     syncStore.reset()
     vi.clearAllMocks()
-  })
-
-  it('shows a BOT badge only next to bot users', () => {
-    render(<ChannelMemberSidebar channel={channel} />)
-
-    expect(
-      within(screen.getByRole('button', { name: /deploy bot/i })).getByText(
-        'BOT',
-      ),
-    ).toBeTruthy()
-    expect(
-      within(screen.getByRole('button', { name: /alice/i })).queryByText('BOT'),
-    ).toBeNull()
   })
 
   it('shows only members who can view a restricted channel', () => {

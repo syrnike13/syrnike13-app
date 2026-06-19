@@ -10,7 +10,6 @@ import {
   PopoverTrigger,
 } from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
-import { MessageSearchPreview } from '#/components/chat/message-search-preview'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import {
@@ -18,10 +17,7 @@ import {
   type ServerMessageSearchHit,
 } from '#/features/search/server-message-search'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import {
-  formatMessageTimestamp,
-  messageCreatedAt,
-} from '#/lib/message-time'
+import { renderMessageContent } from '#/lib/message-markdown'
 import { cn } from '#/lib/utils'
 
 type ServerChannelSearchPopoverProps = {
@@ -161,8 +157,6 @@ export function ServerChannelSearchPopover({
                 hit.message.user ?? users[hit.message.author]
               const name =
                 author?.display_name ?? author?.username ?? 'Неизвестный'
-              const createdAt = messageCreatedAt(hit.message)
-              const timestamp = formatMessageTimestamp(createdAt)
 
               return (
                 <button
@@ -173,27 +167,18 @@ export function ServerChannelSearchPopover({
                   )}
                   onClick={() => openMessage(hit)}
                 >
-                  <p className="flex min-w-0 items-baseline gap-2 text-xs font-medium text-muted-foreground">
-                    <span className="truncate">
-                      {hit.channelLabel} · {name}
-                    </span>
-                    {author?.bot ? (
-                      <span className="shrink-0 rounded-sm bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground">
-                        BOT
-                      </span>
-                    ) : null}
-                    <time
-                      className="shrink-0"
-                      dateTime={createdAt.toISOString()}
-                    >
-                      {timestamp}
-                    </time>
+                  <p className="truncate text-xs font-medium text-muted-foreground">
+                    {hit.channelLabel} · {name}
                   </p>
-                  <MessageSearchPreview
-                    message={hit.message}
-                    users={users}
-                    emojis={emojis}
-                  />
+                  {hit.message.content ? (
+                    <div className="line-clamp-2 text-sm">
+                      {renderMessageContent(hit.message.content, users, emojis)}
+                    </div>
+                  ) : (
+                    <p className="text-sm italic text-muted-foreground">
+                      [без текста]
+                    </p>
+                  )}
                 </button>
               )
             })}

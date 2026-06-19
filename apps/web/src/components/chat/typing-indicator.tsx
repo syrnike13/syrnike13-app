@@ -32,8 +32,6 @@ export function TypingIndicator({
     text = `${labels[0]} печатает…`
   } else if (labels.length === 2) {
     text = `${labels[0]} и ${labels[1]} печатают…`
-  } else if (labels.length === 3) {
-    text = `${labels[0]}, ${labels[1]} и ${labels[2]} печатают…`
   } else {
     text = 'Несколько человек печатают…'
   }
