@@ -145,6 +145,9 @@ export function ServerSettingsInvitesPanel({
   }
 
   const invites = invitesQuery.data ?? []
+  const channelNamesById = new Map(
+    channels.map((channel) => [channel._id, channel.name]),
+  )
 
   return (
     <div className="space-y-6">
@@ -249,6 +252,9 @@ export function ServerSettingsInvitesPanel({
         <ul className="space-y-2">
           {invites.map((invite) => {
             const revoked = Boolean(invite.revoked_at)
+            const channelLabel = `#${
+              channelNamesById.get(invite.channel) ?? invite.channel
+            }`
             return (
               <li
                 key={invite._id}
@@ -266,7 +272,7 @@ export function ServerSettingsInvitesPanel({
                     ) : null}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Использования: {formatInviteUses(invite)} · Истекает:{' '}
+                    {channelLabel} · Использования: {formatInviteUses(invite)} · Истекает:{' '}
                     {formatInviteDate(invite.expires_at)}
                   </p>
                 </div>

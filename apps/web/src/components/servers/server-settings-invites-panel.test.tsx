@@ -219,4 +219,41 @@ describe('ServerSettingsInvitesPanel', () => {
       )
     })
   })
+
+  it('shows the target channel for existing invites', async () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-1',
+      channels: ['channel-1', 'channel-2'],
+      default_permissions: ChannelPermission.ViewChannel,
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'channel-2',
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'rules',
+    } as never)
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'rules-code',
+        server: 'server-1',
+        channel: 'channel-2',
+        creator: 'user-1',
+        created_at: 0,
+        expires_at: null,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+    ])
+
+    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
+
+    expect(await screen.findByText('rules-code')).toBeTruthy()
+    expect(screen.getByText(/#rules/)).toBeTruthy()
+  })
 })
