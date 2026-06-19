@@ -69,6 +69,7 @@ type MessageListProps = {
   onBlock?: (message: Message) => void
   onPin?: (message: Message) => void
   onUnpin?: (message: Message) => void
+  onClearReactions?: (message: Message) => void
   onToggleReaction?: (
     messageId: string,
     emoji: string,
@@ -134,6 +135,7 @@ export function MessageList({
   onBlock,
   onPin,
   onUnpin,
+  onClearReactions,
   onToggleReaction,
 }: MessageListProps) {
   const emojis = useSyncStore((s) => s.emojis)
@@ -230,6 +232,7 @@ export function MessageList({
     onBlock,
     onPin,
     onUnpin,
+    onClearReactions,
     onToggleReaction: onToggleReaction
       ? (messageId: string, emoji: string, active: boolean) => {
           void onToggleReaction(messageId, emoji, active)

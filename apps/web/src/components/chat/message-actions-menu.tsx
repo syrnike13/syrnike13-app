@@ -35,6 +35,7 @@ type MessageActionsMenuProps = {
   onBlock?: () => void
   onPin?: () => void
   onUnpin?: () => void
+  onClearReactions?: () => void
 }
 
 async function copyText(label: string, value: string) {
@@ -59,10 +60,14 @@ export function MessageActionsMenu({
   onBlock,
   onPin,
   onUnpin,
+  onClearReactions,
 }: MessageActionsMenuProps) {
   const canEdit = own && Boolean(message.content?.trim())
   const pinned = Boolean(message.pinned)
   const hasText = Boolean(message.content?.trim())
+  const hasReactions = Object.values(message.reactions ?? {}).some(
+    (users) => users.length > 0,
+  )
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -141,6 +146,17 @@ export function MessageActionsMenu({
           >
             <PinIcon className="size-3.5" />
             Закрепить
+          </Button>
+        ) : null}
+        {hasReactions && onClearReactions ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-8 w-full justify-start px-2 font-normal text-destructive hover:text-destructive"
+            onClick={onClearReactions}
+          >
+            <Trash2Icon className="size-3.5" />
+            Очистить реакции
           </Button>
         ) : null}
         {canEdit && onEdit ? (

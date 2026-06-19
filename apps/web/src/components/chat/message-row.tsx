@@ -47,6 +47,7 @@ export type MessageRowProps = {
   onBlock?: (message: Message) => void
   onPin?: (message: Message) => void
   onUnpin?: (message: Message) => void
+  onClearReactions?: (message: Message) => void
   onToggleReaction?: (
     messageId: string,
     emoji: string,
@@ -265,6 +266,7 @@ export function MessageRow({
   onBlock,
   onPin,
   onUnpin,
+  onClearReactions,
   onToggleReaction,
 }: MessageRowProps) {
   const server = useSyncStore((s) =>
@@ -478,6 +480,9 @@ export function MessageRow({
             onBlock={onBlock && !own ? () => onBlock(message) : undefined}
             onPin={onPin ? () => onPin(message) : undefined}
             onUnpin={onUnpin ? () => onUnpin(message) : undefined}
+            onClearReactions={
+              onClearReactions ? () => onClearReactions(message) : undefined
+            }
             onToggleReaction={(emoji, active) =>
               onToggleReaction(message._id, emoji, active)
             }

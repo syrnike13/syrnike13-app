@@ -57,6 +57,8 @@ export function ChannelChatPanel({
     handleDelete,
     handlePin,
     handleUnpin,
+    handleClearReactions,
+    canClearMessageReactions,
     jumpToMessage,
     replyTo,
     editingMessage,
@@ -130,6 +132,11 @@ export function ChannelChatPanel({
           }}
           onPin={(message) => void handlePin(message)}
           onUnpin={(message) => void handleUnpin(message)}
+          onClearReactions={
+            canClearMessageReactions
+              ? (message) => void handleClearReactions(message)
+              : undefined
+          }
           onToggleReaction={async (messageId, emoji, active) => {
             if (!token || !auth.user?._id) return
 
