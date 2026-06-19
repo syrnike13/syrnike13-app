@@ -262,7 +262,7 @@ export function UserProfileCardHeader({
       >
         <h2
           className={cn(
-            'truncate font-bold leading-tight text-foreground',
+            'flex min-w-0 items-center gap-1.5 font-bold leading-tight text-foreground',
             layout === 'modal'
               ? 'text-3xl'
               : layout === 'compact'
@@ -270,7 +270,12 @@ export function UserProfileCardHeader({
                 : 'text-2xl',
           )}
         >
-          {displayName}
+          <span className="min-w-0 truncate">{displayName}</span>
+          {user.bot ? (
+            <span className="shrink-0 rounded-sm bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground">
+              BOT
+            </span>
+          ) : null}
         </h2>
         <p
           className={cn(
