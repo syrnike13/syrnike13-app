@@ -41,6 +41,28 @@ const AUDIT_ACTIONS: AuditActionType[] = [
   'ServerPermissionUpdate',
 ]
 
+const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
+  ServerUpdate: 'Изменение сервера',
+  RoleCreate: 'Создание роли',
+  RoleUpdate: 'Изменение роли',
+  RoleDelete: 'Удаление роли',
+  RoleReorder: 'Изменение порядка ролей',
+  ChannelCreate: 'Создание канала',
+  ChannelUpdate: 'Изменение канала',
+  ChannelDelete: 'Удаление канала',
+  MemberUpdate: 'Изменение участника',
+  MemberKick: 'Исключение участника',
+  MemberBan: 'Бан участника',
+  MemberUnban: 'Разбан участника',
+  MemberTimeout: 'Тайм-аут участника',
+  InviteCreate: 'Создание приглашения',
+  InviteUpdate: 'Изменение приглашения',
+  InviteRevoke: 'Отзыв приглашения',
+  InviteDelete: 'Удаление приглашения',
+  ChannelPermissionUpdate: 'Изменение прав канала',
+  ServerPermissionUpdate: 'Изменение прав сервера',
+}
+
 const AUDIT_TARGET_TYPES: AuditTargetType[] = [
   'Server',
   'Role',
@@ -79,7 +101,7 @@ function AuditEntryRow({ entry }: { entry: ServerAuditLogEntry }) {
     <li className="rounded-md border border-border px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded bg-muted px-2 py-0.5 text-xs font-semibold text-foreground">
-          {entry.action.type}
+          {AUDIT_ACTION_LABELS[entry.action.type]}
         </span>
         <span className="text-xs text-muted-foreground">
           {formatAuditTime(entry.created_at)}
@@ -180,7 +202,7 @@ export function ServerSettingsAuditPanel({
             <option value="">Все</option>
             {AUDIT_ACTIONS.map((action) => (
               <option key={action} value={action}>
-                {action}
+                {AUDIT_ACTION_LABELS[action]}
               </option>
             ))}
           </select>

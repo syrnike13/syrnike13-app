@@ -65,7 +65,7 @@ describe('ServerSettingsAuditPanel', () => {
     renderWithQuery(<ServerSettingsAuditPanel serverId="server-1" />)
 
     expect(await screen.findByText('actor-1')).toBeTruthy()
-    expect(screen.getAllByText('RoleCreate').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Создание роли').length).toBeGreaterThan(0)
     expect(screen.getByText('role-1')).toBeTruthy()
     expect(screen.getByText('setup')).toBeTruthy()
 
@@ -74,6 +74,27 @@ describe('ServerSettingsAuditPanel', () => {
         'session-token',
         'server-1',
         { limit: 50 },
+      )
+    })
+  })
+
+  it('shows readable audit action labels while keeping enum filter values', async () => {
+    renderWithQuery(<ServerSettingsAuditPanel serverId="server-1" />)
+
+    expect(await screen.findByText('Создание роли')).toBeTruthy()
+    expect(
+      screen.getByRole('option', { name: 'Бан участника' }),
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Действие'), {
+      target: { value: 'MemberBan' },
+    })
+
+    await waitFor(() => {
+      expect(mocks.fetchServerAuditLog).toHaveBeenLastCalledWith(
+        'session-token',
+        'server-1',
+        { limit: 50, action: 'MemberBan' },
       )
     })
   })
