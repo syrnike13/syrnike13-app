@@ -94,6 +94,26 @@ function formatAuditTime(timestamp: number) {
   }).format(new Date(timestamp))
 }
 
+function formatAuditChangeValue(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return '—'
+  }
+
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return String(value)
+  }
+
+  try {
+    return JSON.stringify(value) ?? String(value)
+  } catch {
+    return String(value)
+  }
+}
+
 function AuditEntryRow({ entry }: { entry: ServerAuditLogEntry }) {
   const changeKeys = Object.keys(entry.changes)
 
@@ -126,8 +146,19 @@ function AuditEntryRow({ entry }: { entry: ServerAuditLogEntry }) {
         ) : null}
         {changeKeys.length > 0 ? (
           <>
-            <dt className="text-muted-foreground">Поля</dt>
-            <dd className="min-w-0 truncate">{changeKeys.join(', ')}</dd>
+            <dt className="text-muted-foreground">Изменения</dt>
+            <dd className="min-w-0 space-y-1">
+              {changeKeys.map((key) => {
+                const change = entry.changes[key]
+
+                return (
+                  <p key={key} className="truncate">
+                    {key}: {formatAuditChangeValue(change?.before)} →{' '}
+                    {formatAuditChangeValue(change?.after)}
+                  </p>
+                )
+              })}
+            </dd>
           </>
         ) : null}
       </dl>

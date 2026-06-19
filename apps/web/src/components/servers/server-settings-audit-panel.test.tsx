@@ -99,6 +99,34 @@ describe('ServerSettingsAuditPanel', () => {
     })
   })
 
+  it('shows audit change before and after values', async () => {
+    mocks.fetchServerAuditLog.mockResolvedValue({
+      entries: [
+        {
+          _id: 'audit-1',
+          server_id: 'server-1',
+          actor_id: 'actor-1',
+          action: { type: 'RoleUpdate' },
+          target: { type: 'Role', id: 'role-1' },
+          reason: null,
+          changes: {
+            name: { before: 'old-name', after: 'new-name' },
+            color: { before: null, after: '#ff00aa' },
+          },
+          status: 'Succeeded',
+          created_at: 0,
+          completed_at: 1,
+        },
+      ],
+      next_before: null,
+    })
+
+    renderWithQuery(<ServerSettingsAuditPanel serverId="server-1" />)
+
+    expect(await screen.findByText('name: old-name → new-name')).toBeTruthy()
+    expect(screen.getByText('color: — → #ff00aa')).toBeTruthy()
+  })
+
   it('loads the next audit page when a cursor is available', async () => {
     mocks.fetchServerAuditLog
       .mockResolvedValueOnce({
