@@ -64,17 +64,26 @@ export function ServerSettingsInvitesPanel({
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
   )
-  const inviteChannel = server
-    ? channels.find((channel) =>
-        canInviteToChannel(server, channel, member, auth.user?._id),
-      )
-    : undefined
   const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
   const [maxUses, setMaxUses] = useState('0')
   const [temporary, setTemporary] = useState(false)
   const [reason, setReason] = useState('')
+  const [selectedChannelId, setSelectedChannelId] = useState<
+    string | undefined
+  >()
   const [creating, setCreating] = useState(false)
   const [revokingCode, setRevokingCode] = useState<string | null>(null)
+  const inviteChannels = server
+    ? channels.filter((channel) =>
+        canInviteToChannel(server, channel, member, auth.user?._id),
+      )
+    : []
+  const defaultChannelId = inviteChannels[0]?._id
+  const activeChannelId =
+    selectedChannelId &&
+    inviteChannels.some((channel) => channel._id === selectedChannelId)
+      ? selectedChannelId
+      : defaultChannelId
 
   const invitesQuery = useQuery({
     queryKey: ['server-invites', serverId],
@@ -83,7 +92,7 @@ export function ServerSettingsInvitesPanel({
   })
 
   async function createInvite() {
-    if (!token || !inviteChannel) return
+    if (!token || !activeChannelId) return
 
     const body: DataCreateInvite = {
       max_age_seconds: Number(maxAgeSeconds),
@@ -94,7 +103,7 @@ export function ServerSettingsInvitesPanel({
 
     setCreating(true)
     try {
-      await createChannelInvite(token, inviteChannel._id, body)
+      await createChannelInvite(token, activeChannelId, body)
       setReason('')
       await invitesQuery.refetch()
     } catch (error) {
@@ -148,6 +157,24 @@ export function ServerSettingsInvitesPanel({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
+          {inviteChannels.length > 0 ? (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="invite-channel">Канал приглашения</Label>
+              <select
+                id="invite-channel"
+                value={activeChannelId ?? ''}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                onChange={(event) => setSelectedChannelId(event.target.value)}
+              >
+                {inviteChannels.map((channel) => (
+                  <option key={channel._id} value={channel._id}>
+                    #{channel.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
           <div className="space-y-1.5">
             <Label htmlFor="invite-max-age">Срок</Label>
             <select
@@ -203,7 +230,7 @@ export function ServerSettingsInvitesPanel({
 
         <Button
           type="button"
-          disabled={creating || !inviteChannel}
+          disabled={creating || !activeChannelId}
           onClick={() => void createInvite()}
         >
           Создать

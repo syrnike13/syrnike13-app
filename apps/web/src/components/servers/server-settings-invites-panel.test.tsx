@@ -166,6 +166,45 @@ describe('ServerSettingsInvitesPanel', () => {
     })
   })
 
+  it('creates invites in the selected channel', async () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-1',
+      channels: ['channel-1', 'channel-2'],
+      default_permissions: permissionOr(
+        ChannelPermission.ViewChannel,
+        ChannelPermission.InviteOthers,
+      ),
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'channel-2',
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'rules',
+    } as never)
+
+    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
+
+    await screen.findByText('invite-code')
+    fireEvent.change(screen.getByLabelText('Канал приглашения'), {
+      target: { value: 'channel-2' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
+
+    await waitFor(() => {
+      expect(mocks.createChannelInvite).toHaveBeenCalledWith(
+        'session-token',
+        'channel-2',
+        {
+          max_age_seconds: 604800,
+          max_uses: 0,
+          temporary: false,
+        },
+      )
+    })
+  })
+
   it('copies an existing invite link', async () => {
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
