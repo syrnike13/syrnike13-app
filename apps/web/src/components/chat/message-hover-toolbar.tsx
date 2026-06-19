@@ -18,6 +18,7 @@ type MessageHoverToolbarProps = {
   message: Message
   channelId: string
   own: boolean
+  canDelete?: boolean
   compact?: boolean
   currentUserId?: string
   onReply: () => void
@@ -34,6 +35,7 @@ export function MessageHoverToolbar({
   message,
   channelId,
   own,
+  canDelete = own,
   compact = false,
   currentUserId,
   onReply,
@@ -132,6 +134,7 @@ export function MessageHoverToolbar({
           message={message}
           channelId={channelId}
           own={own}
+          canDelete={canDelete}
           open={menuOpen}
           onOpenChange={setMenuOpen}
           onReply={onReply}

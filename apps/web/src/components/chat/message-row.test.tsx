@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { Message, User } from '@syrnike13/api-types'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MessageRow } from '#/components/chat/message-row'
+import { syncStore } from '#/features/sync/sync-store'
+import { ChannelPermission } from '#/lib/permissions'
+import { permissionOr } from '#/lib/permission-bits'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ700'
 const CALLER_ID = '01KT7DEM3B0T4B0BXGBXWDJ701'
@@ -45,9 +48,94 @@ function renderCallMessage(message: Message) {
   )
 }
 
+describe('MessageRow moderation actions', () => {
+  afterEach(() => {
+    cleanup()
+    syncStore.reset()
+  })
+
+  it('lets channel moderators delete other users messages', () => {
+    const onDelete = vi.fn()
+    const otherUser = {
+      _id: 'author-user',
+      username: 'author',
+      online: true,
+    } as User
+    const currentUser = {
+      _id: 'moderator-user',
+      username: 'moderator',
+      online: true,
+    } as User
+    const message = {
+      _id: MESSAGE_ID,
+      channel: CHANNEL_ID,
+      author: otherUser._id,
+      content: 'moderate me',
+    } as Message
+
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-user',
+      channels: [CHANNEL_ID],
+      default_permissions: 0,
+      roles: {
+        moderator: {
+          _id: 'moderator',
+          name: 'Moderator',
+          permissions: {
+            a: permissionOr(
+              ChannelPermission.ViewChannel,
+              ChannelPermission.ManageMessages,
+            ),
+            d: 0,
+          },
+          rank: 1,
+        },
+      },
+    } as never)
+    syncStore.upsertChannel({
+      _id: CHANNEL_ID,
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'general',
+      default_permissions: null,
+      role_permissions: {},
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: currentUser._id },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['moderator'],
+      } as never,
+    ])
+
+    render(
+      <MessageRow
+        message={message}
+        channelId={CHANNEL_ID}
+        users={{ [otherUser._id]: otherUser, [currentUser._id]: currentUser }}
+        emojis={{}}
+        messagesById={{ [message._id]: message }}
+        currentUserId={currentUser._id}
+        serverId="server-1"
+        onReply={vi.fn()}
+        onDelete={onDelete}
+        onToggleReaction={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ещё' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+
+    expect(onDelete).toHaveBeenCalledWith(message)
+  })
+})
+
 describe('MessageRow system call messages', () => {
   afterEach(() => {
     cleanup()
+    syncStore.reset()
   })
 
   it('renders an active call system message like a user message row', () => {

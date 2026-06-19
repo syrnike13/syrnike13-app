@@ -26,6 +26,7 @@ type MessageActionsMenuProps = {
   message: Message
   channelId: string
   own: boolean
+  canDelete?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
   triggerClassName?: string
@@ -51,6 +52,7 @@ export function MessageActionsMenu({
   message,
   channelId,
   own,
+  canDelete = own,
   open,
   onOpenChange,
   triggerClassName,
@@ -170,7 +172,7 @@ export function MessageActionsMenu({
             Изменить
           </Button>
         ) : null}
-        {own && onDelete ? (
+        {canDelete && onDelete ? (
           <Button
             type="button"
             variant="ghost"

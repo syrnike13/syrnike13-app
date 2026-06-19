@@ -26,6 +26,7 @@ import {
   formatMessageTimestamp,
   messageCreatedAt,
 } from '#/lib/message-time'
+import { canManageChannelMessages } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
 export type MessageRowProps = {
@@ -298,7 +299,12 @@ export function MessageRow({
     server && member ? memberRoleEntries(server, member) : undefined
   const hideAuthorMessage = authorUser?._id === currentUserId
   const channels = useSyncStore((s) => s.channels)
+  const channel = channels[channelId]
   const currentUser = currentUserId ? users[currentUserId] : undefined
+  const canDeleteMessage =
+    own ||
+    (channel?.channel_type === 'TextChannel' &&
+      canManageChannelMessages(server, channel, currentMember, currentUserId))
   const mentionsCurrentUser = isMessageMentioningUser(message, currentUserId, {
     member: currentMember,
     currentUser,
@@ -472,6 +478,7 @@ export function MessageRow({
             message={message}
             channelId={channelId}
             own={own}
+            canDelete={canDeleteMessage}
             compact={compact}
             currentUserId={currentUserId}
             onReply={() => onReply(message)}
