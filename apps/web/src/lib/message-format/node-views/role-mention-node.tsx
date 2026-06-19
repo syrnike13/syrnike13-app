@@ -2,6 +2,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 
 import { MentionPill } from '#/components/chat/mention-pill'
 import { useMessageFormatContext } from '#/lib/message-format/message-format-context'
+import { normalizeRoleColour } from '#/lib/server-permissions'
 
 export function RoleMentionNodeView({ node }: NodeViewProps) {
   const context = useMessageFormatContext()
@@ -11,7 +12,10 @@ export function RoleMentionNodeView({ node }: NodeViewProps) {
 
   return (
     <NodeViewWrapper as="span" className="inline">
-      <MentionPill label={`@${label}`} />
+      <MentionPill
+        label={label}
+        nameColour={role?.colour ? normalizeRoleColour(role.colour) : undefined}
+      />
     </NodeViewWrapper>
   )
 }

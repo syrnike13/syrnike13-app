@@ -28,14 +28,15 @@ describe('renderMessageContent', () => {
     expect(html).not.toContain(userId)
   })
 
-  it('renders role and channel mentions', () => {
+  it('renders role, channel, and mass mentions with Discord-like prefixes', () => {
     const html = renderToStaticMarkup(
       <>
-        {renderMessageContent(`<%${roleId}> <#${channelId}>`, undefined, undefined, {
+        {renderMessageContent(`<%${roleId}> <#${channelId}> @everyone`, undefined, undefined, {
           roles: {
             [roleId]: {
               _id: roleId,
-              name: 'Модератор',
+              name: 'Moderator',
+              colour: '#ff5500',
               permissions: { a: 0, d: 0 },
               mentionable: false,
               rank: 0,
@@ -53,8 +54,13 @@ describe('renderMessageContent', () => {
       </>,
     )
 
-    expect(html).toContain('Модератор')
-    expect(html).toContain('general')
+    expect(html).toContain('>@Moderator</span>')
+    expect(html).toContain('color:#ff5500')
+    expect(html).toContain('>#general</span>')
+    expect(html).toContain('>@everyone</span>')
+    expect(html).not.toContain('@@Moderator')
+    expect(html).not.toContain('@#general')
+    expect(html).not.toContain('@@everyone')
     expect(html).not.toContain(roleId)
     expect(html).not.toContain(channelId)
   })

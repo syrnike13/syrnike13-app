@@ -14,6 +14,7 @@ import {
   prepareMessageMarkdown,
 } from '#/lib/message-format/entity-markdown-bridge'
 import type { MessageFormatContext } from '#/lib/message-format/types'
+import { normalizeRoleColour } from '#/lib/server-permissions'
 
 function SyrnikeEntityLink({
   href,
@@ -47,7 +48,12 @@ function SyrnikeEntityLink({
 
   if (parsed.kind === 'role') {
     const role = context.roles?.[parsed.id]
-    return <MentionPill label={`@${role?.name ?? parsed.id}`} />
+    return (
+      <MentionPill
+        label={role?.name ?? parsed.id}
+        nameColour={role?.colour ? normalizeRoleColour(role.colour) : undefined}
+      />
+    )
   }
 
   if (parsed.kind === 'channel') {
@@ -56,11 +62,11 @@ function SyrnikeEntityLink({
       channel && 'name' in channel && channel.name
         ? channel.name
         : parsed.id
-    return <MentionPill label={`#${channelName}`} />
+    return <MentionPill label={channelName} prefix="#" />
   }
 
   if (parsed.kind === 'mass') {
-    const label = parsed.id === 'online' ? '@online' : '@everyone'
+    const label = parsed.id === 'online' ? 'online' : 'everyone'
     return <MentionPill label={label} />
   }
 

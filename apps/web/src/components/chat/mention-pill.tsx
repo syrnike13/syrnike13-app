@@ -9,10 +9,12 @@ export { defaultMentionClassName, mentionColourStyle }
 export function MentionPill({
   label,
   nameColour,
+  prefix = '@',
   className,
 }: {
   label: string
   nameColour?: string
+  prefix?: '@' | '#' | ''
   className?: string
 }) {
   const colourStyle = mentionColourStyle(nameColour)
@@ -26,7 +28,8 @@ export function MentionPill({
         className,
       )}
     >
-      @{label}
+      {prefix}
+      {label}
     </span>
   )
 }
