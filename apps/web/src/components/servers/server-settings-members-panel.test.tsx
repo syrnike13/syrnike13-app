@@ -177,6 +177,36 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
     })
   })
 
+  it('removes an active member timeout', async () => {
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'target-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['member'],
+        timeout: '2026-06-19T10:30:00.000Z',
+      } as never,
+    ])
+    mocks.editServerMember.mockResolvedValue({
+      _id: { server: 'server-1', user: 'target-user' },
+      joined_at: '2024-01-01T00:00:00Z',
+      roles: ['member'],
+    })
+
+    render(<ServerSettingsMembersPanel serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /target/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Снять тайм-аут' }))
+
+    await waitFor(() => {
+      expect(mocks.editServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        'target-user',
+        { remove: ['Timeout'] },
+      )
+    })
+  })
+
   it('lets a nickname manager rename a lower-ranked member', async () => {
     setupMembers(ChannelPermission.ManageNicknames)
     mocks.editServerMember.mockResolvedValue({

@@ -141,6 +141,11 @@ function ServerMemberModerationPanel({
     userId,
     targetMember,
   )
+  const timeoutExpiresAt = targetMember.timeout
+    ? Date.parse(targetMember.timeout)
+    : Number.NaN
+  const hasActiveTimeout =
+    Number.isFinite(timeoutExpiresAt) && timeoutExpiresAt > Date.now()
 
   const targetLabel = memberDisplayName(targetUser)
   const reasonBody = reason.trim() ? { reason: reason.trim() } : {}
@@ -202,6 +207,28 @@ function ServerMemberModerationPanel({
     }
   }
 
+  async function removeTimeoutMember() {
+    if (!token || !canTimeout || !hasActiveTimeout) return
+
+    setPendingAction('remove-timeout')
+    try {
+      const updated = await editServerMember(
+        token,
+        server._id,
+        targetMember._id.user,
+        { remove: ['Timeout'] },
+      )
+      syncStore.upsertMembers([updated])
+      toast.success('Тайм-аут снят')
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось снять тайм-аут',
+      )
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
   if (!canKick && !canBan && !canTimeout) {
     return null
   }
@@ -239,6 +266,17 @@ function ServerMemberModerationPanel({
             onClick={() => void timeoutMember(60 * 60 * 1000)}
           >
             Тайм-аут на 1 час
+          </Button>
+        ) : null}
+        {canTimeout && hasActiveTimeout ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={pendingAction !== null}
+            onClick={() => void removeTimeoutMember()}
+          >
+            Снять тайм-аут
           </Button>
         ) : null}
         {canKick ? (
