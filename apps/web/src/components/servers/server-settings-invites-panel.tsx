@@ -5,6 +5,14 @@ import { CopyIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
@@ -78,6 +86,8 @@ export function ServerSettingsInvitesPanel({
   >()
   const [creating, setCreating] = useState(false)
   const [revokingCode, setRevokingCode] = useState<string | null>(null)
+  const [invitePendingRevocation, setInvitePendingRevocation] =
+    useState<string | null>(null)
   const inviteChannels = server
     ? channels.filter((channel) =>
         canInviteToChannel(server, channel, member, auth.user?._id),
@@ -120,14 +130,16 @@ export function ServerSettingsInvitesPanel({
     }
   }
 
-  async function revokeInvite(code: string) {
+  async function revokeInvite() {
     if (!token) return
-    if (!window.confirm(`Отозвать приглашение ${code}?`)) return
+    const code = invitePendingRevocation
+    if (!code) return
 
     setRevokingCode(code)
     try {
       await deleteInvite(token, code)
       await invitesQuery.refetch()
+      setInvitePendingRevocation(null)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось отозвать приглашение',
@@ -325,7 +337,7 @@ export function ServerSettingsInvitesPanel({
                     variant="outline"
                     size="sm"
                     disabled={revoked || revokingCode === invite._id}
-                    onClick={() => void revokeInvite(invite._id)}
+                    onClick={() => setInvitePendingRevocation(invite._id)}
                   >
                     Отозвать
                   </Button>
@@ -335,6 +347,43 @@ export function ServerSettingsInvitesPanel({
           })}
         </ul>
       )}
+      <Dialog
+        open={invitePendingRevocation !== null}
+        onOpenChange={(open) => {
+          if (!open && revokingCode === null) {
+            setInvitePendingRevocation(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Отозвать приглашение {invitePendingRevocation}?
+            </DialogTitle>
+            <DialogDescription>
+              Ссылка перестанет принимать новых участников.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={revokingCode !== null}
+              onClick={() => setInvitePendingRevocation(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={revokingCode !== null}
+              onClick={() => void revokeInvite()}
+            >
+              Отозвать приглашение
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -48,6 +48,18 @@ vi.mock('#/lib/clipboard', () => ({
     mocks.writeClipboardText(...args),
 }))
 
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
+    open ? <div role="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
+}))
+
 function renderWithQuery(children: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -109,14 +121,19 @@ describe('ServerSettingsInvitesPanel', () => {
     vi.clearAllMocks()
   })
 
-  it('revokes an invite through the invites API', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('revokes an invite through a confirmation dialog', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
     expect(await screen.findByText('invite-code')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Отозвать' }))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog').textContent).toContain('invite-code')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Отозвать приглашение' }),
+    )
 
     await waitFor(() => {
       expect(mocks.deleteInvite).toHaveBeenCalledWith(
@@ -126,19 +143,18 @@ describe('ServerSettingsInvitesPanel', () => {
     })
   })
 
-  it('keeps an invite when revoke is not confirmed', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('keeps an invite when the revoke dialog is cancelled', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
     expect(await screen.findByText('invite-code')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Отозвать' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
 
     expect(mocks.deleteInvite).not.toHaveBeenCalled()
-    expect(window.confirm).toHaveBeenCalledWith(
-      'Отозвать приглашение invite-code?',
-    )
+    expect(confirmSpy).not.toHaveBeenCalled()
   })
 
   it('creates invites in the first channel that grants InviteOthers', async () => {
