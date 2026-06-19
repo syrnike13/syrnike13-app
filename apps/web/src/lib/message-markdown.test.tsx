@@ -72,6 +72,21 @@ describe('renderMessageContent', () => {
     expect(html).not.toContain(channelId)
   })
 
+  it('does not render mass mentions inside words or email addresses', () => {
+    const html = renderToStaticMarkup(
+      <>
+        {renderMessageContent(
+          'foo@everyone.com abc@online @everyone @online',
+        )}
+      </>,
+    )
+
+    expect(html).toContain('foo@everyone.com')
+    expect(html).toContain('abc@online')
+    expect(html.match(/>@everyone<\/span>/g)).toHaveLength(1)
+    expect(html.match(/>@online<\/span>/g)).toHaveLength(1)
+  })
+
   it('renders markdown headings', () => {
     const html = renderToStaticMarkup(
       <>{renderMessageContent('# 123\n## 456')}</>,

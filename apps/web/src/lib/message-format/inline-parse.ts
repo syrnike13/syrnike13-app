@@ -11,7 +11,8 @@ const ITALIC_RE = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g
 const STRIKE_RE = /~~(.+?)~~/g
 const CODE_RE = /`([^`]+)`/g
 const SPOILER_RE = /\|\|(.+?)\|\|/g
-const MASS_MENTION_RE = /(@everyone|@online)/g
+const MASS_MENTION_RE =
+  /(?<![\p{L}\p{N}_])(@everyone|@online)(?![\p{L}\p{N}_-]|\.[\p{L}\p{N}_])/gu
 
 function resetInlineRegexes() {
   LINK_RE.lastIndex = 0
