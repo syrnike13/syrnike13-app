@@ -450,6 +450,11 @@ export function MessageRow({
                 {name}
               </span>
             )}
+            {authorUser?.bot ? (
+              <span className="shrink-0 rounded-sm bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground">
+                BOT
+              </span>
+            ) : null}
             <time
               className="shrink-0 text-[11px] font-medium text-muted-foreground"
               dateTime={timestamp}

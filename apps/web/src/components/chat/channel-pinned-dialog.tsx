@@ -5,6 +5,7 @@ import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
+import { MessageAttachments } from '#/components/chat/message-attachments'
 import { Button } from '#/components/ui/button'
 import {
   Dialog,
@@ -17,6 +18,10 @@ import { fetchPinnedMessages } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
+import {
+  formatMessageTimestamp,
+  messageCreatedAt,
+} from '#/lib/message-time'
 import { queryKeys } from '#/lib/api/query-keys'
 import { writeClipboardText } from '#/lib/clipboard'
 import { cn } from '#/lib/utils'
@@ -102,6 +107,9 @@ export function ChannelPinnedDialog({
             const author = message.user ?? users[message.author]
             const name =
               author?.display_name ?? author?.username ?? 'Неизвестный'
+            const timestamp = formatMessageTimestamp(messageCreatedAt(message))
+            const hasContent = Boolean(message.content?.trim())
+            const hasAttachments = Boolean(message.attachments?.length)
 
             return (
               <article
@@ -129,16 +137,28 @@ export function ChannelPinnedDialog({
                   }
                 }}
               >
-                <p className="mb-1 text-xs font-medium text-muted-foreground">
-                  {name}
+                <p className="mb-1 flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <span className="min-w-0 truncate">{name}</span>
+                  {author?.bot ? (
+                    <span className="shrink-0 rounded-sm bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground">
+                      BOT
+                    </span>
+                  ) : null}
+                  <time className="shrink-0" dateTime={timestamp}>
+                    {timestamp}
+                  </time>
                 </p>
-                {message.content ? (
-                  <div>
+                {hasContent ? (
+                  <div className={hasAttachments ? 'mb-2' : undefined}>
                     {renderMessageContent(message.content, users, emojis)}
                   </div>
-                ) : (
+                ) : null}
+                {hasAttachments ? (
+                  <MessageAttachments attachments={message.attachments!} />
+                ) : null}
+                {!hasContent && !hasAttachments ? (
                   <p className="text-muted-foreground italic">[без текста]</p>
-                )}
+                ) : null}
                 <Button
                   type="button"
                   variant="link"

@@ -81,11 +81,18 @@ function MemberSidebarRow({
         >
           <UserAvatar user={user} className="size-8" showPresence />
           <div className="min-w-0 flex-1">
-            <p
-              className="truncate text-sm font-medium"
-              style={nameColour ? { color: nameColour } : undefined}
-            >
-              {displayName}
+            <p className="flex min-w-0 items-center gap-1">
+              <span
+                className="min-w-0 truncate text-sm font-medium"
+                style={nameColour ? { color: nameColour } : undefined}
+              >
+                {displayName}
+              </span>
+              {user.bot ? (
+                <span className="shrink-0 rounded-sm bg-primary px-1 text-[9px] leading-4 font-bold text-primary-foreground">
+                  BOT
+                </span>
+              ) : null}
             </p>
             {showStatus && customStatus ? (
               <p className="truncate text-[11px] text-muted-foreground">

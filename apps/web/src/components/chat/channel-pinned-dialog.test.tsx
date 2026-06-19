@@ -8,25 +8,43 @@ import {
   waitFor,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 
+const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+const PINNED_AT = Date.UTC(2026, 5, 19, 12, 30)
+
+function ulidAt(timeMs: number, tail: string) {
+  let value = timeMs
+  let timestamp = ''
+
+  for (let index = 0; index < 10; index += 1) {
+    timestamp = ULID_ENCODING[value % 32]! + timestamp
+    value = Math.floor(value / 32)
+  }
+
+  return `${timestamp}${tail.padEnd(16, '0')}`.slice(0, 26)
+}
+
+const PINNED_MESSAGE_ID = ulidAt(PINNED_AT, 'PNNEDMSG12345678')
+const PINNED_TIMESTAMP = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+}).format(new Date(PINNED_AT))
+
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  pinnedMessages: [] as Array<Record<string, unknown>>,
   writeClipboardText: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({
-    data: [
-      {
-        _id: 'message-1',
-        author: 'author-user',
-        channel: 'channel-1',
-        content: 'pinned text',
-      },
-    ],
+    data: mocks.pinnedMessages,
     error: null,
     isError: false,
     isFetching: false,
@@ -63,9 +81,116 @@ vi.mock('sonner', () => ({
 }))
 
 describe('ChannelPinnedDialog', () => {
+  beforeEach(() => {
+    mocks.pinnedMessages = [
+      {
+        _id: PINNED_MESSAGE_ID,
+        author: 'author-user',
+        channel: 'channel-1',
+        content: 'pinned text',
+      },
+    ]
+  })
+
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+  })
+
+  it('shows a BOT badge only next to bot pinned message authors', () => {
+    const { rerender } = render(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'deploybot',
+            display_name: 'Deploy Bot',
+            bot: { owner: 'owner-user' },
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('BOT')).toBeTruthy()
+
+    rerender(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'alice',
+            display_name: 'Alice',
+            bot: null,
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.queryByText('BOT')).toBeNull()
+  })
+
+  it('shows the pinned message timestamp next to the author metadata', () => {
+    render(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'author',
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.getByText(PINNED_TIMESTAMP)).toBeTruthy()
+  })
+
+  it('renders attachments on pinned messages without text', () => {
+    mocks.pinnedMessages = [
+      {
+        _id: PINNED_MESSAGE_ID,
+        author: 'author-user',
+        channel: 'channel-1',
+        content: null,
+        attachments: [
+          {
+            _id: 'file-1',
+            tag: 'attachments',
+            filename: 'brief.pdf',
+            content_type: 'application/pdf',
+            size: 2048,
+            metadata: {
+              type: 'File',
+            },
+          },
+        ],
+      },
+    ]
+
+    render(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'author',
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('brief.pdf')).toBeTruthy()
+    expect(screen.queryByText('[без текста]')).toBeNull()
   })
 
   it('copies a message id without jumping to the pinned message', async () => {
@@ -94,7 +219,7 @@ describe('ChannelPinnedDialog', () => {
     fireEvent.click(copyButton!)
 
     await waitFor(() =>
-      expect(mocks.writeClipboardText).toHaveBeenCalledWith('message-1'),
+      expect(mocks.writeClipboardText).toHaveBeenCalledWith(PINNED_MESSAGE_ID),
     )
     expect(mocks.navigate).not.toHaveBeenCalled()
   })
