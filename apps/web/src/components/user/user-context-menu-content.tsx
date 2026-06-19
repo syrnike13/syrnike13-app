@@ -17,6 +17,17 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from '#/components/ui/context-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
+import { Button } from '#/components/ui/button'
+import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { useAuth } from '#/features/auth/auth-context'
@@ -55,6 +66,13 @@ type UserContextMenuContentProps = {
   onOpenProfile?: () => void
 }
 
+const BAN_DELETE_MESSAGE_PRESETS = [
+  { label: 'Не удалять', seconds: 0 },
+  { label: '1 час', seconds: 60 * 60 },
+  { label: '24 часа', seconds: 24 * 60 * 60 },
+  { label: '7 дней', seconds: 7 * 24 * 60 * 60 },
+]
+
 export function UserContextMenuContent({
   user,
   serverId,
@@ -68,6 +86,10 @@ export function UserContextMenuContent({
   const voice = useVoice()
   const { openSettings } = useSettingsModal()
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
+  const [banDialogOpen, setBanDialogOpen] = useState(false)
+  const [banReason, setBanReason] = useState('')
+  const [banDeleteMessageSeconds, setBanDeleteMessageSeconds] = useState('0')
+  const [banning, setBanning] = useState(false)
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -163,23 +185,37 @@ export function UserContextMenuContent({
     }
   }
 
-  async function handleBan() {
-    if (!token || !serverId || isSelf) return
-    if (
-      !window.confirm(
-        `Забанить @${user.username}? Пользователь не сможет вернуться на сервер.`,
-      )
-    ) {
-      return
+  function handleBanDialogOpenChange(open: boolean) {
+    setBanDialogOpen(open)
+    if (!open) {
+      setBanReason('')
+      setBanDeleteMessageSeconds('0')
     }
+  }
+
+  async function handleBan() {
+    if (!token || !serverId || isSelf || !canBan) return
+
+    const selectedDeleteMessageSeconds = Number(banDeleteMessageSeconds)
+    const body = {
+      ...(banReason.trim() ? { reason: banReason.trim() } : {}),
+      ...(selectedDeleteMessageSeconds > 0
+        ? { delete_message_seconds: selectedDeleteMessageSeconds }
+        : {}),
+    }
+
+    setBanning(true)
     try {
-      await banServerMember(token, serverId, user._id)
+      await banServerMember(token, serverId, user._id, body)
       syncStore.removeServerMember(serverId, user._id)
+      handleBanDialogOpenChange(false)
       toast.success('Пользователь забанен')
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось забанить',
       )
+    } finally {
+      setBanning(false)
     }
   }
 
@@ -272,7 +308,10 @@ export function UserContextMenuContent({
           {canBan ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={() => void handleBan()}
+              onSelect={(event) => {
+                event.preventDefault()
+                setBanDialogOpen(true)
+              }}
             >
               <BanIcon />
               Забанить на сервере
@@ -301,6 +340,68 @@ export function UserContextMenuContent({
           open={rolesDialogOpen}
           onOpenChange={setRolesDialogOpen}
         />
+      ) : null}
+      {canBan ? (
+        <Dialog open={banDialogOpen} onOpenChange={handleBanDialogOpenChange}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Забанить @{user.username}</DialogTitle>
+              <DialogDescription>
+                Пользователь не сможет вернуться на сервер, пока бан не снимут.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor={`ban-reason-${user._id}`}>Причина</Label>
+                <Input
+                  id={`ban-reason-${user._id}`}
+                  value={banReason}
+                  maxLength={256}
+                  disabled={banning}
+                  onChange={(event) => setBanReason(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`ban-delete-messages-${user._id}`}>
+                  Удалить историю сообщений
+                </Label>
+                <select
+                  id={`ban-delete-messages-${user._id}`}
+                  value={banDeleteMessageSeconds}
+                  className="h-9 w-full rounded-md border border-input bg-muted/40 px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+                  disabled={banning}
+                  onChange={(event) =>
+                    setBanDeleteMessageSeconds(event.target.value)
+                  }
+                >
+                  {BAN_DELETE_MESSAGE_PRESETS.map((preset) => (
+                    <option key={preset.seconds} value={String(preset.seconds)}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={banning}
+                onClick={() => handleBanDialogOpenChange(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={banning}
+                onClick={() => void handleBan()}
+              >
+                Забанить
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </>
   )

@@ -13,6 +13,10 @@ const navigateMock = vi.hoisted(() => vi.fn())
 const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const voiceControlsPropsMock = vi.hoisted(() => vi.fn())
 const editMemberRolesDialogPropsMock = vi.hoisted(() => vi.fn())
+const serverApiMocks = vi.hoisted(() => ({
+  banServerMember: vi.fn(),
+  kickServerMember: vi.fn(),
+}))
 const openDirectMessageChannelMock = vi.hoisted(() =>
   vi.fn(
     async (
@@ -54,6 +58,13 @@ vi.mock('#/features/dm/dm-actions', () => ({
   openDirectMessageChannel: openDirectMessageChannelMock,
 }))
 
+vi.mock('#/features/api/servers-api', () => ({
+  banServerMember: (...args: Parameters<typeof serverApiMocks.banServerMember>) =>
+    serverApiMocks.banServerMember(...args),
+  kickServerMember: (...args: Parameters<typeof serverApiMocks.kickServerMember>) =>
+    serverApiMocks.kickServerMember(...args),
+}))
+
 vi.mock('#/features/settings/settings-modal-context', () => ({
   useSettingsModal: () => ({ openSettings: vi.fn() }),
 }))
@@ -74,6 +85,18 @@ vi.mock('#/components/servers/edit-member-roles-dialog', () => ({
     editMemberRolesDialogPropsMock(props)
     return props.open ? <div data-testid="member-roles-dialog" /> : null
   },
+}))
+
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
+    open ? <div role="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
 vi.mock('#/components/ui/context-menu', () => ({
@@ -109,6 +132,8 @@ describe('UserContextMenuContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     voiceJoinMock.mockResolvedValue(true)
+    serverApiMocks.banServerMember.mockResolvedValue(undefined)
+    serverApiMocks.kickServerMember.mockResolvedValue(undefined)
     syncStore.reset()
   })
 
@@ -270,5 +295,64 @@ describe('UserContextMenuContent', () => {
         open: true,
       }),
     )
+  })
+
+  it('confirms a server ban with reason and message deletion window', async () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-user',
+      channels: [],
+      default_permissions: 0,
+      roles: {
+        mod: {
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: ChannelPermission.BanMembers, d: 0 },
+          rank: 1,
+        },
+        member: {
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'current-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['mod'],
+      } as never,
+      {
+        _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['member'],
+      } as never,
+    ])
+
+    render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Забанить на сервере' }))
+    fireEvent.change(screen.getByLabelText('Причина'), {
+      target: { value: 'spam wave' },
+    })
+    fireEvent.change(screen.getByLabelText('Удалить историю сообщений'), {
+      target: { value: '86400' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Забанить' }))
+
+    await waitFor(() => {
+      expect(serverApiMocks.banServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        '01JVOICETARGET0000001',
+        { reason: 'spam wave', delete_message_seconds: 86400 },
+      )
+    })
+    expect(
+      syncStore.getState().members['server-1:01JVOICETARGET0000001'],
+    ).toBeUndefined()
   })
 })
