@@ -33,6 +33,18 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.unbanServerMember(...args),
 }))
 
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
+    open ? <div role="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
+}))
+
 function renderWithQuery(children: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -71,8 +83,8 @@ describe('ServerSettingsBansPanel', () => {
     vi.clearAllMocks()
   })
 
-  it('removes a server ban through the moderation API', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('removes a server ban with an audit reason through a dialog', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     renderWithQuery(<ServerSettingsBansPanel serverId="server-1" />)
 
@@ -80,25 +92,29 @@ describe('ServerSettingsBansPanel', () => {
     expect(screen.getByText('spam')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Разбанить' }))
+    fireEvent.change(screen.getByLabelText('Причина снятия бана'), {
+      target: { value: 'appeal approved' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Снять бан' }))
 
     await waitFor(() => {
       expect(mocks.unbanServerMember).toHaveBeenCalledWith(
         'session-token',
         'server-1',
         'user-2',
+        { reason: 'appeal approved' },
       )
     })
-    expect(window.confirm).toHaveBeenCalledWith('Снять бан с bad-user?')
+    expect(confirmSpy).not.toHaveBeenCalled()
   })
 
-  it('keeps a ban when removal is not confirmed', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
-
+  it('keeps a ban when the removal dialog is cancelled', async () => {
     renderWithQuery(<ServerSettingsBansPanel serverId="server-1" />)
 
     expect(await screen.findByText('bad-user')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Разбанить' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
 
     expect(mocks.unbanServerMember).not.toHaveBeenCalled()
   })

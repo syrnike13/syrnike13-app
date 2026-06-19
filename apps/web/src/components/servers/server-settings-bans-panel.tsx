@@ -5,7 +5,16 @@ import { toast } from 'sonner'
 
 import { SearchIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchServerBans,
@@ -29,7 +38,7 @@ function BanRow({
   ban: ServerBan
   user: BannedUser | undefined
   removing: boolean
-  onRemove: (userLabel: string) => void
+  onRemove: (userId: string, userLabel: string) => void
 }) {
   const userId = ban._id.user
   const userLabel = bannedUserLabel(user, userId)
@@ -48,7 +57,7 @@ function BanRow({
         variant="outline"
         size="sm"
         disabled={removing}
-        onClick={() => onRemove(userLabel)}
+        onClick={() => onRemove(userId, userLabel)}
       >
         Разбанить
       </Button>
@@ -62,6 +71,11 @@ export function ServerSettingsBansPanel({
   const auth = useAuth()
   const token = auth.session?.token
   const [removingUserId, setRemovingUserId] = useState<string | null>(null)
+  const [unbanTarget, setUnbanTarget] = useState<{
+    userId: string
+    userLabel: string
+  } | null>(null)
+  const [unbanReason, setUnbanReason] = useState('')
   const [query, setQuery] = useState('')
 
   const bansQuery = useQuery({
@@ -76,14 +90,25 @@ export function ServerSettingsBansPanel({
     )
   }, [bansQuery.data?.users])
 
-  async function removeBan(userId: string, userLabel: string) {
-    if (!token) return
-    if (!window.confirm(`Снять бан с ${userLabel}?`)) return
+  function requestRemoveBan(userId: string, userLabel: string) {
+    setUnbanTarget({ userId, userLabel })
+  }
 
-    setRemovingUserId(userId)
+  function closeUnbanDialog() {
+    setUnbanTarget(null)
+    setUnbanReason('')
+  }
+
+  async function removeBan() {
+    if (!token || !unbanTarget) return
+
+    const body = unbanReason.trim() ? { reason: unbanReason.trim() } : {}
+
+    setRemovingUserId(unbanTarget.userId)
     try {
-      await unbanServerMember(token, serverId, userId)
+      await unbanServerMember(token, serverId, unbanTarget.userId, body)
       await bansQuery.refetch()
+      closeUnbanDialog()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Не удалось снять бан')
     } finally {
@@ -147,11 +172,56 @@ export function ServerSettingsBansPanel({
               ban={ban}
               user={usersById.get(ban._id.user)}
               removing={removingUserId === ban._id.user}
-              onRemove={(userLabel) => void removeBan(ban._id.user, userLabel)}
+              onRemove={requestRemoveBan}
             />
           ))}
         </ul>
       )}
+      <Dialog
+        open={unbanTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !removingUserId) {
+            closeUnbanDialog()
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Снять бан с {unbanTarget?.userLabel}?</DialogTitle>
+            <DialogDescription>
+              Пользователь сможет снова зайти на сервер по приглашению.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-2">
+            <Label htmlFor="unban-reason">Причина снятия бана</Label>
+            <Input
+              id="unban-reason"
+              value={unbanReason}
+              maxLength={256}
+              disabled={removingUserId !== null}
+              onChange={(event) => setUnbanReason(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={removingUserId !== null}
+              onClick={closeUnbanDialog}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={removingUserId !== null}
+              onClick={() => void removeBan()}
+            >
+              Снять бан
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
