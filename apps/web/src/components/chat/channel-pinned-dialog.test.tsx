@@ -8,7 +8,7 @@ import {
   waitFor,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 
@@ -38,19 +38,13 @@ const PINNED_TIMESTAMP = new Intl.DateTimeFormat('ru-RU', {
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  pinnedMessages: [] as Array<Record<string, unknown>>,
   writeClipboardText: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({
-    data: [
-      {
-        _id: PINNED_MESSAGE_ID,
-        author: 'author-user',
-        channel: 'channel-1',
-        content: 'pinned text',
-      },
-    ],
+    data: mocks.pinnedMessages,
     error: null,
     isError: false,
     isFetching: false,
@@ -87,6 +81,17 @@ vi.mock('sonner', () => ({
 }))
 
 describe('ChannelPinnedDialog', () => {
+  beforeEach(() => {
+    mocks.pinnedMessages = [
+      {
+        _id: PINNED_MESSAGE_ID,
+        author: 'author-user',
+        channel: 'channel-1',
+        content: 'pinned text',
+      },
+    ]
+  })
+
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
@@ -146,6 +151,46 @@ describe('ChannelPinnedDialog', () => {
     )
 
     expect(screen.getByText(PINNED_TIMESTAMP)).toBeTruthy()
+  })
+
+  it('renders attachments on pinned messages without text', () => {
+    mocks.pinnedMessages = [
+      {
+        _id: PINNED_MESSAGE_ID,
+        author: 'author-user',
+        channel: 'channel-1',
+        content: null,
+        attachments: [
+          {
+            _id: 'file-1',
+            tag: 'attachments',
+            filename: 'brief.pdf',
+            content_type: 'application/pdf',
+            size: 2048,
+            metadata: {
+              type: 'File',
+            },
+          },
+        ],
+      },
+    ]
+
+    render(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'author',
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('brief.pdf')).toBeTruthy()
+    expect(screen.queryByText('[без текста]')).toBeNull()
   })
 
   it('copies a message id without jumping to the pinned message', async () => {

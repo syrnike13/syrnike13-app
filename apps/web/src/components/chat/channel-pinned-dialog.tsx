@@ -5,6 +5,7 @@ import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
+import { MessageAttachments } from '#/components/chat/message-attachments'
 import { Button } from '#/components/ui/button'
 import {
   Dialog,
@@ -107,6 +108,8 @@ export function ChannelPinnedDialog({
             const name =
               author?.display_name ?? author?.username ?? 'Неизвестный'
             const timestamp = formatMessageTimestamp(messageCreatedAt(message))
+            const hasContent = Boolean(message.content?.trim())
+            const hasAttachments = Boolean(message.attachments?.length)
 
             return (
               <article
@@ -145,13 +148,17 @@ export function ChannelPinnedDialog({
                     {timestamp}
                   </time>
                 </p>
-                {message.content ? (
-                  <div>
+                {hasContent ? (
+                  <div className={hasAttachments ? 'mb-2' : undefined}>
                     {renderMessageContent(message.content, users, emojis)}
                   </div>
-                ) : (
+                ) : null}
+                {hasAttachments ? (
+                  <MessageAttachments attachments={message.attachments!} />
+                ) : null}
+                {!hasContent && !hasAttachments ? (
                   <p className="text-muted-foreground italic">[без текста]</p>
-                )}
+                ) : null}
                 <Button
                   type="button"
                   variant="link"
