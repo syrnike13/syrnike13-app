@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   BanIcon,
@@ -17,6 +18,7 @@ import {
   ContextMenuSeparator,
 } from '#/components/ui/context-menu'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
+import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   banServerMember,
@@ -42,6 +44,7 @@ import {
   canBanServerMember,
   canKickServerMember,
 } from '#/lib/permissions'
+import { canEditAnyMemberRole } from '#/lib/member-roles'
 
 type UserContextMenuContentProps = {
   user: User
@@ -64,6 +67,7 @@ export function UserContextMenuContent({
   const prefix = useAppRoutePrefix()
   const voice = useVoice()
   const { openSettings } = useSettingsModal()
+  const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -105,6 +109,12 @@ export function UserContextMenuContent({
     canBanServerMember(server, actorMember, auth.user?._id, targetMember)
   const canBlock = !isSelf
   const canDirectMessage = !isSelf && !user.bot
+  const canEditRoles = Boolean(
+    server &&
+      targetMember &&
+      !isSelf &&
+      canEditAnyMemberRole(server, actorMember, auth.user?._id, targetMember),
+  )
 
   const token = auth.session?.token
 
@@ -196,7 +206,8 @@ export function UserContextMenuContent({
   const showModeration = canKick || canBan
 
   return (
-    <ContextMenuContent className="z-[200] w-56">
+    <>
+      <ContextMenuContent className="z-[200] w-56">
       {showVoiceControls ? (
         <UserContextMenuVoiceControls
           userId={user._id}
@@ -230,6 +241,17 @@ export function UserContextMenuContent({
           </ContextMenuItem>
           <FriendshipContextMenuItems user={user} />
         </>
+      ) : null}
+      {canEditRoles ? (
+        <ContextMenuItem
+          onSelect={(event) => {
+            event.preventDefault()
+            setRolesDialogOpen(true)
+          }}
+        >
+          <SettingsIcon />
+          Роли
+        </ContextMenuItem>
       ) : null}
       <ContextMenuItem onSelect={() => void copyUserId()}>
         <CopyIcon />
@@ -270,6 +292,16 @@ export function UserContextMenuContent({
           </ContextMenuItem>
         </>
       ) : null}
-    </ContextMenuContent>
+      </ContextMenuContent>
+      {server && targetMember ? (
+        <EditMemberRolesDialog
+          server={server}
+          targetMember={targetMember}
+          targetUser={user}
+          open={rolesDialogOpen}
+          onOpenChange={setRolesDialogOpen}
+        />
+      ) : null}
+    </>
   )
 }

@@ -7,10 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserContextMenuContent } from './user-context-menu-content'
 import { syncStore } from '#/features/sync/sync-store'
+import { ChannelPermission } from '#/lib/permissions'
 
 const navigateMock = vi.hoisted(() => vi.fn())
 const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const voiceControlsPropsMock = vi.hoisted(() => vi.fn())
+const editMemberRolesDialogPropsMock = vi.hoisted(() => vi.fn())
 const openDirectMessageChannelMock = vi.hoisted(() =>
   vi.fn(
     async (
@@ -67,6 +69,13 @@ vi.mock('#/components/user/user-context-menu-voice-controls', () => ({
   },
 }))
 
+vi.mock('#/components/servers/edit-member-roles-dialog', () => ({
+  EditMemberRolesDialog: (props: { open: boolean }) => {
+    editMemberRolesDialogPropsMock(props)
+    return props.open ? <div data-testid="member-roles-dialog" /> : null
+  },
+}))
+
 vi.mock('#/components/ui/context-menu', () => ({
   ContextMenuContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -76,9 +85,12 @@ vi.mock('#/components/ui/context-menu', () => ({
     onSelect,
   }: {
     children: ReactNode
-    onSelect?: () => void
+    onSelect?: (event: { preventDefault: () => void }) => void
   }) => (
-    <button type="button" onClick={() => onSelect?.()}>
+    <button
+      type="button"
+      onClick={() => onSelect?.({ preventDefault: vi.fn() })}
+    >
       {children}
     </button>
   ),
@@ -204,6 +216,58 @@ describe('UserContextMenuContent', () => {
           expect.objectContaining({ _id: 'voice-1' }),
           expect.objectContaining({ _id: 'voice-2' }),
         ],
+      }),
+    )
+  })
+
+  it('opens member role editing from a server user context menu', () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-user',
+      channels: [],
+      default_permissions: 0,
+      roles: {
+        manager: {
+          _id: 'manager',
+          name: 'Manager',
+          permissions: { a: ChannelPermission.AssignRoles, d: 0 },
+          rank: 1,
+        },
+        member: {
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'current-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['manager'],
+      } as never,
+      {
+        _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['member'],
+      } as never,
+    ])
+
+    render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Роли' }))
+
+    expect(screen.getByTestId('member-roles-dialog')).toBeTruthy()
+    expect(editMemberRolesDialogPropsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        server: expect.objectContaining({ _id: 'server-1' }),
+        targetMember: expect.objectContaining({
+          _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        }),
+        targetUser,
+        open: true,
       }),
     )
   })
