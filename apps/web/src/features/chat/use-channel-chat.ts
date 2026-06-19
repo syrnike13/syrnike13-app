@@ -56,6 +56,17 @@ export function useChannelChat({
   const users = useSyncStore((s) => s.users)
   const messages = useSyncStore((s) => getChannelMessages(s, channelId))
   const token = auth.session?.token
+  const initialLastReadRef = useRef<{
+    channelId: string
+    messageId: string | null | undefined
+  } | null>(null)
+
+  if (initialLastReadRef.current?.channelId !== channelId) {
+    initialLastReadRef.current = {
+      channelId,
+      messageId: syncStore.getState().unreads[channelId],
+    }
+  }
 
   useJumpToMessage(channelId, highlightMessageId, enabled ? token : undefined)
 
@@ -268,6 +279,7 @@ export function useChannelChat({
     channel: channel as Channel | undefined,
     users,
     messages,
+    lastReadMessageId: initialLastReadRef.current?.messageId,
     token,
     historyQuery,
     serverIdForSelection,

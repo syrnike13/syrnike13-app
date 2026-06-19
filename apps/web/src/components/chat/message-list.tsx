@@ -56,6 +56,8 @@ type MessageListProps = {
   scrollPaddingClassName?: string
   /** Подсветить сообщение в ленте (ответ, deep link). */
   highlightMessageId?: string
+  /** Last-read id, снятый до открытия/ack канала. */
+  lastReadMessageId?: string | null
   messages: Message[]
   users: Record<string, User>
   currentUserId?: string
@@ -104,6 +106,22 @@ function FeedListItem({
     return <MessageDateDivider label={item.dateLabel} />
   }
 
+  if (item.type === 'unread') {
+    return (
+      <div
+        role="separator"
+        aria-label="Новые сообщения"
+        className="relative flex items-center py-2 text-xs font-semibold text-destructive"
+      >
+        <div className="h-px flex-1 bg-destructive/60" />
+        <span className="mx-3 shrink-0 rounded bg-background px-2">
+          Новые сообщения
+        </span>
+        <div className="h-px flex-1 bg-destructive/60" />
+      </div>
+    )
+  }
+
   return (
     <MessageRow
       message={item.message}
@@ -122,6 +140,7 @@ export function MessageList({
   serverId,
   scrollPaddingClassName,
   highlightMessageId,
+  lastReadMessageId,
   messages,
   users,
   currentUserId,
@@ -152,7 +171,10 @@ export function MessageList({
   const scrollHeightBeforeLoad = useRef(0)
   const anchorMessageIdRef = useRef<string | null>(null)
 
-  const feedItems = useMemo(() => buildMessageFeedItems(messages), [messages])
+  const feedItems = useMemo(
+    () => buildMessageFeedItems(messages, lastReadMessageId),
+    [lastReadMessageId, messages],
+  )
   const useVirtual = feedItems.length >= VIRTUAL_THRESHOLD
 
   const messagesById = useMemo(() => {

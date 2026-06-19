@@ -54,6 +54,7 @@ export function ChannelChatPanel({
     channel,
     users,
     messages,
+    lastReadMessageId,
     token,
     historyQuery,
     serverIdForSelection,
@@ -149,6 +150,7 @@ export function ChannelChatPanel({
             replyTo && 'pb-[88px]',
           )}
           highlightMessageId={listHighlightMessageId}
+          lastReadMessageId={lastReadMessageId}
           messages={messages}
           users={users}
           currentUserId={auth.user?._id}

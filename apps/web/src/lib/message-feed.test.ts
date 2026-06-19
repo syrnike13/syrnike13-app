@@ -58,6 +58,32 @@ describe('message feed grouping', () => {
   })
 })
 
+describe('message feed unread divider', () => {
+  it('inserts a new messages divider before the first unread message', () => {
+    const firstAt = Date.UTC(2026, 0, 1, 12, 0, 0)
+    const readMessage = messageAt(firstAt, 'A')
+    const unreadMessage = messageAt(firstAt + MINUTE_MS, 'B')
+
+    expect(
+      buildMessageFeedItems([readMessage, unreadMessage], readMessage._id).map(
+        (item) => item.type,
+      ),
+    ).toEqual(['date', 'message', 'unread', 'message'])
+  })
+
+  it('does not insert a divider when the channel is already read', () => {
+    const firstAt = Date.UTC(2026, 0, 1, 12, 0, 0)
+    const readMessage = messageAt(firstAt, 'A')
+    const lastMessage = messageAt(firstAt + MINUTE_MS, 'B')
+
+    expect(
+      buildMessageFeedItems([readMessage, lastMessage], lastMessage._id).map(
+        (item) => item.type,
+      ),
+    ).toEqual(['date', 'message', 'message'])
+  })
+})
+
 describe('message feed item height estimates', () => {
   it('estimates call system cards taller than regular messages', () => {
     const item: MessageFeedItem = {
