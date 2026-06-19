@@ -93,13 +93,14 @@ vi.mock('#/components/ui/floating-menu', () => ({
 }))
 
 function channelNames() {
-  return screen.getAllByTestId('channel').map((item) => item.textContent)
+  return screen.queryAllByTestId('channel').map((item) => item.textContent)
 }
 
 describe('ServerChannelList', () => {
   beforeEach(() => {
     mocks.editServer.mockClear()
     mocks.onDragEnd = null
+    localStorage.clear()
     syncStore.reset()
     syncStore.upsertServer({
       _id: 'server-a',
@@ -147,5 +148,54 @@ describe('ServerChannelList', () => {
 
     expect(mocks.editServer).toHaveBeenCalledOnce()
     expect(channelNames()).toEqual(['Beta', 'Alpha'])
+  })
+
+  it('keeps unread channels visible inside collapsed categories', () => {
+    syncStore.upsertServer({
+      _id: 'server-a',
+      name: 'Alpha',
+      owner: 'user-current',
+      channels: ['channel-a', 'channel-b'],
+      default_permissions: 0,
+      categories: [
+        {
+          id: 'category-a',
+          title: 'Read later',
+          channels: ['channel-a', 'channel-b'],
+        },
+      ],
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'channel-a',
+      channel_type: 'TextChannel',
+      server: 'server-a',
+      name: 'Alpha',
+      last_message_id: 'message-2',
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'channel-b',
+      channel_type: 'TextChannel',
+      server: 'server-a',
+      name: 'Beta',
+      last_message_id: 'message-2',
+    } as never)
+    localStorage.setItem(
+      'channel-category-collapsed:server-a:category-a',
+      '1',
+    )
+
+    render(
+      <ServerChannelList
+        serverId="server-a"
+        users={{}}
+        currentUserId="user-current"
+        unreads={{
+          'channel-a': 'message-1',
+          'channel-b': 'message-2',
+        }}
+      />,
+    )
+
+    expect(channelNames()).toEqual(['Alpha'])
   })
 })
