@@ -1,8 +1,10 @@
 import type {
   Channel,
+  CreateWebhookBody,
   DataDefaultChannelPermissions,
   DataEditChannel,
   DataSetRolePermissions,
+  Webhook,
 } from '@syrnike13/api-types'
 
 import { apiRequest } from '#/lib/api/client'
@@ -65,6 +67,31 @@ export async function setDefaultChannelPermissions(
     method: 'PUT',
     token,
     body: data,
+  })
+}
+
+export async function fetchChannelWebhooks(token: string, channelId: string) {
+  return apiRequest<Webhook[]>(`/channels/${channelId}/webhooks`, {
+    token,
+  })
+}
+
+export async function createChannelWebhook(
+  token: string,
+  channelId: string,
+  data: CreateWebhookBody,
+) {
+  return apiRequest<Webhook>(`/channels/${channelId}/webhooks`, {
+    method: 'POST',
+    token,
+    body: data,
+  })
+}
+
+export async function deleteWebhook(token: string, webhookId: string) {
+  return apiRequest<void>(`/webhooks/${webhookId}`, {
+    method: 'DELETE',
+    token,
   })
 }
 

@@ -3,11 +3,13 @@ import type { Channel } from '@syrnike13/api-types'
 import { ChannelSettingsOverviewPanel } from '#/components/channels/channel-settings-overview-panel'
 import { ChannelSettingsPermissionsPanel } from '#/components/channels/channel-settings-permissions-panel'
 import type { ChannelSettingsTab } from '#/components/channels/channel-settings-types'
+import { ChannelSettingsWebhooksPanel } from '#/components/channels/channel-settings-webhooks-panel'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSyncStore } from '#/features/sync/sync-store'
 import {
   canManageChannel,
   canManageChannelPermissions,
+  canManageChannelWebhooks,
 } from '#/lib/permissions'
 
 type ServerChannel = Extract<
@@ -46,6 +48,12 @@ export function ChannelSettingsPanelContent({
     member,
     auth.user?._id,
   )
+  const canManageWebhooks = canManageChannelWebhooks(
+    server,
+    channel,
+    member,
+    auth.user?._id,
+  )
 
   switch (tab) {
     case 'overview':
@@ -59,6 +67,10 @@ export function ChannelSettingsPanelContent({
           server={server}
           member={member}
         />
+      ) : null
+    case 'webhooks':
+      return canManageWebhooks && channel.channel_type === 'TextChannel' ? (
+        <ChannelSettingsWebhooksPanel channel={channel} />
       ) : null
     default:
       return null

@@ -1,5 +1,10 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { LayoutTemplateIcon, ShieldFillIcon, XIcon } from '#/components/icons'
+import {
+  LayoutTemplateIcon,
+  LinkIcon,
+  ShieldFillIcon,
+  XIcon,
+} from '#/components/icons'
 import { useCallback, useEffect, type ReactNode } from 'react'
 
 import { ChannelSettingsPanelContent } from '#/components/channels/channel-settings-panels'
@@ -21,6 +26,7 @@ import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
   canManageChannel,
   canManageChannelPermissions,
+  canManageChannelWebhooks,
 } from '#/lib/permissions'
 import { cn } from '#/lib/utils'
 
@@ -132,6 +138,10 @@ export function ChannelSettingsPage({
     isServerChannel && channel?.channel_type === 'TextChannel'
       ? canManageChannelPermissions(server, channel, member, auth.user?._id)
       : false
+  const canManageWebhooks =
+    isServerChannel && channel?.channel_type === 'TextChannel'
+      ? canManageChannelWebhooks(server, channel, member, auth.user?._id)
+      : false
 
   const closeSettings = useCallback(() => {
     void navigate({
@@ -151,7 +161,7 @@ export function ChannelSettingsPage({
 
     if (!server || !auth.user?._id) return
 
-    if (!canManage && !canManagePermissions) {
+    if (!canManage && !canManagePermissions && !canManageWebhooks) {
       void navigate({
         to: `${prefix}/c/$channelId`,
         params: { channelId: hostChannelId },
@@ -163,6 +173,7 @@ export function ChannelSettingsPage({
     auth.user?._id,
     canManage,
     canManagePermissions,
+    canManageWebhooks,
     channel,
     channelId,
     highlightMessageId,
@@ -206,16 +217,21 @@ export function ChannelSettingsPage({
     return null
   }
 
-  if (!canManage && !canManagePermissions) {
+  if (!canManage && !canManagePermissions && !canManageWebhooks) {
     return null
   }
 
   let effectiveTab = tab
-  if (effectiveTab === 'overview' && !canManage && canManagePermissions) {
-    effectiveTab = 'permissions'
-  }
-  if (effectiveTab === 'permissions' && !canManagePermissions && canManage) {
-    effectiveTab = 'overview'
+  const canOpenRequestedTab =
+    (effectiveTab === 'overview' && canManage) ||
+    (effectiveTab === 'permissions' && canManagePermissions) ||
+    (effectiveTab === 'webhooks' && canManageWebhooks)
+  if (!canOpenRequestedTab) {
+    effectiveTab = canManage
+      ? 'overview'
+      : canManagePermissions
+        ? 'permissions'
+        : 'webhooks'
   }
 
   const channelLabel =
@@ -263,6 +279,20 @@ export function ChannelSettingsPage({
                     highlightMessageId={highlightMessageId}
                     icon={<ShieldFillIcon className="size-4 shrink-0" />}
                     label={CHANNEL_SETTINGS_TAB_LABELS.permissions}
+                  />
+                </NavSection>
+              ) : null}
+
+              {canManageWebhooks ? (
+                <NavSection title="Инструменты">
+                  <SettingsNavLink
+                    hostChannelId={hostChannelId}
+                    channelId={channelId}
+                    tab="webhooks"
+                    activeTab={effectiveTab}
+                    highlightMessageId={highlightMessageId}
+                    icon={<LinkIcon className="size-4 shrink-0" />}
+                    label={CHANNEL_SETTINGS_TAB_LABELS.webhooks}
                   />
                 </NavSection>
               ) : null}

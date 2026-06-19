@@ -520,6 +520,22 @@ export function canManageChannelPermissions(
   )
 }
 
+export function canManageChannelWebhooks(
+  server: Server | undefined,
+  channel: ServerScopedChannel,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!server || !userId || channel.channel_type !== 'TextChannel') {
+    return false
+  }
+
+  return hasChannelPermission(
+    calculateChannelPermissions(server, channel, member, userId),
+    ChannelPermission.ManageWebhooks,
+  )
+}
+
 export function calculateEveryoneChannelPermissions(
   server: Server,
   channel: ServerTextChannel,
