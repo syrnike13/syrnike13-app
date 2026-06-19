@@ -271,4 +271,36 @@ describe('ServerSettingsInvitesPanel', () => {
     expect(await screen.findByText('rules-code')).toBeTruthy()
     expect(screen.getByText(/#rules/)).toBeTruthy()
   })
+
+  it('shows invite creator, creation date, and temporary membership status', async () => {
+    syncStore.upsertUser({
+      _id: 'user-1',
+      username: 'alice',
+      display_name: 'Alice',
+      avatar: null,
+    } as never)
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'temporary-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: Date.UTC(2026, 5, 19, 12, 30),
+        expires_at: null,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: true,
+      },
+    ])
+
+    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
+
+    expect(await screen.findByText('temporary-code')).toBeTruthy()
+    expect(screen.getByText('Временное')).toBeTruthy()
+    expect(screen.getByText(/Создал: Alice/)).toBeTruthy()
+    expect(screen.getByText(/Создано: .*2026/)).toBeTruthy()
+  })
 })

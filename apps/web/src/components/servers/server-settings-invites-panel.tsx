@@ -36,8 +36,7 @@ const INVITE_MAX_USES_OPTIONS = [
   { label: '100', value: '100' },
 ]
 
-function formatInviteDate(timestamp?: number | null) {
-  if (!timestamp) return 'Без срока'
+function formatInviteTimestamp(timestamp: number) {
   return new Intl.DateTimeFormat('ru-RU', {
     day: '2-digit',
     month: '2-digit',
@@ -45,6 +44,11 @@ function formatInviteDate(timestamp?: number | null) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(timestamp))
+}
+
+function formatInviteDate(timestamp?: number | null) {
+  if (!timestamp) return 'Без срока'
+  return formatInviteTimestamp(timestamp)
 }
 
 function formatInviteUses(invite: Invite) {
@@ -64,6 +68,7 @@ export function ServerSettingsInvitesPanel({
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
   )
+  const users = useSyncStore((s) => s.users)
   const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
   const [maxUses, setMaxUses] = useState('0')
   const [temporary, setTemporary] = useState(false)
@@ -256,6 +261,9 @@ export function ServerSettingsInvitesPanel({
             const channelLabel = `#${
               channelNamesById.get(invite.channel) ?? invite.channel
             }`
+            const creator = users[invite.creator]
+            const creatorLabel =
+              creator?.display_name || creator?.username || invite.creator
             return (
               <li
                 key={invite._id}
@@ -271,10 +279,19 @@ export function ServerSettingsInvitesPanel({
                         Отозвано
                       </span>
                     ) : null}
+                    {invite.temporary ? (
+                      <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        Временное
+                      </span>
+                    ) : null}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {channelLabel} · Использования: {formatInviteUses(invite)} · Истекает:{' '}
                     {formatInviteDate(invite.expires_at)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Создал: {creatorLabel} · Создано:{' '}
+                    {formatInviteTimestamp(invite.created_at)}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
