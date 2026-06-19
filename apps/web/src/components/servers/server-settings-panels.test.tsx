@@ -25,6 +25,7 @@ Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
 
 const mocks = vi.hoisted(() => ({
   editServer: vi.fn(),
+  uploadEmoji: vi.fn(),
   uploadMediaFile: vi.fn(),
   deleteOrLeaveServer: vi.fn(),
   createServerEmoji: vi.fn(),
@@ -60,7 +61,8 @@ vi.mock('#/features/navigation/route-prefix', () => ({
 }))
 
 vi.mock('#/features/api/media-api', () => ({
-  uploadEmoji: vi.fn(),
+  uploadEmoji: (...args: Parameters<typeof mocks.uploadEmoji>) =>
+    mocks.uploadEmoji(...args),
   uploadMediaFile: (...args: Parameters<typeof mocks.uploadMediaFile>) =>
     mocks.uploadMediaFile(...args),
 }))
@@ -153,6 +155,7 @@ describe('ServerSettingsPanelContent overview', () => {
     syncStore.upsertChannel(textChannel('channel-1', 'general'))
     syncStore.upsertChannel(textChannel('channel-2', 'announcements'))
     mocks.fetchServerEmojis.mockResolvedValue([])
+    mocks.uploadEmoji.mockResolvedValue('emoji-file')
     mocks.uploadMediaFile.mockResolvedValue('file-id')
     mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
     mocks.navigate.mockResolvedValue(undefined)
@@ -341,5 +344,26 @@ describe('ServerSettingsPanelContent overview', () => {
         'emoji-1',
       )
     })
+  })
+
+  it('rejects invalid server emoji names before upload', async () => {
+    const file = new File(['emoji'], 'party.png', { type: 'image/png' })
+
+    render(<ServerSettingsPanelContent serverId="server-1" tab="emoji" />)
+
+    fireEvent.change(screen.getByLabelText('Имя'), {
+      target: { value: 'party parrot!' },
+    })
+    fireEvent.change(screen.getByLabelText('Файл'), {
+      target: { files: [file] },
+    })
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        'Имя emoji должно содержать только латиницу, цифры и подчёркивания.',
+      )
+    })
+    expect(mocks.uploadEmoji).not.toHaveBeenCalled()
+    expect(mocks.createServerEmoji).not.toHaveBeenCalled()
   })
 })

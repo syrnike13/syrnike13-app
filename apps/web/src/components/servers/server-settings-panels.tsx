@@ -66,6 +66,9 @@ const SYSTEM_MESSAGE_KEYS = [
   'user_kicked',
   'user_banned',
 ] as const
+const SERVER_EMOJI_NAME_PATTERN = /^[A-Za-z0-9_]+$/
+const SERVER_EMOJI_NAME_ERROR =
+  'Имя emoji должно содержать только латиницу, цифры и подчёркивания.'
 
 function SettingsField({
   label,
@@ -653,6 +656,11 @@ function ServerSettingsEmojiPanel({ serverId }: { serverId: string }) {
     const trimmedName = emojiName.trim()
     if (!token || !trimmedName) {
       toast.error('Укажите имя emoji')
+      if (emojiFileRef.current) emojiFileRef.current.value = ''
+      return
+    }
+    if (!SERVER_EMOJI_NAME_PATTERN.test(trimmedName)) {
+      toast.error(SERVER_EMOJI_NAME_ERROR)
       if (emojiFileRef.current) emojiFileRef.current.value = ''
       return
     }
