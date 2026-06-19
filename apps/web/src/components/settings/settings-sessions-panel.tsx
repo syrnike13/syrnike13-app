@@ -1,9 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, MonitorIcon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
+import { useState } from 'react'
 
 import { SettingsBlock } from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   deleteSession,
@@ -21,11 +30,26 @@ function formatSessionDate(sessionId: string) {
   }
 }
 
+type PendingRevoke =
+  | {
+      type: 'single'
+      sessionId: string
+      sessionName: string
+    }
+  | {
+      type: 'others'
+      count: number
+    }
+
 export function SettingsSessionsPanel() {
   const auth = useAuth()
   const queryClient = useQueryClient()
   const token = auth.session?.token
   const currentSessionId = loadSession()?._id
+  const [pendingRevoke, setPendingRevoke] = useState<PendingRevoke | null>(
+    null,
+  )
+  const [revoking, setRevoking] = useState(false)
 
   const sessionsQuery = useQuery({
     queryKey: ['auth', 'sessions'],
@@ -33,33 +57,45 @@ export function SettingsSessionsPanel() {
     enabled: Boolean(token),
   })
 
-  async function revokeSession(sessionId: string) {
-    if (!token) return
-    if (!window.confirm('Завершить эту сессию?')) return
-
-    try {
-      await deleteSession(token, sessionId)
-      await queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] })
-      toast.success('Сессия завершена')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось завершить сессию',
-      )
-    }
+  function openSessionRevokeDialog(session: { _id: string; name: string }) {
+    setPendingRevoke({
+      type: 'single',
+      sessionId: session._id,
+      sessionName: session.name || 'Сессия',
+    })
   }
 
-  async function revokeAllOthers() {
-    if (!token) return
-    if (!window.confirm('Завершить все сессии, кроме текущей?')) return
+  function openOtherSessionsRevokeDialog(count: number) {
+    setPendingRevoke({ type: 'others', count })
+  }
 
+  async function confirmRevokeSessions() {
+    if (!token || !pendingRevoke) return
+
+    setRevoking(true)
     try {
-      await revokeOtherSessions(token)
+      if (pendingRevoke.type === 'single') {
+        await deleteSession(token, pendingRevoke.sessionId)
+      } else {
+        await revokeOtherSessions(token)
+      }
       await queryClient.invalidateQueries({ queryKey: ['auth', 'sessions'] })
-      toast.success('Другие сессии завершены')
+      toast.success(
+        pendingRevoke.type === 'single'
+          ? 'Сессия завершена'
+          : 'Другие сессии завершены',
+      )
+      setPendingRevoke(null)
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Не удалось завершить сессии',
+        error instanceof Error
+          ? error.message
+          : pendingRevoke.type === 'single'
+            ? 'Не удалось завершить сессию'
+            : 'Не удалось завершить сессии',
       )
+    } finally {
+      setRevoking(false)
     }
   }
 
@@ -114,7 +150,7 @@ export function SettingsSessionsPanel() {
                 variant="outline"
                 size="sm"
                 className="h-8"
-                onClick={() => void revokeAllOthers()}
+                onClick={() => openOtherSessionsRevokeDialog(others.length)}
               >
                 Завершить все
               </Button>
@@ -140,7 +176,7 @@ export function SettingsSessionsPanel() {
                     size="icon"
                     className="size-8 shrink-0 text-destructive"
                     title="Завершить"
-                    onClick={() => void revokeSession(session._id)}
+                    onClick={() => openSessionRevokeDialog(session)}
                   >
                     <Trash2Icon className="size-4" />
                   </Button>
@@ -154,6 +190,45 @@ export function SettingsSessionsPanel() {
           </p>
         )}
       </SettingsBlock>
+      <Dialog
+        open={Boolean(pendingRevoke)}
+        onOpenChange={(open) => {
+          if (!open && !revoking) setPendingRevoke(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {pendingRevoke?.type === 'others'
+                ? 'Завершить все другие сессии?'
+                : 'Завершить эту сессию?'}
+            </DialogTitle>
+            <DialogDescription>
+              {pendingRevoke?.type === 'others'
+                ? `Будет завершено сессий: ${pendingRevoke.count}. Текущая сессия останется активной.`
+                : `Сессия «${pendingRevoke?.sessionName ?? 'Сессия'}» будет завершена.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={revoking}
+              onClick={() => setPendingRevoke(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={revoking}
+              onClick={() => void confirmRevokeSessions()}
+            >
+              {pendingRevoke?.type === 'others' ? 'Завершить все' : 'Завершить'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

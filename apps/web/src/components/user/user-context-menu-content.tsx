@@ -93,6 +93,8 @@ export function UserContextMenuContent({
   const [banReason, setBanReason] = useState('')
   const [banDeleteMessageSeconds, setBanDeleteMessageSeconds] = useState('0')
   const [banning, setBanning] = useState(false)
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
+  const [blocking, setBlocking] = useState(false)
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -237,11 +239,15 @@ export function UserContextMenuContent({
 
   async function handleBlock() {
     if (!token || isSelf) return
-    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+
+    setBlocking(true)
     try {
       await blockUserRelationship(token, user._id)
+      setBlockDialogOpen(false)
     } catch {
       // friend-actions already shows the concrete error toast.
+    } finally {
+      setBlocking(false)
     }
   }
 
@@ -343,7 +349,10 @@ export function UserContextMenuContent({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onSelect={() => void handleBlock()}
+            onSelect={(event) => {
+              event.preventDefault()
+              setBlockDialogOpen(true)
+            }}
           >
             <BanIcon />
             Заблокировать
@@ -397,6 +406,42 @@ export function UserContextMenuContent({
                 onClick={() => void handleKick()}
               >
                 Исключить
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {canBlock ? (
+        <Dialog
+          open={blockDialogOpen}
+          onOpenChange={(open) => {
+            if (!blocking) setBlockDialogOpen(open)
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Заблокировать @{user.username}?</DialogTitle>
+              <DialogDescription>
+                Пользователь не сможет писать вам сообщения и отправлять заявки
+                в друзья.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={blocking}
+                onClick={() => setBlockDialogOpen(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={blocking}
+                onClick={() => void handleBlock()}
+              >
+                Заблокировать
               </Button>
             </DialogFooter>
           </DialogContent>
