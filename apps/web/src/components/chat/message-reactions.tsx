@@ -38,7 +38,9 @@ export function MessageReactions({
   onToggle,
 }: MessageReactionsProps) {
   const emojis = useSyncStore((s) => s.emojis)
-  const entries = Object.entries(message.reactions ?? {})
+  const entries = Object.entries(message.reactions ?? {}).filter(
+    ([, userIds]) => userIds.length > 0,
+  )
 
   if (entries.length === 0) {
     return null
