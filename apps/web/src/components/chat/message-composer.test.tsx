@@ -117,4 +117,48 @@ describe('MessageComposer replies', () => {
       replies: [{ id: 'reply-message', mention: true }],
     })
   })
+
+  it('does not mention the current user when replying to self', async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <MessageComposer
+        channel={{
+          _id: 'channel-1',
+          channel_type: 'TextChannel',
+          name: 'general',
+          server: 'server-1',
+        } as never}
+        token="token"
+        users={{
+          'current-user': {
+            _id: 'current-user',
+            online: true,
+            username: 'current',
+          } as never,
+        }}
+        replyTo={{
+          _id: 'reply-message',
+          author: 'current-user',
+          channel: 'channel-1',
+          content: 'my own original',
+        } as never}
+        onSend={onSend}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('message composer'), {
+      target: { value: 'note to self' },
+    })
+    fireEvent.keyDown(screen.getByLabelText('message composer'), {
+      key: 'Enter',
+    })
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce())
+    expect(onSend).toHaveBeenCalledWith({
+      content: 'note to self',
+      attachments: undefined,
+      replies: [{ id: 'reply-message', mention: false }],
+    })
+  })
 })
