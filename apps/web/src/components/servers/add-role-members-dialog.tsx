@@ -33,6 +33,8 @@ type AddRoleMembersDialogProps = {
 type MemberEntry = { member: Member; user: User | undefined }
 
 function memberDisplayName(user: User | undefined, member: Member) {
+  const nickname = member.nickname?.trim()
+  if (nickname) return nickname
   if (user?.display_name) return user.display_name
   if (user?.username) return user.username
   return member._id.user
