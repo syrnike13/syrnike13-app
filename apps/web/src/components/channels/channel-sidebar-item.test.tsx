@@ -443,6 +443,42 @@ describe('ChannelSidebarItem voice navigation', () => {
     expect(screen.getByTitle('Групповой чат')).toBeTruthy()
   })
 
+  it('only shows mark as read for unread server channels', () => {
+    const channel = {
+      ...textServerChannel,
+      last_message_id: 'message-2',
+    }
+    upsertTextServerChannel(channel)
+
+    const { rerender } = render(
+      <ChannelSidebarItem
+        channel={channel}
+        activeChannelId="other-channel"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{ 'text-general': 'message-2' }}
+      />,
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'Прочитано' }),
+    ).toBeNull()
+
+    rerender(
+      <ChannelSidebarItem
+        channel={channel}
+        activeChannelId="other-channel"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{ 'text-general': 'message-1' }}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'Прочитано' }),
+    ).toBeTruthy()
+  })
+
   it('marks restricted text channels with a locked text icon', () => {
     const channel = {
       ...textServerChannel,

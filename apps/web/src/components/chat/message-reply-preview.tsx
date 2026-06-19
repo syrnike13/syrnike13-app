@@ -101,10 +101,31 @@ export function InlineReplyQuote({
 
   const original = messagesById[replyId]
   if (!original) {
+    const missingClass = cn(
+      'mb-1 flex max-w-full min-w-0 items-end gap-1.5 rounded-sm text-left',
+      'text-[13px] leading-4 text-muted-foreground italic',
+      onJump &&
+        'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    )
+    const missingBody = (
+      <>
+        <ReplyThreadCorner className="-ml-7" />
+        <span className="min-w-0 truncate">Сообщение не загружено</span>
+      </>
+    )
+
+    if (!onJump) {
+      return <div className={missingClass}>{missingBody}</div>
+    }
+
     return (
-      <p className="mb-1 min-h-4 text-xs leading-4 text-muted-foreground italic">
-        Ответ на удалённое сообщение
-      </p>
+      <button
+        type="button"
+        className={cn(missingClass, 'w-full')}
+        onClick={() => onJump(replyId)}
+      >
+        {missingBody}
+      </button>
     )
   }
 
