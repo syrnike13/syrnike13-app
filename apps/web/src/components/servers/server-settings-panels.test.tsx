@@ -253,6 +253,23 @@ describe('ServerSettingsPanelContent overview', () => {
     })
   })
 
+  it('removes the server description when the field is cleared', async () => {
+    upsertServer({ description: 'Старое описание' })
+
+    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+
+    fireEvent.change(screen.getByLabelText('Описание'), {
+      target: { value: '' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
+        remove: ['Description'],
+      })
+    })
+  })
+
   it('removes system messages when the system channel is cleared', async () => {
     upsertServer({
       system_messages: {

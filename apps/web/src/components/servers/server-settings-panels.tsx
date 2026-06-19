@@ -255,7 +255,11 @@ function ServerSettingsGeneralPanel({
 
       if (nameChanged) patch.name = trimmedName
       if (descriptionChanged) {
-        patch.description = trimmedDescription || null
+        if (trimmedDescription) {
+          patch.description = trimmedDescription
+        } else {
+          remove.push('Description')
+        }
       }
       if (systemMessagesChanged) {
         if (systemMessagesChannelId === SYSTEM_MESSAGES_NONE) {
