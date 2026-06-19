@@ -1,4 +1,4 @@
-import type { Member, Message, Server, User } from '@syrnike13/api-types'
+import type { Channel, Member, Message, Server, User } from '@syrnike13/api-types'
 import { XIcon } from '#/components/icons'
 
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -6,6 +6,8 @@ import { Button } from '#/components/ui/button'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
+
+const MESSAGE_ENTITY_RE = /<([@%#])([^>]+)>/g
 
 export function messageAuthorName(message: Message, users: Record<string, User>) {
   if (message.user) {
@@ -32,6 +34,37 @@ function replyAuthorColor(
     return colour.startsWith('#') ? colour : `#${colour}`
   }
   return undefined
+}
+
+function replySnippet(
+  content: Message['content'],
+  users: Record<string, User>,
+  roles: Server['roles'] | undefined,
+  channels: Record<string, Channel>,
+) {
+  const trimmed = content?.trim()
+  if (!trimmed) return '[вложение]'
+
+  return trimmed
+    .replace(MESSAGE_ENTITY_RE, (match, marker: string, id: string) => {
+      if (marker === '@') {
+        const user = users[id]
+        return `@${user?.display_name ?? user?.username ?? id}`
+      }
+
+      if (marker === '%') {
+        return `@${roles?.[id]?.name ?? id}`
+      }
+
+      if (marker === '#') {
+        const channel = channels[id]
+        const name = channel && 'name' in channel ? channel.name : undefined
+        return `#${name ?? id}`
+      }
+
+      return match
+    })
+    .slice(0, 100)
 }
 
 /** Уголок «ответа» — border + скругление. */
@@ -64,6 +97,7 @@ export function InlineReplyQuote({
 }) {
   const members = useSyncStore((s) => s.members)
   const servers = useSyncStore((s) => s.servers)
+  const channels = useSyncStore((s) => s.channels)
 
   const original = messagesById[replyId]
   if (!original) {
@@ -76,8 +110,8 @@ export function InlineReplyQuote({
 
   const name = messageAuthorName(original, users)
   const replyUser = original.user ?? users[original.author]
-  const snippet =
-    original.content?.trim().slice(0, 100) || '[вложение]'
+  const server = serverId ? servers[serverId] : undefined
+  const snippet = replySnippet(original.content, users, server?.roles, channels)
   const nameColor = replyAuthorColor(
     serverId,
     original,
