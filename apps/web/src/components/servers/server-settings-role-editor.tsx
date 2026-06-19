@@ -507,6 +507,7 @@ export function ServerSettingsRoleEditor({
                   >
                     <span className="text-sm">{permission.label}</span>
                     <PermissionStateButton
+                      label={permission.label}
                       state={getPermissionTriState(
                         permissions,
                         permission.flag,

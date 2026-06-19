@@ -1,11 +1,19 @@
 import type { PermissionTriState } from '#/lib/server-permissions'
 import { cn } from '#/lib/utils'
 
+const STATE_LABELS: Record<PermissionTriState, string> = {
+  neutral: 'Наследуется',
+  allow: 'Разрешено',
+  deny: 'Запрещено',
+}
+
 export function PermissionStateButton({
+  label,
   state,
   disabled,
   onChange,
 }: {
+  label: string
   state: PermissionTriState
   disabled?: boolean
   onChange: (next: PermissionTriState) => void
@@ -17,11 +25,14 @@ export function PermissionStateButton({
     onChange(order[(index + 1) % order.length]!)
   }
 
+  const stateLabel = STATE_LABELS[state]
+
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={cycle}
+      aria-label={`${label}: ${stateLabel.toLowerCase()}`}
       className={cn(
         'flex size-8 items-center justify-center rounded-md border text-xs font-semibold transition-colors',
         state === 'allow' &&
@@ -30,15 +41,9 @@ export function PermissionStateButton({
         state === 'neutral' && 'border-border text-muted-foreground',
         disabled && 'cursor-not-allowed opacity-50',
       )}
-      title={
-        state === 'allow'
-          ? 'Разрешено'
-          : state === 'deny'
-            ? 'Запрещено'
-            : 'Наследуется'
-      }
+      title={stateLabel}
     >
-      {state === 'allow' ? '✓' : state === 'deny' ? '✗' : '—'}
+      {state === 'allow' ? '✓' : state === 'deny' ? '✕' : '—'}
     </button>
   )
 }
