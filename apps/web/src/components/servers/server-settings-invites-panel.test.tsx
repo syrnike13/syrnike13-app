@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   fetchServerInvites: vi.fn(),
   createChannelInvite: vi.fn(),
   deleteInvite: vi.fn(),
+  writeClipboardText: vi.fn(),
 }))
 
 vi.mock('sonner', () => ({
@@ -40,6 +41,11 @@ vi.mock('#/features/api/invites-api', () => ({
     mocks.createChannelInvite(...args),
   deleteInvite: (...args: Parameters<typeof mocks.deleteInvite>) =>
     mocks.deleteInvite(...args),
+}))
+
+vi.mock('#/lib/clipboard', () => ({
+  writeClipboardText: (...args: Parameters<typeof mocks.writeClipboardText>) =>
+    mocks.writeClipboardText(...args),
 }))
 
 function renderWithQuery(children: ReactNode) {
@@ -94,6 +100,7 @@ describe('ServerSettingsInvitesPanel', () => {
     ])
     mocks.createChannelInvite.mockResolvedValue({ _id: 'new-code' })
     mocks.deleteInvite.mockResolvedValue(undefined)
+    mocks.writeClipboardText.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -155,6 +162,21 @@ describe('ServerSettingsInvitesPanel', () => {
           max_uses: 0,
           temporary: false,
         },
+      )
+    })
+  })
+
+  it('copies an existing invite link', async () => {
+    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
+
+    expect(await screen.findByText('invite-code')).toBeTruthy()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Копировать invite-code' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.writeClipboardText).toHaveBeenCalledWith(
+        expect.stringContaining('/invite/invite-code'),
       )
     })
   })

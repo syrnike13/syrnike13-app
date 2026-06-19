@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { DataCreateInvite, Invite } from '@syrnike13/api-types'
+import { CopyIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -12,6 +13,8 @@ import { createChannelInvite, deleteInvite } from '#/features/api/invites-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { canInviteToChannel } from '#/lib/permissions'
+import { writeClipboardText } from '#/lib/clipboard'
+import { inviteUrl } from '#/lib/invite-link'
 
 type ServerSettingsInvitesPanelProps = {
   serverId: string
@@ -116,6 +119,19 @@ export function ServerSettingsInvitesPanel({
       )
     } finally {
       setRevokingCode(null)
+    }
+  }
+
+  async function copyInvite(code: string) {
+    try {
+      await writeClipboardText(inviteUrl(code))
+      toast.success('Скопировано')
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось скопировать приглашение',
+      )
     }
   }
 
@@ -227,15 +243,28 @@ export function ServerSettingsInvitesPanel({
                     {formatInviteDate(invite.expires_at)}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={revoked || revokingCode === invite._id}
-                  onClick={() => void revokeInvite(invite._id)}
-                >
-                  Отозвать
-                </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Копировать ${invite._id}`}
+                    disabled={revoked}
+                    onClick={() => void copyInvite(invite._id)}
+                  >
+                    <CopyIcon className="size-3.5" />
+                    Копировать
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={revoked || revokingCode === invite._id}
+                    onClick={() => void revokeInvite(invite._id)}
+                  >
+                    Отозвать
+                  </Button>
+                </div>
               </li>
             )
           })}
