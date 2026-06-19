@@ -19,6 +19,10 @@ import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
 import { ServerChannelSearchPopover } from '#/components/chat/server-channel-search-popover'
 import { MessageComposer } from '#/components/chat/message-composer'
 import { MessageList } from '#/components/chat/message-list'
+import {
+  MessageActionConfirmationDialog,
+  type ChatMessageAction,
+} from '#/components/chat/message-action-confirmation-dialog'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
@@ -54,7 +58,7 @@ import {
   isIncomingVoiceCall,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
-import type { User } from '@syrnike13/api-types'
+import type { Message, User } from '@syrnike13/api-types'
 
 type ChannelViewProps = {
   channelId: string
@@ -142,6 +146,8 @@ export function ChannelView({
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
   const [fullProfileOpen, setFullProfileOpen] = useState(false)
+  const [pendingMessageAction, setPendingMessageAction] =
+    useState<ChatMessageAction | null>(null)
   const [inlineVoiceStageHeight, setInlineVoiceStageHeight] = useState(
     INLINE_VOICE_STAGE_DEFAULT_HEIGHT,
   )
@@ -357,6 +363,35 @@ export function ChannelView({
       to: '/m',
       search: { tab: 'online' },
     })
+  }
+
+  function requestBlockMessageAuthor(message: Message) {
+    if (!token || message.author === auth.user?._id) return
+
+    setPendingMessageAction({
+      type: 'block',
+      message,
+      user: users[message.author],
+    })
+  }
+
+  function confirmMessageAction(action: ChatMessageAction) {
+    setPendingMessageAction(null)
+
+    if (action.type === 'delete') {
+      void handleDelete(action.message)
+      return
+    }
+
+    if (action.type === 'clearReactions') {
+      void handleClearReactions(action.message)
+      return
+    }
+
+    if (!token || action.message.author === auth.user?._id) return
+    void blockUserRelationship(token, action.message.author).catch(
+      () => undefined,
+    )
   }
 
   return (
@@ -628,19 +663,19 @@ export function ChannelView({
                 setComposerAction({ type: 'reply', message })
               }
               onEdit={(message) => setComposerAction({ type: 'edit', message })}
-              onDelete={(message) => void handleDelete(message)}
-              onBlock={(message) => {
-                if (!token || message.author === auth.user?._id) return
-                if (!window.confirm('Заблокировать этого пользователя?')) return
-                void blockUserRelationship(token, message.author).catch(
-                  () => undefined,
-                )
-              }}
+              onDelete={(message) =>
+                setPendingMessageAction({ type: 'delete', message })
+              }
+              onBlock={requestBlockMessageAuthor}
               onPin={(message) => void handlePin(message)}
               onUnpin={(message) => void handleUnpin(message)}
               onClearReactions={
                 canClearMessageReactions
-                  ? (message) => void handleClearReactions(message)
+                  ? (message) =>
+                      setPendingMessageAction({
+                        type: 'clearReactions',
+                        message,
+                      })
                   : undefined
               }
               onToggleReaction={async (messageId, emoji, active) => {
@@ -727,6 +762,13 @@ export function ChannelView({
           onOpenChange={setFullProfileOpen}
         />
       ) : null}
+      <MessageActionConfirmationDialog
+        action={pendingMessageAction}
+        onOpenChange={(open) => {
+          if (!open) setPendingMessageAction(null)
+        }}
+        onConfirm={confirmMessageAction}
+      />
     </div>
   )
 }

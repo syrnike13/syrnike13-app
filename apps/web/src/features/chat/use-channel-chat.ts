@@ -161,7 +161,6 @@ export function useChannelChat({
   const handleDelete = useCallback(
     async (message: Message) => {
       if (!token) return
-      if (!window.confirm('Удалить это сообщение?')) return
 
       syncStore.removeMessage(channelId, message._id)
       try {
@@ -238,7 +237,6 @@ export function useChannelChat({
       if (!Object.values(message.reactions ?? {}).some((users) => users.length)) {
         return
       }
-      if (!window.confirm('Очистить все реакции у этого сообщения?')) return
 
       const previousReactions = message.reactions
       syncStore.patchMessage(channelId, message._id, { reactions: {} })
