@@ -12,6 +12,30 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 
+const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+const PINNED_AT = Date.UTC(2026, 5, 19, 12, 30)
+
+function ulidAt(timeMs: number, tail: string) {
+  let value = timeMs
+  let timestamp = ''
+
+  for (let index = 0; index < 10; index += 1) {
+    timestamp = ULID_ENCODING[value % 32]! + timestamp
+    value = Math.floor(value / 32)
+  }
+
+  return `${timestamp}${tail.padEnd(16, '0')}`.slice(0, 26)
+}
+
+const PINNED_MESSAGE_ID = ulidAt(PINNED_AT, 'PNNEDMSG12345678')
+const PINNED_TIMESTAMP = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+}).format(new Date(PINNED_AT))
+
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   writeClipboardText: vi.fn().mockResolvedValue(undefined),
@@ -21,7 +45,7 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({
     data: [
       {
-        _id: 'message-1',
+        _id: PINNED_MESSAGE_ID,
         author: 'author-user',
         channel: 'channel-1',
         content: 'pinned text',
@@ -106,6 +130,24 @@ describe('ChannelPinnedDialog', () => {
     expect(screen.queryByText('BOT')).toBeNull()
   })
 
+  it('shows the pinned message timestamp next to the author metadata', () => {
+    render(
+      <ChannelPinnedDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'author-user': {
+            _id: 'author-user',
+            online: true,
+            username: 'author',
+          } as never,
+        }}
+      />,
+    )
+
+    expect(screen.getByText(PINNED_TIMESTAMP)).toBeTruthy()
+  })
+
   it('copies a message id without jumping to the pinned message', async () => {
     render(
       <ChannelPinnedDialog
@@ -132,7 +174,7 @@ describe('ChannelPinnedDialog', () => {
     fireEvent.click(copyButton!)
 
     await waitFor(() =>
-      expect(mocks.writeClipboardText).toHaveBeenCalledWith('message-1'),
+      expect(mocks.writeClipboardText).toHaveBeenCalledWith(PINNED_MESSAGE_ID),
     )
     expect(mocks.navigate).not.toHaveBeenCalled()
   })

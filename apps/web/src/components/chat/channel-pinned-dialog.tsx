@@ -17,6 +17,10 @@ import { fetchPinnedMessages } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
+import {
+  formatMessageTimestamp,
+  messageCreatedAt,
+} from '#/lib/message-time'
 import { queryKeys } from '#/lib/api/query-keys'
 import { writeClipboardText } from '#/lib/clipboard'
 import { cn } from '#/lib/utils'
@@ -102,6 +106,7 @@ export function ChannelPinnedDialog({
             const author = message.user ?? users[message.author]
             const name =
               author?.display_name ?? author?.username ?? 'Неизвестный'
+            const timestamp = formatMessageTimestamp(messageCreatedAt(message))
 
             return (
               <article
@@ -136,6 +141,9 @@ export function ChannelPinnedDialog({
                       BOT
                     </span>
                   ) : null}
+                  <time className="shrink-0" dateTime={timestamp}>
+                    {timestamp}
+                  </time>
                 </p>
                 {message.content ? (
                   <div>
