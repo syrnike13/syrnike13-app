@@ -8,6 +8,7 @@ import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-r
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { syncStore } from '#/features/sync/sync-store'
+import { ChannelPermission } from '#/lib/permissions'
 
 const mocks = vi.hoisted(() => ({
   createServerRole: vi.fn(),
@@ -17,10 +18,24 @@ const mocks = vi.hoisted(() => ({
   setDefaultServerPermissions: vi.fn(),
   setServerRolePermissions: vi.fn(),
   uploadAttachment: vi.fn(),
+  dnd: {
+    onDragEnd: undefined as
+      | ((event: { active: { id: string }; over: { id: string } | null }) => void)
+      | undefined,
+  },
 }))
 
 vi.mock('@dnd-kit/core', () => ({
-  DndContext: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DndContext: ({
+    children,
+    onDragEnd,
+  }: {
+    children: ReactNode
+    onDragEnd?: (typeof mocks.dnd)['onDragEnd']
+  }) => {
+    mocks.dnd.onDragEnd = onDragEnd
+    return <div>{children}</div>
+  },
   KeyboardSensor: vi.fn(),
   PointerSensor: vi.fn(),
   closestCenter: vi.fn(),
@@ -241,5 +256,51 @@ describe('ServerSettingsRolesPanel', () => {
         { remove: ['Colour'] },
       )
     })
+  })
+
+  it('does not persist role reorders that start from an unmanageable role', () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-user',
+      channels: [],
+      default_permissions: 0,
+      roles: {
+        admin: {
+          _id: 'admin',
+          name: 'Admin',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        },
+        moderator: {
+          _id: 'moderator',
+          name: 'Moderator',
+          permissions: { a: ChannelPermission.ManageRole, d: 0 },
+          rank: 3,
+        },
+        member: {
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'current-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['moderator'],
+      } as never,
+    ])
+
+    render(<ServerSettingsRolesPanel serverId="server-1" />)
+
+    mocks.dnd.onDragEnd?.({
+      active: { id: 'admin' },
+      over: { id: 'member' },
+    })
+
+    expect(mocks.editServerRoleRanks).not.toHaveBeenCalled()
   })
 })

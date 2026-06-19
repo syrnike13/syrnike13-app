@@ -228,6 +228,15 @@ function SortableRolesList({
     const newIndex = roles.findIndex((role) => role._id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
 
+    const activeRole = roles[oldIndex]
+    const overRole = roles[newIndex]
+    if (
+      !canManageRole(server, member, userId, activeRole.rank ?? 0) ||
+      !canManageRole(server, member, userId, overRole.rank ?? 0)
+    ) {
+      return
+    }
+
     didDragRef.current = true
     onReorder(arrayMove(roles, oldIndex, newIndex))
     window.setTimeout(() => {
