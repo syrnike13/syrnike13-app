@@ -58,6 +58,18 @@ describe('MessageActionsMenu', () => {
     expect(onClearReactions).toHaveBeenCalledOnce()
   })
 
+  it('requests closing the menu after choosing an action', () => {
+    const onOpenChange = vi.fn()
+    const onReply = vi.fn()
+
+    renderMenu({ open: true, onOpenChange, onReply })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ответить' }))
+
+    expect(onReply).toHaveBeenCalledOnce()
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
   it('does not show clear reactions for messages without reactions', () => {
     renderMenu({
       message: message({ reactions: {} }),
