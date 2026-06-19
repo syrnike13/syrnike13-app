@@ -12,6 +12,7 @@ import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
+import { BlockUserConfirmationDialog } from '#/components/user/block-user-confirmation-dialog'
 import { UserProfileCardHeader } from '#/components/user/user-profile-card-header'
 import { Button } from '#/components/ui/button'
 import { FloatingMenuItem } from '#/components/ui/floating-menu'
@@ -53,6 +54,7 @@ export function UserProfileCard({
   const prefix = useAppRoutePrefix()
 
   const [busy, setBusy] = useState(false)
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
   const [messageDraft, setMessageDraft] = useState('')
 
   const isSelf = profile._id === auth.user?._id
@@ -73,10 +75,10 @@ export function UserProfileCard({
   async function handleBlock() {
     const token = auth.session?.token
     if (!token || isSelf) return
-    if (!window.confirm(`Заблокировать @${profile.username}?`)) return
     setBusy(true)
     try {
       await blockUserRelationship(token, profile._id)
+      setBlockDialogOpen(false)
       dismiss()
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -176,7 +178,7 @@ export function UserProfileCard({
                 disabled={busy}
                 canViewProfile={Boolean(onOpenGlobalProfile)}
                 onViewProfile={handleViewProfile}
-                onBlock={() => void handleBlock()}
+                onBlock={() => setBlockDialogOpen(true)}
                 onCopyUserId={() => void copyUserId()}
               />
             </div>
@@ -218,6 +220,15 @@ export function UserProfileCard({
           </div>
         </form>
       ) : null}
+      <BlockUserConfirmationDialog
+        open={blockDialogOpen}
+        username={profile.username}
+        disabled={busy}
+        onOpenChange={(open) => {
+          if (!busy) setBlockDialogOpen(open)
+        }}
+        onConfirm={() => void handleBlock()}
+      />
     </>
   )
 }

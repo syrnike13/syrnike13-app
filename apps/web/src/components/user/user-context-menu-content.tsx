@@ -30,6 +30,7 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
 import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
+import { BlockUserConfirmationDialog } from '#/components/user/block-user-confirmation-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   banServerMember,
@@ -412,40 +413,15 @@ export function UserContextMenuContent({
         </Dialog>
       ) : null}
       {canBlock ? (
-        <Dialog
+        <BlockUserConfirmationDialog
           open={blockDialogOpen}
+          username={user.username}
+          disabled={blocking}
           onOpenChange={(open) => {
             if (!blocking) setBlockDialogOpen(open)
           }}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Заблокировать @{user.username}?</DialogTitle>
-              <DialogDescription>
-                Пользователь не сможет писать вам сообщения и отправлять заявки
-                в друзья.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={blocking}
-                onClick={() => setBlockDialogOpen(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={blocking}
-                onClick={() => void handleBlock()}
-              >
-                Заблокировать
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          onConfirm={() => void handleBlock()}
+        />
       ) : null}
       {canBan ? (
         <Dialog open={banDialogOpen} onOpenChange={handleBanDialogOpenChange}>
