@@ -359,4 +359,59 @@ describe('ServerSettingsInvitesPanel', () => {
     expect(screen.getByText(/Отозвал: Bob/)).toBeTruthy()
     expect(screen.getByText(/Отозвано: .*2026/)).toBeTruthy()
   })
+
+  it('marks expired and exhausted invites as inactive', async () => {
+    const now = Date.now()
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'expired-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: now - 86_400_000,
+        expires_at: now - 1_000,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+      {
+        type: 'Server',
+        _id: 'exhausted-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: now - 86_400_000,
+        expires_at: now + 86_400_000,
+        max_uses: 5,
+        uses: 5,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+    ])
+
+    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
+
+    expect(await screen.findByText('expired-code')).toBeTruthy()
+    expect(await screen.findByText('exhausted-code')).toBeTruthy()
+    expect(screen.getByText('Истекло')).toBeTruthy()
+    expect(screen.getByText('Использовано')).toBeTruthy()
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Копировать expired-code',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Копировать exhausted-code',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true)
+  })
 })

@@ -64,6 +64,15 @@ function formatInviteUses(invite: Invite) {
   return `${invite.uses} / ${maxUses}`
 }
 
+function getInactiveInviteLabel(invite: Invite, now = Date.now()) {
+  if (invite.revoked_at) return 'Отозвано'
+  if (invite.expires_at && invite.expires_at <= now) return 'Истекло'
+  if (invite.max_uses && invite.max_uses > 0 && invite.uses >= invite.max_uses) {
+    return 'Использовано'
+  }
+  return null
+}
+
 export function ServerSettingsInvitesPanel({
   serverId,
 }: ServerSettingsInvitesPanelProps) {
@@ -269,7 +278,9 @@ export function ServerSettingsInvitesPanel({
       ) : (
         <ul className="space-y-2">
           {invites.map((invite) => {
-            const revoked = Boolean(invite.revoked_at)
+            const inactiveLabel = getInactiveInviteLabel(invite)
+            const revoked = inactiveLabel === 'Отозвано'
+            const inactive = inactiveLabel !== null
             const channelLabel = `#${
               channelNamesById.get(invite.channel) ?? invite.channel
             }`
@@ -294,9 +305,9 @@ export function ServerSettingsInvitesPanel({
                     <p className="truncate text-sm font-semibold">
                       {invite._id}
                     </p>
-                    {revoked ? (
+                    {inactiveLabel ? (
                       <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                        Отозвано
+                        {inactiveLabel}
                       </span>
                     ) : null}
                     {invite.temporary ? (
@@ -326,7 +337,7 @@ export function ServerSettingsInvitesPanel({
                     variant="outline"
                     size="sm"
                     aria-label={`Копировать ${invite._id}`}
-                    disabled={revoked}
+                    disabled={inactive}
                     onClick={() => void copyInvite(invite._id)}
                   >
                     <CopyIcon className="size-3.5" />
