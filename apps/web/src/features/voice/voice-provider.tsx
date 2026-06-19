@@ -134,7 +134,10 @@ import {
 import { useMediaDevices } from '#/features/voice/use-media-devices'
 import { buildVoiceMediaAvailabilityState } from '#/features/voice/voice-media-availability'
 import { isVoiceConnectedInChannel } from '#/features/voice/voice-watch-screen-share'
-import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
+import type {
+  ScreenShareQualityName,
+  VoiceInputMode,
+} from '#/features/voice/voice-preference-types'
 import {
   effectiveVoiceJoinPreferences,
   readVoicePreferences,
@@ -2492,6 +2495,28 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     syncVoiceFlagsToGateway,
   ])
 
+  const setInputMode = useCallback(
+    (inputMode: VoiceInputMode) => {
+      if (voicePreferenceStore.getInputMode() === inputMode) return
+      const wasPublishing = voicePreferenceStore.getMicEnabled()
+
+      voicePreferenceStore.setInputMode(inputMode)
+
+      if (inputMode === 'push-to-talk' && wasPublishing) {
+        toggleMic()
+      }
+    },
+    [toggleMic],
+  )
+
+  const toggleInputMode = useCallback(() => {
+    setInputMode(
+      voicePreferenceStore.getInputMode() === 'push-to-talk'
+        ? 'voice-activity'
+        : 'push-to-talk',
+    )
+  }, [setInputMode])
+
   const toggleDeafen = useCallback(() => {
     const room = roomRef.current
     const activeChannelId = channelIdRef.current
@@ -2795,6 +2820,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setStageMediaSubscribed,
       stageFullscreen,
       toggleMic,
+      setInputMode,
+      toggleInputMode,
       toggleStageFullscreen,
       toggleDeafen,
       toggleCamera,
@@ -2832,7 +2859,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       voicePingHistory,
       toggleCamera,
       toggleDeafen,
+      setInputMode,
       toggleMic,
+      toggleInputMode,
       toggleScreenShare,
       toggleStageFullscreen,
       setSelfMonitoringActive,

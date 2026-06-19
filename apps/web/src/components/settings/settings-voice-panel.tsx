@@ -25,6 +25,7 @@ import {
   SCREEN_SHARE_QUALITY_LABELS,
   type ScreenShareCaptureMode,
   type ScreenShareQualityName,
+  type VoiceInputMode,
 } from '#/features/voice/voice-preference-types'
 import { usePlatform } from '#/platform/use-platform'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
@@ -145,7 +146,7 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
   const { capabilities } = usePlatform()
-  const { setSelfMonitoringActive } = useVoice()
+  const { setInputMode, setSelfMonitoringActive } = useVoice()
   const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')
@@ -265,6 +266,24 @@ export function SettingsVoicePanel() {
       </SettingsBlock>
 
       <SettingsBlock title="Обработка звука">
+        <SettingsRow
+          label="Режим ввода"
+          hint="Voice Activity передаёт голос по порогу чувствительности, Push-to-Talk открывает микрофон только пока удерживается горячая клавиша."
+        >
+          <Select
+            value={prefs.inputMode}
+            onValueChange={(value) => setInputMode(value as VoiceInputMode)}
+          >
+            <SelectTrigger className="w-[220px] max-w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="voice-activity">Voice Activity</SelectItem>
+              <SelectItem value="push-to-talk">Push-to-Talk</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
         <SettingsRow
           label="Автоматическая чувствительность"
           hint="Регулируйте порог передачи звука в Сырниках"

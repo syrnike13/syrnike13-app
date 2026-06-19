@@ -2,6 +2,7 @@ import type {
   ScreenShareCaptureMode,
   ScreenShareCodec,
   ScreenShareQualityName,
+  VoiceInputMode,
 } from '#/features/voice/voice-preference-types'
 import {
   loadDesktopLocalSettings,
@@ -28,6 +29,7 @@ export type VoicePreferenceState = {
   outputVolume: number
   noiseSuppression: boolean
   echoCancellation: boolean
+  inputMode: VoiceInputMode
   voiceGateEnabled: boolean
   voiceGateThresholdDb: number
   voiceGateAutoThreshold: boolean
@@ -59,6 +61,7 @@ const DEFAULT_STATE: VoicePreferenceState = {
   outputVolume: 1,
   noiseSuppression: true,
   echoCancellation: true,
+  inputMode: 'voice-activity',
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
@@ -92,6 +95,11 @@ function parseScreenShareQuality(value: unknown): ScreenShareQualityName {
 function parseScreenShareCodec(value: unknown): ScreenShareCodec {
   if (value === 'av1') return 'av1'
   return DEFAULT_STATE.screenShareCodec
+}
+
+function parseVoiceInputMode(value: unknown): VoiceInputMode {
+  if (value === 'push-to-talk' || value === 'voice-activity') return value
+  return DEFAULT_STATE.inputMode
 }
 
 export function parseScreenShareCaptureMode(value: unknown): ScreenShareCaptureMode {
@@ -162,6 +170,7 @@ export function normalizeVoicePreferenceState(
       typeof parsed.echoCancellation === 'boolean'
         ? parsed.echoCancellation
         : DEFAULT_STATE.echoCancellation,
+    inputMode: parseVoiceInputMode(parsed.inputMode),
     voiceGateEnabled:
       typeof parsed.voiceGateEnabled === 'boolean'
         ? parsed.voiceGateEnabled
@@ -247,6 +256,7 @@ export const voicePreferenceStore = {
   getDeafened: () => state.deafened,
   getInputVolume: () => state.inputVolume,
   getOutputVolume: () => state.outputVolume,
+  getInputMode: () => state.inputMode,
   getNoiseSuppression: () => state.noiseSuppression,
   getPreferredAudioInputDevice: () => state.preferredAudioInputDevice,
   getPreferredAudioOutputDevice: () => state.preferredAudioOutputDevice,
@@ -259,6 +269,10 @@ export const voicePreferenceStore = {
   setDeafened: (deafened: boolean) => {
     if (state.deafened === deafened) return
     patch({ deafened })
+  },
+  setInputMode: (inputMode: VoiceInputMode) => {
+    if (state.inputMode === inputMode) return
+    patch({ inputMode })
   },
   setInputVolume: (inputVolume: number) => {
     const next = Math.min(

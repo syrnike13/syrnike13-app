@@ -169,4 +169,12 @@ describe('hotkey combo helpers', () => {
     expect(pushToTalk?.available).toBe(true)
     expect(canRegisterHotkeyAction('push-to-talk')).toBe(true)
   })
+
+  it('registers the voice activity mode toggle as a real hotkey action', () => {
+    const toggleVad = HOTKEY_ACTIONS.find((action) => action.id === 'toggle-vad')
+
+    expect(toggleVad?.available).toBe(true)
+    expect(toggleVad?.description).not.toMatch(/Скоро/)
+    expect(canRegisterHotkeyAction('toggle-vad')).toBe(true)
+  })
 })
