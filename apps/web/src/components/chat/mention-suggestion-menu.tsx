@@ -27,17 +27,6 @@ function MassMentionIcon({ kind }: { kind: 'everyone' | 'online' }) {
   )
 }
 
-function RoleMentionIcon({ colour }: { colour?: string }) {
-  return (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-      <span
-        className="size-3.5 rounded-full border border-border"
-        style={colour ? { backgroundColor: colour } : undefined}
-      />
-    </span>
-  )
-}
-
 function MentionSuggestionRow({
   item,
   selected,
@@ -73,8 +62,6 @@ function MentionSuggestionRow({
           className="size-8"
           showPresence={false}
         />
-      ) : item.kind === 'role' ? (
-        <RoleMentionIcon colour={item.colour} />
       ) : (
         <MassMentionIcon kind={item.kind} />
       )}
@@ -90,18 +77,6 @@ function MentionSuggestionRow({
             </span>
             <span className="block truncate text-xs text-muted-foreground">
               @{item.username}
-            </span>
-          </>
-        ) : item.kind === 'role' ? (
-          <>
-            <span
-              className="block truncate text-sm font-medium leading-tight"
-              style={item.colour ? { color: item.colour } : undefined}
-            >
-              {item.label}
-            </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {item.description}
             </span>
           </>
         ) : (
@@ -182,11 +157,7 @@ export function MentionSuggestionMenu({
     >
       {suggestion.items.map((item, index) => (
         <MentionSuggestionRow
-          key={
-            item.kind === 'user' || item.kind === 'role'
-              ? `${item.kind}-${item.id}`
-              : item.kind
-          }
+          key={item.kind === 'user' ? item.id : item.kind}
           item={item}
           selected={index === suggestion.selectedIndex}
           buttonRef={
