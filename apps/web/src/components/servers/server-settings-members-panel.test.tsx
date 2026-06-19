@@ -289,4 +289,43 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
     expect(screen.getByText('Kitchen Wizard', { selector: 'p' })).toBeTruthy()
     expect(screen.getByText('@target')).toBeTruthy()
   })
+
+  it('filters roles for the selected member', () => {
+    setupMembers(ChannelPermission.AssignRoles)
+    const server = syncStore.getState().servers['server-1']
+    syncStore.upsertServer({
+      ...server,
+      roles: {
+        ...server.roles,
+        muted: {
+          _id: 'muted',
+          name: 'Muted',
+          permissions: { a: 0, d: 0 },
+          rank: 4,
+          mentionable: false,
+        },
+        builder: {
+          _id: 'builder',
+          name: 'Builder',
+          permissions: { a: 0, d: 0 },
+          rank: 6,
+          mentionable: false,
+        },
+      },
+    } as never)
+
+    render(<ServerSettingsMembersPanel serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /target/i }))
+
+    expect(screen.getByText('Muted')).toBeTruthy()
+    expect(screen.getByText('Builder')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Поиск ролей'), {
+      target: { value: 'mute' },
+    })
+
+    expect(screen.getByText('Muted')).toBeTruthy()
+    expect(screen.queryByText('Builder')).toBeNull()
+  })
 })

@@ -3,6 +3,7 @@ import type { Member, Server, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { MemberRolesEditor } from '#/components/servers/member-roles-editor'
+import { SearchIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -328,6 +329,7 @@ export function ServerSettingsMembersPanel({
     auth.user?._id ? s.members[`${serverId}:${auth.user._id}`] : undefined,
   )
   const [query, setQuery] = useState('')
+  const [roleQuery, setRoleQuery] = useState('')
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
   const filteredMembers = useMemo(() => {
@@ -348,6 +350,19 @@ export function ServerSettingsMembersPanel({
   const selectedEntry = filteredMembers.find(
     (entry) => entry.user._id === selectedUserId,
   )
+  const selectedCanManageRoles =
+    server && selectedEntry && auth.user?._id
+      ? canEditAnyMemberRole(
+          server,
+          actorMember,
+          auth.user._id,
+          selectedEntry.member,
+        )
+      : false
+
+  useEffect(() => {
+    setRoleQuery('')
+  }, [selectedUserId])
 
   if (!server) return null
 
@@ -450,10 +465,30 @@ export function ServerSettingsMembersPanel({
                 token={auth.session?.token}
                 userId={auth.user?._id}
               />
-              <MemberRolesEditor
-                server={server}
-                targetMember={selectedEntry.member}
-              />
+              {selectedCanManageRoles ? (
+                <section className="space-y-2">
+                  <div className="relative">
+                    <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={roleQuery}
+                      placeholder="Поиск ролей"
+                      aria-label="Поиск ролей"
+                      className="h-8 bg-muted/50 pl-8 text-sm"
+                      onChange={(event) => setRoleQuery(event.target.value)}
+                    />
+                  </div>
+                  <MemberRolesEditor
+                    server={server}
+                    targetMember={selectedEntry.member}
+                    roleSearch={roleQuery}
+                  />
+                </section>
+              ) : (
+                <MemberRolesEditor
+                  server={server}
+                  targetMember={selectedEntry.member}
+                />
+              )}
               <ServerMemberModerationPanel
                 server={server}
                 actorMember={actorMember}
