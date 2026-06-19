@@ -126,6 +126,21 @@ describe('ServerSettingsInvitesPanel', () => {
     })
   })
 
+  it('keeps an invite when revoke is not confirmed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
+
+    expect(await screen.findByText('invite-code')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отозвать' }))
+
+    expect(mocks.deleteInvite).not.toHaveBeenCalled()
+    expect(window.confirm).toHaveBeenCalledWith(
+      'Отозвать приглашение invite-code?',
+    )
+  })
+
   it('creates invites in the first channel that grants InviteOthers', async () => {
     syncStore.upsertServer({
       _id: 'server-1',

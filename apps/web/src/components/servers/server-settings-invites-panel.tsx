@@ -117,6 +117,7 @@ export function ServerSettingsInvitesPanel({
 
   async function revokeInvite(code: string) {
     if (!token) return
+    if (!window.confirm(`Отозвать приглашение ${code}?`)) return
 
     setRevokingCode(code)
     try {

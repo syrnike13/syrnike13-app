@@ -102,4 +102,52 @@ describe('ServerSettingsBansPanel', () => {
 
     expect(mocks.unbanServerMember).not.toHaveBeenCalled()
   })
+
+  it('filters server bans by user, id, and reason', async () => {
+    mocks.fetchServerBans.mockResolvedValue({
+      users: [
+        {
+          _id: 'user-2',
+          username: 'bad-user',
+          discriminator: '0001',
+          avatar: null,
+        },
+        {
+          _id: 'user-3',
+          username: 'raid-helper',
+          discriminator: '0002',
+          avatar: null,
+        },
+      ],
+      bans: [
+        {
+          _id: { server: 'server-1', user: 'user-2' },
+          reason: 'spam',
+        },
+        {
+          _id: { server: 'server-1', user: 'user-3' },
+          reason: 'raid cleanup',
+        },
+      ],
+    })
+
+    renderWithQuery(<ServerSettingsBansPanel serverId="server-1" />)
+
+    expect(await screen.findByText('bad-user')).toBeTruthy()
+    expect(screen.getByText('raid-helper')).toBeTruthy()
+
+    fireEvent.change(screen.getByPlaceholderText('Поиск банов…'), {
+      target: { value: 'raid' },
+    })
+
+    expect(screen.queryByText('bad-user')).toBeNull()
+    expect(screen.getByText('raid-helper')).toBeTruthy()
+
+    fireEvent.change(screen.getByPlaceholderText('Поиск банов…'), {
+      target: { value: 'user-2' },
+    })
+
+    expect(screen.getByText('bad-user')).toBeTruthy()
+    expect(screen.queryByText('raid-helper')).toBeNull()
+  })
 })

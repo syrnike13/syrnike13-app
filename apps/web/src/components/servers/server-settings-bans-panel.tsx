@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import type { BannedUser, ServerBan } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
+import { SearchIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
+import { Input } from '#/components/ui/input'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchServerBans,
@@ -60,6 +62,7 @@ export function ServerSettingsBansPanel({
   const auth = useAuth()
   const token = auth.session?.token
   const [removingUserId, setRemovingUserId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
 
   const bansQuery = useQuery({
     queryKey: ['server-bans', serverId],
@@ -89,6 +92,23 @@ export function ServerSettingsBansPanel({
   }
 
   const bans = bansQuery.data?.bans ?? []
+  const filteredBans = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    if (!normalized) return bans
+
+    return bans.filter((ban) => {
+      const userId = ban._id.user
+      const user = usersById.get(userId)
+      const userLabel = bannedUserLabel(user, userId).toLowerCase()
+      const reason = ban.reason?.toLowerCase() ?? ''
+
+      return (
+        userLabel.includes(normalized) ||
+        userId.toLowerCase().includes(normalized) ||
+        reason.includes(normalized)
+      )
+    })
+  }, [bans, query, usersById])
 
   return (
     <div className="space-y-4">
@@ -99,15 +119,29 @@ export function ServerSettingsBansPanel({
         </p>
       </div>
 
+      {bans.length > 0 ? (
+        <div className="relative">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Поиск банов…"
+            className="h-9 bg-muted/40 pl-9"
+          />
+        </div>
+      ) : null}
+
       {bansQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Загрузка...</p>
       ) : bansQuery.error ? (
         <p className="text-sm text-destructive">Не удалось загрузить баны.</p>
       ) : bans.length === 0 ? (
         <p className="text-sm text-muted-foreground">Банов пока нет</p>
+      ) : filteredBans.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Баны не найдены</p>
       ) : (
         <ul className="space-y-2">
-          {bans.map((ban) => (
+          {filteredBans.map((ban) => (
             <BanRow
               key={`${ban._id.server}:${ban._id.user}`}
               ban={ban}
