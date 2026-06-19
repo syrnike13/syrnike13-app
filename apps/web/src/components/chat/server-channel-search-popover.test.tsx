@@ -129,4 +129,49 @@ describe('ServerChannelSearchPopover', () => {
     expect(screen.getByText(SEARCH_TIMESTAMP)).toBeTruthy()
     expect(screen.queryByText('[без текста]')).toBeNull()
   })
+
+  it('shows a BOT badge next to bot server search result authors', async () => {
+    searchServerMessagesMock.mockResolvedValue({
+      hits: [
+        {
+          channelId: 'channel-1',
+          channelLabel: '#general',
+          message: message({
+            author: 'bot-user',
+            content: 'deploy complete',
+            attachments: [],
+          }),
+        },
+      ],
+      users: [],
+    })
+
+    render(
+      <ServerChannelSearchPopover
+        serverId="server-1"
+        token="token"
+        users={{
+          'bot-user': {
+            _id: 'bot-user',
+            username: 'deploybot',
+            online: true,
+            bot: { owner: 'owner-user' },
+          } as User,
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Поиск' }))
+    fireEvent.change(
+      screen.getByPlaceholderText('Поиск по серверу…'),
+      {
+        target: { value: 'deploy' },
+      },
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('deploy complete')).toBeTruthy()
+    })
+    expect(screen.getByText('BOT')).toBeTruthy()
+  })
 })

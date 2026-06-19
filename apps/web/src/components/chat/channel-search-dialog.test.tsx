@@ -120,4 +120,46 @@ describe('ChannelSearchDialog', () => {
     expect(screen.getByText(SEARCH_TIMESTAMP)).toBeTruthy()
     expect(screen.queryByText('[без текста]')).toBeNull()
   })
+
+  it('shows a BOT badge next to bot channel search result authors', async () => {
+    searchChannelMessagesMock.mockResolvedValue({
+      messages: [
+        message({
+          author: 'bot-user',
+          content: 'deploy complete',
+          attachments: [],
+        }),
+      ],
+      users: [],
+    })
+
+    render(
+      <ChannelSearchDialog
+        channelId="channel-1"
+        token="token"
+        users={{
+          'bot-user': {
+            _id: 'bot-user',
+            username: 'deploybot',
+            online: true,
+            bot: { owner: 'owner-user' },
+          } as User,
+        }}
+        variant="strip"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Поиск' }))
+    fireEvent.change(
+      screen.getByPlaceholderText('Поиск по сообщениям…'),
+      {
+        target: { value: 'deploy' },
+      },
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('deploy complete')).toBeTruthy()
+    })
+    expect(screen.getByText('BOT')).toBeTruthy()
+  })
 })

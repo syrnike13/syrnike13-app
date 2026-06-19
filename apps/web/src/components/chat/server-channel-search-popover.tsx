@@ -177,6 +177,11 @@ export function ServerChannelSearchPopover({
                     <span className="truncate">
                       {hit.channelLabel} · {name}
                     </span>
+                    {author?.bot ? (
+                      <span className="shrink-0 rounded-sm bg-primary px-1 text-[10px] leading-4 font-bold text-primary-foreground">
+                        BOT
+                      </span>
+                    ) : null}
                     <time
                       className="shrink-0"
                       dateTime={createdAt.toISOString()}
