@@ -2,8 +2,6 @@ import { CUSTOM_EMOJI_ID_RE } from '#/lib/emoji'
 import { MESSAGE_ENTITY_RE } from '#/lib/mentions'
 
 const SYRNIKE_LINK_PREFIX = 'syrnike:'
-const MASS_MENTION_TOKEN_RE =
-  /(?<![\p{L}\p{N}_])@(everyone|online)(?![\p{L}\p{N}_-]|\.[\p{L}\p{N}_])/gu
 
 export function isSyrnikeEntityHref(href: string | undefined) {
   return Boolean(href?.startsWith(SYRNIKE_LINK_PREFIX))
@@ -41,8 +39,12 @@ export function prepareMessageMarkdown(content: string): string {
   )
 
   markdown = markdown.replace(
-    MASS_MENTION_TOKEN_RE,
-    (_full, kind: string) => `[${kind}](${SYRNIKE_LINK_PREFIX}mass:${kind})`,
+    /@everyone\b/g,
+    `[everyone](${SYRNIKE_LINK_PREFIX}mass:everyone)`,
+  )
+  markdown = markdown.replace(
+    /@online\b/g,
+    `[online](${SYRNIKE_LINK_PREFIX}mass:online)`,
   )
 
   markdown = markdown.replace(

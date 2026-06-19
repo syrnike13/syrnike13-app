@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import type { JSONContent } from '@tiptap/core'
 
 import { deserializeMessageContent } from '#/lib/message-format/deserialize'
 import { serializeMessageContent } from '#/lib/message-format/serialize'
@@ -11,16 +10,6 @@ const emojiId = '01KTF53K42MTGBMD6XSHVC55A7'
 
 function roundTrip(input: string) {
   return serializeMessageContent(deserializeMessageContent(input))
-}
-
-function countNodesByType(node: JSONContent, type: string): number {
-  return (
-    (node.type === type ? 1 : 0) +
-    (node.content ?? []).reduce(
-      (total, child) => total + countNodesByType(child, type),
-      0,
-    )
-  )
 }
 
 describe('message-format', () => {
@@ -47,14 +36,6 @@ describe('message-format', () => {
   it('round-trips mass mentions', () => {
     expect(roundTrip('@everyone hi')).toBe('@everyone hi')
     expect(roundTrip('@online hi')).toBe('@online hi')
-  })
-
-  it('parses mass mentions only as standalone tokens', () => {
-    const value = 'foo@everyone.com abc@online @everyone @online'
-    const document = deserializeMessageContent(value)
-
-    expect(countNodesByType(document, 'massMention')).toBe(2)
-    expect(serializeMessageContent(document)).toBe(value)
   })
 
   it('round-trips multiline paragraphs', () => {

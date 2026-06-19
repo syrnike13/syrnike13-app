@@ -15,22 +15,6 @@ type MessageAttachmentsProps = {
   attachments: File[]
 }
 
-function formatFileSize(bytes: number) {
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = Math.max(0, bytes)
-  let unitIndex = 0
-
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-
-  if (unitIndex === 0) return `${Math.round(value)} ${units[unitIndex]}`
-
-  const rounded = value >= 10 ? Math.round(value).toString() : value.toFixed(1)
-  return `${rounded.replace(/\.0$/, '')} ${units[unitIndex]}`
-}
-
 export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
   const [lightboxFile, setLightboxFile] = useState<File | null>(null)
 
@@ -72,14 +56,7 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
               className="flex items-center gap-2 rounded-md border bg-background/40 px-3 py-2 text-sm hover:bg-background/70"
             >
               <FileIcon className="size-4 shrink-0" />
-              <span className="min-w-0">
-                <span className="block truncate">
-                  {file.filename ?? file._id}
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  {formatFileSize(file.size)}
-                </span>
-              </span>
+              <span className="truncate">{file.filename ?? file._id}</span>
             </a>
           )
         })}

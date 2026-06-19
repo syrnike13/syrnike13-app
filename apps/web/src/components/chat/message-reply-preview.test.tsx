@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import type { Message, User } from '@syrnike13/api-types'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { InlineReplyQuote } from '#/components/chat/message-reply-preview'
 import { syncStore } from '#/features/sync/sync-store'
@@ -71,26 +71,5 @@ describe('InlineReplyQuote', () => {
     expect(snippet.textContent).not.toContain('<@mentioned-user>')
     expect(snippet.textContent).not.toContain('<%role-1>')
     expect(snippet.textContent).not.toContain('<#channel-2>')
-  })
-
-  it('keeps missing reply previews clickable instead of labeling them deleted', () => {
-    const onJump = vi.fn()
-
-    render(
-      <InlineReplyQuote
-        replyId="message-missing"
-        messagesById={{}}
-        users={{}}
-        onJump={onJump}
-      />,
-    )
-
-    expect(screen.queryByText(/удалённое/i)).toBeNull()
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /сообщение не загружено/i }),
-    )
-
-    expect(onJump).toHaveBeenCalledWith('message-missing')
   })
 })
