@@ -355,4 +355,60 @@ describe('UserContextMenuContent', () => {
       syncStore.getState().members['server-1:01JVOICETARGET0000001'],
     ).toBeUndefined()
   })
+
+  it('confirms a server kick with an audit reason', async () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-user',
+      channels: [],
+      default_permissions: 0,
+      roles: {
+        mod: {
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: ChannelPermission.KickMembers, d: 0 },
+          rank: 1,
+        },
+        member: {
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'current-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['mod'],
+      } as never,
+      {
+        _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['member'],
+      } as never,
+    ])
+
+    render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Исключить с сервера' }))
+    fireEvent.change(screen.getByLabelText('Причина исключения'), {
+      target: { value: 'raid cleanup' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Исключить' }))
+
+    await waitFor(() => {
+      expect(serverApiMocks.kickServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        '01JVOICETARGET0000001',
+        { reason: 'raid cleanup' },
+      )
+    })
+    expect(
+      syncStore.getState().members['server-1:01JVOICETARGET0000001'],
+    ).toBeUndefined()
+  })
 })

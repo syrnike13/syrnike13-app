@@ -86,6 +86,9 @@ export function UserContextMenuContent({
   const voice = useVoice()
   const { openSettings } = useSettingsModal()
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
+  const [kickDialogOpen, setKickDialogOpen] = useState(false)
+  const [kickReason, setKickReason] = useState('')
+  const [kicking, setKicking] = useState(false)
   const [banDialogOpen, setBanDialogOpen] = useState(false)
   const [banReason, setBanReason] = useState('')
   const [banDeleteMessageSeconds, setBanDeleteMessageSeconds] = useState('0')
@@ -171,17 +174,30 @@ export function UserContextMenuContent({
     }
   }
 
+  function handleKickDialogOpenChange(open: boolean) {
+    setKickDialogOpen(open)
+    if (!open) {
+      setKickReason('')
+    }
+  }
+
   async function handleKick() {
-    if (!token || !serverId || isSelf) return
-    if (!window.confirm(`Исключить @${user.username} с сервера?`)) return
+    if (!token || !serverId || isSelf || !canKick) return
+
+    const body = kickReason.trim() ? { reason: kickReason.trim() } : {}
+
+    setKicking(true)
     try {
-      await kickServerMember(token, serverId, user._id)
+      await kickServerMember(token, serverId, user._id, body)
       syncStore.removeServerMember(serverId, user._id)
+      handleKickDialogOpenChange(false)
       toast.success('Участник исключён')
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось исключить',
       )
+    } finally {
+      setKicking(false)
     }
   }
 
@@ -299,7 +315,10 @@ export function UserContextMenuContent({
           {canKick ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={() => void handleKick()}
+              onSelect={(event) => {
+                event.preventDefault()
+                setKickDialogOpen(true)
+              }}
             >
               <UserMinusIcon />
               Исключить с сервера
@@ -340,6 +359,48 @@ export function UserContextMenuContent({
           open={rolesDialogOpen}
           onOpenChange={setRolesDialogOpen}
         />
+      ) : null}
+      {canKick ? (
+        <Dialog open={kickDialogOpen} onOpenChange={handleKickDialogOpenChange}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Исключить @{user.username}</DialogTitle>
+              <DialogDescription>
+                Пользователь сможет вернуться, если получит новое приглашение.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5 py-2">
+              <Label htmlFor={`kick-reason-${user._id}`}>
+                Причина исключения
+              </Label>
+              <Input
+                id={`kick-reason-${user._id}`}
+                value={kickReason}
+                maxLength={256}
+                disabled={kicking}
+                onChange={(event) => setKickReason(event.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={kicking}
+                onClick={() => handleKickDialogOpenChange(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={kicking}
+                onClick={() => void handleKick()}
+              >
+                Исключить
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
       {canBan ? (
         <Dialog open={banDialogOpen} onOpenChange={handleBanDialogOpenChange}>
