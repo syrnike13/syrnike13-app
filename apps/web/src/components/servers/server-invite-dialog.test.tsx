@@ -62,7 +62,7 @@ describe('ServerInviteDialog', () => {
       _id: 'server-1',
       name: 'Server',
       owner: 'owner-1',
-      channels: ['channel-1'],
+      channels: ['channel-1', 'channel-2'],
       default_permissions: ChannelPermission.ViewChannel,
     } as never)
     syncStore.upsertChannel({
@@ -70,6 +70,19 @@ describe('ServerInviteDialog', () => {
       channel_type: 'TextChannel',
       server: 'server-1',
       name: 'general',
+      default_permissions: {
+        a: permissionOr(
+          ChannelPermission.ViewChannel,
+          ChannelPermission.InviteOthers,
+        ),
+        d: 0,
+      },
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'channel-2',
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'announcements',
       default_permissions: {
         a: permissionOr(
           ChannelPermission.ViewChannel,
@@ -124,6 +137,35 @@ describe('ServerInviteDialog', () => {
           max_age_seconds: 86400,
           max_uses: 10,
           temporary: true,
+        },
+      )
+    })
+  })
+
+  it('creates an invite for the selected channel', async () => {
+    render(
+      <ServerInviteDialog
+        serverId="server-1"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Канал приглашения'), {
+      target: { value: 'channel-2' },
+    })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Создать и скопировать ссылку' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.createChannelInvite).toHaveBeenCalledWith(
+        'session-token',
+        'channel-2',
+        {
+          max_age_seconds: 604800,
+          max_uses: 0,
+          temporary: false,
         },
       )
     })

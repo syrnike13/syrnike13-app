@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { DataCreateInvite } from '@syrnike13/api-types'
 import { Link2Icon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
@@ -69,17 +69,28 @@ export function ServerInviteDialog({
   const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
   const [maxUses, setMaxUses] = useState('0')
   const [temporary, setTemporary] = useState(false)
+  const [selectedChannelId, setSelectedChannelId] = useState<string | undefined>()
 
   const textChannels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id).filter(
       (channel) => channel.channel_type === 'TextChannel',
     ),
   )
-  const defaultChannelId = server
-    ? textChannels.find((channel) =>
-        canInviteToChannel(server, channel, member, auth.user?._id),
-      )?._id
-    : undefined
+  const inviteChannels = useMemo(
+    () =>
+      server
+        ? textChannels.filter((channel) =>
+            canInviteToChannel(server, channel, member, auth.user?._id),
+          )
+        : [],
+    [auth.user?._id, member, server, textChannels],
+  )
+  const defaultChannelId = inviteChannels[0]?._id
+  const activeChannelId =
+    selectedChannelId &&
+    inviteChannels.some((channel) => channel._id === selectedChannelId)
+      ? selectedChannelId
+      : defaultChannelId
 
   async function loadInvites() {
     if (!token || !canManageServer) return
@@ -101,7 +112,7 @@ export function ServerInviteDialog({
   }
 
   async function createInvite() {
-    if (!token || !defaultChannelId) {
+    if (!token || !activeChannelId) {
       toast.error('Нет текстового канала для приглашения')
       return
     }
@@ -113,7 +124,7 @@ export function ServerInviteDialog({
         max_uses: Number(maxUses),
         temporary,
       }
-      const invite = await createChannelInvite(token, defaultChannelId, body)
+      const invite = await createChannelInvite(token, activeChannelId, body)
       const code = '_id' in invite ? invite._id : ''
       if (code) {
         setCodes((current) => [code, ...current])
@@ -143,6 +154,26 @@ export function ServerInviteDialog({
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
+            {inviteChannels.length > 0 ? (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="server-invite-channel">
+                  Канал приглашения
+                </Label>
+                <select
+                  id="server-invite-channel"
+                  value={activeChannelId ?? ''}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  onChange={(event) => setSelectedChannelId(event.target.value)}
+                >
+                  {inviteChannels.map((channel) => (
+                    <option key={channel._id} value={channel._id}>
+                      #{channel.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
             <div className="space-y-1.5">
               <Label htmlFor="server-invite-max-age">Срок действия</Label>
               <select
@@ -189,7 +220,7 @@ export function ServerInviteDialog({
           </div>
           <Button
             type="button"
-            disabled={loading || !defaultChannelId}
+            disabled={loading || !activeChannelId}
             onClick={() => void createInvite()}
           >
             Создать и скопировать ссылку
