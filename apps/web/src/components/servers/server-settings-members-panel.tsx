@@ -38,6 +38,13 @@ const TIMEOUT_PRESETS = [
   { label: '1 неделя', durationMs: 7 * 24 * 60 * 60 * 1000 },
 ]
 
+const BAN_DELETE_MESSAGE_PRESETS = [
+  { label: 'Не удалять', seconds: 0 },
+  { label: '1 час', seconds: 60 * 60 },
+  { label: '24 часа', seconds: 24 * 60 * 60 },
+  { label: '7 дней', seconds: 7 * 24 * 60 * 60 },
+]
+
 function memberDisplayName(user: User, member?: Member) {
   return member?.nickname?.trim() || user.display_name || user.username
 }
@@ -141,6 +148,7 @@ function ServerMemberModerationPanel({
   userId: string | undefined
 }) {
   const [reason, setReason] = useState('')
+  const [deleteMessageSeconds, setDeleteMessageSeconds] = useState('0')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
 
   const canKick = canKickServerMember(server, actorMember, userId, targetMember)
@@ -159,6 +167,13 @@ function ServerMemberModerationPanel({
 
   const targetLabel = memberDisplayName(targetUser, targetMember)
   const reasonBody = reason.trim() ? { reason: reason.trim() } : {}
+  const selectedDeleteMessageSeconds = Number(deleteMessageSeconds)
+  const banBody = {
+    ...reasonBody,
+    ...(selectedDeleteMessageSeconds > 0
+      ? { delete_message_seconds: selectedDeleteMessageSeconds }
+      : {}),
+  }
 
   async function kickMember() {
     if (!token || !canKick) return
@@ -184,7 +199,7 @@ function ServerMemberModerationPanel({
 
     setPendingAction('ban')
     try {
-      await banServerMember(token, server._id, targetMember._id.user, reasonBody)
+      await banServerMember(token, server._id, targetMember._id.user, banBody)
       syncStore.removeServerMember(server._id, targetMember._id.user)
       toast.success('Участник забанен')
     } catch (error) {
@@ -263,6 +278,27 @@ function ServerMemberModerationPanel({
             maxLength={256}
             onChange={(event) => setReason(event.target.value)}
           />
+        </div>
+      ) : null}
+
+      {canBan ? (
+        <div className="space-y-1.5">
+          <Label htmlFor={`member-ban-delete-messages-${targetMember._id.user}`}>
+            Удалить историю сообщений
+          </Label>
+          <select
+            id={`member-ban-delete-messages-${targetMember._id.user}`}
+            value={deleteMessageSeconds}
+            className="h-9 w-full rounded-md border border-input bg-muted/40 px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+            disabled={pendingAction !== null}
+            onChange={(event) => setDeleteMessageSeconds(event.target.value)}
+          >
+            {BAN_DELETE_MESSAGE_PRESETS.map((preset) => (
+              <option key={preset.seconds} value={String(preset.seconds)}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
         </div>
       ) : null}
 

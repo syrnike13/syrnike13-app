@@ -161,6 +161,30 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
     })
   })
 
+  it('passes the selected message deletion window when banning a member', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(<ServerSettingsMembersPanel serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /target/i }))
+    fireEvent.change(screen.getByLabelText('Причина модерации'), {
+      target: { value: 'spam wave' },
+    })
+    fireEvent.change(screen.getByLabelText('Удалить историю сообщений'), {
+      target: { value: '3600' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Забанить' }))
+
+    await waitFor(() => {
+      expect(mocks.banServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        'target-user',
+        { reason: 'spam wave', delete_message_seconds: 3600 },
+      )
+    })
+  })
+
   it('applies a one hour member timeout', async () => {
     render(<ServerSettingsMembersPanel serverId="server-1" />)
 
