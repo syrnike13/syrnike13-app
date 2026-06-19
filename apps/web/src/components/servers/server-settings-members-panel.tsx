@@ -28,6 +28,15 @@ type ServerSettingsMembersPanelProps = {
   serverId: string
 }
 
+const TIMEOUT_PRESETS = [
+  { label: '1 минута', durationMs: 60 * 1000 },
+  { label: '5 минут', durationMs: 5 * 60 * 1000 },
+  { label: '10 минут', durationMs: 10 * 60 * 1000 },
+  { label: '1 час', durationMs: 60 * 60 * 1000 },
+  { label: '1 день', durationMs: 24 * 60 * 60 * 1000 },
+  { label: '1 неделя', durationMs: 7 * 24 * 60 * 60 * 1000 },
+]
+
 function memberDisplayName(user: User, member?: Member) {
   return member?.nickname?.trim() || user.display_name || user.username
 }
@@ -257,17 +266,20 @@ function ServerMemberModerationPanel({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {canTimeout ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={pendingAction !== null}
-            onClick={() => void timeoutMember(60 * 60 * 1000)}
-          >
-            Тайм-аут на 1 час
-          </Button>
-        ) : null}
+        {canTimeout
+          ? TIMEOUT_PRESETS.map((preset) => (
+              <Button
+                key={preset.durationMs}
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pendingAction !== null}
+                onClick={() => void timeoutMember(preset.durationMs)}
+              >
+                Тайм-аут на {preset.label}
+              </Button>
+            ))
+          : null}
         {canTimeout && hasActiveTimeout ? (
           <Button
             type="button"

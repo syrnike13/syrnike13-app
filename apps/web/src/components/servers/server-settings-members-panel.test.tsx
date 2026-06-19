@@ -177,6 +177,22 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
     })
   })
 
+  it('applies the selected member timeout preset', async () => {
+    render(<ServerSettingsMembersPanel serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /target/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Тайм-аут на 10 минут' }))
+
+    await waitFor(() => {
+      expect(mocks.editServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        'target-user',
+        { timeout: '2026-06-19T10:10:00.000Z' },
+      )
+    })
+  })
+
   it('removes an active member timeout', async () => {
     syncStore.upsertMembers([
       {
