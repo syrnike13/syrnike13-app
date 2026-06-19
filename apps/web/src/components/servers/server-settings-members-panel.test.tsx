@@ -233,4 +233,44 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
       )
     })
   })
+
+  it('searches members by server nickname', () => {
+    setupMembers(ChannelPermission.ManageNicknames)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'target-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['member'],
+        nickname: 'Kitchen Wizard',
+      } as never,
+    ])
+
+    render(<ServerSettingsMembersPanel serverId="server-1" />)
+
+    fireEvent.change(screen.getByPlaceholderText('Поиск участников…'), {
+      target: { value: 'wizard' },
+    })
+
+    expect(screen.getByRole('button', { name: /Kitchen Wizard/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /mod/i })).toBeNull()
+  })
+
+  it('uses the server nickname as the selected member display name', () => {
+    setupMembers(ChannelPermission.ManageNicknames)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'target-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['member'],
+        nickname: 'Kitchen Wizard',
+      } as never,
+    ])
+
+    render(<ServerSettingsMembersPanel serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Kitchen Wizard/i }))
+
+    expect(screen.getByText('Kitchen Wizard', { selector: 'p' })).toBeTruthy()
+    expect(screen.getByText('@target')).toBeTruthy()
+  })
 })

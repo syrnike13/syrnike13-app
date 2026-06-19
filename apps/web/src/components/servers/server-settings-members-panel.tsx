@@ -28,8 +28,8 @@ type ServerSettingsMembersPanelProps = {
   serverId: string
 }
 
-function memberDisplayName(user: User) {
-  return user.display_name ?? user.username
+function memberDisplayName(user: User, member?: Member) {
+  return member?.nickname?.trim() || user.display_name || user.username
 }
 
 function ServerMemberNicknamePanel({
@@ -147,7 +147,7 @@ function ServerMemberModerationPanel({
   const hasActiveTimeout =
     Number.isFinite(timeoutExpiresAt) && timeoutExpiresAt > Date.now()
 
-  const targetLabel = memberDisplayName(targetUser)
+  const targetLabel = memberDisplayName(targetUser, targetMember)
   const reasonBody = reason.trim() ? { reason: reason.trim() } : {}
 
   async function kickMember() {
@@ -321,11 +321,14 @@ export function ServerSettingsMembersPanel({
   const filteredMembers = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return members
-    return members.filter(({ user }) => {
-      const name = user.display_name ?? user.username
+    return members.filter(({ member, user }) => {
+      const name = memberDisplayName(user, member).toLowerCase()
+      const globalName = (user.display_name ?? '').toLowerCase()
+      const username = user.username.toLowerCase()
       return (
-        name.toLowerCase().includes(normalized) ||
-        user.username.toLowerCase().includes(normalized)
+        name.includes(normalized) ||
+        globalName.includes(normalized) ||
+        username.includes(normalized)
       )
     })
   }, [members, query])
@@ -355,6 +358,7 @@ export function ServerSettingsMembersPanel({
           />
           <ul className="max-h-[24rem] space-y-1 overflow-y-auto pr-1">
             {filteredMembers.map(({ member, user }) => {
+              const displayName = memberDisplayName(user, member)
               const canManageRoles = auth.user?._id
                 ? canEditAnyMemberRole(
                     server,
@@ -396,7 +400,7 @@ export function ServerSettingsMembersPanel({
                   >
                     <UserAvatar user={user} className="size-8" />
                     <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {user.display_name ?? user.username}
+                      {displayName}
                     </span>
                   </button>
                 </li>
@@ -417,8 +421,10 @@ export function ServerSettingsMembersPanel({
                 <UserAvatar user={selectedEntry.user} className="size-12" />
                 <div className="min-w-0">
                   <p className="truncate font-semibold">
-                    {selectedEntry.user.display_name ??
-                      selectedEntry.user.username}
+                    {memberDisplayName(
+                      selectedEntry.user,
+                      selectedEntry.member,
+                    )}
                   </p>
                   <p className="truncate text-sm text-muted-foreground">
                     @{selectedEntry.user.username}
