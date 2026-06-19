@@ -170,6 +170,11 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
             }
           }
 
+          if (event.key === 'Escape') {
+            onKeyDown?.(event as unknown as ReactKeyboardEvent)
+            return true
+          }
+
           if (event.key === 'Enter' && !event.shiftKey) {
             onKeyDown?.(event as unknown as ReactKeyboardEvent)
             return true
