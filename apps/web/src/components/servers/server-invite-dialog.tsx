@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { DataCreateInvite } from '@syrnike13/api-types'
+import type { DataCreateInvite, Invite } from '@syrnike13/api-types'
 import { Link2Icon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
@@ -65,7 +65,7 @@ export function ServerInviteDialog({
       )
     : false
   const [loading, setLoading] = useState(false)
-  const [codes, setCodes] = useState<string[]>([])
+  const [invites, setInvites] = useState<Invite[]>([])
   const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
   const [maxUses, setMaxUses] = useState('0')
   const [temporary, setTemporary] = useState(false)
@@ -91,17 +91,17 @@ export function ServerInviteDialog({
     inviteChannels.some((channel) => channel._id === selectedChannelId)
       ? selectedChannelId
       : defaultChannelId
+  const channelNamesById = useMemo(
+    () => new Map(textChannels.map((channel) => [channel._id, channel.name])),
+    [textChannels],
+  )
 
   const loadInvites = useCallback(async () => {
     if (!token || !canManageServer) return
     setLoading(true)
     try {
-      const invites = await fetchServerInvites(token, serverId)
-      setCodes(
-        invites
-          .map((invite) => ('_id' in invite ? invite._id : ''))
-          .filter(Boolean),
-      )
+      const loadedInvites = await fetchServerInvites(token, serverId)
+      setInvites(loadedInvites)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось загрузить',
@@ -131,7 +131,10 @@ export function ServerInviteDialog({
       const invite = await createChannelInvite(token, activeChannelId, body)
       const code = '_id' in invite ? invite._id : ''
       if (code) {
-        setCodes((current) => [code, ...current])
+        setInvites((current) => [
+          { ...invite, channel: invite.channel ?? activeChannelId },
+          ...current,
+        ])
         await writeClipboardText(inviteUrl(code))
         toast.success('Ссылка скопирована в буфер')
       }
@@ -232,59 +235,70 @@ export function ServerInviteDialog({
             <p className="text-sm text-muted-foreground">
               Список приглашений доступен только администраторам сервера.
             </p>
-          ) : codes.length === 0 ? (
+          ) : invites.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {loading ? 'Загрузка…' : 'Приглашений пока нет'}
             </p>
           ) : (
             <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto text-sm">
-              {codes.map((code) => (
-                <li
-                  key={code}
-                  className="flex items-center gap-2 rounded-md border px-2 py-1.5"
-                >
-                  <code className="min-w-0 flex-1 truncate text-xs">
-                    {inviteUrl(code)}
-                  </code>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-7"
-                    onClick={() => {
-                      void writeClipboardText(inviteUrl(code))
-                        .then(() => toast.success('Скопировано'))
-                        .catch(() => toast.error('Не удалось скопировать'))
-                    }}
+              {invites.map((invite) => {
+                const code = invite._id
+                const channelLabel = `#${
+                  channelNamesById.get(invite.channel) ?? invite.channel
+                }`
+                return (
+                  <li
+                    key={code}
+                    className="flex items-center gap-2 rounded-md border px-2 py-1.5"
                   >
-                    <Link2Icon className="size-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="size-7"
-                    onClick={() => {
-                      if (!token) return
-                      void deleteInvite(token, code)
-                        .then(() =>
-                          setCodes((current) =>
-                            current.filter((entry) => entry !== code),
-                          ),
-                        )
-                        .catch((error) =>
-                          toast.error(
-                            error instanceof Error
-                              ? error.message
-                              : 'Ошибка',
-                          ),
-                        )
-                    }}
-                  >
-                    <Trash2Icon className="size-3.5" />
-                  </Button>
-                </li>
-              ))}
+                    <div className="min-w-0 flex-1">
+                      <code className="block truncate text-xs">
+                        {inviteUrl(code)}
+                      </code>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {channelLabel}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-7"
+                      onClick={() => {
+                        void writeClipboardText(inviteUrl(code))
+                          .then(() => toast.success('Скопировано'))
+                          .catch(() => toast.error('Не удалось скопировать'))
+                      }}
+                    >
+                      <Link2Icon className="size-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="size-7"
+                      onClick={() => {
+                        if (!token) return
+                        void deleteInvite(token, code)
+                          .then(() =>
+                            setInvites((current) =>
+                              current.filter((entry) => entry._id !== code),
+                            ),
+                          )
+                          .catch((error) =>
+                            toast.error(
+                              error instanceof Error
+                                ? error.message
+                                : 'Ошибка',
+                            ),
+                          )
+                      }}
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </Button>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>

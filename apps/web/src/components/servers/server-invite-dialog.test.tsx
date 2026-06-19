@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -147,6 +147,46 @@ describe('ServerInviteDialog', () => {
       'session-token',
       'server-1',
     )
+  })
+
+  it('shows the target channel for existing invites', async () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'user-1',
+      channels: ['channel-1', 'channel-2'],
+      default_permissions: ChannelPermission.ViewChannel,
+    } as never)
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'announcements-code',
+        server: 'server-1',
+        channel: 'channel-2',
+        creator: 'user-1',
+        created_at: 0,
+        expires_at: null,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+    ])
+
+    render(
+      <ServerInviteDialog
+        serverId="server-1"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    const code = await screen.findByText(/announcements-code/)
+    const row = code.closest('li')
+
+    expect(row).toBeTruthy()
+    expect(within(row!).getByText('#announcements')).toBeTruthy()
   })
 
   it('creates an invite with expiry, usage limit, and temporary membership', async () => {
