@@ -142,9 +142,9 @@ export function MessageComposer({
       setValue('')
       return
     }
-    setReplyMention(replyTo.author !== auth.user?._id)
+    setReplyMention(true)
     requestAnimationFrame(() => composerRef.current?.focus())
-  }, [auth.user?._id, editingMessage?._id, replyTo?._id, replyTo?.author])
+  }, [editingMessage?._id, replyTo?._id])
 
   const formatContext = useMemo(
     () => ({
@@ -224,8 +224,19 @@ export function MessageComposer({
     composerRef.current?.insertText(text)
   }
 
+  function buildOutboundContent(raw: string) {
+    const trimmed = raw.trim()
+    if (!replyTo || !replyMention || isEditing) return trimmed
+
+    const mention = `<@${replyTo.author}>`
+    if (!trimmed.includes(mention)) {
+      return trimmed ? `${mention} ${trimmed}` : mention
+    }
+    return trimmed
+  }
+
   async function submit() {
-    const content = value.trim()
+    const content = buildOutboundContent(value)
     if ((!content && files.length === 0 && !isEditing) || sending || disabled) {
       return
     }

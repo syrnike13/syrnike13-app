@@ -48,40 +48,6 @@ function renderCallMessage(message: Message) {
   )
 }
 
-describe('MessageRow compact messages', () => {
-  afterEach(() => {
-    cleanup()
-  })
-
-  it('shows edited marker on compact follow-up messages', () => {
-    const author = {
-      _id: 'author-user',
-      username: 'author',
-      online: true,
-    } as User
-    const message = {
-      _id: MESSAGE_ID,
-      channel: CHANNEL_ID,
-      author: author._id,
-      content: 'edited follow-up',
-      edited: '2026-06-03T19:00:00.000Z',
-    } as Message & { edited: string }
-
-    render(
-      <MessageRow
-        message={message}
-        channelId={CHANNEL_ID}
-        users={{ [author._id]: author }}
-        emojis={{}}
-        messagesById={{ [message._id]: message }}
-        compact
-      />,
-    )
-
-    expect(screen.getByText('(изменено)')).toBeTruthy()
-  })
-})
-
 describe('MessageRow moderation actions', () => {
   afterEach(() => {
     cleanup()

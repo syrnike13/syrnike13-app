@@ -8,7 +8,6 @@ import {
 
 export type MessageFeedItem =
   | { type: 'date'; key: string; dateLabel: string }
-  | { type: 'unread'; key: string }
   | {
       type: 'message'
       key: string
@@ -16,15 +15,10 @@ export type MessageFeedItem =
       compact: boolean
     }
 
-export function buildMessageFeedItems(
-  messages: Message[],
-  lastReadMessageId?: string | null,
-): MessageFeedItem[] {
+export function buildMessageFeedItems(messages: Message[]): MessageFeedItem[] {
   const items: MessageFeedItem[] = []
   let previous: Message | undefined
   let previousDayKey: string | undefined
-  let unreadDividerInserted = false
-  const canShowUnreadDivider = lastReadMessageId !== undefined
 
   for (const message of messages) {
     const created = messageCreatedAt(message)
@@ -37,20 +31,6 @@ export function buildMessageFeedItems(
         dateLabel: formatDateDivider(created),
       })
       previousDayKey = dayKey
-      previous = undefined
-    }
-
-    if (
-      canShowUnreadDivider &&
-      !unreadDividerInserted &&
-      (lastReadMessageId === null ||
-        message._id.localeCompare(lastReadMessageId) > 0)
-    ) {
-      items.push({
-        type: 'unread',
-        key: `unread-${message._id}`,
-      })
-      unreadDividerInserted = true
       previous = undefined
     }
 
@@ -69,7 +49,6 @@ export function buildMessageFeedItems(
 
 export function feedItemEstimateHeight(item: MessageFeedItem): number {
   if (item.type === 'date') return 52
-  if (item.type === 'unread') return 34
   if (item.message.system?.type === 'call_started') return 104
   if (item.type === 'message' && item.message.replies?.[0] && !item.compact) {
     return 92

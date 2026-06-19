@@ -10,7 +10,6 @@ const base: VoicePreferenceState = {
   outputVolume: 1,
   noiseSuppression: true,
   echoCancellation: true,
-  inputMode: 'voice-activity',
   voiceGateEnabled: true,
   voiceGateThresholdDb: -28,
   voiceGateAutoThreshold: true,

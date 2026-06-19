@@ -58,7 +58,6 @@ function preferences() {
     screenShareCaptureMode: 'auto',
     noiseSuppression: true,
     echoCancellation: true,
-    inputMode: 'voice-activity',
     voiceGateEnabled: true,
     voiceGateThresholdDb: -45,
     voiceGateAutoThreshold: false,

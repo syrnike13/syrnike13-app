@@ -3,7 +3,6 @@ import { useState } from 'react'
 import type { User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
-import { BlockUserConfirmationDialog } from '#/components/user/block-user-confirmation-dialog'
 import { UserGlobalProfileSections } from '#/components/user/user-global-profile-sections'
 import { UserGlobalProfileSidebar } from '#/components/user/user-global-profile-sidebar'
 import {
@@ -40,7 +39,6 @@ export function UserGlobalProfileDialog({
   const prefix = useAppRoutePrefix()
   const { openSettings } = useSettingsModal()
   const [busy, setBusy] = useState(false)
-  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
 
   const isSelf = user._id === auth.user?._id
   const canDirectMessage = !isSelf && !user.bot
@@ -77,10 +75,10 @@ export function UserGlobalProfileDialog({
   async function handleBlock() {
     const token = auth.session?.token
     if (!token || isSelf) return
+    if (!window.confirm(`Заблокировать @${user.username}?`)) return
     setBusy(true)
     try {
       await blockUserRelationship(token, user._id)
-      setBlockDialogOpen(false)
       close()
     } catch {
       // friend-actions already shows the concrete error toast.
@@ -114,53 +112,42 @@ export function UserGlobalProfileDialog({
   }
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent
-          className="flex h-[min(660px,90vh)] max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]"
-          showCloseButton
-        >
-          <DialogTitle className="sr-only">Профиль {displayName}</DialogTitle>
-          <DialogDescription className="sr-only">
-            Глобальный профиль пользователя {displayName}
-          </DialogDescription>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="flex h-[min(660px,90vh)] max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[900px]"
+        showCloseButton
+      >
+        <DialogTitle className="sr-only">Профиль {displayName}</DialogTitle>
+        <DialogDescription className="sr-only">
+          Глобальный профиль пользователя {displayName}
+        </DialogDescription>
 
-          <div className="flex min-h-0 flex-1 overflow-hidden p-6">
-            <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background ">
-              <UserGlobalProfileSidebar
-                user={user}
-                serverId={serverId}
-                isSelf={isSelf}
-                busy={busy}
-                onOpenDm={() => void openDm()}
-                onCopyId={() => void copyUserId()}
-                onBlock={() => setBlockDialogOpen(true)}
-                onEditProfile={() => {
-                  close()
-                  openSettings('account')
-                }}
-              />
-            </aside>
+        <div className="flex min-h-0 flex-1 overflow-hidden p-6">
+          <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background ">
+            <UserGlobalProfileSidebar
+              user={user}
+              serverId={serverId}
+              isSelf={isSelf}
+              busy={busy}
+              onOpenDm={() => void openDm()}
+              onCopyId={() => void copyUserId()}
+              onBlock={() => void handleBlock()}
+              onEditProfile={() => {
+                close()
+                openSettings('account')
+              }}
+            />
+          </aside>
 
-            <div className="flex min-w-0 flex-1 flex-col bg-background">
-              <UserGlobalProfileSections
-                mutualServers={mutualServers}
-                busy={busy}
-                onServerSelect={handleServerSelect}
-              />
-            </div>
+          <div className="flex min-w-0 flex-1 flex-col bg-background">
+            <UserGlobalProfileSections
+              mutualServers={mutualServers}
+              busy={busy}
+              onServerSelect={handleServerSelect}
+            />
           </div>
-        </DialogContent>
-      </Dialog>
-      <BlockUserConfirmationDialog
-        open={blockDialogOpen}
-        username={user.username}
-        disabled={busy}
-        onOpenChange={(open) => {
-          if (!busy) setBlockDialogOpen(open)
-        }}
-        onConfirm={() => void handleBlock()}
-      />
-    </>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

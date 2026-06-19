@@ -18,7 +18,6 @@ import type {
   StageMediaFilters,
   StageMediaItem,
 } from '#/features/voice/voice-stage-media'
-import type { VoiceInputMode } from '#/features/voice/voice-preference-types'
 
 export type VoiceStageMediaPublication = {
   source: Track.Source
@@ -87,8 +86,6 @@ export type VoiceContextValue = {
   join: (channelId: string) => Promise<boolean>
   leave: () => void
   toggleMic: () => void
-  setInputMode: (mode: VoiceInputMode) => void
-  toggleInputMode: () => void
   toggleDeafen: () => void
   toggleCamera: () => void
   toggleScreenShare: () => void

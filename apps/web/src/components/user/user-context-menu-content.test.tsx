@@ -1,13 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { Channel, User } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -23,9 +16,6 @@ const editMemberRolesDialogPropsMock = vi.hoisted(() => vi.fn())
 const serverApiMocks = vi.hoisted(() => ({
   banServerMember: vi.fn(),
   kickServerMember: vi.fn(),
-}))
-const friendActionMocks = vi.hoisted(() => ({
-  blockUserRelationship: vi.fn(),
 }))
 const openDirectMessageChannelMock = vi.hoisted(() =>
   vi.fn(
@@ -73,12 +63,6 @@ vi.mock('#/features/api/servers-api', () => ({
     serverApiMocks.banServerMember(...args),
   kickServerMember: (...args: Parameters<typeof serverApiMocks.kickServerMember>) =>
     serverApiMocks.kickServerMember(...args),
-}))
-
-vi.mock('#/features/friends/friend-actions', () => ({
-  blockUserRelationship: (
-    ...args: Parameters<typeof friendActionMocks.blockUserRelationship>
-  ) => friendActionMocks.blockUserRelationship(...args),
 }))
 
 vi.mock('#/features/settings/settings-modal-context', () => ({
@@ -150,14 +134,12 @@ describe('UserContextMenuContent', () => {
     voiceJoinMock.mockResolvedValue(true)
     serverApiMocks.banServerMember.mockResolvedValue(undefined)
     serverApiMocks.kickServerMember.mockResolvedValue(undefined)
-    friendActionMocks.blockUserRelationship.mockResolvedValue(undefined)
     syncStore.reset()
   })
 
   afterEach(() => {
     cleanup()
     syncStore.reset()
-    vi.restoreAllMocks()
   })
 
   it('starts a direct message call from the user context menu', async () => {
@@ -313,31 +295,6 @@ describe('UserContextMenuContent', () => {
         open: true,
       }),
     )
-  })
-
-  it('opens a block confirmation dialog before blocking the user', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-
-    render(<UserContextMenuContent user={targetUser} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Заблокировать' }))
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    expect(friendActionMocks.blockUserRelationship).not.toHaveBeenCalled()
-
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.textContent).toContain('@bob')
-
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Заблокировать' }),
-    )
-
-    await waitFor(() => {
-      expect(friendActionMocks.blockUserRelationship).toHaveBeenCalledWith(
-        'session-token',
-        '01JVOICETARGET0000001',
-      )
-    })
   })
 
   it('confirms a server ban with reason and message deletion window', async () => {

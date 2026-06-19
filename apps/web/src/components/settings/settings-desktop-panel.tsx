@@ -1,14 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { SettingsBlock, SettingsRow } from '#/components/settings/settings-panels'
 import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
-import { Label } from '#/components/ui/label'
 import { Switch } from '#/components/ui/switch'
 import { usePlatform } from '#/platform/use-platform'
 import type {
-  ActivityDetails,
   DesktopUpdateState,
   DesktopVersions,
   DesktopWindowPreferences,
@@ -28,15 +25,6 @@ export function SettingsDesktopPanel() {
   const [checkingUpdates, setCheckingUpdates] = useState(false)
   const [savingCloseToTray, setSavingCloseToTray] = useState(false)
   const [savingOpenAtLogin, setSavingOpenAtLogin] = useState(false)
-  const [activityType, setActivityType] =
-    useState<ActivityDetails['type']>('playing')
-  const [activityName, setActivityName] = useState('')
-  const [activityDetails, setActivityDetails] = useState('')
-  const [activityState, setActivityState] = useState('')
-  const [activitySaving, setActivitySaving] = useState(false)
-  const [activityPreview, setActivityPreview] = useState<ActivityDetails | null>(
-    null,
-  )
 
   useEffect(() => {
     if (!desktop) return
@@ -73,55 +61,6 @@ export function SettingsDesktopPanel() {
       )
     } finally {
       setCheckingUpdates(false)
-    }
-  }
-
-  async function setDesktopActivity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!desktop) return
-
-    const name = activityName.trim()
-    if (!name) return
-
-    const nextActivity: ActivityDetails = {
-      type: activityType,
-      name,
-      details: activityDetails.trim() || undefined,
-      state: activityState.trim() || undefined,
-    }
-
-    setActivitySaving(true)
-    try {
-      await desktop.activity.set(nextActivity)
-      setActivityPreview(nextActivity)
-      toast.success('Активность показывается')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось показать активность',
-      )
-    } finally {
-      setActivitySaving(false)
-    }
-  }
-
-  async function clearDesktopActivity() {
-    if (!desktop) return
-
-    setActivitySaving(true)
-    try {
-      await desktop.activity.clear()
-      setActivityPreview(null)
-      toast.success('Активность скрыта')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось скрыть активность',
-      )
-    } finally {
-      setActivitySaving(false)
     }
   }
 
@@ -239,106 +178,11 @@ export function SettingsDesktopPanel() {
       <SettingsBlock title="Активность">
         <SettingsRow
           label="Статус"
-          hint="Показывайте ручной Activity Status в desktop presence."
-          stacked
-        >
-          <form className="w-full space-y-3" onSubmit={setDesktopActivity}>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="desktop-activity-name">
-                  Название активности
-                </Label>
-                <Input
-                  id="desktop-activity-name"
-                  value={activityName}
-                  placeholder="syrnike13"
-                  onChange={(event) => setActivityName(event.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="desktop-activity-details">Детали</Label>
-                <Input
-                  id="desktop-activity-details"
-                  value={activityDetails}
-                  placeholder="Настраивает сервер"
-                  onChange={(event) => setActivityDetails(event.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="desktop-activity-state">Состояние</Label>
-                <Input
-                  id="desktop-activity-state"
-                  value={activityState}
-                  placeholder="В голосовом канале"
-                  onChange={(event) => setActivityState(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {ACTIVITY_TYPE_OPTIONS.map((option) => (
-                <Button
-                  key={option.value}
-                  type="button"
-                  size="sm"
-                  variant={
-                    activityType === option.value ? 'secondary' : 'outline'
-                  }
-                  onClick={() => setActivityType(option.value)}
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={activitySaving || !activityName.trim()}
-              >
-                Показать активность
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={activitySaving}
-                onClick={() => void clearDesktopActivity()}
-              >
-                Очистить
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                {activityPreview
-                  ? `Показывается: ${activityTypeLabel(activityPreview.type)} ${activityPreview.name}`
-                  : 'Активность не показывается'}
-              </p>
-            </div>
-          </form>
-        </SettingsRow>
+          value="Скоро: игра / просмотр / прослушивание"
+        />
       </SettingsBlock>
     </div>
   )
-}
-
-const ACTIVITY_TYPE_OPTIONS: {
-  value: ActivityDetails['type']
-  label: string
-}[] = [
-  { value: 'playing', label: 'Играю' },
-  { value: 'watching', label: 'Смотрю' },
-  { value: 'listening', label: 'Слушаю' },
-]
-
-function activityTypeLabel(type: ActivityDetails['type']) {
-  switch (type) {
-    case 'playing':
-      return 'Играет в'
-    case 'watching':
-      return 'Смотрит'
-    case 'listening':
-      return 'Слушает'
-  }
 }
 
 function formatUpdateStatus(state: DesktopUpdateState | null) {

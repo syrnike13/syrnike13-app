@@ -37,7 +37,6 @@ describe('voicePreferenceStore', () => {
 
   it('defaults to discord-like mic processing settings', () => {
     expect(voicePreferenceStore.getState()).toMatchObject({
-      inputMode: 'voice-activity',
       voiceGateEnabled: true,
       voiceGateAutoThreshold: true,
       voiceGateThresholdDb: -28,
@@ -101,11 +100,5 @@ describe('voicePreferenceStore', () => {
       noiseSuppression: false,
       echoCancellation: false,
     })
-  })
-
-  it('persists the voice input mode used by Push-to-Talk', () => {
-    voicePreferenceStore.setInputMode('push-to-talk')
-
-    expect(voicePreferenceStore.getState().inputMode).toBe('push-to-talk')
   })
 })

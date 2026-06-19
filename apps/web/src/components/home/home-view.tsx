@@ -15,7 +15,6 @@ import { toast } from 'sonner'
 
 import { ActiveNowPanel } from '#/components/home/active-now-panel'
 import { NotificationBadge } from '#/components/notifications/notification-badge'
-import { BlockUserConfirmationDialog } from '#/components/user/block-user-confirmation-dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import { FloatingMenuItem } from '#/components/ui/floating-menu'
@@ -73,8 +72,6 @@ function HomeFriendRow({
   actions?: ReactNode
 }) {
   const interactive = Boolean(onOpen)
-  const [blockDialogOpen, setBlockDialogOpen] = useState(false)
-  const [blocking, setBlocking] = useState(false)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!onOpen || event.target !== event.currentTarget) return
@@ -92,134 +89,116 @@ function HomeFriendRow({
     }
   }
 
-  async function handleBlock() {
+  function handleBlock() {
     if (!token) return
-    setBlocking(true)
-    try {
-      await blockUserRelationship(token, user._id)
-      setBlockDialogOpen(false)
-    } catch {
-      // friend-actions already shows the concrete error toast.
-    } finally {
-      setBlocking(false)
-    }
+    if (!window.confirm(`Заблокировать @${user.username}?`)) return
+    void blockUserRelationship(token, user._id).catch(() => undefined)
   }
 
   return (
-    <>
-      <div
-        role={interactive ? 'button' : undefined}
-        tabIndex={interactive ? 0 : undefined}
-        className={cn(
-          'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
-          interactive &&
-            'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
-        )}
-        onClick={onOpen}
-        onKeyDown={handleKeyDown}
-      >
-        <UserAvatar user={user} className="size-10" fallbackClassName="size-10" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{userLabel(user)}</p>
-          <p className="truncate text-sm text-muted-foreground">
-            {presenceLabel(user)}
-          </p>
-        </div>
-        <div
-          className="flex shrink-0 items-center gap-1"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {actions}
-          {onMessage ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className={rowIconActionClass}
-              title="Написать"
-              aria-label="Написать"
-              onClick={onMessage}
-            >
-              <MessageCircleIcon className="size-4" />
-            </Button>
-          ) : null}
-          {token ? (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className={rowIconActionClass}
-                  title="Ещё"
-                  aria-label="Ещё"
-                >
-                  <MoreHorizontalIcon className="size-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                side="bottom"
-                align="end"
-                className="w-auto min-w-[11rem] p-1"
-                onOpenAutoFocus={(event) => event.preventDefault()}
-              >
-                {user.relationship === 'Incoming' ? (
-                  <FloatingMenuItem
-                    onClick={() => {
-                      void declineIncomingFriendRequest(token, user._id).catch(
-                        () => undefined,
-                      )
-                    }}
-                  >
-                    <XIcon className="size-3.5" />
-                    Отклонить заявку
-                  </FloatingMenuItem>
-                ) : null}
-                {user.relationship === 'Outgoing' ? (
-                  <FloatingMenuItem
-                    onClick={() => {
-                      void cancelOutgoingFriendRequest(token, user._id).catch(
-                        () => undefined,
-                      )
-                    }}
-                  >
-                    <XIcon className="size-3.5" />
-                    Отменить заявку
-                  </FloatingMenuItem>
-                ) : null}
-                {user.relationship === 'Friend' ? (
-                  <FloatingMenuItem
-                    onClick={() => {
-                      void removeFriend(token, user._id).catch(() => undefined)
-                    }}
-                  >
-                    <UserMinusIcon className="size-3.5" />
-                    Удалить из друзей
-                  </FloatingMenuItem>
-                ) : null}
-                <FloatingMenuItem onClick={() => void copyUserId()}>
-                  <CopyIcon className="size-3.5" />
-                  Копировать ID
-                </FloatingMenuItem>
-                <FloatingMenuItem onClick={() => setBlockDialogOpen(true)}>
-                  <BanIcon className="size-3.5" />
-                  Заблокировать
-                </FloatingMenuItem>
-              </PopoverContent>
-            </Popover>
-          ) : null}
-        </div>
+    <div
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      className={cn(
+        'flex items-center gap-3 border-b border-shell-divider px-4 py-3 last:border-b-0 hover:bg-muted/30',
+        interactive &&
+          'cursor-pointer outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50',
+      )}
+      onClick={onOpen}
+      onKeyDown={handleKeyDown}
+    >
+      <UserAvatar user={user} className="size-10" fallbackClassName="size-10" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium">{userLabel(user)}</p>
+        <p className="truncate text-sm text-muted-foreground">
+          {presenceLabel(user)}
+        </p>
       </div>
-      <BlockUserConfirmationDialog
-        open={blockDialogOpen}
-        username={user.username}
-        disabled={blocking}
-        onOpenChange={(open) => {
-          if (!blocking) setBlockDialogOpen(open)
-        }}
-        onConfirm={() => void handleBlock()}
-      />
-    </>
+      <div
+        className="flex shrink-0 items-center gap-1"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {actions}
+        {onMessage ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className={rowIconActionClass}
+            title="Написать"
+            aria-label="Написать"
+            onClick={onMessage}
+          >
+            <MessageCircleIcon className="size-4" />
+          </Button>
+        ) : null}
+        {token ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className={rowIconActionClass}
+                title="Ещё"
+                aria-label="Ещё"
+              >
+                <MoreHorizontalIcon className="size-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="bottom"
+              align="end"
+              className="w-auto min-w-[11rem] p-1"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
+              {user.relationship === 'Incoming' ? (
+                <FloatingMenuItem
+                  onClick={() => {
+                    void declineIncomingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
+                  }}
+                >
+                  <XIcon className="size-3.5" />
+                  Отклонить заявку
+                </FloatingMenuItem>
+              ) : null}
+              {user.relationship === 'Outgoing' ? (
+                <FloatingMenuItem
+                  onClick={() => {
+                    void cancelOutgoingFriendRequest(token, user._id).catch(
+                      () => undefined,
+                    )
+                  }}
+                >
+                  <XIcon className="size-3.5" />
+                  Отменить заявку
+                </FloatingMenuItem>
+              ) : null}
+              {user.relationship === 'Friend' ? (
+                <FloatingMenuItem
+                  onClick={() => {
+                    void removeFriend(token, user._id).catch(() => undefined)
+                  }}
+                >
+                  <UserMinusIcon className="size-3.5" />
+                  Удалить из друзей
+                </FloatingMenuItem>
+              ) : null}
+              <FloatingMenuItem onClick={() => void copyUserId()}>
+                <CopyIcon className="size-3.5" />
+                Копировать ID
+              </FloatingMenuItem>
+              <FloatingMenuItem onClick={handleBlock}>
+                <BanIcon className="size-3.5" />
+                Заблокировать
+              </FloatingMenuItem>
+            </PopoverContent>
+          </Popover>
+        ) : null}
+      </div>
+    </div>
   )
 }
 
@@ -487,7 +466,7 @@ export function HomeView({ tab }: HomeViewProps) {
         </ScrollArea>
       </div>
 
-      <ActiveNowPanel users={friends} />
+      <ActiveNowPanel />
     </div>
   )
 }

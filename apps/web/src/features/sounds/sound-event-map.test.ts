@@ -37,34 +37,6 @@ describe('gateway sound event mapping', () => {
         baseContext,
       ),
     ).toBe('message.mention')
-
-    expect(
-      soundEventFromGatewayEvent(
-        {
-          type: 'Message',
-          _id: 'message-3',
-          channel: 'channel-other',
-          author: 'user-other',
-          content: 'reply body',
-          mentions: ['user-self'],
-        },
-        baseContext,
-      ),
-    ).toBe('message.mention')
-
-    expect(
-      soundEventFromGatewayEvent(
-        {
-          type: 'Message',
-          _id: 'message-4',
-          channel: 'channel-other',
-          author: 'user-other',
-          content: 'reply body',
-          mentions: ['user-someone-else'],
-        },
-        baseContext,
-      ),
-    ).toBe('message.default')
   })
 
   it('ignores self messages, blocked users, and focused active channel messages', () => {

@@ -10,7 +10,7 @@ import {
   within,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import type { Channel, Member, Message, Server, User } from '@syrnike13/api-types'
+import type { Channel, Member, Server, User } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelView } from '#/components/chat/channel-view'
@@ -35,30 +35,6 @@ const chatState = vi.hoisted(() => ({
   channel: undefined as Channel | undefined,
   users: {} as Record<string, User>,
 }))
-const chatActions = vi.hoisted(() => ({
-  handleDelete: vi.fn(),
-  handlePin: vi.fn(),
-  handleUnpin: vi.fn(),
-  handleClearReactions: vi.fn(),
-  jumpToMessage: vi.fn(),
-  setComposerAction: vi.fn(),
-  notifyTyping: vi.fn(),
-}))
-const friendActionMocks = vi.hoisted(() => ({
-  blockUserRelationship: vi.fn().mockResolvedValue(undefined),
-}))
-const messageListMessage = vi.hoisted(
-  () =>
-    ({
-      _id: 'message-1',
-      channel: 'dm-1',
-      author: 'target-user',
-      content: 'hello',
-      reactions: {
-        wave: ['current-user'],
-      },
-    }) as Message,
-)
 const routerMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   pathname: '/app/c/test',
@@ -129,21 +105,15 @@ vi.mock('#/features/chat/use-channel-chat', () => ({
     hasOlder: false,
     loadingOlder: false,
     loadOlder: vi.fn(),
-    handleDelete: chatActions.handleDelete,
-    handlePin: chatActions.handlePin,
-    handleUnpin: chatActions.handleUnpin,
-    handleClearReactions: chatActions.handleClearReactions,
-    canClearMessageReactions: true,
-    jumpToMessage: chatActions.jumpToMessage,
+    handleDelete: vi.fn(),
+    handlePin: vi.fn(),
+    handleUnpin: vi.fn(),
+    jumpToMessage: vi.fn(),
     replyTo: null,
     editingMessage: null,
     listHighlightMessageId: undefined,
-    notifyTyping: chatActions.notifyTyping,
+    notifyTyping: vi.fn(),
   }),
-}))
-
-vi.mock('#/features/friends/friend-actions', () => ({
-  blockUserRelationship: friendActionMocks.blockUserRelationship,
 }))
 
 vi.mock('#/features/voice/voice-context', () => ({
@@ -209,50 +179,7 @@ vi.mock('#/components/voice/voice-text-channel-dock', () => ({
 }))
 
 vi.mock('#/components/chat/message-list', () => ({
-  MessageList: ({
-    onDelete,
-    onBlock,
-    onClearReactions,
-  }: {
-    onDelete?: (message: Message) => void
-    onBlock?: (message: Message) => void
-    onClearReactions?: (message: Message) => void
-  }) => (
-    <div data-testid="message-list">
-      <button type="button" onClick={() => onDelete?.(messageListMessage)}>
-        Delete message
-      </button>
-      <button type="button" onClick={() => onBlock?.(messageListMessage)}>
-        Block message author
-      </button>
-      <button
-        type="button"
-        onClick={() => onClearReactions?.(messageListMessage)}
-      >
-        Clear reactions
-      </button>
-    </div>
-  ),
-}))
-
-vi.mock('#/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: { open?: boolean; children: ReactNode }) =>
-    open ? <>{children}</> : null,
-  DialogContent: ({ children }: { children: ReactNode }) => (
-    <div role="dialog">{children}</div>
-  ),
-  DialogDescription: ({ children }: { children: ReactNode }) => (
-    <p>{children}</p>
-  ),
-  DialogFooter: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DialogHeader: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DialogTitle: ({ children }: { children: ReactNode }) => (
-    <h2>{children}</h2>
-  ),
+  MessageList: () => <div data-testid="message-list" />,
 }))
 
 vi.mock('#/components/chat/message-composer', () => ({
@@ -342,14 +269,6 @@ describe('ChannelView direct message header', () => {
     voiceJoinMock.mockClear()
     cancelDirectMessageCallMock.mockClear()
     declineDirectMessageCallMock.mockClear()
-    chatActions.handleDelete.mockClear()
-    chatActions.handlePin.mockClear()
-    chatActions.handleUnpin.mockClear()
-    chatActions.handleClearReactions.mockClear()
-    chatActions.jumpToMessage.mockClear()
-    chatActions.setComposerAction.mockClear()
-    chatActions.notifyTyping.mockClear()
-    friendActionMocks.blockUserRelationship.mockClear()
     routerMocks.navigate.mockClear()
     routerMocks.pathname = '/app/c/test'
     voiceState.channelId = null
@@ -688,72 +607,6 @@ describe('ChannelView direct message header', () => {
       )
     })
     expect(screen.getByLabelText('Голосовой звонок')).toBeTruthy()
-  })
-
-  it('confirms deleting a chat message in an app dialog before calling the delete handler', () => {
-    const confirmMock = vi.fn().mockReturnValue(false)
-    vi.stubGlobal('confirm', confirmMock)
-
-    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete message' }))
-
-    expect(confirmMock).not.toHaveBeenCalled()
-    expect(chatActions.handleDelete).not.toHaveBeenCalled()
-
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText('Удалить сообщение?')).toBeTruthy()
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Удалить' }))
-
-    expect(chatActions.handleDelete).toHaveBeenCalledWith(messageListMessage)
-  })
-
-  it('confirms clearing message reactions in an app dialog before calling the clear handler', () => {
-    const confirmMock = vi.fn().mockReturnValue(false)
-    vi.stubGlobal('confirm', confirmMock)
-
-    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Clear reactions' }))
-
-    expect(confirmMock).not.toHaveBeenCalled()
-    expect(chatActions.handleClearReactions).not.toHaveBeenCalled()
-
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText('Очистить реакции?')).toBeTruthy()
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Очистить' }))
-
-    expect(chatActions.handleClearReactions).toHaveBeenCalledWith(
-      messageListMessage,
-    )
-  })
-
-  it('confirms blocking a message author in an app dialog before calling the block action', async () => {
-    const confirmMock = vi.fn().mockReturnValue(false)
-    vi.stubGlobal('confirm', confirmMock)
-
-    renderChannelView(<ChannelView channelId={CHANNEL_ID} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Block message author' }))
-
-    expect(confirmMock).not.toHaveBeenCalled()
-    expect(friendActionMocks.blockUserRelationship).not.toHaveBeenCalled()
-
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText(/test_isa/)).toBeTruthy()
-
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Заблокировать' }),
-    )
-
-    await waitFor(() => {
-      expect(friendActionMocks.blockUserRelationship).toHaveBeenCalledWith(
-        'session-token',
-        TARGET_USER_ID,
-      )
-    })
   })
 
   it('shows a back button on mobile routes that returns to the home list', () => {

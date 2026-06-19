@@ -28,7 +28,6 @@ describe('desktop local settings contract', () => {
           outputVolume: 1.7,
           noiseSuppression: false,
           echoCancellation: false,
-          inputMode: 'push-to-talk',
           voiceGateEnabled: true,
           voiceGateThresholdDb: -18,
           voiceGateAutoThreshold: false,
@@ -51,7 +50,6 @@ describe('desktop local settings contract', () => {
         preferredAudioInputDevice: 'mic-1',
         outputVolume: 1.7,
         noiseSuppression: false,
-        inputMode: 'push-to-talk',
         screenShareQuality: 'high60',
       },
       voiceListener: {
@@ -109,14 +107,12 @@ describe('desktop local settings contract', () => {
     expect(
       normalizeDesktopLocalSettingsPatch({
         voice: {
-          inputMode: 'push-to-talk',
           noiseSuppression: false,
           outputVolume: 5,
         },
       }),
     ).toEqual({
       voice: {
-        inputMode: 'push-to-talk',
         noiseSuppression: false,
         outputVolume: 3,
       },

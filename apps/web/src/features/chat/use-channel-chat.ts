@@ -6,7 +6,6 @@ import { toast } from 'sonner'
 
 import { useAuth } from '#/features/auth/auth-context'
 import {
-  clearMessageReactions,
   deleteChannelMessage,
   fetchChannelMessages,
   MESSAGE_PAGE_SIZE,
@@ -21,7 +20,6 @@ import { getChannelMessages } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
 import { serverChannelServerId } from '#/lib/channel-voice'
-import { canManageChannelMessages } from '#/lib/permissions'
 
 type ComposerAction =
   | { type: 'reply'; message: Message }
@@ -44,29 +42,9 @@ export function useChannelChat({
   const prefix = useAppRoutePrefix()
   const { notifyTyping } = useTypingIndicator(channelId)
   const channel = useSyncStore((s) => s.channels[channelId])
-  const serverIdForSelection = serverChannelServerId(channel) ?? null
-  const server = useSyncStore((s) =>
-    serverIdForSelection ? s.servers[serverIdForSelection] : undefined,
-  )
-  const member = useSyncStore((s) =>
-    serverIdForSelection && auth.user?._id
-      ? s.members[`${serverIdForSelection}:${auth.user._id}`]
-      : undefined,
-  )
   const users = useSyncStore((s) => s.users)
   const messages = useSyncStore((s) => getChannelMessages(s, channelId))
   const token = auth.session?.token
-  const initialLastReadRef = useRef<{
-    channelId: string
-    messageId: string | null | undefined
-  } | null>(null)
-
-  if (initialLastReadRef.current?.channelId !== channelId) {
-    initialLastReadRef.current = {
-      channelId,
-      messageId: syncStore.getState().unreads[channelId],
-    }
-  }
 
   useJumpToMessage(channelId, highlightMessageId, enabled ? token : undefined)
 
@@ -97,11 +75,9 @@ export function useChannelChat({
     staleTime: 30_000,
   })
 
+  const serverIdForSelection = serverChannelServerId(channel) ?? null
+
   const isServerChannel = serverIdForSelection != null
-  const canClearMessageReactions =
-    channel?.channel_type === 'TextChannel'
-      ? canManageChannelMessages(server, channel, member, auth.user?._id)
-      : false
 
   const messagesRef = useRef(messages)
   messagesRef.current = messages
@@ -172,6 +148,7 @@ export function useChannelChat({
   const handleDelete = useCallback(
     async (message: Message) => {
       if (!token) return
+      if (!window.confirm('Удалить это сообщение?')) return
 
       syncStore.removeMessage(channelId, message._id)
       try {
@@ -242,32 +219,6 @@ export function useChannelChat({
     [channelId, token],
   )
 
-  const handleClearReactions = useCallback(
-    async (message: Message) => {
-      if (!token) return
-      if (!Object.values(message.reactions ?? {}).some((users) => users.length)) {
-        return
-      }
-
-      const previousReactions = message.reactions
-      syncStore.patchMessage(channelId, message._id, { reactions: {} })
-      try {
-        await clearMessageReactions(token, channelId, message._id)
-        toast.success('Реакции очищены')
-      } catch (error) {
-        syncStore.patchMessage(channelId, message._id, {
-          reactions: previousReactions,
-        })
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось очистить реакции',
-        )
-      }
-    },
-    [channelId, token],
-  )
-
   const replyTo =
     composerAction?.type === 'reply' ? composerAction.message : null
   const editingMessage =
@@ -279,7 +230,6 @@ export function useChannelChat({
     channel: channel as Channel | undefined,
     users,
     messages,
-    lastReadMessageId: initialLastReadRef.current?.messageId,
     token,
     historyQuery,
     serverIdForSelection,
@@ -292,8 +242,6 @@ export function useChannelChat({
     handleDelete,
     handlePin,
     handleUnpin,
-    handleClearReactions,
-    canClearMessageReactions,
     jumpToMessage,
     replyTo,
     editingMessage,

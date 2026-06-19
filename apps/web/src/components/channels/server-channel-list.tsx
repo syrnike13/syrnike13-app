@@ -28,10 +28,7 @@ import {
 } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServer } from '#/features/api/servers-api'
-import {
-  isChannelUnread,
-  listServerChannels,
-} from '#/features/sync/selectors'
+import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
   applyChannelDragResult,
@@ -347,13 +344,6 @@ function ChannelSectionList({
   )
 
   const isEmpty = section.channels.length === 0
-  const visibleChannels = collapsed
-    ? section.channels.filter(
-        (channel) =>
-          channel._id === activeChannelId ||
-          isChannelUnread(channel, unreads[channel._id]),
-      )
-    : section.channels
 
   if (isEmpty && canDrag) {
     return (
@@ -402,21 +392,21 @@ function ChannelSectionList({
       ) : (
         header
       )}
-      {visibleChannels.length > 0 ? (
+      {!collapsed ? (
         <>
           <ChannelDroppableList
             sectionId={section.id}
-            channels={visibleChannels}
+            channels={section.channels}
             activeChannelId={activeChannelId}
             users={users}
             currentUserId={currentUserId}
             unreads={unreads}
             canManage={canManage}
             canInvite={canInvite}
-            canDrag={canDrag && !collapsed}
+            canDrag={canDrag}
             onFirstChannelElement={onFirstChannelElement}
           />
-          {canDrag && !collapsed ? (
+          {canDrag ? (
             <CategoryExtractSlot droppableId={afterCategoryDroppableId(section.id)} />
           ) : null}
         </>

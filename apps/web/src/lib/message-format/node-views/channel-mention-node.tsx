@@ -12,7 +12,7 @@ export function ChannelMentionNodeView({ node }: NodeViewProps) {
 
   return (
     <NodeViewWrapper as="span" className="inline">
-      <MentionPill label={channelName} prefix="#" />
+      <MentionPill label={`#${channelName}`} />
     </NodeViewWrapper>
   )
 }

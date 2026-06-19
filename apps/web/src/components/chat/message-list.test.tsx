@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MessageList } from '#/components/chat/message-list'
@@ -9,7 +9,6 @@ import { syncStore } from '#/features/sync/sync-store'
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ700'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ701'
 const MESSAGE_ID = '01KT7DEM3B0T4B0BXGBXWDJ702'
-const UNREAD_MESSAGE_ID = '01KT7DEM3B0T4B0BXGBXWDJ703'
 
 type IntersectionCallback = ConstructorParameters<
   typeof IntersectionObserver
@@ -143,39 +142,5 @@ describe('MessageList older history loading', () => {
     })
 
     expect(onLoadOlder).toHaveBeenCalledOnce()
-  })
-
-  it('renders a new messages divider before the first unread message', () => {
-    render(
-      <MessageList
-        channelId={CHANNEL_ID}
-        messages={[
-          {
-            _id: MESSAGE_ID,
-            channel: CHANNEL_ID,
-            author: USER_ID,
-            content: 'already read',
-          },
-          {
-            _id: UNREAD_MESSAGE_ID,
-            channel: CHANNEL_ID,
-            author: USER_ID,
-            content: 'new text',
-          },
-        ] as never}
-        users={{
-          [USER_ID]: {
-            _id: USER_ID,
-            username: 'alice',
-            discriminator: '0001',
-            relationship: 'None',
-            online: true,
-          },
-        }}
-        lastReadMessageId={MESSAGE_ID}
-      />,
-    )
-
-    expect(screen.getByText('Новые сообщения')).toBeTruthy()
   })
 })

@@ -102,7 +102,6 @@ export {
   type DesktopScreenShareQualityName,
   type DesktopSoundSettings,
   type DesktopSoundSettingsPatch,
-  type DesktopVoiceInputMode,
   type DesktopVoiceListenerSettings,
   type DesktopVoiceListenerSettingsPatch,
   type DesktopVoiceSettings,

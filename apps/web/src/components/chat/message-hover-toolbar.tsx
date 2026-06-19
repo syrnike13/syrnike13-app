@@ -27,7 +27,6 @@ type MessageHoverToolbarProps = {
   onBlock?: () => void
   onPin?: () => void
   onUnpin?: () => void
-  onClearReactions?: () => void
   onToggleReaction: (emoji: string, active: boolean) => void
 }
 
@@ -44,7 +43,6 @@ export function MessageHoverToolbar({
   onBlock,
   onPin,
   onUnpin,
-  onClearReactions,
   onToggleReaction,
 }: MessageHoverToolbarProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -143,7 +141,6 @@ export function MessageHoverToolbar({
           onBlock={onBlock}
           onPin={onPin}
           onUnpin={onUnpin}
-          onClearReactions={onClearReactions}
           triggerClassName={toolbarIconButtonClass}
         />
       </div>

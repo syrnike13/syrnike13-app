@@ -9,7 +9,6 @@ import {
 export type DesktopScreenShareQualityName = 'low' | 'high' | 'high60' | 'text'
 export type DesktopScreenShareCodec = 'auto' | 'av1'
 export type DesktopScreenShareCaptureMode = 'auto' | 'native'
-export type DesktopVoiceInputMode = 'voice-activity' | 'push-to-talk'
 
 export type DesktopVoiceSettings = {
   micEnabled: boolean
@@ -21,7 +20,6 @@ export type DesktopVoiceSettings = {
   outputVolume: number
   noiseSuppression: boolean
   echoCancellation: boolean
-  inputMode: DesktopVoiceInputMode
   voiceGateEnabled: boolean
   voiceGateThresholdDb: number
   voiceGateAutoThreshold: boolean
@@ -107,7 +105,6 @@ export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   outputVolume: 1,
   noiseSuppression: true,
   echoCancellation: true,
-  inputMode: 'voice-activity',
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
@@ -216,15 +213,6 @@ function screenShareCaptureModeOrDefault(
   return value === 'native' || value === 'auto' ? value : fallback
 }
 
-function voiceInputModeOrDefault(
-  value: unknown,
-  fallback: DesktopVoiceInputMode,
-) {
-  return value === 'push-to-talk' || value === 'voice-activity'
-    ? value
-    : fallback
-}
-
 function normalizeNumberRecord(value: unknown) {
   const next: Record<string, number> = {}
   for (const [key, entry] of Object.entries(objectRecord(value))) {
@@ -286,10 +274,6 @@ export function normalizeDesktopVoiceSettings(
     echoCancellation: booleanOrDefault(
       settings.echoCancellation,
       defaults.echoCancellation,
-    ),
-    inputMode: voiceInputModeOrDefault(
-      settings.inputMode,
-      defaults.inputMode,
     ),
     voiceGateEnabled: booleanOrDefault(
       settings.voiceGateEnabled,
@@ -456,12 +440,6 @@ export function normalizeDesktopVoiceSettingsPatch(
     typeof patch.echoCancellation === 'boolean'
   ) {
     next.echoCancellation = patch.echoCancellation
-  }
-  if ('inputMode' in patch) {
-    next.inputMode = voiceInputModeOrDefault(
-      patch.inputMode,
-      DEFAULT_DESKTOP_VOICE_SETTINGS.inputMode,
-    )
   }
   if (
     'voiceGateEnabled' in patch &&
