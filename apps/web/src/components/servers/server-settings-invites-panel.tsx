@@ -264,6 +264,14 @@ export function ServerSettingsInvitesPanel({
             const creator = users[invite.creator]
             const creatorLabel =
               creator?.display_name || creator?.username || invite.creator
+            const revoker = invite.revoked_by
+              ? users[invite.revoked_by]
+              : undefined
+            const revokerLabel =
+              revoker?.display_name ||
+              revoker?.username ||
+              invite.revoked_by ||
+              'Неизвестно'
             return (
               <li
                 key={invite._id}
@@ -293,6 +301,12 @@ export function ServerSettingsInvitesPanel({
                     Создал: {creatorLabel} · Создано:{' '}
                     {formatInviteTimestamp(invite.created_at)}
                   </p>
+                  {invite.revoked_at ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Отозвал: {revokerLabel} · Отозвано:{' '}
+                      {formatInviteTimestamp(invite.revoked_at)}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <Button

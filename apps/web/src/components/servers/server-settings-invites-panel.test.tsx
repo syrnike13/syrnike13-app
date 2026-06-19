@@ -303,4 +303,44 @@ describe('ServerSettingsInvitesPanel', () => {
     expect(screen.getByText(/Создал: Alice/)).toBeTruthy()
     expect(screen.getByText(/Создано: .*2026/)).toBeTruthy()
   })
+
+  it('shows who revoked an invite and when it was revoked', async () => {
+    syncStore.upsertUsers([
+      {
+        _id: 'user-1',
+        username: 'alice',
+        display_name: 'Alice',
+        avatar: null,
+      } as never,
+      {
+        _id: 'user-2',
+        username: 'bob',
+        display_name: 'Bob',
+        avatar: null,
+      } as never,
+    ])
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'revoked-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: Date.UTC(2026, 5, 18, 10, 0),
+        expires_at: null,
+        max_uses: null,
+        uses: 1,
+        revoked_at: Date.UTC(2026, 5, 19, 14, 45),
+        revoked_by: 'user-2',
+        temporary: false,
+      },
+    ])
+
+    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
+
+    expect(await screen.findByText('revoked-code')).toBeTruthy()
+    expect(screen.getByText('Отозвано')).toBeTruthy()
+    expect(screen.getByText(/Отозвал: Bob/)).toBeTruthy()
+    expect(screen.getByText(/Отозвано: .*2026/)).toBeTruthy()
+  })
 })
