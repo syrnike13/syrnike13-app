@@ -348,8 +348,10 @@ function ChannelSectionList({
 
   const isEmpty = section.channels.length === 0
   const visibleChannels = collapsed
-    ? section.channels.filter((channel) =>
-        isChannelUnread(channel, unreads[channel._id]),
+    ? section.channels.filter(
+        (channel) =>
+          channel._id === activeChannelId ||
+          isChannelUnread(channel, unreads[channel._id]),
       )
     : section.channels
 

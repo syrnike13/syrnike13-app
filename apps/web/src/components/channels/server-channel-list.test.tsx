@@ -198,4 +198,37 @@ describe('ServerChannelList', () => {
 
     expect(channelNames()).toEqual(['Alpha'])
   })
+
+  it('keeps the active channel visible inside collapsed categories', () => {
+    syncStore.upsertServer({
+      _id: 'server-a',
+      name: 'Alpha',
+      owner: 'user-current',
+      channels: ['channel-a', 'channel-b'],
+      default_permissions: 0,
+      categories: [
+        {
+          id: 'category-a',
+          title: 'Read later',
+          channels: ['channel-a', 'channel-b'],
+        },
+      ],
+    } as never)
+    localStorage.setItem(
+      'channel-category-collapsed:server-a:category-a',
+      '1',
+    )
+
+    render(
+      <ServerChannelList
+        serverId="server-a"
+        activeChannelId="channel-b"
+        users={{}}
+        currentUserId="user-current"
+        unreads={{}}
+      />,
+    )
+
+    expect(channelNames()).toEqual(['Beta'])
+  })
 })
