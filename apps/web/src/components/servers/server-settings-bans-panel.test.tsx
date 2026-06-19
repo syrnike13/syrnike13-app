@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ServerSettingsBansPanel } from '#/components/servers/server-settings-bans-panel'
 
 const mocks = vi.hoisted(() => ({
+  banServerMember: vi.fn(),
   fetchServerBans: vi.fn(),
   unbanServerMember: vi.fn(),
 }))
@@ -27,6 +28,8 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
+  banServerMember: (...args: Parameters<typeof mocks.banServerMember>) =>
+    mocks.banServerMember(...args),
   fetchServerBans: (...args: Parameters<typeof mocks.fetchServerBans>) =>
     mocks.fetchServerBans(...args),
   unbanServerMember: (...args: Parameters<typeof mocks.unbanServerMember>) =>
@@ -76,6 +79,7 @@ describe('ServerSettingsBansPanel', () => {
       ],
     })
     mocks.unbanServerMember.mockResolvedValue(undefined)
+    mocks.banServerMember.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -117,6 +121,34 @@ describe('ServerSettingsBansPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
 
     expect(mocks.unbanServerMember).not.toHaveBeenCalled()
+  })
+
+  it('bans a user by id with a reason and message deletion window', async () => {
+    renderWithQuery(<ServerSettingsBansPanel serverId="server-1" />)
+
+    expect(await screen.findByText('bad-user')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('ID пользователя для бана'), {
+      target: { value: 'user-3' },
+    })
+    fireEvent.change(screen.getByLabelText('Причина бана'), {
+      target: { value: 'hit-and-run spam' },
+    })
+    fireEvent.change(screen.getByLabelText('Удалить историю сообщений'), {
+      target: { value: '86400' },
+    })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Забанить пользователя' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.banServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        'user-3',
+        { reason: 'hit-and-run spam', delete_message_seconds: 86400 },
+      )
+    })
   })
 
   it('filters server bans by user, id, and reason', async () => {
