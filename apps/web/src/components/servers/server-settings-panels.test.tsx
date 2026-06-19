@@ -7,11 +7,19 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
-import type { File as ApiFile } from '@syrnike13/api-types'
+import type { Channel, File as ApiFile } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
 import { syncStore } from '#/features/sync/sync-store'
+
+Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', {
+  value: () => false,
+})
+
+Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+  value: () => undefined,
+})
 
 const mocks = vi.hoisted(() => ({
   editServer: vi.fn(),
@@ -96,10 +104,40 @@ function upsertServer(overrides: Record<string, unknown> = {}) {
   } as never)
 }
 
+function textChannel(
+  id: string,
+  name: string,
+  overrides: Partial<Extract<Channel, { channel_type: 'TextChannel' }>> = {},
+) {
+  return {
+    _id: id,
+    channel_type: 'TextChannel',
+    server: 'server-1',
+    name,
+    description: null,
+    nsfw: false,
+    slowmode: 0,
+    default_permissions: null,
+    ...overrides,
+  } satisfies Extract<Channel, { channel_type: 'TextChannel' }>
+}
+
+async function chooseSystemMessageChannel(label: string) {
+  fireEvent.pointerDown(screen.getByLabelText('Канал системных сообщений'), {
+    button: 0,
+    ctrlKey: false,
+    pointerId: 1,
+    pointerType: 'mouse',
+  })
+  fireEvent.click(await screen.findByRole('option', { name: label }))
+}
+
 describe('ServerSettingsPanelContent overview', () => {
   beforeEach(() => {
     syncStore.reset()
     upsertServer()
+    syncStore.upsertChannel(textChannel('channel-1', 'general'))
+    syncStore.upsertChannel(textChannel('channel-2', 'announcements'))
     mocks.fetchServerEmojis.mockResolvedValue([])
     mocks.uploadMediaFile.mockResolvedValue('file-id')
     mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
@@ -178,6 +216,46 @@ describe('ServerSettingsPanelContent overview', () => {
       })
     })
     expect(mocks.uploadMediaFile).not.toHaveBeenCalled()
+  })
+
+  it('saves the system messages channel from overview settings', async () => {
+    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+
+    await chooseSystemMessageChannel('#announcements')
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
+        system_messages: {
+          user_joined: 'channel-2',
+          user_left: 'channel-2',
+          user_kicked: 'channel-2',
+          user_banned: 'channel-2',
+        },
+      })
+    })
+  })
+
+  it('removes system messages when the system channel is cleared', async () => {
+    upsertServer({
+      system_messages: {
+        user_joined: 'channel-1',
+        user_left: 'channel-1',
+        user_kicked: 'channel-1',
+        user_banned: 'channel-1',
+      },
+    })
+
+    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+
+    await chooseSystemMessageChannel('Не отправлять')
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(mocks.editServer).toHaveBeenCalledWith('session-token', 'server-1', {
+        remove: ['SystemMessages'],
+      })
+    })
   })
 
   it('deletes an owned server from the overview danger zone', async () => {

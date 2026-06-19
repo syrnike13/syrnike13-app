@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
-import type { DataEditServer, Emoji, FieldsServer } from '@syrnike13/api-types'
+import type {
+  DataEditServer,
+  Emoji,
+  FieldsServer,
+  SystemMessageChannels,
+} from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { CustomEmoji } from '#/components/emoji/custom-emoji'
@@ -15,6 +20,13 @@ import { Button } from '#/components/ui/button'
 import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
 import { Textarea } from '#/components/ui/textarea'
 import { getServerDescription } from '#/lib/channel-meta'
 import { useAuth } from '#/features/auth/auth-context'
@@ -27,7 +39,9 @@ import {
   fetchServerEmojis,
 } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { serverBannerUrl, serverIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
@@ -35,6 +49,15 @@ type ServerSettingsPanelsProps = {
   serverId: string
   tab: ServerSettingsTab
 }
+
+const SYSTEM_MESSAGES_NONE = '__none__'
+const SYSTEM_MESSAGES_MIXED = '__mixed__'
+const SYSTEM_MESSAGE_KEYS = [
+  'user_joined',
+  'user_left',
+  'user_kicked',
+  'user_banned',
+] as const
 
 function SettingsField({
   label,
@@ -80,6 +103,28 @@ function revokeFilePreviewUrl(url: string | null) {
   URL.revokeObjectURL(url)
 }
 
+function systemMessageChannelValue(
+  systemMessages: SystemMessageChannels | null | undefined,
+) {
+  const channelIds = SYSTEM_MESSAGE_KEYS.flatMap((key) => {
+    const channelId = systemMessages?.[key]
+    return channelId ? [channelId] : []
+  })
+  const uniqueChannelIds = [...new Set(channelIds)]
+  if (uniqueChannelIds.length === 0) return SYSTEM_MESSAGES_NONE
+  if (uniqueChannelIds.length === 1) return uniqueChannelIds[0]
+  return SYSTEM_MESSAGES_MIXED
+}
+
+function buildSystemMessageChannels(channelId: string): SystemMessageChannels {
+  return {
+    user_joined: channelId,
+    user_left: channelId,
+    user_kicked: channelId,
+    user_banned: channelId,
+  }
+}
+
 function ServerSettingsGeneralPanel({
   serverId,
   serverName,
@@ -91,9 +136,17 @@ function ServerSettingsGeneralPanel({
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
+  const systemMessageChannels = useSyncStore((s) =>
+    listServerChannels(s, serverId).filter(
+      (channel) => !isServerVoiceChannel(channel),
+    ),
+  )
   const [name, setName] = useState(serverName)
   const [description, setDescription] = useState(
     getServerDescription(server) ?? '',
+  )
+  const [systemMessagesChannelId, setSystemMessagesChannelId] = useState(() =>
+    systemMessageChannelValue(server?.system_messages),
   )
   const [iconFile, setIconFile] = useState<File | null>(null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -109,6 +162,9 @@ function ServerSettingsGeneralPanel({
   useEffect(() => {
     setName(serverName)
     setDescription(getServerDescription(server) ?? '')
+    setSystemMessagesChannelId(
+      systemMessageChannelValue(server?.system_messages),
+    )
     setIconFile(null)
     setBannerFile(null)
     setIconPreviewUrl(null)
@@ -160,13 +216,25 @@ function ServerSettingsGeneralPanel({
     if (!token || !trimmedName) return
 
     const currentDescription = getServerDescription(server) ?? ''
+    const currentSystemMessagesChannelId = systemMessageChannelValue(
+      server?.system_messages,
+    )
     const nameChanged = trimmedName !== serverName
     const descriptionChanged = trimmedDescription !== currentDescription
+    const systemMessagesChanged =
+      systemMessagesChannelId !== currentSystemMessagesChannelId
     const mediaChanged = Boolean(
       iconFile || bannerFile || removeIcon || removeBanner,
     )
 
-    if (!nameChanged && !descriptionChanged && !mediaChanged) return
+    if (
+      !nameChanged &&
+      !descriptionChanged &&
+      !systemMessagesChanged &&
+      !mediaChanged
+    ) {
+      return
+    }
 
     setSaving(true)
     try {
@@ -176,6 +244,15 @@ function ServerSettingsGeneralPanel({
       if (nameChanged) patch.name = trimmedName
       if (descriptionChanged) {
         patch.description = trimmedDescription || null
+      }
+      if (systemMessagesChanged) {
+        if (systemMessagesChannelId === SYSTEM_MESSAGES_NONE) {
+          remove.push('SystemMessages')
+        } else if (systemMessagesChannelId !== SYSTEM_MESSAGES_MIXED) {
+          patch.system_messages = buildSystemMessageChannels(
+            systemMessagesChannelId,
+          )
+        }
       }
       if (iconFile) {
         patch.icon = await uploadMediaFile(token, 'avatars', iconFile)
@@ -195,6 +272,9 @@ function ServerSettingsGeneralPanel({
       setBannerFile(null)
       setIconPreviewUrl(null)
       setBannerPreviewUrl(null)
+      setSystemMessagesChannelId(
+        systemMessageChannelValue(updated.system_messages),
+      )
       setRemoveIcon(false)
       setRemoveBanner(false)
       if (iconInputRef.current) iconInputRef.current.value = ''
@@ -413,6 +493,42 @@ function ServerSettingsGeneralPanel({
             placeholder="О сервере"
             onChange={(event) => setDescription(event.target.value)}
           />
+        </div>
+      </SettingsField>
+
+      <SettingsField
+        label="Системные сообщения"
+        description="Канал, куда сервер отправляет сообщения о входах и модерации."
+      >
+        <div className="flex max-w-xl flex-col gap-2">
+          <Label htmlFor="server-system-messages-channel">
+            Канал системных сообщений
+          </Label>
+          <Select
+            value={systemMessagesChannelId}
+            disabled={saving}
+            onValueChange={setSystemMessagesChannelId}
+          >
+            <SelectTrigger
+              id="server-system-messages-channel"
+              className="w-full"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={SYSTEM_MESSAGES_NONE}>Не отправлять</SelectItem>
+              {systemMessagesChannelId === SYSTEM_MESSAGES_MIXED ? (
+                <SelectItem value={SYSTEM_MESSAGES_MIXED} disabled>
+                  Разные каналы
+                </SelectItem>
+              ) : null}
+              {systemMessageChannels.map((channel) => (
+                <SelectItem key={channel._id} value={channel._id}>
+                  #{channel.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </SettingsField>
 
