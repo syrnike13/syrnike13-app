@@ -124,6 +124,7 @@ describe('renderMessageContent', () => {
 
     expect(clickSpoiler?.getAttribute('aria-pressed')).toBe('false')
     expect(clickSpoiler?.className).toContain('text-transparent')
+    expect(clickSpoiler?.className).not.toContain('hover:text-inherit')
 
     fireEvent.click(clickSpoiler!)
 

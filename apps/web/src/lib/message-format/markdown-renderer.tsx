@@ -26,7 +26,7 @@ function MessageSpoiler({ text }: { text: string }) {
       aria-label={revealed ? 'Спойлер раскрыт' : 'Показать спойлер'}
       className={[
         'inline cursor-pointer rounded border-0 bg-foreground/10 px-1 py-0 font-inherit align-baseline transition',
-        revealed ? 'text-inherit' : 'text-transparent hover:text-inherit',
+        revealed ? 'text-inherit' : 'text-transparent',
       ].join(' ')}
       title={revealed ? 'Спойлер раскрыт' : 'Спойлер — нажмите, чтобы показать'}
       onClick={() => setRevealed(true)}
