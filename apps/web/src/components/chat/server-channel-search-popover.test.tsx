@@ -15,6 +15,29 @@ import { syncStore } from '#/features/sync/sync-store'
 
 const navigateMock = vi.hoisted(() => vi.fn())
 const searchServerMessagesMock = vi.hoisted(() => vi.fn())
+const ULID_ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+const SEARCH_AT = Date.UTC(2026, 5, 19, 12, 30)
+
+function ulidAt(timeMs: number, tail: string) {
+  let value = timeMs
+  let timestamp = ''
+
+  for (let index = 0; index < 10; index += 1) {
+    timestamp = ULID_ENCODING[value % 32]! + timestamp
+    value = Math.floor(value / 32)
+  }
+
+  return `${timestamp}${tail.padEnd(16, '0')}`.slice(0, 26)
+}
+
+const SEARCH_MESSAGE_ID = ulidAt(SEARCH_AT, 'SEARCHMSG1234567')
+const SEARCH_TIMESTAMP = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+}).format(new Date(SEARCH_AT))
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
@@ -48,7 +71,7 @@ function fileAttachment(overrides: Partial<File> = {}) {
 
 function message(overrides: Partial<Message> = {}) {
   return {
-    _id: 'message-1',
+    _id: SEARCH_MESSAGE_ID,
     channel: 'channel-1',
     author: 'author-user',
     content: null,
@@ -103,6 +126,7 @@ describe('ServerChannelSearchPopover', () => {
     await waitFor(() => {
       expect(screen.getByText('brief.pdf')).toBeTruthy()
     })
+    expect(screen.getByText(SEARCH_TIMESTAMP)).toBeTruthy()
     expect(screen.queryByText('[без текста]')).toBeNull()
   })
 })

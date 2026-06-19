@@ -15,6 +15,10 @@ import { MessageSearchPreview } from '#/components/chat/message-search-preview'
 import { searchChannelMessages } from '#/features/api/messages-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import {
+  formatMessageTimestamp,
+  messageCreatedAt,
+} from '#/lib/message-time'
 import { cn } from '#/lib/utils'
 
 type ChannelSearchDialogProps = {
@@ -161,6 +165,8 @@ export function ChannelSearchDialog({
               const author = message.user ?? users[message.author]
               const name =
                 author?.display_name ?? author?.username ?? 'Неизвестный'
+              const createdAt = messageCreatedAt(message)
+              const timestamp = formatMessageTimestamp(createdAt)
 
               return (
                 <button
@@ -171,8 +177,14 @@ export function ChannelSearchDialog({
                   )}
                   onClick={() => openMessage(message._id)}
                 >
-                  <p className="truncate text-xs font-medium text-muted-foreground">
-                    {name}
+                  <p className="flex min-w-0 items-baseline gap-2 text-xs font-medium text-muted-foreground">
+                    <span className="truncate">{name}</span>
+                    <time
+                      className="shrink-0"
+                      dateTime={createdAt.toISOString()}
+                    >
+                      {timestamp}
+                    </time>
                   </p>
                   <MessageSearchPreview
                     message={message}

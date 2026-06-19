@@ -18,6 +18,10 @@ import {
   type ServerMessageSearchHit,
 } from '#/features/search/server-message-search'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import {
+  formatMessageTimestamp,
+  messageCreatedAt,
+} from '#/lib/message-time'
 import { cn } from '#/lib/utils'
 
 type ServerChannelSearchPopoverProps = {
@@ -157,6 +161,8 @@ export function ServerChannelSearchPopover({
                 hit.message.user ?? users[hit.message.author]
               const name =
                 author?.display_name ?? author?.username ?? 'Неизвестный'
+              const createdAt = messageCreatedAt(hit.message)
+              const timestamp = formatMessageTimestamp(createdAt)
 
               return (
                 <button
@@ -167,8 +173,16 @@ export function ServerChannelSearchPopover({
                   )}
                   onClick={() => openMessage(hit)}
                 >
-                  <p className="truncate text-xs font-medium text-muted-foreground">
-                    {hit.channelLabel} · {name}
+                  <p className="flex min-w-0 items-baseline gap-2 text-xs font-medium text-muted-foreground">
+                    <span className="truncate">
+                      {hit.channelLabel} · {name}
+                    </span>
+                    <time
+                      className="shrink-0"
+                      dateTime={createdAt.toISOString()}
+                    >
+                      {timestamp}
+                    </time>
                   </p>
                   <MessageSearchPreview
                     message={hit.message}
