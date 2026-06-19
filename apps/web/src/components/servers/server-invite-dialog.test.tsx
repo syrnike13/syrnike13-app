@@ -109,6 +109,46 @@ describe('ServerInviteDialog', () => {
     vi.clearAllMocks()
   })
 
+  it('loads existing invites when rendered open', async () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'user-1',
+      channels: ['channel-1', 'channel-2'],
+      default_permissions: ChannelPermission.ViewChannel,
+    } as never)
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'existing-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: 0,
+        expires_at: null,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+    ])
+
+    render(
+      <ServerInviteDialog
+        serverId="server-1"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText(/existing-code/)).toBeTruthy()
+    expect(mocks.fetchServerInvites).toHaveBeenCalledWith(
+      'session-token',
+      'server-1',
+    )
+  })
+
   it('creates an invite with expiry, usage limit, and temporary membership', async () => {
     render(
       <ServerInviteDialog

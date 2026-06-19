@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DataCreateInvite } from '@syrnike13/api-types'
 import { Link2Icon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
@@ -92,7 +92,7 @@ export function ServerInviteDialog({
       ? selectedChannelId
       : defaultChannelId
 
-  async function loadInvites() {
+  const loadInvites = useCallback(async () => {
     if (!token || !canManageServer) return
     setLoading(true)
     try {
@@ -109,7 +109,11 @@ export function ServerInviteDialog({
     } finally {
       setLoading(false)
     }
-  }
+  }, [canManageServer, serverId, token])
+
+  useEffect(() => {
+    if (open) void loadInvites()
+  }, [loadInvites, open])
 
   async function createInvite() {
     if (!token || !activeChannelId) {
@@ -145,7 +149,6 @@ export function ServerInviteDialog({
       open={open}
       onOpenChange={(next) => {
         onOpenChange(next)
-        if (next) void loadInvites()
       }}
     >
       <DialogContent>
