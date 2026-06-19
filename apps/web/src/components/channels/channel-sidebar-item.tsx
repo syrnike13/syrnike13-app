@@ -45,7 +45,11 @@ import {
   isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
-import { getChannelLastMessageId, pickDefaultChannelId } from '#/features/sync/selectors'
+import {
+  getChannelLastMessageId,
+  isChannelUnread,
+  pickDefaultChannelId,
+} from '#/features/sync/selectors'
 import {
   syncStore,
   useSyncStore,
@@ -82,7 +86,7 @@ export function ChannelSidebarItem({
   activeChannelId,
   users,
   currentUserId,
-  unreads: _unreads,
+  unreads,
   canManage = false,
   canInvite = false,
   dragHandleProps,
@@ -174,6 +178,7 @@ export function ChannelSidebarItem({
 
   const label = getChannelLabel(channel, users, currentUserId)
   const active = channel._id === activeChannelId
+  const unread = isChannelUnread(channel, unreads[channel._id])
   const notificationBadge = useSyncStore((s) =>
     selectChannelNotificationBadge(s, channel),
   )
@@ -356,10 +361,12 @@ export function ChannelSidebarItem({
 
   const menuItems = (
     <>
-      <ContextMenuItem onSelect={() => void markRead()}>
-        <CheckCheckIcon className="size-3.5" />
-        Прочитано
-      </ContextMenuItem>
+      {unread ? (
+        <ContextMenuItem onSelect={() => void markRead()}>
+          <CheckCheckIcon className="size-3.5" />
+          Прочитано
+        </ContextMenuItem>
+      ) : null}
       <ContextMenuItem onSelect={() => void copyLink()}>
         <LinkIcon className="size-3.5" />
         Копировать ссылку
