@@ -11,6 +11,7 @@ import {
 import { InlineReplyQuote } from '#/components/chat/message-reply-preview'
 import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
 import { MessageAttachments } from '#/components/chat/message-attachments'
+import { MessageContextMenu } from '#/components/chat/message-context-menu'
 import { MessageReactions } from '#/components/chat/message-reactions'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
@@ -348,7 +349,7 @@ export function MessageRow({
     )
   }
 
-  return (
+  const row = (
     <article
       data-message-id={message._id}
       className={cn(
@@ -531,5 +532,25 @@ export function MessageRow({
         ) : null}
       </div>
     </article>
+  )
+
+  return (
+    <MessageContextMenu
+      message={message}
+      channelId={channelId}
+      own={own}
+      canDelete={canDeleteMessage}
+      onReply={onReply ? () => onReply(message) : undefined}
+      onEdit={onEdit ? () => onEdit(message) : undefined}
+      onDelete={onDelete ? () => onDelete(message) : undefined}
+      onBlock={onBlock && !own ? () => onBlock(message) : undefined}
+      onPin={onPin ? () => onPin(message) : undefined}
+      onUnpin={onUnpin ? () => onUnpin(message) : undefined}
+      onClearReactions={
+        onClearReactions ? () => onClearReactions(message) : undefined
+      }
+    >
+      {row}
+    </MessageContextMenu>
   )
 }
