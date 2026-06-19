@@ -3,6 +3,7 @@ import type {
   CreateWebhookBody,
   DataDefaultChannelPermissions,
   DataEditChannel,
+  DataEditWebhook,
   DataSetRolePermissions,
   Webhook,
 } from '@syrnike13/api-types'
@@ -83,6 +84,18 @@ export async function createChannelWebhook(
 ) {
   return apiRequest<Webhook>(`/channels/${channelId}/webhooks`, {
     method: 'POST',
+    token,
+    body: data,
+  })
+}
+
+export async function editWebhook(
+  token: string,
+  webhookId: string,
+  data: DataEditWebhook,
+) {
+  return apiRequest<Webhook>(`/webhooks/${webhookId}`, {
+    method: 'PATCH',
     token,
     body: data,
   })

@@ -15,6 +15,7 @@ import { ChannelSettingsWebhooksPanel } from '#/components/channels/channel-sett
 const mocks = vi.hoisted(() => ({
   createChannelWebhook: vi.fn(),
   deleteWebhook: vi.fn(),
+  editWebhook: vi.fn(),
   fetchChannelWebhooks: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
@@ -42,6 +43,8 @@ vi.mock('#/features/api/channels-api', () => ({
     mocks.createChannelWebhook(...args),
   deleteWebhook: (...args: Parameters<typeof mocks.deleteWebhook>) =>
     mocks.deleteWebhook(...args),
+  editWebhook: (...args: Parameters<typeof mocks.editWebhook>) =>
+    mocks.editWebhook(...args),
   fetchChannelWebhooks: (...args: Parameters<typeof mocks.fetchChannelWebhooks>) =>
     mocks.fetchChannelWebhooks(...args),
 }))
@@ -89,6 +92,9 @@ describe('ChannelSettingsWebhooksPanel', () => {
       webhook({ id: 'webhook-2', name: 'Build bot' }),
     )
     mocks.deleteWebhook.mockResolvedValue(undefined)
+    mocks.editWebhook.mockResolvedValue(
+      webhook({ id: 'webhook-1', name: 'Deploy alerts' }),
+    )
     mocks.writeClipboardText.mockResolvedValue(undefined)
   })
 
@@ -176,5 +182,34 @@ describe('ChannelSettingsWebhooksPanel', () => {
         'https://syrnike13.ru/api/webhooks/webhook-1/private-token',
       )
     })
+  })
+
+  it('renames a webhook inline', async () => {
+    render(
+      <ChannelSettingsWebhooksPanel
+        channel={textChannel('channel-1', 'general')}
+      />,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Переименовать Deploy bot',
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Новое название вебхука'), {
+      target: { value: 'Deploy alerts' },
+    })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Сохранить Deploy bot' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.editWebhook).toHaveBeenCalledWith(
+        'session-token',
+        'webhook-1',
+        { name: 'Deploy alerts' },
+      )
+    })
+    expect(await screen.findByText('Deploy alerts')).not.toBeNull()
   })
 })

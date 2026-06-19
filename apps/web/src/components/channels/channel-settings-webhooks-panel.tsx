@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { Channel, Webhook } from '@syrnike13/api-types'
-import { CopyIcon, LinkIcon, PlusIcon, Trash2Icon } from '#/components/icons'
+import {
+  CheckIcon,
+  CopyIcon,
+  LinkIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  XIcon,
+} from '#/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -16,6 +24,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import {
   createChannelWebhook,
   deleteWebhook,
+  editWebhook,
   fetchChannelWebhooks,
 } from '#/features/api/channels-api'
 import { writeClipboardText } from '#/lib/clipboard'
@@ -39,6 +48,9 @@ export function ChannelSettingsWebhooksPanel({
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [savingId, setSavingId] = useState<string | null>(null)
   const token = auth.session?.token
 
   useEffect(() => {
@@ -121,6 +133,60 @@ export function ChannelSettingsWebhooksPanel({
     }
   }
 
+  function beginRename(webhook: Webhook) {
+    setEditingId(webhook.id)
+    setEditingName(webhook.name)
+  }
+
+  function cancelRename() {
+    setEditingId(null)
+    setEditingName('')
+  }
+
+  async function saveWebhookName(
+    webhook: Webhook,
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    const trimmedName = editingName.trim()
+    if (!token || !trimmedName) {
+      toast.error('Укажите название вебхука')
+      return
+    }
+
+    if (trimmedName === webhook.name) {
+      cancelRename()
+      return
+    }
+
+    setSavingId(webhook.id)
+    try {
+      const updatedWebhook = await editWebhook(token, webhook.id, {
+        name: trimmedName,
+      })
+      setWebhooks((current) =>
+        current.map((currentWebhook) =>
+          currentWebhook.id === webhook.id
+            ? {
+                ...currentWebhook,
+                ...updatedWebhook,
+                token: updatedWebhook.token ?? currentWebhook.token,
+              }
+            : currentWebhook,
+        ),
+      )
+      cancelRename()
+      toast.success('Вебхук обновлён')
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось обновить вебхук',
+      )
+    } finally {
+      setSavingId(null)
+    }
+  }
+
   async function copyWebhookUrl(webhook: Webhook) {
     const url = buildWebhookUrl(webhook)
     if (!url) return
@@ -193,15 +259,82 @@ export function ChannelSettingsWebhooksPanel({
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                       <LinkIcon className="size-4" />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {webhook.name}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {webhook.id}
-                      </p>
-                    </div>
+                    {editingId === webhook.id ? (
+                      <form
+                        className="flex min-w-0 flex-1 items-center gap-2"
+                        onSubmit={(event) =>
+                          void saveWebhookName(webhook, event)
+                        }
+                      >
+                        <div className="min-w-0 flex-1">
+                          <Label
+                            htmlFor={`channel-webhook-edit-${webhook.id}`}
+                            className="sr-only"
+                          >
+                            Новое название вебхука
+                          </Label>
+                          <Input
+                            id={`channel-webhook-edit-${webhook.id}`}
+                            aria-label="Новое название вебхука"
+                            value={editingName}
+                            maxLength={32}
+                            onChange={(event) =>
+                              setEditingName(event.target.value)
+                            }
+                          />
+                        </div>
+                        <Button
+                          type="submit"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Сохранить ${webhook.name}`}
+                          disabled={savingId === webhook.id || !editingName.trim()}
+                        >
+                          <CheckIcon className="size-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Отменить ${webhook.name}`}
+                          disabled={savingId === webhook.id}
+                          onClick={cancelRename}
+                        >
+                          <XIcon className="size-4" />
+                        </Button>
+                      </form>
+                    ) : (
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {webhook.name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {webhook.id}
+                        </p>
+                      </div>
+                    )}
                     <div className="flex shrink-0 items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Переименовать ${webhook.name}`}
+                            disabled={
+                              editingId === webhook.id ||
+                              deletingId === webhook.id ||
+                              savingId === webhook.id
+                            }
+                            onClick={() => beginRename(webhook)}
+                          >
+                            <PencilIcon className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" sideOffset={6}>
+                          Переименовать
+                        </TooltipContent>
+                      </Tooltip>
                       {url ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -227,7 +360,10 @@ export function ChannelSettingsWebhooksPanel({
                             variant="ghost"
                             size="icon-sm"
                             aria-label={`Удалить ${webhook.name}`}
-                            disabled={deletingId === webhook.id}
+                            disabled={
+                              deletingId === webhook.id ||
+                              savingId === webhook.id
+                            }
                             onClick={() => void deleteSelectedWebhook(webhook)}
                           >
                             <Trash2Icon className="size-4" />

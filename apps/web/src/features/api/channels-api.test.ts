@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createChannelWebhook,
   deleteWebhook,
+  editWebhook,
   fetchChannelWebhooks,
 } from '#/features/api/channels-api'
 
@@ -52,6 +53,20 @@ describe('channel webhook api', () => {
     expect(mocks.apiRequest).toHaveBeenCalledWith('/webhooks/webhook-1', {
       method: 'DELETE',
       token: 'session-token',
+    })
+  })
+
+  it('edits a webhook', async () => {
+    mocks.apiRequest.mockResolvedValue({ id: 'webhook-1', name: 'Deploy bot' })
+
+    await editWebhook('session-token', 'webhook-1', {
+      name: 'Deploy alerts',
+    })
+
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/webhooks/webhook-1', {
+      method: 'PATCH',
+      token: 'session-token',
+      body: { name: 'Deploy alerts' },
     })
   })
 })
