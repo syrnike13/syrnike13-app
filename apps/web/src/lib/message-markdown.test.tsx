@@ -1,11 +1,18 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { renderMessageContent } from '#/lib/message-markdown'
 
 const userId = '01KTF53K42MTGBMD6XSHVC55A4'
 const roleId = '01KTF53K42MTGBMD6XSHVC55A5'
 const channelId = '01KTF53K42MTGBMD6XSHVC55A6'
+
+afterEach(() => {
+  cleanup()
+})
 
 describe('renderMessageContent', () => {
   it('renders user mentions instead of raw ids', () => {
@@ -91,5 +98,27 @@ describe('renderMessageContent', () => {
     expect(html).toContain('p:only-child]:inline')
     expect(html).toContain('Первый пункт')
     expect(html).toContain('Второй пункт')
+  })
+
+  it('reveals spoilers by click and keyboard activation', () => {
+    render(<>{renderMessageContent('||click secret|| ||keyboard secret||')}</>)
+
+    const [clickSpoiler, keyboardSpoiler] = screen.getAllByRole('button', {
+      name: 'Показать спойлер',
+    })
+
+    expect(clickSpoiler?.getAttribute('aria-pressed')).toBe('false')
+    expect(clickSpoiler?.className).toContain('text-transparent')
+
+    fireEvent.click(clickSpoiler!)
+
+    expect(clickSpoiler?.getAttribute('aria-pressed')).toBe('true')
+    expect(clickSpoiler?.getAttribute('aria-label')).toBe('Спойлер раскрыт')
+    expect(clickSpoiler?.className).not.toContain('text-transparent')
+
+    fireEvent.keyDown(keyboardSpoiler!, { key: 'Enter' })
+
+    expect(keyboardSpoiler?.getAttribute('aria-pressed')).toBe('true')
+    expect(keyboardSpoiler?.className).not.toContain('text-transparent')
   })
 })
