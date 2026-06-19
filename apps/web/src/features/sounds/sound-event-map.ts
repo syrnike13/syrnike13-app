@@ -29,7 +29,11 @@ function messageMentionsCurrentUser(
   event: GatewayServerEvent,
   currentUserId: string | null | undefined,
 ) {
-  if (!currentUserId || typeof event.content !== 'string') return false
+  if (!currentUserId) return false
+  if (Array.isArray(event.mentions) && event.mentions.includes(currentUserId)) {
+    return true
+  }
+  if (typeof event.content !== 'string') return false
   return (
     event.content.includes(`<@${currentUserId}>`) ||
     event.content.includes(`<@!${currentUserId}>`) ||
