@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsMembersPanel } from '#/components/servers/server-settings-members-panel'
@@ -34,6 +35,18 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.banServerMember(...args),
   editServerMember: (...args: Parameters<typeof mocks.editServerMember>) =>
     mocks.editServerMember(...args),
+}))
+
+vi.mock('#/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
+    open ? <div role="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => (
+    <p>{children}</p>
+  ),
+  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }))
 
 function setupMembers(
@@ -119,7 +132,7 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
   })
 
   it('lets a moderation-only manager kick a member with an audit reason', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     render(<ServerSettingsMembersPanel serverId="server-1" />)
 
@@ -128,6 +141,10 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
       target: { value: 'raid cleanup' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Исключить' }))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Исключить' }).at(-1)!,
+    )
 
     await waitFor(() => {
       expect(mocks.kickServerMember).toHaveBeenCalledWith(
@@ -141,7 +158,7 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
   })
 
   it('lets a moderation-only manager ban a member with an audit reason', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     render(<ServerSettingsMembersPanel serverId="server-1" />)
 
@@ -150,6 +167,10 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
       target: { value: 'spam' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Забанить' }))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Забанить' }).at(-1)!,
+    )
 
     await waitFor(() => {
       expect(mocks.banServerMember).toHaveBeenCalledWith(
@@ -162,7 +183,7 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
   })
 
   it('passes the selected message deletion window when banning a member', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     render(<ServerSettingsMembersPanel serverId="server-1" />)
 
@@ -174,6 +195,10 @@ describe('ServerSettingsMembersPanel moderation controls', () => {
       target: { value: '3600' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Забанить' }))
+    expect(confirmSpy).not.toHaveBeenCalled()
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Забанить' }).at(-1)!,
+    )
 
     await waitFor(() => {
       expect(mocks.banServerMember).toHaveBeenCalledWith(

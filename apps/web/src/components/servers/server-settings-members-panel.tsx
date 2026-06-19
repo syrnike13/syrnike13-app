@@ -5,6 +5,14 @@ import { toast } from 'sonner'
 import { MemberRolesEditor } from '#/components/servers/member-roles-editor'
 import { SearchIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { UserAvatar } from '#/components/user/user-avatar'
@@ -150,6 +158,9 @@ function ServerMemberModerationPanel({
   const [reason, setReason] = useState('')
   const [deleteMessageSeconds, setDeleteMessageSeconds] = useState('0')
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [confirmationAction, setConfirmationAction] = useState<
+    'kick' | 'ban' | null
+  >(null)
 
   const canKick = canKickServerMember(server, actorMember, userId, targetMember)
   const canBan = canBanServerMember(server, actorMember, userId, targetMember)
@@ -177,12 +188,12 @@ function ServerMemberModerationPanel({
 
   async function kickMember() {
     if (!token || !canKick) return
-    if (!window.confirm(`Исключить ${targetLabel} с сервера?`)) return
 
     setPendingAction('kick')
     try {
       await kickServerMember(token, server._id, targetMember._id.user, reasonBody)
       syncStore.removeServerMember(server._id, targetMember._id.user)
+      setConfirmationAction(null)
       toast.success('Участник исключён')
     } catch (error) {
       toast.error(
@@ -195,12 +206,12 @@ function ServerMemberModerationPanel({
 
   async function banMember() {
     if (!token || !canBan) return
-    if (!window.confirm(`Забанить ${targetLabel}?`)) return
 
     setPendingAction('ban')
     try {
       await banServerMember(token, server._id, targetMember._id.user, banBody)
       syncStore.removeServerMember(server._id, targetMember._id.user)
+      setConfirmationAction(null)
       toast.success('Участник забанен')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Не удалось забанить')
@@ -334,7 +345,7 @@ function ServerMemberModerationPanel({
             variant="destructive"
             size="sm"
             disabled={pendingAction !== null}
-            onClick={() => void kickMember()}
+            onClick={() => setConfirmationAction('kick')}
           >
             Исключить
           </Button>
@@ -345,12 +356,62 @@ function ServerMemberModerationPanel({
             variant="destructive"
             size="sm"
             disabled={pendingAction !== null}
-            onClick={() => void banMember()}
+            onClick={() => setConfirmationAction('ban')}
           >
             Забанить
           </Button>
         ) : null}
       </div>
+      <Dialog
+        open={confirmationAction !== null}
+        onOpenChange={(open) => {
+          if (!open && pendingAction === null) {
+            setConfirmationAction(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmationAction === 'kick'
+                ? `Исключить ${targetLabel}?`
+                : `Забанить ${targetLabel}?`}
+            </DialogTitle>
+            <DialogDescription>
+              Действие будет записано в журнал аудита сервера.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pendingAction !== null}
+              onClick={() => setConfirmationAction(null)}
+            >
+              Отмена
+            </Button>
+            {confirmationAction === 'kick' ? (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={pendingAction !== null}
+                onClick={() => void kickMember()}
+              >
+                Исключить
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={pendingAction !== null}
+                onClick={() => void banMember()}
+              >
+                Забанить
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
