@@ -1,12 +1,20 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
+import type { Channel } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
 import { syncStore } from '#/features/sync/sync-store'
 
 const mocks = vi.hoisted(() => ({
+  ackServer: vi.fn(),
   deleteOrLeaveServer: vi.fn(),
   navigate: vi.fn(),
 }))
@@ -42,6 +50,8 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/features/api/servers-api', () => ({
+  ackServer: (...args: Parameters<typeof mocks.ackServer>) =>
+    mocks.ackServer(...args),
   deleteOrLeaveServer: (
     ...args: Parameters<typeof mocks.deleteOrLeaveServer>
   ) => mocks.deleteOrLeaveServer(...args),
@@ -67,10 +77,28 @@ function upsertServer(owner = 'user-1') {
   ])
 }
 
+function textChannel(
+  id: string,
+  overrides: Partial<Extract<Channel, { channel_type: 'TextChannel' }>> = {},
+) {
+  return {
+    _id: id,
+    channel_type: 'TextChannel',
+    server: 'server-1',
+    name: id,
+    description: null,
+    nsfw: false,
+    slowmode: 0,
+    default_permissions: null,
+    ...overrides,
+  } satisfies Extract<Channel, { channel_type: 'TextChannel' }>
+}
+
 describe('ServerHeaderMenu', () => {
   beforeEach(() => {
     syncStore.reset()
     upsertServer()
+    mocks.ackServer.mockResolvedValue(undefined)
     mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
     mocks.navigate.mockResolvedValue(undefined)
   })
@@ -108,5 +136,36 @@ describe('ServerHeaderMenu', () => {
     expect(
       screen.queryByRole('button', { name: 'Удалить сервер' }),
     ).toBeNull()
+  })
+
+  it('marks all server channels as read from the server menu', async () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'user-1',
+      channels: ['channel-1', 'channel-2'],
+      default_permissions: 0,
+    } as never)
+    syncStore.upsertChannel(
+      textChannel('channel-1', { last_message_id: 'message-2' }) as never,
+    )
+    syncStore.upsertChannel(
+      textChannel('channel-2', { last_message_id: 'message-5' }) as never,
+    )
+    syncStore.setChannelLastRead('channel-1', 'message-1')
+    syncStore.setChannelLastRead('channel-2', 'message-4')
+
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Пометить как прочитанное' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.ackServer).toHaveBeenCalledWith('session-token', 'server-1')
+    })
+    expect(syncStore.getState().unreads['channel-1']).toBe('message-2')
+    expect(syncStore.getState().unreads['channel-2']).toBe('message-5')
   })
 })
