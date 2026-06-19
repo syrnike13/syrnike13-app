@@ -487,7 +487,7 @@ export function HomeView({ tab }: HomeViewProps) {
         </ScrollArea>
       </div>
 
-      <ActiveNowPanel />
+      <ActiveNowPanel users={friends} />
     </div>
   )
 }
