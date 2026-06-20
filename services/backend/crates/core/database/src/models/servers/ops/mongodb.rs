@@ -1,4 +1,4 @@
-use bson::{to_document, Bson, Document};
+use bson::{Bson, Document, to_document};
 use futures::StreamExt;
 use syrnike_result::Result;
 
@@ -179,7 +179,7 @@ impl IntoDocumentPath for FieldsRole {
 
 #[cfg(test)]
 mod tests {
-    use crate::{fixture, Channel, Database, DatabaseInfo};
+    use crate::{Channel, Database, DatabaseInfo, fixture};
 
     #[async_std::test]
     async fn delete_role_clears_permissions_from_all_server_channels() {
@@ -237,6 +237,12 @@ mod tests {
             .unwrap();
 
         db.delete_role(&server.id, &role_id).await.unwrap();
+
+        let members_with_deleted_role = db
+            .fetch_all_members_with_roles(&server.id, &[role_id.clone()])
+            .await
+            .unwrap();
+        assert!(members_with_deleted_role.is_empty());
 
         for channel_id in [channel.id().to_string(), second_channel_id] {
             let channel = db.fetch_channel(&channel_id).await.unwrap();
