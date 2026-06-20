@@ -20,6 +20,7 @@
 - Do not add backwards compatibility wrappers for old invite or server-admin payloads.
 - Do not add UI stubs for AutoMod, onboarding/community, integrations marketplace, forum channels, stage channels, or thread channels.
 - Do not remove adjacent working UI or API surfaces merely because they sit near out-of-scope Discord polish. If a surface is already connected to foundation behavior, keep it and make it correct.
+- Prefer finishing the existing adjacent implementation in place over extracting it, as long as it is governed by roles, permissions, audit logs, moderation, channel visibility, or role hierarchy.
 - For code execution, use a clean worktree before implementation if the current dirty worktree remains dirty.
 
 ## File Structure
@@ -2550,7 +2551,7 @@ The backend route tests publish realtime events through Redis and some broader `
 
 Expected after this task: adjacent channel/admin surfaces are either verified or fixed in-place, and no unrelated desktop/account/chat-polish scope is added.
 
-Important scope guard: this task is not permission to start broad Discord polish. It is permission to keep and finish already-present adjacent foundation work when removing it would break or weaken the role/admin foundation.
+Important scope guard: this task is not permission to start broad Discord polish. It is permission to keep and finish already-present adjacent foundation work when removing it would break or weaken the role/admin foundation. If an adjacent piece already works and shares the foundation permission/admin path, do not rip it out; verify it and make the smallest correctness fix needed.
 
 ---
 
