@@ -248,7 +248,8 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
         }
     }
 
-    /// Get the ordered role overrides (from lowest to highest) for this member in this channel
+    /// Get all role overrides for this member in this channel.
+    /// Channel role overrides are resolved as a set, not by role rank.
     async fn get_our_channel_role_overrides(&mut self) -> Vec<Override> {
         if let Some(channel) = &self.channel {
             match channel {

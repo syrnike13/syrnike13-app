@@ -109,6 +109,53 @@ describe('calculateServerPermissions', () => {
 })
 
 describe('calculateChannelPermissions', () => {
+  it('lets a channel role allow beat another channel role deny regardless of rank', () => {
+    const server = makeServer({
+      roles: {
+        high: makeRole({
+          _id: 'high',
+          name: 'High',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        }),
+        low: makeRole({
+          _id: 'low',
+          name: 'Low',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const channel = makeTextChannel({
+      default_permissions: {
+        a: ChannelPermission.ViewChannel,
+        d: 0,
+      },
+      role_permissions: {
+        high: {
+          a: 0,
+          d: ChannelPermission.SendMessage,
+        },
+        low: {
+          a: ChannelPermission.SendMessage,
+          d: 0,
+        },
+      },
+    })
+    const member = makeMember({ roles: ['high', 'low'] })
+
+    const permissions = calculateChannelPermissions(
+      server,
+      channel,
+      member,
+      'user-1',
+    )
+
+    expect(
+      hasChannelPermission(permissions, ChannelPermission.SendMessage),
+    ).toBe(true)
+  })
+
   it('does not let channel overrides restore disabled publish or receive permissions', () => {
     const server = makeServer({
       roles: {

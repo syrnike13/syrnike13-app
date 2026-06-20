@@ -315,6 +315,110 @@ async fn validate_server_permissions() {
 }
 
 #[async_std::test]
+async fn channel_role_override_allow_wins_over_other_role_deny() {
+    /// Scenario in which two server roles conflict in one channel:
+    /// Discord applies channel role denies first, then channel role allows,
+    /// so the final permission must not depend on role rank/order.
+    struct Scenario {}
+    let mut query = Scenario {};
+
+    let perms = calculate_channel_permissions(&mut query).await;
+    assert!(perms.has_channel_permission(ChannelPermission::SendMessage));
+
+    #[async_trait]
+    impl PermissionQuery for Scenario {
+        async fn are_we_privileged(&mut self) -> bool {
+            false
+        }
+
+        async fn are_we_a_bot(&mut self) -> bool {
+            unreachable!()
+        }
+
+        async fn are_the_users_same(&mut self) -> bool {
+            unreachable!()
+        }
+
+        async fn user_relationship(&mut self) -> RelationshipStatus {
+            unreachable!()
+        }
+
+        async fn user_is_bot(&mut self) -> bool {
+            unreachable!()
+        }
+
+        async fn have_mutual_connection(&mut self) -> bool {
+            unreachable!()
+        }
+
+        async fn are_we_server_owner(&mut self) -> bool {
+            false
+        }
+
+        async fn are_we_a_member(&mut self) -> bool {
+            true
+        }
+
+        async fn get_default_server_permissions(&mut self) -> u64 {
+            ChannelPermission::ViewChannel as u64
+        }
+
+        async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
+            vec![]
+        }
+
+        async fn are_we_timed_out(&mut self) -> bool {
+            false
+        }
+
+        async fn do_we_have_publish_overwrites(&mut self) -> bool {
+            true
+        }
+
+        async fn do_we_have_receive_overwrites(&mut self) -> bool {
+            true
+        }
+
+        async fn get_channel_type(&mut self) -> ChannelType {
+            ChannelType::ServerChannel
+        }
+
+        async fn get_default_channel_permissions(&mut self) -> Override {
+            Override { allow: 0, deny: 0 }
+        }
+
+        async fn get_our_channel_role_overrides(&mut self) -> Vec<Override> {
+            vec![
+                Override {
+                    allow: ChannelPermission::SendMessage as u64,
+                    deny: 0,
+                },
+                Override {
+                    allow: 0,
+                    deny: ChannelPermission::SendMessage as u64,
+                },
+            ]
+        }
+
+        async fn do_we_own_the_channel(&mut self) -> bool {
+            unreachable!()
+        }
+
+        async fn are_we_part_of_the_channel(&mut self) -> bool {
+            unreachable!()
+        }
+
+        async fn set_recipient_as_user(&mut self) {
+            unreachable!()
+        }
+
+        async fn set_server_from_channel(&mut self) {
+            // no-op
+        }
+    }
+}
+
+#[async_std::test]
 async fn validate_timed_out_member() {
     /// Scenario in which we are in a server that we have been timed out from
     struct Scenario {}

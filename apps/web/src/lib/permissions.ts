@@ -51,6 +51,21 @@ export function applyOverride(
   return permissionAnd(permissionOr(permissions, allow), permissionNot(deny))
 }
 
+function applyChannelRoleOverrides(
+  permissions: number,
+  overrides: OverrideField[],
+): number {
+  let allow = 0
+  let deny = 0
+
+  for (const override of overrides) {
+    allow = permissionOr(allow, override.a)
+    deny = permissionOr(deny, override.d)
+  }
+
+  return permissionOr(permissionAndNot(permissions, deny), allow)
+}
+
 export function hasChannelPermission(
   permissions: number,
   permission: number,
@@ -101,15 +116,10 @@ export function calculateChannelPermissions(
   if (channel.role_permissions && server.roles) {
     const roleOverrides = (member.roles ?? [])
       .filter((roleId) => channel.role_permissions?.[roleId])
-      .map((roleId) => ({
-        rank: server.roles?.[roleId]?.rank ?? 0,
-        override: channel.role_permissions![roleId]!,
-      }))
-      .sort((a, b) => b.rank - a.rank)
+      .filter((roleId) => server.roles?.[roleId])
+      .map((roleId) => channel.role_permissions![roleId]!)
 
-    for (const { override } of roleOverrides) {
-      permissions = applyOverride(permissions, override)
-    }
+    permissions = applyChannelRoleOverrides(permissions, roleOverrides)
   }
 
   if (member.timeout && new Date(member.timeout) > new Date()) {
