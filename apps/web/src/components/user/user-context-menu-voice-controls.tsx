@@ -54,6 +54,30 @@ type UserContextMenuVoiceControlsProps = {
 
 type ServerVoiceAction = 'mute' | 'deafen' | 'disconnect' | 'move'
 
+function isServerVoiceMoveTarget(channel: Channel): boolean {
+  const channelType = (channel as { channel_type?: string }).channel_type
+  return channelType === 'TextChannel' || channelType === 'VoiceChannel'
+}
+
+function canUseVoiceMoveTarget(
+  server: Server,
+  channel: Channel,
+  actorMember: Member | undefined,
+  actorUserId: string,
+) {
+  if (!isServerVoiceMoveTarget(channel)) return false
+
+  return hasChannelPermission(
+    calculateChannelPermissions(
+      server,
+      channel as Extract<Channel, { channel_type: 'TextChannel' }>,
+      actorMember,
+      actorUserId,
+    ),
+    ChannelPermission.Connect,
+  )
+}
+
 export function UserContextMenuVoiceControls({
   userId,
   token,
@@ -83,17 +107,7 @@ export function UserContextMenuVoiceControls({
     server && actorUserId
       ? moveVoiceChannels.filter((channel) => {
           if (channel._id === voiceChannelId) return false
-          if (channel.channel_type !== 'TextChannel') return true
-
-          return hasChannelPermission(
-            calculateChannelPermissions(
-              server,
-              channel,
-              actorMember,
-              actorUserId,
-            ),
-            ChannelPermission.Connect,
-          )
+          return canUseVoiceMoveTarget(server, channel, actorMember, actorUserId)
         })
       : []
   const serverMuted = targetMember?.can_publish === false

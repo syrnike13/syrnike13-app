@@ -157,6 +157,20 @@ function makeVoiceChannel(
   } as Channel
 }
 
+function makeLegacyVoiceChannel(id: string, name: string): Channel {
+  return {
+    _id: id,
+    channel_type: 'VoiceChannel',
+    server: 'server-1',
+    name,
+    default_permissions: {
+      a: ChannelPermission.ViewChannel,
+      d: ChannelPermission.Connect,
+    },
+    role_permissions: {},
+  } as unknown as Channel
+}
+
 const ACTOR_USER_ID = '01JVOICEACTOR00000001'
 const TARGET_USER_ID = '01JVOICETARGET0000001'
 const server = makeServer()
@@ -314,6 +328,17 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     expect(screen.getByRole('button', { name: 'Raid Room' })).toBeTruthy()
     expect(
       screen.queryByRole('button', { name: 'Locked Room' }),
+    ).toBeNull()
+  })
+
+  it('hides legacy voice move targets the actor cannot connect to', () => {
+    renderControls(makeMember(TARGET_USER_ID, ['member']), [
+      makeVoiceChannel('voice-1', 'Lobby'),
+      makeLegacyVoiceChannel('voice-legacy-locked', 'Legacy Locked Room'),
+    ])
+
+    expect(
+      screen.queryByRole('button', { name: 'Legacy Locked Room' }),
     ).toBeNull()
   })
 })
