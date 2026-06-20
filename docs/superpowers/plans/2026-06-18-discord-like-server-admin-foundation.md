@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the first Discord-like server administration foundation: mandatory audit logs, correct settings permission entry points, realtime permission consistency fixes, invite lifecycle, and moderation audit coverage.
+**Goal:** Build the first Discord-like server administration foundation: mandatory audit logs, correct settings permission entry points, realtime permission consistency fixes, invite lifecycle, moderation audit coverage, and the adjacent channel/admin surfaces already implemented in this branch when they are directly governed by roles, permissions, audit logs, or moderation state.
+
+**Expanded in-scope after branch audit:** channel lifecycle audit, channel settings overview/permissions/webhooks, category administration, restricted-channel visibility affordances, context-menu moderation entry points, voice moderation controls, and permission-aware member/mention surfaces. These are part of the foundation branch because they exercise the same role and permission model. Still excluded: unrelated chat polish, account safety/admin badge dialogs, desktop activity status, and voice input-mode settings.
 
 **Architecture:** Add a backend audit-log domain that follows the existing database trait pattern, then wire admin mutations through explicit audit writes before expanding UI. Fix permission and realtime correctness before adding visible server settings pages, so the UI reflects actual backend behavior instead of masking permission drift.
 
@@ -51,6 +53,9 @@ Backend routes and audited mutations:
 - Modify `services/backend/crates/delta/src/routes/servers/member_remove.rs`.
 - Modify `services/backend/crates/delta/src/routes/servers/ban_create.rs`.
 - Modify `services/backend/crates/delta/src/routes/servers/ban_remove.rs`.
+- Modify `services/backend/crates/delta/src/routes/servers/channel_create.rs`.
+- Modify `services/backend/crates/delta/src/routes/channels/channel_edit.rs`.
+- Modify `services/backend/crates/delta/src/routes/channels/channel_delete.rs`.
 
 Realtime and security fixes:
 
@@ -85,6 +90,23 @@ Frontend API and settings UI:
 - Add `apps/web/src/components/servers/server-settings-audit-panel.tsx`.
 - Add `apps/web/src/components/servers/server-settings-invites-panel.tsx`.
 - Add `apps/web/src/components/servers/server-settings-bans-panel.tsx`.
+
+Adjacent channel/admin UI kept in foundation scope:
+
+- Modify `apps/web/src/features/api/channels-api.ts`.
+- Modify `apps/web/src/components/channels/channel-settings-page.tsx`.
+- Modify `apps/web/src/components/channels/channel-settings-types.ts`.
+- Modify `apps/web/src/components/channels/channel-settings-panels.tsx`.
+- Modify `apps/web/src/components/channels/channel-settings-overview-panel.tsx`.
+- Modify `apps/web/src/components/channels/channel-settings-permissions-panel.tsx`.
+- Add `apps/web/src/components/channels/channel-settings-webhooks-panel.tsx`.
+- Modify `apps/web/src/components/channels/category-settings-dialog.tsx`.
+- Modify `apps/web/src/components/channels/server-channel-list.tsx`.
+- Modify `apps/web/src/components/channels/channel-sidebar-item.tsx`.
+- Modify `apps/web/src/components/chat/channel-member-sidebar.tsx`.
+- Modify `apps/web/src/components/chat/message-composer.tsx`.
+- Modify `apps/web/src/components/user/user-context-menu-content.tsx`.
+- Modify `apps/web/src/components/user/user-context-menu-voice-controls.tsx`.
 
 ---
 
@@ -2450,11 +2472,86 @@ git commit -m "feat: add server admin foundation panels"
 
 ---
 
-### Task 10: Final Verification For Foundation Slice
+### Task 10: Keep Adjacent Channel/Admin Surfaces In Foundation Scope
+
+**Files:**
+- Modify: `services/backend/crates/core/models/src/v0/server_audit_logs.rs`
+- Modify: `services/backend/crates/core/database/src/models/server_audit_logs/model.rs`
+- Modify: `services/backend/crates/delta/src/routes/servers/audit_log.rs`
+- Modify: `services/backend/crates/delta/src/routes/servers/channel_create.rs`
+- Modify: `services/backend/crates/delta/src/routes/channels/channel_edit.rs`
+- Modify: `services/backend/crates/delta/src/routes/channels/channel_delete.rs`
+- Modify: `packages/api-types/OpenAPI.json`
+- Modify: `packages/api-types/src/schema.ts`
+- Modify: `packages/api-types/src/types.ts`
+- Modify: `apps/web/src/features/api/channels-api.ts`
+- Modify/Add: `apps/web/src/components/channels/*settings*`
+- Modify: `apps/web/src/components/channels/category-settings-dialog.tsx`
+- Modify: `apps/web/src/components/channels/server-channel-list.tsx`
+- Modify: `apps/web/src/components/channels/channel-sidebar-item.tsx`
+- Modify: `apps/web/src/components/chat/channel-member-sidebar.tsx`
+- Modify: `apps/web/src/components/chat/message-composer.tsx`
+- Modify: `apps/web/src/components/user/user-context-menu-content.tsx`
+- Modify: `apps/web/src/components/user/user-context-menu-voice-controls.tsx`
+- Test: colocated channel, chat, user-context-menu, and API client tests.
+
+- [ ] **Step 1: Keep channel lifecycle audit as part of the audit domain**
+
+Channel create, edit, and delete mutations are server administration actions when they affect server channels. Keep:
+
+```rust
+ServerAuditLogAction::ChannelCreate
+ServerAuditLogAction::ChannelUpdate
+ServerAuditLogAction::ChannelDelete
+```
+
+Wire them through the same pending/succeeded/failed audit helper used by role, permission, invite, and moderation mutations. Audit entries should target `ServerAuditLogTarget::Channel { id }` and include meaningful change snapshots where the route already has before/after state.
+
+- [ ] **Step 2: Keep channel settings pages when they are permission-governed**
+
+Keep the channel settings overview, permissions, and webhooks tabs because they are gated by `ManageChannel`, `ManageChannelPermissions`, and webhook permissions. Do not add unrelated channel types or unfinished marketplace/integration surfaces.
+
+Expected behavior:
+
+- users without the needed channel permission are redirected out of channel settings;
+- overview saves only supported text/voice channel fields;
+- permissions tab uses the same tri-state permission model as server roles;
+- webhooks tab calls the existing webhook API and does not invent a parallel backend model.
+
+- [ ] **Step 3: Keep category and channel sidebar admin affordances**
+
+Keep category edit/delete, category collapse, restricted-channel indicators, and safer channel deletion confirmation as part of the admin foundation. These are allowed only insofar as they reflect existing server/channel permissions and do not introduce new non-foundation product areas.
+
+- [ ] **Step 4: Keep context-menu moderation entry points**
+
+Keep user context-menu actions for member role editing, kick/ban reason capture, and server voice moderation controls. These must call the same audited backend mutations from Tasks 7 and 8, and their visibility must come from role hierarchy/permission helpers, not duplicated checks.
+
+- [ ] **Step 5: Keep permission-aware member and mention surfaces**
+
+Keep member sidebar filtering and mention suggestions when they respect channel visibility and server membership. Do not add unrelated chat polish here.
+
+- [ ] **Step 6: Run adjacent-surface tests**
+
+Run targeted tests before final verification:
+
+```sh
+pnpm --filter @syrnike13/web test src/components/channels src/components/chat src/components/user src/features/api/channels-api.test.ts
+cargo test --manifest-path services/backend/Cargo.toml -p syrnike-delta server_channel_create_writes_audit_entry
+cargo test --manifest-path services/backend/Cargo.toml -p syrnike-delta role_channel_permission_update_writes_audit_entry
+cargo test --manifest-path services/backend/Cargo.toml -p syrnike-delta default_channel_permission_update_writes_audit_entry
+```
+
+The backend route tests publish realtime events through Redis and some broader `channel_` tests require RabbitMQ through `TestHarness`. If Redis/RabbitMQ or Docker Compose are unavailable locally, capture the exact infrastructure error, run the narrower compile/database-safe checks that still apply, and do not treat that as a code regression.
+
+Expected after this task: adjacent channel/admin surfaces are either verified or fixed in-place, and no unrelated desktop/account/chat-polish scope is added.
+
+---
+
+### Task 11: Final Verification For Foundation Slice
 
 **Files:**
 - No new files.
-- Verify all files changed by Tasks 1-9.
+- Verify all files changed by Tasks 1-10.
 
 - [ ] **Step 1: Check staged and unstaged scope**
 
@@ -2521,7 +2618,7 @@ If no fixes were required, do not create an empty commit.
 
 ## Self-Review Checklist
 
-- Spec coverage: Tasks 1-3 cover audit model, read API, and mandatory audited mutations. Task 4 covers settings permission entry points. Task 5 covers realtime and security invariants. Task 6 covers invite lifecycle. Task 7 covers moderation audit. Task 9 covers foundation settings UI.
+- Spec coverage: Tasks 1-3 cover audit model, read API, and mandatory audited mutations. Task 4 covers settings permission entry points. Task 5 covers realtime and security invariants. Task 6 covers invite lifecycle. Task 7 covers moderation audit. Task 9 covers foundation settings UI. Task 10 covers adjacent channel/admin surfaces already implemented in the branch.
 - Excluded features: no AutoMod, onboarding/community, integrations marketplace, forum channels, stage channels, or thread channels appear in implementation tasks.
 - Type consistency: audit types use `ServerAuditLogEntry`, `ServerAuditLogAction`, `ServerAuditLogTarget`, `ServerAuditLogChange`, `ServerAuditLogStatus`, and `ServerAuditLogQuery` consistently.
-- Verification: Task 10 requires `pnpm backend:check`, `pnpm web:test`, and `pnpm web:build`.
+- Verification: Task 11 requires `pnpm backend:check`, `pnpm web:test`, and `pnpm web:build`.
