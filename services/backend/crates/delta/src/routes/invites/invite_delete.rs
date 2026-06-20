@@ -1,13 +1,12 @@
-use rocket::{serde::json::Json, State};
+use rocket::{State, serde::json::Json};
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
-    audit_timestamp,
+    Database, Invite, ServerAuditLogAction, ServerAuditLogTarget, User, audit_timestamp,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    Database, Invite, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
-use syrnike_result::{create_error, Result};
+use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
+use syrnike_result::{Result, create_error};
 use validator::Validate;
 
 use crate::routes::servers::audit_mutation;
@@ -66,7 +65,7 @@ pub async fn delete(
                 db,
                 server,
                 user.id.clone(),
-                ServerAuditLogAction::InviteDelete,
+                ServerAuditLogAction::InviteRevoke,
                 ServerAuditLogTarget::Invite { code: code.clone() },
                 data.reason,
                 changes,
@@ -98,14 +97,14 @@ fn routes_under_test() -> Vec<rocket::Route> {
 #[cfg(test)]
 mod test {
     use authifier::{
-        models::{Account, EmailVerification, Session},
         Authifier,
+        models::{Account, EmailVerification, Session},
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::{
-        fixture, Database, DatabaseInfo, Invite, ServerAuditLogAction, ServerAuditLogQuery,
-        ServerAuditLogStatus, ServerAuditLogTarget,
+        Database, DatabaseInfo, Invite, ServerAuditLogAction, ServerAuditLogQuery,
+        ServerAuditLogStatus, ServerAuditLogTarget, fixture,
     };
     use ulid::Ulid;
 
@@ -228,7 +227,7 @@ mod test {
             .fetch_server_audit_logs(
                 &server.id,
                 ServerAuditLogQuery {
-                    action: Some(ServerAuditLogAction::InviteDelete),
+                    action: Some(ServerAuditLogAction::InviteRevoke),
                     target_type: Some("Invite".to_string()),
                     target_id: Some(code.clone()),
                     limit: 50,
