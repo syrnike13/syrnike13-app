@@ -1281,9 +1281,45 @@ export const syncStore = {
       case 'ServerRoleDelete': {
         const { id, role_id } = event as { id: string; role_id: string }
         const server = state.servers[id]
-        if (!server?.roles) break
-        const { [role_id]: _, ...roles } = server.roles
-        this.upsertServer({ ...server, roles })
+        if (!server) break
+
+        const servers = { ...state.servers }
+        if (server.roles) {
+          const { [role_id]: _, ...roles } = server.roles
+          servers[id] = { ...server, roles }
+        }
+
+        const members = { ...state.members }
+        for (const [key, member] of Object.entries(members)) {
+          if (member._id.server !== id || !member.roles?.includes(role_id)) {
+            continue
+          }
+
+          members[key] = {
+            ...member,
+            roles: member.roles.filter(
+              (memberRoleId) => memberRoleId !== role_id,
+            ),
+          }
+        }
+
+        const channels = { ...state.channels }
+        for (const [channelId, channel] of Object.entries(channels)) {
+          if (
+            serverChannelServerId(channel) !== id ||
+            !channel.role_permissions?.[role_id]
+          ) {
+            continue
+          }
+
+          const { [role_id]: _, ...rolePermissions } = channel.role_permissions
+          channels[channelId] = {
+            ...channel,
+            role_permissions: rolePermissions,
+          }
+        }
+
+        setState({ servers, members, channels })
         break
       }
       case 'UserUpdate': {
