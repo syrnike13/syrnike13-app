@@ -4,7 +4,7 @@
 
 **Goal:** Build the first Discord-like server administration foundation: mandatory audit logs, correct settings permission entry points, realtime permission consistency fixes, invite lifecycle, moderation audit coverage, and the adjacent channel/admin surfaces already implemented in this branch when they are directly governed by roles, permissions, audit logs, or moderation state.
 
-**Expanded in-scope after branch audit:** channel lifecycle audit, channel settings overview/permissions/webhooks, category administration, restricted-channel visibility affordances, context-menu moderation entry points, voice moderation controls, and permission-aware member/mention surfaces. These are part of the foundation branch because they exercise the same role and permission model. Still excluded: unrelated chat polish, account safety/admin badge dialogs, desktop activity status, and voice input-mode settings.
+**Expanded in-scope after branch audit:** channel lifecycle audit, channel settings overview/permissions/webhooks, category administration, restricted-channel visibility affordances, context-menu moderation entry points, voice moderation controls, and permission-aware member/mention surfaces. These are part of the foundation branch because they exercise the same role and permission model. Keep adjacent working surfaces in place when they are already intertwined with permissions, moderation, audit logs, channel visibility, or role hierarchy; finish and verify them instead of ripping them out. Still excluded: unrelated chat polish, account safety/admin badge dialogs, desktop activity status, and voice input-mode settings.
 
 **Architecture:** Add a backend audit-log domain that follows the existing database trait pattern, then wire admin mutations through explicit audit writes before expanding UI. Fix permission and realtime correctness before adding visible server settings pages, so the UI reflects actual backend behavior instead of masking permission drift.
 
@@ -14,11 +14,12 @@
 
 ## Execution Rules
 
-- Work from `codex/roles`.
+- Work only from `codex/roles-foundation`.
 - The current checkout has unrelated dirty files in chat/media/package areas. Stage exact paths only.
 - Do not edit `node_modules`.
 - Do not add backwards compatibility wrappers for old invite or server-admin payloads.
 - Do not add UI stubs for AutoMod, onboarding/community, integrations marketplace, forum channels, stage channels, or thread channels.
+- Do not remove adjacent working UI or API surfaces merely because they sit near out-of-scope Discord polish. If a surface is already connected to foundation behavior, keep it and make it correct.
 - For code execution, use a clean worktree before implementation if the current dirty worktree remains dirty.
 
 ## File Structure
@@ -2472,7 +2473,7 @@ git commit -m "feat: add server admin foundation panels"
 
 ---
 
-### Task 10: Keep Adjacent Channel/Admin Surfaces In Foundation Scope
+### Task 10: Preserve And Finish Adjacent Channel/Admin Surfaces In Foundation Scope
 
 **Files:**
 - Modify: `services/backend/crates/core/models/src/v0/server_audit_logs.rs`
@@ -2522,9 +2523,13 @@ Expected behavior:
 
 Keep category edit/delete, category collapse, restricted-channel indicators, and safer channel deletion confirmation as part of the admin foundation. These are allowed only insofar as they reflect existing server/channel permissions and do not introduce new non-foundation product areas.
 
+Do not pull these pieces out if they already work and are coupled to the role/permission surface. Verify the existing behavior first, then make the smallest fix needed for correctness.
+
 - [ ] **Step 4: Keep context-menu moderation entry points**
 
 Keep user context-menu actions for member role editing, kick/ban reason capture, and server voice moderation controls. These must call the same audited backend mutations from Tasks 7 and 8, and their visibility must come from role hierarchy/permission helpers, not duplicated checks.
+
+Do not split these into a separate branch just because the same context menu also hosts unrelated chat actions. Leave unrelated chat polish untouched, but keep the moderation actions that are already part of this foundation path.
 
 - [ ] **Step 5: Keep permission-aware member and mention surfaces**
 
@@ -2544,6 +2549,8 @@ cargo test --manifest-path services/backend/Cargo.toml -p syrnike-delta default_
 The backend route tests publish realtime events through Redis and some broader `channel_` tests require RabbitMQ through `TestHarness`. If Redis/RabbitMQ or Docker Compose are unavailable locally, capture the exact infrastructure error, run the narrower compile/database-safe checks that still apply, and do not treat that as a code regression.
 
 Expected after this task: adjacent channel/admin surfaces are either verified or fixed in-place, and no unrelated desktop/account/chat-polish scope is added.
+
+Important scope guard: this task is not permission to start broad Discord polish. It is permission to keep and finish already-present adjacent foundation work when removing it would break or weaken the role/admin foundation.
 
 ---
 
