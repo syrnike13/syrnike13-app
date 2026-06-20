@@ -12,6 +12,14 @@ use validator::Validate;
 
 use crate::routes::servers::audit_mutation;
 
+fn required_channel_edit_permission(data: &v0::DataEditChannel) -> ChannelPermission {
+    if data.remove.contains(&v0::FieldsChannel::DefaultPermissions) {
+        ChannelPermission::ManagePermissions
+    } else {
+        ChannelPermission::ManageChannel
+    }
+}
+
 /// # Edit Channel
 ///
 /// Edit a channel object by its id.
@@ -40,7 +48,7 @@ pub async fn edit(
     let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
     calculate_channel_permissions(&mut query)
         .await
-        .throw_if_lacking_channel_permission(ChannelPermission::ManageChannel)?;
+        .throw_if_lacking_channel_permission(required_channel_edit_permission(&data))?;
 
     if data.name.is_none()
         && data.description.is_none()
@@ -430,4 +438,45 @@ pub async fn edit(
     }
 
     Ok(Json(channel.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use syrnike_models::v0;
+    use syrnike_permissions::ChannelPermission;
+
+    fn edit_payload(remove: Vec<v0::FieldsChannel>) -> v0::DataEditChannel {
+        v0::DataEditChannel {
+            name: None,
+            description: None,
+            owner: None,
+            icon: None,
+            nsfw: None,
+            archived: None,
+            voice: None,
+            slowmode: None,
+            remove,
+        }
+    }
+
+    #[test]
+    fn removing_default_permissions_requires_manage_permissions() {
+        assert_eq!(
+            super::required_channel_edit_permission(&edit_payload(vec![
+                v0::FieldsChannel::DefaultPermissions
+            ])),
+            ChannelPermission::ManagePermissions
+        );
+    }
+
+    #[test]
+    fn ordinary_channel_edits_require_manage_channel() {
+        let mut payload = edit_payload(Vec::new());
+        payload.name = Some("renamed".to_string());
+
+        assert_eq!(
+            super::required_channel_edit_permission(&payload),
+            ChannelPermission::ManageChannel
+        );
+    }
 }
