@@ -346,7 +346,10 @@ export function ChannelSidebarItem({
             </span>
           ) : null}
           {!active ? (
-            <NotificationBadge badge={notificationBadge} mode="dot" />
+            <NotificationBadge
+              badge={notificationBadge}
+              mode={notificationBadge.urgent ? 'count' : 'dot'}
+            />
           ) : null}
         </Link>
         {canManage && isServerChannel ? (

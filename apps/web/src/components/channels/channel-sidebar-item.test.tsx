@@ -483,6 +483,34 @@ describe('ChannelSidebarItem voice navigation', () => {
     expect(screen.getByTitle('Закрытый текстовый канал')).toBeTruthy()
   })
 
+  it('shows mention counts in inactive channel rows', () => {
+    const channel = {
+      ...textServerChannel,
+      last_message_id: 'message-3',
+    } satisfies Extract<Channel, { channel_type: 'TextChannel' }>
+
+    upsertTextServerChannel(channel)
+    syncStore.setUnreads([
+      {
+        _id: { channel: channel._id, user: 'user-1' },
+        last_id: 'message-3',
+        mentions: ['message-2', 'message-3'],
+      },
+    ])
+
+    render(
+      <ChannelSidebarItem
+        channel={channel}
+        activeChannelId="other-channel"
+        users={{}}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(screen.getByText('2')).toBeTruthy()
+  })
+
   it('opens a delete confirmation dialog from the channel context menu', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
     upsertTextServerChannel()

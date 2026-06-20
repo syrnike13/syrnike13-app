@@ -116,7 +116,10 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                 </span>
               ) : null}
               {!active ? (
-                <NotificationBadge badge={notificationBadge} mode="dot" />
+                <NotificationBadge
+                  badge={notificationBadge}
+                  mode={notificationBadge.urgent ? 'count' : 'dot'}
+                />
               ) : null}
             </Link>
           </Button>
