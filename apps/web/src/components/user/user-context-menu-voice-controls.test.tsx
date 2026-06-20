@@ -139,13 +139,20 @@ function makeMember(userId: string, roles: string[]): Member {
   } as Member
 }
 
-function makeVoiceChannel(id: string, name: string): Channel {
+function makeVoiceChannel(
+  id: string,
+  name: string,
+  defaultPermissions = {
+    a: permissionOr(ChannelPermission.ViewChannel, ChannelPermission.Connect),
+    d: 0,
+  },
+): Channel {
   return {
     _id: id,
     channel_type: 'TextChannel',
     server: 'server-1',
     name,
-    default_permissions: null,
+    default_permissions: defaultPermissions,
     voice: { max_users: null },
   } as Channel
 }
@@ -157,6 +164,10 @@ const actorMember = makeMember(ACTOR_USER_ID, ['mod'])
 
 function renderControls(
   targetMember: Member = makeMember(TARGET_USER_ID, ['member']),
+  moveVoiceChannels: Channel[] = [
+    makeVoiceChannel('voice-1', 'Lobby'),
+    makeVoiceChannel('voice-2', 'Raid Room'),
+  ],
 ) {
   render(
     <UserContextMenuVoiceControls
@@ -167,10 +178,7 @@ function renderControls(
       actorUserId={ACTOR_USER_ID}
       targetMember={targetMember}
       voiceChannelId="voice-1"
-      moveVoiceChannels={[
-        makeVoiceChannel('voice-1', 'Lobby'),
-        makeVoiceChannel('voice-2', 'Raid Room'),
-      ]}
+      moveVoiceChannels={moveVoiceChannels}
     />,
   )
 }
@@ -291,5 +299,21 @@ describe('UserContextMenuVoiceControls server moderation', () => {
         id: TARGET_USER_ID,
       }),
     )
+  })
+
+  it('hides move targets the actor cannot connect to', () => {
+    renderControls(makeMember(TARGET_USER_ID, ['member']), [
+      makeVoiceChannel('voice-1', 'Lobby'),
+      makeVoiceChannel('voice-2', 'Raid Room'),
+      makeVoiceChannel('voice-locked', 'Locked Room', {
+        a: ChannelPermission.ViewChannel,
+        d: ChannelPermission.Connect,
+      }),
+    ])
+
+    expect(screen.getByRole('button', { name: 'Raid Room' })).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Locked Room' }),
+    ).toBeNull()
   })
 })

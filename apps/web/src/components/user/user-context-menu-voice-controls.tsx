@@ -36,6 +36,9 @@ import {
   canDeafenServerMember,
   canMoveServerMember,
   canMuteServerMember,
+  calculateChannelPermissions,
+  ChannelPermission,
+  hasChannelPermission,
 } from '#/lib/permissions'
 
 type UserContextMenuVoiceControlsProps = {
@@ -76,9 +79,23 @@ export function UserContextMenuVoiceControls({
     server &&
     voiceChannelId &&
     canMoveServerMember(server, actorMember, actorUserId, targetMember)
-  const moveTargets = moveVoiceChannels.filter(
-    (channel) => channel._id !== voiceChannelId,
-  )
+  const moveTargets =
+    server && actorUserId
+      ? moveVoiceChannels.filter((channel) => {
+          if (channel._id === voiceChannelId) return false
+          if (channel.channel_type !== 'TextChannel') return true
+
+          return hasChannelPermission(
+            calculateChannelPermissions(
+              server,
+              channel,
+              actorMember,
+              actorUserId,
+            ),
+            ChannelPermission.Connect,
+          )
+        })
+      : []
   const serverMuted = targetMember?.can_publish === false
   const serverDeafened = targetMember?.can_receive === false
   const showServerControls = Boolean(
