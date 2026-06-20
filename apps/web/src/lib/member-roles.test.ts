@@ -54,7 +54,7 @@ describe('canToggleMemberRole', () => {
     )
   })
 
-  it('lets members remove their own lower role with assignment permission', () => {
+  it('does not let members remove their own lower role with assignment permission', () => {
     const role = makeRole({ rank: 5 })
     const server = makeServer({
       roles: {
@@ -70,7 +70,7 @@ describe('canToggleMemberRole', () => {
     const actor = makeMember({ roles: ['high', role._id] })
 
     expect(canToggleMemberRole(server, actor, 'user-1', actor, role, false)).toBe(
-      true,
+      false,
     )
   })
 
@@ -158,5 +158,24 @@ describe('member role edit affordances', () => {
 
     expect(canManageMemberRoles(server, actor, 'user-1', target)).toBe(false)
     expect(canEditAnyMemberRole(server, actor, 'user-1', target)).toBe(false)
+  })
+
+  it('does not open role editing for the actor themself', () => {
+    const lowerRole = makeRole({ _id: 'lower', name: 'Lower', rank: 5 })
+    const server = makeServer({
+      roles: {
+        high: makeRole({
+          _id: 'high',
+          name: 'High',
+          permissions: { a: ChannelPermission.AssignRoles, d: 0 },
+          rank: 1,
+        }),
+        [lowerRole._id]: lowerRole,
+      },
+    })
+    const actor = makeMember({ roles: ['high'] })
+
+    expect(canManageMemberRoles(server, actor, 'user-1', actor)).toBe(false)
+    expect(canEditAnyMemberRole(server, actor, 'user-1', actor)).toBe(false)
   })
 })

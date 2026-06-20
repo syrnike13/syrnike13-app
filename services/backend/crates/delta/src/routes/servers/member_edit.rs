@@ -92,6 +92,10 @@ pub async fn edit(
 
     if data.roles.is_some() || data.remove.contains(&v0::FieldsMember::Roles) {
         permissions.throw_if_lacking_channel_permission(ChannelPermission::AssignRoles)?;
+
+        if user.id != server.owner && member.id.user == user.id {
+            return Err(create_error!(NotElevated));
+        }
     }
 
     if data.timeout.is_some() || data.remove.contains(&v0::FieldsMember::Timeout) {
@@ -669,6 +673,71 @@ mod test {
             .patch(format!("/servers/{}/members/{}", server.id, moderator.id))
             .header(ContentType::JSON)
             .body(serde_json::json!({ "roles": [] }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                moderator_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Forbidden);
+
+        let updated = context
+            .db
+            .fetch_member(&server.id, &moderator.id)
+            .await
+            .expect("member fetched");
+
+        assert_eq!(updated.roles, vec![moderator_role.id]);
+    }
+
+    #[rocket::async_test]
+    async fn member_cannot_assign_their_own_lower_role() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            moderator user 1
+            server server 4);
+
+        let mut moderator_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Moderator")
+            .expect("moderator role")
+            .clone();
+        moderator_role
+            .update(
+                &context.db,
+                &server.id,
+                PartialRole {
+                    permissions: Some(OverrideField {
+                        a: ChannelPermission::AssignRoles as i64,
+                        d: 0,
+                    }),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("moderator can assign roles");
+        let lower_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Lower Rank 1")
+            .expect("lower role")
+            .clone();
+
+        let (_, moderator_session) = context.account_from_user(moderator.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, moderator.id))
+            .header(ContentType::JSON)
+            .body(
+                serde_json::json!({
+                    "roles": [moderator_role.id, lower_role.id]
+                })
+                .to_string(),
+            )
             .header(Header::new(
                 "x-session-token",
                 moderator_session.token.to_string(),

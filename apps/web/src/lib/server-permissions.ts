@@ -52,6 +52,12 @@ export type PermissionOverride = { allow: number; deny: number }
 
 export type PermissionTriState = 'neutral' | 'allow' | 'deny'
 
+export const PERMISSION_TRI_STATE_ORDER: PermissionTriState[] = [
+  'neutral',
+  'allow',
+  'deny',
+]
+
 export type PermissionDefinition = {
   flag: number
   label: string
@@ -152,6 +158,27 @@ export function setPermissionTriState(
   if (state === 'allow') allow = permissionOr(allow, bit)
   if (state === 'deny') deny = permissionOr(deny, bit)
   return { a: allow, d: deny }
+}
+
+export function getAllowedPermissionTriStates(
+  baseline: PermissionOverrideField | null | undefined,
+  actorPermissions: number,
+  flag: number,
+): PermissionTriState[] {
+  if (hasServerPermission(actorPermissions, flag)) {
+    return PERMISSION_TRI_STATE_ORDER
+  }
+
+  const baselineState = getPermissionTriState(baseline, flag)
+  if (baselineState === 'deny') {
+    return ['deny']
+  }
+
+  if (baselineState === 'neutral') {
+    return ['neutral', 'deny']
+  }
+
+  return PERMISSION_TRI_STATE_ORDER
 }
 
 export function overrideFieldToApi(

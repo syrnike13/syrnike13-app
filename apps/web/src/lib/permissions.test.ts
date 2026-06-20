@@ -628,6 +628,32 @@ describe('canTimeoutServerMember', () => {
       false,
     )
   })
+
+  it('does not allow timeouts against members who can timeout others', () => {
+    const server = makeServer({
+      roles: {
+        admin: makeRole({
+          _id: 'admin',
+          name: 'Admin',
+          permissions: { a: ChannelPermission.TimeoutMembers, d: 0 },
+          rank: 1,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: ChannelPermission.TimeoutMembers, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['admin'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
 })
 
 describe('server voice moderation permissions', () => {

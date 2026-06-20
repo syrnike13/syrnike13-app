@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getAllowedPermissionTriStates,
   getPermissionTriState,
   overrideFieldToApi,
   roleRanksPayload,
@@ -44,6 +45,35 @@ describe('server permission overrides', () => {
       allow: 0,
       deny: ServerPermission.SendMessage,
     })
+  })
+
+  it('does not allow granting a missing permission from neutral', () => {
+    expect(getAllowedPermissionTriStates({ a: 0, d: 0 }, 0, 1)).toEqual([
+      'neutral',
+      'deny',
+    ])
+  })
+
+  it('does not allow removing a deny for a missing permission', () => {
+    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, 0, 1)).toEqual([
+      'deny',
+    ])
+  })
+
+  it('allows removing an existing allow even when the actor lacks it', () => {
+    expect(getAllowedPermissionTriStates({ a: 1, d: 0 }, 0, 1)).toEqual([
+      'neutral',
+      'allow',
+      'deny',
+    ])
+  })
+
+  it('allows all states when the actor has the permission', () => {
+    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, 1, 1)).toEqual([
+      'neutral',
+      'allow',
+      'deny',
+    ])
   })
 })
 

@@ -18,16 +18,15 @@ export function canManageMemberRoles(
   actorUserId: string | undefined,
   targetMember: Member,
 ): boolean {
+  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
+    return false
+  }
+
   if (!canEditMember(server, actorMember, actorUserId, targetMember)) {
     return false
   }
 
   if (server.owner === actorUserId) return true
-  if (actorUserId === targetMember._id.user) {
-    return listServerRoles(server).some((role) =>
-      canAssignRole(server, actorMember, actorUserId, role.rank ?? 0),
-    )
-  }
 
   return listServerRoles(server).some((role) =>
     canAssignRole(server, actorMember, actorUserId, role.rank ?? 0),
@@ -41,6 +40,10 @@ export function canEditAnyMemberRole(
   actorUserId: string | undefined,
   targetMember: Member,
 ): boolean {
+  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
+    return false
+  }
+
   if (!canEditMember(server, actorMember, actorUserId, targetMember)) {
     return false
   }
@@ -66,6 +69,10 @@ export function canToggleMemberRole(
   role: Role,
   enabled: boolean,
 ): boolean {
+  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
+    return false
+  }
+
   if (!canEditMember(server, actorMember, actorUserId, targetMember)) {
     return false
   }

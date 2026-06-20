@@ -291,11 +291,13 @@ function DefaultPermissionsEditor({
   serverId,
   token,
   canEdit,
+  actorPermissions,
 }: {
   server: Server
   serverId: string
   token: string
   canEdit: boolean
+  actorPermissions: number
 }) {
   const [permissions, setPermissions] = useState(server.default_permissions)
   const [saving, setSaving] = useState(false)
@@ -364,6 +366,10 @@ function DefaultPermissionsEditor({
                   permissions,
                   permission.flag,
                 )
+                const actorHasPermission = hasChannelPermission(
+                  actorPermissions,
+                  permission.flag,
+                )
                 return (
                   <li
                     key={permission.flag}
@@ -372,15 +378,16 @@ function DefaultPermissionsEditor({
                     <span className="text-sm">{permission.label}</span>
                     <Switch
                       checked={enabled}
-                      disabled={!canEdit}
+                      disabled={!canEdit || (!actorHasPermission && !enabled)}
                       onCheckedChange={(checked) =>
-                        setPermissions((current) =>
-                          toggleServerPermission(
+                        setPermissions((current) => {
+                          if (checked && !actorHasPermission) return current
+                          return toggleServerPermission(
                             current,
                             permission.flag,
                             checked,
-                          ),
-                        )
+                          )
+                        })
                       }
                     />
                   </li>
@@ -418,11 +425,14 @@ export function ServerSettingsRolesPanel({
 
   const token = auth.session?.token
   const userId = auth.user?._id
+  const serverPermissions = server && userId
+    ? calculateServerPermissions(server, member, userId)
+    : 0
 
   const canCreateRoles = server && userId
     ? server.owner === userId ||
       hasChannelPermission(
-        calculateServerPermissions(server, member, userId),
+        serverPermissions,
         ChannelPermission.ManageRole,
       )
     : false
@@ -430,7 +440,7 @@ export function ServerSettingsRolesPanel({
   const canEditDefaultPermissions = server && userId
     ? server.owner === userId ||
       hasChannelPermission(
-        calculateServerPermissions(server, member, userId),
+        serverPermissions,
         ChannelPermission.ManagePermissions,
       )
     : false
@@ -440,7 +450,7 @@ export function ServerSettingsRolesPanel({
       userId &&
       (server.owner === userId ||
         hasChannelPermission(
-          calculateServerPermissions(server, member, userId),
+          serverPermissions,
           ChannelPermission.ManageRole,
         )),
   )
@@ -602,6 +612,7 @@ export function ServerSettingsRolesPanel({
                 serverId={serverId}
                 token={token}
                 canEdit={canEditDefaultPermissions}
+                actorPermissions={serverPermissions}
               />
             ) : (
               <ServerSettingsRoleEditor

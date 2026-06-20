@@ -30,4 +30,25 @@ describe('PermissionStateButton', () => {
 
     expect(onChange).toHaveBeenCalledWith('allow')
   })
+
+  it('skips states that are not allowed for this permission change', () => {
+    const onChange = vi.fn()
+
+    render(
+      <PermissionStateButton
+        label="РџСЂРѕСЃРјРѕС‚СЂ РєР°РЅР°Р»РѕРІ"
+        state="neutral"
+        allowedStates={['neutral', 'deny']}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /наследуется/i,
+      }),
+    )
+
+    expect(onChange).toHaveBeenCalledWith('deny')
+  })
 })

@@ -21,9 +21,13 @@ import {
 } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import type { ServerChannel } from '#/lib/channel-voice'
-import { canManageRole } from '#/lib/permissions'
+import {
+  calculateChannelPermissions,
+  canManageRole,
+} from '#/lib/permissions'
 import { roleIconUrl } from '#/lib/media'
 import {
+  getAllowedPermissionTriStates,
   getPermissionTriState,
   overrideFieldFromRole,
   overrideFieldToApi,
@@ -74,6 +78,10 @@ function ChannelPermissionEditor({
     overrideFieldFromRole(initialPermissions),
   )
   const [saving, setSaving] = useState(false)
+  const actorPermissions = useMemo(
+    () => calculateChannelPermissions(server, channel, member, userId),
+    [channel, member, server, userId],
+  )
 
   useEffect(() => {
     setPermissions(overrideFieldFromRole(initialPermissions))
@@ -154,24 +162,32 @@ function ChannelPermissionEditor({
               {group.title}
             </h4>
             <ul className="space-y-1">
-              {group.permissions.map((permission) => (
-                <li
-                  key={permission.flag}
-                  className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
-                >
-                  <span className="text-sm">{permission.label}</span>
-                  <PermissionStateButton
-                    label={permission.label}
-                    state={getPermissionTriState(permissions, permission.flag)}
-                    disabled={!canEdit}
-                    onChange={(next) =>
-                      setPermissions((current) =>
-                        setPermissionTriState(current, permission.flag, next),
-                      )
-                    }
-                  />
-                </li>
-              ))}
+              {group.permissions.map((permission) => {
+                const allowedStates = getAllowedPermissionTriStates(
+                  initialPermissions,
+                  actorPermissions,
+                  permission.flag,
+                )
+                return (
+                  <li
+                    key={permission.flag}
+                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
+                  >
+                    <span className="text-sm">{permission.label}</span>
+                    <PermissionStateButton
+                      label={permission.label}
+                      state={getPermissionTriState(permissions, permission.flag)}
+                      allowedStates={allowedStates}
+                      disabled={!canEdit}
+                      onChange={(next) =>
+                        setPermissions((current) =>
+                          setPermissionTriState(current, permission.flag, next),
+                        )
+                      }
+                    />
+                  </li>
+                )
+              })}
             </ul>
           </section>
         ))}

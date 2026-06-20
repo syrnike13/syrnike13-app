@@ -24,8 +24,12 @@ import {
 } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { roleIconUrl } from '#/lib/media'
-import { canManageRole } from '#/lib/permissions'
 import {
+  calculateServerPermissions,
+  canManageRole,
+} from '#/lib/permissions'
+import {
+  getAllowedPermissionTriStates,
   getPermissionTriState,
   overrideFieldFromRole,
   overrideFieldToApi,
@@ -98,6 +102,10 @@ export function ServerSettingsRoleEditor({
     userId,
     role.rank ?? 0,
     { permissions: true },
+  )
+  const actorPermissions = useMemo(
+    () => calculateServerPermissions(server, member, userId),
+    [member, server, userId],
   )
   const [activeTab, setActiveTab] = useState<RoleEditorTab>('display')
   const [name, setName] = useState(role.name)
@@ -500,31 +508,39 @@ export function ServerSettingsRoleEditor({
                 {group.title}
               </h4>
               <ul className="space-y-1">
-                {group.permissions.map((permission) => (
-                  <li
-                    key={permission.flag}
-                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
-                  >
-                    <span className="text-sm">{permission.label}</span>
-                    <PermissionStateButton
-                      label={permission.label}
-                      state={getPermissionTriState(
-                        permissions,
-                        permission.flag,
-                      )}
-                      disabled={!canEditPermissions}
-                      onChange={(next) =>
-                        setPermissions((current) =>
-                          setPermissionTriState(
-                            current,
-                            permission.flag,
-                            next,
-                          ),
-                        )
-                      }
-                    />
-                  </li>
-                ))}
+                {group.permissions.map((permission) => {
+                  const allowedStates = getAllowedPermissionTriStates(
+                    role.permissions,
+                    actorPermissions,
+                    permission.flag,
+                  )
+                  return (
+                    <li
+                      key={permission.flag}
+                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
+                    >
+                      <span className="text-sm">{permission.label}</span>
+                      <PermissionStateButton
+                        label={permission.label}
+                        state={getPermissionTriState(
+                          permissions,
+                          permission.flag,
+                        )}
+                        allowedStates={allowedStates}
+                        disabled={!canEditPermissions}
+                        onChange={(next) =>
+                          setPermissions((current) =>
+                            setPermissionTriState(
+                              current,
+                              permission.flag,
+                              next,
+                            ),
+                          )
+                        }
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             </section>
           ))}

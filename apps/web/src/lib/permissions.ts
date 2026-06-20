@@ -254,11 +254,25 @@ export function canTimeoutServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ): boolean {
-  return canModerateServerMember(
+  if (
+    !canModerateServerMember(
+      server,
+      actorMember,
+      actorUserId,
+      targetMember,
+      ChannelPermission.TimeoutMembers,
+    )
+  ) {
+    return false
+  }
+
+  const targetPermissions = calculateServerPermissions(
     server,
-    actorMember,
-    actorUserId,
     targetMember,
+    targetMember?._id.user,
+  )
+  return !hasChannelPermission(
+    targetPermissions,
     ChannelPermission.TimeoutMembers,
   )
 }

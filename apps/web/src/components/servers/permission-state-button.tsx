@@ -1,4 +1,7 @@
-import type { PermissionTriState } from '#/lib/server-permissions'
+import {
+  PERMISSION_TRI_STATE_ORDER,
+  type PermissionTriState,
+} from '#/lib/server-permissions'
 import { cn } from '#/lib/utils'
 
 const STATE_LABELS: Record<PermissionTriState, string> = {
@@ -11,18 +14,33 @@ export function PermissionStateButton({
   label,
   state,
   disabled,
+  allowedStates,
   onChange,
 }: {
   label: string
   state: PermissionTriState
   disabled?: boolean
+  allowedStates?: PermissionTriState[]
   onChange: (next: PermissionTriState) => void
 }) {
+  const stateOrder = PERMISSION_TRI_STATE_ORDER
+  const allowed = allowedStates ?? stateOrder
+  const hasNextState = stateOrder.some(
+    (candidate) => candidate !== state && allowed.includes(candidate),
+  )
+  const isDisabled = Boolean(disabled || !hasNextState)
+
   function cycle() {
-    if (disabled) return
-    const order: PermissionTriState[] = ['neutral', 'allow', 'deny']
-    const index = order.indexOf(state)
-    onChange(order[(index + 1) % order.length]!)
+    if (isDisabled) return
+
+    const index = stateOrder.indexOf(state)
+    for (let offset = 1; offset <= stateOrder.length; offset += 1) {
+      const next = stateOrder[(index + offset) % stateOrder.length]!
+      if (allowed.includes(next)) {
+        onChange(next)
+        return
+      }
+    }
   }
 
   const stateLabel = STATE_LABELS[state]
@@ -30,7 +48,7 @@ export function PermissionStateButton({
   return (
     <button
       type="button"
-      disabled={disabled}
+      disabled={isDisabled}
       onClick={cycle}
       aria-label={`${label}: ${stateLabel.toLowerCase()}`}
       className={cn(
@@ -39,7 +57,7 @@ export function PermissionStateButton({
           'border-emerald-500/40 bg-emerald-500/15 text-emerald-400',
         state === 'deny' && 'border-red-500/40 bg-red-500/15 text-red-400',
         state === 'neutral' && 'border-border text-muted-foreground',
-        disabled && 'cursor-not-allowed opacity-50',
+        isDisabled && 'cursor-not-allowed opacity-50',
       )}
       title={stateLabel}
     >
