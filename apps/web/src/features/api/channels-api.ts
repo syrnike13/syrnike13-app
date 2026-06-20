@@ -39,10 +39,13 @@ export async function deleteChannel(
   channelId: string,
   leaveSilently = false,
 ) {
-  return apiRequest<void>(`/channels/${channelId}`, {
+  const search = new URLSearchParams({
+    leave_silently: String(leaveSilently),
+  })
+
+  return apiRequest<void>(`/channels/${channelId}?${search}`, {
     method: 'DELETE',
     token,
-    body: { leave_silently: leaveSilently },
   })
 }
 

@@ -114,10 +114,13 @@ export async function ackServer(token: string, serverId: string) {
 }
 
 export async function deleteOrLeaveServer(token: string, serverId: string) {
-  return apiRequest<void>(`/servers/${serverId}`, {
+  const search = new URLSearchParams({
+    leave_silently: 'false',
+  })
+
+  return apiRequest<void>(`/servers/${serverId}?${search}`, {
     method: 'DELETE',
     token,
-    body: { leave_silently: false },
   })
 }
 

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createChannelWebhook,
   deleteWebhook,
+  deleteChannel,
   editWebhook,
   fetchChannelWebhooks,
 } from '#/features/api/channels-api'
@@ -16,7 +17,21 @@ vi.mock('#/lib/api/client', () => ({
     mocks.apiRequest(...args),
 }))
 
-describe('channel webhook api', () => {
+describe('channels api', () => {
+  it('deletes channels with leave_silently encoded as a query option', async () => {
+    mocks.apiRequest.mockResolvedValue(undefined)
+
+    await deleteChannel('session-token', 'channel-1', true)
+
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/channels/channel-1?leave_silently=true',
+      {
+        method: 'DELETE',
+        token: 'session-token',
+      },
+    )
+  })
+
   it('fetches channel webhooks', async () => {
     mocks.apiRequest.mockResolvedValue([])
 
