@@ -460,7 +460,9 @@ impl EventV1 {
         info!("Publishing event to {channel}: {self:?}");
 
         #[cfg(debug_assertions)]
-        redis_kiss::publish(channel, self).await.unwrap();
+        if let Err(error) = redis_kiss::publish(channel, self).await {
+            info!("Failed to publish event: {error:?}");
+        }
     }
 
     /// Publish user event
@@ -518,6 +520,15 @@ mod tests {
             camera: false,
             version: 1,
         }
+    }
+
+    #[async_std::test]
+    async fn publish_helper_does_not_panic_when_redis_is_unavailable() {
+        EventV1::VoiceCallEnd {
+            channel_id: "channel-1".to_string(),
+        }
+        .p("test-channel".to_string())
+        .await;
     }
 
     #[test]
