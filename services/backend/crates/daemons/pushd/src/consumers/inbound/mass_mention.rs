@@ -90,6 +90,58 @@ async fn visible_unmentioned_member_ids(
         .collect()
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MassMentionKind {
+    Everyone,
+    Online,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct MassMentionTargets {
+    unread: Vec<String>,
+    notifications: Vec<String>,
+}
+
+fn mass_mention_kind(flags: u32) -> Option<MassMentionKind> {
+    let flags = MessageFlagsValue(flags);
+
+    if flags.has(MessageFlags::MentionsEveryone) {
+        Some(MassMentionKind::Everyone)
+    } else if flags.has(MessageFlags::MentionsOnline) {
+        Some(MassMentionKind::Online)
+    } else {
+        None
+    }
+}
+
+fn mass_mention_targets(
+    viewing_members: Vec<String>,
+    online_users: &HashSet<String, RandomState>,
+    kind: MassMentionKind,
+) -> MassMentionTargets {
+    match kind {
+        MassMentionKind::Everyone => {
+            let notifications = viewing_members
+                .iter()
+                .filter(|id| !online_users.contains(*id))
+                .cloned()
+                .collect();
+
+            MassMentionTargets {
+                unread: viewing_members,
+                notifications,
+            }
+        }
+        MassMentionKind::Online => MassMentionTargets {
+            unread: viewing_members
+                .into_iter()
+                .filter(|id| online_users.contains(id))
+                .collect(),
+            notifications: Vec::new(),
+        },
+    }
+}
+
 #[async_trait]
 impl Consumer for MassMessageConsumer {
     async fn create(
@@ -150,8 +202,7 @@ impl Consumer for MassMessageConsumer {
 
             // KNOWN QUIRK: if you mention @online and role(s), the offline members with the role(s) wont get pinged
             if let Some(ref query) = query {
-                let flags = MessageFlagsValue(push.message.flags);
-                if flags.has(MessageFlags::MentionsEveryone) {
+                if let Some(kind) = mass_mention_kind(push.message.flags) {
                     let mut db_query = self
                         .db
                         .fetch_all_members_chunked(&payload.server_id)
@@ -172,12 +223,14 @@ impl Consumer for MassMessageConsumer {
 
                         let viewing_members =
                             visible_unmentioned_member_ids(query, &chunk, &existing_mentions).await;
+                        let online_users = syrnike_presence::filter_online(&viewing_members).await;
+                        let targets = mass_mention_targets(viewing_members, &online_users, kind);
 
                         if let Err(err) = self
                             .db
                             .add_mention_to_many_unreads(
                                 push.channel.id(),
-                                &viewing_members,
+                                &targets.unread,
                                 &message_ids,
                             )
                             .await
@@ -185,20 +238,12 @@ impl Consumer for MassMessageConsumer {
                             syrnike_config::capture_error(&err);
                         }
 
-                        // ignore anyone in this list
-                        let online_users = syrnike_presence::filter_online(&viewing_members).await;
-                        let target_users: Vec<String> = viewing_members
-                            .iter()
-                            .filter(|id| !online_users.contains(*id))
-                            .cloned()
-                            .collect();
-
                         debug!(
                             "Userids after filter: {:?} (online: {:?}",
-                            target_users, online_users
+                            targets.notifications, online_users
                         );
 
-                        self.fire_notification_for_users(&push, &target_users)
+                        self.fire_notification_for_users(&push, &targets.notifications)
                             .await?;
 
                         if exhausted {
@@ -259,6 +304,33 @@ mod tests {
     use syrnike_permissions::{ChannelPermission, OverrideField};
 
     use super::*;
+
+    fn flags_with(flag: MessageFlags) -> u32 {
+        let mut flags = MessageFlagsValue(0);
+        flags.set(flag, true);
+        flags.0
+    }
+
+    #[test]
+    fn online_mention_flag_is_a_mass_mention_kind() {
+        assert_eq!(
+            mass_mention_kind(flags_with(MessageFlags::MentionsOnline)),
+            Some(MassMentionKind::Online)
+        );
+    }
+
+    #[test]
+    fn online_mentions_only_write_unreads_for_online_visible_members() {
+        let online_user_id = "online-user".to_string();
+        let offline_user_id = "offline-user".to_string();
+        let viewing_members = vec![online_user_id.clone(), offline_user_id];
+        let online_users = HashSet::from([online_user_id.clone()]);
+
+        let targets = mass_mention_targets(viewing_members, &online_users, MassMentionKind::Online);
+
+        assert_eq!(targets.unread, vec![online_user_id]);
+        assert!(targets.notifications.is_empty());
+    }
 
     #[tokio::test]
     async fn everyone_mentions_only_target_members_who_can_view_the_channel() {
