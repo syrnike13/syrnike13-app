@@ -137,7 +137,10 @@ mod test {
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
-    use syrnike_database::{Database, DatabaseInfo, fixture, voice::VoiceClient};
+    use syrnike_database::{
+        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
+        ServerAuditLogTarget, fixture, voice::VoiceClient,
+    };
     use syrnike_models::v0;
     use ulid::Ulid;
 
@@ -210,7 +213,9 @@ mod test {
             server server 4);
 
         // Moderator can re-order the roles below them
-        let (_, moderator_session) = context.account_from_user(moderator.id).await;
+        let moderator_id = moderator.id.clone();
+        let owner_id = owner.id.clone();
+        let (_, moderator_session) = context.account_from_user(moderator_id.clone()).await;
         let mut target_order: Vec<String> = server
             .ordered_roles()
             .into_iter()
@@ -271,7 +276,7 @@ mod test {
         drop(response);
 
         // The owner can set any order they want
-        let (_, owner_session) = context.account_from_user(owner.id).await;
+        let (_, owner_session) = context.account_from_user(owner_id.clone()).await;
 
         let response = context
             .client
@@ -292,5 +297,35 @@ mod test {
 
         assert_eq!(response.status(), Status::Ok);
         drop(response);
+
+        let entries = context
+            .db
+            .fetch_server_audit_logs(
+                &server.id,
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::RoleReorder),
+                    target_type: Some("Server".to_string()),
+                    target_id: Some(server.id.clone()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|entry| entry.actor_id == owner_id));
+        assert!(entries.iter().any(|entry| entry.actor_id == moderator_id));
+
+        for entry in entries {
+            assert_eq!(entry.status, ServerAuditLogStatus::Succeeded);
+            assert_eq!(
+                entry.target,
+                ServerAuditLogTarget::Server {
+                    id: server.id.clone()
+                }
+            );
+            assert!(entry.changes.contains_key("ranks"));
+        }
     }
 }

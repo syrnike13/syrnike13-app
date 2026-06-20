@@ -95,3 +95,149 @@ pub async fn set_default_server_permissions(
 
     Ok(Json(server.into()))
 }
+
+#[cfg(test)]
+fn routes_under_test() -> Vec<rocket::Route> {
+    routes![set_default_server_permissions]
+}
+
+#[cfg(test)]
+mod test {
+    use std::collections::HashMap;
+
+    use authifier::{
+        Authifier,
+        models::{Account, EmailVerification, Session},
+    };
+    use rocket::http::{ContentType, Header, Status};
+    use rocket::local::asynchronous::Client;
+    use serde_json::json;
+    use syrnike_database::{
+        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
+        ServerAuditLogTarget, fixture, voice::VoiceClient,
+    };
+    use ulid::Ulid;
+
+    struct DefaultServerPermissionsTestContext {
+        client: Client,
+        db: Database,
+        authifier: Authifier,
+    }
+
+    impl DefaultServerPermissionsTestContext {
+        async fn new() -> Self {
+            let db = DatabaseInfo::Reference
+                .connect()
+                .await
+                .expect("reference database");
+            let authifier = db.clone().to_authifier().await;
+            let client = Client::tracked(
+                rocket::build()
+                    .mount("/servers", super::routes_under_test())
+                    .manage(authifier.clone())
+                    .manage(db.clone())
+                    .manage(VoiceClient::new(HashMap::new())),
+            )
+            .await
+            .expect("valid rocket instance");
+
+            Self {
+                client,
+                db,
+                authifier,
+            }
+        }
+
+        async fn account_from_user(&self, id: String) -> (Account, Session) {
+            let account = Account {
+                id,
+                email: format!("{}@syrnike13.ru", Ulid::new()),
+                password: Default::default(),
+                email_normalised: Default::default(),
+                deletion: None,
+                disabled: false,
+                lockout: None,
+                mfa: Default::default(),
+                password_reset: None,
+                verification: EmailVerification::Verified,
+            };
+
+            self.authifier
+                .database
+                .save_account(&account)
+                .await
+                .expect("account saved");
+
+            let session = account
+                .create_session(&self.authifier, String::new())
+                .await
+                .expect("session created");
+
+            (account, session)
+        }
+    }
+
+    #[rocket::async_test]
+    async fn default_server_permission_update_writes_audit_entry() {
+        let context = DefaultServerPermissionsTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            server server 4);
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let response = context
+            .client
+            .put(format!("/servers/{}/permissions/default", server.id))
+            .header(ContentType::JSON)
+            .body(
+                json!({
+                    "permissions": 1048576
+                })
+                .to_string(),
+            )
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+        drop(response);
+
+        let entries = context
+            .db
+            .fetch_server_audit_logs(
+                &server.id,
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::ServerPermissionUpdate),
+                    target_type: Some("Server".to_string()),
+                    target_id: Some(server.id.clone()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.actor_id, owner.id);
+        assert_eq!(entry.status, ServerAuditLogStatus::Succeeded);
+        assert_eq!(
+            entry.target,
+            ServerAuditLogTarget::Server {
+                id: server.id.clone()
+            }
+        );
+        assert_eq!(
+            entry.changes["default_permissions"].before,
+            Some(json!(server.default_permissions as u64))
+        );
+        assert_eq!(
+            entry.changes["default_permissions"].after,
+            Some(json!(1048576))
+        );
+    }
+}
