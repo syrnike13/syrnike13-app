@@ -34,9 +34,7 @@ const AUDIT_ACTIONS: AuditActionType[] = [
   'MemberUnban',
   'MemberTimeout',
   'InviteCreate',
-  'InviteUpdate',
   'InviteRevoke',
-  'InviteDelete',
   'ChannelPermissionUpdate',
   'ServerPermissionUpdate',
 ]

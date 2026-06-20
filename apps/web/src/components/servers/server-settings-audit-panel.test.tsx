@@ -99,6 +99,32 @@ describe('ServerSettingsAuditPanel', () => {
     })
   })
 
+  it('only exposes invite audit actions currently emitted by the backend', async () => {
+    renderWithQuery(<ServerSettingsAuditPanel serverId="server-1" />)
+
+    expect(await screen.findByText('Создание роли')).toBeTruthy()
+    expect(
+      screen.getByRole('option', {
+        name: 'Создание приглашения',
+      }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole('option', {
+        name: 'Отзыв приглашения',
+      }),
+    ).toBeTruthy()
+    expect(
+      screen.queryByRole('option', {
+        name: 'Изменение приглашения',
+      }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('option', {
+        name: 'Удаление приглашения',
+      }),
+    ).toBeNull()
+  })
+
   it('shows audit change before and after values', async () => {
     mocks.fetchServerAuditLog.mockResolvedValue({
       entries: [
