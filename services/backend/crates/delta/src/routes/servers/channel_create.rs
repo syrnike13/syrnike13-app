@@ -280,4 +280,78 @@ mod test {
             Some(json!("over-limit-channel"))
         );
     }
+
+    #[rocket::async_test]
+    async fn server_channel_create_rejects_when_existing_count_equals_limit() {
+        let context = ChannelCreateTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            server server 4);
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let channel_limit = syrnike_config::config()
+            .await
+            .features
+            .limits
+            .global
+            .server_channels;
+        let channels = (0..channel_limit)
+            .map(|index| format!("existing-channel-{index}"))
+            .collect();
+        context
+            .db
+            .update_server(
+                &server.id,
+                &PartialServer {
+                    channels: Some(channels),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("server channel limit prepared");
+
+        let response = context
+            .client
+            .post(format!("/servers/{}/channels", server.id))
+            .header(ContentType::JSON)
+            .body(
+                json!({
+                    "type": "Text",
+                    "name": "at-limit-channel"
+                })
+                .to_string(),
+            )
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::BadRequest);
+
+        let entries = context
+            .db
+            .fetch_server_audit_logs(
+                &server.id,
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::ChannelCreate),
+                    target_type: Some("Channel".to_string()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.actor_id, owner.id);
+        assert_eq!(entry.status, ServerAuditLogStatus::Failed);
+        assert!(matches!(entry.target, ServerAuditLogTarget::Channel { .. }));
+        assert_eq!(entry.changes["name"].before, None);
+        assert_eq!(entry.changes["name"].after, Some(json!("at-limit-channel")));
+    }
 }

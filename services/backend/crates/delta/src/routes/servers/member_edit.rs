@@ -1,29 +1,38 @@
 use std::collections::HashSet;
 
 use syrnike_database::{
-    Database, File, PartialMember, ServerAuditLogAction, ServerAuditLogTarget, User,
     events::client::EventV1,
     util::{
-        permissions::{DatabasePermissionQuery, perms},
+        permissions::{perms, DatabasePermissionQuery},
         reference::Reference,
     },
     voice::{
-        UserVoiceChannel, VoiceClient, get_channel_node, get_user_voice_channel_in_server,
-        get_voice_state, remove_user_from_voice_channel, set_channel_node,
-        set_user_moved_from_voice, set_user_moved_to_voice, set_user_voice_join_intent,
-        sync_user_voice_permissions,
+        get_channel_node, get_user_voice_channel_in_server, get_voice_state,
+        remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
+        set_user_moved_to_voice, set_user_voice_join_intent, sync_user_voice_permissions,
+        UserVoiceChannel, VoiceClient,
     },
+    Database, File, PartialMember, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0::{self, FieldsMember};
 
-use rocket::{State, form::validate::Contains, serde::json::Json};
+use rocket::{form::validate::Contains, serde::json::Json, State};
 use syrnike_permissions::{
-    ChannelPermission, calculate_channel_permissions, calculate_server_permissions,
+    calculate_channel_permissions, calculate_server_permissions, ChannelPermission,
 };
-use syrnike_result::{Result, create_error};
+use syrnike_result::{create_error, Result};
 use validator::Validate;
 
 use super::audit_mutation;
+
+fn changes_voice_permissions(data: &v0::DataMemberEdit) -> bool {
+    data.roles.is_some()
+        || data.can_publish.is_some()
+        || data.can_receive.is_some()
+        || data.remove.contains(&FieldsMember::Roles)
+        || data.remove.contains(&FieldsMember::CanPublish)
+        || data.remove.contains(&FieldsMember::CanReceive)
+}
 
 /// # Edit Member
 ///
@@ -261,6 +270,8 @@ pub async fn edit(
     )
     .await?;
 
+    let should_sync_voice_permissions = changes_voice_permissions(&data);
+
     let mutation_result: Result<_> = async {
         // Apply edits to the member object
         let v0::DataMemberEdit {
@@ -380,12 +391,7 @@ pub async fn edit(
                 .private(target_user.id.clone())
                 .await;
             };
-        } else if voice_client.is_enabled()
-            && (can_publish.is_some()
-                || can_receive.is_some()
-                || remove.contains(FieldsMember::CanPublish)
-                || remove.contains(FieldsMember::CanReceive))
-        {
+        } else if voice_client.is_enabled() && should_sync_voice_permissions {
             if let Some(channel) =
                 get_user_voice_channel_in_server(&target_user.id, &server.id).await?
             {
@@ -447,15 +453,15 @@ mod test {
     use std::collections::HashMap;
 
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::voice::VoiceClient;
     use syrnike_database::{
-        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
-        ServerAuditLogTarget, fixture,
+        fixture, Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery,
+        ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use ulid::Ulid;
 
@@ -613,5 +619,47 @@ mod test {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].actor_id, owner.id);
         assert_eq!(entries[0].status, ServerAuditLogStatus::Succeeded);
+    }
+
+    #[test]
+    fn member_role_changes_require_voice_permission_sync() {
+        assert!(super::changes_voice_permissions(
+            &syrnike_models::v0::DataMemberEdit {
+                nickname: None,
+                avatar: None,
+                roles: Some(vec!["role-a".to_string()]),
+                timeout: None,
+                can_publish: None,
+                can_receive: None,
+                voice_channel: None,
+                remove: vec![],
+            }
+        ));
+
+        assert!(super::changes_voice_permissions(
+            &syrnike_models::v0::DataMemberEdit {
+                nickname: None,
+                avatar: None,
+                roles: None,
+                timeout: None,
+                can_publish: None,
+                can_receive: None,
+                voice_channel: None,
+                remove: vec![syrnike_models::v0::FieldsMember::Roles],
+            }
+        ));
+
+        assert!(!super::changes_voice_permissions(
+            &syrnike_models::v0::DataMemberEdit {
+                nickname: Some("Renamed".to_string()),
+                avatar: None,
+                roles: None,
+                timeout: None,
+                can_publish: None,
+                can_receive: None,
+                voice_channel: None,
+                remove: vec![],
+            }
+        ));
     }
 }

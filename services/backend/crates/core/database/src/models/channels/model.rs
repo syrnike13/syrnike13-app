@@ -197,7 +197,7 @@ impl Channel {
         update_server: bool,
     ) -> Result<Channel> {
         let config = config().await;
-        if server.channels.len() > config.features.limits.global.server_channels {
+        if server.channels.len() >= config.features.limits.global.server_channels {
             return Err(create_error!(TooManyChannels {
                 max: config.features.limits.global.server_channels,
             }));

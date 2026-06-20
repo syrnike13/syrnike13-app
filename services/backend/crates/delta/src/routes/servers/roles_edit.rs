@@ -1,12 +1,11 @@
-use rocket::{State, serde::json::Json};
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    Database, File, PartialRole, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{VoiceClient, sync_voice_permissions},
+    Database, File, PartialRole, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
+use syrnike_result::{create_error, Result};
 use validator::Validate;
 
 use super::audit_mutation;
@@ -18,7 +17,6 @@ use super::audit_mutation;
 #[patch("/<target>/roles/<role_id>", data = "<data>", rank = 1)]
 pub async fn edit(
     db: &State<Database>,
-    voice_client: &State<VoiceClient>,
     user: User,
     target: Reference<'_>,
     role_id: String,
@@ -160,22 +158,6 @@ pub async fn edit(
             return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
         }
 
-        for channel_id in &server.channels {
-            let channel = match Reference::from_unchecked(channel_id).as_channel(db).await {
-                Ok(channel) => channel,
-                Err(error) => {
-                    return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-                }
-            };
-
-            if let Err(error) =
-                sync_voice_permissions(db, voice_client, &channel, Some(&server), Some(&role_id))
-                    .await
-            {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-            }
-        }
-
         audit.mark_succeeded(db).await?;
 
         Ok(Json(role.into()))
@@ -191,19 +173,18 @@ fn routes_under_test() -> Vec<rocket::Route> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::{
-        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
-        ServerAuditLogTarget, fixture, voice::VoiceClient,
+        fixture, Channel, Database, DatabaseInfo, PartialServer, ServerAuditLogAction,
+        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget, VoiceInformation,
     };
     use syrnike_models::v0;
+    use syrnike_permissions::OverrideField;
     use ulid::Ulid;
 
     struct RoleEditTestContext {
@@ -223,8 +204,7 @@ mod test {
                 rocket::build()
                     .mount("/servers", super::routes_under_test())
                     .manage(authifier.clone())
-                    .manage(db.clone())
-                    .manage(VoiceClient::new(HashMap::new())),
+                    .manage(db.clone()),
             )
             .await
             .expect("valid rocket instance");
@@ -467,5 +447,92 @@ mod test {
             .expect("audit entries fetched");
 
         assert!(entries.is_empty());
+    }
+
+    #[rocket::async_test]
+    async fn edit_role_metadata_does_not_require_voice_sync() {
+        let context = RoleEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            server server 4);
+
+        let voice_channel_id = Ulid::new().to_string();
+        let voice_channel = Channel::TextChannel {
+            id: voice_channel_id.clone(),
+            server: server.id.clone(),
+            name: "Voice".to_string(),
+            description: None,
+            icon: None,
+            last_message_id: None,
+            default_permissions: None,
+            role_permissions: Default::default(),
+            nsfw: false,
+            voice: Some(VoiceInformation::default()),
+            slowmode: None,
+        };
+        context
+            .db
+            .insert_channel(&voice_channel)
+            .await
+            .expect("voice channel inserted");
+        context
+            .db
+            .update_server(
+                &server.id,
+                &PartialServer {
+                    channels: Some(vec![voice_channel_id]),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("server voice channel linked");
+
+        let role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Lower Rank 1")
+            .expect("lower-ranked role")
+            .clone();
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+
+        let response = context
+            .client
+            .patch(format!("/servers/{}/roles/{}", server.id, role.id))
+            .header(ContentType::JSON)
+            .body(
+                json!(v0::DataEditRole {
+                    name: Some("Renamed Voice Metadata".to_string()),
+                    colour: None,
+                    hoist: None,
+                    mentionable: None,
+                    rank: None,
+                    icon: None,
+                    remove: vec![],
+                })
+                .to_string(),
+            )
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let updated = context
+            .db
+            .fetch_server(&server.id)
+            .await
+            .expect("server fetched")
+            .roles
+            .get(&role.id)
+            .expect("role still exists")
+            .clone();
+
+        assert_eq!(updated.name, "Renamed Voice Metadata");
+        assert_eq!(updated.permissions, OverrideField::default());
     }
 }
