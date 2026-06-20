@@ -448,6 +448,14 @@ export interface paths {
      */
     put: operations["permissions_set_set_role_permissions"];
   };
+  "/channels/{target}/permissions/users/{user_id}": {
+    /**
+     * Sets permissions for the specified member in this channel.
+     *
+     * Channel must be a `TextChannel`.
+     */
+    put: operations["permissions_set_user_set_user_permissions"];
+  };
   "/channels/{target}/permissions/default": {
     /**
      * Sets permissions for the default role in this channel.
@@ -1303,6 +1311,10 @@ export interface components {
           role_permissions?: {
             [key: string]: components["schemas"]["OverrideField"];
           };
+          /** @description Permissions assigned to specific users in this channel */
+          user_permissions?: {
+            [key: string]: components["schemas"]["OverrideField"];
+          };
           /** @description Whether this channel is marked as not safe for work */
           nsfw?: boolean;
           /** @description Voice Information for when this channel is also a voice channel */
@@ -2026,6 +2038,11 @@ export interface components {
     /** @description New role permissions */
     DataSetRolePermissions: {
       /** @description Allow / deny values to set for this role */
+      permissions: components["schemas"]["Override"];
+    };
+    /** @description New user permissions */
+    DataSetUserPermissions: {
+      /** @description Allow / deny values to set for this user */
       permissions: components["schemas"]["Override"];
     };
     /** @description Representation of a single permission override */
@@ -5939,6 +5956,37 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["DataSetRolePermissions"];
+      };
+    };
+  };
+  /**
+   * Sets permissions for the specified member in this channel.
+   *
+   * Channel must be a `TextChannel`.
+   */
+  permissions_set_user_set_user_permissions: {
+    parameters: {
+      path: {
+        target: components["schemas"]["Id"];
+        user_id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["Channel"];
+        };
+      };
+      /** An error occurred. */
+      default: {
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataSetUserPermissions"];
       };
     };
   };

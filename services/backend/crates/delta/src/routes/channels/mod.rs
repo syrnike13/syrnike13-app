@@ -4,8 +4,8 @@ use revolt_rocket_okapi::{
     request::{OpenApiFromRequest, RequestHeaderInput},
 };
 use rocket::{
-    Request, Route,
     request::{FromRequest, Outcome},
+    Request, Route,
 };
 use syrnike_database::AMQP;
 
@@ -32,6 +32,7 @@ mod message_unpin;
 mod message_unreact;
 mod permissions_set;
 mod permissions_set_default;
+mod permissions_set_user;
 mod voice_call_cleanup;
 mod voice_cancel_call;
 mod voice_decline_call;
@@ -89,6 +90,7 @@ pub fn routes() -> (Vec<Route>, OpenApi) {
         voice_decline_call::decline_call,
         permissions_set::set_role_permissions,
         permissions_set_default::set_default_channel_permissions,
+        permissions_set_user::set_user_permissions,
         message_react::react_message,
         message_unreact::unreact_message,
         message_clear_reactions::clear_reactions,

@@ -180,6 +180,7 @@ mod test {
             last_message_id: None,
             default_permissions: None,
             role_permissions: Default::default(),
+            user_permissions: Default::default(),
             nsfw: false,
             voice: Some(VoiceInformation::default()),
             slowmode: None,

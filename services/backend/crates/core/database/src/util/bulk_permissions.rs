@@ -189,20 +189,22 @@ async fn calculate_members_permissions<'a>(
 ) -> HashMap<String, PermissionValue> {
     let mut resp = HashMap::new();
 
-    let (_, channel_role_permissions, channel_default_permissions) = match query
-        .channel
-        .as_ref()
-        .expect("A channel must be assigned to calculate channel permissions")
-        .clone()
-    {
-        Channel::TextChannel {
-            id,
-            role_permissions,
-            default_permissions,
-            ..
-        } => (id, role_permissions, default_permissions),
-        _ => panic!("Calculation of member permissions must be done on a server channel"),
-    };
+    let (_, channel_role_permissions, channel_user_permissions, channel_default_permissions) =
+        match query
+            .channel
+            .as_ref()
+            .expect("A channel must be assigned to calculate channel permissions")
+            .clone()
+        {
+            Channel::TextChannel {
+                id,
+                role_permissions,
+                user_permissions,
+                default_permissions,
+                ..
+            } => (id, role_permissions, user_permissions, default_permissions),
+            _ => panic!("Calculation of member permissions must be done on a server channel"),
+        };
 
     if query.users.is_none() {
         let ids: Vec<String> = query
@@ -300,6 +302,10 @@ async fn calculate_members_permissions<'a>(
             })
             .collect::<Vec<Override>>();
         apply_channel_role_overrides(&mut permission, role_overrides);
+
+        if let Some(user_override) = channel_user_permissions.get(&member.id.user) {
+            permission.apply((*user_override).into());
+        }
 
         resp.insert(user.id.clone(), permission);
     }

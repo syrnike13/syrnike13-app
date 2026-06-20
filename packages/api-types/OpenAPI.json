@@ -6707,6 +6707,71 @@
         ]
       }
     },
+    "/channels/{target}/permissions/users/{user_id}": {
+      "put": {
+        "tags": [
+          "Channel Permissions"
+        ],
+        "summary": "Set Member Permission",
+        "description": "Sets permissions for the specified member in this channel.\n\nChannel must be a `TextChannel`.",
+        "operationId": "permissions_set_user_set_user_permissions",
+        "parameters": [
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataSetUserPermissions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "An error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Session Token": []
+          }
+        ]
+      }
+    },
     "/channels/{target}/permissions/default": {
       "put": {
         "tags": [
@@ -9674,6 +9739,13 @@
                   "$ref": "#/components/schemas/OverrideField"
                 }
               },
+              "user_permissions": {
+                "description": "Permissions assigned to specific users in this channel",
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/OverrideField"
+                }
+              },
               "nsfw": {
                 "description": "Whether this channel is marked as not safe for work",
                 "type": "boolean"
@@ -11648,6 +11720,23 @@
         "properties": {
           "permissions": {
             "description": "Allow / deny values to set for this role",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Override"
+              }
+            ]
+          }
+        }
+      },
+      "DataSetUserPermissions": {
+        "description": "New user permissions",
+        "type": "object",
+        "required": [
+          "permissions"
+        ],
+        "properties": {
+          "permissions": {
+            "description": "Allow / deny values to set for this user",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Override"

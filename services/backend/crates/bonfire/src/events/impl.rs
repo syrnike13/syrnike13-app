@@ -339,6 +339,7 @@ mod tests {
                     },
                 ),
             ]),
+            user_permissions: HashMap::new(),
             nsfw: false,
             voice: None,
             slowmode: None,

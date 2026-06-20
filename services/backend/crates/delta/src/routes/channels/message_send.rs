@@ -266,6 +266,7 @@ mod test {
             active: None,
             permissions: None,
             role_permissions: Some(overrides),
+            user_permissions: None,
             default_permissions: Some(OverrideField {
                 a: 0,
                 d: ChannelPermission::ViewChannel as i64,

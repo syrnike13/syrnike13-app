@@ -24,6 +24,9 @@ const ALLOW_IN_TIMEOUT = permissionOr(
 type OverrideField = { a: number; d: number }
 
 type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
+type UserPermissionScopedChannel = ServerScopedChannel & {
+  user_permissions?: Record<string, OverrideField>
+}
 
 function clampMemberVoicePermissions(permissions: number, member: Member) {
   let next = permissions
@@ -121,6 +124,11 @@ export function calculateChannelPermissions(
 
     permissions = applyChannelRoleOverrides(permissions, roleOverrides)
   }
+
+  permissions = applyOverride(
+    permissions,
+    (channel as UserPermissionScopedChannel).user_permissions?.[userId],
+  )
 
   if (member.timeout && new Date(member.timeout) > new Date()) {
     permissions = permissionAnd(permissions, ALLOW_IN_TIMEOUT)

@@ -130,6 +130,10 @@ pub async fn calculate_channel_permissions<P: PermissionQuery>(query: &mut P) ->
                     query.get_our_channel_role_overrides().await,
                 );
 
+                if let Some(user_override) = query.get_our_channel_user_override().await {
+                    permissions.apply(user_override);
+                }
+
                 if query.are_we_timed_out().await {
                     permissions.restrict(*ALLOW_IN_TIMEOUT);
                 }

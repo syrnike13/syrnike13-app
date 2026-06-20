@@ -5,6 +5,7 @@ import type {
   DataEditChannel,
   DataEditWebhook,
   DataSetRolePermissions,
+  DataSetUserPermissions,
   Webhook,
 } from '@syrnike13/api-types'
 
@@ -60,6 +61,22 @@ export async function setChannelRolePermissions(
     token,
     body: data,
   })
+}
+
+export async function setChannelUserPermissions(
+  token: string,
+  channelId: string,
+  userId: string,
+  data: DataSetUserPermissions,
+) {
+  return apiRequest<Channel>(
+    `/channels/${channelId}/permissions/users/${userId}`,
+    {
+      method: 'PUT',
+      token,
+      body: data,
+    },
+  )
 }
 
 export async function setDefaultChannelPermissions(

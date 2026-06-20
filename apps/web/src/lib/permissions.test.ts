@@ -109,6 +109,51 @@ describe('calculateServerPermissions', () => {
 })
 
 describe('calculateChannelPermissions', () => {
+  it('applies member channel overrides after role channel overrides', () => {
+    const server = makeServer({
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        }),
+      },
+    })
+    const channel = {
+      ...makeTextChannel({
+        default_permissions: {
+          a: ChannelPermission.ViewChannel,
+          d: 0,
+        },
+        role_permissions: {
+          mod: {
+            a: ChannelPermission.SendMessage,
+            d: 0,
+          },
+        },
+      }),
+      user_permissions: {
+        'user-1': {
+          a: 0,
+          d: ChannelPermission.SendMessage,
+        },
+      },
+    }
+    const member = makeMember({ roles: ['mod'] })
+
+    const permissions = calculateChannelPermissions(
+      server,
+      channel,
+      member,
+      'user-1',
+    )
+
+    expect(
+      hasChannelPermission(permissions, ChannelPermission.SendMessage),
+    ).toBe(false)
+  })
+
   it('lets a channel role allow beat another channel role deny regardless of rank', () => {
     const server = makeServer({
       roles: {

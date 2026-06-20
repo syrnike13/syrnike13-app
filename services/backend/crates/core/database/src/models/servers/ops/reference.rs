@@ -218,6 +218,7 @@ mod tests {
                 (role_id.clone(), OverrideField { a: 1, d: 0 }),
                 (kept_role_id.clone(), OverrideField { a: 2, d: 0 }),
             ]),
+            user_permissions: HashMap::new(),
             nsfw: false,
             voice: None,
             slowmode: None,

@@ -58,6 +58,9 @@ pub trait PermissionQuery {
     /// Channel role overrides are resolved as a set, not by role rank.
     async fn get_our_channel_role_overrides(&mut self) -> Vec<Override>;
 
+    /// Get the user-specific override for this member in this channel.
+    async fn get_our_channel_user_override(&mut self) -> Option<Override>;
+
     /// Do we own this group or saved messages channel if it is one of those?
     async fn do_we_own_the_channel(&mut self) -> bool;
 

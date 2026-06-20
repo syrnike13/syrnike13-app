@@ -8,12 +8,18 @@ import {
   useDraftRegistration,
   type DraftController,
 } from '#/components/settings/draft-controller-context'
+import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   setChannelRolePermissions,
+  setChannelUserPermissions,
   setDefaultChannelPermissions,
 } from '#/features/api/channels-api'
-import { syncStore } from '#/features/sync/sync-store'
+import {
+  listServerMembers,
+  type ServerMemberEntry,
+} from '#/features/sync/selectors'
+import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import type { ServerChannel } from '#/lib/channel-voice'
 import { canManageRole } from '#/lib/permissions'
 import { roleIconUrl } from '#/lib/media'
@@ -30,6 +36,7 @@ import {
 import { cn } from '#/lib/utils'
 
 const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
+const USER_PERMISSIONS_PREFIX = '__user_permissions__:'
 
 const ROLE_SIDEBAR_ROW_BASE =
   'flex h-9 w-full items-center gap-2 rounded-md border px-3 text-left text-sm font-medium transition-colors'
@@ -47,6 +54,7 @@ function ChannelPermissionEditor({
   userId,
   token,
   roleId,
+  userTargetId,
   roleName,
   initialPermissions,
   canEdit,
@@ -57,6 +65,7 @@ function ChannelPermissionEditor({
   userId: string
   token: string
   roleId: string | null
+  userTargetId?: string
   roleName: string
   initialPermissions: PermissionOverrideField | null | undefined
   canEdit: boolean
@@ -68,7 +77,7 @@ function ChannelPermissionEditor({
 
   useEffect(() => {
     setPermissions(overrideFieldFromRole(initialPermissions))
-  }, [initialPermissions, roleId])
+  }, [initialPermissions, roleId, userTargetId])
 
   const baseline = useMemo(
     () => overrideFieldFromRole(initialPermissions),
@@ -90,8 +99,14 @@ function ChannelPermissionEditor({
     setSaving(true)
     try {
       const payload = { permissions: overrideFieldToApi(permissions) }
-      const updated =
-        roleId === null
+      const updated = userTargetId
+        ? await setChannelUserPermissions(
+            token,
+            channel._id,
+            userTargetId,
+            payload,
+          )
+        : roleId === null
           ? await setDefaultChannelPermissions(token, channel._id, payload)
           : await setChannelRolePermissions(
               token,
@@ -109,7 +124,7 @@ function ChannelPermissionEditor({
     } finally {
       setSaving(false)
     }
-  }, [channel._id, isDirty, permissions, roleId, token])
+  }, [channel._id, isDirty, permissions, roleId, token, userTargetId])
 
   const draftRegistration = useMemo(
     (): DraftController => ({
@@ -204,6 +219,38 @@ function RoleListItem({
   )
 }
 
+function memberDisplayName({ member, user }: ServerMemberEntry) {
+  return member.nickname?.trim() || user.display_name || user.username
+}
+
+function MemberListItem({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: ServerMemberEntry
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        ROLE_SIDEBAR_ROW_BASE,
+        roleSidebarRowStateClass(selected),
+      )}
+      onClick={onSelect}
+    >
+      <UserAvatar
+        user={entry.user}
+        className="size-5 shrink-0"
+        showPresence={false}
+      />
+      <span className="truncate">{memberDisplayName(entry)}</span>
+    </button>
+  )
+}
+
 export function ChannelSettingsPermissionsPanel({
   channel,
   server,
@@ -218,6 +265,7 @@ export function ChannelSettingsPermissionsPanel({
     () => (server.roles ? sortRolesByRankDesc(Object.values(server.roles)) : []),
     [server.roles],
   )
+  const members = useSyncStore((s) => listServerMembers(s, server._id))
   const [selectedId, setSelectedId] = useState(DEFAULT_PERMISSIONS_ID)
 
   const token = auth.session?.token
@@ -228,13 +276,28 @@ export function ChannelSettingsPermissionsPanel({
     if (selectedId && roles.some((role) => role._id === selectedId)) {
       return selectedId
     }
+    if (selectedId.startsWith(USER_PERMISSIONS_PREFIX)) {
+      const selectedUserId = selectedId.slice(USER_PERMISSIONS_PREFIX.length)
+      if (members.some((entry) => entry.user._id === selectedUserId)) {
+        return selectedId
+      }
+    }
     return DEFAULT_PERMISSIONS_ID
-  }, [selectedId, roles])
+  }, [members, selectedId, roles])
+
+  const selectedUserId = effectiveSelectedId.startsWith(
+    USER_PERMISSIONS_PREFIX,
+  )
+    ? effectiveSelectedId.slice(USER_PERMISSIONS_PREFIX.length)
+    : undefined
 
   const selectedRole =
     effectiveSelectedId !== DEFAULT_PERMISSIONS_ID
       ? roles.find((role) => role._id === effectiveSelectedId)
       : undefined
+  const selectedUserEntry = selectedUserId
+    ? members.find((entry) => entry.user._id === selectedUserId)
+    : undefined
 
   const canEditDefault = Boolean(token && userId)
 
@@ -244,6 +307,7 @@ export function ChannelSettingsPermissionsPanel({
           permissions: true,
         })
       : false
+  const canEditSelectedUser = Boolean(token && userId && selectedUserEntry)
 
   if (!token || !userId) {
     return null
@@ -281,6 +345,29 @@ export function ChannelSettingsPermissionsPanel({
                 ))}
               </div>
             )}
+
+            <div className="space-y-1 pt-3">
+              <p className="px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                РЈС‡Р°СЃС‚РЅРёРєРё
+              </p>
+              {members.length === 0 ? (
+                <p className="px-1 text-sm text-muted-foreground">
+                  РќРµС‚ СѓС‡Р°СЃС‚РЅРёРєРѕРІ
+                </p>
+              ) : (
+                members.map((entry) => {
+                  const selectionId = `${USER_PERMISSIONS_PREFIX}${entry.user._id}`
+                  return (
+                    <MemberListItem
+                      key={entry.user._id}
+                      entry={entry}
+                      selected={effectiveSelectedId === selectionId}
+                      onSelect={() => setSelectedId(selectionId)}
+                    />
+                  )
+                })
+              )}
+            </div>
           </div>
         </div>
       </aside>
@@ -288,7 +375,7 @@ export function ChannelSettingsPermissionsPanel({
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="scrollbar-overlay min-h-0 flex-1 overflow-x-hidden overflow-y-auto scroll-pb-24">
           <div className="min-w-0 pr-2">
-            {effectiveSelectedId === DEFAULT_PERMISSIONS_ID || !selectedRole ? (
+            {effectiveSelectedId === DEFAULT_PERMISSIONS_ID ? (
               <ChannelPermissionEditor
                 key={DEFAULT_PERMISSIONS_ID}
                 channel={channel}
@@ -301,7 +388,7 @@ export function ChannelSettingsPermissionsPanel({
                 initialPermissions={channel.default_permissions}
                 canEdit={canEditDefault}
               />
-            ) : (
+            ) : selectedRole ? (
               <ChannelPermissionEditor
                 key={selectedRole._id}
                 channel={channel}
@@ -315,6 +402,35 @@ export function ChannelSettingsPermissionsPanel({
                   channel.role_permissions?.[selectedRole._id]
                 }
                 canEdit={canEditSelectedRole}
+              />
+            ) : selectedUserEntry ? (
+              <ChannelPermissionEditor
+                key={`${USER_PERMISSIONS_PREFIX}${selectedUserEntry.user._id}`}
+                channel={channel}
+                server={server}
+                member={member}
+                userId={userId}
+                token={token}
+                roleId={null}
+                userTargetId={selectedUserEntry.user._id}
+                roleName={memberDisplayName(selectedUserEntry)}
+                initialPermissions={
+                  channel.user_permissions?.[selectedUserEntry.user._id]
+                }
+                canEdit={canEditSelectedUser}
+              />
+            ) : (
+              <ChannelPermissionEditor
+                key={DEFAULT_PERMISSIONS_ID}
+                channel={channel}
+                server={server}
+                member={member}
+                userId={userId}
+                token={token}
+                roleId={null}
+                roleName="@everyone"
+                initialPermissions={channel.default_permissions}
+                canEdit={canEditDefault}
               />
             )}
           </div>

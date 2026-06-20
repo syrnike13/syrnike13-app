@@ -290,6 +290,26 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
         }
     }
 
+    /// Get the user-specific override for this member in this channel.
+    async fn get_our_channel_user_override(&mut self) -> Option<Override> {
+        if let Some(channel) = &self.channel {
+            match channel {
+                Cow::Borrowed(Channel::TextChannel {
+                    user_permissions, ..
+                })
+                | Cow::Owned(Channel::TextChannel {
+                    user_permissions, ..
+                }) => {
+                    let user_id = self.member.as_ref().map(|member| &member.id.user)?;
+                    user_permissions.get(user_id).copied().map(Override::from)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
     /// Do we own this group or saved messages channel if it is one of those?
     async fn do_we_own_the_channel(&mut self) -> bool {
         if let Some(channel) = &self.channel {

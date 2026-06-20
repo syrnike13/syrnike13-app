@@ -408,6 +408,7 @@ mod tests {
                     d: 0,
                 },
             )]),
+            user_permissions: HashMap::new(),
             nsfw: false,
             voice: None,
             slowmode: None,

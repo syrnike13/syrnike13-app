@@ -1,4 +1,4 @@
-use bson::{Bson, Document, to_document};
+use bson::{to_document, Bson, Document};
 use futures::StreamExt;
 use syrnike_result::Result;
 
@@ -179,7 +179,7 @@ impl IntoDocumentPath for FieldsRole {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Channel, Database, DatabaseInfo, fixture};
+    use crate::{fixture, Channel, Database, DatabaseInfo};
 
     #[async_std::test]
     async fn delete_role_clears_permissions_from_all_server_channels() {
@@ -226,6 +226,7 @@ mod tests {
             last_message_id: None,
             default_permissions: None,
             role_permissions: Default::default(),
+            user_permissions: Default::default(),
             nsfw: false,
             voice: None,
             slowmode: None,
