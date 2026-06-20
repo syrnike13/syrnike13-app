@@ -24,6 +24,12 @@ import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
+  isServerChannel,
+  runtimeChannelName,
+  serverChannelServerId,
+  type RuntimeChannel,
+} from '#/lib/channel-voice'
+import {
   canManageChannel,
   canManageChannelPermissions,
   canManageChannelWebhooks,
@@ -114,33 +120,34 @@ export function ChannelSettingsPage({
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) => s.channels[channelId])
-  const server = useSyncStore((s) =>
-    channel && 'server' in channel && channel.server
-      ? s.servers[channel.server]
-      : undefined,
-  )
+  const settingsChannel = channel as RuntimeChannel | undefined
+  const serverId = serverChannelServerId(settingsChannel)
+  const server = useSyncStore((s) => (serverId ? s.servers[serverId] : undefined))
   const member = useSyncStore((s) =>
-    channel && 'server' in channel && channel.server && auth.user?._id
-      ? s.members[`${channel.server}:${auth.user._id}`]
+    serverId && auth.user?._id
+      ? s.members[`${serverId}:${auth.user._id}`]
       : undefined,
   )
 
-  const isServerChannel =
-    channel?.channel_type === 'TextChannel' ||
-    channel?.channel_type === 'VoiceChannel'
+  const isServerSettingsChannel = isServerChannel(settingsChannel)
 
   const canManage =
-    isServerChannel && channel
-      ? canManageChannel(server, channel, member, auth.user?._id)
+    isServerSettingsChannel && settingsChannel
+      ? canManageChannel(server, settingsChannel, member, auth.user?._id)
       : false
 
   const canManagePermissions =
-    isServerChannel && channel?.channel_type === 'TextChannel'
-      ? canManageChannelPermissions(server, channel, member, auth.user?._id)
+    isServerSettingsChannel && settingsChannel
+      ? canManageChannelPermissions(
+          server,
+          settingsChannel,
+          member,
+          auth.user?._id,
+        )
       : false
   const canManageWebhooks =
-    isServerChannel && channel?.channel_type === 'TextChannel'
-      ? canManageChannelWebhooks(server, channel, member, auth.user?._id)
+    isServerSettingsChannel && settingsChannel.channel_type === 'TextChannel'
+      ? canManageChannelWebhooks(server, settingsChannel, member, auth.user?._id)
       : false
 
   const closeSettings = useCallback(() => {
@@ -152,9 +159,9 @@ export function ChannelSettingsPage({
   }, [highlightMessageId, hostChannelId, navigate, prefix])
 
   useEffect(() => {
-    if (!channel) return
+    if (!settingsChannel) return
 
-    if (!isServerChannel) {
+    if (!isServerSettingsChannel) {
       void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
       return
     }
@@ -174,21 +181,21 @@ export function ChannelSettingsPage({
     canManage,
     canManagePermissions,
     canManageWebhooks,
-    channel,
     channelId,
     highlightMessageId,
     hostChannelId,
-    isServerChannel,
+    isServerSettingsChannel,
     navigate,
     prefix,
     server,
+    settingsChannel,
   ])
 
   useEffect(() => {
-    if (channel && 'server' in channel && channel.server) {
-      syncStore.setSelectedServerId(channel.server)
+    if (serverId) {
+      syncStore.setSelectedServerId(serverId)
     }
-  }, [channel])
+  }, [serverId])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -209,7 +216,7 @@ export function ChannelSettingsPage({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [closeSettings])
 
-  if (!channel || !isServerChannel) {
+  if (!settingsChannel || !isServerSettingsChannel) {
     return null
   }
 
@@ -235,7 +242,9 @@ export function ChannelSettingsPage({
   }
 
   const channelLabel =
-    channel.channel_type === 'TextChannel' ? `#${channel.name}` : channel.name
+    settingsChannel.channel_type === 'TextChannel'
+      ? `#${settingsChannel.name}`
+      : (runtimeChannelName(settingsChannel) ?? settingsChannel._id)
 
   return (
     <div
@@ -308,7 +317,7 @@ export function ChannelSettingsPage({
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6 sm:px-8">
                 <div className="flex min-h-0 flex-1 flex-col">
                   <ChannelSettingsPanelContent
-                    channel={channel}
+                    channel={settingsChannel}
                     tab={effectiveTab}
                   />
                 </div>
@@ -320,7 +329,7 @@ export function ChannelSettingsPage({
               <ScrollArea className="min-h-0 flex-1">
                 <div className="scroll-pb-24 px-6 py-8 sm:px-8">
                   <ChannelSettingsPanelContent
-                    channel={channel}
+                    channel={settingsChannel}
                     tab={effectiveTab}
                   />
                 </div>

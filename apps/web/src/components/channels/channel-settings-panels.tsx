@@ -1,5 +1,3 @@
-import type { Channel } from '@syrnike13/api-types'
-
 import { ChannelSettingsOverviewPanel } from '#/components/channels/channel-settings-overview-panel'
 import { ChannelSettingsPermissionsPanel } from '#/components/channels/channel-settings-permissions-panel'
 import type { ChannelSettingsTab } from '#/components/channels/channel-settings-types'
@@ -7,15 +5,14 @@ import { ChannelSettingsWebhooksPanel } from '#/components/channels/channel-sett
 import { useAuth } from '#/features/auth/auth-context'
 import { useSyncStore } from '#/features/sync/sync-store'
 import {
+  serverChannelServerId,
+  type ServerChannel,
+} from '#/lib/channel-voice'
+import {
   canManageChannel,
   canManageChannelPermissions,
   canManageChannelWebhooks,
 } from '#/lib/permissions'
-
-type ServerChannel = Extract<
-  Channel,
-  { channel_type: 'TextChannel' | 'VoiceChannel' }
->
 
 type ChannelSettingsPanelContentProps = {
   channel: ServerChannel
@@ -27,12 +24,11 @@ export function ChannelSettingsPanelContent({
   tab,
 }: ChannelSettingsPanelContentProps) {
   const auth = useAuth()
-  const server = useSyncStore((s) =>
-    channel.server ? s.servers[channel.server] : undefined,
-  )
+  const serverId = serverChannelServerId(channel)
+  const server = useSyncStore((s) => (serverId ? s.servers[serverId] : undefined))
   const member = useSyncStore((s) =>
-    channel.server && auth.user?._id
-      ? s.members[`${channel.server}:${auth.user._id}`]
+    serverId && auth.user?._id
+      ? s.members[`${serverId}:${auth.user._id}`]
       : undefined,
   )
 
@@ -59,9 +55,7 @@ export function ChannelSettingsPanelContent({
     case 'overview':
       return canManage ? <ChannelSettingsOverviewPanel channel={channel} /> : null
     case 'permissions':
-      return canManagePermissions &&
-        channel.channel_type === 'TextChannel' &&
-        server ? (
+      return canManagePermissions && server ? (
         <ChannelSettingsPermissionsPanel
           channel={channel}
           server={server}

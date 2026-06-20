@@ -1,5 +1,5 @@
 use rocket::{serde::json::Json, State};
-use syrnike_database::{util::reference::Reference, Channel, Database, Invite};
+use syrnike_database::{audit_timestamp, util::reference::Reference, Channel, Database, Invite};
 use syrnike_models::v0;
 use syrnike_result::{create_error, Result};
 
@@ -12,7 +12,13 @@ pub async fn fetch(
     db: &State<Database>,
     target: Reference<'_>,
 ) -> Result<Json<v0::InviteResponse>> {
-    Ok(Json(match target.as_invite(db).await? {
+    let invite = target.as_invite(db).await?;
+    let now = audit_timestamp();
+    if invite.is_revoked() || invite.is_expired(now) || invite.is_exhausted() {
+        return Err(create_error!(InvalidInvite));
+    }
+
+    Ok(Json(match invite {
         Invite::Server {
             channel, creator, ..
         } => {
@@ -82,13 +88,42 @@ pub async fn fetch(
 }
 
 #[cfg(test)]
+fn routes_under_test() -> Vec<rocket::Route> {
+    routes![fetch]
+}
+
+#[cfg(test)]
 mod test {
     use crate::{rocket, util::test::TestHarness};
     use rocket::http::{ContentType, Status};
-    use syrnike_database::{Channel, Server};
+    use rocket::local::asynchronous::Client;
+    use syrnike_database::{fixture, Channel, Database, DatabaseInfo, Server};
     use syrnike_models::v0::{
         DataCreateGroup, DataCreateServerChannel, Invite, InviteResponse, LegacyServerChannelType,
     };
+
+    struct InviteFetchTestContext {
+        client: Client,
+        db: Database,
+    }
+
+    impl InviteFetchTestContext {
+        async fn new() -> Self {
+            let db = DatabaseInfo::Reference
+                .connect()
+                .await
+                .expect("reference database");
+            let client = Client::tracked(
+                rocket::build()
+                    .mount("/invites", super::routes_under_test())
+                    .manage(db.clone()),
+            )
+            .await
+            .expect("valid rocket instance");
+
+            Self { client, db }
+        }
+    }
 
     #[rocket::async_test]
     async fn success_fetch_group_invite() {
@@ -150,6 +185,42 @@ mod test {
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::NotFound);
+    }
+
+    #[rocket::async_test]
+    async fn fail_fetch_revoked_server_invite() {
+        let context = InviteFetchTestContext::new().await;
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            channel channel 3
+            server server 4);
+        let invite_code = TestHarness::rand_string();
+
+        context
+            .db
+            .insert_invite(&syrnike_database::Invite::Server {
+                code: invite_code.clone(),
+                server: server.id,
+                creator: owner.id.clone(),
+                channel: channel.id().to_string(),
+                created_at: 1_000,
+                expires_at: None,
+                max_uses: None,
+                uses: 0,
+                revoked_at: Some(2_000),
+                revoked_by: Some(owner.id),
+                temporary: false,
+            })
+            .await
+            .expect("revoked invite inserted");
+
+        let response = context
+            .client
+            .get(format!("/invites/{}", invite_code))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::BadRequest);
     }
 
     #[rocket::async_test]

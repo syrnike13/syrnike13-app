@@ -1,12 +1,13 @@
-use rocket::{State, serde::json::Json};
+use rocket::{serde::json::Json, State};
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
-    Database, Invite, ServerAuditLogAction, ServerAuditLogTarget, User, audit_timestamp,
+    audit_timestamp,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
+    Database, Invite, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
+use syrnike_result::{create_error, Result};
 use validator::Validate;
 
 use crate::routes::servers::audit_mutation;
@@ -48,6 +49,10 @@ pub async fn delete(
                 calculate_server_permissions(&mut query)
                     .await
                     .throw_if_lacking_channel_permission(ChannelPermission::ManageServer)?;
+            }
+
+            if revoked_at.is_some() {
+                return Err(create_error!(InvalidInvite));
             }
 
             let now = audit_timestamp();
@@ -97,14 +102,14 @@ fn routes_under_test() -> Vec<rocket::Route> {
 #[cfg(test)]
 mod test {
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::{
-        Database, DatabaseInfo, Invite, ServerAuditLogAction, ServerAuditLogQuery,
-        ServerAuditLogStatus, ServerAuditLogTarget, fixture,
+        fixture, Database, DatabaseInfo, Invite, ServerAuditLogAction, ServerAuditLogQuery,
+        ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use ulid::Ulid;
 
@@ -241,6 +246,104 @@ mod test {
         assert_eq!(entries[0].actor_id, owner.id);
         assert_eq!(entries[0].status, ServerAuditLogStatus::Succeeded);
         assert_eq!(entries[0].reason.as_deref(), Some("rotated link"));
+        assert_eq!(entries[0].target, ServerAuditLogTarget::Invite { code });
+    }
+
+    #[rocket::async_test]
+    async fn delete_revoked_server_invite_does_not_overwrite_lifecycle_or_audit() {
+        let context = InviteDeleteTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            channel channel 3
+            server server 4);
+
+        let code = "invite-delete-once".to_string();
+        context
+            .db
+            .insert_invite(&Invite::Server {
+                code: code.clone(),
+                server: server.id.clone(),
+                creator: owner.id.clone(),
+                channel: channel.id().to_string(),
+                created_at: 1_000,
+                expires_at: None,
+                max_uses: None,
+                uses: 0,
+                revoked_at: None,
+                revoked_by: None,
+                temporary: false,
+            })
+            .await
+            .expect("invite inserted");
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let first_response = context
+            .client
+            .delete(format!("/invites/{code}"))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "reason": "first revoke" }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+        assert_eq!(first_response.status(), Status::NoContent);
+
+        let first_invite = context.db.fetch_invite(&code).await.expect("invite");
+        let (first_revoked_at, first_revoked_by) = match first_invite {
+            Invite::Server {
+                revoked_at,
+                revoked_by,
+                ..
+            } => (revoked_at, revoked_by),
+            _ => unreachable!("expected server invite"),
+        };
+
+        let second_response = context
+            .client
+            .delete(format!("/invites/{code}"))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "reason": "second revoke" }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+        assert_eq!(second_response.status(), Status::BadRequest);
+
+        let second_invite = context.db.fetch_invite(&code).await.expect("invite");
+        match second_invite {
+            Invite::Server {
+                revoked_at,
+                revoked_by,
+                ..
+            } => {
+                assert_eq!(revoked_at, first_revoked_at);
+                assert_eq!(revoked_by, first_revoked_by);
+            }
+            _ => unreachable!("expected server invite"),
+        }
+
+        let entries = context
+            .db
+            .fetch_server_audit_logs(
+                &server.id,
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::InviteRevoke),
+                    target_type: Some("Invite".to_string()),
+                    target_id: Some(code.clone()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].reason.as_deref(), Some("first revoke"));
         assert_eq!(entries[0].target, ServerAuditLogTarget::Invite { code });
     }
 }

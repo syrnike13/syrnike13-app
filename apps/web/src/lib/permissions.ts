@@ -1,6 +1,7 @@
 import type { Channel, Member, Server } from '@syrnike13/api-types'
 
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
+import type { ServerChannel as ServerScopedChannel } from '#/lib/channel-voice'
 import {
   hasPermissionBit,
   maskPermissionBits,
@@ -23,11 +24,6 @@ const ALLOW_IN_TIMEOUT = permissionOr(
 type OverrideField = { a: number; d: number }
 
 type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
-
-type ServerScopedChannel = Extract<
-  Channel,
-  { channel_type: 'TextChannel' | 'VoiceChannel' }
->
 
 function clampMemberVoicePermissions(permissions: number, member: Member) {
   let next = permissions
@@ -91,7 +87,7 @@ export function calculateServerPermissions(
 
 export function calculateChannelPermissions(
   server: Server,
-  channel: ServerTextChannel,
+  channel: ServerScopedChannel,
   member: Member | undefined,
   userId: string | undefined,
 ): number {
@@ -491,12 +487,7 @@ export function canManageChannel(
   if (!server || !userId) return false
 
   return hasChannelPermission(
-    calculateChannelPermissions(
-      server,
-      channel as ServerTextChannel,
-      member,
-      userId,
-    ),
+    calculateChannelPermissions(server, channel, member, userId),
     ChannelPermission.ManageChannel,
   )
 }
@@ -510,12 +501,7 @@ export function canManageChannelPermissions(
   if (!server || !userId) return false
 
   return hasChannelPermission(
-    calculateChannelPermissions(
-      server,
-      channel as ServerTextChannel,
-      member,
-      userId,
-    ),
+    calculateChannelPermissions(server, channel, member, userId),
     ChannelPermission.ManagePermissions,
   )
 }

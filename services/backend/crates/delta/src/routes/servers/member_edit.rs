@@ -27,9 +27,11 @@ use super::audit_mutation;
 
 fn changes_voice_permissions(data: &v0::DataMemberEdit) -> bool {
     data.roles.is_some()
+        || data.timeout.is_some()
         || data.can_publish.is_some()
         || data.can_receive.is_some()
         || data.remove.contains(&FieldsMember::Roles)
+        || data.remove.contains(&FieldsMember::Timeout)
         || data.remove.contains(&FieldsMember::CanPublish)
         || data.remove.contains(&FieldsMember::CanReceive)
 }
@@ -456,6 +458,7 @@ mod test {
         models::{Account, EmailVerification, Session},
         Authifier,
     };
+    use iso8601_timestamp::Timestamp;
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::voice::VoiceClient;
@@ -646,6 +649,32 @@ mod test {
                 can_receive: None,
                 voice_channel: None,
                 remove: vec![syrnike_models::v0::FieldsMember::Roles],
+            }
+        ));
+
+        assert!(super::changes_voice_permissions(
+            &syrnike_models::v0::DataMemberEdit {
+                nickname: None,
+                avatar: None,
+                roles: None,
+                timeout: Some(Timestamp::now_utc()),
+                can_publish: None,
+                can_receive: None,
+                voice_channel: None,
+                remove: vec![],
+            }
+        ));
+
+        assert!(super::changes_voice_permissions(
+            &syrnike_models::v0::DataMemberEdit {
+                nickname: None,
+                avatar: None,
+                roles: None,
+                timeout: None,
+                can_publish: None,
+                can_receive: None,
+                voice_channel: None,
+                remove: vec![syrnike_models::v0::FieldsMember::Timeout],
             }
         ));
 

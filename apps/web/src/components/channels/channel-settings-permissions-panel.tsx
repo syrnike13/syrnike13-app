@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Channel, Member, Role, Server } from '@syrnike13/api-types'
+import type { Member, Role, Server } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -14,6 +14,7 @@ import {
   setDefaultChannelPermissions,
 } from '#/features/api/channels-api'
 import { syncStore } from '#/features/sync/sync-store'
+import type { ServerChannel } from '#/lib/channel-voice'
 import { canManageRole } from '#/lib/permissions'
 import { roleIconUrl } from '#/lib/media'
 import {
@@ -39,8 +40,6 @@ function roleSidebarRowStateClass(selected: boolean) {
     : 'border-border text-foreground hover:bg-muted/40'
 }
 
-type TextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
-
 function ChannelPermissionEditor({
   channel,
   server,
@@ -52,7 +51,7 @@ function ChannelPermissionEditor({
   initialPermissions,
   canEdit,
 }: {
-  channel: TextChannel
+  channel: ServerChannel
   server: Server
   member: Member | undefined
   userId: string
@@ -210,7 +209,7 @@ export function ChannelSettingsPermissionsPanel({
   server,
   member,
 }: {
-  channel: TextChannel
+  channel: ServerChannel
   server: Server
   member: Member | undefined
 }) {
