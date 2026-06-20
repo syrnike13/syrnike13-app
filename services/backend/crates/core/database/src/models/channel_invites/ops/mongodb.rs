@@ -3,7 +3,7 @@ use syrnike_result::Result;
 
 use crate::Invite;
 use crate::MongoDb;
-use bson::{Bson, Document};
+use bson::Document;
 
 use super::AbstractChannelInvites;
 
@@ -27,7 +27,6 @@ impl AbstractChannelInvites for MongoDb {
             .col::<Invite>(COL)
             .find(doc! {
                 "server": server_id,
-                "revoked_at": Bson::Null,
             })
             .await
             .map_err(|_| create_database_error!("find", COL))?
@@ -149,6 +148,16 @@ mod tests {
             }
             _ => unreachable!("expected server invite"),
         }
+
+        let server_invites = db
+            .fetch_invites_for_server("server-1")
+            .await
+            .expect("server invites fetched");
+        assert!(
+            server_invites
+                .iter()
+                .any(|invite| invite.code() == "invite-1")
+        );
 
         db.drop_database().await;
     }

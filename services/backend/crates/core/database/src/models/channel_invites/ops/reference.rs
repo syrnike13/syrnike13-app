@@ -33,7 +33,7 @@ impl AbstractChannelInvites for ReferenceDb {
         Ok(invites
             .values()
             .filter(|invite| match invite {
-                Invite::Server { server, .. } => server == server_id && !invite.is_revoked(),
+                Invite::Server { server, .. } => server == server_id,
                 _ => false,
             })
             .cloned()
@@ -148,5 +148,58 @@ mod tests {
             }
             _ => unreachable!("expected server invite"),
         }
+    }
+
+    #[async_std::test]
+    async fn reference_fetch_invites_for_server_includes_revoked_server_invites() {
+        let db = Database::Reference(ReferenceDb::default());
+        let active = invite();
+        let revoked = Invite::Server {
+            code: "invite-revoked".to_string(),
+            server: "server-1".to_string(),
+            creator: "creator-1".to_string(),
+            channel: "channel-1".to_string(),
+            created_at: 1_000,
+            expires_at: None,
+            max_uses: Some(2),
+            uses: 0,
+            revoked_at: Some(2_000),
+            revoked_by: Some("moderator-1".to_string()),
+            temporary: false,
+        };
+        let group = Invite::Group {
+            code: "group-invite".to_string(),
+            creator: "creator-1".to_string(),
+            channel: "group-1".to_string(),
+            created_at: 1_000,
+            expires_at: None,
+            max_uses: None,
+            uses: 0,
+            revoked_at: Some(2_000),
+            revoked_by: Some("moderator-1".to_string()),
+            temporary: false,
+        };
+
+        db.insert_invite(&active)
+            .await
+            .expect("active invite inserted");
+        db.insert_invite(&revoked)
+            .await
+            .expect("revoked invite inserted");
+        db.insert_invite(&group)
+            .await
+            .expect("group invite inserted");
+
+        let invites = db
+            .fetch_invites_for_server("server-1")
+            .await
+            .expect("server invites fetched");
+        let mut codes = invites
+            .into_iter()
+            .map(|invite| invite.code().to_string())
+            .collect::<Vec<_>>();
+        codes.sort();
+
+        assert_eq!(codes, vec!["invite-1", "invite-revoked"]);
     }
 }
