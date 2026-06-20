@@ -41,13 +41,29 @@ function hasChannelNotification(state: SyncState, channel: Channel) {
   )
 }
 
-function countUnreadPersonalChannels(state: SyncState) {
-  return Object.values(state.channels).filter(
-    (channel) =>
-      isDmChannel(channel) &&
-      isTextChannel(channel) &&
-      isUnreadChannel(state, channel),
-  ).length
+function countPersonalChannelNotifications(state: SyncState) {
+  return Object.values(state.channels).reduce(
+    (summary, channel) => {
+      if (!isDmChannel(channel) || !isTextChannel(channel)) return summary
+
+      const unread = state.unreads[channel._id]
+      const mentionCount = channelUnreadMentionCount(unread)
+      if (mentionCount > 0) {
+        return {
+          count: summary.count + mentionCount,
+          urgent: true,
+        }
+      }
+
+      if (!isChannelUnread(channel, unread)) return summary
+
+      return {
+        count: summary.count + 1,
+        urgent: summary.urgent,
+      }
+    },
+    { count: 0, urgent: false },
+  )
 }
 
 export function selectFriendRequestNotificationBadge(
@@ -67,8 +83,12 @@ export function selectHomeNotificationBadge(
     state,
     currentUserId,
   ).count
+  const personalChannels = countPersonalChannelNotifications(state)
 
-  return badge(incomingFriendRequests + countUnreadPersonalChannels(state))
+  return badge(
+    incomingFriendRequests + personalChannels.count,
+    personalChannels.urgent,
+  )
 }
 
 export function selectServerNotificationBadge(

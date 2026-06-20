@@ -123,8 +123,10 @@ export function shouldShowDmChannelInRail(
   channel: Channel,
   currentUserId?: string,
 ) {
+  const unread = state.unreads[channel._id]
   return (
-    isChannelUnread(channel, state.unreads[channel._id]) ||
+    isChannelUnread(channel, unread) ||
+    channelUnreadMentionCount(unread) > 0 ||
     isCurrentUserInChannelVoice(state, channel._id, currentUserId) ||
     hasIncomingVoiceCall(state, channel._id, currentUserId)
   )

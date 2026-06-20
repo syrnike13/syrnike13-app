@@ -36,8 +36,11 @@ function dmChannel(
   } as Channel
 }
 
-function unreadState(lastId: string | null): ChannelUnreadState {
-  return { lastId, mentions: [] }
+function unreadState(
+  lastId: string | null,
+  mentions: string[] = [],
+): ChannelUnreadState {
+  return { lastId, mentions }
 }
 
 function state(
@@ -117,6 +120,23 @@ describe('listVisibleDmRailChannels', () => {
     )
 
     expect(visible.map((channel) => channel._id)).toEqual(['dm-unread'])
+  })
+
+  it('shows direct messages with mention unreads even after the last message is read', () => {
+    const mentioned = dmChannel('dm-mentioned', 'friend-a', 'message-2')
+    const read = dmChannel('dm-read', 'friend-b', 'message-2')
+
+    const visible = listVisibleDmRailChannels(
+      state([mentioned, read], {
+        unreads: {
+          'dm-mentioned': unreadState('message-2', ['message-2']),
+          'dm-read': unreadState('message-2'),
+        },
+      }),
+      CURRENT_USER_ID,
+    )
+
+    expect(visible.map((channel) => channel._id)).toEqual(['dm-mentioned'])
   })
 
   it('shows direct messages where the current user is in a voice session', () => {

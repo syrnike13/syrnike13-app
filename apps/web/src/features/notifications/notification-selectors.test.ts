@@ -135,6 +135,31 @@ describe('notification selectors', () => {
     })
   })
 
+  it('marks home badges urgent and counts personal mention-only unreads', () => {
+    const syncState = state({
+      users: {
+        [CURRENT_USER_ID]: user(CURRENT_USER_ID, 'User'),
+        'friend-a': user('friend-a', 'Friend'),
+        'friend-b': user('friend-b', 'Friend'),
+        'request-a': user('request-a', 'Incoming'),
+      },
+      channels: {
+        'dm-mention': dmChannel('dm-mention', 'friend-a', 'message-3'),
+        'dm-unread': dmChannel('dm-unread', 'friend-b', 'message-2'),
+      },
+      unreads: {
+        'dm-mention': unread('message-3', ['message-2', 'message-3']),
+        'dm-unread': unread('message-1'),
+      },
+    })
+
+    expect(selectHomeNotificationBadge(syncState, CURRENT_USER_ID)).toEqual({
+      count: 4,
+      hasUnread: true,
+      urgent: true,
+    })
+  })
+
   it('counts unread server channels for a server badge', () => {
     const syncState = state({
       servers: {
