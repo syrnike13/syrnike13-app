@@ -60,7 +60,7 @@ import {
   roleColourStyle,
   roleRanksPayload,
   SERVER_PERMISSION_GROUPS,
-  sortRolesByRankDesc,
+  sortRolesByHierarchy,
   toggleServerPermission,
 } from '#/lib/server-permissions'
 import { roleIconUrl } from '#/lib/media'
@@ -404,7 +404,7 @@ export function ServerSettingsRolesPanel({
   )
 
   const roles = useMemo(
-    () => (server?.roles ? sortRolesByRankDesc(Object.values(server.roles)) : []),
+    () => (server?.roles ? sortRolesByHierarchy(Object.values(server.roles)) : []),
     [server?.roles],
   )
 

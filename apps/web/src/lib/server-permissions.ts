@@ -201,10 +201,10 @@ export function roleColourStyle(colour: string | null | undefined) {
   return { color: normalizeRoleColour(colour) }
 }
 
-export function sortRolesByRankDesc<T extends { rank?: number | null }>(
+export function sortRolesByHierarchy<T extends { rank?: number | null }>(
   roles: T[],
 ): T[] {
-  return [...roles].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
+  return [...roles].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
 }
 
 export function roleRanksPayload(roleIdsHighestFirst: string[]): string[] {

@@ -4,11 +4,11 @@ import {
   canAssignRole,
   canEditMember,
 } from '#/lib/permissions'
-import { sortRolesByRankDesc } from '#/lib/server-permissions'
+import { sortRolesByHierarchy } from '#/lib/server-permissions'
 
 export function listServerRoles(server: Server | undefined): Role[] {
   if (!server?.roles) return []
-  return sortRolesByRankDesc(Object.values(server.roles))
+  return sortRolesByHierarchy(Object.values(server.roles))
 }
 
 /** Можно назначить хотя бы одну роль (устаревший критерий для «есть доступ к ролям»). */

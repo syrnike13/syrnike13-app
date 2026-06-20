@@ -30,7 +30,7 @@ import {
   roleColourStyle,
   SERVER_PERMISSION_GROUPS,
   setPermissionTriState,
-  sortRolesByRankDesc,
+  sortRolesByHierarchy,
   type PermissionOverrideField,
 } from '#/lib/server-permissions'
 import { cn } from '#/lib/utils'
@@ -262,7 +262,7 @@ export function ChannelSettingsPermissionsPanel({
 }) {
   const auth = useAuth()
   const roles = useMemo(
-    () => (server.roles ? sortRolesByRankDesc(Object.values(server.roles)) : []),
+    () => (server.roles ? sortRolesByHierarchy(Object.values(server.roles)) : []),
     [server.roles],
   )
   const members = useSyncStore((s) => listServerMembers(s, server._id))
