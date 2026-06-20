@@ -1,7 +1,7 @@
 use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{delete_voice_channel, UserVoiceChannel, VoiceClient},
+    voice::{delete_voice_channel, sync_voice_permissions, UserVoiceChannel, VoiceClient},
     Channel, Database, File, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget,
     SystemMessage, User, AMQP,
 };
@@ -18,6 +18,10 @@ fn required_channel_edit_permission(data: &v0::DataEditChannel) -> ChannelPermis
     } else {
         ChannelPermission::ManageChannel
     }
+}
+
+fn changes_voice_permissions(data: &v0::DataEditChannel) -> bool {
+    data.remove.contains(&v0::FieldsChannel::DefaultPermissions)
 }
 
 /// # Edit Channel
@@ -49,6 +53,11 @@ pub async fn edit(
     calculate_channel_permissions(&mut query)
         .await
         .throw_if_lacking_channel_permission(required_channel_edit_permission(&data))?;
+    let server_for_voice_sync = query
+        .server_ref()
+        .as_ref()
+        .map(|server| server.clone().into_owned());
+    let should_sync_voice_permissions = changes_voice_permissions(&data);
 
     if data.name.is_none()
         && data.description.is_none()
@@ -431,6 +440,22 @@ pub async fn edit(
 
             return Err(error);
         }
+    } else if should_sync_voice_permissions {
+        if let Err(error) = sync_voice_permissions(
+            db,
+            voice_client,
+            &channel,
+            server_for_voice_sync.as_ref(),
+            None,
+        )
+        .await
+        {
+            if let Some(audit) = &mut audit {
+                return audit_mutation::mark_failed_and_return(db, audit, error).await;
+            }
+
+            return Err(error);
+        }
     }
 
     if let Some(audit) = &mut audit {
@@ -478,5 +503,20 @@ mod tests {
             super::required_channel_edit_permission(&payload),
             ChannelPermission::ManageChannel
         );
+    }
+
+    #[test]
+    fn removing_default_permissions_requires_voice_permission_sync() {
+        assert!(super::changes_voice_permissions(&edit_payload(vec![
+            v0::FieldsChannel::DefaultPermissions
+        ])));
+    }
+
+    #[test]
+    fn ordinary_channel_edits_do_not_require_voice_permission_sync() {
+        let mut payload = edit_payload(Vec::new());
+        payload.name = Some("renamed".to_string());
+
+        assert!(!super::changes_voice_permissions(&payload));
     }
 }
