@@ -15,6 +15,10 @@ fn is_true(x: &bool) -> bool {
     *x
 }
 
+fn is_false(x: &bool) -> bool {
+    !*x
+}
+
 auto_derived_partial!(
     /// Server Member
     pub struct Member {
@@ -45,6 +49,9 @@ auto_derived_partial!(
         /// Whether the member is server-wide voice deafened
         #[serde(skip_serializing_if = "is_true", default = "default_true")]
         pub can_receive: bool,
+        /// Whether the member should leave the server after disconnecting from voice unless assigned a role
+        #[serde(skip_serializing_if = "is_false", default)]
+        pub temporary: bool,
         // This value only exists in the database, not the models.
         // If it is not-None, the database layer should return None to member fetching queries.
         // pub pending_deletion_at: Option<Timestamp>
@@ -93,6 +100,7 @@ impl Default for Member {
             timeout: None,
             can_publish: true,
             can_receive: true,
+            temporary: false,
         }
     }
 }
@@ -105,6 +113,7 @@ impl Member {
         server: &Server,
         user: &User,
         channels: Option<Vec<Channel>>,
+        temporary: bool,
     ) -> Result<(Member, Vec<Channel>)> {
         if db.fetch_ban(&server.id, &user.id).await.is_ok() {
             return Err(create_error!(Banned));
@@ -119,6 +128,7 @@ impl Member {
                 server: server.id.to_string(),
                 user: user.id.to_string(),
             },
+            temporary,
             ..Default::default()
         };
 
@@ -343,8 +353,10 @@ mod tests {
             .unwrap()
             .0;
 
-            Member::create(&db, &server, &owner, None).await.unwrap();
-            let mut kickable_member = Member::create(&db, &server, &kickable_user, None)
+            Member::create(&db, &server, &owner, None, false)
+                .await
+                .unwrap();
+            let mut kickable_member = Member::create(&db, &server, &kickable_user, None, false)
                 .await
                 .unwrap()
                 .0;
@@ -368,7 +380,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let kickable_member = Member::create(&db, &server, &kickable_user, None)
+            let kickable_member = Member::create(&db, &server, &kickable_user, None, false)
                 .await
                 .unwrap()
                 .0;

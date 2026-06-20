@@ -99,7 +99,7 @@ mod test {
         .await
         .expect("Failed to create test server");
 
-        let (member, channels) = Member::create(&harness.db, &server, &user, Some(channels))
+        let (member, channels) = Member::create(&harness.db, &server, &user, Some(channels), false)
             .await
             .expect("Failed to create member");
         let channel = &channels[0];

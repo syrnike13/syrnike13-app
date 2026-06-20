@@ -1,19 +1,22 @@
 use rocket::State;
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
-    Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{UserVoiceChannel, VoiceClient, delete_voice_channel},
+    voice::{
+        delete_voice_channel, get_voice_channel_members,
+        remove_temporary_server_member_after_voice_disconnect, UserVoiceChannel, VoiceClient,
+    },
+    Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
+use syrnike_result::{create_error, Result};
 
-use super::OptionalAmqp;
 use super::voice_call_cleanup::{
     delete_group_voice_call, remove_group_member_from_voice_call,
     stop_ringing_for_removed_group_member,
 };
+use super::OptionalAmqp;
 use crate::routes::servers::audit_mutation;
 
 /// # Close Channel
@@ -82,6 +85,14 @@ pub async fn delete(
             let server_id = channel.server().expect("server channel").to_string();
             let channel_id = channel.id().to_string();
             let had_voice = channel.voice().is_some();
+            let voice_channel = UserVoiceChannel::from_channel(&channel);
+            let connected_voice_members = if had_voice {
+                get_voice_channel_members(&voice_channel)
+                    .await?
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             let mut audit = audit_mutation::insert_pending_audit(
                 db,
                 server_id,
@@ -103,11 +114,20 @@ pub async fn delete(
             }
 
             if had_voice {
-                if let Err(error) =
-                    delete_voice_channel(voice_client, &UserVoiceChannel::from_channel(&channel))
-                        .await
-                {
+                if let Err(error) = delete_voice_channel(voice_client, &voice_channel).await {
                     return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+                }
+
+                for member_id in connected_voice_members {
+                    if let Err(error) = remove_temporary_server_member_after_voice_disconnect(
+                        db,
+                        &voice_channel,
+                        &member_id,
+                    )
+                    .await
+                    {
+                        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+                    }
                 }
             }
 
@@ -129,15 +149,15 @@ mod test {
 
     use crate::{rocket, util::test::TestHarness};
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{Header, Status};
     use rocket::local::asynchronous::Client;
-    use syrnike_database::{Channel, events::client::EventV1};
+    use syrnike_database::{events::client::EventV1, Channel};
     use syrnike_database::{
-        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
-        ServerAuditLogTarget, fixture, voice::VoiceClient,
+        fixture, voice::VoiceClient, Database, DatabaseInfo, ServerAuditLogAction,
+        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use syrnike_models::v0::DataCreateGroup;
     use ulid::Ulid;

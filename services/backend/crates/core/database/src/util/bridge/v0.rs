@@ -686,6 +686,7 @@ impl From<crate::Member> for Member {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }
@@ -701,6 +702,7 @@ impl From<Member> for crate::Member {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }
@@ -716,6 +718,7 @@ impl From<crate::PartialMember> for PartialMember {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }
@@ -731,6 +734,7 @@ impl From<PartialMember> for crate::PartialMember {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }

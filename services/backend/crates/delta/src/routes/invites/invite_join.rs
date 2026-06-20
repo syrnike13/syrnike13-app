@@ -32,15 +32,9 @@ pub async fn join(
     let count_invite_use = db.fetch_invite(invite.code()).await.is_ok();
 
     let response = match &invite {
-        Invite::Server { server, .. } => {
-            let server = db.fetch_server(server).await?;
-            let (_, channels) = Member::create(db, &server, &user, None).await?;
-
-            Ok(InviteJoinResponse::Server {
-                channels: channels.into_iter().map(|c| c.into()).collect(),
-                server: server.into(),
-            })
-        }
+        Invite::Server {
+            server, temporary, ..
+        } => join_server_invite(db, &user, server, *temporary).await,
         Invite::Group {
             channel, creator, ..
         } => {
@@ -69,11 +63,26 @@ pub async fn join(
     Ok(Json(response))
 }
 
+async fn join_server_invite(
+    db: &Database,
+    user: &User,
+    server_id: &str,
+    temporary: bool,
+) -> Result<InviteJoinResponse> {
+    let server = db.fetch_server(server_id).await?;
+    let (_, channels) = Member::create(db, &server, user, None, temporary).await?;
+
+    Ok(InviteJoinResponse::Server {
+        channels: channels.into_iter().map(|c| c.into()).collect(),
+        server: server.into(),
+    })
+}
+
 #[cfg(test)]
 mod test {
     use crate::util::test::TestHarness;
     use rocket::http::{ContentType, Status};
-    use syrnike_database::Invite;
+    use syrnike_database::{DatabaseInfo, Invite, Server, User};
     use syrnike_models::v0;
 
     async fn create_server_invite(
@@ -198,5 +207,42 @@ mod test {
         .await;
 
         assert_eq!(join_response.status(), Status::BadRequest);
+    }
+
+    #[rocket::async_test]
+    async fn temporary_server_invite_marks_new_member_temporary() {
+        let db = DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let owner = User::create(&db, "Owner".to_string(), None, None)
+            .await
+            .expect("owner created");
+        let joiner = User::create(&db, "Joiner".to_string(), None, None)
+            .await
+            .expect("joiner created");
+        let (server, _) = Server::create(
+            &db,
+            v0::DataCreateServer {
+                name: "Server".to_string(),
+                ..Default::default()
+            },
+            &owner,
+            true,
+        )
+        .await
+        .expect("server created");
+
+        let response = super::join_server_invite(&db, &joiner, &server.id, true)
+            .await
+            .expect("server invite joined");
+        assert!(matches!(response, v0::InviteJoinResponse::Server { .. }));
+
+        let member = db
+            .fetch_member(&server.id, &joiner.id)
+            .await
+            .expect("temporary member fetched");
+
+        assert!(member.temporary);
     }
 }

@@ -10450,6 +10450,10 @@
           "can_receive": {
             "description": "Whether the member is server-wide voice deafened",
             "type": "boolean"
+          },
+          "temporary": {
+            "description": "Whether the member should leave the server after disconnecting from voice unless assigned a role",
+            "type": "boolean"
           }
         }
       },

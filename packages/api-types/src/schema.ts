@@ -1602,6 +1602,8 @@ export interface components {
       can_publish?: boolean;
       /** @description Whether the member is server-wide voice deafened */
       can_receive?: boolean;
+      /** @description Whether the member should leave the server after disconnecting from voice unless assigned a role */
+      temporary?: boolean;
     };
     /** @description Composite primary key consisting of server and user id */
     MemberCompositeKey: {

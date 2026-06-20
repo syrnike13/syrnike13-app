@@ -8,9 +8,9 @@ use syrnike_database::{
     },
     voice::{
         get_channel_node, get_user_voice_channel_in_server, get_voice_state,
-        remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
-        set_user_moved_to_voice, set_user_voice_join_intent, sync_user_voice_permissions,
-        UserVoiceChannel, VoiceClient,
+        remove_temporary_server_member_after_voice_disconnect, remove_user_from_voice_channel,
+        set_channel_node, set_user_moved_from_voice, set_user_moved_to_voice,
+        set_user_voice_join_intent, sync_user_voice_permissions, UserVoiceChannel, VoiceClient,
     },
     Database, File, PartialMember, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
@@ -299,12 +299,15 @@ pub async fn edit(
             voice_channel: _,
         } = data;
 
+        let makes_temporary_member_permanent =
+            member.temporary && roles.as_ref().is_some_and(|roles| !roles.is_empty());
         let mut partial = PartialMember {
             nickname,
             roles,
             timeout,
             can_publish,
             can_receive,
+            temporary: makes_temporary_member_permanent.then_some(false),
             ..Default::default()
         };
 
@@ -431,12 +434,15 @@ pub async fn edit(
             if let Some(channel) =
                 get_user_voice_channel_in_server(&target_user.id, &server.id).await?
             {
-                remove_user_from_voice_channel(
-                    voice_client,
-                    &UserVoiceChannel {
-                        id: channel,
-                        server_id: Some(server.id.clone()),
-                    },
+                let voice_channel = UserVoiceChannel {
+                    id: channel,
+                    server_id: Some(server.id.clone()),
+                };
+                remove_user_from_voice_channel(voice_client, &voice_channel, &target_user.id)
+                    .await?;
+                remove_temporary_server_member_after_voice_disconnect(
+                    db,
+                    &voice_channel,
                     &target_user.id,
                 )
                 .await?;
@@ -754,6 +760,62 @@ mod test {
             .expect("member fetched");
 
         assert_eq!(updated.roles, vec![moderator_role.id]);
+    }
+
+    #[rocket::async_test]
+    async fn assigning_role_to_temporary_member_makes_membership_permanent() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            target user 2
+            server server 4);
+
+        let mut target_member = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("target member fetched");
+        target_member
+            .update(
+                &context.db,
+                syrnike_database::PartialMember {
+                    temporary: Some(true),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("target member marked temporary");
+        let role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Lower Rank 1")
+            .expect("lower role");
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, target.id))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "roles": [role.id.clone()] }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let updated = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("member fetched");
+
+        assert_eq!(updated.roles, vec![role.id.clone()]);
+        assert!(!updated.temporary);
     }
 
     #[rocket::async_test]

@@ -14,7 +14,7 @@ use crate::{
         set_call_notification_recipients, set_channel_node, set_user_voice_join_intent,
         UserVoiceChannel, VoiceClient,
     },
-    Database, User, VoiceCallEndReason, AMQP,
+    Database, RemovalIntention, User, VoiceCallEndReason, AMQP,
 };
 use syrnike_config::config;
 use syrnike_models::v0::NativeVoiceCredentials;
@@ -195,7 +195,8 @@ pub async fn remove_user_from_voice_channel_with_call_cleanup(
 
     remove_user_from_voice_channel(voice_client, channel, user_id).await?;
 
-    cleanup_removed_voice_member_call(db, amqp, channel).await
+    cleanup_removed_voice_member_call(db, amqp, channel).await?;
+    remove_temporary_server_member_after_voice_disconnect(db, channel, user_id).await
 }
 
 pub async fn cleanup_committed_voice_member_removal(
@@ -207,6 +208,32 @@ pub async fn cleanup_committed_voice_member_removal(
 ) -> Result<()> {
     remove_user_voice_transport(voice_client, channel, user_id).await?;
     cleanup_removed_voice_member_call(db, amqp, channel).await
+}
+
+pub async fn remove_temporary_server_member_after_voice_disconnect(
+    db: &Database,
+    channel: &UserVoiceChannel,
+    user_id: &str,
+) -> Result<()> {
+    let Some(server_id) = channel.server_id.as_ref() else {
+        return Ok(());
+    };
+
+    let Ok(member) = db.fetch_member(server_id, user_id).await else {
+        return Ok(());
+    };
+
+    if !member.temporary || !member.roles.is_empty() {
+        return Ok(());
+    }
+
+    let Ok(server) = db.fetch_server(server_id).await else {
+        return Ok(());
+    };
+
+    member
+        .remove(db, &server, RemovalIntention::Leave, true)
+        .await
 }
 
 async fn cleanup_removed_voice_member_call(
@@ -439,6 +466,8 @@ fn should_reject_voice_join_for_capacity(
 #[cfg(test)]
 mod tests {
     use super::should_reject_voice_join_for_capacity;
+    use crate::{DatabaseInfo, Member, Server, User};
+    use syrnike_models::v0::DataCreateServer;
 
     #[test]
     fn rejects_join_when_channel_is_at_capacity() {
@@ -456,5 +485,54 @@ mod tests {
             Some(2),
             "a",
         ));
+    }
+
+    #[async_std::test]
+    async fn temporary_member_without_roles_is_removed_after_voice_disconnect() {
+        let db = DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let owner = User::create(&db, "Owner".to_string(), None, None)
+            .await
+            .expect("owner created");
+        let user = User::create(&db, "Temporary".to_string(), None, None)
+            .await
+            .expect("temporary user created");
+        let server = Server::create(
+            &db,
+            DataCreateServer {
+                name: "Server".to_string(),
+                description: None,
+                nsfw: None,
+            },
+            &owner,
+            false,
+        )
+        .await
+        .expect("server created")
+        .0;
+        Member::create(&db, &server, &owner, None, false)
+            .await
+            .expect("owner member created");
+        let member = Member::create(&db, &server, &user, None, true)
+            .await
+            .expect("temporary member created")
+            .0;
+
+        assert!(member.temporary);
+
+        super::remove_temporary_server_member_after_voice_disconnect(
+            &db,
+            &super::UserVoiceChannel {
+                id: "voice-channel".to_string(),
+                server_id: Some(server.id.clone()),
+            },
+            &user.id,
+        )
+        .await
+        .expect("temporary member cleanup");
+
+        assert!(db.fetch_member(&server.id, &user.id).await.is_err());
     }
 }

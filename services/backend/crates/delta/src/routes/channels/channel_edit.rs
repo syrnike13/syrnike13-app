@@ -1,13 +1,17 @@
-use rocket::{State, serde::json::Json};
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
+    util::{permissions::DatabasePermissionQuery, reference::Reference},
+    voice::{
+        delete_voice_channel, get_voice_channel_members,
+        remove_temporary_server_member_after_voice_disconnect, sync_voice_permissions,
+        UserVoiceChannel, VoiceClient,
+    },
     Channel, Database, File, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget,
     SystemMessage, User,
-    util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{UserVoiceChannel, VoiceClient, delete_voice_channel, sync_voice_permissions},
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
+use syrnike_result::{create_error, Result};
 use validator::Validate;
 
 use super::OptionalAmqp;
@@ -437,14 +441,43 @@ pub async fn edit(
     }
 
     if channel.voice().is_none() && had_voice_before_update {
-        if let Err(error) =
-            delete_voice_channel(voice_client, &UserVoiceChannel::from_channel(&channel)).await
+        let voice_channel = UserVoiceChannel::from_channel(&channel);
+        let connected_voice_members = match get_voice_channel_members(&voice_channel)
+            .await
+            .map(|members| members.unwrap_or_default())
         {
+            Ok(members) => members,
+            Err(error) => {
+                if let Some(audit) = &mut audit {
+                    return audit_mutation::mark_failed_and_return(db, audit, error).await;
+                }
+
+                return Err(error);
+            }
+        };
+
+        if let Err(error) = delete_voice_channel(voice_client, &voice_channel).await {
             if let Some(audit) = &mut audit {
                 return audit_mutation::mark_failed_and_return(db, audit, error).await;
             }
 
             return Err(error);
+        }
+
+        for member_id in connected_voice_members {
+            if let Err(error) = remove_temporary_server_member_after_voice_disconnect(
+                db,
+                &voice_channel,
+                &member_id,
+            )
+            .await
+            {
+                if let Some(audit) = &mut audit {
+                    return audit_mutation::mark_failed_and_return(db, audit, error).await;
+                }
+
+                return Err(error);
+            }
         }
     } else if should_sync_voice_permissions {
         if let Err(error) = sync_voice_permissions(
@@ -481,15 +514,15 @@ mod tests {
     use std::collections::HashMap;
 
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use serde_json::json;
     use syrnike_database::{
-        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
-        ServerAuditLogTarget, fixture, voice::VoiceClient,
+        fixture, voice::VoiceClient, Database, DatabaseInfo, ServerAuditLogAction,
+        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use syrnike_models::v0;
     use syrnike_permissions::ChannelPermission;

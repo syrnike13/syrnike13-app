@@ -36,6 +36,7 @@ impl AbstractServerMembers for MongoDb {
                     doc! {
                         "$set": {
                             "joined_at": member.joined_at.duration_since(Timestamp::UNIX_EPOCH).whole_seconds(),
+                            "temporary": member.temporary,
                         },
                         "$unset": {
                             "pending_deletion_at": ""
@@ -285,7 +286,8 @@ impl AbstractServerMembers for MongoDb {
                                 "joined_at": "",
                                 "avatar": "",
                                 "nickname": "",
-                                "roles": ""
+                                "roles": "",
+                                "temporary": ""
                             }
                         },
                     )
