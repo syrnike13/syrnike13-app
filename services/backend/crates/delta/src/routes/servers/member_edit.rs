@@ -57,7 +57,7 @@ pub async fn edit(
     })?;
 
     // Fetch server and member
-    let mut server = server_id.as_server(db).await?;
+    let server = server_id.as_server(db).await?;
     let target_user = member_id.as_user(db).await?;
     let mut member = member_id.as_member(db, &server.id).await?;
 
@@ -171,12 +171,20 @@ pub async fn edit(
     // Check permissions against roles in diff
     if let Some(roles) = &data.roles {
         let current_roles = member.roles.iter().collect::<HashSet<&String>>();
-
         let new_roles = roles.iter().collect::<HashSet<&String>>();
-        let added_roles: Vec<&&String> = new_roles.difference(&current_roles).collect();
 
-        for role_id in added_roles {
-            if let Some(role) = server.roles.remove(*role_id) {
+        for role_id in new_roles.symmetric_difference(&current_roles) {
+            if let Some(role) = server.roles.get(*role_id) {
+                if role.rank <= our_ranking {
+                    return Err(create_error!(NotElevated));
+                }
+            } else {
+                return Err(create_error!(InvalidRole));
+            }
+        }
+    } else if data.remove.contains(&v0::FieldsMember::Roles) {
+        for role_id in &member.roles {
+            if let Some(role) = server.roles.get(role_id) {
                 if role.rank <= our_ranking {
                     return Err(create_error!(NotElevated));
                 }
@@ -463,9 +471,10 @@ mod test {
     use rocket::local::asynchronous::Client;
     use syrnike_database::voice::VoiceClient;
     use syrnike_database::{
-        fixture, Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery,
+        fixture, Database, DatabaseInfo, PartialRole, ServerAuditLogAction, ServerAuditLogQuery,
         ServerAuditLogStatus, ServerAuditLogTarget,
     };
+    use syrnike_permissions::{ChannelPermission, OverrideField};
     use ulid::Ulid;
 
     struct MemberEditTestContext {
@@ -622,6 +631,126 @@ mod test {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].actor_id, owner.id);
         assert_eq!(entries[0].status, ServerAuditLogStatus::Succeeded);
+    }
+
+    #[rocket::async_test]
+    async fn member_cannot_remove_their_own_top_role() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            moderator user 1
+            server server 4);
+
+        let mut moderator_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Moderator")
+            .expect("moderator role")
+            .clone();
+        moderator_role
+            .update(
+                &context.db,
+                &server.id,
+                PartialRole {
+                    permissions: Some(OverrideField {
+                        a: ChannelPermission::AssignRoles as i64,
+                        d: 0,
+                    }),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("moderator can assign roles");
+
+        let (_, moderator_session) = context.account_from_user(moderator.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, moderator.id))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "roles": [] }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                moderator_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Forbidden);
+
+        let updated = context
+            .db
+            .fetch_member(&server.id, &moderator.id)
+            .await
+            .expect("member fetched");
+
+        assert_eq!(updated.roles, vec![moderator_role.id]);
+    }
+
+    #[rocket::async_test]
+    async fn member_cannot_clear_their_own_top_role() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            moderator user 1
+            server server 4);
+
+        let mut moderator_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Moderator")
+            .expect("moderator role")
+            .clone();
+        moderator_role
+            .update(
+                &context.db,
+                &server.id,
+                PartialRole {
+                    permissions: Some(OverrideField {
+                        a: ChannelPermission::AssignRoles as i64,
+                        d: 0,
+                    }),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("moderator can assign roles");
+
+        let (_, moderator_session) = context.account_from_user(moderator.id.clone()).await;
+        let body = serde_json::to_string(&syrnike_models::v0::DataMemberEdit {
+            nickname: None,
+            avatar: None,
+            roles: None,
+            timeout: None,
+            can_publish: None,
+            can_receive: None,
+            voice_channel: None,
+            remove: vec![syrnike_models::v0::FieldsMember::Roles],
+        })
+        .expect("member edit body");
+
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, moderator.id))
+            .header(ContentType::JSON)
+            .body(body)
+            .header(Header::new(
+                "x-session-token",
+                moderator_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Forbidden);
+
+        let updated = context
+            .db
+            .fetch_member(&server.id, &moderator.id)
+            .await
+            .expect("member fetched");
+
+        assert_eq!(updated.roles, vec![moderator_role.id]);
     }
 
     #[test]
