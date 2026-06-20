@@ -1,5 +1,13 @@
 use revolt_okapi::openapi3::OpenApi;
-use rocket::Route;
+use revolt_rocket_okapi::{
+    r#gen::OpenApiGenerator,
+    request::{OpenApiFromRequest, RequestHeaderInput},
+};
+use rocket::{
+    Request, Route,
+    request::{FromRequest, Outcome},
+};
+use syrnike_database::AMQP;
 
 mod channel_ack;
 mod channel_delete;
@@ -29,6 +37,33 @@ mod voice_cancel_call;
 mod voice_decline_call;
 mod webhook_create;
 mod webhook_fetch_all;
+
+pub(crate) struct OptionalAmqp<'r>(Option<&'r AMQP>);
+
+impl OptionalAmqp<'_> {
+    pub(crate) fn required(&self, context: &str) -> &AMQP {
+        self.0.expect(context)
+    }
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for OptionalAmqp<'r> {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
+        Outcome::Success(Self(request.rocket().state::<AMQP>()))
+    }
+}
+
+impl<'r> OpenApiFromRequest<'r> for OptionalAmqp<'r> {
+    fn from_request_input(
+        _gen: &mut OpenApiGenerator,
+        _name: String,
+        _required: bool,
+    ) -> revolt_rocket_okapi::Result<RequestHeaderInput> {
+        Ok(RequestHeaderInput::None)
+    }
+}
 
 pub fn routes() -> (Vec<Route>, OpenApi) {
     openapi_get_routes_spec![

@@ -1,15 +1,16 @@
-use rocket::{serde::json::Json, State};
+use rocket::{State, serde::json::Json};
 use syrnike_database::{
-    util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{delete_voice_channel, sync_voice_permissions, UserVoiceChannel, VoiceClient},
     Channel, Database, File, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget,
-    SystemMessage, User, AMQP,
+    SystemMessage, User,
+    util::{permissions::DatabasePermissionQuery, reference::Reference},
+    voice::{UserVoiceChannel, VoiceClient, delete_voice_channel, sync_voice_permissions},
 };
 use syrnike_models::v0;
-use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
-use syrnike_result::{create_error, Result};
+use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
+use syrnike_result::{Result, create_error};
 use validator::Validate;
 
+use super::OptionalAmqp;
 use crate::routes::servers::audit_mutation;
 
 fn required_channel_edit_permission(data: &v0::DataEditChannel) -> ChannelPermission {
@@ -32,7 +33,7 @@ fn changes_voice_permissions(data: &v0::DataEditChannel) -> bool {
 pub async fn edit(
     db: &State<Database>,
     voice_client: &State<VoiceClient>,
-    amqp: &State<AMQP>,
+    amqp: OptionalAmqp<'_>,
     user: User,
     target: Reference<'_>,
     data: Json<v0::DataEditChannel>,
@@ -57,6 +58,7 @@ pub async fn edit(
         .server_ref()
         .as_ref()
         .map(|server| server.clone().into_owned());
+    let had_voice_before_update = channel.voice().is_some();
     let should_sync_voice_permissions = changes_voice_permissions(&data);
 
     if data.name.is_none()
@@ -180,7 +182,7 @@ pub async fn edit(
 
     // Transfer group ownership
     if let Some(new_owner) = data.owner {
-        if let Channel::Group {
+        let system_message = if let Channel::Group {
             owner, recipients, ..
         } = &mut channel
         {
@@ -210,19 +212,22 @@ pub async fn edit(
             }
 
             return Err(error);
-        }
-        .into_message(channel.id().to_string())
-        .send(
-            db,
-            Some(amqp),
-            user.as_author_for_system(),
-            None,
-            None,
-            &channel,
-            false,
-        )
-        .await
-        .ok();
+        };
+
+        let amqp = amqp.required("AMQP state must be managed for group channel ownership changes");
+        system_message
+            .into_message(channel.id().to_string())
+            .send(
+                db,
+                Some(amqp),
+                user.as_author_for_system(),
+                None,
+                None,
+                &channel,
+                false,
+            )
+            .await
+            .ok();
     }
 
     match &mut channel {
@@ -234,6 +239,7 @@ pub async fn edit(
             nsfw,
             ..
         } => {
+            let amqp = amqp.required("AMQP state must be managed for group channel edits");
             if data.remove.contains(&v0::FieldsChannel::Icon) {
                 if let Some(icon) = &icon {
                     if let Err(error) = db.mark_attachment_as_deleted(&icon.id).await {
@@ -430,7 +436,7 @@ pub async fn edit(
         return Err(error);
     }
 
-    if channel.voice().is_none() {
+    if channel.voice().is_none() && had_voice_before_update {
         if let Err(error) =
             delete_voice_channel(voice_client, &UserVoiceChannel::from_channel(&channel)).await
         {
@@ -466,9 +472,28 @@ pub async fn edit(
 }
 
 #[cfg(test)]
+fn routes_under_test() -> Vec<rocket::Route> {
+    routes![edit]
+}
+
+#[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use authifier::{
+        Authifier,
+        models::{Account, EmailVerification, Session},
+    };
+    use rocket::http::{ContentType, Header, Status};
+    use rocket::local::asynchronous::Client;
+    use serde_json::json;
+    use syrnike_database::{
+        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
+        ServerAuditLogTarget, fixture, voice::VoiceClient,
+    };
     use syrnike_models::v0;
     use syrnike_permissions::ChannelPermission;
+    use ulid::Ulid;
 
     fn edit_payload(remove: Vec<v0::FieldsChannel>) -> v0::DataEditChannel {
         v0::DataEditChannel {
@@ -481,6 +506,65 @@ mod tests {
             voice: None,
             slowmode: None,
             remove,
+        }
+    }
+
+    struct ChannelEditTestContext {
+        client: Client,
+        db: Database,
+        authifier: Authifier,
+    }
+
+    impl ChannelEditTestContext {
+        async fn new() -> Self {
+            let db = DatabaseInfo::Reference
+                .connect()
+                .await
+                .expect("reference database");
+            let authifier = db.clone().to_authifier().await;
+            let client = Client::tracked(
+                rocket::build()
+                    .mount("/channels", super::routes_under_test())
+                    .manage(authifier.clone())
+                    .manage(db.clone())
+                    .manage(VoiceClient::new(HashMap::new())),
+            )
+            .await
+            .expect("valid rocket instance");
+
+            Self {
+                client,
+                db,
+                authifier,
+            }
+        }
+
+        async fn account_from_user(&self, id: String) -> (Account, Session) {
+            let account = Account {
+                id,
+                email: format!("{}@syrnike13.ru", Ulid::new()),
+                password: Default::default(),
+                email_normalised: Default::default(),
+                deletion: None,
+                disabled: false,
+                lockout: None,
+                mfa: Default::default(),
+                password_reset: None,
+                verification: EmailVerification::Verified,
+            };
+
+            self.authifier
+                .database
+                .save_account(&account)
+                .await
+                .expect("account saved");
+
+            let session = account
+                .create_session(&self.authifier, String::new())
+                .await
+                .expect("session created");
+
+            (account, session)
         }
     }
 
@@ -518,5 +602,75 @@ mod tests {
         payload.name = Some("renamed".to_string());
 
         assert!(!super::changes_voice_permissions(&payload));
+    }
+
+    #[rocket::async_test]
+    async fn server_channel_edit_writes_audit_entry() {
+        let context = ChannelEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            channel channel 3
+            server server 4);
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let channel_id = channel.id().to_string();
+
+        let response = context
+            .client
+            .patch(format!("/channels/{channel_id}"))
+            .header(ContentType::JSON)
+            .body(
+                json!(v0::DataEditChannel {
+                    name: Some("audit-renamed-channel".to_string()),
+                    description: None,
+                    owner: None,
+                    icon: None,
+                    nsfw: None,
+                    archived: None,
+                    voice: None,
+                    slowmode: None,
+                    remove: vec![],
+                })
+                .to_string(),
+            )
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+        drop(response);
+
+        let entries = context
+            .db
+            .fetch_server_audit_logs(
+                &server.id,
+                ServerAuditLogQuery {
+                    action: Some(ServerAuditLogAction::ChannelUpdate),
+                    target_type: Some("Channel".to_string()),
+                    target_id: Some(channel_id.clone()),
+                    limit: 50,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("audit entries fetched");
+
+        assert_eq!(entries.len(), 1);
+        let entry = &entries[0];
+        assert_eq!(entry.actor_id, owner.id);
+        assert_eq!(entry.status, ServerAuditLogStatus::Succeeded);
+        assert_eq!(
+            entry.target,
+            ServerAuditLogTarget::Channel { id: channel_id }
+        );
+        assert_eq!(entry.changes["name"].before, Some(json!("General")));
+        assert_eq!(
+            entry.changes["name"].after,
+            Some(json!("audit-renamed-channel"))
+        );
     }
 }
