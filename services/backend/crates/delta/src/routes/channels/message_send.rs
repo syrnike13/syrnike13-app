@@ -231,6 +231,7 @@ mod test {
         let mut locked_channel = Channel::create_server_channel(
             &harness.db,
             server_mut,
+            ulid::Ulid::new().to_string(),
             DataCreateServerChannel {
                 channel_type: v0::LegacyServerChannelType::Text,
                 name: "Hidden Channel".to_string(),

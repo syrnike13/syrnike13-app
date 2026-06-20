@@ -151,6 +151,7 @@ impl TestHarness {
         Channel::create_server_channel(
             &self.db,
             &mut server.clone(),
+            ulid::Ulid::new().to_string(),
             v0::DataCreateServerChannel {
                 channel_type: v0::LegacyServerChannelType::Text,
                 name: "Test Channel".to_string(),

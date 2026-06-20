@@ -192,6 +192,7 @@ impl Channel {
     pub async fn create_server_channel(
         db: &Database,
         server: &mut Server,
+        id: String,
         data: v0::DataCreateServerChannel,
         update_server: bool,
     ) -> Result<Channel> {
@@ -202,7 +203,6 @@ impl Channel {
             }));
         };
 
-        let id = ulid::Ulid::new().to_string();
         let channel = match data.channel_type {
             v0::LegacyServerChannelType::Text => Channel::TextChannel {
                 id: id.clone(),

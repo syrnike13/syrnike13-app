@@ -176,6 +176,7 @@ impl Server {
                 Channel::create_server_channel(
                     db,
                     &mut server,
+                    ulid::Ulid::new().to_string(),
                     DataCreateServerChannel {
                         channel_type: v0::LegacyServerChannelType::Text,
                         name: "General".to_string(),

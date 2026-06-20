@@ -205,6 +205,7 @@ mod test {
         let channel = Channel::create_server_channel(
             &harness.db,
             server_mut,
+            ulid::Ulid::new().to_string(),
             DataCreateServerChannel {
                 channel_type: LegacyServerChannelType::Voice,
                 name: "Voice Channel".to_string(),
