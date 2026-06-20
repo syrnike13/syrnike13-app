@@ -912,6 +912,55 @@ describe('syncStore role events', () => {
 })
 
 describe('syncStore applyReady', () => {
+  it('hydrates channel unread mention ids from Ready payloads', () => {
+    syncStore.reset()
+
+    syncStore.applyReady({
+      servers: [],
+      channels: [],
+      users: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [
+        {
+          _id: { channel: CHANNEL_ID, user: USER_ID },
+          last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+          mentions: [
+            '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+            '01KT7DEM3B0T4B0BXGBXWDJ6B2',
+          ],
+        },
+      ],
+      voice_states: [],
+    } as never)
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+      mentions: [
+        '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+        '01KT7DEM3B0T4B0BXGBXWDJ6B2',
+      ],
+    })
+  })
+
+  it('clears local mention unread ids when marking a channel read', () => {
+    syncStore.reset()
+
+    syncStore.setUnreads([
+      {
+        _id: { channel: CHANNEL_ID, user: USER_ID },
+        last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+        mentions: ['01KT7DEM3B0T4B0BXGBXWDJ6B1'],
+      },
+    ])
+    syncStore.setChannelLastRead(CHANNEL_ID, '01KT7DEM3B0T4B0BXGBXWDJ6B1')
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+      mentions: [],
+    })
+  })
+
   it('preserves null selectedServerId instead of auto-selecting the first server', () => {
     syncStore.reset()
 

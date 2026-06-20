@@ -37,6 +37,7 @@ import { ackChannel } from '#/features/api/sync-api'
 import { deleteChannel } from '#/features/api/channels-api'
 import { createChannelInvite } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
+import type { ChannelUnreadState } from '#/features/sync/types'
 import {
   getChannelLabel,
   getDmRecipientId,
@@ -71,7 +72,7 @@ type ChannelSidebarItemProps = {
   activeChannelId?: string
   users: Record<string, import('@syrnike13/api-types').User>
   currentUserId?: string
-  unreads: Record<string, string | null | undefined>
+  unreads: Record<string, ChannelUnreadState | undefined>
   canManage?: boolean
   canInvite?: boolean
   dragHandleProps?: Record<string, unknown>

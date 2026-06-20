@@ -16,7 +16,7 @@ import {
 } from './voice-call-utils'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { canViewChannel } from '#/lib/permissions'
-import type { SyncState } from './types'
+import type { ChannelUnreadState, SyncState } from './types'
 
 export const EMPTY_CHANNELS: Channel[] = []
 export const EMPTY_MESSAGES: Message[] = []
@@ -250,12 +250,19 @@ export function getChannelLastMessageId(channel: Channel): string | null {
 
 export function isChannelUnread(
   channel: Channel,
-  lastReadId: string | null | undefined,
+  unread: ChannelUnreadState | undefined,
 ): boolean {
   const lastMessageId = getChannelLastMessageId(channel)
   if (!lastMessageId) return false
+  const lastReadId = unread?.lastId
   if (!lastReadId) return true
   return lastReadId.localeCompare(lastMessageId) < 0
+}
+
+export function channelUnreadMentionCount(
+  unread: ChannelUnreadState | undefined,
+) {
+  return unread?.mentions.length ?? 0
 }
 
 function sortUsers(users: User[]) {

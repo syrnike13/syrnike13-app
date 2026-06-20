@@ -1,7 +1,7 @@
 import type { Channel, User } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import type { SyncState } from '#/features/sync/types'
+import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
 
 import {
   selectChannelNotificationBadge,
@@ -51,6 +51,13 @@ function serverChannel(
     name: id,
     last_message_id: lastMessageId,
   } as Channel
+}
+
+function unread(
+  lastId: string | null,
+  mentions: string[] = [],
+): ChannelUnreadState {
+  return { lastId, mentions }
 }
 
 function state(overrides: Partial<SyncState> = {}): SyncState {
@@ -115,9 +122,9 @@ describe('notification selectors', () => {
         ),
       },
       unreads: {
-        'dm-unread': 'message-1',
-        'dm-read': 'message-2',
-        'server-unread': 'message-1',
+        'dm-unread': unread('message-1'),
+        'dm-read': unread('message-2'),
+        'server-unread': unread('message-1'),
       },
     })
 
@@ -150,10 +157,10 @@ describe('notification selectors', () => {
         ),
       },
       unreads: {
-        read: 'message-2',
-        'unread-a': 'message-1',
-        'unread-b': null,
-        'other-server-unread': null,
+        read: unread('message-2'),
+        'unread-a': unread('message-1'),
+        'unread-b': unread(null),
+        'other-server-unread': unread(null),
       },
     })
 
@@ -166,6 +173,38 @@ describe('notification selectors', () => {
     })
   })
 
+  it('marks server badges urgent when visible channels contain mentions', () => {
+    const syncState = state({
+      servers: {
+        'server-1': {
+          _id: 'server-1',
+          name: 'Server One',
+          owner: CURRENT_USER_ID,
+          channels: ['mention-a', 'mention-b', 'unread'],
+          default_permissions: 0,
+        },
+      },
+      channels: {
+        'mention-a': serverChannel('mention-a', 'server-1', 'message-2'),
+        'mention-b': serverChannel('mention-b', 'server-1', 'message-3'),
+        unread: serverChannel('unread', 'server-1', 'message-4'),
+      },
+      unreads: {
+        'mention-a': unread('message-1', ['message-2']),
+        'mention-b': unread('message-1', ['message-2', 'message-3']),
+        unread: unread('message-1'),
+      },
+    })
+
+    expect(
+      selectServerNotificationBadge(syncState, 'server-1', CURRENT_USER_ID),
+    ).toEqual({
+      count: 3,
+      hasUnread: true,
+      urgent: true,
+    })
+  })
+
   it('returns a channel badge from unread state', () => {
     const channel = serverChannel('unread', 'server-1', 'message-2')
     const syncState = state({
@@ -173,7 +212,7 @@ describe('notification selectors', () => {
         unread: channel,
       },
       unreads: {
-        unread: 'message-1',
+        unread: unread('message-1'),
       },
     })
 
@@ -181,6 +220,24 @@ describe('notification selectors', () => {
       count: 1,
       hasUnread: true,
       urgent: false,
+    })
+  })
+
+  it('returns an urgent channel badge for mention unreads', () => {
+    const channel = serverChannel('mention', 'server-1', 'message-2')
+    const syncState = state({
+      channels: {
+        mention: channel,
+      },
+      unreads: {
+        mention: unread('message-1', ['message-2', 'message-3']),
+      },
+    })
+
+    expect(selectChannelNotificationBadge(syncState, channel)).toEqual({
+      count: 2,
+      hasUnread: true,
+      urgent: true,
     })
   })
 })

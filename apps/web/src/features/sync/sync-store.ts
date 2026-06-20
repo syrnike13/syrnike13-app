@@ -174,6 +174,20 @@ function cloneReactions(reactions: Message['reactions']) {
   )
 }
 
+function unreadStateFromApi(unread: ChannelUnread) {
+  return {
+    lastId: unread.last_id ?? null,
+    mentions: [...(unread.mentions ?? [])],
+  }
+}
+
+function readUnreadState(messageId: string | null) {
+  return {
+    lastId: messageId,
+    mentions: [],
+  }
+}
+
 function userCanAppearInMultipleVoiceChannels(userId: string) {
   return Boolean(state.users[userId]?.bot)
 }
@@ -278,7 +292,7 @@ export const syncStore = {
     const unreads = { ...state.unreads }
 
     for (const unread of payload.channel_unreads ?? []) {
-      unreads[unread._id.channel] = unread.last_id ?? null
+      unreads[unread._id.channel] = unreadStateFromApi(unread)
     }
 
     const voiceParticipants = mergeVoiceStatesFromReady(
@@ -607,9 +621,14 @@ export const syncStore = {
     let changed = false
     for (const unread of unreadsList) {
       const channelId = unread._id.channel
-      const lastId = unread.last_id ?? null
-      if (unreads[channelId] !== lastId) {
-        unreads[channelId] = lastId
+      const next = unreadStateFromApi(unread)
+      const current = unreads[channelId]
+      if (
+        current?.lastId !== next.lastId ||
+        current.mentions.length !== next.mentions.length ||
+        current.mentions.some((id, index) => id !== next.mentions[index])
+      ) {
+        unreads[channelId] = next
         changed = true
       }
     }
@@ -617,9 +636,10 @@ export const syncStore = {
   },
 
   setChannelLastRead(channelId: string, messageId: string | null) {
-    if (state.unreads[channelId] === messageId) return
+    const current = state.unreads[channelId]
+    if (current?.lastId === messageId && current.mentions.length === 0) return
     setState({
-      unreads: { ...state.unreads, [channelId]: messageId },
+      unreads: { ...state.unreads, [channelId]: readUnreadState(messageId) },
     })
   },
 
@@ -633,9 +653,10 @@ export const syncStore = {
         channelServerId === serverId &&
         'last_message_id' in channel &&
         channel.last_message_id &&
-        unreads[channel._id] !== channel.last_message_id
+        (unreads[channel._id]?.lastId !== channel.last_message_id ||
+          unreads[channel._id]?.mentions.length)
       ) {
-        unreads[channel._id] = channel.last_message_id
+        unreads[channel._id] = readUnreadState(channel.last_message_id)
         changed = true
       }
     }

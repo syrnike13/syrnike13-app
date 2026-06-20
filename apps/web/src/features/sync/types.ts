@@ -42,6 +42,11 @@ export type ReadyPayload = {
   }>
 }
 
+export type ChannelUnreadState = {
+  lastId: string | null
+  mentions: string[]
+}
+
 export type SyncState = {
   ready: boolean
   selectedServerId: string | null
@@ -53,8 +58,8 @@ export type SyncState = {
   emojis: Record<string, Emoji>
   /** channelId -> messageId -> message */
   messages: Record<string, Record<string, Message>>
-  /** channelId -> last read message id (current user) */
-  unreads: Record<string, string | null>
+  /** channelId -> unread state for current user */
+  unreads: Record<string, ChannelUnreadState>
   /** channelId -> user ids currently typing */
   typingUsers: Record<string, string[]>
   /** channelId -> userId -> голосовое состояние */
