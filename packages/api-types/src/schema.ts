@@ -4990,6 +4990,11 @@ export interface operations {
         };
       };
     };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataModerationAction"];
+      };
+    };
   };
   /** Create a new Text or Voice channel. */
   channel_create_create_server_channel: {

@@ -95,6 +95,7 @@ export function ServerSettingsInvitesPanel({
   >()
   const [creating, setCreating] = useState(false)
   const [revokingCode, setRevokingCode] = useState<string | null>(null)
+  const [revokeReason, setRevokeReason] = useState('')
   const [invitePendingRevocation, setInvitePendingRevocation] =
     useState<string | null>(null)
   const inviteChannels = server
@@ -143,12 +144,14 @@ export function ServerSettingsInvitesPanel({
     if (!token) return
     const code = invitePendingRevocation
     if (!code) return
+    const body = revokeReason.trim() ? { reason: revokeReason.trim() } : {}
 
     setRevokingCode(code)
     try {
-      await deleteInvite(token, code)
+      await deleteInvite(token, code, body)
       await invitesQuery.refetch()
       setInvitePendingRevocation(null)
+      setRevokeReason('')
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось отозвать приглашение',
@@ -363,6 +366,7 @@ export function ServerSettingsInvitesPanel({
         onOpenChange={(open) => {
           if (!open && revokingCode === null) {
             setInvitePendingRevocation(null)
+            setRevokeReason('')
           }
         }}
       >
@@ -375,12 +379,25 @@ export function ServerSettingsInvitesPanel({
               Ссылка перестанет принимать новых участников.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-1.5 py-2">
+            <Label htmlFor="invite-revoke-reason">Причина отзыва</Label>
+            <Input
+              id="invite-revoke-reason"
+              value={revokeReason}
+              maxLength={512}
+              disabled={revokingCode !== null}
+              onChange={(event) => setRevokeReason(event.target.value)}
+            />
+          </div>
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               disabled={revokingCode !== null}
-              onClick={() => setInvitePendingRevocation(null)}
+              onClick={() => {
+                setInvitePendingRevocation(null)
+                setRevokeReason('')
+              }}
             >
               Отмена
             </Button>

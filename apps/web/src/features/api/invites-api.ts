@@ -1,6 +1,7 @@
 import type {
   Channel,
   DataCreateInvite,
+  DataModerationAction,
   Invite,
   InviteJoinResponse,
   InviteResponse,
@@ -32,10 +33,15 @@ export async function createChannelInvite(
   })
 }
 
-export async function deleteInvite(token: string, code: string) {
+export async function deleteInvite(
+  token: string,
+  code: string,
+  body: DataModerationAction = {},
+) {
   return apiRequest<void>(`/invites/${code}`, {
     method: 'DELETE',
     token,
+    body,
   })
 }
 

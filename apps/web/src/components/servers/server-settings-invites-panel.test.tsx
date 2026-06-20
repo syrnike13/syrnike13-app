@@ -131,6 +131,9 @@ describe('ServerSettingsInvitesPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отозвать' }))
     expect(confirmSpy).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog').textContent).toContain('invite-code')
+    fireEvent.change(screen.getByLabelText('Причина отзыва'), {
+      target: { value: 'rotated link' },
+    })
     fireEvent.click(
       screen.getByRole('button', { name: 'Отозвать приглашение' }),
     )
@@ -139,6 +142,7 @@ describe('ServerSettingsInvitesPanel', () => {
       expect(mocks.deleteInvite).toHaveBeenCalledWith(
         'session-token',
         'invite-code',
+        { reason: 'rotated link' },
       )
     })
   })

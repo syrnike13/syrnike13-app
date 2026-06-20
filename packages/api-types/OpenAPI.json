@@ -4502,6 +4502,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataModerationAction"
+              }
+            }
+          }
+        },
         "responses": {
           "default": {
             "description": "An error occurred.",

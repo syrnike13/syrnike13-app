@@ -1,12 +1,14 @@
-use rocket::State;
+use rocket::{serde::json::Json, State};
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
     audit_timestamp,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, Invite, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
+use syrnike_models::v0;
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
+use validator::Validate;
 
 use crate::routes::servers::audit_mutation;
 
@@ -14,12 +16,22 @@ use crate::routes::servers::audit_mutation;
 ///
 /// Delete an invite by its id.
 #[openapi(tag = "Invites")]
-#[delete("/<target>")]
+#[delete("/<target>", data = "<data>")]
 pub async fn delete(
     db: &State<Database>,
     user: User,
     target: Reference<'_>,
+    data: Option<Json<v0::DataModerationAction>>,
 ) -> Result<EmptyResponse> {
+    let data = data
+        .map(Json::into_inner)
+        .unwrap_or(v0::DataModerationAction { reason: None });
+    data.validate().map_err(|error| {
+        create_error!(FailedValidation {
+            error: error.to_string()
+        })
+    })?;
+
     let invite = target.as_invite(db).await?;
 
     match invite {
@@ -56,7 +68,7 @@ pub async fn delete(
                 user.id.clone(),
                 ServerAuditLogAction::InviteDelete,
                 ServerAuditLogTarget::Invite { code: code.clone() },
-                None,
+                data.reason,
                 changes,
             )
             .await?;
@@ -89,7 +101,7 @@ mod test {
         models::{Account, EmailVerification, Session},
         Authifier,
     };
-    use rocket::http::{Header, Status};
+    use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::{
         fixture, Database, DatabaseInfo, Invite, ServerAuditLogAction, ServerAuditLogQuery,
@@ -187,6 +199,8 @@ mod test {
         let response = context
             .client
             .delete(format!("/invites/{code}"))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "reason": "rotated link" }).to_string())
             .header(Header::new(
                 "x-session-token",
                 owner_session.token.to_string(),
@@ -227,6 +241,7 @@ mod test {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].actor_id, owner.id);
         assert_eq!(entries[0].status, ServerAuditLogStatus::Succeeded);
+        assert_eq!(entries[0].reason.as_deref(), Some("rotated link"));
         assert_eq!(entries[0].target, ServerAuditLogTarget::Invite { code });
     }
 }
