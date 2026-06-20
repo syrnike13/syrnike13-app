@@ -43,6 +43,14 @@ vi.mock('#/components/channels/channel-settings-permissions-panel', () => ({
   }) => <div data-testid="permissions-panel">{channel._id}</div>,
 }))
 
+vi.mock('#/components/channels/channel-settings-webhooks-panel', () => ({
+  ChannelSettingsWebhooksPanel: ({
+    channel,
+  }: {
+    channel: { _id: string }
+  }) => <div data-testid="webhooks-panel">{channel._id}</div>,
+}))
+
 const legacyVoiceChannel = {
   _id: 'voice-legacy',
   channel_type: 'VoiceChannel',
@@ -52,6 +60,18 @@ const legacyVoiceChannel = {
   role_permissions: {},
   voice: { max_users: null },
 } as unknown as Channel
+
+const textChannel = {
+  _id: 'text-general',
+  channel_type: 'TextChannel',
+  server: 'server-1',
+  name: 'general',
+  description: null,
+  nsfw: false,
+  slowmode: 0,
+  default_permissions: null,
+  role_permissions: {},
+} satisfies Extract<Channel, { channel_type: 'TextChannel' }>
 
 describe('ChannelSettingsPage', () => {
   beforeEach(() => {
@@ -95,5 +115,39 @@ describe('ChannelSettingsPage', () => {
     expect(screen.getByTestId('permissions-panel').textContent).toBe(
       'voice-legacy',
     )
+  })
+
+  it('opens the webhooks tab for webhook-only text channel admins', () => {
+    syncStore.reset()
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'owner-user',
+      channels: ['text-general'],
+      default_permissions:
+        ChannelPermission.ViewChannel | ChannelPermission.ManageWebhooks,
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'user-1' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: [],
+      } as never,
+    ])
+    syncStore.upsertChannel(textChannel)
+
+    render(
+      <ChannelSettingsPage
+        channelId="text-general"
+        hostChannelId="text-general"
+        tab="permissions"
+      />,
+    )
+
+    expect(screen.getByTestId('webhooks-panel').textContent).toBe(
+      'text-general',
+    )
+    expect(screen.queryByTestId('permissions-panel')).toBeNull()
+    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 })

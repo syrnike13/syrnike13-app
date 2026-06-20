@@ -21,6 +21,7 @@
 - Do not add UI stubs for AutoMod, onboarding/community, integrations marketplace, forum channels, stage channels, or thread channels.
 - Do not remove adjacent working UI or API surfaces merely because they sit near out-of-scope Discord polish. If a surface is already connected to foundation behavior, keep it and make it correct.
 - Prefer finishing the existing adjacent implementation in place over extracting it, as long as it is governed by roles, permissions, audit logs, moderation, channel visibility, or role hierarchy.
+- Treat existing role-aware member/profile, channel settings, category, voice moderation, and permission visibility surfaces as foundation hardening targets when they already work end-to-end. Do not move them to a separate branch unless they are unrelated to roles, permissions, audit logs, moderation, channel visibility, or role hierarchy.
 - For code execution, use a clean worktree before implementation if the current dirty worktree remains dirty.
 
 ## File Structure
