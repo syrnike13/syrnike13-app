@@ -2,8 +2,8 @@ use std::time::{Duration, SystemTime};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{
-        get_user_voice_channel_in_server, remove_user_from_voice_channel, UserVoiceChannel,
-        VoiceClient,
+        cancel_current_pending_voice_join, get_user_voice_channel_in_server,
+        remove_user_from_voice_channel, UserVoiceChannel, VoiceClient,
     },
     Database, Message, RemovalIntention, ServerBan, User,
 };
@@ -74,6 +74,7 @@ pub async fn ban(
                 target.id,
             )
             .await?;
+            cancel_current_pending_voice_join(voice_client, target.id).await?;
         }
     }
     // We do this outside the member check so we can sweep hit-and-run spammers who already left.

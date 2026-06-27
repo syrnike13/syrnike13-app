@@ -11,6 +11,7 @@ use syrnike_database::{
             VoiceCallStateMutation, VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
         delete_voice_channel, finish_voice_call_started_system_message, get_voice_channel_members,
+        list_active_voice_channel_ids, reconcile_voice_channel_members_with_call_cleanup,
         UserVoiceChannel, VoiceClient,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
@@ -35,6 +36,23 @@ async fn sweep_voice_call_timeouts(
     amqp: &AMQP,
 ) -> Result<()> {
     let now = Timestamp::now_utc();
+
+    for channel_id in list_active_voice_channel_ids().await? {
+        let channel = UserVoiceChannel {
+            id: channel_id.clone(),
+            server_id: None,
+        };
+        if get_voice_channel_members(&channel).await?.is_none() {
+            continue;
+        }
+        if let Err(error) =
+            reconcile_voice_channel_members_with_call_cleanup(db, voice_client, amqp, &channel)
+                .await
+        {
+            syrnike_config::capture_internal_error!(&error);
+            warn!("Failed to reconcile voice channel {channel_id}: {error:?}");
+        }
+    }
 
     for call in list_channel_voice_calls().await? {
         let channel_id = call.channel_id.clone();

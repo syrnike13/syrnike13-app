@@ -14,14 +14,15 @@ use syrnike_database::{
             VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase, VoiceCallStateMutation,
             VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
-        cleanup_committed_voice_member_removal, commit_voice_join,
+        cleanup_committed_voice_member_removal, commit_voice_session_join,
         create_voice_call_started_system_message, delete_channel_voice_state_for_room,
-        delete_voice_state_for_session, finish_voice_call_started_system_message,
-        get_call_notification_recipients, get_user_moved_from_voice, get_voice_channel_members,
-        is_desktop_native_voice_identity, native_voice_participant_matches_current_operation,
-        publish_voice_state_snapshot, reconcile_voice_channel_members_with_call_cleanup,
-        update_voice_state_tracks, update_voice_state_tracks_for_session, RoomMetadata,
-        UserVoiceChannel, VoiceClient, VoiceJoinCommitResult,
+        delete_voice_state_for_session, desktop_native_voice_operation_id,
+        finish_voice_call_started_system_message, get_call_notification_recipients,
+        get_user_moved_from_voice, get_voice_channel_members, is_desktop_native_voice_identity,
+        native_voice_participant_matches_current_operation, publish_voice_state_snapshot,
+        reconcile_voice_channel_members_with_call_cleanup, update_voice_state_tracks_for_operation,
+        update_voice_state_tracks_for_session, RoomMetadata, UserVoiceChannel, VoiceClient,
+        VoiceSessionCommitResult,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
 };
@@ -450,20 +451,21 @@ pub async fn ingress(
             let requested_recipients =
                 get_call_notification_recipients(channel_id, user_id).await?;
 
-            let VoiceJoinCommitResult::Committed {
-                operation_id,
-                voice_state,
-                previous_channels,
-            } = commit_voice_join(&channel, user_id, joined_at, participant_id, room_id).await?
+            let VoiceSessionCommitResult::Committed(commit) =
+                commit_voice_session_join(&channel, user_id, joined_at, participant_id, room_id)
+                    .await?
             else {
                 log::debug!(
-                    "Removing user {user_id} from stale LiveKit join in channel {channel_id}; latest join intent targets another channel."
+                    "Removing user {user_id} from stale LiveKit join in channel {channel_id}; latest VoiceSession targets another operation."
                 );
                 let _ = voice_client
                     .remove_user(node, participant_identity, channel_id)
                     .await;
                 return Ok(EmptyResponse);
             };
+            let operation_id = Some(commit.operation_id);
+            let voice_state = commit.voice_state;
+            let previous_channels = commit.previous_channels;
 
             for previous_channel in &previous_channels {
                 cleanup_committed_voice_member_removal(
@@ -678,7 +680,18 @@ pub async fn ingress(
 
             let added = event.event == "track_published" || event.event == "track_unmuted";
             let state = if is_native_participant {
-                update_voice_state_tracks(&channel, user_id, added, track.source).await?
+                let Some(operation_id) = desktop_native_voice_operation_id(participant_identity)
+                else {
+                    return Ok(EmptyResponse);
+                };
+                update_voice_state_tracks_for_operation(
+                    &channel,
+                    user_id,
+                    added,
+                    track.source,
+                    operation_id,
+                )
+                .await?
             } else {
                 update_voice_state_tracks_for_session(
                     &channel,

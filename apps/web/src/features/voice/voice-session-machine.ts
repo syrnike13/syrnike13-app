@@ -125,9 +125,7 @@ export function reduceVoiceSession(
 
     case 'native_publish_succeeded':
       if (!isCurrentOperation(state, event.operationId)) return state
-      return state.phase === 'connected'
-        ? state
-        : { ...state, phase: 'connected', lastError: null }
+      return state
 
     case 'room_connect_failed':
       if (!isCurrentOperation(state, event.operationId)) return state

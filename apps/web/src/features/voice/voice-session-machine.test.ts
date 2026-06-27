@@ -192,4 +192,30 @@ describe('voice session machine', () => {
     expect(state.phase).toBe('leaving')
     expect(state.connectedChannelId).toBeNull()
   })
+
+  it('does not become connected from native publish before server commit', () => {
+    let state = createInitialVoiceSessionState()
+
+    state = reduceVoiceSession(state, {
+      type: 'join_requested',
+      channelId: 'voice-a',
+      operationId: 'op-a',
+      reason: 'manual_join',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'server_prepare_succeeded',
+      operationId: 'op-a',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'room_connected',
+      operationId: 'op-a',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'native_publish_succeeded',
+      operationId: 'op-a',
+    })
+
+    expect(state.phase).toBe('waiting_server_commit')
+    expect(state.connectedChannelId).toBeNull()
+  })
 })
