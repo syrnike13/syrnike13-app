@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -302,5 +309,21 @@ describe('ServerSettingsRolesPanel', () => {
     })
 
     expect(mocks.editServerRoleRanks).not.toHaveBeenCalled()
+  })
+
+  it('shows role hierarchy position and assigned member count in the role list', () => {
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'user-2' },
+        joined_at: '2024-01-01T00:00:00Z',
+        roles: ['member'],
+      } as never,
+    ])
+
+    render(<ServerSettingsRolesPanel serverId="server-1" />)
+
+    const memberRole = screen.getByRole('button', { name: 'Member' })
+    expect(within(memberRole).getByText('Ранг 5')).toBeTruthy()
+    expect(within(memberRole).getByText('1 участник')).toBeTruthy()
   })
 })

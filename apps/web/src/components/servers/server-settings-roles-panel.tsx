@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { PlusIcon, Trash2Icon } from '#/components/icons'
+import { PlusIcon, ShieldOffIcon, Trash2Icon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { FxImage } from '#/components/ui/fx-image'
@@ -70,7 +70,7 @@ const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
 const NEW_ROLE_NAME = 'Новая роль'
 
 const ROLE_SIDEBAR_ROW_BASE =
-  'flex h-9 w-full items-center gap-2 rounded-md border px-3 text-left text-sm font-medium transition-colors'
+  'flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors'
 
 function roleSidebarRowStateClass(selected: boolean) {
   return selected
@@ -94,9 +94,26 @@ function upsertServerRole(serverId: string, role: Role) {
   })
 }
 
+function formatMemberCount(count: number) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+
+  if (mod10 === 1 && mod100 !== 11) return `${count} участник`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} участника`
+  }
+  return `${count} участников`
+}
+
+function formatRoleRank(role: Role) {
+  return `Ранг ${role.rank ?? 0}`
+}
+
 function SortableRoleListItem({
   role,
   selected,
+  memberCount,
+  manageable,
   canDrag,
   canDelete,
   onSelect,
@@ -104,6 +121,8 @@ function SortableRoleListItem({
 }: {
   role: Role
   selected: boolean
+  memberCount: number
+  manageable: boolean
   canDrag: boolean
   canDelete: boolean
   onSelect: () => void
@@ -133,6 +152,7 @@ function SortableRoleListItem({
       style={style}
       role="button"
       tabIndex={0}
+      aria-label={role.name}
       className={cn(
         ROLE_SIDEBAR_ROW_BASE,
         roleSidebarRowStateClass(selected),
@@ -156,9 +176,27 @@ function SortableRoleListItem({
           className="size-5"
         />
       ) : null}
-      <span className="truncate" style={roleColourStyle(role.colour)}>
-        {role.name}
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-sm font-medium"
+          style={roleColourStyle(role.colour)}
+        >
+          {role.name}
+        </span>
+        <span className="block truncate text-[11px] font-normal text-muted-foreground">
+          <span>{formatRoleRank(role)}</span>
+          <span aria-hidden> · </span>
+          <span>{formatMemberCount(memberCount)}</span>
+        </span>
       </span>
+      {!manageable ? (
+        <span
+          className="shrink-0 text-muted-foreground"
+          title="Роль выше вашей позиции"
+        >
+          <ShieldOffIcon className="size-4" />
+        </span>
+      ) : null}
     </div>
   )
 
@@ -193,6 +231,7 @@ function SortableRolesList({
   server,
   member,
   userId,
+  memberCounts,
   selectedId,
   reordering,
   canReorder,
@@ -204,6 +243,7 @@ function SortableRolesList({
   server: Server
   member: Member | undefined
   userId: string
+  memberCounts: Record<string, number>
   selectedId: string | null
   reordering: boolean
   canReorder: boolean
@@ -262,17 +302,20 @@ function SortableRolesList({
         <div className="space-y-1">
           {roles.map((role) => {
             const roleRank = role.rank ?? 0
+            const manageable = canManageRole(server, member, userId, roleRank)
             const canDrag =
               canReorder &&
-              canManageRole(server, member, userId, roleRank) &&
+              manageable &&
               !reordering
-            const canDelete = canManageRole(server, member, userId, roleRank)
+            const canDelete = manageable
 
             return (
               <SortableRoleListItem
                 key={role._id}
                 role={role}
                 selected={selectedId === role._id}
+                memberCount={memberCounts[role._id] ?? 0}
+                manageable={manageable}
                 canDrag={canDrag}
                 canDelete={canDelete}
                 onSelect={() => selectRole(role._id)}
@@ -409,6 +452,16 @@ export function ServerSettingsRolesPanel({
   const member = useSyncStore((s) =>
     auth.user?._id ? s.members[`${serverId}:${auth.user._id}`] : undefined,
   )
+  const roleMemberCounts = useSyncStore((state) => {
+    const counts: Record<string, number> = {}
+    for (const entry of Object.values(state.members)) {
+      if (entry._id.server !== serverId) continue
+      for (const roleId of entry.roles ?? []) {
+        counts[roleId] = (counts[roleId] ?? 0) + 1
+      }
+    }
+    return counts
+  })
 
   const roles = useMemo(
     () => (server?.roles ? sortRolesByHierarchy(Object.values(server.roles)) : []),
@@ -591,6 +644,7 @@ export function ServerSettingsRolesPanel({
                 server={server}
                 member={member}
                 userId={userId}
+                memberCounts={roleMemberCounts}
                 selectedId={effectiveSelectedId}
                 reordering={reordering}
                 canReorder={canReorderRoles}

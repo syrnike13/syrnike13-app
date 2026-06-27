@@ -6,6 +6,8 @@ import {
   LogOutIcon,
   PlusCircleIcon,
   SettingsIcon,
+  ShieldFillIcon,
+  ShieldIcon,
   Trash2Icon,
   UserPlusIcon,
 } from '#/components/icons'
@@ -131,6 +133,8 @@ export function ServerHeaderMenu({
   const showAdminSection = Boolean(
     menuPermissions?.invite ||
       menuPermissions?.settings ||
+      menuPermissions?.roles ||
+      menuPermissions?.audit ||
       menuPermissions?.createChannel,
   )
 
@@ -193,6 +197,36 @@ export function ServerHeaderMenu({
               }}
             >
               Настройки сервера
+            </ServerHeaderMenuItem>
+          ) : null}
+          {menuPermissions?.roles ? (
+            <ServerHeaderMenuItem
+              icon={<ShieldFillIcon className="size-4" />}
+              onClick={() => {
+                setMenuOpen(false)
+                void navigate({
+                  to: `${prefix}/servers/$serverId/settings`,
+                  params: { serverId },
+                  search: { tab: 'roles' },
+                })
+              }}
+            >
+              Роли
+            </ServerHeaderMenuItem>
+          ) : null}
+          {menuPermissions?.audit ? (
+            <ServerHeaderMenuItem
+              icon={<ShieldIcon className="size-4" />}
+              onClick={() => {
+                setMenuOpen(false)
+                void navigate({
+                  to: `${prefix}/servers/$serverId/settings`,
+                  params: { serverId },
+                  search: { tab: 'audit' },
+                })
+              }}
+            >
+              Журнал аудита
             </ServerHeaderMenuItem>
           ) : null}
           {menuPermissions?.createChannel ? (

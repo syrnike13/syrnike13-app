@@ -146,6 +146,8 @@ export function calculateChannelPermissions(
 export type ServerMenuPermissions = {
   invite: boolean
   settings: boolean
+  roles: boolean
+  audit: boolean
   createChannel: boolean
   leave: boolean
   copyId: boolean
@@ -474,6 +476,8 @@ export function getServerMenuPermissions(
   return {
     invite: canInvite,
     settings: canOpenServerSettings(settingsAccess),
+    roles: settingsAccess.roles,
+    audit: settingsAccess.audit,
     createChannel: hasChannelPermission(
       serverPermissions,
       ChannelPermission.ManageChannel,

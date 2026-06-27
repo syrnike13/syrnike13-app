@@ -721,6 +721,8 @@ describe('getServerMenuPermissions', () => {
     expect(permissions).toEqual({
       invite: false,
       settings: false,
+      roles: false,
+      audit: false,
       createChannel: false,
       leave: true,
       copyId: true,

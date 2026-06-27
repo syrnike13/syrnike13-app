@@ -203,4 +203,26 @@ describe('ServerHeaderMenu', () => {
       )
     })
   })
+
+  it('opens roles and audit settings directly from the server menu', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Роли' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/app/servers/$serverId/settings',
+      params: { serverId: 'server-1' },
+      search: { tab: 'roles' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Server' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Журнал аудита' }))
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/app/servers/$serverId/settings',
+      params: { serverId: 'server-1' },
+      search: { tab: 'audit' },
+    })
+  })
 })
