@@ -235,7 +235,7 @@ jobs:
             --exclude='compose.override.yml' \
             --exclude='compose.override.yml.old' \
             -czf /tmp/syrnike13-nightly.tar.gz .
-          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "sudo mkdir -p '$DEPLOY_PATH' && sudo chown '$DEPLOY_USER:$DEPLOY_USER' '$DEPLOY_PATH'"
           scp -i ~/.ssh/deploy_key /tmp/syrnike13-nightly.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:/tmp/syrnike13-nightly.tar.gz"
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "tar -xzf /tmp/syrnike13-nightly.tar.gz -C '$DEPLOY_PATH' && rm /tmp/syrnike13-nightly.tar.gz && chmod +x '$DEPLOY_PATH/scripts/deploy-on-server.sh' '$DEPLOY_PATH/generate_config.sh'"
       - name: Run nightly deploy
@@ -246,6 +246,16 @@ jobs:
       - name: Verify nightly API
         run: |
           set -euo pipefail
+          if ! getent hosts "$SYRNIKE_DOMAIN" >/dev/null; then
+            echo "::error::DNS record for ${SYRNIKE_DOMAIN} is missing. Create an A record pointing to ${DEPLOY_HOST}, then rerun the failed deploy job."
+            exit 1
+          fi
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
 
   desktop:

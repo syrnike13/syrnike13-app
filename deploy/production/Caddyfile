@@ -7,59 +7,59 @@
 
 	route /app/assets* {
 		uri strip_prefix /app
-		reverse_proxy http://web:5000
+		reverse_proxy http://syrnike13-web-1:5000
 	}
 
 	route /app/manifest.webmanifest {
 		uri strip_prefix /app
-		reverse_proxy http://web:5000
+		reverse_proxy http://syrnike13-web-1:5000
 	}
 
 	route /api* {
 		uri strip_prefix /api
-		reverse_proxy http://api:14702 {
+		reverse_proxy http://syrnike13-api-1:14702 {
 			header_down Location "^/" "/api/"
 		}
 	}
 
 	route /ws {
 		uri strip_prefix /ws
-		reverse_proxy http://events:14703 {
+		reverse_proxy http://syrnike13-events-1:14703 {
 			header_down Location "^/" "/ws/"
 		}
 	}
 
 	route /autumn* {
 		uri strip_prefix /autumn
-		reverse_proxy http://autumn:14704 {
+		reverse_proxy http://syrnike13-autumn-1:14704 {
 			header_down Location "^/" "/autumn/"
 		}
 	}
 
 	route /january* {
 		uri strip_prefix /january
-		reverse_proxy http://january:14705 {
+		reverse_proxy http://syrnike13-january-1:14705 {
 			header_down Location "^/" "/january/"
 		}
 	}
 
 	route /gifbox* {
 		uri strip_prefix /gifbox
-		reverse_proxy http://gifbox:14706 {
+		reverse_proxy http://syrnike13-gifbox-1:14706 {
 			header_down Location "^/" "/gifbox/"
 		}
 	}
 
 	route /livekit* {
 		uri strip_prefix /livekit
-		reverse_proxy http://livekit:7880 {
+		reverse_proxy http://syrnike13-livekit-1:7880 {
 			header_down Location "^/" "/livekit/"
 		}
 	}
 
 	route /ingress* {
 		uri strip_prefix /ingress
-		reverse_proxy http://voice-ingress:8500 {
+		reverse_proxy http://syrnike13-voice-ingress-1:8500 {
 			header_down Location "^/" "/ingress/"
 		}
 	}
@@ -84,7 +84,7 @@
 		file_server
 	}
 
-	reverse_proxy http://web:5000
+	reverse_proxy http://syrnike13-web-1:5000
 }
 
 {$NIGHTLY_HOSTNAME:beta.syrnike13.ru} {
