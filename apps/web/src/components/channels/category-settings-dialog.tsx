@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
@@ -33,6 +34,7 @@ export function CategorySettingsDialog({
   const [title, setTitle] = useState(category.title)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [confirmingDeletion, setConfirmingDeletion] = useState(false)
 
   async function save() {
     const token = auth.session?.token
@@ -63,13 +65,6 @@ export function CategorySettingsDialog({
   async function removeCategory() {
     const token = auth.session?.token
     if (!token) return
-    if (
-      !window.confirm(
-        `Удалить категорию «${category.title}»? Каналы останутся на сервере.`,
-      )
-    ) {
-      return
-    }
 
     const server = syncStore.getState().servers[serverId]
     if (!server) return
@@ -82,6 +77,7 @@ export function CategorySettingsDialog({
       const updated = await editServer(token, serverId, { categories })
       syncStore.upsertServer(updated)
       toast.success('Категория удалена')
+      setConfirmingDeletion(false)
       onOpenChange(false)
     } catch (error) {
       toast.error(
@@ -96,43 +92,79 @@ export function CategorySettingsDialog({
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        if (nextOpen) setTitle(category.title)
+        if (nextOpen) {
+          setTitle(category.title)
+          setConfirmingDeletion(false)
+        } else if (!deleting) {
+          setConfirmingDeletion(false)
+        }
         onOpenChange(nextOpen)
       }}
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Категория</DialogTitle>
-          <DialogDescription>Переименование и удаление категории</DialogDescription>
+          <DialogTitle>
+            {confirmingDeletion
+              ? `Удалить категорию «${category.title}»?`
+              : 'Категория'}
+          </DialogTitle>
+          <DialogDescription>
+            {confirmingDeletion
+              ? 'Каналы останутся на сервере, но категория будет удалена.'
+              : 'Переименование и удаление категории'}
+          </DialogDescription>
         </DialogHeader>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void save()
-          }}
-        >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="category-title">Название</Label>
-            <Input
-              id="category-title"
-              value={title}
-              maxLength={32}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </div>
-          <Button type="submit" disabled={saving || !title.trim()}>
-            Сохранить
-          </Button>
-        </form>
-        <Button
-          type="button"
-          variant="destructive"
-          disabled={deleting}
-          onClick={() => void removeCategory()}
-        >
-          Удалить категорию
-        </Button>
+        {confirmingDeletion ? (
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setConfirmingDeletion(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void removeCategory()}
+            >
+              Удалить категорию
+            </Button>
+          </DialogFooter>
+        ) : (
+          <>
+            <form
+              className="flex flex-col gap-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void save()
+              }}
+            >
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="category-title">Название</Label>
+                <Input
+                  id="category-title"
+                  value={title}
+                  maxLength={32}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </div>
+              <Button type="submit" disabled={saving || !title.trim()}>
+                Сохранить
+              </Button>
+            </form>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => setConfirmingDeletion(true)}
+            >
+              Удалить категорию
+            </Button>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

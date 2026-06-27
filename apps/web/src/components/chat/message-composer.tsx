@@ -18,10 +18,7 @@ import { Button } from '#/components/ui/button'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import { uploadAttachment } from '#/features/api/media-api'
 import type { Channel, User } from '@syrnike13/api-types'
-import { memberDisplayColour } from '#/features/sync/member-list-groups'
-import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
-import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
@@ -47,6 +44,8 @@ const composerIconClass =
 
 const composerIconHoverClass = (floating: boolean) =>
   floating ? 'hover:bg-muted' : 'hover:bg-secondary'
+
+const emptyMentionItems = () => []
 
 function composerPlaceholder(
   channel: Channel | undefined,
@@ -147,12 +146,6 @@ export function MessageComposer({
     setReplyMention(true)
     requestAnimationFrame(() => composerRef.current?.focus())
   }, [editingMessage?._id, replyTo?._id])
-
-  const mentionable = useMemo(
-    () => getMentionableUsers(channel, users, members, auth.user?._id),
-    [auth.user?._id, channel, members, users],
-  )
-
   const formatContext = useMemo(
     () => ({
       users,
@@ -173,74 +166,6 @@ export function MessageComposer({
       serverId,
       users,
     ],
-  )
-
-  const buildMentionItems = useMemo(
-    () =>
-      (query: string): MentionSuggestionItem[] => {
-        const q = query.toLowerCase()
-        const items: MentionSuggestionItem[] = []
-        const isTextChannel = channel?.channel_type === 'TextChannel'
-
-        if (isTextChannel) {
-          if (!q || 'everyone'.startsWith(q)) {
-            items.push({
-              kind: 'everyone',
-              label: '@everyone',
-              description: 'все в канале',
-            })
-          }
-          if (!q || 'online'.startsWith(q)) {
-            items.push({
-              kind: 'online',
-              label: '@online',
-              description: 'кто в сети',
-            })
-          }
-        }
-
-        const filteredUsers = q
-          ? mentionable.filter((user) => {
-              const member =
-                serverId ? members[`${serverId}:${user._id}`] : undefined
-              const serverName =
-                member?.nickname?.trim() ||
-                user.display_name ||
-                user.username
-              return (
-                user.username.toLowerCase().includes(q) ||
-                user.display_name?.toLowerCase().includes(q) ||
-                serverName.toLowerCase().includes(q)
-              )
-            }).slice(0, 8)
-          : mentionable.slice(0, 8)
-
-        for (const user of filteredUsers) {
-          const member =
-            serverId && members[`${serverId}:${user._id}`]
-              ? members[`${serverId}:${user._id}`]
-              : undefined
-          const serverName =
-            member?.nickname?.trim() ||
-            user.display_name ||
-            user.username
-
-          items.push({
-            kind: 'user',
-            id: user._id,
-            user,
-            serverName,
-            username: user.username,
-            nameColour:
-              server && member
-                ? memberDisplayColour(server, member)
-                : undefined,
-          })
-        }
-
-        return items
-      },
-    [channel?.channel_type, members, mentionable, server, serverId],
   )
 
   function appendFiles(fileList: FileList | File[]) {
@@ -511,7 +436,7 @@ export function MessageComposer({
           disabled={disabled || sending}
           placeholder={placeholder}
           formatContext={formatContext}
-          mentionItems={buildMentionItems}
+          mentionItems={emptyMentionItems}
           menuAnchorRef={composerInputRowRef}
           menuSurfaceClassName={
             floating

@@ -151,6 +151,7 @@ impl TestHarness {
         Channel::create_server_channel(
             &self.db,
             &mut server.clone(),
+            ulid::Ulid::new().to_string(),
             v0::DataCreateServerChannel {
                 channel_type: v0::LegacyServerChannelType::Text,
                 name: "Test Channel".to_string(),
@@ -170,7 +171,7 @@ impl TestHarness {
         server: &Server,
         channels: Vec<Channel>,
     ) -> (Channel, Member, Message) {
-        let (member, channels) = Member::create(&self.db, server, user, Some(channels))
+        let (member, channels) = Member::create(&self.db, server, user, Some(channels), false)
             .await
             .expect("Failed to create member");
         let channel = &channels[0];

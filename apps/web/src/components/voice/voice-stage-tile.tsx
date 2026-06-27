@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { createChannelInvite } from '#/features/api/servers-api'
+import { createChannelInvite } from '#/features/api/invites-api'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   VoiceOnAirBadge,

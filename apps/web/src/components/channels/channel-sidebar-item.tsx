@@ -8,12 +8,14 @@ import {
   Trash2Icon,
   UsersIcon,
 } from '#/components/icons'
-import type { MouseEvent } from 'react'
+import { useState, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
+import { RestrictedTextChannelIcon } from '#/components/icons/restricted-text-channel-icon'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
+import { Button } from '#/components/ui/button'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,12 +23,21 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '#/components/ui/context-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
 import { ackChannel } from '#/features/api/sync-api'
 import { deleteChannel } from '#/features/api/channels-api'
-import { createChannelInvite } from '#/features/api/servers-api'
+import { createChannelInvite } from '#/features/api/invites-api'
 import { selectChannelNotificationBadge } from '#/features/notifications/notification-selectors'
+import type { ChannelUnreadState } from '#/features/sync/types'
 import {
   getChannelLabel,
   getDmRecipientId,
@@ -47,7 +58,7 @@ import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-chan
 import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoice } from '#/features/voice/voice-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
-import { canManageChannel } from '#/lib/permissions'
+import { canManageChannel, isChannelAccessRestricted } from '#/lib/permissions'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
@@ -61,7 +72,7 @@ type ChannelSidebarItemProps = {
   activeChannelId?: string
   users: Record<string, import('@syrnike13/api-types').User>
   currentUserId?: string
-  unreads: Record<string, string | null | undefined>
+  unreads: Record<string, ChannelUnreadState | undefined>
   canManage?: boolean
   canInvite?: boolean
   dragHandleProps?: Record<string, unknown>
@@ -82,6 +93,8 @@ export function ChannelSidebarItem({
   const auth = useAuth()
   const voice = useVoice()
   const navigate = useNavigate()
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingChannel, setDeletingChannel] = useState(false)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isMobile = pathname.startsWith('/m')
   const channelRoute = isMobile ? '/m/c/$channelId' : '/app/c/$channelId'
@@ -121,18 +134,13 @@ export function ChannelSidebarItem({
 
   async function handleDeleteChannel() {
     if (!token || !canDeleteChannel) return
-    if (
-      !window.confirm(
-        `Удалить канал «${channel.name}»? Это действие необратимо.`,
-      )
-    ) {
-      return
-    }
 
+    setDeletingChannel(true)
     try {
       await deleteChannel(token, channel._id)
       syncStore.removeChannel(channel._id)
       toast.success('Канал удалён')
+      setDeleteDialogOpen(false)
 
       const settingsChannelId = channelRouteMatch?.search?.settingsChannel
       const viewingDeletedChannel =
@@ -161,6 +169,8 @@ export function ChannelSidebarItem({
       toast.error(
         error instanceof Error ? error.message : 'Не удалось удалить канал',
       )
+    } finally {
+      setDeletingChannel(false)
     }
   }
 
@@ -180,6 +190,11 @@ export function ChannelSidebarItem({
   const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
   const isServerChannel = channel.channel_type === 'TextChannel'
   const serverVoice = isServerVoiceChannel(channel)
+  const restrictedTextChannel =
+    channel.channel_type === 'TextChannel' &&
+    !serverVoice &&
+    server != null &&
+    isChannelAccessRestricted(server, channel)
   const incomingVoiceCall =
     !voiceCallRingingDismissed && isIncomingVoiceCall(voiceCall, currentUserId)
   const voiceCallMarkerTitle =
@@ -311,6 +326,13 @@ export function ChannelSidebarItem({
             </span>
           ) : serverVoice ? (
             <VoiceChannelIcon channel={channel} server={server} />
+          ) : restrictedTextChannel ? (
+            <span
+              title="Закрытый текстовый канал"
+              className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+            >
+              <RestrictedTextChannelIcon className="size-4" />
+            </span>
           ) : (
             <HashIcon className="size-4 shrink-0 text-muted-foreground" />
           )}
@@ -324,7 +346,10 @@ export function ChannelSidebarItem({
             </span>
           ) : null}
           {!active ? (
-            <NotificationBadge badge={notificationBadge} mode="dot" />
+            <NotificationBadge
+              badge={notificationBadge}
+              mode={notificationBadge.urgent ? 'count' : 'dot'}
+            />
           ) : null}
         </Link>
         {canManage && isServerChannel ? (
@@ -376,7 +401,7 @@ export function ChannelSidebarItem({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onSelect={() => void handleDeleteChannel()}
+            onSelect={() => setDeleteDialogOpen(true)}
           >
             <Trash2Icon className="size-3.5" />
             Удалить канал
@@ -396,6 +421,42 @@ export function ChannelSidebarItem({
       ) : (
         row
       )}
+      {canDeleteChannel && isServerChannel ? (
+        <Dialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            if (!deletingChannel) setDeleteDialogOpen(open)
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Удалить канал «{channel.name}»?</DialogTitle>
+              <DialogDescription>
+                Это действие необратимо. Сообщения и настройки канала будут
+                удалены.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={deletingChannel}
+                onClick={() => setDeleteDialogOpen(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={deletingChannel}
+                onClick={() => void handleDeleteChannel()}
+              >
+                Удалить канал
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </>
   )
 }

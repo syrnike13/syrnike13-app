@@ -41,6 +41,7 @@ function emptyState(): SyncState {
 }
 
 let state = emptyState()
+let currentUserId: string | undefined
 const listeners = new Set<() => void>()
 const voiceCallExpiryTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const GROUP_UNANSWERED_ACTIVE_MS = 10 * 60 * 1000
@@ -173,6 +174,20 @@ function cloneReactions(reactions: Message['reactions']) {
   )
 }
 
+function unreadStateFromApi(unread: ChannelUnread) {
+  return {
+    lastId: unread.last_id ?? null,
+    mentions: [...(unread.mentions ?? [])],
+  }
+}
+
+function readUnreadState(messageId: string | null) {
+  return {
+    lastId: messageId,
+    mentions: [],
+  }
+}
+
 function userCanAppearInMultipleVoiceChannels(userId: string) {
   return Boolean(state.users[userId]?.bot)
 }
@@ -250,8 +265,13 @@ export const syncStore = {
 
   reset() {
     clearVoiceCallExpiryTimers()
+    currentUserId = undefined
     state = emptyState()
     emit()
+  },
+
+  setCurrentUserId(userId: string | undefined) {
+    currentUserId = userId
   },
 
   setSelectedServerId(serverId: string | null) {
@@ -272,7 +292,7 @@ export const syncStore = {
     const unreads = { ...state.unreads }
 
     for (const unread of payload.channel_unreads ?? []) {
-      unreads[unread._id.channel] = unread.last_id ?? null
+      unreads[unread._id.channel] = unreadStateFromApi(unread)
     }
 
     const voiceParticipants = mergeVoiceStatesFromReady(
@@ -601,9 +621,14 @@ export const syncStore = {
     let changed = false
     for (const unread of unreadsList) {
       const channelId = unread._id.channel
-      const lastId = unread.last_id ?? null
-      if (unreads[channelId] !== lastId) {
-        unreads[channelId] = lastId
+      const next = unreadStateFromApi(unread)
+      const current = unreads[channelId]
+      if (
+        current?.lastId !== next.lastId ||
+        current.mentions.length !== next.mentions.length ||
+        current.mentions.some((id, index) => id !== next.mentions[index])
+      ) {
+        unreads[channelId] = next
         changed = true
       }
     }
@@ -611,9 +636,10 @@ export const syncStore = {
   },
 
   setChannelLastRead(channelId: string, messageId: string | null) {
-    if (state.unreads[channelId] === messageId) return
+    const current = state.unreads[channelId]
+    if (current?.lastId === messageId && current.mentions.length === 0) return
     setState({
-      unreads: { ...state.unreads, [channelId]: messageId },
+      unreads: { ...state.unreads, [channelId]: readUnreadState(messageId) },
     })
   },
 
@@ -627,9 +653,10 @@ export const syncStore = {
         channelServerId === serverId &&
         'last_message_id' in channel &&
         channel.last_message_id &&
-        unreads[channel._id] !== channel.last_message_id
+        (unreads[channel._id]?.lastId !== channel.last_message_id ||
+          unreads[channel._id]?.mentions.length)
       ) {
-        unreads[channel._id] = channel.last_message_id
+        unreads[channel._id] = readUnreadState(channel.last_message_id)
         changed = true
       }
     }
@@ -740,12 +767,44 @@ export const syncStore = {
   removeServer(serverId: string) {
     const { [serverId]: _, ...servers } = state.servers
     const channels = { ...state.channels }
+    const messages = { ...state.messages }
+    const unreads = { ...state.unreads }
+    const typingUsers = { ...state.typingUsers }
+    const voiceParticipants = { ...state.voiceParticipants }
+    const voiceCalls = { ...state.voiceCalls }
+    const members = { ...state.members }
+    const emojis = { ...state.emojis }
     for (const [id, channel] of Object.entries(channels)) {
       if (serverChannelServerId(channel) === serverId) {
         delete channels[id]
+        delete messages[id]
+        delete unreads[id]
+        delete typingUsers[id]
+        delete voiceParticipants[id]
+        delete voiceCalls[id]
       }
     }
-    setState({ servers, channels })
+    for (const key of Object.keys(members)) {
+      if (key.startsWith(`${serverId}:`)) {
+        delete members[key]
+      }
+    }
+    for (const [id, emoji] of Object.entries(emojis)) {
+      if (emoji.parent.type === 'Server' && emoji.parent.id === serverId) {
+        delete emojis[id]
+      }
+    }
+    setState({
+      servers,
+      channels,
+      messages,
+      unreads,
+      typingUsers,
+      voiceParticipants,
+      voiceCalls,
+      members,
+      emojis,
+    })
   },
 
   upsertChannel(channel: Channel) {
@@ -1243,9 +1302,45 @@ export const syncStore = {
       case 'ServerRoleDelete': {
         const { id, role_id } = event as { id: string; role_id: string }
         const server = state.servers[id]
-        if (!server?.roles) break
-        const { [role_id]: _, ...roles } = server.roles
-        this.upsertServer({ ...server, roles })
+        if (!server) break
+
+        const servers = { ...state.servers }
+        if (server.roles) {
+          const { [role_id]: _, ...roles } = server.roles
+          servers[id] = { ...server, roles }
+        }
+
+        const members = { ...state.members }
+        for (const [key, member] of Object.entries(members)) {
+          if (member._id.server !== id || !member.roles?.includes(role_id)) {
+            continue
+          }
+
+          members[key] = {
+            ...member,
+            roles: member.roles.filter(
+              (memberRoleId) => memberRoleId !== role_id,
+            ),
+          }
+        }
+
+        const channels = { ...state.channels }
+        for (const [channelId, channel] of Object.entries(channels)) {
+          if (
+            serverChannelServerId(channel) !== id ||
+            !channel.role_permissions?.[role_id]
+          ) {
+            continue
+          }
+
+          const { [role_id]: _, ...rolePermissions } = channel.role_permissions
+          channels[channelId] = {
+            ...channel,
+            role_permissions: rolePermissions,
+          }
+        }
+
+        setState({ servers, members, channels })
         break
       }
       case 'UserUpdate': {
@@ -1284,8 +1379,11 @@ export const syncStore = {
           clear?: string[]
         }
         const key = `${id.server}:${id.user}`
-        const existing = state.members[key]
-        if (!existing) break
+        const existing =
+          state.members[key] ??
+          ({
+            _id: { server: id.server, user: id.user },
+          } as Member)
 
         let member: Member = {
           ...existing,
@@ -1322,23 +1420,25 @@ export const syncStore = {
         break
       }
       case 'ServerMemberJoin': {
-        const { id: serverId, user: userId } = event as {
+        const { member } = event as {
           id: string
           user: string
+          member: Member
         }
-        const key = `${serverId}:${userId}`
-        if (state.members[key]) break
-        this.upsertMembers([
-          {
-            _id: { server: serverId, user: userId },
-          } as Member,
-        ])
+        this.upsertMembers([member])
         break
       }
       case 'ServerMemberLeave': {
         const { id: serverId, user: userId } = event as {
           id: string
           user: string
+        }
+        if (userId === currentUserId) {
+          this.removeServer(serverId)
+          if (state.selectedServerId === serverId) {
+            this.setSelectedServerId(null)
+          }
+          break
         }
         this.removeServerMember(serverId, userId)
         break

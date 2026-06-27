@@ -21,6 +21,14 @@ Do not build these modules in this project:
 
 Do not add backwards compatibility layers for old API shapes unless explicitly requested. When an existing shape changes, migrate stored data and generated API types forward.
 
+## Branch Scope Update
+
+After auditing the current `codex/roles-foundation` branch, the foundation scope includes adjacent server/channel administration surfaces that already exist and are coupled to roles, permissions, moderation, audit logs, channel visibility, or role hierarchy. Do not extract or revert those working surfaces just to make the slice smaller. Finish them in place when they are already part of the same permission/admin path.
+
+This specifically keeps channel settings overview/permissions/webhooks, channel lifecycle audit, category administration affordances, restricted-channel visibility indicators, context-menu moderation entry points, voice moderation controls, and permission-aware member/mention behavior inside this foundation branch when they already work or mostly work.
+
+The boundary is still strict: do not use this as permission to add unrelated chat polish, account-safety/admin-badge dialogs, desktop activity status, voice input-mode settings, AutoMod, onboarding/community, integrations marketplace, forum channels, stage channels, or thread channels.
+
 ## Existing State
 
 Server settings are currently a small surface:
@@ -115,7 +123,7 @@ The foundation enables these Discord-like settings areas:
 | Permissions | Settings entry points and route checks match actual section permissions, not only `ManageServer`. |
 | Realtime | Role/member/default/channel permission changes update current visibility and member cache correctly. |
 
-Later sub-projects build the broader settings UI on top of this: channel/category permission management, per-user overwrites, server notification defaults, richer server overview/profile fields, ban list UX, invite management UX, audit log UX, and any remaining Discord-like settings that are not explicitly excluded.
+Later sub-projects build the remaining broader settings UI on top of this: server notification defaults, richer server overview/profile fields, and any remaining Discord-like settings that are not explicitly excluded. Channel/category admin surfaces, invite management UX, ban list UX, audit log UX, and member moderation basics stay in this foundation branch when the current branch already contains the working surface and it is governed by the same role/permission/audit model.
 
 ## Architecture
 
@@ -385,6 +393,7 @@ Use narrower commands while implementing a single slice, but the foundation is n
 6. Moderation audit coverage and reason fields.
 7. Frontend settings navigation expansion for backed sections.
 8. Focused UI panels for audit log, invites, bans, and member moderation basics.
+9. Preserve and finish adjacent channel/admin surfaces already present in the branch when they are coupled to permissions, moderation, audit logs, channel visibility, or role hierarchy.
 
 ## Open Decisions Already Resolved
 

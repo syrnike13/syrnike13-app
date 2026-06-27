@@ -18,7 +18,8 @@ use syrnike_database::{
         create_voice_call_started_system_message, delete_channel_voice_state_for_room,
         delete_voice_state_for_session, finish_voice_call_started_system_message,
         get_call_notification_recipients, get_user_moved_from_voice, get_voice_channel_members,
-        is_desktop_native_voice_identity, publish_voice_state_snapshot, update_voice_state_tracks,
+        is_desktop_native_voice_identity, publish_voice_state_snapshot,
+        remove_temporary_server_member_after_voice_disconnect, update_voice_state_tracks,
         update_voice_state_tracks_for_session, user_voice_join_intent_matches, RoomMetadata,
         UserVoiceChannel, VoiceClient, VoiceJoinCommitResult,
     },
@@ -499,11 +500,12 @@ pub async fn ingress(
                 return Ok(EmptyResponse);
             }
 
-            // Dont send leave event when a user is moved
-            if get_user_moved_from_voice(channel_id, user_id)
+            let is_move = get_user_moved_from_voice(channel_id, user_id)
                 .await?
-                .is_none()
-            {
+                .is_some();
+
+            // Dont send leave event when a user is moved
+            if !is_move {
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
                     user: user_id.to_string(),
@@ -531,6 +533,11 @@ pub async fn ingress(
                 finished_at,
             )
             .await?;
+
+            if !is_move {
+                remove_temporary_server_member_after_voice_disconnect(db, &channel, user_id)
+                    .await?;
+            }
         }
         // Audio/video track was started/stopped/unmuted/muted
         "track_published" | "track_unpublished" | "track_unmuted" | "track_muted" => {
@@ -608,6 +615,11 @@ pub async fn ingress(
                             finished_at,
                         )
                         .await?;
+
+                        remove_temporary_server_member_after_voice_disconnect(
+                            db, &channel, user_id,
+                        )
+                        .await?;
                     }
 
                     return Ok(EmptyResponse);
@@ -653,10 +665,10 @@ pub async fn ingress(
                 return Ok(EmptyResponse);
             }
 
-            for user_id in members {
+            for user_id in &members {
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
-                    user: user_id,
+                    user: user_id.clone(),
                 }
                 .p(channel_id.clone())
                 .await;
@@ -673,6 +685,11 @@ pub async fn ingress(
                 finished_at,
             )
             .await?;
+
+            for user_id in &members {
+                remove_temporary_server_member_after_voice_disconnect(db, &channel, user_id)
+                    .await?;
+            }
         }
         _ => {}
     };

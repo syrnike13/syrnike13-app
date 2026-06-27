@@ -103,6 +103,15 @@ auto_derived!(
                 )
             )]
             role_permissions: HashMap<String, OverrideField>,
+            /// Permissions assigned to specific members in this channel
+            #[cfg_attr(
+                feature = "serde",
+                serde(
+                    default = "HashMap::<String, OverrideField>::new",
+                    skip_serializing_if = "HashMap::<String, OverrideField>::is_empty"
+                )
+            )]
+            user_permissions: HashMap<String, OverrideField>,
 
             /// Whether this channel is marked as not safe for work
             #[cfg_attr(
@@ -155,6 +164,8 @@ auto_derived!(
         pub permissions: Option<i64>,
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub role_permissions: Option<HashMap<String, OverrideField>>,
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub user_permissions: Option<HashMap<String, OverrideField>>,
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub default_permissions: Option<OverrideField>,
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -285,6 +296,12 @@ auto_derived!(
     /// New role permissions
     pub struct DataSetRolePermissions {
         /// Allow / deny values to set for this role
+        pub permissions: Override,
+    }
+
+    /// New member-specific permissions
+    pub struct DataSetUserPermissions {
+        /// Allow / deny values to set for this member
         pub permissions: Override,
     }
 

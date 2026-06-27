@@ -1,4 +1,12 @@
-import type { Channel, InviteJoinResponse, InviteResponse, Server } from '@syrnike13/api-types'
+import type {
+  Channel,
+  DataCreateInvite,
+  DataModerationAction,
+  Invite,
+  InviteJoinResponse,
+  InviteResponse,
+  Server,
+} from '@syrnike13/api-types'
 
 import { apiRequest } from '#/lib/api/client'
 
@@ -13,10 +21,27 @@ export async function joinInvite(token: string, code: string) {
   })
 }
 
-export async function deleteInvite(token: string, code: string) {
+export async function createChannelInvite(
+  token: string,
+  channelId: string,
+  body: DataCreateInvite = {},
+) {
+  return apiRequest<Invite>(`/channels/${channelId}/invites`, {
+    method: 'POST',
+    token,
+    body,
+  })
+}
+
+export async function deleteInvite(
+  token: string,
+  code: string,
+  body: DataModerationAction = {},
+) {
   return apiRequest<void>(`/invites/${code}`, {
     method: 'DELETE',
     token,
+    body,
   })
 }
 

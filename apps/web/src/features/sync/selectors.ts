@@ -16,7 +16,7 @@ import {
 } from './voice-call-utils'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { canViewChannel } from '#/lib/permissions'
-import type { SyncState } from './types'
+import type { ChannelUnreadState, SyncState } from './types'
 
 export const EMPTY_CHANNELS: Channel[] = []
 export const EMPTY_MESSAGES: Message[] = []
@@ -123,8 +123,10 @@ export function shouldShowDmChannelInRail(
   channel: Channel,
   currentUserId?: string,
 ) {
+  const unread = state.unreads[channel._id]
   return (
-    isChannelUnread(channel, state.unreads[channel._id]) ||
+    isChannelUnread(channel, unread) ||
+    channelUnreadMentionCount(unread) > 0 ||
     isCurrentUserInChannelVoice(state, channel._id, currentUserId) ||
     hasIncomingVoiceCall(state, channel._id, currentUserId)
   )
@@ -250,12 +252,19 @@ export function getChannelLastMessageId(channel: Channel): string | null {
 
 export function isChannelUnread(
   channel: Channel,
-  lastReadId: string | null | undefined,
+  unread: ChannelUnreadState | undefined,
 ): boolean {
   const lastMessageId = getChannelLastMessageId(channel)
   if (!lastMessageId) return false
+  const lastReadId = unread?.lastId
   if (!lastReadId) return true
   return lastReadId.localeCompare(lastMessageId) < 0
+}
+
+export function channelUnreadMentionCount(
+  unread: ChannelUnreadState | undefined,
+) {
+  return unread?.mentions.length ?? 0
 }
 
 function sortUsers(users: User[]) {
@@ -327,7 +336,9 @@ export function memberRoleEntries(
   }
 
   return entries.sort(
-    (a, b) => (server.roles?.[b.id]?.rank ?? 0) - (server.roles?.[a.id]?.rank ?? 0),
+    (a, b) =>
+      (server.roles?.[a.id]?.rank ?? Number.MAX_SAFE_INTEGER) -
+      (server.roles?.[b.id]?.rank ?? Number.MAX_SAFE_INTEGER),
   )
 }
 

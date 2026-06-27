@@ -3,19 +3,25 @@ import type {
   DataCreateRole,
   DataCreateServer,
   DataCreateServerChannel,
+  DataBanCreate,
   DataEditRole,
   DataEditRoleRanks,
   DataEditServer,
   DataMemberEdit,
+  DataModerationAction,
   DataPermissionsValue,
   DataSetServerRolePermission,
   MemberResponse,
+  BanListResult,
   Emoji,
   Invite,
   Member,
   NewRoleResponse,
   Role,
   Server,
+  ServerAuditLogAction,
+  ServerAuditLogPage,
+  ServerAuditLogTarget,
   User,
 } from '@syrnike13/api-types'
 
@@ -57,6 +63,37 @@ export async function fetchServerInvites(token: string, serverId: string) {
   return apiRequest<Invite[]>(`/servers/${serverId}/invites`, { token })
 }
 
+export async function fetchServerBans(token: string, serverId: string) {
+  return apiRequest<BanListResult>(`/servers/${serverId}/bans`, { token })
+}
+
+export async function fetchServerAuditLog(
+  token: string,
+  serverId: string,
+  params: {
+    before?: string
+    actor?: string
+    action?: ServerAuditLogAction['type']
+    target_type?: ServerAuditLogTarget['type']
+    target_id?: string
+    limit?: number
+  } = {},
+) {
+  const search = new URLSearchParams()
+  if (params.before) search.set('before', params.before)
+  if (params.actor) search.set('actor', params.actor)
+  if (params.action) search.set('action', params.action)
+  if (params.target_type) search.set('target_type', params.target_type)
+  if (params.target_id) search.set('target_id', params.target_id)
+  if (params.limit) search.set('limit', String(params.limit))
+  const suffix = search.toString() ? `?${search}` : ''
+
+  return apiRequest<ServerAuditLogPage>(
+    `/servers/${serverId}/audit-log${suffix}`,
+    { token },
+  )
+}
+
 export async function createServerChannel(
   token: string,
   serverId: string,
@@ -76,11 +113,14 @@ export async function ackServer(token: string, serverId: string) {
   })
 }
 
-export async function leaveServer(token: string, serverId: string) {
-  return apiRequest<void>(`/servers/${serverId}`, {
+export async function deleteOrLeaveServer(token: string, serverId: string) {
+  const search = new URLSearchParams({
+    leave_silently: 'false',
+  })
+
+  return apiRequest<void>(`/servers/${serverId}?${search}`, {
     method: 'DELETE',
     token,
-    body: { leave_silently: false },
   })
 }
 
@@ -141,10 +181,12 @@ export async function kickServerMember(
   token: string,
   serverId: string,
   userId: string,
+  body: DataModerationAction = {},
 ) {
   return apiRequest<void>(`/servers/${serverId}/members/${userId}`, {
     method: 'DELETE',
     token,
+    body,
   })
 }
 
@@ -152,17 +194,25 @@ export async function banServerMember(
   token: string,
   serverId: string,
   userId: string,
+  body: DataBanCreate = {},
 ) {
   return apiRequest<void>(`/servers/${serverId}/bans/${userId}`, {
     method: 'PUT',
     token,
+    body,
   })
 }
 
-export async function createChannelInvite(token: string, channelId: string) {
-  return apiRequest<Invite>(`/channels/${channelId}/invites`, {
-    method: 'POST',
+export async function unbanServerMember(
+  token: string,
+  serverId: string,
+  userId: string,
+  body: DataModerationAction = {},
+) {
+  return apiRequest<void>(`/servers/${serverId}/bans/${userId}`, {
+    method: 'DELETE',
     token,
+    body,
   })
 }
 

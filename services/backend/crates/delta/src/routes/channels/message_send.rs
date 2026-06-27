@@ -231,6 +231,7 @@ mod test {
         let mut locked_channel = Channel::create_server_channel(
             &harness.db,
             server_mut,
+            ulid::Ulid::new().to_string(),
             DataCreateServerChannel {
                 channel_type: v0::LegacyServerChannelType::Text,
                 name: "Hidden Channel".to_string(),
@@ -265,6 +266,7 @@ mod test {
             active: None,
             permissions: None,
             role_permissions: Some(overrides),
+            user_permissions: None,
             default_permissions: Some(OverrideField {
                 a: 0,
                 d: ChannelPermission::ViewChannel as i64,
@@ -278,7 +280,7 @@ mod test {
             .await
             .expect("Failed to update the channel permissions for special role");
 
-        Member::create(&harness.db, &server, &user, Some(channels.clone()))
+        Member::create(&harness.db, &server, &user, Some(channels.clone()), false)
             .await
             .expect("Failed to create member");
         let member = Reference::from_unchecked(&user.id)
@@ -318,9 +320,15 @@ mod test {
             "Mention failed to be scrubbed when the user is not part of the server"
         );
 
-        Member::create(&harness.db, &server, &second_user, Some(channels.clone()))
-            .await
-            .expect("Failed to create second member");
+        Member::create(
+            &harness.db,
+            &server,
+            &second_user,
+            Some(channels.clone()),
+            false,
+        )
+        .await
+        .expect("Failed to create second member");
         let mut second_member = Reference::from_unchecked(&second_user.id)
             .as_member(&harness.db, &server.id)
             .await
@@ -368,6 +376,7 @@ mod test {
             roles: Some(second_member_roles),
             can_publish: None,
             can_receive: None,
+            temporary: None,
         };
         second_member
             .update(&harness.db, partial, vec![])
@@ -584,7 +593,7 @@ mod test {
                 }),
             )
             .await;
-        let (mut other_member, _) = Member::create(&harness.db, &server, &other_user, None)
+        let (mut other_member, _) = Member::create(&harness.db, &server, &other_user, None, false)
             .await
             .expect("Failed to add test member");
 
@@ -696,6 +705,7 @@ mod test {
                     timeout: None,
                     can_publish: None,
                     can_receive: None,
+                    temporary: None,
                 },
                 vec![],
             )

@@ -126,7 +126,7 @@ impl AbstractServers for MongoDb {
             .map_err(|_| create_database_error!("update_many", "server_members"))?;
 
         self.col::<Document>("channels")
-            .update_one(
+            .update_many(
                 doc! {
                     "server": server_id
                 },
@@ -137,7 +137,7 @@ impl AbstractServers for MongoDb {
                 },
             )
             .await
-            .map_err(|_| create_database_error!("update_one", "channels"))?;
+            .map_err(|_| create_database_error!("update_many", "channels"))?;
 
         self.col::<Document>("servers")
             .update_one(
@@ -174,6 +174,88 @@ impl IntoDocumentPath for FieldsRole {
             FieldsRole::Colour => "colour",
             FieldsRole::Icon => "icon",
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{fixture, Channel, Database, DatabaseInfo};
+
+    #[async_std::test]
+    async fn delete_role_clears_permissions_from_all_server_channels() {
+        let db = DatabaseInfo::Test(
+            "delete_role_clears_permissions_from_all_server_channels".to_string(),
+        )
+        .connect()
+        .await
+        .expect("database connection");
+
+        if !matches!(db, Database::MongoDb(_)) {
+            return;
+        }
+
+        db.drop_database().await;
+
+        fixture!(db, "server_with_roles",
+            channel channel 3
+            server server 4);
+
+        let role_id = server
+            .roles
+            .iter()
+            .find_map(|(id, role)| (role.name == "Moderator").then(|| id.clone()))
+            .expect("moderator role");
+
+        let permissions = match &channel {
+            Channel::TextChannel {
+                role_permissions, ..
+            } => role_permissions
+                .get(&role_id)
+                .cloned()
+                .expect("fixture channel role permissions"),
+            _ => unreachable!("fixture channel should be text"),
+        };
+
+        let second_channel_id = ulid::Ulid::new().to_string();
+        let second_channel = Channel::TextChannel {
+            id: second_channel_id.clone(),
+            server: server.id.clone(),
+            name: "Second".to_string(),
+            description: None,
+            icon: None,
+            last_message_id: None,
+            default_permissions: None,
+            role_permissions: Default::default(),
+            user_permissions: Default::default(),
+            nsfw: false,
+            voice: None,
+            slowmode: None,
+        };
+
+        db.insert_channel(&second_channel).await.unwrap();
+        db.set_channel_role_permission(&second_channel_id, &role_id, permissions)
+            .await
+            .unwrap();
+
+        db.delete_role(&server.id, &role_id).await.unwrap();
+
+        let members_with_deleted_role = db
+            .fetch_all_members_with_roles(&server.id, &[role_id.clone()])
+            .await
+            .unwrap();
+        assert!(members_with_deleted_role.is_empty());
+
+        for channel_id in [channel.id().to_string(), second_channel_id] {
+            let channel = db.fetch_channel(&channel_id).await.unwrap();
+            match channel {
+                Channel::TextChannel {
+                    role_permissions, ..
+                } => assert!(!role_permissions.contains_key(&role_id)),
+                _ => unreachable!("expected text channel"),
+            }
+        }
+
+        db.drop_database().await;
     }
 }
 

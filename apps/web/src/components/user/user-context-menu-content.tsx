@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   BanIcon,
@@ -16,7 +17,19 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from '#/components/ui/context-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
+import { Button } from '#/components/ui/button'
+import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
+import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   banServerMember,
@@ -26,15 +39,23 @@ import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { selectDirectMessageCallActionLabel } from '#/features/sync/selectors'
+import {
+  listServerChannels,
+  selectDirectMessageCallActionLabel,
+} from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { useVoice } from '#/features/voice/voice-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
 import { writeClipboardText } from '#/lib/clipboard'
 import {
+  isServerVoiceChannel,
+  serverChannelServerId,
+} from '#/lib/channel-voice'
+import {
   canBanServerMember,
   canKickServerMember,
 } from '#/lib/permissions'
+import { canEditAnyMemberRole } from '#/lib/member-roles'
 
 type UserContextMenuContentProps = {
   user: User
@@ -44,6 +65,13 @@ type UserContextMenuContentProps = {
   inVoice?: boolean
   onOpenProfile?: () => void
 }
+
+const BAN_DELETE_MESSAGE_PRESETS = [
+  { label: 'Не удалять', seconds: 0 },
+  { label: '1 час', seconds: 60 * 60 },
+  { label: '24 часа', seconds: 24 * 60 * 60 },
+  { label: '7 дней', seconds: 7 * 24 * 60 * 60 },
+]
 
 export function UserContextMenuContent({
   user,
@@ -57,6 +85,14 @@ export function UserContextMenuContent({
   const prefix = useAppRoutePrefix()
   const voice = useVoice()
   const { openSettings } = useSettingsModal()
+  const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
+  const [kickDialogOpen, setKickDialogOpen] = useState(false)
+  const [kickReason, setKickReason] = useState('')
+  const [kicking, setKicking] = useState(false)
+  const [banDialogOpen, setBanDialogOpen] = useState(false)
+  const [banReason, setBanReason] = useState('')
+  const [banDeleteMessageSeconds, setBanDeleteMessageSeconds] = useState('0')
+  const [banning, setBanning] = useState(false)
 
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
@@ -68,6 +104,23 @@ export function UserContextMenuContent({
   )
   const targetMember = useSyncStore((s) =>
     serverId ? s.members[`${serverId}:${user._id}`] : undefined,
+  )
+  const targetVoiceChannelId = useSyncStore((s) => {
+    if (!serverId) return undefined
+    for (const [channelId, channelMap] of Object.entries(s.voiceParticipants)) {
+      if (!channelMap[user._id]) continue
+      if (serverChannelServerId(s.channels[channelId]) === serverId) {
+        return channelId
+      }
+    }
+    return undefined
+  })
+  const moveVoiceChannels = useSyncStore((s) =>
+    serverId
+      ? listServerChannels(s, serverId, auth.user?._id).filter(
+          isServerVoiceChannel,
+        )
+      : [],
   )
   const directCallActionLabel = useSyncStore((s) =>
     selectDirectMessageCallActionLabel(s, auth.user?._id, user._id),
@@ -81,6 +134,12 @@ export function UserContextMenuContent({
     canBanServerMember(server, actorMember, auth.user?._id, targetMember)
   const canBlock = !isSelf
   const canDirectMessage = !isSelf && !user.bot
+  const canEditRoles = Boolean(
+    server &&
+      targetMember &&
+      !isSelf &&
+      canEditAnyMemberRole(server, actorMember, auth.user?._id, targetMember),
+  )
 
   const token = auth.session?.token
 
@@ -115,37 +174,64 @@ export function UserContextMenuContent({
     }
   }
 
+  function handleKickDialogOpenChange(open: boolean) {
+    setKickDialogOpen(open)
+    if (!open) {
+      setKickReason('')
+    }
+  }
+
   async function handleKick() {
-    if (!token || !serverId || isSelf) return
-    if (!window.confirm(`Исключить @${user.username} с сервера?`)) return
+    if (!token || !serverId || isSelf || !canKick) return
+
+    const body = kickReason.trim() ? { reason: kickReason.trim() } : {}
+
+    setKicking(true)
     try {
-      await kickServerMember(token, serverId, user._id)
+      await kickServerMember(token, serverId, user._id, body)
       syncStore.removeServerMember(serverId, user._id)
+      handleKickDialogOpenChange(false)
       toast.success('Участник исключён')
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось исключить',
       )
+    } finally {
+      setKicking(false)
+    }
+  }
+
+  function handleBanDialogOpenChange(open: boolean) {
+    setBanDialogOpen(open)
+    if (!open) {
+      setBanReason('')
+      setBanDeleteMessageSeconds('0')
     }
   }
 
   async function handleBan() {
-    if (!token || !serverId || isSelf) return
-    if (
-      !window.confirm(
-        `Забанить @${user.username}? Пользователь не сможет вернуться на сервер.`,
-      )
-    ) {
-      return
+    if (!token || !serverId || isSelf || !canBan) return
+
+    const selectedDeleteMessageSeconds = Number(banDeleteMessageSeconds)
+    const body = {
+      ...(banReason.trim() ? { reason: banReason.trim() } : {}),
+      ...(selectedDeleteMessageSeconds > 0
+        ? { delete_message_seconds: selectedDeleteMessageSeconds }
+        : {}),
     }
+
+    setBanning(true)
     try {
-      await banServerMember(token, serverId, user._id)
+      await banServerMember(token, serverId, user._id, body)
       syncStore.removeServerMember(serverId, user._id)
+      handleBanDialogOpenChange(false)
       toast.success('Пользователь забанен')
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось забанить',
       )
+    } finally {
+      setBanning(false)
     }
   }
 
@@ -172,9 +258,19 @@ export function UserContextMenuContent({
   const showModeration = canKick || canBan
 
   return (
-    <ContextMenuContent className="z-[200] w-56">
+    <>
+      <ContextMenuContent className="z-[200] w-56">
       {showVoiceControls ? (
-        <UserContextMenuVoiceControls userId={user._id} />
+        <UserContextMenuVoiceControls
+          userId={user._id}
+          token={token}
+          server={server}
+          actorMember={actorMember}
+          actorUserId={auth.user?._id}
+          targetMember={targetMember}
+          voiceChannelId={targetVoiceChannelId}
+          moveVoiceChannels={moveVoiceChannels}
+        />
       ) : null}
       <ContextMenuItem onSelect={() => onOpenProfile?.()}>
         <UserIcon />
@@ -198,6 +294,17 @@ export function UserContextMenuContent({
           <FriendshipContextMenuItems user={user} />
         </>
       ) : null}
+      {canEditRoles ? (
+        <ContextMenuItem
+          onSelect={(event) => {
+            event.preventDefault()
+            setRolesDialogOpen(true)
+          }}
+        >
+          <SettingsIcon />
+          Роли
+        </ContextMenuItem>
+      ) : null}
       <ContextMenuItem onSelect={() => void copyUserId()}>
         <CopyIcon />
         Копировать ID
@@ -208,7 +315,10 @@ export function UserContextMenuContent({
           {canKick ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={() => void handleKick()}
+              onSelect={(event) => {
+                event.preventDefault()
+                setKickDialogOpen(true)
+              }}
             >
               <UserMinusIcon />
               Исключить с сервера
@@ -217,7 +327,10 @@ export function UserContextMenuContent({
           {canBan ? (
             <ContextMenuItem
               variant="destructive"
-              onSelect={() => void handleBan()}
+              onSelect={(event) => {
+                event.preventDefault()
+                setBanDialogOpen(true)
+              }}
             >
               <BanIcon />
               Забанить на сервере
@@ -237,6 +350,120 @@ export function UserContextMenuContent({
           </ContextMenuItem>
         </>
       ) : null}
-    </ContextMenuContent>
+      </ContextMenuContent>
+      {server && targetMember ? (
+        <EditMemberRolesDialog
+          server={server}
+          targetMember={targetMember}
+          targetUser={user}
+          open={rolesDialogOpen}
+          onOpenChange={setRolesDialogOpen}
+        />
+      ) : null}
+      {canKick ? (
+        <Dialog open={kickDialogOpen} onOpenChange={handleKickDialogOpenChange}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Исключить @{user.username}</DialogTitle>
+              <DialogDescription>
+                Пользователь сможет вернуться, если получит новое приглашение.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5 py-2">
+              <Label htmlFor={`kick-reason-${user._id}`}>
+                Причина исключения
+              </Label>
+              <Input
+                id={`kick-reason-${user._id}`}
+                value={kickReason}
+                maxLength={256}
+                disabled={kicking}
+                onChange={(event) => setKickReason(event.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={kicking}
+                onClick={() => handleKickDialogOpenChange(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={kicking}
+                onClick={() => void handleKick()}
+              >
+                Исключить
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {canBan ? (
+        <Dialog open={banDialogOpen} onOpenChange={handleBanDialogOpenChange}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Забанить @{user.username}</DialogTitle>
+              <DialogDescription>
+                Пользователь не сможет вернуться на сервер, пока бан не снимут.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor={`ban-reason-${user._id}`}>Причина</Label>
+                <Input
+                  id={`ban-reason-${user._id}`}
+                  value={banReason}
+                  maxLength={256}
+                  disabled={banning}
+                  onChange={(event) => setBanReason(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`ban-delete-messages-${user._id}`}>
+                  Удалить историю сообщений
+                </Label>
+                <select
+                  id={`ban-delete-messages-${user._id}`}
+                  value={banDeleteMessageSeconds}
+                  className="h-9 w-full rounded-md border border-input bg-muted/40 px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-secondary dark:text-secondary-foreground"
+                  disabled={banning}
+                  onChange={(event) =>
+                    setBanDeleteMessageSeconds(event.target.value)
+                  }
+                >
+                  {BAN_DELETE_MESSAGE_PRESETS.map((preset) => (
+                    <option key={preset.seconds} value={String(preset.seconds)}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={banning}
+                onClick={() => handleBanDialogOpenChange(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={banning}
+                onClick={() => void handleBan()}
+              >
+                Забанить
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
   )
 }

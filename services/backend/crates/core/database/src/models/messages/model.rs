@@ -801,7 +801,7 @@ impl Message {
     pub fn contains_mass_push_mention(&self) -> bool {
         let ping = if let Some(flags) = self.flags {
             let flags = MessageFlagsValue(flags);
-            flags.has(MessageFlags::MentionsEveryone)
+            flags.has(MessageFlags::MentionsEveryone) || flags.has(MessageFlags::MentionsOnline)
         } else {
             false
         };
@@ -1200,5 +1200,26 @@ impl Interactions {
     /// Check if default initialisation of fields
     pub fn is_default(&self) -> bool {
         !self.restrict_reactions && self.reactions.is_none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flags_with(flag: MessageFlags) -> u32 {
+        let mut flags = MessageFlagsValue(0);
+        flags.set(flag, true);
+        flags.0
+    }
+
+    #[test]
+    fn online_mention_counts_as_mass_push_mention() {
+        let message = Message {
+            flags: Some(flags_with(MessageFlags::MentionsOnline)),
+            ..Default::default()
+        };
+
+        assert!(message.contains_mass_push_mention());
     }
 }

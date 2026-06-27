@@ -2,6 +2,7 @@
 
 import { cleanup, render, screen } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceChannelShell } from './voice-channel-shell'
@@ -34,8 +35,25 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/components/voice/voice-stage-view', () => ({
-  VoiceStageView: ({ title }: { title: string }) => (
-    <div data-testid="voice-stage-view">{title}</div>
+  VoiceStageView: ({
+    title,
+    headerTrailing,
+  }: {
+    title: string
+    headerTrailing?: ReactNode
+  }) => (
+    <div>
+      <div data-testid="voice-stage-view">{title}</div>
+      {headerTrailing}
+    </div>
+  ),
+}))
+
+vi.mock('#/components/channels/channel-settings-dialog', () => ({
+  ChannelSettingsDialog: ({ channel }: { channel: { _id: string } }) => (
+    <button type="button" data-testid="channel-settings-dialog">
+      {channel._id}
+    </button>
   ),
 }))
 
@@ -68,10 +86,30 @@ function groupChannel(): Channel {
   } as Channel
 }
 
+function legacyVoiceChannel(): Channel {
+  return {
+    _id: 'voice-1',
+    channel_type: 'VoiceChannel',
+    server: 'server-1',
+    name: 'Voice',
+    default_permissions: null,
+    role_permissions: {},
+    voice: { max_users: null },
+  } as unknown as Channel
+}
+
 function renderShell(channel: Channel) {
   syncStore.applyReady({
     users: [currentUser, targetUser],
-    servers: [],
+    servers: [
+      {
+        _id: 'server-1',
+        name: 'Server',
+        owner: CURRENT_USER_ID,
+        channels: [channel._id],
+        default_permissions: 0,
+      } as never,
+    ],
     channels: [channel],
     members: [],
     emojis: [],
@@ -102,5 +140,13 @@ describe('VoiceChannelShell', () => {
     renderShell(groupChannel())
 
     expect(screen.getByTestId('voice-stage-view').textContent).toBe('Команда')
+  })
+  it('passes channel settings into server voice stage actions', () => {
+    renderShell(legacyVoiceChannel())
+
+    expect(screen.getByTestId('voice-stage-view').textContent).toBe('Voice')
+    expect(screen.getByTestId('channel-settings-dialog').textContent).toBe(
+      'voice-1',
+    )
   })
 })

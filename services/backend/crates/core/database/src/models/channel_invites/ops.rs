@@ -19,4 +19,10 @@ pub trait AbstractChannelInvites: Sync + Send {
 
     /// Delete an invite by its id
     async fn delete_invite(&self, code: &str) -> Result<()>;
+
+    /// Increment invite use count and return the updated invite.
+    async fn increment_invite_uses(&self, code: &str) -> Result<Invite>;
+
+    /// Mark an invite as revoked and return the updated invite.
+    async fn revoke_invite(&self, code: &str, revoked_at: u64, revoked_by: &str) -> Result<Invite>;
 }

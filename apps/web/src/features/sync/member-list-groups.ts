@@ -33,13 +33,13 @@ export function memberHoistRole(
   if (!server?.roles || !member.roles?.length) return null
 
   let best: MemberRoleEntry | null = null
-  let bestRank = -1
+  let bestRank = Number.MAX_SAFE_INTEGER
 
   for (const roleId of member.roles) {
     const role = server.roles[roleId]
     if (!role?.hoist) continue
-    const rank = role.rank ?? 0
-    if (rank > bestRank) {
+    const rank = role.rank ?? Number.MAX_SAFE_INTEGER
+    if (rank < bestRank) {
       bestRank = rank
       best = {
         id: role._id,
@@ -107,8 +107,8 @@ export function groupServerMembersForSidebar(
 
   const roleGroups = [...roleBuckets.values()].sort(
     (a, b) =>
-      (server?.roles?.[b.role.id]?.rank ?? 0) -
-      (server?.roles?.[a.role.id]?.rank ?? 0),
+      (server?.roles?.[a.role.id]?.rank ?? Number.MAX_SAFE_INTEGER) -
+      (server?.roles?.[b.role.id]?.rank ?? Number.MAX_SAFE_INTEGER),
   )
 
   for (const group of roleGroups) {

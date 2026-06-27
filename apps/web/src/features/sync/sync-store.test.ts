@@ -759,7 +759,208 @@ describe('syncStore voice events', () => {
   })
 })
 
+describe('syncStore member events', () => {
+  it('stores the full member payload from ServerMemberJoin', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerMemberJoin',
+      id: 'server-1',
+      user: 'user-1',
+      member: {
+        _id: { server: 'server-1', user: 'user-1' },
+        roles: ['role-1'],
+        nickname: 'Ava',
+      },
+    } as never)
+
+    expect(syncStore.getState().members['server-1:user-1']).toEqual({
+      _id: { server: 'server-1', user: 'user-1' },
+      roles: ['role-1'],
+      nickname: 'Ava',
+    })
+  })
+
+  it('applies ServerMemberUpdate clear fields to unloaded members', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerMemberUpdate',
+      id: { server: 'server-1', user: 'user-1' },
+      data: { nickname: 'Ava', roles: ['role-1'] },
+      clear: ['Nickname', 'Roles'],
+    } as never)
+
+    expect(syncStore.getState().members['server-1:user-1']).toEqual({
+      _id: { server: 'server-1', user: 'user-1' },
+      roles: [],
+      nickname: undefined,
+    })
+  })
+
+  it('removes the server state when the current user leaves it', () => {
+    syncStore.reset()
+    syncStore.setCurrentUserId('user-1')
+    syncStore.applyReady({
+      servers: [{ _id: 'server-1', name: 'Alpha' }],
+      channels: [
+        {
+          _id: 'channel-1',
+          name: 'general',
+          channel_type: 'TextChannel',
+          server: 'server-1',
+        },
+      ],
+      users: [],
+      members: [
+        {
+          _id: { server: 'server-1', user: 'user-1' },
+        },
+      ],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+    syncStore.setSelectedServerId('server-1')
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerMemberLeave',
+      id: 'server-1',
+      user: 'user-1',
+    })
+
+    expect(syncStore.getState().servers['server-1']).toBeUndefined()
+    expect(syncStore.getState().channels['channel-1']).toBeUndefined()
+    expect(syncStore.getState().members['server-1:user-1']).toBeUndefined()
+    expect(syncStore.getState().selectedServerId).toBeNull()
+  })
+})
+
+describe('syncStore role events', () => {
+  it('removes deleted roles from loaded members and channel overwrites', () => {
+    syncStore.reset()
+    syncStore.applyReady({
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Alpha',
+          roles: {
+            'role-1': {
+              _id: 'role-1',
+              name: 'Deleted',
+              rank: 1,
+            },
+            'role-2': {
+              _id: 'role-2',
+              name: 'Kept',
+              rank: 2,
+            },
+          },
+        },
+      ],
+      channels: [
+        {
+          _id: 'channel-1',
+          channel_type: 'TextChannel',
+          server: 'server-1',
+          name: 'general',
+          role_permissions: {
+            'role-1': { a: 1, d: 0 },
+            'role-2': { a: 2, d: 0 },
+          },
+        },
+      ],
+      users: [],
+      members: [
+        {
+          _id: { server: 'server-1', user: 'user-1' },
+          roles: ['role-1', 'role-2'],
+        },
+        {
+          _id: { server: 'server-1', user: 'user-2' },
+          roles: ['role-1'],
+        },
+        {
+          _id: { server: 'server-2', user: 'user-3' },
+          roles: ['role-1'],
+        },
+      ],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerRoleDelete',
+      id: 'server-1',
+      role_id: 'role-1',
+    })
+
+    const state = syncStore.getState()
+    expect(state.servers['server-1']?.roles?.['role-1']).toBeUndefined()
+    expect(state.members['server-1:user-1']?.roles).toEqual(['role-2'])
+    expect(state.members['server-1:user-2']?.roles).toEqual([])
+    expect(state.members['server-2:user-3']?.roles).toEqual(['role-1'])
+    expect(
+      state.channels['channel-1']?.role_permissions?.['role-1'],
+    ).toBeUndefined()
+    expect(state.channels['channel-1']?.role_permissions?.['role-2']).toEqual({
+      a: 2,
+      d: 0,
+    })
+  })
+})
+
 describe('syncStore applyReady', () => {
+  it('hydrates channel unread mention ids from Ready payloads', () => {
+    syncStore.reset()
+
+    syncStore.applyReady({
+      servers: [],
+      channels: [],
+      users: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [
+        {
+          _id: { channel: CHANNEL_ID, user: USER_ID },
+          last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+          mentions: [
+            '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+            '01KT7DEM3B0T4B0BXGBXWDJ6B2',
+          ],
+        },
+      ],
+      voice_states: [],
+    } as never)
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+      mentions: [
+        '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+        '01KT7DEM3B0T4B0BXGBXWDJ6B2',
+      ],
+    })
+  })
+
+  it('clears local mention unread ids when marking a channel read', () => {
+    syncStore.reset()
+
+    syncStore.setUnreads([
+      {
+        _id: { channel: CHANNEL_ID, user: USER_ID },
+        last_id: '01KT7DEM3B0T4B0BXGBXWDJ6B0',
+        mentions: ['01KT7DEM3B0T4B0BXGBXWDJ6B1'],
+      },
+    ])
+    syncStore.setChannelLastRead(CHANNEL_ID, '01KT7DEM3B0T4B0BXGBXWDJ6B1')
+
+    expect(syncStore.getState().unreads[CHANNEL_ID]).toEqual({
+      lastId: '01KT7DEM3B0T4B0BXGBXWDJ6B1',
+      mentions: [],
+    })
+  })
+
   it('preserves null selectedServerId instead of auto-selecting the first server', () => {
     syncStore.reset()
 

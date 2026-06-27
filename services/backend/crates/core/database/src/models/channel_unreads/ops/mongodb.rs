@@ -116,26 +116,12 @@ impl AbstractChannelUnreads for MongoDb {
         user_ids: &[String],
         message_ids: &[String],
     ) -> Result<()> {
-        self.col::<Document>(COL)
-            .update_many(
-                doc! {
-                    "_id.channel": channel_id,
-                    "_id.user": {
-                        "$in": user_ids
-                    },
-                },
-                doc! {
-                    "$push": {
-                        "mentions": {
-                            "$each": message_ids
-                        }
-                    }
-                },
-            )
-            .with_options(UpdateOptions::builder().upsert(true).build())
-            .await
-            .map(|_| ())
-            .map_err(|_| create_database_error!("update_many", COL))
+        for user_id in user_ids {
+            self.add_mention_to_unread(channel_id, user_id, message_ids)
+                .await?;
+        }
+
+        Ok(())
     }
 
     /// Fetch all channel unreads for a user.
@@ -173,5 +159,46 @@ impl AbstractChannelUnreads for MongoDb {
                 "_id.channel": channel_id
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Database, DatabaseInfo};
+
+    #[async_std::test]
+    async fn add_mention_to_many_unreads_creates_one_unread_per_new_user() {
+        let db = DatabaseInfo::Test(
+            "add_mention_to_many_unreads_creates_one_unread_per_new_user".to_string(),
+        )
+        .connect()
+        .await
+        .expect("database connection");
+
+        if !matches!(db, Database::MongoDb(_)) {
+            return;
+        }
+
+        db.drop_database().await;
+
+        let channel_id = "channel-1".to_string();
+        let message_id = "message-1".to_string();
+        let users = vec!["user-1".to_string(), "user-2".to_string()];
+        let messages = vec![message_id.clone()];
+
+        db.add_mention_to_many_unreads(&channel_id, &users, &messages)
+            .await
+            .unwrap();
+
+        for user_id in users {
+            let unread = db
+                .fetch_unread(&user_id, &channel_id)
+                .await
+                .unwrap()
+                .expect("unread");
+            assert_eq!(unread.mentions, Some(vec![message_id.clone()]));
+        }
+
+        db.drop_database().await;
     }
 }

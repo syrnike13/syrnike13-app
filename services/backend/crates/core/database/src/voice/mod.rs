@@ -1109,6 +1109,10 @@ pub async fn sync_voice_permissions(
     server: Option<&Server>,
     role_id: Option<&str>,
 ) -> Result<()> {
+    if channel.voice().is_none() {
+        return Ok(());
+    }
+
     let user_voice_channel = UserVoiceChannel::from_channel(channel);
 
     let Some(node) = get_channel_node(channel.id()).await? else {

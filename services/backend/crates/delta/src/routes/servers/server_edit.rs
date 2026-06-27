@@ -1,15 +1,18 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use authifier::models::{totp::Totp, Account, ValidatedTicket};
-use rocket::{serde::json::Json, Request, State};
+use authifier::models::{Account, ValidatedTicket};
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    Database, File, PartialServer, User,
+    Database, File, PartialServer, Server, ServerAuditLogAction, ServerAuditLogChange,
+    ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
 use validator::Validate;
+
+use super::audit_mutation;
 
 pub(crate) fn validate_server_channel_order(current: &[String], next: &[String]) -> Result<()> {
     if next.len() != current.len() {
@@ -26,6 +29,135 @@ pub(crate) fn validate_server_channel_order(current: &[String], next: &[String])
     Ok(())
 }
 
+fn build_server_update_audit_changes(
+    server: &Server,
+    partial: &PartialServer,
+    icon: Option<&str>,
+    banner: Option<&str>,
+    remove: &[v0::FieldsServer],
+) -> Result<HashMap<String, ServerAuditLogChange>> {
+    let mut change_entries = Vec::new();
+
+    if let Some(new_name) = partial.name.clone() {
+        change_entries.push((
+            "name",
+            audit_mutation::audit_change(Some(server.name.clone()), Some(new_name))?,
+        ));
+    }
+
+    if let Some(new_description) = partial.description.clone() {
+        change_entries.push((
+            "description",
+            audit_mutation::audit_change(server.description.clone(), Some(new_description))?,
+        ));
+    } else if remove.contains(&v0::FieldsServer::Description) {
+        change_entries.push((
+            "description",
+            audit_mutation::audit_change(server.description.clone(), None::<String>)?,
+        ));
+    }
+
+    if let Some(new_icon) = icon {
+        change_entries.push((
+            "icon",
+            audit_mutation::audit_change(
+                server.icon.as_ref().map(|icon| icon.id.clone()),
+                Some(new_icon.to_string()),
+            )?,
+        ));
+    } else if remove.contains(&v0::FieldsServer::Icon) {
+        change_entries.push((
+            "icon",
+            audit_mutation::audit_change(
+                server.icon.as_ref().map(|icon| icon.id.clone()),
+                None::<String>,
+            )?,
+        ));
+    }
+
+    if let Some(new_banner) = banner {
+        change_entries.push((
+            "banner",
+            audit_mutation::audit_change(
+                server.banner.as_ref().map(|banner| banner.id.clone()),
+                Some(new_banner.to_string()),
+            )?,
+        ));
+    } else if remove.contains(&v0::FieldsServer::Banner) {
+        change_entries.push((
+            "banner",
+            audit_mutation::audit_change(
+                server.banner.as_ref().map(|banner| banner.id.clone()),
+                None::<String>,
+            )?,
+        ));
+    }
+
+    if let Some(new_categories) = partial.categories.clone() {
+        change_entries.push((
+            "categories",
+            audit_mutation::audit_change(server.categories.clone(), Some(new_categories))?,
+        ));
+    } else if remove.contains(&v0::FieldsServer::Categories) {
+        change_entries.push((
+            "categories",
+            audit_mutation::audit_change(server.categories.clone(), None::<Vec<_>>)?,
+        ));
+    }
+
+    if let Some(new_channels) = partial.channels.clone() {
+        change_entries.push((
+            "channels",
+            audit_mutation::audit_change(Some(server.channels.clone()), Some(new_channels))?,
+        ));
+    }
+
+    if let Some(new_system_messages) = partial.system_messages.clone() {
+        change_entries.push((
+            "system_messages",
+            audit_mutation::audit_change(
+                server.system_messages.clone(),
+                Some(new_system_messages),
+            )?,
+        ));
+    } else if remove.contains(&v0::FieldsServer::SystemMessages) {
+        change_entries.push((
+            "system_messages",
+            audit_mutation::audit_change(server.system_messages.clone(), None::<_>)?,
+        ));
+    }
+
+    if let Some(new_flags) = partial.flags {
+        change_entries.push((
+            "flags",
+            audit_mutation::audit_change(server.flags, Some(new_flags))?,
+        ));
+    }
+
+    if let Some(new_analytics) = partial.analytics {
+        change_entries.push((
+            "analytics",
+            audit_mutation::audit_change(Some(server.analytics), Some(new_analytics))?,
+        ));
+    }
+
+    if let Some(new_discoverable) = partial.discoverable {
+        change_entries.push((
+            "discoverable",
+            audit_mutation::audit_change(Some(server.discoverable), Some(new_discoverable))?,
+        ));
+    }
+
+    if let Some(new_owner) = partial.owner.clone() {
+        change_entries.push((
+            "owner",
+            audit_mutation::audit_change(Some(server.owner.clone()), Some(new_owner))?,
+        ));
+    }
+
+    Ok(audit_mutation::audit_changes(change_entries))
+}
+
 /// # Edit Server
 ///
 /// Edit a server by its id.
@@ -33,7 +165,7 @@ pub(crate) fn validate_server_channel_order(current: &[String], next: &[String])
 #[patch("/<target>", data = "<data>")]
 pub async fn edit(
     db: &State<Database>,
-    account: Account,
+    _account: Account,
     user: User,
     target: Reference<'_>,
     data: Json<v0::DataEditServer>,
@@ -130,20 +262,7 @@ pub async fn edit(
         ..Default::default()
     };
 
-    // 1. Remove fields from object
-    if remove.contains(&v0::FieldsServer::Banner) {
-        if let Some(banner) = &server.banner {
-            db.mark_attachment_as_deleted(&banner.id).await?;
-        }
-    }
-
-    if remove.contains(&v0::FieldsServer::Icon) {
-        if let Some(icon) = &server.icon {
-            db.mark_attachment_as_deleted(&icon.id).await?;
-        }
-    }
-
-    // 2. Validate changes
+    // 1. Validate changes
     if let Some(system_messages) = &partial.system_messages {
         for id in system_messages.clone().into_channel_ids() {
             if !server.channels.contains(&id) {
@@ -173,43 +292,135 @@ pub async fn edit(
         validate_server_channel_order(&server.channels, channels)?;
     }
 
+    let changes = build_server_update_audit_changes(
+        &server,
+        &partial,
+        icon.as_deref(),
+        banner.as_deref(),
+        &remove,
+    )?;
+    let mut audit = audit_mutation::insert_pending_audit(
+        db,
+        server.id.clone(),
+        user.id.clone(),
+        ServerAuditLogAction::ServerUpdate,
+        ServerAuditLogTarget::Server {
+            id: server.id.clone(),
+        },
+        None,
+        changes,
+    )
+    .await?;
+
+    // 2. Remove fields from object
+    if remove.contains(&v0::FieldsServer::Banner) {
+        if let Some(banner) = &server.banner {
+            if let Err(error) = db.mark_attachment_as_deleted(&banner.id).await {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+        }
+    }
+
+    if remove.contains(&v0::FieldsServer::Icon) {
+        if let Some(icon) = &server.icon {
+            if let Err(error) = db.mark_attachment_as_deleted(&icon.id).await {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+        }
+    }
+
     // 3. Apply new icon
     if let Some(icon) = icon {
-        partial.icon = Some(File::use_server_icon(db, &icon, &server.id, &user.id).await?);
-        server.icon = partial.icon.clone();
+        match File::use_server_icon(db, &icon, &server.id, &user.id).await {
+            Ok(file) => {
+                partial.icon = Some(file);
+                server.icon = partial.icon.clone();
+            }
+            Err(error) => {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+        }
     }
 
     // 4. Apply new banner
     if let Some(banner) = banner {
-        partial.banner = Some(File::use_server_banner(db, &banner, &server.id, &user.id).await?);
-        server.banner = partial.banner.clone();
+        match File::use_server_banner(db, &banner, &server.id, &user.id).await {
+            Ok(file) => {
+                partial.banner = Some(file);
+                server.banner = partial.banner.clone();
+            }
+            Err(error) => {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+        }
     }
 
     // 5. Transfer ownership
     if let Some(owner) = owner {
         let owner_reference = Reference::from_unchecked(&owner);
         // Check if member exists
-        owner_reference.as_member(db, &server.id).await?;
-        let owner_user = owner_reference.as_user(db).await?;
+        if let Err(error) = owner_reference.as_member(db, &server.id).await {
+            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+        }
+
+        let owner_user = match owner_reference.as_user(db).await {
+            Ok(user) => user,
+            Err(error) => {
+                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            }
+        };
 
         if owner_user.bot.is_some() {
-            return Err(create_error!(InvalidOperation));
+            return audit_mutation::mark_failed_and_return(
+                db,
+                &mut audit,
+                create_error!(InvalidOperation),
+            )
+            .await;
         }
 
         server.owner = owner;
         partial.owner = Some(server.owner.clone());
     }
 
-    server
+    if let Err(error) = server
         .update(db, partial, remove.into_iter().map(Into::into).collect())
-        .await?;
+        .await
+    {
+        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+    }
+
+    audit.mark_succeeded(db).await?;
 
     Ok(Json(server.into()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::validate_server_channel_order;
+    use serde_json::json;
+    use syrnike_database::{PartialServer, Server};
+
+    use super::{build_server_update_audit_changes, validate_server_channel_order};
+
+    fn server_under_test() -> Server {
+        Server {
+            id: "server-1".to_string(),
+            owner: "owner-1".to_string(),
+            name: "Old Server".to_string(),
+            description: Some("Old description".to_string()),
+            channels: vec!["channel-1".to_string(), "channel-2".to_string()],
+            categories: None,
+            system_messages: None,
+            roles: Default::default(),
+            default_permissions: 0,
+            icon: None,
+            banner: None,
+            flags: Some(1),
+            nsfw: false,
+            analytics: false,
+            discoverable: false,
+        }
+    }
 
     #[test]
     fn accepts_channel_reorder() {
@@ -230,5 +441,49 @@ mod tests {
         let current = vec!["a".to_string(), "b".to_string()];
         let next = vec!["a".to_string(), "a".to_string()];
         assert!(validate_server_channel_order(&current, &next).is_err());
+    }
+
+    #[test]
+    fn builds_server_update_audit_changes_for_set_fields() {
+        let server = server_under_test();
+        let changes = build_server_update_audit_changes(
+            &server,
+            &PartialServer {
+                name: Some("Renamed Server".to_string()),
+                analytics: Some(true),
+                flags: Some(2),
+                ..Default::default()
+            },
+            None,
+            None,
+            &[],
+        )
+        .expect("audit changes built");
+
+        assert_eq!(changes["name"].before, Some(json!("Old Server")));
+        assert_eq!(changes["name"].after, Some(json!("Renamed Server")));
+        assert_eq!(changes["analytics"].before, Some(json!(false)));
+        assert_eq!(changes["analytics"].after, Some(json!(true)));
+        assert_eq!(changes["flags"].before, Some(json!(1)));
+        assert_eq!(changes["flags"].after, Some(json!(2)));
+    }
+
+    #[test]
+    fn builds_server_update_audit_changes_for_removed_fields() {
+        let server = server_under_test();
+        let changes = build_server_update_audit_changes(
+            &server,
+            &PartialServer::default(),
+            None,
+            None,
+            &[syrnike_models::v0::FieldsServer::Description],
+        )
+        .expect("audit changes built");
+
+        assert_eq!(
+            changes["description"].before,
+            Some(json!("Old description"))
+        );
+        assert_eq!(changes["description"].after, None);
     }
 }

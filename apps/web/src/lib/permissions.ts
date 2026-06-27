@@ -1,5 +1,7 @@
 import type { Channel, Member, Server } from '@syrnike13/api-types'
 
+import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
+import type { ServerChannel as ServerScopedChannel } from '#/lib/channel-voice'
 import {
   hasPermissionBit,
   maskPermissionBits,
@@ -22,11 +24,9 @@ const ALLOW_IN_TIMEOUT = permissionOr(
 type OverrideField = { a: number; d: number }
 
 type ServerTextChannel = Extract<Channel, { channel_type: 'TextChannel' }>
-
-type ServerScopedChannel = Extract<
-  Channel,
-  { channel_type: 'TextChannel' | 'VoiceChannel' }
->
+type UserPermissionScopedChannel = ServerScopedChannel & {
+  user_permissions?: Record<string, OverrideField>
+}
 
 function clampMemberVoicePermissions(permissions: number, member: Member) {
   let next = permissions
@@ -52,6 +52,21 @@ export function applyOverride(
   const allow = maskPermissionBits(override.a)
   const deny = maskPermissionBits(override.d)
   return permissionAnd(permissionOr(permissions, allow), permissionNot(deny))
+}
+
+function applyChannelRoleOverrides(
+  permissions: number,
+  overrides: OverrideField[],
+): number {
+  let allow = 0
+  let deny = 0
+
+  for (const override of overrides) {
+    allow = permissionOr(allow, override.a)
+    deny = permissionOr(deny, override.d)
+  }
+
+  return permissionOr(permissionAndNot(permissions, deny), allow)
 }
 
 export function hasChannelPermission(
@@ -90,7 +105,7 @@ export function calculateServerPermissions(
 
 export function calculateChannelPermissions(
   server: Server,
-  channel: ServerTextChannel,
+  channel: ServerScopedChannel,
   member: Member | undefined,
   userId: string | undefined,
 ): number {
@@ -104,16 +119,16 @@ export function calculateChannelPermissions(
   if (channel.role_permissions && server.roles) {
     const roleOverrides = (member.roles ?? [])
       .filter((roleId) => channel.role_permissions?.[roleId])
-      .map((roleId) => ({
-        rank: server.roles?.[roleId]?.rank ?? 0,
-        override: channel.role_permissions![roleId]!,
-      }))
-      .sort((a, b) => b.rank - a.rank)
+      .filter((roleId) => server.roles?.[roleId])
+      .map((roleId) => channel.role_permissions![roleId]!)
 
-    for (const { override } of roleOverrides) {
-      permissions = applyOverride(permissions, override)
-    }
+    permissions = applyChannelRoleOverrides(permissions, roleOverrides)
   }
+
+  permissions = applyOverride(
+    permissions,
+    (channel as UserPermissionScopedChannel).user_permissions?.[userId],
+  )
 
   if (member.timeout && new Date(member.timeout) > new Date()) {
     permissions = permissionAnd(permissions, ALLOW_IN_TIMEOUT)
@@ -131,9 +146,21 @@ export function calculateChannelPermissions(
 export type ServerMenuPermissions = {
   invite: boolean
   settings: boolean
+  roles: boolean
+  audit: boolean
   createChannel: boolean
   leave: boolean
   copyId: boolean
+}
+
+export type ServerSettingsAccess = {
+  overview: boolean
+  emoji: boolean
+  roles: boolean
+  members: boolean
+  bans: boolean
+  invites: boolean
+  audit: boolean
 }
 
 export function getMemberRank(
@@ -223,6 +250,112 @@ export function canBanServerMember(
   )
 }
 
+export function canTimeoutServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  if (
+    !canModerateServerMember(
+      server,
+      actorMember,
+      actorUserId,
+      targetMember,
+      ChannelPermission.TimeoutMembers,
+    )
+  ) {
+    return false
+  }
+
+  const targetPermissions = calculateServerPermissions(
+    server,
+    targetMember,
+    targetMember?._id.user,
+  )
+  return !hasChannelPermission(
+    targetPermissions,
+    ChannelPermission.TimeoutMembers,
+  )
+}
+
+export function canMuteServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.MuteMembers,
+  )
+}
+
+export function canDeafenServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.DeafenMembers,
+  )
+}
+
+export function canMoveServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  return canModerateServerMember(
+    server,
+    actorMember,
+    actorUserId,
+    targetMember,
+    ChannelPermission.MoveMembers,
+  )
+}
+
+export function canChangeMemberNickname(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+): boolean {
+  if (!actorUserId || !targetMember) return false
+
+  const serverPermissions = calculateServerPermissions(
+    server,
+    actorMember,
+    actorUserId,
+  )
+
+  if (actorUserId === targetMember._id.user) {
+    return hasChannelPermission(
+      serverPermissions,
+      ChannelPermission.ChangeNickname,
+    )
+  }
+
+  if (
+    !hasChannelPermission(serverPermissions, ChannelPermission.ManageNicknames)
+  ) {
+    return false
+  }
+
+  if (server.owner === actorUserId) return true
+
+  return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
+}
+
 export function canEditMember(
   server: Server,
   actorMember: Member | undefined,
@@ -269,6 +402,54 @@ export function canManageRole(
   return roleRank > getMemberRank(server, member)
 }
 
+export function getServerSettingsAccess(
+  server: Server,
+  channels: Channel[],
+  member: Member | undefined,
+  userId: string | undefined,
+): ServerSettingsAccess {
+  const serverPermissions = calculateServerPermissions(server, member, userId)
+  const has = (permission: number) =>
+    hasChannelPermission(serverPermissions, permission)
+  const canInvite = channels.some(
+    (channel) =>
+      channel.channel_type === 'TextChannel' &&
+      hasChannelPermission(
+        calculateChannelPermissions(server, channel, member, userId),
+        ChannelPermission.InviteOthers,
+      ),
+  )
+
+  return {
+    overview: has(ChannelPermission.ManageServer),
+    emoji: has(ChannelPermission.ManageCustomisation),
+    roles:
+      has(ChannelPermission.ManageRole) ||
+      has(ChannelPermission.ManagePermissions),
+    members:
+      has(ChannelPermission.KickMembers) ||
+      has(ChannelPermission.BanMembers) ||
+      has(ChannelPermission.TimeoutMembers) ||
+      has(ChannelPermission.AssignRoles) ||
+      has(ChannelPermission.ManageNicknames) ||
+      has(ChannelPermission.ManageServer),
+    bans: has(ChannelPermission.BanMembers),
+    invites: has(ChannelPermission.ManageServer),
+    audit: has(ChannelPermission.ManageServer),
+  }
+}
+
+export function canOpenServerSettings(access: ServerSettingsAccess): boolean {
+  return Object.values(access).some(Boolean)
+}
+
+export function canViewServerSettingsTab(
+  access: ServerSettingsAccess,
+  tab: ServerSettingsTab,
+): boolean {
+  return access[tab]
+}
+
 export function getServerMenuPermissions(
   server: Server,
   channels: Channel[],
@@ -280,6 +461,7 @@ export function getServerMenuPermissions(
     serverPermissions,
     ChannelPermission.ManageServer,
   )
+  const settingsAccess = getServerSettingsAccess(server, channels, member, userId)
   const canInvite =
     canManageServer ||
     channels.some(
@@ -293,7 +475,9 @@ export function getServerMenuPermissions(
 
   return {
     invite: canInvite,
-    settings: canManageServer,
+    settings: canOpenServerSettings(settingsAccess),
+    roles: settingsAccess.roles,
+    audit: settingsAccess.audit,
     createChannel: hasChannelPermission(
       serverPermissions,
       ChannelPermission.ManageChannel,
@@ -339,12 +523,7 @@ export function canManageChannel(
   if (!server || !userId) return false
 
   return hasChannelPermission(
-    calculateChannelPermissions(
-      server,
-      channel as ServerTextChannel,
-      member,
-      userId,
-    ),
+    calculateChannelPermissions(server, channel, member, userId),
     ChannelPermission.ManageChannel,
   )
 }
@@ -358,13 +537,40 @@ export function canManageChannelPermissions(
   if (!server || !userId) return false
 
   return hasChannelPermission(
-    calculateChannelPermissions(
-      server,
-      channel as ServerTextChannel,
-      member,
-      userId,
-    ),
+    calculateChannelPermissions(server, channel, member, userId),
     ChannelPermission.ManagePermissions,
+  )
+}
+
+export function canManageChannelMessages(
+  server: Server | undefined,
+  channel: ServerScopedChannel,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!server || !userId || channel.channel_type !== 'TextChannel') {
+    return false
+  }
+
+  return hasChannelPermission(
+    calculateChannelPermissions(server, channel, member, userId),
+    ChannelPermission.ManageMessages,
+  )
+}
+
+export function canManageChannelWebhooks(
+  server: Server | undefined,
+  channel: ServerScopedChannel,
+  member: Member | undefined,
+  userId: string | undefined,
+): boolean {
+  if (!server || !userId || channel.channel_type !== 'TextChannel') {
+    return false
+  }
+
+  return hasChannelPermission(
+    calculateChannelPermissions(server, channel, member, userId),
+    ChannelPermission.ManageWebhooks,
   )
 }
 
