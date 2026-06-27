@@ -57,4 +57,26 @@ describe('resolveScreenShareCaptureLimits', () => {
       maxBitrate: 8_000_000,
     })
   })
+
+  it('preserves bitrate limits when resolution limits are absent', async () => {
+    fetchApiRoot.mockResolvedValue({
+      features: {
+        limits: {
+          new_user: {
+            screen_share_bitrate: 3_000_000,
+          },
+          default: {
+            screen_share_bitrate: 5_000_000,
+          },
+        },
+      },
+    })
+
+    await expect(resolveFreshLimits()).resolves.toEqual({
+      maxWidth: undefined,
+      maxHeight: undefined,
+      maxPixels: undefined,
+      maxBitrate: 3_000_000,
+    })
+  })
 })

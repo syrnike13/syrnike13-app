@@ -77,7 +77,7 @@ export function localVoiceSupersedeFromGatewayEvent(
     const userId = voiceEventUserId(event)
     if (channelId === activeChannelId && userId === localUserId) {
       const operationId = voiceEventOperationId(event)
-      if (!operationId || operationId === activeOperationId) {
+      if (operationId && activeOperationId && operationId !== activeOperationId) {
         return null
       }
       return {

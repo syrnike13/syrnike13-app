@@ -72,6 +72,7 @@ export function waitForNativeScreenPublication(
       room.off(RoomEvent.TrackPublished, check)
       room.off(RoomEvent.TrackSubscribed, check)
       room.off(RoomEvent.ParticipantConnected, check)
+      room.off(RoomEvent.Disconnected, fail)
       clearTimeout(timer)
     }
     const finish = (match: NativeScreenPublicationMatch) => {
@@ -95,6 +96,7 @@ export function waitForNativeScreenPublication(
     room.on(RoomEvent.TrackPublished, check)
     room.on(RoomEvent.TrackSubscribed, check)
     room.on(RoomEvent.ParticipantConnected, check)
+    room.on(RoomEvent.Disconnected, fail)
 
     check()
   })

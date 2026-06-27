@@ -25,12 +25,12 @@ function limitsFromScreenShareConfig(
   const width = finitePositiveNumber(screenShareResolution?.[0])
   const height = finitePositiveNumber(screenShareResolution?.[1])
   const bitrate = finitePositiveNumber(screenShareBitrate)
-  if (width == null || height == null) return null
+  if (width == null && height == null && bitrate == null) return null
 
   return {
     maxWidth: width,
     maxHeight: height,
-    maxPixels: width * height,
+    maxPixels: width != null && height != null ? width * height : undefined,
     maxBitrate: bitrate,
   }
 }
@@ -46,11 +46,20 @@ function tighterLimits(
     left.maxBitrate ?? Infinity,
     right.maxBitrate ?? Infinity,
   )
+  const maxWidth = Math.min(left.maxWidth ?? Infinity, right.maxWidth ?? Infinity)
+  const maxHeight = Math.min(
+    left.maxHeight ?? Infinity,
+    right.maxHeight ?? Infinity,
+  )
+  const maxPixels = Math.min(
+    left.maxPixels ?? Infinity,
+    right.maxPixels ?? Infinity,
+  )
 
   return {
-    maxWidth: Math.min(left.maxWidth ?? Infinity, right.maxWidth ?? Infinity),
-    maxHeight: Math.min(left.maxHeight ?? Infinity, right.maxHeight ?? Infinity),
-    maxPixels: Math.min(left.maxPixels ?? Infinity, right.maxPixels ?? Infinity),
+    maxWidth: Number.isFinite(maxWidth) ? maxWidth : undefined,
+    maxHeight: Number.isFinite(maxHeight) ? maxHeight : undefined,
+    maxPixels: Number.isFinite(maxPixels) ? maxPixels : undefined,
     maxBitrate: Number.isFinite(maxBitrate) ? maxBitrate : undefined,
   }
 }

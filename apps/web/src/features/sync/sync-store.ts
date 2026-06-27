@@ -1334,7 +1334,7 @@ export const syncStore = {
         const joinedMember =
           member ?? ({ _id: { server: serverId, user: userId } } as Member)
         const key = memberKey(joinedMember)
-        if (state.members[key]) break
+        if (!member && state.members[key]) break
         this.upsertMembers([joinedMember])
         break
       }

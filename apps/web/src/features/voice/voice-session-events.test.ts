@@ -169,7 +169,7 @@ describe('voice session gateway events', () => {
     })
   })
 
-  it('ignores a local leave from the current channel when the event has no operation id', () => {
+  it('treats a local leave without operation id as a current-channel supersede', () => {
     expect(
       localVoiceSupersedeFromGatewayEvent(
         {
@@ -181,10 +181,14 @@ describe('voice session gateway events', () => {
         'voice-a',
         'op-current-client',
       ),
-    ).toBeNull()
+    ).toEqual({
+      type: 'left_current_channel',
+      channelId: 'voice-a',
+      operationId: undefined,
+    })
   })
 
-  it('treats a local leave from another operation as a supersede', () => {
+  it('ignores a local leave from another operation', () => {
     expect(
       localVoiceSupersedeFromGatewayEvent(
         {
@@ -197,10 +201,6 @@ describe('voice session gateway events', () => {
         'voice-a',
         'op-current-client',
       ),
-    ).toEqual({
-      type: 'left_current_channel',
-      channelId: 'voice-a',
-      operationId: 'op-other-client',
-    })
+    ).toBeNull()
   })
 })

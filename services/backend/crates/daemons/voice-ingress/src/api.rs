@@ -643,8 +643,24 @@ pub async fn ingress(
                     let _ = voice_client
                         .remove_user(node, removal_identity, channel_id)
                         .await;
-                    if !is_native_participant
-                        && delete_voice_state_for_session(&channel, user_id, participant_id).await?
+                    if is_native_participant {
+                        if let Some(operation_id) =
+                            desktop_native_voice_operation_id(participant_identity)
+                        {
+                            if let Some(state) = update_voice_state_tracks_for_operation(
+                                &channel,
+                                user_id,
+                                false,
+                                track.source,
+                                operation_id,
+                            )
+                            .await?
+                            {
+                                publish_voice_state_snapshot(channel_id, &state).await;
+                            }
+                        }
+                    } else if delete_voice_state_for_session(&channel, user_id, participant_id)
+                        .await?
                     {
                         EventV1::VoiceChannelLeave {
                             id: channel_id.clone(),

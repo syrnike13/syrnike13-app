@@ -1,3 +1,5 @@
+import { env } from '#/env'
+
 type VoiceDebugAgentPayload = Record<string, unknown> & {
   hypothesis: string
   event: string
@@ -9,6 +11,7 @@ const VOICE_DEBUG_AGENT_ENDPOINT =
 export function logVoiceDebugAgent(payload: VoiceDebugAgentPayload) {
   if (!import.meta.env.DEV) return
   if (import.meta.env.MODE === 'test') return
+  if (env.VITE_VOICE_DEBUG_AGENT !== 'true') return
 
   // #region debug log
   void fetch(VOICE_DEBUG_AGENT_ENDPOINT, {

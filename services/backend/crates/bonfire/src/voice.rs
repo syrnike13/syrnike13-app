@@ -70,9 +70,9 @@ pub async fn handle_voice_state_update(
         }
 
         let operation_id = operation_id.ok_or_else(|| create_error!(InvalidOperation))?;
-        set_current_voice_operation_id(&user_voice_channel, &user.id, &operation_id).await?;
         let credentials =
             refresh_voice_credentials(db, voice_client, user, &channel_id, &operation_id).await?;
+        set_current_voice_operation_id(&user_voice_channel, &user.id, &operation_id).await?;
         return Ok(Some(EventV1::VoiceServerUpdate {
             operation_id,
             channel_id: credentials.channel_id,

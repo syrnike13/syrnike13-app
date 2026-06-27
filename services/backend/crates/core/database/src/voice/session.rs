@@ -1,6 +1,6 @@
 use iso8601_timestamp::Timestamp;
 use redis_kiss::{
-    redis::{cmd, FromRedisValue, Pipeline, RedisError, RedisWrite, ToRedisArgs, Value},
+    redis::{cmd, FromRedisValue, RedisError, RedisWrite, ToRedisArgs, Value},
     AsyncCommands,
 };
 use serde::{Deserialize, Serialize};
@@ -101,8 +101,24 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then
 end
 
 redis.call('SREM', KEYS[3], ARGV[2])
+if redis.call('SCARD', KEYS[3]) == 0 then
+  redis.call('SREM', KEYS[4], ARGV[3])
+  redis.call('DEL', KEYS[5])
+  redis.call('DEL', KEYS[6])
+end
 redis.call('DEL', KEYS[1])
 redis.call('DEL', KEYS[2])
+return 1
+"#;
+
+const REMOVE_ACTIVE_VOICE_SESSION_PROJECTION: &str = r#"
+redis.call('SETEX', KEYS[1], tonumber(ARGV[4]), ARGV[1])
+redis.call('SREM', KEYS[2], ARGV[2])
+if redis.call('SCARD', KEYS[2]) == 0 then
+  redis.call('SREM', KEYS[3], ARGV[3])
+  redis.call('DEL', KEYS[4])
+  redis.call('DEL', KEYS[5])
+end
 return 1
 "#;
 
@@ -436,17 +452,18 @@ async fn persist_active_voice_session_if_current(session: &VoiceSession) -> Resu
 }
 
 pub(super) async fn remove_active_voice_session_projection(session: &VoiceSession) -> Result<()> {
-    Pipeline::new()
-        .atomic()
-        .set_ex(
-            voice_session_key(&session.operation_id),
-            session,
-            VOICE_SESSION_TTL_SECONDS,
-        )
-        .srem(
-            voice_channel_members_key(&session.channel.id),
-            &session.user_id,
-        )
+    cmd("EVAL")
+        .arg(REMOVE_ACTIVE_VOICE_SESSION_PROJECTION)
+        .arg(5)
+        .arg(voice_session_key(&session.operation_id))
+        .arg(voice_channel_members_key(&session.channel.id))
+        .arg(voice_active_channels_key())
+        .arg(voice_channel_node_key(&session.channel.id))
+        .arg(voice_room_session_key(&session.channel.id))
+        .arg(session)
+        .arg(&session.user_id)
+        .arg(&session.channel.id)
+        .arg(VOICE_SESSION_TTL_SECONDS)
         .query_async::<_, ()>(&mut super::get_connection().await?.into_inner())
         .await
         .to_internal_error()
@@ -463,12 +480,16 @@ pub async fn list_active_voice_channel_ids() -> Result<Vec<String>> {
 pub async fn delete_current_voice_session(session: &VoiceSession) -> Result<bool> {
     let deleted: i64 = cmd("EVAL")
         .arg(DELETE_CURRENT_VOICE_SESSION)
-        .arg(3)
+        .arg(6)
         .arg(voice_current_key(&session.user_id))
         .arg(voice_session_key(&session.operation_id))
         .arg(voice_channel_members_key(&session.channel.id))
+        .arg(voice_active_channels_key())
+        .arg(voice_channel_node_key(&session.channel.id))
+        .arg(voice_room_session_key(&session.channel.id))
         .arg(&session.operation_id)
         .arg(&session.user_id)
+        .arg(&session.channel.id)
         .query_async(&mut super::get_connection().await?.into_inner())
         .await
         .to_internal_error()?;
@@ -487,7 +508,7 @@ pub async fn commit_voice_session_join(
         return Ok(VoiceSessionCommitResult::Stale);
     };
 
-    if session.channel != *channel
+    if session.channel.id != channel.id
         || session.mark_livekit_joined(room_sid, participant_sid, joined_at)
             != VoiceSessionTransition::Applied
     {
@@ -699,6 +720,10 @@ mod tests {
     fn redis_delete_and_save_scripts_fence_against_current_operation() {
         assert!(SAVE_CURRENT_VOICE_SESSION.contains("redis.call('GET', KEYS[1]) ~= ARGV[1]"));
         assert!(DELETE_CURRENT_VOICE_SESSION.contains("redis.call('GET', KEYS[1]) ~= ARGV[1]"));
+        assert!(DELETE_CURRENT_VOICE_SESSION.contains("redis.call('SCARD', KEYS[3]) == 0"));
+        assert!(
+            REMOVE_ACTIVE_VOICE_SESSION_PROJECTION.contains("redis.call('SREM', KEYS[3], ARGV[3])")
+        );
         assert!(REPLACE_CURRENT_VOICE_SESSION_OPERATION
             .contains("redis.call('GET', KEYS[1]) ~= ARGV[1]"));
     }

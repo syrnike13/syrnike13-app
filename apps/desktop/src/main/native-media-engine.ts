@@ -764,7 +764,7 @@ function closeMediaEngineHelperReader(helper: ChildProcessWithoutNullStreams) {
 
 function helperHasActiveSession(helper: ChildProcessWithoutNullStreams) {
   return Array.from(activeSessions.values()).some(
-    (session) => session.helper === helper,
+    (session) => session.helper === helper || session.reconnectHelper === helper,
   )
 }
 

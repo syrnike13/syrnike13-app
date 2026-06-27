@@ -40,6 +40,14 @@ export function isServerInviteJoin(
     typeof response === 'object' &&
     response !== null &&
     'type' in response &&
-    response.type === 'Server'
+    response.type === 'Server' &&
+    'server' in response &&
+    typeof response.server === 'object' &&
+    response.server !== null &&
+    'member' in response &&
+    typeof response.member === 'object' &&
+    response.member !== null &&
+    'channels' in response &&
+    Array.isArray(response.channels)
   )
 }

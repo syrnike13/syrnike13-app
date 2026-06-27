@@ -8,7 +8,7 @@ use syrnike_database::{
         reference::Reference,
     },
     voice::{
-        cancel_current_pending_voice_join, create_voice_session, get_channel_node,
+        cancel_current_pending_voice_join_in_server, create_voice_session, get_channel_node,
         get_user_voice_channel_in_server, get_voice_state, remove_user_from_voice_channel,
         set_channel_node, set_user_moved_from_voice, set_user_moved_to_voice,
         sync_user_voice_permissions, UserVoiceChannel, VoiceClient, VoiceSession,
@@ -255,21 +255,6 @@ pub async fn edit(
                 .map(|state| state.self_deaf)
                 .unwrap_or(false);
             let operation_id = format!("server-move:{}", ulid::Ulid::new());
-            let created_at = Timestamp::now_utc();
-            create_voice_session(&VoiceSession::new_awaiting_join(VoiceSessionCreate {
-                operation_id,
-                user_id: target_user.id.clone(),
-                channel: new_user_voice_channel.clone(),
-                node: new_node.clone(),
-                self_mute,
-                self_deaf,
-                created_at,
-                expires_at: created_at
-                    .checked_add(Duration::seconds(VOICE_SESSION_TTL_SECONDS as i64))
-                    .ok_or_else(|| create_error!(InternalError))?,
-            }))
-            .await?;
-
             let mut query = perms(db, &target_user).channel(&new_voice_channel);
             let permissions = calculate_channel_permissions(&mut query).await;
 
@@ -286,6 +271,20 @@ pub async fn edit(
                     &new_voice_channel,
                 )
                 .await?;
+            let created_at = Timestamp::now_utc();
+            create_voice_session(&VoiceSession::new_awaiting_join(VoiceSessionCreate {
+                operation_id,
+                user_id: target_user.id.clone(),
+                channel: new_user_voice_channel.clone(),
+                node: new_node.clone(),
+                self_mute,
+                self_deaf,
+                created_at,
+                expires_at: created_at
+                    .checked_add(Duration::seconds(VOICE_SESSION_TTL_SECONDS as i64))
+                    .ok_or_else(|| create_error!(InternalError))?,
+            }))
+            .await?;
 
             voice_client
                 .remove_user(&old_node, &target_user.id, &channel)
@@ -337,8 +336,9 @@ pub async fn edit(
                 &target_user.id,
             )
             .await?;
-            cancel_current_pending_voice_join(voice_client, &target_user.id).await?;
         };
+        cancel_current_pending_voice_join_in_server(voice_client, &target_user.id, &server.id)
+            .await?;
     }
 
     Ok(Json(member.into()))

@@ -136,16 +136,6 @@ pub async fn join_voice_channel(
     if user.bot.is_some() {
         raise_if_in_voice(user, &user_voice_channel).await?;
     }
-    let session = voice_session_for_join_request(
-        operation_id,
-        &user.id,
-        &user_voice_channel,
-        &node,
-        options.self_mute,
-        options.self_deaf,
-        Timestamp::now_utc(),
-    )?;
-    create_voice_session(&session).await?;
 
     let token = voice_client
         .create_token_for_identity(&node, db, user, &user.id, current_permissions, &channel)
@@ -200,6 +190,17 @@ pub async fn join_voice_channel(
     {
         set_call_notification_recipients(channel.id(), &user.id, &recipients).await?;
     }
+
+    let session = voice_session_for_join_request(
+        operation_id,
+        &user.id,
+        &user_voice_channel,
+        &node,
+        options.self_mute,
+        options.self_deaf,
+        Timestamp::now_utc(),
+    )?;
+    create_voice_session(&session).await?;
 
     Ok(VoiceJoinCredentials {
         channel_id: channel.id().to_string(),

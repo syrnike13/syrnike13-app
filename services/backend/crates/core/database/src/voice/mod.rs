@@ -31,6 +31,10 @@ pub use voice_client::VoiceClient;
 const DESKTOP_NATIVE_IDENTITY_SUFFIX: &str = ":desktop-native";
 const MIN_CALL_NOTIFICATION_RECIPIENTS_TTL_SECONDS: usize = 120;
 
+fn same_voice_channel(left: &UserVoiceChannel, right: &UserVoiceChannel) -> bool {
+    left.id == right.id
+}
+
 pub fn desktop_native_voice_identity(
     user_id: &str,
     media_kind: &str,
@@ -237,7 +241,7 @@ pub async fn get_user_voice_channels(user_id: &str) -> Result<Vec<UserVoiceChann
 pub async fn is_in_voice_channel(user_id: &str, channel: &UserVoiceChannel) -> Result<bool> {
     Ok(get_active_voice_session_for_user(user_id)
         .await?
-        .is_some_and(|session| session.channel == *channel))
+        .is_some_and(|session| same_voice_channel(&session.channel, channel)))
 }
 
 pub async fn set_current_voice_operation_id(
@@ -249,7 +253,8 @@ pub async fn set_current_voice_operation_id(
         return Err(create_error!(NotConnected));
     };
 
-    if session.channel != *channel || session.state != VoiceSessionState::Active {
+    if !same_voice_channel(&session.channel, channel) || session.state != VoiceSessionState::Active
+    {
         return Err(create_error!(NotConnected));
     }
 
@@ -267,7 +272,7 @@ pub async fn get_current_voice_operation_id(
     user_id: &str,
 ) -> Result<Option<String>> {
     if let Some(session) = get_current_voice_session(user_id).await? {
-        if session.channel == *channel
+        if same_voice_channel(&session.channel, channel)
             && matches!(
                 session.state,
                 VoiceSessionState::AwaitingLivekitJoin | VoiceSessionState::Active
@@ -277,7 +282,7 @@ pub async fn get_current_voice_operation_id(
         }
 
         if let Some(previous_session) = get_replaced_active_voice_session(&session).await? {
-            if previous_session.channel == *channel {
+            if same_voice_channel(&previous_session.channel, channel) {
                 return Ok(Some(previous_session.operation_id));
             }
         }
@@ -299,7 +304,7 @@ pub async fn native_voice_participant_matches_current_operation(
         return Ok(false);
     };
 
-    if session.channel == *channel
+    if same_voice_channel(&session.channel, channel)
         && matches!(
             session.state,
             VoiceSessionState::AwaitingLivekitJoin | VoiceSessionState::Active
@@ -315,7 +320,7 @@ pub async fn native_voice_participant_matches_current_operation(
     Ok(get_replaced_active_voice_session(&session)
         .await?
         .is_some_and(|previous_session| {
-            previous_session.channel == *channel
+            same_voice_channel(&previous_session.channel, channel)
                 && native_voice_operation_is_current(
                     participant_identity,
                     Some(previous_session.operation_id.as_str()),
@@ -406,9 +411,9 @@ pub async fn delete_voice_state(channel: &UserVoiceChannel, user_id: &str) -> Re
         return Ok(false);
     };
 
-    if session.channel != *channel {
+    if !same_voice_channel(&session.channel, channel) {
         if let Some(mut previous_session) = get_replaced_active_voice_session(&session).await? {
-            if previous_session.channel == *channel {
+            if same_voice_channel(&previous_session.channel, channel) {
                 previous_session.state = VoiceSessionState::Ended;
                 previous_session.updated_at = Timestamp::now_utc();
                 remove_active_voice_session_projection(&previous_session).await?;
@@ -433,9 +438,9 @@ pub async fn delete_voice_state_for_session(
         return Ok(false);
     };
 
-    if session.channel != *channel {
+    if !same_voice_channel(&session.channel, channel) {
         if let Some(mut previous_session) = get_replaced_active_voice_session(&session).await? {
-            if previous_session.channel == *channel
+            if same_voice_channel(&previous_session.channel, channel)
                 && previous_session.participant_sid.as_deref() == Some(session_id)
                 && previous_session.mark_participant_left(session_id, Timestamp::now_utc())
                     == VoiceSessionTransition::Applied
@@ -478,10 +483,11 @@ pub async fn delete_channel_voice_state(
     pipeline.del(voice_channel_members_key(&channel.id));
     pipeline.del(voice_channel_node_key(&channel.id));
     pipeline.del(voice_room_session_key(&channel.id));
+    pipeline.srem(voice_active_channels_key(), &channel.id);
 
     for user_id in user_ids {
         if let Some(mut session) = get_current_voice_session(user_id).await? {
-            if session.channel == *channel {
+            if same_voice_channel(&session.channel, channel) {
                 let operation_id = session.operation_id.clone();
                 session.state = VoiceSessionState::Ended;
                 session.updated_at = Timestamp::now_utc();
@@ -547,7 +553,7 @@ async fn update_voice_state_tracks_matching(
     let Some(mut session) = get_current_voice_session(user_id).await? else {
         return Ok(None);
     };
-    if session.channel != *channel
+    if !same_voice_channel(&session.channel, channel)
         || session.state != VoiceSessionState::Active
         || !matches_session(&session)
     {
@@ -595,7 +601,8 @@ pub async fn update_client_voice_flags(
     let Some(mut session) = get_current_voice_session(user_id).await? else {
         return Err(create_error!(NotConnected));
     };
-    if session.channel != *channel || session.state != VoiceSessionState::Active {
+    if !same_voice_channel(&session.channel, channel) || session.state != VoiceSessionState::Active
+    {
         return Err(create_error!(NotConnected));
     }
 
@@ -626,7 +633,8 @@ pub async fn update_voice_state(
     let Some(mut session) = get_current_voice_session(user_id).await? else {
         return Ok(false);
     };
-    if session.channel != *channel || session.state != VoiceSessionState::Active {
+    if !same_voice_channel(&session.channel, channel) || session.state != VoiceSessionState::Active
+    {
         return Ok(false);
     }
 
@@ -656,7 +664,8 @@ async fn bump_voice_state_version(channel: &UserVoiceChannel, user_id: &str) -> 
     let Some(mut session) = get_current_voice_session(user_id).await? else {
         return Err(create_error!(NotConnected));
     };
-    if session.channel != *channel || session.state != VoiceSessionState::Active {
+    if !same_voice_channel(&session.channel, channel) || session.state != VoiceSessionState::Active
+    {
         return Err(create_error!(NotConnected));
     }
     session.version += 1;
@@ -686,12 +695,14 @@ pub async fn get_voice_participant_reconciliation(
     let mut current_operations = Vec::new();
     for user_id in &redis_members {
         if let Some(session) = get_current_voice_session(user_id).await? {
-            if session.channel == *channel && session.state == VoiceSessionState::Active {
+            if same_voice_channel(&session.channel, channel)
+                && session.state == VoiceSessionState::Active
+            {
                 current_operations.push((user_id.clone(), session.operation_id));
             } else if let Some(previous_session) =
                 get_replaced_active_voice_session(&session).await?
             {
-                if previous_session.channel == *channel {
+                if same_voice_channel(&previous_session.channel, channel) {
                     current_operations.push((user_id.clone(), previous_session.operation_id));
                 }
             }
@@ -731,7 +742,7 @@ pub async fn get_voice_state(
 ) -> Result<Option<UserVoiceState>> {
     Ok(get_active_voice_session_for_user(user_id)
         .await?
-        .filter(|session| session.channel == *channel)
+        .filter(|session| same_voice_channel(&session.channel, channel))
         .map(|session| session.voice_state(Timestamp::UNIX_EPOCH)))
 }
 
@@ -1128,6 +1139,24 @@ pub async fn cancel_current_pending_voice_join(
     session.state = VoiceSessionState::Ended;
     session.updated_at = Timestamp::now_utc();
     delete_current_voice_session(&session).await
+}
+
+pub async fn cancel_current_pending_voice_join_in_server(
+    voice_client: &VoiceClient,
+    user_id: &str,
+    server_id: &str,
+) -> Result<bool> {
+    let Some(session) = get_current_voice_session(user_id).await? else {
+        return Ok(false);
+    };
+
+    if session.state != VoiceSessionState::AwaitingLivekitJoin
+        || session.channel.server_id.as_deref() != Some(server_id)
+    {
+        return Ok(false);
+    }
+
+    cancel_current_pending_voice_join(voice_client, user_id).await
 }
 
 pub async fn delete_voice_channel(
