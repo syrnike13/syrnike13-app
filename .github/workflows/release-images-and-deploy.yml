@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - VERSION
+      - deploy/production/**
       - .github/workflows/release-images-and-deploy.yml
   workflow_dispatch:
     inputs:
@@ -175,7 +176,13 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: |
-            APP_VERSION=${{ needs.version.outputs.version }}
+            VITE_APP_TITLE=syrnike13
+            VITE_API_URL=https://syrnike13.ru/api
+            VITE_WS_URL=wss://syrnike13.ru/ws
+            VITE_MEDIA_URL=https://syrnike13.ru/autumn
+            VITE_PROXY_URL=https://syrnike13.ru/january
+            VITE_GIFBOX_URL=https://api.gifbox.me
+            VITE_VOICE_NODE=worldwide
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
           tags: |

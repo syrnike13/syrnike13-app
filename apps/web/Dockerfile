@@ -17,13 +17,20 @@ COPY packages/platform packages/platform
 COPY tooling tooling
 
 ENV NODE_ENV=production
-ENV VITE_APP_TITLE=syrnike13
-ENV VITE_API_URL=https://syrnike13.ru/api
-ENV VITE_WS_URL=wss://syrnike13.ru/ws
-ENV VITE_MEDIA_URL=https://syrnike13.ru/autumn
-ENV VITE_PROXY_URL=https://syrnike13.ru/january
-ENV VITE_GIFBOX_URL=https://api.gifbox.me
-ENV VITE_VOICE_NODE=worldwide
+ARG VITE_APP_TITLE=syrnike13
+ARG VITE_API_URL=https://syrnike13.ru/api
+ARG VITE_WS_URL=wss://syrnike13.ru/ws
+ARG VITE_MEDIA_URL=https://syrnike13.ru/autumn
+ARG VITE_PROXY_URL=https://syrnike13.ru/january
+ARG VITE_GIFBOX_URL=https://api.gifbox.me
+ARG VITE_VOICE_NODE=worldwide
+ENV VITE_APP_TITLE=$VITE_APP_TITLE
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+ENV VITE_MEDIA_URL=$VITE_MEDIA_URL
+ENV VITE_PROXY_URL=$VITE_PROXY_URL
+ENV VITE_GIFBOX_URL=$VITE_GIFBOX_URL
+ENV VITE_VOICE_NODE=$VITE_VOICE_NODE
 
 RUN pnpm version:sync && \
     export VITE_APP_VERSION="$(cat VERSION)" && \

@@ -4,6 +4,7 @@ import electronUpdater from 'electron-updater'
 const { autoUpdater } = electronUpdater
 
 import { IPC, type DesktopUpdateState } from '@syrnike13/platform'
+import { DESKTOP_RELEASE_METADATA } from './desktop-app-identity'
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 const INITIAL_CHECK_DELAY_MS = 10_000
@@ -30,6 +31,7 @@ export function getDesktopUpdateState() {
 }
 
 export async function checkForDesktopUpdates() {
+  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) return currentState
   if (!app.isPackaged) return currentState
   if (inFlightUpdateCheck) return inFlightUpdateCheck
 
@@ -58,11 +60,13 @@ export async function checkForDesktopUpdates() {
 }
 
 export function quitAndInstallDesktopUpdate() {
+  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) return
   if (!app.isPackaged) return
   autoUpdater.quitAndInstall()
 }
 
 export function initializeDesktopAutoUpdate(getWindow: () => BrowserWindow | null) {
+  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) return
   if (!app.isPackaged || started) return
   started = true
   getWindowRef = getWindow

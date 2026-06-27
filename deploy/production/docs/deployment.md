@@ -158,6 +158,38 @@ Health check:
 curl -fsSI "https://syrnike13.ru/downloads/syrnike13.dmg" | head -5
 ```
 
+## Nightly Channel
+
+The `develop` branch publishes and deploys the independent nightly environment.
+
+- Public URL: `https://beta.syrnike13.ru`
+- Server path: `/opt/syrnike13-nightly`
+- Compose project: `syrnike13-nightly`
+- Docker tags: `nightly` and `nightly-<sha>`
+- Desktop delivery: GitHub prerelease `nightly`; no auto-update feed.
+
+Production Caddy remains the edge proxy for both domains. It joins the shared
+external Docker network `syrnike13-edge` and routes `beta.syrnike13.ru` to
+nightly service aliases such as `syrnike13-nightly-web` and
+`syrnike13-nightly-api`.
+
+Nightly keeps its own server-local runtime files and data:
+
+- `data/`
+- `.env`
+- `.env.web`
+- `secrets.env`
+- `Syrnike.toml`
+- `livekit.yml`
+- `compose.override.yml`
+
+Nightly LiveKit uses separate host ports to avoid conflicts with production:
+
+- `7882/tcp`
+- `3479/udp`
+- `30101-30200/udp`
+- `50101-50200/udp`
+
 ## Fork Cleanup
 
 The upstream issue-triage workflow was removed because it referenced an old organization and a `PAT` secret.

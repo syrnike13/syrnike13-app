@@ -1,0 +1,331 @@
+name: Nightly Release And Deploy
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy nightly after publishing images.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-syrnike13-nightly
+  cancel-in-progress: true
+
+jobs:
+  version:
+    name: Read nightly version
+    runs-on: ubuntu-latest
+    outputs:
+      base_version: ${{ steps.version.outputs.base_version }}
+      nightly_version: ${{ steps.version.outputs.nightly_version }}
+      sha_tag: ${{ steps.version.outputs.sha_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: |
+          set -euo pipefail
+          BASE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          SHA_TAG="${GITHUB_SHA::12}"
+          test -n "$BASE_VERSION"
+          echo "base_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "nightly_version=${BASE_VERSION}-nightly.${SHA_TAG}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
+
+  web:
+    name: Publish nightly web image
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_APP_TITLE=syrnike13 Nightly
+            VITE_API_URL=https://beta.syrnike13.ru/api
+            VITE_WS_URL=wss://beta.syrnike13.ru/ws
+            VITE_MEDIA_URL=https://beta.syrnike13.ru/autumn
+            VITE_PROXY_URL=https://beta.syrnike13.ru/january
+            VITE_GIFBOX_URL=https://api.gifbox.me
+            VITE_VOICE_NODE=worldwide
+          cache-from: type=gha,scope=web-nightly
+          cache-to: type=gha,mode=max,scope=web-nightly
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-web:nightly
+            ghcr.io/${{ github.repository_owner }}/app-web:nightly-${{ needs.version.outputs.sha_tag }}
+
+  backend-base:
+    name: Publish nightly backend base image
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync release version
+        run: node tooling/scripts/sync-version.mjs
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/backend
+          file: services/backend/Dockerfile
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha,scope=backend-base-nightly
+          cache-to: type=gha,mode=max,scope=backend-base-nightly
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-base:nightly
+            ghcr.io/${{ github.repository_owner }}/app-base:nightly-${{ needs.version.outputs.sha_tag }}
+
+  backend-services:
+    name: Publish nightly backend service images
+    runs-on: ubuntu-latest
+    needs:
+      - version
+      - backend-base
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: crates/delta/Dockerfile
+          - image: events
+            dockerfile: crates/bonfire/Dockerfile
+          - image: file-server
+            dockerfile: crates/services/autumn/Dockerfile
+          - image: proxy
+            dockerfile: crates/services/january/Dockerfile
+          - image: gifbox
+            dockerfile: crates/services/gifbox/Dockerfile
+          - image: crond
+            dockerfile: crates/daemons/crond/Dockerfile
+          - image: pushd
+            dockerfile: crates/daemons/pushd/Dockerfile
+          - image: voice-ingress
+            dockerfile: crates/daemons/voice-ingress/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync release version
+        run: node tooling/scripts/sync-version.mjs
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/backend
+          file: services/backend/${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/app-base:nightly-${{ needs.version.outputs.sha_tag }}
+          cache-from: type=gha,scope=backend-${{ matrix.image }}-nightly
+          cache-to: type=gha,mode=max,scope=backend-${{ matrix.image }}-nightly
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-${{ matrix.image }}:nightly
+            ghcr.io/${{ github.repository_owner }}/app-${{ matrix.image }}:nightly-${{ needs.version.outputs.sha_tag }}
+
+  livekit:
+    name: Publish nightly LiveKit image
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/livekit-server/go.mod
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/livekit-server
+          file: services/livekit-server/Dockerfile
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha,scope=livekit-nightly
+          cache-to: type=gha,mode=max,scope=livekit-nightly
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-livekit-server:nightly
+            ghcr.io/${{ github.repository_owner }}/app-livekit-server:nightly-${{ needs.version.outputs.sha_tag }}
+
+  deploy:
+    name: Deploy nightly
+    runs-on: ubuntu-latest
+    needs:
+      - web
+      - backend-services
+      - livekit
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    if: ${{ always() && needs.web.result == 'success' && needs.backend-services.result == 'success' && needs.livekit.result == 'success' && (github.event_name == 'push' || inputs.deploy == true) }}
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.NIGHTLY_DEPLOY_PATH || '/opt/syrnike13-nightly' }}
+      SYRNIKE_DOMAIN: ${{ vars.NIGHTLY_SYRNIKE_DOMAIN || 'beta.syrnike13.ru' }}
+      DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PATH"
+          test -n "$SYRNIKE_DOMAIN"
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Upload nightly files
+        run: |
+          set -euo pipefail
+          STAGING="$(mktemp -d)"
+          cp -R deploy/nightly/. "$STAGING/"
+          cp deploy/production/generate_config.sh "$STAGING/generate_config.sh"
+          cp deploy/production/secrets.env.example "$STAGING/secrets.env.example"
+          tar -C "$STAGING" \
+            --exclude='data*' \
+            --exclude='.env' \
+            --exclude='.env.web' \
+            --exclude='secrets.env' \
+            --exclude='secrets.env.old' \
+            --exclude='Syrnike.toml' \
+            --exclude='Syrnike.toml.old' \
+            --exclude='Revolt.toml' \
+            --exclude='Revolt.toml.old' \
+            --exclude='livekit.yml' \
+            --exclude='livekit.yml.old' \
+            --exclude='compose.override.yml' \
+            --exclude='compose.override.yml.old' \
+            -czf /tmp/syrnike13-nightly.tar.gz .
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
+          scp -i ~/.ssh/deploy_key /tmp/syrnike13-nightly.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:/tmp/syrnike13-nightly.tar.gz"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "tar -xzf /tmp/syrnike13-nightly.tar.gz -C '$DEPLOY_PATH' && rm /tmp/syrnike13-nightly.tar.gz && chmod +x '$DEPLOY_PATH/scripts/deploy-on-server.sh' '$DEPLOY_PATH/generate_config.sh'"
+      - name: Run nightly deploy
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' && ./scripts/deploy-on-server.sh"
+      - name: Verify nightly API
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
+
+  desktop:
+    name: Build nightly desktop packages
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: desktop-nightly-macos
+          - os: windows-2022
+            artifact: desktop-nightly-windows
+          - os: ubuntu-24.04
+            artifact: desktop-nightly-linux
+    runs-on: ${{ matrix.os }}
+    env:
+      SYRNIKE_DESKTOP_CHANNEL: nightly
+      SYRNIKE_DESKTOP_BUILD_VERSION: ${{ needs.version.outputs.nightly_version }}
+      VITE_APP_TITLE: syrnike13 Nightly
+      VITE_API_URL: https://beta.syrnike13.ru/api
+      VITE_WS_URL: wss://beta.syrnike13.ru/ws
+      VITE_MEDIA_URL: https://beta.syrnike13.ru/autumn
+      VITE_PROXY_URL: https://beta.syrnike13.ru/january
+      VITE_GIFBOX_URL: https://api.gifbox.me
+      VITE_VOICE_NODE: worldwide
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install Linux packaging deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm version:sync
+      - run: pnpm --filter @syrnike13/desktop package:nightly
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            apps/desktop/release-nightly/*.exe
+            apps/desktop/release-nightly/*.zip
+            apps/desktop/release-nightly/*.dmg
+            apps/desktop/release-nightly/*.AppImage
+            apps/desktop/release-nightly/*.7z
+
+  github-prerelease:
+    name: Publish nightly GitHub prerelease
+    runs-on: ubuntu-latest
+    needs:
+      - version
+      - desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: desktop-artifacts
+      - name: Move nightly tag
+        run: |
+          set -euo pipefail
+          git tag -f nightly "$GITHUB_SHA"
+          git push origin refs/tags/nightly --force
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: syrnike13 nightly
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          body: |
+            Nightly desktop installers from develop.
+
+            Commit: ${{ github.sha }}
+            Version: ${{ needs.version.outputs.nightly_version }}
+          files: |
+            desktop-artifacts/**/*.exe
+            desktop-artifacts/**/*.zip
+            desktop-artifacts/**/*.dmg
+            desktop-artifacts/**/*.AppImage
+            desktop-artifacts/**/*.7z

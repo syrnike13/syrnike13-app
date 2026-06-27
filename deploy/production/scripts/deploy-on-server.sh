@@ -40,6 +40,12 @@ fi
 
 reverse_proxy="${SYRNIKE_REVERSE_PROXY:-false}"
 video_enabled="${SYRNIKE_VIDEO_ENABLED:-true}"
+edge_network="${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"
+
+if ! docker network inspect "$edge_network" >/dev/null 2>&1; then
+  echo "Creating shared edge Docker network: $edge_network"
+  docker network create "$edge_network" >/dev/null
+fi
 
 if [[ ! -f Syrnike.toml && -f Revolt.toml ]]; then
   echo "Migrating existing Revolt.toml to Syrnike.toml."

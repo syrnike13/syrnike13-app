@@ -48,7 +48,10 @@ import {
   normalizeDesktopTrayVoiceState,
   TRAY_ICON_ASSET_BY_STATE,
 } from './tray-icon'
-import { DESKTOP_APP_USER_MODEL_ID } from './desktop-app-identity'
+import {
+  DESKTOP_APP_USER_MODEL_ID,
+  DESKTOP_RELEASE_METADATA,
+} from './desktop-app-identity'
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null
@@ -162,8 +165,10 @@ async function ensureAppCreated() {
 function reportStartupFailure(error: unknown) {
   console.error('[desktop] failed to start', error)
   const message =
-    error instanceof Error ? error.message : 'Не удалось запустить syrnike13.'
-  dialog.showErrorBox('syrnike13', message)
+    error instanceof Error
+      ? error.message
+      : `Не удалось запустить ${DESKTOP_RELEASE_METADATA.displayName}.`
+  dialog.showErrorBox(DESKTOP_RELEASE_METADATA.displayName, message)
   quitting = true
   app.quit()
 }
@@ -217,7 +222,7 @@ function updateTrayMenu() {
 
   const template: MenuItemConstructorOptions[] = [
     {
-      label: 'Открыть syrnike13',
+      label: `Открыть ${DESKTOP_RELEASE_METADATA.displayName}`,
       click: showMainWindow,
     },
     {
@@ -250,7 +255,7 @@ function updateTrayMenu() {
 function setupTray() {
   if (tray) return
   tray = new Tray(trayIcon())
-  tray.setToolTip('syrnike13')
+  tray.setToolTip(DESKTOP_RELEASE_METADATA.displayName)
   tray.on('click', showMainWindow)
   updateTrayMenu()
 }
@@ -324,7 +329,7 @@ if (setupSingleInstance()) {
     .find((value) => value !== null)
 
   if (app.isPackaged) {
-    app.setAsDefaultProtocolClient('syrnike13')
+    app.setAsDefaultProtocolClient(DESKTOP_RELEASE_METADATA.protocolScheme)
   }
 
   app.on('open-url', (event, url) => {

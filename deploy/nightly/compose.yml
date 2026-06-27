@@ -1,4 +1,4 @@
-name: syrnike13
+name: syrnike13-nightly
 
 x-json-log-rotation: &json-log-rotation
   driver: json-file
@@ -7,7 +7,6 @@ x-json-log-rotation: &json-log-rotation
     max-file: "5"
 
 services:
-  # MongoDB: Database
   database:
     image: docker.io/mongo
     logging: *json-log-rotation
@@ -23,13 +22,11 @@ services:
       retries: 5
       start_period: 30s
 
-  # Redis: Event message broker & KV store
   redis:
     image: docker.io/eqalpha/keydb
     logging: *json-log-rotation
     restart: always
 
-  # RabbitMQ: Internal message broker
   rabbit:
     image: docker.io/rabbitmq:4
     logging: *json-log-rotation
@@ -46,7 +43,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # MinIO: S3-compatible storage server
   minio:
     image: docker.io/minio/minio
     logging: *json-log-rotation
@@ -61,7 +57,6 @@ services:
       default:
         aliases:
           - syrnike-uploads.minio
-          # legacy support:
           - attachments.minio
           - avatars.minio
           - backgrounds.minio
@@ -70,29 +65,8 @@ services:
           - emojis.minio
     restart: always
 
-  # Caddy: Web server
-  caddy:
-    image: docker.io/caddy
-    logging: *json-log-rotation
-    restart: always
-    env_file: .env.web
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - ./data/caddy-data:/data
-      - ./data/caddy-config:/config
-      - ./data/desktop:/srv/desktop:ro
-    networks:
-      default:
-        aliases:
-         - "${SYRNIKE_DOMAIN:-caddy}"
-      edge:
-
-  # API server
   api:
-    image: ghcr.io/syrnike13/app-api:latest
+    image: ghcr.io/syrnike13/app-api:nightly
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -107,11 +81,15 @@ services:
       - type: bind
         source: ./Syrnike.toml
         target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-api
     restart: always
 
-  # Events service
   events:
-    image: ghcr.io/syrnike13/app-events:latest
+    image: ghcr.io/syrnike13/app-events:nightly
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -123,11 +101,15 @@ services:
       - type: bind
         source: ./Syrnike.toml
         target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-events
     restart: always
 
-  # File server
   autumn:
-    image: ghcr.io/syrnike13/app-file-server:latest
+    image: ghcr.io/syrnike13/app-file-server:nightly
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -139,33 +121,45 @@ services:
       - type: bind
         source: ./Syrnike.toml
         target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-autumn
     restart: always
 
-  # Metadata and image proxy
   january:
-    image: ghcr.io/syrnike13/app-proxy:latest
+    image: ghcr.io/syrnike13/app-proxy:nightly
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
       - type: bind
         source: ./Syrnike.toml
         target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-january
     restart: always
 
-  # Tenor proxy
   gifbox:
-    image: ghcr.io/syrnike13/app-gifbox:latest
+    image: ghcr.io/syrnike13/app-gifbox:nightly
     logging: *json-log-rotation
     env_file: secrets.env
     volumes:
       - type: bind
         source: ./Syrnike.toml
         target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-gifbox
     restart: always
 
-  # Regular task daemon
   crond:
-    image: ghcr.io/syrnike13/app-crond:latest
+    image: ghcr.io/syrnike13/app-crond:nightly
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -182,9 +176,8 @@ services:
         target: /Syrnike.toml
     restart: always
 
-  # Push notification daemon
   pushd:
-    image: ghcr.io/syrnike13/app-pushd:latest
+    image: ghcr.io/syrnike13/app-pushd:nightly
     logging: *json-log-rotation
     env_file: secrets.env
     depends_on:
@@ -201,12 +194,10 @@ services:
         target: /Syrnike.toml
     restart: always
 
-   # Voice ingress daemon
   voice-ingress:
-    image: ghcr.io/syrnike13/app-voice-ingress:latest
+    image: ghcr.io/syrnike13/app-voice-ingress:nightly
     logging: *json-log-rotation
     env_file: secrets.env
-    restart: always
     depends_on:
       database:
         condition: service_healthy
@@ -217,26 +208,36 @@ services:
       - type: bind
         source: ./Syrnike.toml
         target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-voice-ingress
+    restart: always
 
   livekit:
-    image: ghcr.io/syrnike13/app-livekit-server:latest
+    image: ghcr.io/syrnike13/app-livekit-server:nightly
     logging: *json-log-rotation
     depends_on:
       redis:
         condition: service_started
     command: --config /etc/livekit.yml
     ports:
-      - "7881:7881"
-      - "3478:3478/udp"
-      - "30000-30100:30000-30100/udp"
-      - "50000-50100:50000-50100/udp"
-    restart: always
+      - "7882:7882"
+      - "3479:3479/udp"
+      - "30101-30200:30101-30200/udp"
+      - "50101-50200:50101-50200/udp"
     volumes:
       - type: bind
         source: ./livekit.yml
         target: /etc/livekit.yml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-livekit
+    restart: always
 
-  # Create buckets for minio.
   createbuckets:
     image: docker.io/minio/mc
     logging: *json-log-rotation
@@ -252,12 +253,16 @@ services:
       exit 0;
       "
 
-  # Web App
   web:
-    image: ghcr.io/syrnike13/app-web:latest
+    image: ghcr.io/syrnike13/app-web:nightly
     logging: *json-log-rotation
-    restart: always
     env_file: .env.web
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-web
+    restart: always
 
 networks:
   edge:

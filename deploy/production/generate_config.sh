@@ -125,6 +125,12 @@ fi
 echo "Configuring syrnike13 with hostname $DOMAIN"
 
 SYRNIKE_HOSTNAME="https://$DOMAIN"
+LIVEKIT_RTC_PORT_RANGE_START="${LIVEKIT_RTC_PORT_RANGE_START:-50000}"
+LIVEKIT_RTC_PORT_RANGE_END="${LIVEKIT_RTC_PORT_RANGE_END:-50100}"
+LIVEKIT_TCP_PORT="${LIVEKIT_TCP_PORT:-7881}"
+LIVEKIT_TURN_UDP_PORT="${LIVEKIT_TURN_UDP_PORT:-3478}"
+LIVEKIT_TURN_RELAY_RANGE_START="${LIVEKIT_TURN_RELAY_RANGE_START:-30000}"
+LIVEKIT_TURN_RELAY_RANGE_END="${LIVEKIT_TURN_RELAY_RANGE_END:-30100}"
 
 read -rp "Would you like to place syrnike13 behind another reverse proxy? [y/N]: "
 if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ]; then
@@ -236,18 +242,18 @@ echo "worldwide = \"wss://$DOMAIN/livekit\"" >> Syrnike.toml
 # livekit yml
 echo "rtc:" > livekit.yml
 echo "  use_external_ip: true" >> livekit.yml
-echo "  port_range_start: 50000" >> livekit.yml
-echo "  port_range_end: 50100" >> livekit.yml
-echo "  tcp_port: 7881" >> livekit.yml
+echo "  port_range_start: $LIVEKIT_RTC_PORT_RANGE_START" >> livekit.yml
+echo "  port_range_end: $LIVEKIT_RTC_PORT_RANGE_END" >> livekit.yml
+echo "  tcp_port: $LIVEKIT_TCP_PORT" >> livekit.yml
 echo "" >> livekit.yml
 echo "redis:" >> livekit.yml
 echo "  address: redis:6379" >> livekit.yml
 echo "" >> livekit.yml
 echo "turn:" >> livekit.yml
 echo "  enabled: true" >> livekit.yml
-echo "  udp_port: 3478" >> livekit.yml
-echo "  relay_range_start: 30000" >> livekit.yml
-echo "  relay_range_end: 30100" >> livekit.yml
+echo "  udp_port: $LIVEKIT_TURN_UDP_PORT" >> livekit.yml
+echo "  relay_range_start: $LIVEKIT_TURN_RELAY_RANGE_START" >> livekit.yml
+echo "  relay_range_end: $LIVEKIT_TURN_RELAY_RANGE_END" >> livekit.yml
 echo "" >> livekit.yml
 echo "keys:" >> livekit.yml
 echo "  $SYRNIKE__API__LIVEKIT__NODES__WORLDWIDE__KEY: $SYRNIKE__API__LIVEKIT__NODES__WORLDWIDE__SECRET" >> livekit.yml
