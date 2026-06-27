@@ -177,6 +177,7 @@ impl Member {
                 .into_iter()
                 .map(|channel| channel.into())
                 .collect(),
+            member: member.clone().into(),
             emojis: emojis.into_iter().map(|emoji| emoji.into()).collect(),
             voice_states,
         }

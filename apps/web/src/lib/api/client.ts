@@ -1,3 +1,5 @@
+import type { components } from '@syrnike13/api-types'
+
 import { config } from '#/lib/config'
 
 export class ApiError extends Error {
@@ -99,5 +101,5 @@ export async function apiRequest<T>(
 
 /** GET / — проверка доступности API. */
 export function fetchApiRoot() {
-  return apiRequest<{ syrnike?: string }>('/')
+  return apiRequest<components['schemas']['SyrnikeConfig']>('/')
 }

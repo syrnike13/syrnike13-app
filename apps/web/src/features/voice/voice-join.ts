@@ -18,6 +18,9 @@ import {
 import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
 import type { VoiceJoinReason } from '#/features/voice/voice-session-machine'
 
+export const VOICE_JOIN_RETRY_COOLDOWN_MS = 500
+const VOICE_JOIN_RATE_LIMIT_COOLDOWN_MS = 60_000
+
 export type VoiceJoinOptions = {
   rejoin?: boolean
 }
@@ -248,7 +251,10 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         toast.error(voiceJoinErrorMessage(error))
       }
       deps.setJoinBlockedUntil(
-        Date.now() + (isRateLimitedError(error) ? 60_000 : 15_000),
+        Date.now() +
+          (isRateLimitedError(error)
+            ? VOICE_JOIN_RATE_LIMIT_COOLDOWN_MS
+            : VOICE_JOIN_RETRY_COOLDOWN_MS),
       )
       return false
     }

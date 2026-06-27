@@ -1,4 +1,5 @@
 use std::env;
+use std::pin::Pin;
 
 use async_std::net::TcpListener;
 use syrnike_database::AMQP;
@@ -41,7 +42,13 @@ async fn main() {
         let amqp = amqp.clone();
         async_std::task::spawn(async move {
             info!("User connected from {addr:?}");
-            websocket::client(database::get_db(), amqp, stream, addr).await;
+            Pin::from(Box::new(websocket::client(
+                database::get_db(),
+                amqp,
+                stream,
+                addr,
+            )))
+            .await;
             info!("User disconnected from {addr:?}");
         });
     }

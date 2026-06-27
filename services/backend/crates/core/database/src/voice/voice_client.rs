@@ -5,7 +5,10 @@ use crate::{
 };
 use livekit_api::{
     access_token::{AccessToken, VideoGrants},
-    services::room::{CreateRoomOptions, RoomClient as InnerRoomClient, UpdateParticipantOptions},
+    services::{
+        room::{CreateRoomOptions, RoomClient as InnerRoomClient, UpdateParticipantOptions},
+        ServiceError, TwirpError, TwirpErrorCode,
+    },
 };
 use livekit_protocol::{ParticipantInfo, ParticipantPermission, Room};
 use std::{collections::HashMap, time::Duration};
@@ -152,6 +155,29 @@ impl VoiceClient {
             .remove_participant(channel_id, user_id)
             .await
             .to_internal_error()
+    }
+
+    pub async fn list_room_participants(
+        &self,
+        node: &str,
+        channel_id: &str,
+    ) -> Result<Option<Vec<ParticipantInfo>>> {
+        let room = self.get_node(node)?;
+
+        match room.client.list_participants(channel_id).await {
+            Ok(participants) => Ok(Some(participants)),
+            Err(ServiceError::Twirp(TwirpError::Twirp(error)))
+                if error.code == TwirpErrorCode::NOT_FOUND =>
+            {
+                Ok(None)
+            }
+            Err(error) => {
+                log::warn!(
+                    "Failed to list LiveKit participants for channel {channel_id} on node {node}: {error}"
+                );
+                Err(create_error!(InternalError))
+            }
+        }
     }
 
     pub async fn delete_room(&self, node: &str, channel_id: &str) -> Result<()> {

@@ -4,9 +4,10 @@ use syrnike_database::{
     events::client::{EventV1, GatewayErrorRequest, GatewayErrorScope},
     util::reference::Reference,
     voice::{
-        get_user_voice_channels, join_voice_channel, publish_voice_state_snapshot,
-        refresh_voice_credentials, remove_user_from_voice_channel_with_call_cleanup,
-        set_user_voice_join_intent, update_client_voice_flags, VoiceClient, VoiceJoinOptions,
+        cancel_current_pending_voice_join, get_user_voice_channels, join_voice_channel,
+        publish_voice_state_snapshot, refresh_voice_credentials,
+        remove_user_from_voice_channel_with_call_cleanup, set_current_voice_operation_id,
+        update_client_voice_flags, VoiceClient, VoiceJoinOptions,
     },
     Database, User, AMQP,
 };
@@ -39,6 +40,7 @@ pub async fn handle_voice_state_update(
             )
             .await?;
         }
+        cancel_current_pending_voice_join(voice_client, &user.id).await?;
 
         return Ok(None);
     }
@@ -59,15 +61,6 @@ pub async fn handle_voice_state_update(
         .any(|existing| existing == &user_voice_channel);
 
     if already_in_target {
-        set_user_voice_join_intent(
-            &user.id,
-            &user_voice_channel,
-            operation_id.as_deref(),
-            self_mute,
-            self_deaf,
-        )
-        .await?;
-
         let state =
             update_client_voice_flags(&user_voice_channel, &user.id, self_mute, self_deaf).await?;
         publish_voice_state_snapshot(&channel_id, &state).await;
@@ -77,7 +70,9 @@ pub async fn handle_voice_state_update(
         }
 
         let operation_id = operation_id.ok_or_else(|| create_error!(InvalidOperation))?;
-        let credentials = refresh_voice_credentials(db, voice_client, user, &channel_id).await?;
+        let credentials =
+            refresh_voice_credentials(db, voice_client, user, &channel_id, &operation_id).await?;
+        set_current_voice_operation_id(&user_voice_channel, &user.id, &operation_id).await?;
         return Ok(Some(EventV1::VoiceServerUpdate {
             operation_id,
             channel_id: credentials.channel_id,
@@ -94,6 +89,7 @@ pub async fn handle_voice_state_update(
     let credentials = join_voice_channel(
         db,
         voice_client,
+        amqp,
         user,
         &channel_id,
         VoiceJoinOptions {

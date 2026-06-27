@@ -35,6 +35,7 @@ export const env = createEnv({
     VITE_HCAPTCHA_SITEKEY: z.string().optional(),
     /** LiveKit-нода для gateway voice join (по умолчанию — первая из `GET /`). */
     VITE_VOICE_NODE: z.string().min(1).optional(),
+    VITE_VOICE_DEBUG_AGENT: z.literal('true').optional(),
   },
 
   runtimeEnv: import.meta.env,

@@ -11,6 +11,8 @@ Desktop.ini
 !.vscode/tasks.json
 !.vscode/launch.json
 .codex-run-logs/
+.tmp-*
+.tmp-bin/
 
 # Logs
 *.log
@@ -30,6 +32,7 @@ dist/
 dist-ssr/
 build/
 out/
+output/
 release/
 coverage/
 .turbo/
@@ -61,6 +64,9 @@ __pycache__/
 .env.*
 !.env.example
 !.env.*.example
+!apps/web/env/
+!apps/web/env/.env.localbackend
+!apps/web/env/.env.production
 secrets.env
 *.pem
 *.key
@@ -77,5 +83,8 @@ secrets.env
 /data/
 /data*/
 /.data/
+
+# Generated native helper artifacts
+/apps/desktop/native/music-presence-win/
 
 .superpowers/

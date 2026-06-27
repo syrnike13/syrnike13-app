@@ -1,4 +1,4 @@
-export const VOICE_REJOIN_DELAYS_MS = [2_000, 5_000, 10_000] as const
+export const VOICE_REJOIN_DELAYS_MS = [500, 5_000, 10_000] as const
 export const VOICE_REJOIN_STEADY_RETRY_MS = 15_000
 
 export type VoiceRejoinAttempt = (channelId: string) => Promise<boolean>

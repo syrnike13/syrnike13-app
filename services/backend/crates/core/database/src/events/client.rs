@@ -205,6 +205,7 @@ pub enum EventV1 {
         id: String,
         server: Server,
         channels: Vec<Channel>,
+        member: Member,
         emojis: Vec<Emoji>,
         voice_states: Vec<ChannelVoiceState>,
     },

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { syncStore } from '#/features/sync/sync-store'
+import type { GatewayServerEvent } from '#/features/sync/types'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
@@ -794,5 +795,80 @@ describe('syncStore applyReady', () => {
     } as never)
 
     expect(syncStore.getState().selectedServerId).toBe('server-2')
+  })
+})
+
+describe('syncStore server membership events', () => {
+  it('uses the full member payload from ServerMemberJoin', () => {
+    syncStore.reset()
+
+    const event = {
+      type: 'ServerMemberJoin',
+      id: 'server-1',
+      user: 'user-2',
+      member: {
+        _id: { server: 'server-1', user: 'user-2' },
+        joined_at: '2026-06-16T12:00:00.000Z',
+        roles: ['member-role'],
+        can_publish: false,
+      },
+    } as const satisfies GatewayServerEvent
+    syncStore.handleGatewayEvent(event)
+
+    expect(syncStore.getState().members['server-1:user-2']).toMatchObject({
+      _id: { server: 'server-1', user: 'user-2' },
+      joined_at: '2026-06-16T12:00:00.000Z',
+      roles: ['member-role'],
+      can_publish: false,
+    })
+  })
+
+  it('upgrades an existing placeholder member from ServerMemberJoin payload', () => {
+    syncStore.reset()
+
+    syncStore.handleGatewayEvent({
+      type: 'ServerMemberJoin',
+      id: 'server-1',
+      user: 'user-2',
+    } as const satisfies GatewayServerEvent)
+
+    const event = {
+      type: 'ServerMemberJoin',
+      id: 'server-1',
+      user: 'user-2',
+      member: {
+        _id: { server: 'server-1', user: 'user-2' },
+        joined_at: '2026-06-16T12:00:00.000Z',
+        roles: ['member-role'],
+        can_publish: false,
+      },
+    } as const satisfies GatewayServerEvent
+    syncStore.handleGatewayEvent(event)
+
+    expect(syncStore.getState().members['server-1:user-2']).toMatchObject({
+      roles: ['member-role'],
+      can_publish: false,
+    })
+  })
+
+  it('stores the current user member from ServerCreate', () => {
+    syncStore.reset()
+
+    const event = {
+      type: 'ServerCreate',
+      id: 'server-1',
+      server: { _id: 'server-1', owner: 'owner-1', name: 'Test', channels: [] },
+      channels: [],
+      member: {
+        _id: { server: 'server-1', user: 'user-1' },
+        joined_at: '2026-06-16T12:00:00.000Z',
+      },
+    } as const satisfies GatewayServerEvent
+    syncStore.handleGatewayEvent(event)
+
+    expect(syncStore.getState().members['server-1:user-1']).toMatchObject({
+      _id: { server: 'server-1', user: 'user-1' },
+      joined_at: '2026-06-16T12:00:00.000Z',
+    })
   })
 })

@@ -18,6 +18,7 @@ import {
   type NativeMediaLoopbackMode,
   type NativeMediaNoiseSuppressionMode,
   type NativeMediaScreenAudioMode,
+  type NativeMediaSessionKind,
   type NativeMicrophonePreviewSession,
   type NativeMicrophonePreviewStartOptions,
   type NativeMicrophoneRuntimeConfig,
@@ -50,6 +51,29 @@ const NATIVE_PICKER_TIMEOUT_MS = 120_000
 const MAX_SIDECAR_RECONNECT_ATTEMPTS = 1
 const WARMED_MICROPHONE_SESSION_ID = 'native-microphone-monitor'
 const NATIVE_MEDIA_STOP_TIMEOUT_MS = 5_000
+const NATIVE_MEDIA_DEBUG_AGENT_ENDPOINT =
+  'http://127.0.0.1:37729/ingest/88f771'
+
+function logNativeMediaDebugAgent(payload: Record<string, unknown>) {
+  if (app.isPackaged || process.env.NODE_ENV === 'production') return
+  if (process.env.NODE_ENV === 'test') return
+  const debugFetch = globalThis.fetch
+  if (!debugFetch) return
+
+  // #region debug log
+  void debugFetch(NATIVE_MEDIA_DEBUG_AGENT_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      area: 'native-media-slice',
+      timestamp: Date.now(),
+      ...payload,
+    }),
+  }).catch(() => {})
+  // #endregion
+}
 
 export type PendingNativePicker = {
   id: string
@@ -71,6 +95,7 @@ type ActiveMediaEngineSessionAudio = {
 
 type ActiveMediaEngineSession = {
   sessionId: string
+  debugStartedAtMs: number
   port?: number
   frameBufferPath?: string
   width?: number
@@ -107,6 +132,7 @@ type ActiveMediaEngineSession = {
   effectiveMuted?: boolean
   reconnectAttempts: number
   reconnecting: boolean
+  stopping: boolean
   reconnectHelper?: ChildProcessWithoutNullStreams
   reader?: readline.Interface
 }
@@ -127,6 +153,7 @@ type PendingStopResolver = {
   resolve: () => void
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
+  wait: Promise<void>
 }
 type PendingStartResolver = (event: SidecarEvent) => void
 
@@ -201,7 +228,11 @@ let mediaEngineStatus: NativeMediaSessionStatus = { status: 'idle' }
 let lastMediaEngineError: string | null = null
 let pendingNativePicker: PendingNativePicker | null = null
 let getWindowRef: (() => BrowserWindow | null) | null = null
-let startSessionQueue: Promise<unknown> = Promise.resolve()
+const startSessionQueues: Record<NativeMediaSessionKind, Promise<unknown>> = {
+  microphone: Promise.resolve(),
+  screen: Promise.resolve(),
+}
+let latestStartRequestIds: Partial<Record<NativeMediaSessionKind, string>> = {}
 let microphonePreviewHelper: ChildProcessWithoutNullStreams | null = null
 let microphonePreviewSessionId: string | null = null
 let prewarmedMediaEngineHelper: ChildProcessWithoutNullStreams | null = null
@@ -215,6 +246,7 @@ let preconnectedScreenSession: {
 let microphoneWarmupEnabled = false
 let microphoneWarmupRestartTimer: NodeJS.Timeout | null = null
 const microphoneWarmExitHandlers = new WeakSet<ChildProcessWithoutNullStreams>()
+const orphanMediaEngineHelpers = new WeakSet<ChildProcessWithoutNullStreams>()
 
 function isTrustedSender(
   event: IpcMainInvokeEvent,
@@ -730,19 +762,63 @@ function closeMediaEngineHelperReader(helper: ChildProcessWithoutNullStreams) {
   mediaEngineHelperReaders.delete(helper)
 }
 
+function helperHasActiveSession(helper: ChildProcessWithoutNullStreams) {
+  return Array.from(activeSessions.values()).some(
+    (session) => session.helper === helper || session.reconnectHelper === helper,
+  )
+}
+
+function closeIdleMediaEngineHelperReader(helper: ChildProcessWithoutNullStreams) {
+  if (helperHasActiveSession(helper)) return
+  if (preconnectedScreenSession?.helper === helper) return
+  if (prewarmedMediaEngineHelper === helper) return
+  closeMediaEngineHelperReader(helper)
+}
+
+function reconcileUnownedMediaEngineHelperEvent(
+  helper: ChildProcessWithoutNullStreams,
+  reason: string,
+) {
+  if (helperHasActiveSession(helper)) return false
+  if (preconnectedScreenSession?.helper === helper) return false
+  if (prewarmedMediaEngineHelper === helper) {
+    closeMediaEngineHelperReader(helper)
+    return true
+  }
+  if (orphanMediaEngineHelpers.has(helper)) return true
+  orphanMediaEngineHelpers.add(helper)
+  logNativeMediaDebugAgent({
+    hypothesis: 'H5-orphan-native-helper',
+    event: 'native-orphan-helper-stopped',
+    reason,
+    helperPid: helper.pid,
+  })
+  closeMediaEngineHelperReader(helper)
+  if (isHelperWritable(helper)) {
+    writeHelperCommand(helper, { cmd: 'stop' })
+  }
+  helper.kill()
+  return true
+}
+
 function clearPreconnectedScreenSession(force = false) {
   const prepared = preconnectedScreenSession
   preconnectedScreenSession = null
   if (!prepared) return
-  closeMediaEngineHelperReader(prepared.helper)
-  if (isHelperWritable(prepared.helper)) {
-    writeHelperCommand(prepared.helper, {
-      cmd: force ? 'stop' : 'disconnect_screen',
+  const helper = prepared.helper
+  const helperWritable =
+    !helper.killed && helper.exitCode === null && helper.stdin.writable
+  if (helperWritable) {
+    writeHelperCommand(helper, {
+      cmd: 'stop',
       sessionId: prepared.sessionId,
     })
+  } else {
+    closeMediaEngineHelperReader(helper)
+    helper.kill()
   }
   if (force) {
-    prepared.helper.kill()
+    helper.kill()
   }
 }
 
@@ -762,9 +838,7 @@ function spawnNativeMediaEngineProcess(
 
 function takePrewarmedMediaEngineHelper() {
   if (!isHelperWritable(prewarmedMediaEngineHelper)) {
-    prewarmedMediaEngineHelper = null
-    prewarmedMediaEngineReader?.close()
-    prewarmedMediaEngineReader = null
+    disposePrewarmedMicrophoneHelper(prewarmedMediaEngineHelper)
     return null
   }
 
@@ -824,10 +898,30 @@ function attachPrewarmedMicrophoneExitHandler(
   })
 }
 
+function disposePrewarmedMicrophoneHelper(
+  helper: ChildProcessWithoutNullStreams | null,
+) {
+  if (!helper) return
+  if (prewarmedMediaEngineHelper === helper) {
+    prewarmedMediaEngineHelper = null
+  }
+  prewarmedMediaEngineReader?.close()
+  prewarmedMediaEngineReader = null
+  closeMediaEngineHelperReader(helper)
+  if (isHelperWritable(helper)) {
+    writeHelperCommand(helper, { cmd: 'stop' })
+  }
+  helper.kill()
+}
+
 function keepMicrophoneHelperWarmed(helper: ChildProcessWithoutNullStreams) {
   if (!isHelperWritable(helper)) {
     queueMicrophoneWarmupRestart()
     return
+  }
+  const previousHelper = prewarmedMediaEngineHelper
+  if (previousHelper && previousHelper !== helper) {
+    disposePrewarmedMicrophoneHelper(previousHelper)
   }
   prewarmedMediaEngineHelper = helper
   attachPrewarmedMicrophoneReader(helper)
@@ -835,10 +929,13 @@ function keepMicrophoneHelperWarmed(helper: ChildProcessWithoutNullStreams) {
 }
 
 function selectPrimaryActiveSession() {
+  const runningSessions = Array.from(activeSessions.values()).filter(
+    (active) => !active.stopping,
+  )
   return (
-    Array.from(activeSessions.values()).find(
-      (active) => active.startOptions.kind === 'screen',
-    ) ?? Array.from(activeSessions.values())[0] ?? null
+    runningSessions.find((active) => active.startOptions.kind === 'screen') ??
+    runningSessions[0] ??
+    null
   )
 }
 
@@ -892,6 +989,7 @@ export function prewarmNativeMediaEngineHelper(
   microphoneWarmupEnabled = true
   clearMicrophoneWarmupRestartTimer()
   if (isHelperWritable(prewarmedMediaEngineHelper)) return
+  disposePrewarmedMicrophoneHelper(prewarmedMediaEngineHelper)
   if (
     !options.allowDuringMicrophoneSession &&
     Array.from(activeSessions.values()).some(
@@ -926,13 +1024,7 @@ export function prewarmNativeMediaEngineHelper(
 export function disposePrewarmedNativeMediaEngineHelper() {
   microphoneWarmupEnabled = false
   clearMicrophoneWarmupRestartTimer()
-  const helper = prewarmedMediaEngineHelper
-  prewarmedMediaEngineHelper = null
-  prewarmedMediaEngineReader?.close()
-  prewarmedMediaEngineReader = null
-  if (!helper) return
-  writeHelperCommand(helper, { cmd: 'stop' })
-  helper.kill()
+  disposePrewarmedMicrophoneHelper(prewarmedMediaEngineHelper)
 }
 
 export function getPendingNativePicker() {
@@ -1118,26 +1210,67 @@ function stopMediaEngineSession(sessionId: string, force = false) {
   const session = activeSessions.get(sessionId)
   if (!session) return false
 
+  if (session.stopping) {
+    if (!force) return true
+    session.helper.kill()
+    closeMediaEngineHelperReader(session.helper)
+    activeSessions.delete(sessionId)
+    resolvePendingStop(sessionId)
+    refreshStatusFromActiveSessions()
+    return true
+  }
+
+  const pendingStart = pendingStartResolvers.get(sessionId)
+  if (pendingStart) {
+    pendingStart({
+      type: 'session_lifecycle',
+      session_id: sessionId,
+      kind: session.startOptions.kind,
+      status: 'stopped',
+      message: 'Native media engine start cancelled',
+    })
+    pendingStartResolvers.delete(sessionId)
+  }
+
   const isMicrophone = session.startOptions.kind === 'microphone'
   const isPreparedScreen =
     session.startOptions.kind === 'screen' &&
     preconnectedScreenSession?.helper === session.helper
+  const stopCommand =
+    isMicrophone && !force
+      ? 'disconnect_microphone'
+      : isPreparedScreen && !force
+        ? 'stop_screen_capture'
+        : 'stop'
   const stopped = writeHelperCommand(session.helper, {
-    cmd:
-      isMicrophone && !force
-        ? 'disconnect_microphone'
-        : isPreparedScreen && !force
-          ? 'stop_screen_capture'
-          : 'stop',
+    cmd: stopCommand,
     sessionId,
+  })
+  const waitsForScreenStop =
+    stopped && !force && session.startOptions.kind === 'screen'
+  logNativeMediaDebugAgent({
+    hypothesis: 'H4-native-stop-timeout',
+    event: 'native-stop-requested',
+    kind: session.startOptions.kind,
+    force,
+    stopCommand,
+    helperWritable: stopped,
+    waitsForScreenStop,
+    isPreparedScreen,
   })
   if ((force || !stopped) && (!isPreparedScreen || force)) {
     session.helper.kill()
   } else if (!stopped && isPreparedScreen) {
     clearPreconnectedScreenSession(true)
   }
-  closeMediaEngineHelperReader(session.helper)
-  activeSessions.delete(sessionId)
+  if (!waitsForScreenStop) {
+    closeMediaEngineHelperReader(session.helper)
+  }
+  if (waitsForScreenStop) {
+    session.stopping = true
+  } else {
+    activeSessions.delete(sessionId)
+  }
   if (isMicrophone && !force && stopped) {
     keepMicrophoneHelperWarmed(session.helper)
   }
@@ -1147,11 +1280,46 @@ function stopMediaEngineSession(sessionId: string, force = false) {
 
   refreshStatusFromActiveSessions()
 
-  pendingStartResolvers.delete(sessionId)
   if (!stopped) {
     rejectPendingStop(sessionId, new Error('Native media helper is not writable'))
   }
   return stopped
+}
+
+function stopActiveMicrophoneSessions() {
+  for (const session of Array.from(activeSessions.values())) {
+    if (session.startOptions.kind === 'microphone') {
+      const force = pendingStartResolvers.count(session.sessionId) > 0
+      stopMediaEngineSession(session.sessionId, force)
+    }
+  }
+}
+
+function stopActiveScreenSessions() {
+  for (const session of Array.from(activeSessions.values())) {
+    if (session.startOptions.kind === 'screen') {
+      stopMediaEngineSession(session.sessionId, true)
+    }
+  }
+}
+
+function cancelPendingMediaStarts(kind?: NativeMediaSessionKind) {
+  if (kind) {
+    latestStartRequestIds[kind] = crypto.randomUUID()
+  } else {
+    latestStartRequestIds = {}
+  }
+  for (const session of Array.from(activeSessions.values())) {
+    if (kind && session.startOptions.kind !== kind) continue
+    if (pendingStartResolvers.count(session.sessionId) === 0) continue
+    stopMediaEngineSession(session.sessionId, true)
+  }
+}
+
+function assertMediaStartRequestCurrent(options: NativeMediaSessionStartOptions) {
+  if (latestStartRequestIds[options.kind] !== options.requestId) {
+    throw new Error(`Native ${options.kind} start cancelled`)
+  }
 }
 
 function stopMediaEngineHelper(force = false) {
@@ -1160,6 +1328,7 @@ function stopMediaEngineHelper(force = false) {
   }
   clearPreconnectedScreenSession(force)
   pendingStartResolvers.clear()
+  cancelPendingMediaStarts()
 }
 
 function stopMicrophonePreviewHelper() {
@@ -1370,11 +1539,22 @@ function spawnMediaEngineHelper(
     if (event.type === 'session_lifecycle') {
       recordNativeMediaStartupLifecycle(event)
       console.info('[media-engine-helper] lifecycle', event)
+      logNativeMediaDebugAgent({
+        hypothesis: 'H1-screen-start-lifecycle',
+        event: 'native-lifecycle',
+        kind: session?.startOptions.kind ?? 'unknown',
+        status: event.status,
+        message: event.message,
+        hasSession: Boolean(session),
+        helperPid: helper.pid,
+        elapsedMs: session ? Date.now() - session.debugStartedAtMs : undefined,
+      })
       if (event.status === 'stopped') {
         resolvePendingStop(event.session_id)
         activeSessions.delete(event.session_id)
         pendingStartResolvers.get(event.session_id)?.(event)
         pendingStartResolvers.delete(event.session_id)
+        closeIdleMediaEngineHelperReader(helper)
         refreshStatusFromActiveSessions()
         return
       }
@@ -1442,7 +1622,30 @@ function spawnMediaEngineHelper(
     }
 
     if (event.type === 'microphone_diagnostics') {
+      if (
+        !session &&
+        reconcileUnownedMediaEngineHelperEvent(
+          helper,
+          'microphone-diagnostics-without-session',
+        )
+      ) {
+        return
+      }
       console.info('[media-engine-helper] microphone diagnostics', event)
+      logNativeMediaDebugAgent({
+        hypothesis: 'H4-audio-frame-gaps',
+        event: 'native-microphone-diagnostics',
+        kind: session?.startOptions.kind ?? 'unknown',
+        helperPid: helper.pid,
+        elapsedMs: session ? Date.now() - session.debugStartedAtMs : undefined,
+        intervalFrames: event.interval_frames,
+        maxFrameGapMs: event.max_frame_gap_ms,
+        maxCaptureFrameUs: event.max_capture_frame_us,
+        gatedFrames: event.gated_frames,
+        clippedSamples: event.clipped_samples,
+        inputDb: event.input_db,
+        outputPeak: event.output_peak,
+      })
       return
     }
 
@@ -1469,6 +1672,16 @@ function spawnMediaEngineHelper(
         '[media-engine-helper] track published',
         event,
       )
+      logNativeMediaDebugAgent({
+        hypothesis: 'H1-screen-start-lifecycle,H3-remote-decode-lag',
+        event: 'native-track-published',
+        sessionKind: publishedSession?.startOptions.kind ?? 'unknown',
+        trackKind: event.kind,
+        audioMode: event.audio_mode,
+        elapsedMs: publishedSession
+          ? Date.now() - publishedSession.debugStartedAtMs
+          : undefined,
+      })
       return
     }
 
@@ -1502,6 +1715,20 @@ function spawnMediaEngineHelper(
         }
       }
       console.info('[media-engine-helper] screen audio diagnostics', event)
+      logNativeMediaDebugAgent({
+        hypothesis: 'H4-audio-frame-gaps',
+        event: 'native-screen-audio-frame',
+        elapsedMs: audioSession
+          ? Date.now() - audioSession.debugStartedAtMs
+          : undefined,
+        frames: event.frames,
+        packets: event.packets,
+        sampleRate: event.sample_rate,
+        channels: event.channels,
+        audioMode: event.audio_mode,
+        peakDb: event.peak_db,
+        rmsDb: event.rms_db,
+      })
       return
     }
 
@@ -1533,6 +1760,29 @@ function spawnMediaEngineHelper(
         }
       }
       console.info('[media-engine-helper] screen video diagnostics', event)
+      logNativeMediaDebugAgent({
+        hypothesis: 'H2-bitrate-ramp,H3-remote-decode-lag',
+        event: 'native-screen-video-frame',
+        elapsedMs: videoSession
+          ? Date.now() - videoSession.debugStartedAtMs
+          : undefined,
+        frames: event.frames,
+        intervalFrames: event.interval_frames,
+        targetFps: event.target_fps,
+        lateFrames: event.late_frames,
+        noFrameCount: event.no_frame_count,
+        repeatedFrameCount: event.repeated_frame_count,
+        recoverableLostCount: event.recoverable_lost_count,
+        avgCaptureUs: event.avg_capture_us,
+        avgReadbackUs: event.avg_readback_us,
+        avgScaleUs: event.avg_scale_us,
+        avgPublishUs: event.avg_publish_us,
+        sourceWidth: event.source_width,
+        sourceHeight: event.source_height,
+        contentWidth: event.content_width,
+        contentHeight: event.content_height,
+        captureThreadMmcss: event.capture_thread_mmcss,
+      })
       return
     }
 
@@ -1882,18 +2132,32 @@ function rejectPendingStop(sessionId: string, error: Error) {
 }
 
 async function waitForMediaEngineSessionStopped(sessionId: string) {
-  return new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      pendingStopResolvers.delete(sessionId)
-      reject(new Error('Native media engine stop timed out'))
-    }, NATIVE_MEDIA_STOP_TIMEOUT_MS)
+  const existing = pendingStopResolvers.get(sessionId)
+  if (existing) return existing.wait
 
-    pendingStopResolvers.set(sessionId, {
-      resolve,
-      reject,
-      timeout,
-    })
+  let resolveStop!: () => void
+  let rejectStop!: (error: Error) => void
+  const wait = new Promise<void>((resolve, reject) => {
+    resolveStop = resolve
+    rejectStop = reject
   })
+  const timeout = setTimeout(() => {
+    pendingStopResolvers.delete(sessionId)
+    logNativeMediaDebugAgent({
+      hypothesis: 'H4-native-stop-timeout',
+      event: 'native-stop-timeout-force-kill',
+    })
+    stopMediaEngineSession(sessionId, true)
+    rejectStop(new Error('Native media engine stop timed out'))
+  }, NATIVE_MEDIA_STOP_TIMEOUT_MS)
+
+  pendingStopResolvers.set(sessionId, {
+    resolve: resolveStop,
+    reject: rejectStop,
+    timeout,
+    wait,
+  })
+  return wait
 }
 
 async function prepareNativeScreenSession(
@@ -2015,12 +2279,37 @@ async function startNativeMediaSession(
   }
 
   getWindowRef = getWindow
+  assertMediaStartRequestCurrent(options)
+  const debugStartRequestedAtMs = Date.now()
+  logNativeMediaDebugAgent({
+    hypothesis: 'H1-screen-start-lifecycle,H4-audio-frame-gaps',
+    event: 'native-start-requested',
+    kind: options.kind,
+    width: options.kind === 'screen' ? options.width : undefined,
+    height: options.kind === 'screen' ? options.height : undefined,
+    fps: options.kind === 'screen' ? options.fps : undefined,
+    bitrate: options.kind === 'screen' ? options.bitrate : undefined,
+    audioRequested:
+      options.kind === 'screen' ? options.audio?.requested : true,
+  })
+
+  if (options.kind === 'microphone') {
+    stopActiveMicrophoneSessions()
+  }
 
   const sessionId = crypto.randomUUID()
   const preparedScreenHelper =
     options.kind === 'screen'
       ? await takePreconnectedScreenHelper(options.livekit)
       : null
+  logNativeMediaDebugAgent({
+    hypothesis: 'H1-screen-start-lifecycle',
+    event: 'native-helper-selected',
+    kind: options.kind,
+    elapsedMs: Date.now() - debugStartRequestedAtMs,
+    usedPreconnectedHelper: Boolean(preparedScreenHelper),
+  })
+  assertMediaStartRequestCurrent(options)
   const helper = spawnMediaEngineHelper(
     options.kind,
     sessionId,
@@ -2028,6 +2317,7 @@ async function startNativeMediaSession(
   )
   const session: ActiveMediaEngineSession = {
     sessionId,
+    debugStartedAtMs: Date.now(),
     port: undefined,
     width: undefined,
     height: undefined,
@@ -2061,6 +2351,7 @@ async function startNativeMediaSession(
     startOptions: options,
     reconnectAttempts: 0,
     reconnecting: false,
+    stopping: false,
     reader: mediaEngineHelperReaders.get(helper),
   }
   activeSessions.set(sessionId, session)
@@ -2073,6 +2364,12 @@ async function startNativeMediaSession(
     stopMediaEngineSession(sessionId, true)
     throw new Error('Native media helper is not writable')
   }
+  logNativeMediaDebugAgent({
+    hypothesis: 'H1-screen-start-lifecycle',
+    event: 'native-start-command-sent',
+    kind: options.kind,
+    elapsedMs: Date.now() - debugStartRequestedAtMs,
+  })
   let readyEvent: SidecarEvent
   try {
     readyEvent = await readyPromise
@@ -2092,6 +2389,19 @@ async function startNativeMediaSession(
     stopMediaEngineSession(sessionId, true)
     throw new Error('Native media engine failed to start')
   }
+  logNativeMediaDebugAgent({
+    hypothesis: 'H1-screen-start-lifecycle,H4-audio-frame-gaps',
+    event: 'native-ready',
+    kind: options.kind,
+    elapsedMs: Date.now() - debugStartRequestedAtMs,
+    width: readyEvent.width,
+    height: readyEvent.height,
+    fps: readyEvent.fps,
+    bitrate: readyEvent.bitrate,
+    audioMode: readyEvent.audio_mode,
+    hasAudioPort: readyEvent.audio_port != null,
+    encoder: readyEvent.encoder,
+  })
 
   const audioMode = mapAudioMode(readyEvent.audio_mode)
   const audioMetadata = mapReadyAudioMetadata(readyEvent)
@@ -2172,16 +2482,17 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
       if (!isTrustedSender(event, getWindow)) {
         throw new Error('Untrusted media engine prepare request')
       }
-      const prepare = startSessionQueue.then(() =>
+      const prepare = startSessionQueues.screen.then(() =>
         prepareNativeScreenSession(getWindow, options),
       )
-      startSessionQueue = prepare.catch(() => undefined)
+      startSessionQueues.screen = prepare.catch(() => undefined)
       return prepare
     },
   )
 
   ipcMain.handle(IPC.mediaDisconnectPreparedScreenSession, async (event) => {
     if (!isTrustedSender(event, getWindow)) return
+    cancelPendingMediaStarts('screen')
     clearPreconnectedScreenSession(false)
   })
 
@@ -2191,11 +2502,27 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
       if (!isTrustedSender(event, getWindow)) {
         throw new Error('Untrusted media engine start request')
       }
-      const start = startSessionQueue.then(() =>
-        startNativeMediaSession(getWindow, options),
-      )
-      startSessionQueue = start.catch(() => undefined)
+      cancelPendingMediaStarts(options.kind)
+      latestStartRequestIds[options.kind] = options.requestId
+      if (options.kind === 'microphone') {
+        stopActiveMicrophoneSessions()
+      } else {
+        stopActiveScreenSessions()
+      }
+      const start = startSessionQueues[options.kind].then(() => {
+        assertMediaStartRequestCurrent(options)
+        return startNativeMediaSession(getWindow, options)
+      })
+      startSessionQueues[options.kind] = start.catch(() => undefined)
       return start
+    },
+  )
+
+  ipcMain.handle(
+    IPC.mediaCancelPendingStarts,
+    async (event, kind?: NativeMediaSessionKind) => {
+      if (!isTrustedSender(event, getWindow)) return
+      cancelPendingMediaStarts(kind)
     },
   )
 

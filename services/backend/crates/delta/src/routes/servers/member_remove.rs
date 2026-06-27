@@ -3,8 +3,8 @@ use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{
-        get_user_voice_channel_in_server, remove_user_from_voice_channel, UserVoiceChannel,
-        VoiceClient,
+        cancel_current_pending_voice_join_in_server, get_user_voice_channel_in_server,
+        remove_user_from_voice_channel, UserVoiceChannel, VoiceClient,
     },
     Database, RemovalIntention, User,
 };
@@ -60,6 +60,7 @@ pub async fn kick(
         )
         .await?;
     };
+    cancel_current_pending_voice_join_in_server(voice_client, member_id.id, &server.id).await?;
 
     Ok(EmptyResponse)
 }

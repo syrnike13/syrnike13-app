@@ -108,7 +108,10 @@ impl AbstractBadges for MongoDb {
             .map_err(|_| create_database_error!("delete_one", USER_BADGES_COL))
     }
 
-    async fn fetch_user_badge_assignments(&self, user_id: &str) -> Result<Vec<UserBadgeAssignment>> {
+    async fn fetch_user_badge_assignments(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<UserBadgeAssignment>> {
         Ok(self
             .col::<UserBadgeAssignment>(USER_BADGES_COL)
             .find(doc! {

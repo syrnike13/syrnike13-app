@@ -4,8 +4,8 @@ pub use rocket::response::Redirect;
 use rocket::{Build, Rocket};
 use syrnike_config::Settings;
 
-mod auth_account;
 mod admin;
+mod auth_account;
 mod bots;
 mod channels;
 mod customisation;

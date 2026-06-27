@@ -244,7 +244,6 @@ export function ChannelSidebarItem({
 
     const action = resolveVoiceChannelClickAction({
       clickedChannelId: channel._id,
-      currentRouteChannelId: activeChannelId,
       voiceChannelId: voice.channelId,
       voiceStatus: voice.status,
     })
@@ -256,13 +255,13 @@ export function ChannelSidebarItem({
       return
     }
 
-    void navigate({
-      to: channelRoute,
-      params: { channelId: channel._id },
-      search: { m: undefined },
-    })
-
-    if (action === 'join-and-open') {
+    if (action === 'open') {
+      void navigate({
+        to: channelRoute,
+        params: { channelId: channel._id },
+        search: { m: undefined },
+      })
+    } else {
       void voice.join(channel._id)
     }
   }

@@ -2,7 +2,9 @@ import type { LocalParticipant, Room } from 'livekit-client'
 import { toast } from 'sonner'
 
 import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
+import type { ScreenShareCaptureLimits } from '#/features/voice/voice-capture'
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
+import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
 import type { NativeMicrophoneLiveKitCredentials } from '#/features/voice/native-microphone-publish'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
@@ -19,14 +21,12 @@ export type NativeScreenShareSession = {
 function nativeScreenShareBitrateFloor(quality: ScreenShareQualityName) {
   switch (quality) {
     case 'high60':
-      return 16_000_000
     case 'high':
-      return 10_000_000
     case 'text':
-      return 6_000_000
+      return 8_000_000
     case 'low':
     default:
-      return 5_000_000
+      return 2_500_000
   }
 }
 
@@ -34,12 +34,14 @@ export async function publishNativeScreenShare(
   _room: Room,
   _participant: LocalParticipant,
   sourceId: string,
+  requestId: string,
   quality: ScreenShareQualityName,
   withAudio: boolean,
   audioBitrateKbps: number,
   onSidecarLost: ((message: string) => void) | undefined,
   onEnded: (() => void) | undefined,
   livekit: NativeMicrophoneLiveKitCredentials,
+  limits?: ScreenShareCaptureLimits,
 ): Promise<NativeScreenShareSession> {
   const desktop = getSyrnikeDesktop()
   if (!desktop) {
@@ -49,19 +51,24 @@ export async function publishNativeScreenShare(
     throw new Error('LiveKit credentials are required for native screen share')
   }
 
-  const capture = screenShareCaptureOptions(quality)
+  const capture = screenShareCaptureOptions(quality, limits)
   const encoding = capture.publish.screenShareEncoding
+  const resolutionPixels = capture.capture.resolution.width * capture.capture.resolution.height
+  const nativeBitrateFloor = Math.round(
+    nativeScreenShareBitrateFloor(quality) *
+      Math.min(1, resolutionPixels / (1920 * 1080)),
+  )
+  const maxBitrate = encoding?.maxBitrate
+  const bitrate = maxBitrate ?? nativeBitrateFloor
 
   const session = await desktop.media.startSession({
     kind: 'screen',
+    requestId,
     sourceId,
     width: capture.capture.resolution.width,
     height: capture.capture.resolution.height,
     fps: capture.capture.resolution.frameRate ?? 30,
-    bitrate: Math.max(
-      encoding?.maxBitrate ?? 0,
-      nativeScreenShareBitrateFloor(quality),
-    ),
+    bitrate,
     audioBitrate: clampVoiceChannelAudioBitrateKbps(audioBitrateKbps) * 1000,
     audio: {
       requested: withAudio,
@@ -82,9 +89,23 @@ export async function publishNativeScreenShare(
     nativeMediaEngineStatsStore.reset()
   }
 
-  const completeStopped = (stopNativeSession: boolean) => {
+  const completeStopped = (
+    reason: 'stop-requested' | 'stream-ended' | 'stream-error' | 'sidecar-lost',
+    stopNativeSession: boolean,
+  ) => {
     if (stopped) return Promise.resolve()
     stopped = true
+    logVoiceDebugAgent({
+      hypothesis: 'H3-stage-native-screen-loss,H4-native-stop-timeout',
+      event: 'native-screen-session-stopping',
+      reason,
+      stopNativeSession,
+      hadAudio: Boolean(session.audio),
+      width: session.width,
+      height: session.height,
+      fps: session.fps,
+      bitrate: session.bitrate,
+    })
     cleanup()
     if (!stopNativeSession) {
       onEnded?.()
@@ -134,7 +155,7 @@ export async function publishNativeScreenShare(
   const unsubscribeStreamEnded = desktop.media.onStreamEnded?.((sessionId) => {
     if (stopped) return
     if (sessionId !== session.sessionId) return
-    void completeStopped(false)
+    void completeStopped('stream-ended', false)
   })
   if (unsubscribeStreamEnded) subscriptions.push(unsubscribeStreamEnded)
 
@@ -142,7 +163,7 @@ export async function publishNativeScreenShare(
     if (stopped) return
     if (event.sessionId !== session.sessionId) return
     onSidecarLost?.(event.message)
-    void completeStopped(false)
+    void completeStopped('stream-error', false)
   })
   if (unsubscribeStreamError) subscriptions.push(unsubscribeStreamError)
 
@@ -150,7 +171,7 @@ export async function publishNativeScreenShare(
     if (stopped) return
     if (event.sessionId !== session.sessionId) return
     onSidecarLost?.(event.message)
-    void completeStopped(false)
+    void completeStopped('sidecar-lost', false)
   })
   if (unsubscribeSidecarLost) subscriptions.push(unsubscribeSidecarLost)
 
@@ -160,6 +181,6 @@ export async function publishNativeScreenShare(
 
   return {
     nativeParticipantIdentity: session.nativeParticipantIdentity,
-    stop: () => completeStopped(true),
+    stop: () => completeStopped('stop-requested', true),
   }
 }

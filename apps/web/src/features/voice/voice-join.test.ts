@@ -60,15 +60,15 @@ beforeEach(() => {
     url: 'wss://livekit.example',
     native_microphone: {
       token: 'mic-token',
-      identity: 'user-1:desktop-native:microphone',
+      identity: 'user-1:desktop-native:op-join:microphone',
     },
     native_screen: {
       token: 'screen-token',
-      identity: 'user-1:desktop-native:screen',
+      identity: 'user-1:desktop-native:op-join:screen',
     },
     native_camera: {
       token: 'camera-token',
-      identity: 'user-1:desktop-native:camera',
+      identity: 'user-1:desktop-native:op-join:camera',
     },
   })
 })
@@ -214,6 +214,42 @@ describe('createVoiceJoinRunner', () => {
     await expect(runner('channel-repeat')).resolves.toBe(true)
 
     expect(requestVoiceJoin).toHaveBeenCalledTimes(2)
+  })
+
+  it('blocks a failed manual voice retry for only 500ms', async () => {
+    const baseNow = Date.now() + 100_000
+    const now = vi.spyOn(Date, 'now').mockReturnValue(baseNow)
+    vi.mocked(requestVoiceJoin).mockRejectedValueOnce(new Error('rtc failed'))
+    const setJoinBlockedUntil = vi.fn()
+    const runner = createVoiceJoinRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      setJoinBlockedUntil,
+      getActiveSession: () => null,
+      requestJoinOperation: vi.fn(() => 'op-join'),
+      handleServerPrepareSucceeded: vi.fn(),
+      handleRoomConnected: vi.fn(),
+      handleRoomConnectFailed: vi.fn(),
+      beginConnecting: vi.fn(),
+      setActiveRoom: vi.fn(),
+      disconnectReplacedRoom: vi.fn(),
+      restorePreviousSession: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      onRoomConnected: vi.fn(),
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    try {
+      await expect(runner('channel-1')).resolves.toBe(false)
+
+      expect(setJoinBlockedUntil).toHaveBeenCalledWith(baseNow + 500)
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('keeps the current voice session alive until the replacement room connects', async () => {
@@ -401,15 +437,15 @@ describe('nativeCredentialsFromJoinResponse', () => {
       url: 'wss://livekit.example',
       native_microphone: {
         token: 'mic-token',
-        identity: 'user-1:desktop-native:microphone',
+        identity: 'user-1:desktop-native:op-join:microphone',
       },
       native_screen: {
         token: 'screen-token',
-        identity: 'user-1:desktop-native:screen',
+        identity: 'user-1:desktop-native:op-join:screen',
       },
       native_camera: {
         token: 'camera-token',
-        identity: 'user-1:desktop-native:camera',
+        identity: 'user-1:desktop-native:op-join:camera',
       },
     }
 
@@ -417,17 +453,17 @@ describe('nativeCredentialsFromJoinResponse', () => {
       microphone: {
         url: 'wss://livekit.example',
         token: 'mic-token',
-        participantIdentity: 'user-1:desktop-native:microphone',
+        participantIdentity: 'user-1:desktop-native:op-join:microphone',
       },
       screen: {
         url: 'wss://livekit.example',
         token: 'screen-token',
-        participantIdentity: 'user-1:desktop-native:screen',
+        participantIdentity: 'user-1:desktop-native:op-join:screen',
       },
       camera: {
         url: 'wss://livekit.example',
         token: 'camera-token',
-        participantIdentity: 'user-1:desktop-native:camera',
+        participantIdentity: 'user-1:desktop-native:op-join:camera',
       },
     })
   })

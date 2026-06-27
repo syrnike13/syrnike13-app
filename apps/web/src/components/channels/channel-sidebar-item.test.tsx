@@ -158,7 +158,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     })
   })
 
-  it('opens the voice channel while starting a new voice session', () => {
+  it('joins the voice channel without opening the voice screen', () => {
     mocks.voice.channelId = null
     mocks.voice.status = 'idle'
     renderVoiceItem('text-general')
@@ -166,11 +166,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     fireEvent.click(screen.getByRole('link', { name: 'main' }))
 
     expect(mocks.join).toHaveBeenCalledWith('voice-main')
-    expect(mocks.navigate).toHaveBeenCalledWith({
-      to: '/app/c/$channelId',
-      params: { channelId: 'voice-main' },
-      search: { m: undefined },
-    })
+    expect(mocks.navigate).not.toHaveBeenCalled()
   })
 
   it('opens mobile voice drawer instead of navigating on mobile route', () => {

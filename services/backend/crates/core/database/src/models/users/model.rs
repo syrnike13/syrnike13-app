@@ -913,7 +913,6 @@ impl User {
         )
         .await
     }
-
 }
 
 #[cfg(test)]

@@ -39,7 +39,7 @@ describe('native screen share publish', () => {
       width: 1920,
       height: 1038,
       fps: 60,
-      bitrate: 16_000_000,
+      bitrate: 8_000_000,
       audio: {
         mode: 'process',
         loopbackMode: 'include_target_process_tree',
@@ -73,6 +73,7 @@ describe('native screen share publish', () => {
       {} as never,
       participant as never,
       'game:1234',
+      'screen-request-1',
       'high60',
       true,
       48,
@@ -88,13 +89,14 @@ describe('native screen share publish', () => {
     expect(startSession).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'screen',
+        requestId: 'screen-request-1',
         sourceId: 'game:1234',
         width: 1920,
         height: 1080,
         fps: 60,
         audio: { requested: true },
         audioBitrate: 48_000,
-        bitrate: 16_000_000,
+        bitrate: 8_000_000,
         livekit: {
           url: 'wss://livekit.example',
           token: 'native-screen-token',
@@ -133,7 +135,7 @@ describe('native screen share publish', () => {
       width: 1920,
       height: 1038,
       fps: 60,
-      bitrate: 16_000_000,
+      bitrate: 8_000_000,
       publishedVideo: true,
       publishedAudio: true,
       audioFrames: 96_000,
@@ -161,14 +163,66 @@ describe('native screen share publish', () => {
         {} as never,
         {} as never,
         'screen:1',
+        'screen-request-1',
         'high',
         false,
         64,
         undefined,
         undefined,
-        undefined as unknown as Parameters<typeof publishNativeScreenShare>[8],
+        undefined as unknown as Parameters<typeof publishNativeScreenShare>[9],
       ),
     ).rejects.toThrow('LiveKit credentials are required')
+  })
+
+  it('does not exceed server bitrate limits with the native startup bitrate floor', async () => {
+    const startSession = vi.fn(async () => ({
+      kind: 'screen',
+      sessionId: 'native-screen-1',
+      encoder: 'media_foundation',
+      width: 1920,
+      height: 1080,
+      fps: 60,
+      bitrate: 4_000_000,
+      nativeParticipantIdentity: 'user-1:desktop-native:op-join:screen',
+    }))
+
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startSession,
+        stopSession: vi.fn(async () => {}),
+        onStats: vi.fn(() => vi.fn()),
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    await publishNativeScreenShare(
+      {} as never,
+      {} as never,
+      'screen:1',
+      'screen-request-1',
+      'high60',
+      false,
+      48,
+      undefined,
+      undefined,
+      {
+        url: 'wss://livekit.example',
+        token: 'native-screen-token',
+        participantIdentity: 'user-1:desktop-native:op-join:screen',
+      },
+      {
+        maxWidth: 1920,
+        maxHeight: 1080,
+        maxPixels: 1920 * 1080,
+        maxBitrate: 4_000_000,
+      },
+    )
+
+    expect(startSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bitrate: 4_000_000,
+      }),
+    )
   })
 
   it('cleans up once when the native screen capture ends externally', async () => {
@@ -221,6 +275,7 @@ describe('native screen share publish', () => {
       {} as never,
       {} as never,
       'window:1234',
+      'screen-request-1',
       'high60',
       false,
       48,
