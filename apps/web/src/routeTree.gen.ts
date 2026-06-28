@@ -16,7 +16,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as MIndexRouteImport } from './routes/m/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as AppIndexRouteImport } from './routes/app/index'
-import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as MSettingsRouteImport } from './routes/m/settings'
 import { Route as MProfileRouteImport } from './routes/m/profile'
@@ -71,11 +70,6 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRouteRoute,
-} as any)
-const AdminIndexRoute = AdminIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AdminRouteRoute,
 } as any)
 const VerifyTokenRoute = VerifyTokenRouteImport.update({
   id: '/verify/$token',
@@ -177,7 +171,7 @@ const AppServersServerIdSettingsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRouteRouteWithChildren
+  '/admin': typeof AdminRouteRoute
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
   '/app/friends': typeof AppFriendsRoute
@@ -194,7 +188,6 @@ export interface FileRoutesByFullPath {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
-  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
@@ -206,6 +199,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -220,7 +214,6 @@ export interface FileRoutesByTo {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
-  '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/login': typeof LoginIndexRoute
   '/m': typeof MIndexRoute
@@ -233,7 +226,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRouteRouteWithChildren
+  '/admin': typeof AdminRouteRoute
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
   '/app/friends': typeof AppFriendsRoute
@@ -250,7 +243,6 @@ export interface FileRoutesById {
   '/m/profile': typeof MProfileRoute
   '/m/settings': typeof MSettingsRoute
   '/verify/$token': typeof VerifyTokenRoute
-  '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
@@ -281,7 +273,6 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
-    | '/admin/'
     | '/app/'
     | '/login/'
     | '/m/'
@@ -293,6 +284,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -307,7 +299,6 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
-    | '/admin'
     | '/app'
     | '/login'
     | '/m'
@@ -336,7 +327,6 @@ export interface FileRouteTypes {
     | '/m/profile'
     | '/m/settings'
     | '/verify/$token'
-    | '/admin/'
     | '/app/'
     | '/login/'
     | '/m/'
@@ -349,7 +339,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRouteRoute: typeof AdminRouteRouteWithChildren
+  AdminRouteRoute: typeof AdminRouteRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
   MRouteRoute: typeof MRouteRouteWithChildren
   DesktopOverlayRoute: typeof DesktopOverlayRoute
@@ -413,13 +403,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
-    }
-    '/admin/': {
-      id: '/admin/'
-      path: '/'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AdminIndexRouteImport
-      parentRoute: typeof AdminRouteRoute
     }
     '/verify/$token': {
       id: '/verify/$token'
@@ -557,18 +540,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AdminRouteRouteChildren {
-  AdminIndexRoute: typeof AdminIndexRoute
-}
-
-const AdminRouteRouteChildren: AdminRouteRouteChildren = {
-  AdminIndexRoute: AdminIndexRoute,
-}
-
-const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
-  AdminRouteRouteChildren,
-)
-
 interface AppRouteRouteChildren {
   AppFriendsRoute: typeof AppFriendsRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -626,7 +597,7 @@ const LoginResetRouteWithChildren = LoginResetRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRouteRoute: AdminRouteRouteWithChildren,
+  AdminRouteRoute: AdminRouteRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
   MRouteRoute: MRouteRouteWithChildren,
   DesktopOverlayRoute: DesktopOverlayRoute,
