@@ -20,6 +20,7 @@ export const env = createEnv({
     VITE_APP_VERSION: z.string().min(1).default(APP_VERSION),
     VITE_RELEASE_CHANNEL: z.enum(['stable', 'nightly']).default('stable'),
     VITE_API_URL: url('https://syrnike13.ru/api'),
+    VITE_MEDIA_URL: url('https://syrnike13.ru/autumn'),
     VITE_ADMIN_WEB_URL: url('https://admin.syrnike13.ru'),
   },
   runtimeEnv: import.meta.env,

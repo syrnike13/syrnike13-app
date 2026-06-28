@@ -31,7 +31,6 @@ import { Route as DesktopOverlayRouteImport } from './routes/desktop/overlay'
 import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
-import { Route as AdminBadgesRouteImport } from './routes/admin/badges'
 import { Route as MCChannelIdRouteImport } from './routes/m/c/$channelId'
 import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
 import { Route as AppCChannelIdRouteImport } from './routes/app/c/$channelId'
@@ -148,11 +147,6 @@ const AppFriendsRoute = AppFriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AdminBadgesRoute = AdminBadgesRouteImport.update({
-  id: '/badges',
-  path: '/badges',
-  getParentRoute: () => AdminRouteRoute,
-} as any)
 const MCChannelIdRoute = MCChannelIdRouteImport.update({
   id: '/c/$channelId',
   path: '/c/$channelId',
@@ -186,7 +180,6 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
-  '/admin/badges': typeof AdminBadgesRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -213,7 +206,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin/badges': typeof AdminBadgesRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -244,7 +236,6 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteRouteWithChildren
   '/app': typeof AppRouteRouteWithChildren
   '/m': typeof MRouteRouteWithChildren
-  '/admin/badges': typeof AdminBadgesRoute
   '/app/friends': typeof AppFriendsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/voice-debug': typeof AppVoiceDebugRoute
@@ -276,7 +267,6 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/m'
-    | '/admin/badges'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -303,7 +293,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/admin/badges'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -333,7 +322,6 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/m'
-    | '/admin/badges'
     | '/app/friends'
     | '/app/settings'
     | '/app/voice-debug'
@@ -531,13 +519,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFriendsRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/admin/badges': {
-      id: '/admin/badges'
-      path: '/badges'
-      fullPath: '/admin/badges'
-      preLoaderRoute: typeof AdminBadgesRouteImport
-      parentRoute: typeof AdminRouteRoute
-    }
     '/m/c/$channelId': {
       id: '/m/c/$channelId'
       path: '/c/$channelId'
@@ -577,12 +558,10 @@ declare module '@tanstack/react-router' {
 }
 
 interface AdminRouteRouteChildren {
-  AdminBadgesRoute: typeof AdminBadgesRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
-  AdminBadgesRoute: AdminBadgesRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 

@@ -21,11 +21,13 @@ import {
   UserPlusIcon,
   XIcon,
 } from '#/components/icons'
+import { AdminShell } from '#/components/admin-shell'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { Switch } from '#/components/ui/switch'
 import { Textarea } from '#/components/ui/textarea'
+import { AuthedGate } from '#/features/auth/authed-gate'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   assignAdminUserBadge,
@@ -42,9 +44,19 @@ import { queryKeys } from '#/lib/api/query-keys'
 import { badgeIconUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
-export const Route = createFileRoute('/admin/badges')({
-  component: AdminBadgesPage,
+export const Route = createFileRoute('/badges')({
+  component: BadgesRoute,
 })
+
+function BadgesRoute() {
+  return (
+    <AuthedGate>
+      <AdminShell>
+        <AdminBadgesPage />
+      </AdminShell>
+    </AuthedGate>
+  )
+}
 
 type BadgeFormState = {
   slug: string
@@ -115,7 +127,7 @@ function formToEditPayload(
   }
 }
 
-function AdminBadgesPage() {
+export function AdminBadgesPage() {
   const auth = useAuth()
   const token = auth.session?.token
   const queryClient = useQueryClient()

@@ -7,7 +7,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { config } from '#/lib/config'
 import { cn } from '#/lib/utils'
 
-export function AdminShell() {
+export function AdminShell({ children }: { children?: ReactNode }) {
   const auth = useAuth()
 
   if (!auth.isPrivileged) {
@@ -36,7 +36,7 @@ export function AdminShell() {
           </nav>
         </aside>
         <main className="min-w-0 overflow-y-auto">
-          <Outlet />
+          {children ?? <Outlet />}
         </main>
       </div>
     </div>
