@@ -259,6 +259,13 @@ services:
     restart: always
     env_file: .env.web
 
+  # Admin App
+  admin:
+    image: ghcr.io/syrnike13/app-admin:latest
+    logging: *json-log-rotation
+    restart: always
+    env_file: .env.web
+
 networks:
   edge:
     name: "${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"

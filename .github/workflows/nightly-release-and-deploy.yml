@@ -73,6 +73,36 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/app-web:nightly
             ghcr.io/${{ github.repository_owner }}/app-web:nightly-${{ needs.version.outputs.sha_tag }}
 
+  admin:
+    name: Publish nightly admin image
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/admin/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_APP_TITLE=syrnike13 Admin Nightly
+            VITE_RELEASE_CHANNEL=nightly
+            VITE_API_URL=https://beta.syrnike13.ru/api
+            VITE_MEDIA_URL=https://beta.syrnike13.ru/autumn
+            VITE_ADMIN_WEB_URL=https://admin.beta.syrnike13.ru
+          cache-from: type=gha,scope=admin-nightly
+          cache-to: type=gha,mode=max,scope=admin-nightly
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-admin:nightly
+            ghcr.io/${{ github.repository_owner }}/app-admin:nightly-${{ needs.version.outputs.sha_tag }}
+
   backend-base:
     name: Publish nightly backend base image
     runs-on: ubuntu-latest
@@ -181,13 +211,14 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - web
+      - admin
       - backend-services
       - livekit
     environment: production
     permissions:
       contents: read
       packages: read
-    if: ${{ always() && needs.web.result == 'success' && needs.backend-services.result == 'success' && needs.livekit.result == 'success' && (github.event_name == 'push' || inputs.deploy == true) }}
+    if: ${{ always() && needs.web.result == 'success' && needs.admin.result == 'success' && needs.backend-services.result == 'success' && needs.livekit.result == 'success' && (github.event_name == 'push' || inputs.deploy == true) }}
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}

@@ -87,6 +87,10 @@
 	reverse_proxy http://syrnike13-web-1:5000
 }
 
+admin.{$HOSTNAME} {
+	reverse_proxy http://syrnike13-admin-1:5000
+}
+
 {$NIGHTLY_HOSTNAME:beta.syrnike13.ru} {
 	route /app/serviceWorker.js {
 		header Content-Type "text/javascript; charset=utf-8"
@@ -154,4 +158,8 @@
 	}
 
 	reverse_proxy http://syrnike13-nightly-web:5000
+}
+
+admin.{$NIGHTLY_HOSTNAME:beta.syrnike13.ru} {
+	reverse_proxy http://syrnike13-nightly-admin:5000
 }

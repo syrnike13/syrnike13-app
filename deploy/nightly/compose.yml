@@ -264,6 +264,17 @@ services:
           - syrnike13-nightly-web
     restart: always
 
+  admin:
+    image: ghcr.io/syrnike13/app-admin:nightly
+    logging: *json-log-rotation
+    env_file: .env.web
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-admin
+    restart: always
+
 networks:
   edge:
     name: "${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"
