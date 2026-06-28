@@ -2291,37 +2291,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  const disconnectReplacedVoiceSession = useCallback(
-    async (session: ActiveVoiceSessionSnapshot) => {
-      const operationId =
-        voiceSessionControllerRef.current.getState().activeOperationId
-      if (!operationId) return
-      disconnectNativeMediaForHandoff()
-      pendingReplacedVoiceRoomRef.current = {
-        operationId,
-        room: session.room,
-        channelId: session.channelId,
-        localVoiceReady: session.localVoiceReady,
-      }
-    },
-    [disconnectNativeMediaForHandoff],
-  )
-
-  const disconnectSupersededTargetRoom = useCallback(() => {
-    const source = pendingReplacedVoiceRoomRef.current
-    const targetRoom = roomRef.current
-    if (!source || !targetRoom || targetRoom === source.room) return
-
-    disconnectNativeMediaForHandoff()
-    disconnectIntentRef.current = 'switch'
-    targetRoom.removeAllListeners()
-    void targetRoom.disconnect().catch(() => {})
-    roomRef.current = source.room
-    if (disconnectIntentRef.current === 'switch') {
-      disconnectIntentRef.current = 'none'
-    }
-  }, [disconnectNativeMediaForHandoff])
-
   const finalizePendingVoiceMove = useCallback(
     (operationId: string) => {
       const pending = pendingReplacedVoiceRoomRef.current
@@ -2339,6 +2308,41 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     },
     [],
   )
+
+  const disconnectReplacedVoiceSession = useCallback(
+    async (session: ActiveVoiceSessionSnapshot) => {
+      const controllerState = voiceSessionControllerRef.current.getState()
+      const operationId = controllerState.activeOperationId
+      if (!operationId) return
+
+      disconnectNativeMediaForHandoff()
+      pendingReplacedVoiceRoomRef.current = {
+        operationId,
+        room: session.room,
+        channelId: session.channelId,
+        localVoiceReady: session.localVoiceReady,
+      }
+      if (controllerState.phase === 'connected') {
+        finalizePendingVoiceMove(operationId)
+      }
+    },
+    [disconnectNativeMediaForHandoff, finalizePendingVoiceMove],
+  )
+
+  const disconnectSupersededTargetRoom = useCallback(() => {
+    const source = pendingReplacedVoiceRoomRef.current
+    const targetRoom = roomRef.current
+    if (!source || !targetRoom || targetRoom === source.room) return
+
+    disconnectNativeMediaForHandoff()
+    disconnectIntentRef.current = 'switch'
+    targetRoom.removeAllListeners()
+    void targetRoom.disconnect().catch(() => {})
+    roomRef.current = source.room
+    if (disconnectIntentRef.current === 'switch') {
+      disconnectIntentRef.current = 'none'
+    }
+  }, [disconnectNativeMediaForHandoff])
 
   const restorePreviousVoiceSession = useCallback(
     (
@@ -2684,6 +2688,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         toast.error('Голос недоступен в этом канале')
         return false
       }
+
+      const supersededOperationId =
+        voiceSessionControllerRef.current.getState().activeOperationId
+      rememberCanceledVoiceOperation(supersededOperationId)
 
       voiceTransitionAttemptsRef.current = recordVoiceTransitionAttempt(
         voiceTransitionAttemptsRef.current,

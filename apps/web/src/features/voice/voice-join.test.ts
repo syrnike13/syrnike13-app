@@ -346,6 +346,23 @@ describe('createVoiceJoinRunner', () => {
     )
   })
 
+  it('provider finalizes the old source when move commit arrived before target room connect', () => {
+    const repoRoot = resolve(
+      fileURLToPath(new URL('../../../../..', import.meta.url)),
+    )
+    const providerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+
+    expect(providerSource).toMatch(
+      /const controllerState =[\s\S]*voiceSessionControllerRef\.current\.getState\(\)[\s\S]*const operationId = controllerState\.activeOperationId/,
+    )
+    expect(providerSource).toMatch(
+      /pendingReplacedVoiceRoomRef\.current = \{[\s\S]*operationId,[\s\S]*room: session\.room,[\s\S]*channelId: session\.channelId,[\s\S]*localVoiceReady: session\.localVoiceReady,[\s\S]*\}[\s\S]*if \(controllerState\.phase === 'connected'\) \{[\s\S]*finalizePendingVoiceMove\(operationId\)/,
+    )
+  })
+
   it('provider can cancel a pending move back to the source room without a backend join', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
@@ -400,6 +417,9 @@ describe('createVoiceJoinRunner', () => {
     expect(providerSource).toMatch(/previousVisualChannelId/)
     expect(providerSource).toMatch(/const pendingSource = pendingReplacedVoiceRoomRef\.current/)
     expect(providerSource).toMatch(/controllerState\.previousChannelId/)
+    expect(providerSource).toMatch(
+      /const supersededOperationId =[\s\S]*voiceSessionControllerRef\.current\.getState\(\)\.activeOperationId[\s\S]*rememberCanceledVoiceOperation\(supersededOperationId\)[\s\S]*const promise = performVoiceJoinRef\.current\(targetChannelId\)/,
+    )
   })
 
   it('passes DM recipients to the voice join request', async () => {
