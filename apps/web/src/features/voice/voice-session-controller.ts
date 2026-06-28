@@ -64,6 +64,16 @@ export function createVoiceSessionController(
       return operationId
     },
 
+    restorePreviousSession(channelId: string) {
+      const operationId = createOperation()
+      dispatch({
+        type: 'previous_session_restored',
+        channelId,
+        operationId,
+      })
+      return operationId
+    },
+
     handleServerPrepareSucceeded(operationId: string) {
       dispatch({ type: 'server_prepare_succeeded', operationId })
     },

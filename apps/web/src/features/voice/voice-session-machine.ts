@@ -42,6 +42,7 @@ export type VoiceSessionEvent =
   | { type: 'server_commit_observed'; operationId: string; channelId: string }
   | { type: 'native_publish_succeeded'; operationId: string }
   | { type: 'room_connect_failed'; operationId: string; error: string }
+  | { type: 'previous_session_restored'; channelId: string; operationId: string }
   | {
       type: 'room_disconnected'
       operationId: string
@@ -141,6 +142,22 @@ export function reduceVoiceSession(
         }
       }
       return { ...state, phase: 'failed_retrying', lastError: event.error }
+
+    case 'previous_session_restored':
+      return {
+        ...state,
+        desired: {
+          kind: 'channel',
+          channelId: event.channelId,
+          operationId: event.operationId,
+          reason: 'switch',
+        },
+        phase: 'connected',
+        connectedChannelId: event.channelId,
+        activeOperationId: event.operationId,
+        previousChannelId: null,
+        lastError: null,
+      }
 
     case 'room_disconnected':
       if (!isCurrentOperation(state, event.operationId)) return state

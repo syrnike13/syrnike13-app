@@ -12,14 +12,10 @@ import {
 } from '#/features/voice/voice-gateway'
 import { readVoicePreferences } from '#/features/voice/voice-preference-store'
 import {
-  isRateLimitedError,
   runVoiceRequest,
 } from '#/features/voice/voice-request-gate'
 import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
 import type { VoiceJoinReason } from '#/features/voice/voice-session-machine'
-
-export const VOICE_JOIN_RETRY_COOLDOWN_MS = 500
-const VOICE_JOIN_RATE_LIMIT_COOLDOWN_MS = 60_000
 
 export type VoiceJoinOptions = {
   rejoin?: boolean
@@ -68,7 +64,6 @@ export type VoiceJoinRunnerDeps = {
   getToken: () => string | undefined
   getLocalUserId: () => string | undefined
   isJoinBlocked: () => boolean
-  setJoinBlockedUntil: (timestamp: number) => void
   getActiveSession: () => ActiveVoiceSessionSnapshot | null
   requestJoinOperation: (
     channelId: string,
@@ -77,16 +72,21 @@ export type VoiceJoinRunnerDeps = {
   handleServerPrepareSucceeded: (operationId: string) => void
   handleRoomConnected: (operationId: string) => void
   handleRoomConnectFailed: (operationId: string, error: string) => void
+  isCurrentJoinOperation?: (operationId: string) => boolean
   beginConnecting: (
     channelId: string,
     preview: ReturnType<typeof createConnectingLocalVoiceState>[],
   ) => void
   setActiveRoom: (room: Room) => void
-  disconnectReplacedRoom: (room: Room) => Promise<void>
+  disconnectReplacedSession: (session: ActiveVoiceSessionSnapshot) => Promise<void>
   restorePreviousSession: (
     session: ActiveVoiceSessionSnapshot,
     failedTargetChannelId: string,
   ) => void
+  dropPreviousSession: (
+    session: ActiveVoiceSessionSnapshot,
+    failedTargetChannelId: string,
+  ) => Promise<void>
   attachRoomHandlers: (room: Room) => void
   setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
   setConnectionPhase: (phase: VoiceConnectionPhase) => void
@@ -210,10 +210,13 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       )
       if (!credentials) {
         if (previousSession) {
-          deps.restorePreviousSession(previousSession, targetChannelId)
+          await deps.dropPreviousSession(previousSession, targetChannelId)
         } else if (!options.rejoin) {
           deps.abortJoin()
         }
+        return false
+      }
+      if (deps.isCurrentJoinOperation?.(operationId) === false) {
         return false
       }
       deps.handleServerPrepareSucceeded(operationId)
@@ -225,10 +228,15 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
 
       deps.setConnectionPhase('connecting_rtc')
       await room.connect(url, livekitToken)
+      if (deps.isCurrentJoinOperation?.(operationId) === false) {
+        room.removeAllListeners()
+        await room.disconnect().catch(() => {})
+        return false
+      }
       deps.handleRoomConnected(operationId)
       deps.setActiveRoom(room)
       if (previousSession && previousSession.room !== room) {
-        await deps.disconnectReplacedRoom(previousSession.room)
+        await deps.disconnectReplacedSession(previousSession)
       }
 
       deps.setConnectionPhase('connecting_microphone')
@@ -244,18 +252,12 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
           await room.disconnect().catch(() => {})
         }
         if (previousSession) {
-          deps.restorePreviousSession(previousSession, targetChannelId)
+          await deps.dropPreviousSession(previousSession, targetChannelId)
         } else {
           deps.abortJoin()
         }
         toast.error(voiceJoinErrorMessage(error))
       }
-      deps.setJoinBlockedUntil(
-        Date.now() +
-          (isRateLimitedError(error)
-            ? VOICE_JOIN_RATE_LIMIT_COOLDOWN_MS
-            : VOICE_JOIN_RETRY_COOLDOWN_MS),
-      )
       return false
     }
   }

@@ -193,6 +193,49 @@ describe('voice session machine', () => {
     expect(state.connectedChannelId).toBeNull()
   })
 
+  it('restores the previous channel when a pending move is canceled back to source', () => {
+    let state = createInitialVoiceSessionState()
+
+    state = reduceVoiceSession(state, {
+      type: 'join_requested',
+      channelId: 'voice-a',
+      operationId: 'op-a',
+      reason: 'manual_join',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'server_commit_observed',
+      operationId: 'op-a',
+      channelId: 'voice-a',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'join_requested',
+      channelId: 'voice-b',
+      operationId: 'op-b',
+      reason: 'switch',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'previous_session_restored',
+      channelId: 'voice-a',
+      operationId: 'op-restore-a',
+    })
+    state = reduceVoiceSession(state, {
+      type: 'server_commit_observed',
+      operationId: 'op-b',
+      channelId: 'voice-b',
+    })
+
+    expect(state.desired).toEqual({
+      kind: 'channel',
+      channelId: 'voice-a',
+      operationId: 'op-restore-a',
+      reason: 'switch',
+    })
+    expect(state.phase).toBe('connected')
+    expect(state.connectedChannelId).toBe('voice-a')
+    expect(state.activeOperationId).toBe('op-restore-a')
+    expect(state.previousChannelId).toBeNull()
+  })
+
   it('does not become connected from native publish before server commit', () => {
     let state = createInitialVoiceSessionState()
 

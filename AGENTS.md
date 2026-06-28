@@ -17,6 +17,8 @@
 
 - This repository is `syrnike13/syrnike13-app`.
 - Before non-trivial implementation, check the current branch, remotes, linked issue/PR, and relevant existing issues.
+- `develop` is the nightly integration branch. Pushes to `develop` are expected to trigger the nightly build/deploy workflow.
+- `main` is the production branch. Changes should normally flow from `develop` into `main` when they are ready for production.
 - If the task is tied to an existing issue, use or propose a branch name that includes the issue number, for example `fix/123-short-bug-name` or `feature/123-short-feature-name`.
 - Do not create GitHub issues, branches, PRs, or comments for trivial one-off edits unless asked.
 - For release/deploy work, be explicit about what is local, committed, pushed, and currently deployed.
@@ -76,6 +78,21 @@ Use the narrower package/service command when a task touches only one area.
 - Do not write server passwords, GitHub tokens, S3 credentials, LiveKit secrets, or other secrets into repo files.
 - Production object storage can be external S3 or local MinIO depending on server-local config. Inspect `/opt/syrnike13/Syrnike.toml` and server-local env files on the server before making storage claims.
 
+## Nightly / Develop Context
+
+- Nightly is the fully independent beta environment for the `develop` branch.
+- Nightly web domain: `beta.syrnike13.ru`.
+- Nightly backend API is available under `https://beta.syrnike13.ru/api`.
+- Nightly server deployment lives at `/opt/syrnike13-nightly`.
+- Nightly stack is Docker Compose based, using the `syrnike13-nightly` compose project.
+- The monorepo nightly source of truth is `deploy/nightly/compose.yml`.
+- Nightly uses independent runtime state and service containers from production. Do not point nightly services at production data, secrets, object storage buckets, databases, Redis, RabbitMQ, or LiveKit config unless the user explicitly asks for a temporary diagnostic.
+- Nightly images are tagged as `:nightly` and commit-specific `:nightly-<sha>` images by the nightly workflow.
+- The production Caddy container is the shared public edge for both `syrnike13.ru` and `beta.syrnike13.ru`; route production by stable production container names and nightly by `syrnike13-nightly-*` aliases to avoid Docker DNS collisions.
+- Nightly desktop builds must be independent from production desktop builds: separate app id, product name, protocol, data paths where applicable, and beta API/web URLs.
+- Nightly desktop releases are distributed only through the GitHub prerelease/tag `nightly`. Do not enable desktop auto-update for the nightly channel.
+- The `nightly` GitHub release is mutable: each successful nightly run may replace the `nightly` tag and release assets with the latest `develop` build.
+
 ## Production Checks
 
 Healthy unauthenticated checks:
@@ -83,6 +100,13 @@ Healthy unauthenticated checks:
 ```sh
 curl -k https://syrnike13.ru/api
 curl -k https://syrnike13.ru/api/auth/account/
+```
+
+Healthy nightly unauthenticated checks:
+
+```sh
+curl -k https://beta.syrnike13.ru/api
+curl -k https://beta.syrnike13.ru/api/auth/account/
 ```
 
 Server access:
@@ -100,6 +124,15 @@ docker stats --no-stream
 docker compose logs --tail 200
 ```
 
+Useful nightly server commands:
+
+```sh
+cd /opt/syrnike13-nightly
+docker compose ps
+docker stats --no-stream
+docker compose logs --tail 200
+```
+
 ## Release Safety
 
 - Before changing production compose, make a backup of `/opt/syrnike13/compose.yml`.
@@ -107,6 +140,8 @@ docker compose logs --tail 200
 - Do not run destructive Docker, filesystem, or database commands unless the user explicitly asks.
 - For production investigations, avoid printing secrets from `.env`, `.env.web`, `secrets.env`, `Syrnike.toml`, or `livekit.yml`.
 - For deploy verification, compare the local commit/version, pushed state, GitHub Actions run, server image/container state, and public endpoint behavior before saying production is updated.
+- For nightly deploy verification, compare the pushed `develop` commit, nightly GitHub Actions run, `nightly` release assets, server image/container state, and `https://beta.syrnike13.ru/api` behavior before saying nightly is updated.
+- When changing shared production/nightly edge routing, verify both `https://syrnike13.ru/api` and `https://beta.syrnike13.ru/api`; a fix for one host must not silently route the other host to the wrong backend.
 
 ## Cursor Cloud specific instructions
 

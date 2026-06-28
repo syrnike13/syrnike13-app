@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { syncStore } from '#/features/sync/sync-store'
 import type { GatewayServerEvent } from '#/features/sync/types'
+import {
+  rememberCanceledVoiceOperation,
+  resetLocalVoiceEventGuard,
+  setLocalVoiceEventUserId,
+} from '#/features/voice/voice-local-event-guard'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
@@ -196,6 +201,53 @@ describe('syncStore voice events', () => {
         }),
       },
     })
+  })
+
+  it('ignores local voice join and move events rejected by the local event guard', () => {
+    syncStore.reset()
+    resetLocalVoiceEventGuard()
+    setLocalVoiceEventUserId(USER_ID)
+    rememberCanceledVoiceOperation('op-canceled')
+
+    try {
+      syncStore.handleGatewayEvent({
+        type: 'VoiceChannelJoin',
+        id: CHANNEL_ID,
+        state: {
+          id: USER_ID,
+          joined_at: 2,
+          self_mute: false,
+          self_deaf: false,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: false,
+          version: 1,
+        },
+      })
+      syncStore.handleGatewayEvent({
+        type: 'VoiceChannelMove',
+        user: USER_ID,
+        from: 'old-channel',
+        to: CHANNEL_ID,
+        operation_id: 'op-canceled',
+        state: {
+          id: USER_ID,
+          joined_at: 3,
+          self_mute: false,
+          self_deaf: false,
+          server_muted: false,
+          server_deafened: false,
+          camera: false,
+          screensharing: false,
+          version: 2,
+        },
+      })
+
+      expect(syncStore.getState().voiceParticipants).toEqual({})
+    } finally {
+      resetLocalVoiceEventGuard()
+    }
   })
 
   it('removes stale channel copies when a newer move event arrives', () => {

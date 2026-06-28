@@ -178,6 +178,16 @@ import {
   shouldSubscribeStageScreen,
 } from '#/features/voice/voice-stage-subscription'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
+import {
+  recordVoiceTransitionAttempt,
+  voiceTransitionBlockedUntil,
+} from '#/features/voice/voice-transition-rate-limit'
+import {
+  rememberCanceledVoiceOperation,
+  resetLocalVoiceEventGuard,
+  setLocalVoiceEventUserId,
+  shouldIgnoreVoiceGatewayEvent,
+} from '#/features/voice/voice-local-event-guard'
 import { channelAudioBitrateKbps } from '#/lib/channel-audio-bitrate'
 import { playUiSound } from '#/features/sounds/sound-player'
 import {
@@ -512,7 +522,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const deafenedRef = useRef(false)
   const micPublishingRef = useRef(readVoicePreferences().micEnabled)
   const micIssueRef = useRef<VoiceMicIssue | null>(null)
-  const joinBlockedUntilRef = useRef(0)
+  const voiceTransitionAttemptsRef = useRef<number[]>([])
+  const pendingReplacedVoiceRoomRef = useRef<{
+    operationId: string
+    room: Room
+    channelId: string
+    localVoiceReady: boolean
+  } | null>(null)
   const joinInFlightRef = useRef<{
     channelId: string
     promise: Promise<boolean>
@@ -530,19 +546,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     getToken: () => undefined as string | undefined,
     getLocalUserId: () => undefined as string | undefined,
     isJoinBlocked: () => false,
-    setJoinBlockedUntil: (_timestamp: number) => {},
     getActiveSession: () => null,
     requestJoinOperation: (_channelId: string, _reason) => '',
     handleServerPrepareSucceeded: (_operationId: string) => {},
     handleRoomConnected: (_operationId: string) => {},
     handleRoomConnectFailed: (_operationId: string, _error: string) => {},
+    isCurrentJoinOperation: (_operationId: string) => true,
     beginConnecting: (
       _channelId: string,
       _preview: ReturnType<typeof createConnectingLocalVoiceState>[],
     ) => {},
     setActiveRoom: (_room: Room) => {},
-    disconnectReplacedRoom: async (_room: Room) => {},
+    disconnectReplacedSession: async (_session: ActiveVoiceSessionSnapshot) => {},
     restorePreviousSession: (
+      _session: ActiveVoiceSessionSnapshot,
+      _failedTargetChannelId: string,
+    ) => {},
+    dropPreviousSession: async (
       _session: ActiveVoiceSessionSnapshot,
       _failedTargetChannelId: string,
     ) => {},
@@ -558,8 +578,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       getToken: () => voiceJoinDepsRef.current.getToken(),
       getLocalUserId: () => voiceJoinDepsRef.current.getLocalUserId(),
       isJoinBlocked: () => voiceJoinDepsRef.current.isJoinBlocked(),
-      setJoinBlockedUntil: (timestamp) =>
-        voiceJoinDepsRef.current.setJoinBlockedUntil(timestamp),
       getActiveSession: () => voiceJoinDepsRef.current.getActiveSession(),
       requestJoinOperation: (channelId, reason) =>
         voiceJoinDepsRef.current.requestJoinOperation(channelId, reason),
@@ -569,13 +587,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         voiceJoinDepsRef.current.handleRoomConnected(operationId),
       handleRoomConnectFailed: (operationId, error) =>
         voiceJoinDepsRef.current.handleRoomConnectFailed(operationId, error),
+      isCurrentJoinOperation: (operationId) =>
+        voiceJoinDepsRef.current.isCurrentJoinOperation?.(operationId) ?? true,
       beginConnecting: (channelId, preview) =>
         voiceJoinDepsRef.current.beginConnecting(channelId, preview),
       setActiveRoom: (room) => voiceJoinDepsRef.current.setActiveRoom(room),
-      disconnectReplacedRoom: (room) =>
-        voiceJoinDepsRef.current.disconnectReplacedRoom(room),
+      disconnectReplacedSession: (session) =>
+        voiceJoinDepsRef.current.disconnectReplacedSession(session),
       restorePreviousSession: (session, failedTargetChannelId) =>
         voiceJoinDepsRef.current.restorePreviousSession(
+          session,
+          failedTargetChannelId,
+        ),
+      dropPreviousSession: (session, failedTargetChannelId) =>
+        voiceJoinDepsRef.current.dropPreviousSession(
           session,
           failedTargetChannelId,
         ),
@@ -718,6 +743,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   localVoiceReadyRef.current = localVoiceReady
   deafenedRef.current = deafened
   micPublishingRef.current = micPublishing
+
+  useEffect(() => {
+    resetLocalVoiceEventGuard()
+    setLocalVoiceEventUserId(auth.user?._id)
+    return () => {
+      resetLocalVoiceEventGuard()
+    }
+  }, [auth.user?._id])
 
   const isCurrentVoiceSession = useCallback(
     (room: Room, targetChannelId: string | null) =>
@@ -1244,13 +1277,38 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     resetVoiceState()
   }, [auth.user?._id, cleanupAudio, resetVoiceState])
 
+  const disconnectPendingReplacedVoiceRoom = useCallback(() => {
+    const pendingSource = pendingReplacedVoiceRoomRef.current
+    if (!pendingSource) return null
+
+    pendingReplacedVoiceRoomRef.current = null
+    if (pendingSource.room !== roomRef.current) {
+      pendingSource.room.removeAllListeners()
+      void pendingSource.room.disconnect().catch(() => {})
+    }
+    return pendingSource
+  }, [])
+
   const leaveVoiceSession = useCallback(
     async (intent: Exclude<DisconnectIntent, 'none'> = 'switch') => {
       voiceRejoinRef.current.cancel()
+      if (intent === 'leave') {
+        voiceTransitionAttemptsRef.current = recordVoiceTransitionAttempt(
+          voiceTransitionAttemptsRef.current,
+          Date.now(),
+        )
+      }
+      const activeOperationId =
+        voiceSessionControllerRef.current.getState().activeOperationId
+      rememberCanceledVoiceOperation(activeOperationId)
       const leaveOperationId = voiceSessionControllerRef.current.requestLeave()
+      const pendingSource = disconnectPendingReplacedVoiceRoom()
       const room = roomRef.current
       const leftChannelId = channelIdRef.current
-      const userId = room?.localParticipant.identity ?? auth.user?._id
+      const userId =
+        room?.localParticipant.identity ??
+        pendingSource?.room.localParticipant.identity ??
+        auth.user?._id
 
       if (room) {
         disconnectIntentRef.current = intent
@@ -1272,6 +1330,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       if (leftChannelId && userId) {
         syncStore.removeVoiceParticipant(leftChannelId, userId)
+      }
+      if (pendingSource?.channelId && userId) {
+        syncStore.removeVoiceParticipant(pendingSource.channelId, userId)
       } else if (userId) {
         removeLocalUserFromAllVoiceChannels(userId)
       }
@@ -2230,20 +2291,53 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  const disconnectReplacedVoiceRoom = useCallback(
-    async (room: Room) => {
-      disconnectIntentRef.current = 'switch'
-      room.removeAllListeners()
+  const disconnectReplacedVoiceSession = useCallback(
+    async (session: ActiveVoiceSessionSnapshot) => {
+      const operationId =
+        voiceSessionControllerRef.current.getState().activeOperationId
+      if (!operationId) return
       disconnectNativeMediaForHandoff()
-      await room.disconnect().catch(() => {})
-      if (roomRef.current === room) {
+      pendingReplacedVoiceRoomRef.current = {
+        operationId,
+        room: session.room,
+        channelId: session.channelId,
+        localVoiceReady: session.localVoiceReady,
+      }
+    },
+    [disconnectNativeMediaForHandoff],
+  )
+
+  const disconnectSupersededTargetRoom = useCallback(() => {
+    const source = pendingReplacedVoiceRoomRef.current
+    const targetRoom = roomRef.current
+    if (!source || !targetRoom || targetRoom === source.room) return
+
+    disconnectNativeMediaForHandoff()
+    disconnectIntentRef.current = 'switch'
+    targetRoom.removeAllListeners()
+    void targetRoom.disconnect().catch(() => {})
+    roomRef.current = source.room
+    if (disconnectIntentRef.current === 'switch') {
+      disconnectIntentRef.current = 'none'
+    }
+  }, [disconnectNativeMediaForHandoff])
+
+  const finalizePendingVoiceMove = useCallback(
+    (operationId: string) => {
+      const pending = pendingReplacedVoiceRoomRef.current
+      if (!pending || pending.operationId !== operationId) return
+      disconnectIntentRef.current = 'switch'
+      pending.room.removeAllListeners()
+      void pending.room.disconnect().catch(() => {})
+      if (roomRef.current === pending.room) {
         roomRef.current = null
       }
+      pendingReplacedVoiceRoomRef.current = null
       if (disconnectIntentRef.current === 'switch') {
         disconnectIntentRef.current = 'none'
       }
     },
-    [disconnectNativeMediaForHandoff],
+    [],
   )
 
   const restorePreviousVoiceSession = useCallback(
@@ -2251,6 +2345,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       session: ActiveVoiceSessionSnapshot,
       failedTargetChannelId: string,
     ) => {
+      pendingReplacedVoiceRoomRef.current = null
       const userId = auth.user?._id ?? session.room.localParticipant.identity
       if (userId) {
         syncStore.removeVoiceParticipant(failedTargetChannelId, userId)
@@ -2266,24 +2361,146 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [auth.user?._id, syncRoomParticipants],
   )
 
+  const restorePendingVoiceMoveToSource = useCallback(
+    (targetChannelId: string) => {
+      const pendingSource = pendingReplacedVoiceRoomRef.current
+      const controllerState = voiceSessionControllerRef.current.getState()
+      const source =
+        pendingSource?.channelId === targetChannelId
+          ? pendingSource
+          : !pendingSource &&
+              controllerState.previousChannelId === targetChannelId &&
+              statusRef.current === 'connecting' &&
+              roomRef.current
+            ? {
+                operationId: controllerState.activeOperationId,
+                room: roomRef.current,
+                channelId: targetChannelId,
+                localVoiceReady: true,
+              }
+            : null
+
+      if (!source?.operationId) return false
+
+      rememberCanceledVoiceOperation(source.operationId)
+      disconnectSupersededTargetRoom()
+      pendingReplacedVoiceRoomRef.current = null
+      joinInFlightRef.current = null
+
+      const userId = auth.user?._id ?? source.room.localParticipant.identity
+      const currentVisualChannelId = channelIdRef.current
+      if (
+        userId &&
+        currentVisualChannelId &&
+        currentVisualChannelId !== source.channelId
+      ) {
+        syncStore.removeVoiceParticipant(currentVisualChannelId, userId)
+      }
+
+      voiceSessionControllerRef.current.restorePreviousSession(source.channelId)
+      roomRef.current = source.room
+      setChannelId(source.channelId)
+      statusRef.current = 'connected'
+      setStatus('connected')
+      setConnectionPhase('connected')
+      setLocalVoiceReady(source.localVoiceReady)
+      syncRoomParticipants()
+      return true
+    },
+    [auth.user?._id, disconnectSupersededTargetRoom, syncRoomParticipants],
+  )
+
+  const dropPreviousVoiceSession = useCallback(
+    async (
+      session: ActiveVoiceSessionSnapshot,
+      failedTargetChannelId: string,
+    ) => {
+      const activeOperationId =
+        voiceSessionControllerRef.current.getState().activeOperationId
+      rememberCanceledVoiceOperation(activeOperationId)
+      disconnectPendingReplacedVoiceRoom()
+      const leaveOperationId = voiceSessionControllerRef.current.requestLeave()
+      const userId = auth.user?._id ?? session.room.localParticipant.identity
+      const targetRoom = roomRef.current
+
+      if (targetRoom && targetRoom !== session.room) {
+        disconnectIntentRef.current = 'switch'
+        targetRoom.removeAllListeners()
+        void targetRoom.disconnect().catch(() => {})
+      }
+
+      disconnectIntentRef.current = 'leave'
+      session.room.removeAllListeners()
+      await session.room.disconnect().catch(() => {})
+      if (roomRef.current === session.room || roomRef.current === targetRoom) {
+        roomRef.current = null
+      }
+
+      cleanupAudio()
+      clearSessionVoiceGateThreshold()
+      resetVoiceState()
+      if (auth.gatewayState === 'connected') {
+        requestVoiceLeave()
+      }
+      if (userId) {
+        syncStore.removeVoiceParticipant(failedTargetChannelId, userId)
+        syncStore.removeVoiceParticipant(session.channelId, userId)
+      }
+      voiceSessionControllerRef.current.handleRoomDisconnected({
+        operationId: leaveOperationId,
+        expected: true,
+      })
+      disconnectIntentRef.current = 'none'
+    },
+    [
+      auth.gatewayState,
+      auth.user?._id,
+      cleanupAudio,
+      disconnectPendingReplacedVoiceRoom,
+      resetVoiceState,
+    ],
+  )
+
   useEffect(() => {
     voiceJoinDepsRef.current = {
       getToken: () => auth.session?.token,
       getLocalUserId: () => auth.user?._id,
-      isJoinBlocked: () => Date.now() < joinBlockedUntilRef.current,
-      setJoinBlockedUntil: (timestamp) => {
-        joinBlockedUntilRef.current = timestamp
+      isJoinBlocked: () => {
+        const now = Date.now()
+        return (
+          voiceTransitionBlockedUntil(voiceTransitionAttemptsRef.current, now) >
+          now
+        )
       },
       getActiveSession: () => {
+        const pendingSource = pendingReplacedVoiceRoomRef.current
+        if (pendingSource) {
+          return {
+            room: pendingSource.room,
+            channelId: pendingSource.channelId,
+            localVoiceReady: pendingSource.localVoiceReady,
+          }
+        }
+
         const room = roomRef.current
-        const activeChannelId = channelIdRef.current
-        if (!room || !activeChannelId || statusRef.current !== 'connected') {
+        const controllerState = voiceSessionControllerRef.current.getState()
+        const activeChannelId =
+          statusRef.current === 'connected'
+            ? channelIdRef.current
+            : controllerState.previousChannelId
+        if (
+          !room ||
+          !activeChannelId ||
+          (statusRef.current !== 'connected' &&
+            statusRef.current !== 'connecting')
+        ) {
           return null
         }
         return {
           room,
           channelId: activeChannelId,
-          localVoiceReady,
+          localVoiceReady:
+            statusRef.current === 'connected' ? localVoiceReady : false,
         }
       },
       requestJoinOperation: (channelId, reason) =>
@@ -2299,7 +2516,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           operationId,
           error,
         ),
+      isCurrentJoinOperation: (operationId) =>
+        voiceSessionControllerRef.current.getState().activeOperationId ===
+        operationId,
       beginConnecting: (targetChannelId, preview) => {
+        const previousVisualChannelId = channelIdRef.current
+        const localUserId = auth.user?._id
+        if (
+          localUserId &&
+          previousVisualChannelId &&
+          previousVisualChannelId !== targetChannelId
+        ) {
+          syncStore.removeVoiceParticipant(previousVisualChannelId, localUserId)
+        }
         setStatus('connecting')
         setLocalVoiceReady(false)
         setChannelId(targetChannelId)
@@ -2311,8 +2540,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setActiveRoom: (room) => {
         roomRef.current = room
       },
-      disconnectReplacedRoom: disconnectReplacedVoiceRoom,
+      disconnectReplacedSession: disconnectReplacedVoiceSession,
       restorePreviousSession: restorePreviousVoiceSession,
+      dropPreviousSession: dropPreviousVoiceSession,
       attachRoomHandlers: (room) => attachAudio(room),
       setLiveKitCredentials: (credentials) => {
         liveKitCredentialsRef.current = credentials
@@ -2339,7 +2569,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     attachAudio,
     auth.session?.token,
     auth.user?._id,
-    disconnectReplacedVoiceRoom,
+    disconnectReplacedVoiceSession,
+    dropPreviousVoiceSession,
     finishLocalVoiceSetup,
     localVoiceReady,
     restoreVoicePreferences,
@@ -2381,6 +2612,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = eventsGateway.subscribeEvents((event) => {
+      if (shouldIgnoreVoiceGatewayEvent(event)) return
+
       const controller = voiceSessionControllerRef.current
       const supersede = localVoiceSupersedeFromGatewayEvent(
         event,
@@ -2406,21 +2639,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       if (!operationId) return
 
       controller.handleServerCommitObserved(operationId, commit.channelId)
+      finalizePendingVoiceMove(operationId)
     })
     return () => {
       unsubscribe()
     }
-  }, [auth.user?._id, stopRemoteSupersededVoiceSession])
+  }, [auth.user?._id, finalizePendingVoiceMove, stopRemoteSupersededVoiceSession])
 
   const join = useCallback(
     async (targetChannelId: string) => {
       const token = auth.session?.token
       if (!token) {
         toast.error('Нет сессии')
-        return false
-      }
-
-      if (Date.now() < joinBlockedUntilRef.current) {
         return false
       }
 
@@ -2432,12 +2662,21 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         return true
       }
 
+      if (restorePendingVoiceMoveToSource(targetChannelId)) {
+        return true
+      }
+
+      const now = Date.now()
+      if (
+        voiceTransitionBlockedUntil(voiceTransitionAttemptsRef.current, now) >
+        now
+      ) {
+        return false
+      }
+
       const inFlight = joinInFlightRef.current
       if (inFlight?.channelId === targetChannelId) {
         return await inFlight.promise
-      }
-      if (inFlight) {
-        await inFlight.promise.catch(() => {})
       }
 
       const targetChannel = syncStore.getState().channels[targetChannelId]
@@ -2446,6 +2685,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         return false
       }
 
+      voiceTransitionAttemptsRef.current = recordVoiceTransitionAttempt(
+        voiceTransitionAttemptsRef.current,
+        now,
+      )
+      disconnectSupersededTargetRoom()
       const promise = performVoiceJoinRef.current(targetChannelId)
       joinInFlightRef.current = { channelId: targetChannelId, promise }
       try {
@@ -2456,7 +2700,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [auth.session?.token, channelId, status],
+    [
+      auth.session?.token,
+      channelId,
+      disconnectSupersededTargetRoom,
+      restorePendingVoiceMoveToSource,
+      status,
+    ],
   )
 
   useEffect(() => {

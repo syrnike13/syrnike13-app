@@ -116,6 +116,34 @@ describe('voice session controller', () => {
     })
   })
 
+  it('restores a pending move back to the previous connected channel', () => {
+    const operationIds = ['op-a', 'op-b', 'op-restore-a']
+    const controller = createVoiceSessionController({
+      createOperationId: () => operationIds.shift() ?? 'op-extra',
+    })
+
+    controller.requestJoin('voice-a', { reason: 'manual_join' })
+    controller.handleServerCommitObserved('op-a', 'voice-a')
+    controller.requestJoin('voice-b', { reason: 'switch' })
+    const restoreOperationId = controller.restorePreviousSession('voice-a')
+    controller.handleServerCommitObserved('op-b', 'voice-b')
+
+    expect(restoreOperationId).toBe('op-restore-a')
+    expect(controller.getState()).toMatchObject({
+      desired: {
+        kind: 'channel',
+        channelId: 'voice-a',
+        operationId: 'op-restore-a',
+        reason: 'switch',
+      },
+      phase: 'connected',
+      connectedChannelId: 'voice-a',
+      activeOperationId: 'op-restore-a',
+      previousChannelId: null,
+      lastError: null,
+    })
+  })
+
   it('finalizes controlled provider leaves in the session controller', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
