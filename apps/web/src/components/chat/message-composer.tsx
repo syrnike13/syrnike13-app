@@ -37,7 +37,6 @@ import {
   serverChannelServerId,
 } from '#/lib/channel-voice'
 import {
-  FLOATING_BAR_HEIGHT_CLASS,
   floatingComposerShellClass,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
@@ -476,12 +475,11 @@ export function MessageComposer({
         <div
           ref={composerInputRowRef}
           className={cn(
-            'flex items-center gap-0.5 px-1',
-            floating && FLOATING_BAR_HEIGHT_CLASS,
-            !floating && hasComposerHeader && FLOATING_BAR_HEIGHT_CLASS,
-            !floating && !hasComposerHeader && 'min-h-11 py-1',
-            hasComposerHeader &&
-              'border-t border-foreground/10',
+            'flex items-end gap-0.5 px-1 pb-2',
+            floating && 'min-h-14',
+            !floating && hasComposerHeader && 'min-h-14',
+            !floating && !hasComposerHeader && 'min-h-11',
+            hasComposerHeader && 'border-t border-foreground/10',
           )}
         >
         {!isEditing ? (
@@ -489,7 +487,7 @@ export function MessageComposer({
             className={cn(
               composerIconClass,
               composerIconHoverClass(floating),
-              'cursor-pointer',
+              'mb-1 cursor-pointer',
               (disabled || sending) && 'pointer-events-none',
             )}
             title="Вложение"
@@ -518,7 +516,7 @@ export function MessageComposer({
               ? 'bg-secondary text-secondary-foreground'
               : 'bg-accent text-foreground'
           }
-          className={floating ? 'min-h-0' : 'min-h-9'}
+          className="min-w-0 flex-1"
           editorClassName={
             floating ? 'text-secondary-foreground' : 'text-foreground'
           }
@@ -546,7 +544,7 @@ export function MessageComposer({
           }}
         />
 
-        <div className="flex shrink-0 items-center">
+        <div className="mb-1 flex shrink-0 items-center">
           {!isEditing ? (
             <ComposerEmojiPicker
               serverId={serverId}
