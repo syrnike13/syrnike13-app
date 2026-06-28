@@ -5,6 +5,7 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/react-router'
 
+import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 import { config } from '#/lib/config'
@@ -51,6 +52,7 @@ function RootComponent() {
     <TanstackQueryProvider client={queryClient}>
       <AuthProvider>
         <Outlet />
+        <Toaster richColors closeButton />
       </AuthProvider>
     </TanstackQueryProvider>
   )
