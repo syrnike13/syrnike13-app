@@ -112,6 +112,31 @@ describe('canToggleMemberRole', () => {
       canToggleMemberRole(server, actor, 'user-1', target, peerRole, true),
     ).toBe(false)
   })
+
+  it('lets members toggle lower roles on a target with a higher top role', () => {
+    const lowerRole = makeRole({ _id: 'lower', name: 'Lower', rank: 10 })
+    const server = makeServer({
+      roles: {
+        actor: makeRole({
+          _id: 'actor',
+          name: 'Actor',
+          permissions: { a: ChannelPermission.AssignRoles, d: 0 },
+          rank: 5,
+        }),
+        target: makeRole({ _id: 'target', name: 'Target', rank: 1 }),
+        [lowerRole._id]: lowerRole,
+      },
+    })
+    const actor = makeMember({ roles: ['actor'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'target-1' },
+      roles: ['target'],
+    })
+
+    expect(
+      canToggleMemberRole(server, actor, 'user-1', target, lowerRole, true),
+    ).toBe(true)
+  })
 })
 
 describe('member role edit affordances', () => {
@@ -137,7 +162,7 @@ describe('member role edit affordances', () => {
     expect(canEditAnyMemberRole(server, actor, 'user-1', target)).toBe(true)
   })
 
-  it('does not open role editing for equal-ranked targets', () => {
+  it('opens role editing for equal-ranked targets when a lower role can be toggled', () => {
     const server = makeServer({
       roles: {
         actor: makeRole({
@@ -156,8 +181,8 @@ describe('member role edit affordances', () => {
       roles: ['target'],
     })
 
-    expect(canManageMemberRoles(server, actor, 'user-1', target)).toBe(false)
-    expect(canEditAnyMemberRole(server, actor, 'user-1', target)).toBe(false)
+    expect(canManageMemberRoles(server, actor, 'user-1', target)).toBe(true)
+    expect(canEditAnyMemberRole(server, actor, 'user-1', target)).toBe(true)
   })
 
   it('does not open role editing for the actor themself', () => {

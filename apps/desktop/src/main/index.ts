@@ -12,6 +12,7 @@ import {
 import type { DesktopLocalSettings, DesktopOverlaySettings } from '@syrnike13/platform'
 import type { DesktopTrayVoiceState } from '@syrnike13/platform'
 
+import { installStdioPipeErrorHandlers } from './stdio-pipe-errors'
 import {
   disposeDesktopAutoUpdate,
   initializeDesktopAutoUpdate,
@@ -49,6 +50,8 @@ import {
   TRAY_ICON_ASSET_BY_STATE,
 } from './tray-icon'
 import { DESKTOP_APP_USER_MODEL_ID } from './desktop-app-identity'
+
+installStdioPipeErrorHandlers()
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null

@@ -1,19 +1,24 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsInvitesPanel } from '#/components/servers/server-settings-invites-panel'
 import { syncStore } from '#/features/sync/sync-store'
 import { ChannelPermission } from '#/lib/permissions'
-import { permissionOr } from '#/lib/permission-bits'
 
 const mocks = vi.hoisted(() => ({
   fetchServerInvites: vi.fn(),
-  createChannelInvite: vi.fn(),
   deleteInvite: vi.fn(),
+  serverInviteDialog: vi.fn(),
   writeClipboardText: vi.fn(),
 }))
 
@@ -37,8 +42,6 @@ vi.mock('#/features/api/servers-api', () => ({
 }))
 
 vi.mock('#/features/api/invites-api', () => ({
-  createChannelInvite: (...args: Parameters<typeof mocks.createChannelInvite>) =>
-    mocks.createChannelInvite(...args),
   deleteInvite: (...args: Parameters<typeof mocks.deleteInvite>) =>
     mocks.deleteInvite(...args),
 }))
@@ -46,6 +49,24 @@ vi.mock('#/features/api/invites-api', () => ({
 vi.mock('#/lib/clipboard', () => ({
   writeClipboardText: (...args: Parameters<typeof mocks.writeClipboardText>) =>
     mocks.writeClipboardText(...args),
+}))
+
+vi.mock('#/components/servers/server-invite-dialog', () => ({
+  ServerInviteDialog: (props: {
+    serverId: string
+    open: boolean
+    onOpenChange: (open: boolean) => void
+  }) => {
+    mocks.serverInviteDialog(props)
+    return props.open ? (
+      <div role="dialog">
+        <span>invite dialog for {props.serverId}</span>
+        <button type="button" onClick={() => props.onOpenChange(false)}>
+          Закрыть приглашение
+        </button>
+      </div>
+    ) : null
+  },
 }))
 
 vi.mock('#/components/ui/dialog', () => ({
@@ -94,6 +115,27 @@ describe('ServerSettingsInvitesPanel', () => {
         joined_at: '2024-01-01T00:00:00Z',
       } as never,
     ])
+    syncStore.upsertUsers([
+      {
+        _id: 'user-1',
+        username: 'alice',
+        display_name: 'Alice',
+        relationship: 'User',
+      } as never,
+      {
+        _id: 'friend-1',
+        username: 'bob',
+        display_name: 'Bob',
+        relationship: 'Friend',
+      } as never,
+      {
+        _id: 'bot-1',
+        username: 'bot',
+        display_name: 'Bot',
+        relationship: 'Friend',
+        bot: { owner: 'user-1' },
+      } as never,
+    ])
     mocks.fetchServerInvites.mockResolvedValue([
       {
         type: 'Server',
@@ -110,7 +152,6 @@ describe('ServerSettingsInvitesPanel', () => {
         temporary: false,
       },
     ])
-    mocks.createChannelInvite.mockResolvedValue({ _id: 'new-code' })
     mocks.deleteInvite.mockResolvedValue(undefined)
     mocks.writeClipboardText.mockResolvedValue(undefined)
   })
@@ -161,83 +202,30 @@ describe('ServerSettingsInvitesPanel', () => {
     expect(confirmSpy).not.toHaveBeenCalled()
   })
 
-  it('creates invites in the first channel that grants InviteOthers', async () => {
-    syncStore.upsertServer({
-      _id: 'server-1',
-      name: 'Server',
-      owner: 'owner-1',
-      channels: ['channel-1', 'channel-2'],
-      default_permissions: ChannelPermission.ViewChannel,
-    } as never)
-    syncStore.upsertChannel({
-      _id: 'channel-2',
-      channel_type: 'TextChannel',
-      server: 'server-1',
-      name: 'invites',
-      default_permissions: {
-        a: permissionOr(
-          ChannelPermission.ViewChannel,
-          ChannelPermission.InviteOthers,
-        ),
-        d: 0,
-      },
-    } as never)
+  it('opens the shared invite dialog from a compact settings button', async () => {
+    mocks.fetchServerInvites.mockResolvedValue([])
 
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
-    await screen.findByText('invite-code')
-    fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
+    await screen.findByText('Приглашений пока нет')
+    expect(screen.queryByText('Найти друзей')).toBeNull()
+    expect(
+      screen.queryByText('Или отправьте другу ссылку-приглашение на сервер'),
+    ).toBeNull()
 
-    await waitFor(() => {
-      expect(mocks.createChannelInvite).toHaveBeenCalledWith(
-        'session-token',
-        'channel-2',
-        {
-          max_age_seconds: 604800,
-          max_uses: 0,
-          temporary: false,
-        },
-      )
-    })
-  })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Создать приглашение' }),
+    )
 
-  it('creates invites in the selected channel', async () => {
-    syncStore.upsertServer({
-      _id: 'server-1',
-      name: 'Server',
-      owner: 'owner-1',
-      channels: ['channel-1', 'channel-2'],
-      default_permissions: permissionOr(
-        ChannelPermission.ViewChannel,
-        ChannelPermission.InviteOthers,
-      ),
-    } as never)
-    syncStore.upsertChannel({
-      _id: 'channel-2',
-      channel_type: 'TextChannel',
-      server: 'server-1',
-      name: 'rules',
-    } as never)
-
-    renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
-
-    await screen.findByText('invite-code')
-    fireEvent.change(screen.getByLabelText('Канал приглашения'), {
-      target: { value: 'channel-2' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
-
-    await waitFor(() => {
-      expect(mocks.createChannelInvite).toHaveBeenCalledWith(
-        'session-token',
-        'channel-2',
-        {
-          max_age_seconds: 604800,
-          max_uses: 0,
-          temporary: false,
-        },
-      )
-    })
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'invite dialog for server-1',
+    )
+    expect(mocks.serverInviteDialog).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        serverId: 'server-1',
+        open: true,
+      }),
+    )
   })
 
   it('copies an existing invite link', async () => {
@@ -292,7 +280,7 @@ describe('ServerSettingsInvitesPanel', () => {
     expect(screen.getByText(/#rules/)).toBeTruthy()
   })
 
-  it('shows invite creator, creation date, and temporary membership status', async () => {
+  it('shows invite creator and creation date without temporary membership UI', async () => {
     syncStore.upsertUser({
       _id: 'user-1',
       username: 'alice',
@@ -319,7 +307,7 @@ describe('ServerSettingsInvitesPanel', () => {
     renderWithQuery(<ServerSettingsInvitesPanel serverId="server-1" />)
 
     expect(await screen.findByText('temporary-code')).toBeTruthy()
-    expect(screen.getByText('Временное')).toBeTruthy()
+    expect(screen.queryByText('Временное')).toBeNull()
     expect(screen.getByText(/Создал: Alice/)).toBeTruthy()
     expect(screen.getByText(/Создано: .*2026/)).toBeTruthy()
   })

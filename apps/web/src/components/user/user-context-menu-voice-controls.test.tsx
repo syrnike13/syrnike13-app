@@ -264,6 +264,32 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     )
   })
 
+  it('hides server moderation actions without a current voice channel', () => {
+    render(
+      <UserContextMenuVoiceControls
+        userId={TARGET_USER_ID}
+        token="session-token"
+        server={server}
+        actorMember={actorMember}
+        actorUserId={ACTOR_USER_ID}
+        targetMember={makeMember(TARGET_USER_ID, ['member'])}
+        moveVoiceChannels={[makeVoiceChannel('voice-2', 'Raid Room')]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Заглушить голос' })).toBeTruthy()
+    expect(
+      screen.queryByRole('button', { name: 'Отключить микрофон' }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Отключить звук' }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Отключить от голосового канала' }),
+    ).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Raid Room' })).toBeNull()
+  })
+
   it('disconnects a voice participant from the current voice channel', async () => {
     mocks.editServerMember.mockResolvedValue(makeMember(TARGET_USER_ID, ['member']))
 

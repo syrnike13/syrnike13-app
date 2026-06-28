@@ -81,18 +81,18 @@ describe('roleRanksPayload', () => {
   it('keeps the visible role list highest first', () => {
     expect(
       sortRolesByHierarchy([
-        { _id: 'member', rank: 5 },
-        { _id: 'admin', rank: 1 },
-        { _id: 'moderator', rank: 3 },
+        { _id: 'bottom-role', rank: 5 },
+        { _id: 'top-role', rank: 1 },
+        { _id: 'middle-role', rank: 3 },
       ]).map((role) => role._id),
-    ).toEqual(['admin', 'moderator', 'member'])
+    ).toEqual(['top-role', 'middle-role', 'bottom-role'])
   })
 
-  it('reverses highest-first ids into lowest-first ranks', () => {
-    expect(roleRanksPayload(['admin', 'mod', 'default'])).toEqual([
-      'default',
-      'mod',
-      'admin',
+  it('keeps highest-first ids because the backend assigns ranks by array index', () => {
+    expect(roleRanksPayload(['top-role', 'middle-role', 'bottom-role'])).toEqual([
+      'top-role',
+      'middle-role',
+      'bottom-role',
     ])
   })
 })

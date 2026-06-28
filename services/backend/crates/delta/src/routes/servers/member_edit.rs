@@ -165,8 +165,17 @@ pub async fn edit(
     // Resolve our ranking
     let our_ranking = query.get_member_rank().unwrap_or(i64::MIN);
 
-    // Check that we have permissions to act against this member
+    let changes_ranked_member_fields = data.nickname.is_some()
+        || data.remove.contains(&v0::FieldsMember::Nickname)
+        || data.avatar.is_some()
+        || data.remove.contains(&v0::FieldsMember::Avatar)
+        || data.timeout.is_some()
+        || data.remove.contains(&v0::FieldsMember::Timeout);
+
+    // Member-level moderation still needs authority over the target. Role
+    // changes and voice moderation are checked separately by their own rules.
     if member.id.user != user.id
+        && changes_ranked_member_fields
         && member.get_ranking(query.server_ref().as_ref().unwrap()) <= our_ranking
     {
         return Err(create_error!(NotElevated));
@@ -816,6 +825,162 @@ mod test {
 
         assert_eq!(updated.roles, vec![role.id.clone()]);
         assert!(!updated.temporary);
+    }
+
+    #[rocket::async_test]
+    async fn member_can_assign_lower_role_to_equal_ranked_target() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            moderator user 1
+            target user 2
+            server server 4);
+
+        let mut moderator_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Moderator")
+            .expect("moderator role")
+            .clone();
+        moderator_role
+            .update(
+                &context.db,
+                &server.id,
+                PartialRole {
+                    permissions: Some(OverrideField {
+                        a: ChannelPermission::AssignRoles as i64,
+                        d: 0,
+                    }),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("moderator can assign roles");
+
+        let lower_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Lower Rank 1")
+            .expect("lower role")
+            .clone();
+
+        let mut target_member = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("target member fetched");
+        target_member
+            .update(
+                &context.db,
+                syrnike_database::PartialMember {
+                    roles: Some(vec![moderator_role.id.clone()]),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("target promoted");
+
+        let (_, moderator_session) = context.account_from_user(moderator.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, target.id))
+            .header(ContentType::JSON)
+            .body(
+                serde_json::json!({
+                    "roles": [moderator_role.id, lower_role.id]
+                })
+                .to_string(),
+            )
+            .header(Header::new(
+                "x-session-token",
+                moderator_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let updated = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("member fetched");
+
+        assert_eq!(updated.roles, vec![moderator_role.id, lower_role.id]);
+    }
+
+    #[rocket::async_test]
+    async fn member_can_voice_mute_equal_ranked_target() {
+        let context = MemberEditTestContext::new().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            moderator user 1
+            target user 2
+            server server 4);
+
+        let mut moderator_role = server
+            .roles
+            .values()
+            .find(|role| role.name == "Moderator")
+            .expect("moderator role")
+            .clone();
+        moderator_role
+            .update(
+                &context.db,
+                &server.id,
+                PartialRole {
+                    permissions: Some(OverrideField {
+                        a: ChannelPermission::MuteMembers as i64,
+                        d: 0,
+                    }),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("moderator can mute");
+
+        let mut target_member = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("target member fetched");
+        target_member
+            .update(
+                &context.db,
+                syrnike_database::PartialMember {
+                    roles: Some(vec![moderator_role.id.clone()]),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("target promoted");
+
+        let (_, moderator_session) = context.account_from_user(moderator.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, target.id))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "can_publish": false }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                moderator_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::Ok);
+
+        let updated = context
+            .db
+            .fetch_member(&server.id, &target.id)
+            .await
+            .expect("member fetched");
+
+        assert!(!updated.can_publish);
     }
 
     #[rocket::async_test]

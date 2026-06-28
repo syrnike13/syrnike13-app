@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   BanIcon,
+  CheckIcon,
   CopyIcon,
   HeadphonesIcon,
   MessageCircleIcon,
@@ -9,13 +10,16 @@ import {
   UserIcon,
   UserMinusIcon,
 } from '#/components/icons'
-import type { User } from '@syrnike13/api-types'
+import type { Member, Server, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
 } from '#/components/ui/context-menu'
 import {
   Dialog,
@@ -26,13 +30,14 @@ import {
   DialogTitle,
 } from '#/components/ui/dialog'
 import { Button } from '#/components/ui/button'
+import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { FriendshipContextMenuItems } from '#/components/friends/friendship-action'
-import { EditMemberRolesDialog } from '#/components/servers/edit-member-roles-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   banServerMember,
+  editServerMember,
   kickServerMember,
 } from '#/features/api/servers-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
@@ -55,7 +60,10 @@ import {
   canBanServerMember,
   canKickServerMember,
 } from '#/lib/permissions'
-import { canEditAnyMemberRole } from '#/lib/member-roles'
+import { canToggleMemberRole, listServerRoles } from '#/lib/member-roles'
+import { roleIconUrl } from '#/lib/media'
+import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
+import { cn } from '#/lib/utils'
 
 type UserContextMenuContentProps = {
   user: User
@@ -73,6 +81,188 @@ const BAN_DELETE_MESSAGE_PRESETS = [
   { label: '7 дней', seconds: 7 * 24 * 60 * 60 },
 ]
 
+const pendingRoleEditKeys = new Set<string>()
+
+function roleEditKey(serverId: string, userId: string, roleId: string) {
+  return `${serverId}:${userId}:${roleId}`
+}
+
+function UserRolesContextMenuSub({
+  server,
+  actorMember,
+  actorUserId,
+  targetMember,
+  token,
+}: {
+  server: Server
+  actorMember: Member | undefined
+  actorUserId: string | undefined
+  targetMember: Member
+  token: string | undefined
+}) {
+  const roles = useMemo(() => listServerRoles(server), [server])
+  const assignedRoleIds = useMemo(
+    () => new Set(targetMember.roles ?? []),
+    [targetMember.roles],
+  )
+  const visibleRoles = useMemo(
+    () =>
+      roles
+        .map((role) => {
+          const assigned = assignedRoleIds.has(role._id)
+          const canAdd = canToggleMemberRole(
+            server,
+            actorMember,
+            actorUserId,
+            targetMember,
+            role,
+            true,
+          )
+          const canRemove = canToggleMemberRole(
+            server,
+            actorMember,
+            actorUserId,
+            targetMember,
+            role,
+            false,
+          )
+
+          return { role, assigned, canAdd, canRemove }
+        })
+        .filter(({ assigned, canAdd }) => assigned || canAdd),
+    [actorMember, actorUserId, assignedRoleIds, roles, server, targetMember],
+  )
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
+
+  async function toggleRole(roleId: string, enabled: boolean) {
+    if (!token || !actorUserId) return
+
+    const role = server.roles?.[roleId]
+    if (!role) return
+    if (
+      !canToggleMemberRole(
+        server,
+        actorMember,
+        actorUserId,
+        targetMember,
+        role,
+        enabled,
+      )
+    ) {
+      return
+    }
+
+    const nextRoles = enabled
+      ? [...new Set([...(targetMember.roles ?? []), roleId])]
+      : (targetMember.roles ?? []).filter((id) => id !== roleId)
+    const pendingKey = roleEditKey(server._id, targetMember._id.user, roleId)
+    if (pendingRoleEditKeys.has(pendingKey)) return
+
+    pendingRoleEditKeys.add(pendingKey)
+    setSavingRoleId(roleId)
+    try {
+      const updated = await editServerMember(
+        token,
+        server._id,
+        targetMember._id.user,
+        { roles: nextRoles },
+      )
+      syncStore.upsertMembers([updated])
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось обновить роли',
+      )
+    } finally {
+      pendingRoleEditKeys.delete(pendingKey)
+      setSavingRoleId(null)
+    }
+  }
+
+  if (visibleRoles.length === 0) return null
+
+  return (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger className="gap-2 [&>svg:last-child]:hidden">
+        <SettingsIcon />
+        Роли
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent className="max-h-80 w-72 overflow-y-auto">
+        {visibleRoles.map(({ role, assigned, canAdd, canRemove }) => {
+          const pendingKey = roleEditKey(
+            server._id,
+            targetMember._id.user,
+            role._id,
+          )
+          const disabled =
+            savingRoleId === role._id ||
+            pendingRoleEditKeys.has(pendingKey) ||
+            (assigned ? !canRemove : !canAdd)
+          const iconUrl = roleIconUrl(role.icon)
+
+          return (
+            <ContextMenuItem
+              key={role._id}
+              disabled={disabled}
+              className={cn(
+                'grid grid-cols-[1rem_minmax(0,1fr)_1rem] gap-2',
+                assigned &&
+                  disabled &&
+                  'data-[disabled]:bg-accent/45 data-[disabled]:opacity-100',
+              )}
+              onSelect={(event) => {
+                event.preventDefault()
+                if (!disabled) void toggleRole(role._id, !assigned)
+              }}
+            >
+              {iconUrl ? (
+                <FxImage
+                  src={iconUrl}
+                  rounded="full"
+                  wrapperClassName="size-4 shrink-0 self-center"
+                  className="size-4"
+                />
+              ) : (
+                <span className="flex size-4 shrink-0 items-center justify-center">
+                  <span
+                    className="size-2.5 rounded-full bg-muted-foreground"
+                    style={
+                      role.colour
+                        ? { backgroundColor: normalizeRoleColour(role.colour) }
+                        : undefined
+                    }
+                  />
+                </span>
+              )}
+              <span
+                className="min-w-0 truncate"
+                style={roleColourStyle(role.colour)}
+              >
+                {role.name}
+              </span>
+              <span
+                data-role-indicator={
+                  assigned ? (disabled ? 'locked' : 'assigned') : 'available'
+                }
+                className={cn(
+                  'flex size-4 shrink-0 items-center justify-center rounded-[3px] border',
+                  assigned && !disabled
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-transparent',
+                  assigned &&
+                    disabled &&
+                    'border-border bg-muted text-muted-foreground',
+                )}
+              >
+                {assigned ? <CheckIcon className="size-3" /> : null}
+              </span>
+            </ContextMenuItem>
+          )
+        })}
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  )
+}
+
 export function UserContextMenuContent({
   user,
   serverId,
@@ -85,7 +275,6 @@ export function UserContextMenuContent({
   const prefix = useAppRoutePrefix()
   const voice = useVoice()
   const { openSettings } = useSettingsModal()
-  const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
   const [kickDialogOpen, setKickDialogOpen] = useState(false)
   const [kickReason, setKickReason] = useState('')
   const [kicking, setKicking] = useState(false)
@@ -134,12 +323,7 @@ export function UserContextMenuContent({
     canBanServerMember(server, actorMember, auth.user?._id, targetMember)
   const canBlock = !isSelf
   const canDirectMessage = !isSelf && !user.bot
-  const canEditRoles = Boolean(
-    server &&
-      targetMember &&
-      !isSelf &&
-      canEditAnyMemberRole(server, actorMember, auth.user?._id, targetMember),
-  )
+  const showRoles = Boolean(server && targetMember && !isSelf)
 
   const token = auth.session?.token
 
@@ -294,16 +478,14 @@ export function UserContextMenuContent({
           <FriendshipContextMenuItems user={user} />
         </>
       ) : null}
-      {canEditRoles ? (
-        <ContextMenuItem
-          onSelect={(event) => {
-            event.preventDefault()
-            setRolesDialogOpen(true)
-          }}
-        >
-          <SettingsIcon />
-          Роли
-        </ContextMenuItem>
+      {showRoles && server && targetMember ? (
+        <UserRolesContextMenuSub
+          server={server}
+          actorMember={actorMember}
+          actorUserId={auth.user?._id}
+          targetMember={targetMember}
+          token={token}
+        />
       ) : null}
       <ContextMenuItem onSelect={() => void copyUserId()}>
         <CopyIcon />
@@ -351,15 +533,6 @@ export function UserContextMenuContent({
         </>
       ) : null}
       </ContextMenuContent>
-      {server && targetMember ? (
-        <EditMemberRolesDialog
-          server={server}
-          targetMember={targetMember}
-          targetUser={user}
-          open={rolesDialogOpen}
-          onOpenChange={setRolesDialogOpen}
-        />
-      ) : null}
       {canKick ? (
         <Dialog open={kickDialogOpen} onOpenChange={handleKickDialogOpenChange}>
           <DialogContent className="sm:max-w-md">

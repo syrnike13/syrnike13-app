@@ -249,6 +249,72 @@ describe('calculateChannelPermissions', () => {
   })
 })
 
+describe('member moderation hierarchy', () => {
+  it('keeps kick, ban, and timeout locked behind target hierarchy', () => {
+    const server = makeServer({
+      roles: {
+        actor: makeRole({
+          _id: 'actor',
+          name: 'Actor',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.KickMembers,
+                ChannelPermission.BanMembers,
+              ),
+              ChannelPermission.TimeoutMembers,
+            ),
+            d: 0,
+          },
+          rank: 5,
+        }),
+        target: makeRole({ _id: 'target', name: 'Target', rank: 1 }),
+      },
+    })
+    const actor = makeMember({ roles: ['actor'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'target-1' },
+      roles: ['target'],
+    })
+
+    expect(canKickServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canBanServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
+
+  it('allows server voice moderation by permission even when the target role is higher', () => {
+    const server = makeServer({
+      roles: {
+        actor: makeRole({
+          _id: 'actor',
+          name: 'Actor',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.MuteMembers,
+                ChannelPermission.DeafenMembers,
+              ),
+              ChannelPermission.MoveMembers,
+            ),
+            d: 0,
+          },
+          rank: 5,
+        }),
+        target: makeRole({ _id: 'target', name: 'Target', rank: 1 }),
+      },
+    })
+    const actor = makeMember({ roles: ['actor'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'target-1' },
+      roles: ['target'],
+    })
+
+    expect(canMuteServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canDeafenServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canMoveServerMember(server, actor, 'user-1', target)).toBe(true)
+  })
+})
+
 describe('canViewChannel', () => {
   it('hides channels from members without ViewChannel', () => {
     const server = makeServer({

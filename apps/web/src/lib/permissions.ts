@@ -220,6 +220,26 @@ function canModerateServerMember(
   return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
 }
 
+function canVoiceModerateServerMember(
+  server: Server,
+  actorMember: Member | undefined,
+  actorUserId: string | undefined,
+  targetMember: Member | undefined,
+  permission: number,
+): boolean {
+  if (!actorUserId || !targetMember) return false
+  if (actorUserId === targetMember._id.user) return false
+  if (server.owner === actorUserId) return true
+
+  const serverPermissions = calculateServerPermissions(
+    server,
+    actorMember,
+    actorUserId,
+  )
+
+  return hasChannelPermission(serverPermissions, permission)
+}
+
 export function canKickServerMember(
   server: Server,
   actorMember: Member | undefined,
@@ -285,7 +305,7 @@ export function canMuteServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ): boolean {
-  return canModerateServerMember(
+  return canVoiceModerateServerMember(
     server,
     actorMember,
     actorUserId,
@@ -300,7 +320,7 @@ export function canDeafenServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ): boolean {
-  return canModerateServerMember(
+  return canVoiceModerateServerMember(
     server,
     actorMember,
     actorUserId,
@@ -315,7 +335,7 @@ export function canMoveServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ): boolean {
-  return canModerateServerMember(
+  return canVoiceModerateServerMember(
     server,
     actorMember,
     actorUserId,

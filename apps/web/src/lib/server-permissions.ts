@@ -235,5 +235,5 @@ export function sortRolesByHierarchy<T extends { rank?: number | null }>(
 }
 
 export function roleRanksPayload(roleIdsHighestFirst: string[]): string[] {
-  return [...roleIdsHighestFirst].reverse()
+  return roleIdsHighestFirst
 }

@@ -123,32 +123,22 @@ describe('ServerSettingsBansPanel', () => {
     expect(mocks.unbanServerMember).not.toHaveBeenCalled()
   })
 
-  it('bans a user by id with a reason and message deletion window', async () => {
+  it('does not expose manual ban creation from server settings', async () => {
     renderWithQuery(<ServerSettingsBansPanel serverId="server-1" />)
 
     expect(await screen.findByText('bad-user')).toBeTruthy()
 
-    fireEvent.change(screen.getByLabelText('ID пользователя для бана'), {
-      target: { value: 'user-3' },
-    })
-    fireEvent.change(screen.getByLabelText('Причина бана'), {
-      target: { value: 'hit-and-run spam' },
-    })
-    fireEvent.change(screen.getByLabelText('Удалить историю сообщений'), {
-      target: { value: '86400' },
-    })
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Забанить пользователя' }),
-    )
+    expect(screen.queryByLabelText('ID пользователя для бана')).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Забанить пользователя' }),
+    ).toBeNull()
+    expect(mocks.banServerMember).not.toHaveBeenCalled()
+  })
 
-    await waitFor(() => {
-      expect(mocks.banServerMember).toHaveBeenCalledWith(
-        'session-token',
-        'server-1',
-        'user-3',
-        { reason: 'hit-and-run spam', delete_message_seconds: 86400 },
-      )
-    })
+  it('shows the total ban count', async () => {
+    renderWithQuery(<ServerSettingsBansPanel serverId="server-1" />)
+
+    expect(await screen.findByText(/1 забанен/)).toBeTruthy()
   })
 
   it('filters server bans by user, id, and reason', async () => {

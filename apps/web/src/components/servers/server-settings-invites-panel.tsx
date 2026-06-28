@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { DataCreateInvite, Invite } from '@syrnike13/api-types'
-import { CopyIcon } from '#/components/icons'
+import type { Invite } from '@syrnike13/api-types'
+import { CopyIcon, PlusIcon } from '#/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -15,34 +15,18 @@ import {
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchServerInvites } from '#/features/api/servers-api'
-import { createChannelInvite, deleteInvite } from '#/features/api/invites-api'
+import { deleteInvite } from '#/features/api/invites-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { canInviteToChannel } from '#/lib/permissions'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 
 type ServerSettingsInvitesPanelProps = {
   serverId: string
 }
-
-const INVITE_MAX_AGE_OPTIONS = [
-  { label: '1 час', value: '3600' },
-  { label: '1 день', value: '86400' },
-  { label: '7 дней', value: '604800' },
-  { label: 'Без срока', value: '0' },
-]
-
-const INVITE_MAX_USES_OPTIONS = [
-  { label: 'Без лимита', value: '0' },
-  { label: '1', value: '1' },
-  { label: '5', value: '5' },
-  { label: '10', value: '10' },
-  { label: '25', value: '25' },
-  { label: '100', value: '100' },
-]
 
 function formatInviteTimestamp(timestamp: number) {
   return new Intl.DateTimeFormat('ru-RU', {
@@ -78,37 +62,15 @@ export function ServerSettingsInvitesPanel({
 }: ServerSettingsInvitesPanelProps) {
   const auth = useAuth()
   const token = auth.session?.token
-  const server = useSyncStore((s) => s.servers[serverId])
-  const member = useSyncStore((s) =>
-    auth.user?._id ? s.members[`${serverId}:${auth.user._id}`] : undefined,
-  )
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
   )
   const users = useSyncStore((s) => s.users)
-  const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
-  const [maxUses, setMaxUses] = useState('0')
-  const [temporary, setTemporary] = useState(false)
-  const [reason, setReason] = useState('')
-  const [selectedChannelId, setSelectedChannelId] = useState<
-    string | undefined
-  >()
-  const [creating, setCreating] = useState(false)
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [revokingCode, setRevokingCode] = useState<string | null>(null)
   const [revokeReason, setRevokeReason] = useState('')
   const [invitePendingRevocation, setInvitePendingRevocation] =
     useState<string | null>(null)
-  const inviteChannels = server
-    ? channels.filter((channel) =>
-        canInviteToChannel(server, channel, member, auth.user?._id),
-      )
-    : []
-  const defaultChannelId = inviteChannels[0]?._id
-  const activeChannelId =
-    selectedChannelId &&
-    inviteChannels.some((channel) => channel._id === selectedChannelId)
-      ? selectedChannelId
-      : defaultChannelId
 
   const invitesQuery = useQuery({
     queryKey: ['server-invites', serverId],
@@ -116,34 +78,15 @@ export function ServerSettingsInvitesPanel({
     queryFn: () => fetchServerInvites(token!, serverId),
   })
 
-  async function createInvite() {
-    if (!token || !activeChannelId) return
-
-    const body: DataCreateInvite = {
-      max_age_seconds: Number(maxAgeSeconds),
-      max_uses: Number(maxUses),
-      temporary,
-      ...(reason.trim() ? { reason: reason.trim() } : {}),
-    }
-
-    setCreating(true)
-    try {
-      await createChannelInvite(token, activeChannelId, body)
-      setReason('')
-      await invitesQuery.refetch()
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось создать приглашение',
-      )
-    } finally {
-      setCreating(false)
-    }
-  }
+  const invites = invitesQuery.data ?? []
+  const channelNamesById = new Map(
+    channels.map((channel) => [channel._id, channel.name]),
+  )
 
   async function revokeInvite() {
-    if (!token) return
+    if (!token || !invitePendingRevocation) return
+
     const code = invitePendingRevocation
-    if (!code) return
     const body = revokeReason.trim() ? { reason: revokeReason.trim() } : {}
 
     setRevokingCode(code)
@@ -174,99 +117,22 @@ export function ServerSettingsInvitesPanel({
     }
   }
 
-  const invites = invitesQuery.data ?? []
-  const channelNamesById = new Map(
-    channels.map((channel) => [channel._id, channel.name]),
-  )
-
   return (
     <div className="space-y-6">
-      <section className="space-y-4 border-b border-border/60 pb-6">
+      <section className="flex flex-col gap-3 border-b border-border/60 pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-base font-semibold">Приглашения</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Создание и отзыв ссылок приглашения.
+            Управляйте активными ссылками сервера.
           </p>
         </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          {inviteChannels.length > 0 ? (
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="invite-channel">Канал приглашения</Label>
-              <select
-                id="invite-channel"
-                value={activeChannelId ?? ''}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                onChange={(event) => setSelectedChannelId(event.target.value)}
-              >
-                {inviteChannels.map((channel) => (
-                  <option key={channel._id} value={channel._id}>
-                    #{channel.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
-          <div className="space-y-1.5">
-            <Label htmlFor="invite-max-age">Срок</Label>
-            <select
-              id="invite-max-age"
-              value={maxAgeSeconds}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              onChange={(event) => setMaxAgeSeconds(event.target.value)}
-            >
-              {INVITE_MAX_AGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="invite-max-uses">Использований</Label>
-            <select
-              id="invite-max-uses"
-              value={maxUses}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              onChange={(event) => setMaxUses(event.target.value)}
-            >
-              {INVITE_MAX_USES_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={temporary}
-              className="size-4 rounded border-border"
-              onChange={(event) => setTemporary(event.target.checked)}
-            />
-            Временное членство
-          </label>
-
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="invite-reason">Причина</Label>
-            <Input
-              id="invite-reason"
-              value={reason}
-              maxLength={256}
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </div>
-        </div>
-
         <Button
           type="button"
-          disabled={creating || !activeChannelId}
-          onClick={() => void createInvite()}
+          className="w-fit"
+          onClick={() => setInviteDialogOpen(true)}
         >
-          Создать
+          <PlusIcon className="size-4" />
+          Создать приглашение
         </Button>
       </section>
 
@@ -298,6 +164,7 @@ export function ServerSettingsInvitesPanel({
               revoker?.username ||
               invite.revoked_by ||
               'Неизвестно'
+
             return (
               <li
                 key={invite._id}
@@ -311,11 +178,6 @@ export function ServerSettingsInvitesPanel({
                     {inactiveLabel ? (
                       <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                         {inactiveLabel}
-                      </span>
-                    ) : null}
-                    {invite.temporary ? (
-                      <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                        Временное
                       </span>
                     ) : null}
                   </div>
@@ -361,6 +223,7 @@ export function ServerSettingsInvitesPanel({
           })}
         </ul>
       )}
+
       <Dialog
         open={invitePendingRevocation !== null}
         onOpenChange={(open) => {
@@ -412,6 +275,15 @@ export function ServerSettingsInvitesPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ServerInviteDialog
+        serverId={serverId}
+        open={inviteDialogOpen}
+        onOpenChange={(open) => {
+          setInviteDialogOpen(open)
+          if (!open) void invitesQuery.refetch()
+        }}
+      />
     </div>
   )
 }

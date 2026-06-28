@@ -116,17 +116,6 @@ vi.mock('#/features/api/servers-api', () => ({
   ) => mocks.setServerRolePermissions(...args),
 }))
 
-vi.mock('#/components/ui/context-menu', () => ({
-  ContextMenu: ({ children }: { children: ReactNode }) => <>{children}</>,
-  ContextMenuContent: () => null,
-  ContextMenuItem: ({ children }: { children: ReactNode }) => (
-    <button type="button">{children}</button>
-  ),
-  ContextMenuTrigger: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-}))
-
 vi.mock('#/components/ui/popover', () => ({
   Popover: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   PopoverContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -311,7 +300,134 @@ describe('ServerSettingsRolesPanel', () => {
     expect(mocks.editServerRoleRanks).not.toHaveBeenCalled()
   })
 
-  it('shows role hierarchy position and assigned member count in the role list', () => {
+  it('persists role reorders in the visible highest-first order', async () => {
+    const server = syncStore.getState().servers['server-1']!
+    syncStore.upsertServer({
+      ...server,
+      roles: {
+        top: {
+          _id: 'top',
+          name: 'Top',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        },
+        middle: {
+          _id: 'middle',
+          name: 'Middle',
+          permissions: { a: 0, d: 0 },
+          rank: 3,
+        },
+        bottom: {
+          _id: 'bottom',
+          name: 'Bottom',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    } as never)
+    mocks.editServerRoleRanks.mockResolvedValue(
+      syncStore.getState().servers['server-1'],
+    )
+
+    render(<ServerSettingsRolesPanel serverId="server-1" />)
+
+    mocks.dnd.onDragEnd?.({
+      active: { id: 'middle' },
+      over: { id: 'top' },
+    })
+
+    await waitFor(() => {
+      expect(mocks.editServerRoleRanks).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        { ranks: ['middle', 'top', 'bottom'] },
+      )
+    })
+  })
+
+  it('lets the server owner swap the only two roles', async () => {
+    const server = syncStore.getState().servers['server-1']!
+    syncStore.upsertServer({
+      ...server,
+      roles: {
+        upper: {
+          _id: 'upper',
+          name: 'Upper',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        },
+        lower: {
+          _id: 'lower',
+          name: 'Lower',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    } as never)
+    mocks.editServerRoleRanks.mockResolvedValue(
+      syncStore.getState().servers['server-1'],
+    )
+
+    render(<ServerSettingsRolesPanel serverId="server-1" />)
+
+    mocks.dnd.onDragEnd?.({
+      active: { id: 'lower' },
+      over: { id: 'upper' },
+    })
+
+    await waitFor(() => {
+      expect(mocks.editServerRoleRanks).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        { ranks: ['lower', 'upper'] },
+      )
+    })
+  })
+
+  it('does not send another role reorder while a reorder request is pending', () => {
+    const server = syncStore.getState().servers['server-1']!
+    syncStore.upsertServer({
+      ...server,
+      roles: {
+        top: {
+          _id: 'top',
+          name: 'Top',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        },
+        middle: {
+          _id: 'middle',
+          name: 'Middle',
+          permissions: { a: 0, d: 0 },
+          rank: 3,
+        },
+        bottom: {
+          _id: 'bottom',
+          name: 'Bottom',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        },
+      },
+    } as never)
+    mocks.editServerRoleRanks.mockImplementation(
+      () => new Promise(() => {}),
+    )
+
+    render(<ServerSettingsRolesPanel serverId="server-1" />)
+
+    mocks.dnd.onDragEnd?.({
+      active: { id: 'middle' },
+      over: { id: 'top' },
+    })
+    mocks.dnd.onDragEnd?.({
+      active: { id: 'bottom' },
+      over: { id: 'top' },
+    })
+
+    expect(mocks.editServerRoleRanks).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows assigned member count and lets the role row act as the drag target', () => {
     syncStore.upsertMembers([
       {
         _id: { server: 'server-1', user: 'user-2' },
@@ -323,7 +439,8 @@ describe('ServerSettingsRolesPanel', () => {
     render(<ServerSettingsRolesPanel serverId="server-1" />)
 
     const memberRole = screen.getByRole('button', { name: 'Member' })
-    expect(within(memberRole).getByText('Ранг 5')).toBeTruthy()
+    expect(memberRole.className).toContain('cursor-grab')
+    expect(within(memberRole).queryByLabelText('Перетащить роль')).toBeNull()
     expect(within(memberRole).getByText('1 участник')).toBeTruthy()
   })
 })

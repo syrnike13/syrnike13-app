@@ -116,6 +116,7 @@ export function UserContextMenuVoiceControls({
     token &&
       server &&
       targetMember &&
+      voiceChannelId &&
       (canServerMute || canServerDeafen || canServerMove),
   )
 

@@ -12,9 +12,10 @@ import { ChannelPermission } from '#/lib/permissions'
 const navigateMock = vi.hoisted(() => vi.fn())
 const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
 const voiceControlsPropsMock = vi.hoisted(() => vi.fn())
-const editMemberRolesDialogPropsMock = vi.hoisted(() => vi.fn())
+const contextMenuPreventDefaultMock = vi.hoisted(() => vi.fn())
 const serverApiMocks = vi.hoisted(() => ({
   banServerMember: vi.fn(),
+  editServerMember: vi.fn(),
   kickServerMember: vi.fn(),
 }))
 const openDirectMessageChannelMock = vi.hoisted(() =>
@@ -61,6 +62,8 @@ vi.mock('#/features/dm/dm-actions', () => ({
 vi.mock('#/features/api/servers-api', () => ({
   banServerMember: (...args: Parameters<typeof serverApiMocks.banServerMember>) =>
     serverApiMocks.banServerMember(...args),
+  editServerMember: (...args: Parameters<typeof serverApiMocks.editServerMember>) =>
+    serverApiMocks.editServerMember(...args),
   kickServerMember: (...args: Parameters<typeof serverApiMocks.kickServerMember>) =>
     serverApiMocks.kickServerMember(...args),
 }))
@@ -77,13 +80,6 @@ vi.mock('#/components/user/user-context-menu-voice-controls', () => ({
   UserContextMenuVoiceControls: (props: unknown) => {
     voiceControlsPropsMock(props)
     return <div data-testid="voice-controls" />
-  },
-}))
-
-vi.mock('#/components/servers/edit-member-roles-dialog', () => ({
-  EditMemberRolesDialog: (props: { open: boolean }) => {
-    editMemberRolesDialogPropsMock(props)
-    return props.open ? <div data-testid="member-roles-dialog" /> : null
   },
 }))
 
@@ -105,19 +101,44 @@ vi.mock('#/components/ui/context-menu', () => ({
   ),
   ContextMenuItem: ({
     children,
+    className,
+    disabled,
     onSelect,
+    ...props
   }: {
     children: ReactNode
+    className?: string
+    disabled?: boolean
     onSelect?: (event: { preventDefault: () => void }) => void
   }) => (
     <button
       type="button"
-      onClick={() => onSelect?.({ preventDefault: vi.fn() })}
+      className={className}
+      disabled={disabled}
+      onClick={() =>
+        onSelect?.({ preventDefault: contextMenuPreventDefaultMock })
+      }
+      {...props}
     >
       {children}
     </button>
   ),
   ContextMenuSeparator: () => <hr />,
+  ContextMenuSub: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  ContextMenuSubContent: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  ContextMenuSubTrigger: ({
+    children,
+    className,
+  }: {
+    children: ReactNode
+    className?: string
+  }) => (
+    <button type="button" className={className}>
+      {children}
+    </button>
+  ),
 }))
 
 const targetUser = {
@@ -128,11 +149,59 @@ const targetUser = {
   online: true,
 } as User
 
+function seedRoleToggleServer() {
+  syncStore.upsertServer({
+    _id: 'server-1',
+    name: 'Server',
+    owner: 'owner-user',
+    channels: [],
+    default_permissions: 0,
+    roles: {
+      manager: {
+        _id: 'manager',
+        name: 'Manager',
+        permissions: { a: ChannelPermission.AssignRoles, d: 0 },
+        rank: 1,
+      },
+      member: {
+        _id: 'member',
+        name: 'Member',
+        permissions: { a: 0, d: 0 },
+        rank: 5,
+      },
+      assignable: {
+        _id: 'assignable',
+        name: 'Assignable',
+        permissions: { a: 0, d: 0 },
+        rank: 6,
+      },
+    },
+  } as never)
+  syncStore.upsertMembers([
+    {
+      _id: { server: 'server-1', user: 'current-user' },
+      joined_at: '2024-01-01T00:00:00Z',
+      roles: ['manager'],
+    } as never,
+    {
+      _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+      joined_at: '2024-01-01T00:00:00Z',
+      roles: ['member'],
+    } as never,
+  ])
+}
+
 describe('UserContextMenuContent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    contextMenuPreventDefaultMock.mockClear()
     voiceJoinMock.mockResolvedValue(true)
     serverApiMocks.banServerMember.mockResolvedValue(undefined)
+    serverApiMocks.editServerMember.mockResolvedValue({
+      _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+      joined_at: '2024-01-01T00:00:00Z',
+      roles: [],
+    })
     serverApiMocks.kickServerMember.mockResolvedValue(undefined)
     syncStore.reset()
   })
@@ -245,7 +314,115 @@ describe('UserContextMenuContent', () => {
     )
   })
 
-  it('opens member role editing from a server user context menu', () => {
+  it('keeps ordinary voice controls but passes no server voice channel when the target is not in server voice', () => {
+    syncStore.upsertServer({
+      _id: 'server-1',
+      name: 'Server',
+      owner: 'current-user',
+      channels: ['voice-1'],
+      default_permissions: 0,
+      roles: {},
+    } as never)
+    syncStore.upsertChannel({
+      _id: 'voice-1',
+      channel_type: 'TextChannel',
+      server: 'server-1',
+      name: 'Voice',
+      default_permissions: null,
+      voice: { max_users: null },
+    } as never)
+    syncStore.upsertMembers([
+      {
+        _id: { server: 'server-1', user: 'current-user' },
+        joined_at: '2024-01-01T00:00:00Z',
+      } as never,
+      {
+        _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+        joined_at: '2024-01-01T00:00:00Z',
+      } as never,
+    ])
+
+    render(
+      <UserContextMenuContent
+        user={targetUser}
+        serverId="server-1"
+        inVoice
+      />,
+    )
+
+    expect(screen.getByTestId('voice-controls')).toBeTruthy()
+    expect(voiceControlsPropsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voiceChannelId: undefined,
+      }),
+    )
+  })
+
+  it('toggles a member role from the server user context menu', async () => {
+    seedRoleToggleServer()
+
+    render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    expect(contextMenuPreventDefaultMock).toHaveBeenCalled()
+
+    await waitFor(() => {
+      expect(serverApiMocks.editServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        '01JVOICETARGET0000001',
+        { roles: [] },
+      )
+    })
+  })
+
+  it('deduplicates a pending role edit after the context menu is reopened', () => {
+    let resolveEdit: ((member: unknown) => void) | undefined
+    serverApiMocks.editServerMember.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveEdit = resolve
+        }),
+    )
+    seedRoleToggleServer()
+
+    const firstRender = render(
+      <UserContextMenuContent user={targetUser} serverId="server-1" />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+    firstRender.unmount()
+
+    render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
+    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+
+    expect(serverApiMocks.editServerMember).toHaveBeenCalledTimes(1)
+    resolveEdit?.({
+      _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+      joined_at: '2024-01-01T00:00:00Z',
+      roles: [],
+    })
+  })
+
+  it('keeps only the clicked role disabled while a role edit is pending', () => {
+    serverApiMocks.editServerMember.mockImplementation(
+      () => new Promise(() => {}),
+    )
+    seedRoleToggleServer()
+
+    render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Member/ }))
+
+    expect(screen.getByRole('button', { name: /Member/ }).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: /Assignable/ }).disabled).toBe(
+      false,
+    )
+    expect(
+      screen.getByRole('button', { name: /Assignable/ }).className,
+    ).not.toContain('data-[disabled]:bg-accent/45')
+  })
+
+  it('shows only assignable roles and disabled assigned roles in the server user context menu', () => {
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',
@@ -257,11 +434,29 @@ describe('UserContextMenuContent', () => {
           _id: 'manager',
           name: 'Manager',
           permissions: { a: ChannelPermission.AssignRoles, d: 0 },
+          rank: 10,
+        },
+        assignedLocked: {
+          _id: 'assignedLocked',
+          name: 'Assigned Locked',
+          permissions: { a: 0, d: 0 },
           rank: 1,
         },
-        member: {
-          _id: 'member',
-          name: 'Member',
+        assignable: {
+          _id: 'assignable',
+          name: 'Assignable',
+          permissions: { a: 0, d: 0 },
+          rank: 20,
+        },
+        assignedRemovable: {
+          _id: 'assignedRemovable',
+          name: 'Assigned Removable',
+          permissions: { a: 0, d: 0 },
+          rank: 25,
+        },
+        hidden: {
+          _id: 'hidden',
+          name: 'Hidden',
           permissions: { a: 0, d: 0 },
           rank: 5,
         },
@@ -276,25 +471,43 @@ describe('UserContextMenuContent', () => {
       {
         _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
         joined_at: '2024-01-01T00:00:00Z',
-        roles: ['member'],
+        roles: ['assignedLocked', 'assignedRemovable'],
       } as never,
     ])
 
     render(<UserContextMenuContent user={targetUser} serverId="server-1" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Роли' }))
+    const rolesTrigger = screen.getByRole('button', { name: /Роли/ })
+    expect(rolesTrigger.className).toContain('svg:last-child')
+    expect(rolesTrigger.className).toContain('gap-2')
 
-    expect(screen.getByTestId('member-roles-dialog')).toBeTruthy()
-    expect(editMemberRolesDialogPropsMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        server: expect.objectContaining({ _id: 'server-1' }),
-        targetMember: expect.objectContaining({
-          _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
-        }),
-        targetUser,
-        open: true,
-      }),
+    const assignable = screen.getByRole('button', { name: /Assignable/ })
+    expect(assignable.disabled).toBe(false)
+    expect(assignable.className).toContain('grid-cols-[1rem_minmax(0,1fr)_1rem]')
+
+    const assignedRemovable = screen.getByRole('button', {
+      name: /Assigned Removable/,
+    })
+    expect(assignedRemovable.disabled).toBe(false)
+    expect(assignedRemovable.className).not.toContain('bg-accent/60')
+    expect(
+      assignedRemovable.querySelector('[data-role-indicator="assigned"]'),
+    ).toBeTruthy()
+
+    const assignedLocked = screen.getByRole('button', {
+      name: /Assigned Locked/,
+    })
+    expect(assignedLocked).toHaveProperty('disabled', true)
+    expect(
+      assignedLocked.querySelector('[data-role-indicator="locked"]'),
+    ).toBeTruthy()
+    expect(assignedLocked.className).toContain(
+      'data-[disabled]:bg-accent/45',
     )
+    expect(screen.queryByRole('button', { name: /Hidden/ })).toBeNull()
+    expect(
+      screen.queryByRole('button', { pressed: true }),
+    ).toBeNull()
   })
 
   it('confirms a server ban with reason and message deletion window', async () => {
