@@ -175,7 +175,7 @@ export function VoiceStagePopoutButton({
             </button>
           </span>
         </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={8} className="z-[430]">
+        <TooltipContent side="top" sideOffset={8}>
           Стейдж в отдельном окне
         </TooltipContent>
       </Tooltip>
@@ -218,7 +218,7 @@ export function VoiceStageFullscreenButton({
             </button>
           </span>
         </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={8} className="z-[430]">
+        <TooltipContent side="top" sideOffset={8}>
           {label}
         </TooltipContent>
       </Tooltip>

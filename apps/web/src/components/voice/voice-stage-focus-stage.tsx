@@ -157,7 +157,7 @@ export function VoiceStageFocusStage({
                         <UsersIcon className="size-3.5 shrink-0" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="top" sideOffset={8} className="z-[430]">
+                    <TooltipContent side="top" sideOffset={8}>
                       {stripCollapsed ? 'Показать участников' : 'Убрать участников'}
                     </TooltipContent>
                   </Tooltip>

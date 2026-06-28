@@ -46,7 +46,6 @@ export function VoiceStageStreamVolumeControl({
             step={0.1}
             tooltipContent={formatUserVolumeLabel}
             tooltipSide="right"
-            tooltipClassName="z-[430]"
             value={[muted ? 0 : volume]}
             onValueChange={([next]) => {
               if (muted && next > 0) {
