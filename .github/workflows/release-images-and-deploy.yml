@@ -370,6 +370,7 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
+      SYRNIKE_ADMIN_DOMAIN: ${{ vars.SYRNIKE_ADMIN_DOMAIN || 'admin.syrnike13.ru' }}
       SYRNIKE_REVERSE_PROXY: ${{ vars.SYRNIKE_REVERSE_PROXY || 'false' }}
       SYRNIKE_VIDEO_ENABLED: ${{ vars.SYRNIKE_VIDEO_ENABLED || 'true' }}
       DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
@@ -383,6 +384,7 @@ jobs:
           test -n "$DEPLOY_USER"
           test -n "$DEPLOY_PATH"
           test -n "$SYRNIKE_DOMAIN"
+          test -n "$SYRNIKE_ADMIN_DOMAIN"
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -428,8 +430,9 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' && ./scripts/deploy-on-server.sh"
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' && ./scripts/deploy-on-server.sh"
       - name: Verify API
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null

@@ -215,6 +215,7 @@ fi
 
 # set hostname for Caddy and vite variables
 echo "HOSTNAME=$SYRNIKE_HOSTNAME" > .env.web
+echo "ADMIN_HOSTNAME=admin.$DOMAIN" >> .env.web
 echo "SYRNIKE_PUBLIC_URL=https://$DOMAIN/api" >> .env.web
 echo "VITE_API_URL=https://$DOMAIN/api" >> .env.web
 echo "VITE_WS_URL=wss://$DOMAIN/ws" >> .env.web
