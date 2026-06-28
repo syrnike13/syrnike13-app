@@ -85,6 +85,14 @@ function LinuxShellTitleBar({ heightPx }: { heightPx: number }) {
   )
 }
 
+function WebShellTitleBar() {
+  return (
+    <header className="relative flex h-9 shrink-0 items-center bg-background px-2 text-foreground">
+      <ShellHistoryNavButtons />
+    </header>
+  )
+}
+
 const titleBarByOs: Record<
   DesktopOs,
   (props: { heightPx: number }) => ReactElement
@@ -97,7 +105,8 @@ const titleBarByOs: Record<
 export function ShellTitleBar() {
   const { capabilities, desktop } = usePlatform()
 
-  if (!capabilities.customWindowChrome || !desktop) return null
+  if (!desktop) return <WebShellTitleBar />
+  if (!capabilities.customWindowChrome) return null
 
   const os = desktop.platform.os
   const heightPx = getShellTitleBarHeightPx(os)

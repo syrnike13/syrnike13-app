@@ -177,6 +177,7 @@ jobs:
           platforms: linux/amd64
           build-args: |
             VITE_APP_TITLE=syrnike13
+            VITE_RELEASE_CHANNEL=stable
             VITE_API_URL=https://syrnike13.ru/api
             VITE_WS_URL=wss://syrnike13.ru/ws
             VITE_MEDIA_URL=https://syrnike13.ru/autumn

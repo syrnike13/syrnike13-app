@@ -15,6 +15,7 @@ const OUT_DIR = "dist_injected";
 // We build with placeholder values like "__VITE_API_URL__" so they appear in the output.
 const REPLACEMENTS = {
   __VITE_API_URL__: process.env.VITE_API_URL || "",
+  __VITE_RELEASE_CHANNEL__: process.env.VITE_RELEASE_CHANNEL || "",
   __VITE_WS_URL__: process.env.VITE_WS_URL || "",
   __VITE_MEDIA_URL__: process.env.VITE_MEDIA_URL || "",
   __VITE_PROXY_URL__: process.env.VITE_PROXY_URL || "",
