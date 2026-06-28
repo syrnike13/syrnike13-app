@@ -33,6 +33,7 @@ function syncPackageJson(relativePath) {
 function syncGeneratedVersionFiles() {
   const files = [
     ['apps/web/src/version.gen.ts', `export const APP_VERSION = '${version}'\n`],
+    ['apps/admin/src/version.gen.ts', `export const APP_VERSION = '${version}'\n`],
     ['services/backend/VERSION', `${version}\n`],
     ['services/livekit-server/APP_VERSION', `${version}\n`],
   ]
@@ -47,6 +48,7 @@ function syncGeneratedVersionFiles() {
 
 syncPackageJson('package.json')
 syncPackageJson('apps/web/package.json')
+syncPackageJson('apps/admin/package.json')
 syncPackageJson('apps/desktop/package.json')
 syncPackageJson('packages/api-types/package.json')
 syncPackageJson('packages/platform/package.json')
