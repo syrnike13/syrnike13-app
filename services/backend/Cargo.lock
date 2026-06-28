@@ -9057,6 +9057,7 @@ dependencies = [
  "axum-macros",
  "axum_typed_multipart",
  "ffprobe",
+ "httpdate",
  "image",
  "imagesize",
  "infer",
