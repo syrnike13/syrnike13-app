@@ -60,7 +60,7 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru">
+    <html lang="ru" className="dark">
       <head>
         <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
         <HeadContent />

@@ -10,17 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as BadgesRouteImport } from './routes/badges'
+import { Route as AdminRouteRouteImport } from './routes/_admin/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminUsersIndexRouteImport } from './routes/_admin/users/index'
+import { Route as AdminBadgesIndexRouteImport } from './routes/_admin/badges/index'
+import { Route as AdminBadgesNewRouteImport } from './routes/_admin/badges/new'
+import { Route as AdminBadgesBadgeIdRouteImport } from './routes/_admin/badges/$badgeId'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BadgesRoute = BadgesRouteImport.update({
-  id: '/badges',
-  path: '/badges',
+const AdminRouteRoute = AdminRouteRouteImport.update({
+  id: '/_admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -28,34 +31,78 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBadgesIndexRoute = AdminBadgesIndexRouteImport.update({
+  id: '/badges/',
+  path: '/badges/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBadgesNewRoute = AdminBadgesNewRouteImport.update({
+  id: '/badges/new',
+  path: '/badges/new',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminBadgesBadgeIdRoute = AdminBadgesBadgeIdRouteImport.update({
+  id: '/badges/$badgeId',
+  path: '/badges/$badgeId',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/badges': typeof BadgesRoute
   '/login': typeof LoginRoute
+  '/badges/$badgeId': typeof AdminBadgesBadgeIdRoute
+  '/badges/new': typeof AdminBadgesNewRoute
+  '/badges/': typeof AdminBadgesIndexRoute
+  '/users/': typeof AdminUsersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/badges': typeof BadgesRoute
   '/login': typeof LoginRoute
+  '/badges/$badgeId': typeof AdminBadgesBadgeIdRoute
+  '/badges/new': typeof AdminBadgesNewRoute
+  '/badges': typeof AdminBadgesIndexRoute
+  '/users': typeof AdminUsersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/badges': typeof BadgesRoute
+  '/_admin': typeof AdminRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/_admin/badges/$badgeId': typeof AdminBadgesBadgeIdRoute
+  '/_admin/badges/new': typeof AdminBadgesNewRoute
+  '/_admin/badges/': typeof AdminBadgesIndexRoute
+  '/_admin/users/': typeof AdminUsersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/badges' | '/login'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/badges/$badgeId'
+    | '/badges/new'
+    | '/badges/'
+    | '/users/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/badges' | '/login'
-  id: '__root__' | '/' | '/badges' | '/login'
+  to: '/' | '/login' | '/badges/$badgeId' | '/badges/new' | '/badges' | '/users'
+  id:
+    | '__root__'
+    | '/'
+    | '/_admin'
+    | '/login'
+    | '/_admin/badges/$badgeId'
+    | '/_admin/badges/new'
+    | '/_admin/badges/'
+    | '/_admin/users/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  BadgesRoute: typeof BadgesRoute
+  AdminRouteRoute: typeof AdminRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
 }
 
@@ -68,11 +115,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/badges': {
-      id: '/badges'
-      path: '/badges'
-      fullPath: '/badges'
-      preLoaderRoute: typeof BadgesRouteImport
+    '/_admin': {
+      id: '/_admin'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AdminRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -82,12 +129,58 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_admin/users/': {
+      id: '/_admin/users/'
+      path: '/users'
+      fullPath: '/users/'
+      preLoaderRoute: typeof AdminUsersIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/_admin/badges/': {
+      id: '/_admin/badges/'
+      path: '/badges'
+      fullPath: '/badges/'
+      preLoaderRoute: typeof AdminBadgesIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/_admin/badges/new': {
+      id: '/_admin/badges/new'
+      path: '/badges/new'
+      fullPath: '/badges/new'
+      preLoaderRoute: typeof AdminBadgesNewRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/_admin/badges/$badgeId': {
+      id: '/_admin/badges/$badgeId'
+      path: '/badges/$badgeId'
+      fullPath: '/badges/$badgeId'
+      preLoaderRoute: typeof AdminBadgesBadgeIdRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
   }
 }
 
+interface AdminRouteRouteChildren {
+  AdminBadgesBadgeIdRoute: typeof AdminBadgesBadgeIdRoute
+  AdminBadgesNewRoute: typeof AdminBadgesNewRoute
+  AdminBadgesIndexRoute: typeof AdminBadgesIndexRoute
+  AdminUsersIndexRoute: typeof AdminUsersIndexRoute
+}
+
+const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminBadgesBadgeIdRoute: AdminBadgesBadgeIdRoute,
+  AdminBadgesNewRoute: AdminBadgesNewRoute,
+  AdminBadgesIndexRoute: AdminBadgesIndexRoute,
+  AdminUsersIndexRoute: AdminUsersIndexRoute,
+}
+
+const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
+  AdminRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  BadgesRoute: BadgesRoute,
+  AdminRouteRoute: AdminRouteRouteWithChildren,
   LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport

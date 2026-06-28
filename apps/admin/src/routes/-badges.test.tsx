@@ -17,33 +17,27 @@ vi.mock('#/features/auth/auth-context', () => ({
 
 vi.mock('#/features/api/admin-api', () => ({
   fetchAdminBadges: vi.fn(async () => []),
-  fetchAdminUser: vi.fn(),
-  fetchAdminUserBadges: vi.fn(async () => []),
-  createAdminBadge: vi.fn(),
-  updateAdminBadge: vi.fn(),
-  deleteAdminBadge: vi.fn(),
-  assignAdminUserBadge: vi.fn(),
-  removeAdminUserBadge: vi.fn(),
 }))
 
-vi.mock('#/features/api/media-api', () => ({
-  uploadMediaFile: vi.fn(),
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
 }))
 
-import { AdminBadgesPage } from './badges'
+import { BadgesCatalogPage } from '#/features/badges/badges-catalog'
 
 describe('badges admin page', () => {
-  it('renders the badge admin page for privileged users', () => {
+  it('renders the badge catalog for privileged users', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
 
     render(
       <QueryClientProvider client={queryClient}>
-        <AdminBadgesPage />
+        <BadgesCatalogPage />
       </QueryClientProvider>,
     )
 
     expect(screen.getByRole('heading', { name: 'Бейджи' })).not.toBeNull()
+    expect(screen.getByText('Создать')).not.toBeNull()
   })
 })
