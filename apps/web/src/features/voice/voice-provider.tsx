@@ -176,7 +176,13 @@ import {
   setRemoteScreenWatchIntent,
   setStageScreenSubscription,
   shouldSubscribeStageScreen,
+  stageScreenMediaUserId,
 } from '#/features/voice/voice-stage-subscription'
+import {
+  SCREEN_VIEWER_SOUND_TOPIC,
+  createScreenViewerSoundPayload,
+  screenViewerSoundEventFromData,
+} from '#/features/voice/voice-screen-viewer-sounds'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
 import {
   recordVoiceTransitionAttempt,
@@ -778,6 +784,37 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setStageMediaItemsState(items)
   }, [])
 
+  const publishScreenViewerSound = useCallback(
+    (room: Room, screenOwnerId: string, action: 'join' | 'leave') => {
+      return room.localParticipant
+        .publishData(createScreenViewerSoundPayload({ action, screenOwnerId }), {
+          reliable: true,
+          destinationIdentities: [screenOwnerId],
+          topic: SCREEN_VIEWER_SOUND_TOPIC,
+        })
+        .catch((error) => {
+          if (import.meta.env.DEV) {
+            console.warn('Failed to publish screen viewer sound intent', error)
+          }
+        })
+    },
+    [],
+  )
+
+  const publishScreenViewerLeaves = useCallback(
+    async (room: Room) => {
+      await Promise.all(
+        Array.from(watchedRemoteScreenIdsRef.current).flatMap((mediaId) => {
+          const screenOwnerId = stageScreenMediaUserId(mediaId)
+          return screenOwnerId
+            ? [publishScreenViewerSound(room, screenOwnerId, 'leave')]
+            : []
+        }),
+      )
+    },
+    [publishScreenViewerSound],
+  )
+
   const setStageMediaFilters: Dispatch<
     SetStateAction<StageMediaFilters>
   > = useCallback((next) => {
@@ -1311,6 +1348,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         auth.user?._id
 
       if (room) {
+        await publishScreenViewerLeaves(room)
         disconnectIntentRef.current = intent
         room.removeAllListeners()
         await room.disconnect()
@@ -1343,7 +1381,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
       disconnectIntentRef.current = 'none'
     },
-    [auth.gatewayState, auth.user?._id, cleanupAudio, resetVoiceState],
+    [
+      auth.gatewayState,
+      auth.user?._id,
+      cleanupAudio,
+      publishScreenViewerLeaves,
+      resetVoiceState,
+    ],
   )
 
   const leave = useCallback(() => {
@@ -2190,6 +2234,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         onParticipantsChanged()
       })
 
+      room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+        const soundEvent = screenViewerSoundEventFromData({
+          payload,
+          topic,
+          senderIdentity: participant?.identity,
+          currentUserId: authUserIdRef.current,
+        })
+        if (soundEvent) playUiSound(soundEvent)
+      })
+
       room.on(RoomEvent.ParticipantConnected, onParticipantsChanged)
       room.on(RoomEvent.ParticipantDisconnected, onRemoteParticipantDisconnected)
       room.on(RoomEvent.LocalTrackPublished, onLocalParticipantsChanged)
@@ -2822,6 +2876,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const mediaId = stageMediaItemId(userId, 'screen')
       const localUserId = auth.user?._id
       const isLocal = isVoiceLocalUserId(userId, localUserId)
+      const wasWatching = watchedRemoteScreenIdsRef.current.has(mediaId)
 
       if (!isLocal) {
         pendingScreenWatchIdsRef.current.add(mediaId)
@@ -2843,6 +2898,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           if (baseVoiceIdentity(participant.identity) !== userId) continue
           applyRemoteScreenParticipantSubscription(participant, true)
         }
+        if (!wasWatching) {
+          void publishScreenViewerSound(room, userId, 'join')
+        }
         syncStageMediaItems(room)
       }
 
@@ -2853,6 +2911,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       auth.user?._id,
       channelId,
       join,
+      publishScreenViewerSound,
       requestStageMediaFocus,
       status,
       syncStageMediaItems,
@@ -2875,6 +2934,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         currentUserIds,
       )
       if (!target) return
+      const wasWatching = watchedRemoteScreenIdsRef.current.has(target.mediaId)
 
       const action = item
         ? setStageScreenSubscription(item, subscribed)
@@ -2892,6 +2952,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         for (const participant of room.remoteParticipants.values()) {
           if (baseVoiceIdentity(participant.identity) !== target.userId) continue
           applyRemoteScreenParticipantSubscription(participant, subscribed)
+        }
+        if (wasWatching !== subscribed) {
+          void publishScreenViewerSound(
+            room,
+            target.userId,
+            subscribed ? 'join' : 'leave',
+          )
         }
 
         syncStageMediaItems(room)
@@ -2938,6 +3005,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [
       applyRemoteScreenParticipantSubscription,
       auth.user?._id,
+      publishScreenViewerSound,
       stopNativeScreenShare,
       syncRoomParticipants,
       syncStageMediaItems,
