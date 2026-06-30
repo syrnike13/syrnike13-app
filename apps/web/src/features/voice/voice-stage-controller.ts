@@ -194,7 +194,16 @@ export function useVoiceStageController({
       }
 
       if (!isVoiceConnectedInChannel({ channelId, status }, targetChannelId)) {
-        await join(targetChannelId)
+        // join может reject'нуть (нет сессии, таймаут, отменён). Не позволяем
+        // этому всплыть unhandled rejection и не продолжаем с roomRef, который
+        // мог не подключиться.
+        let joined = false
+        try {
+          joined = await join(targetChannelId)
+        } catch (error) {
+          console.warn('[voice-stage] failed to join for screen watch', error)
+        }
+        if (!joined) return
       }
 
       if (!isLocal) {

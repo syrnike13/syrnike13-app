@@ -212,11 +212,15 @@ export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
       return { room }
     } catch (error) {
       getDeps().setConnectionPhase('failed')
+      // Очистка transient-комнаты обязательна в обоих режимах: даже при
+      // rejoin после `new Room()` + attachRoomHandlers могла повиснуть комната
+      // с обработчиками, которую никто не получил. Не чистим только если комната
+      // так и не была создана.
+      if (room) {
+        room.removeAllListeners()
+        await room.disconnect().catch(() => {})
+      }
       if (!options.rejoin) {
-        if (room) {
-          room.removeAllListeners()
-          await room.disconnect().catch(() => {})
-        }
         getDeps().abortJoin()
         toast.error(voiceJoinErrorMessage(error))
       }

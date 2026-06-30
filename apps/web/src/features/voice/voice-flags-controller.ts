@@ -199,9 +199,14 @@ export function useVoiceFlagsController({
             void room.localParticipant.setMicrophoneEnabled(false)
             return
           }
-          void applyMicProcessing(room.localParticipant).then(() => {
-            syncLocalSpeakingTrack(room)
-          })
+          void applyMicProcessing(room.localParticipant)
+            .then(() => {
+              syncLocalSpeakingTrack(room)
+            })
+            .catch(() => {
+              // applyMicProcessing не критичен; говорящая-детекция останется
+              // на необработанном треке.
+            })
           setCurrentMicIssue(null)
           syncMicFromRoom(room)
           syncRoomParticipants()
@@ -345,6 +350,10 @@ export function useVoiceFlagsController({
           voiceMicPublishOptions(activeChannelAudioBitrateKbps()),
         )
         .then(() => {
+          // Recency-check после await: сессия могла смениться во время операции.
+          if (!isCurrentVoiceSession(room, activeChannelId)) {
+            return
+          }
           if (nextMic && selfMonitoringRef.current.active) {
             selfMonitoringRef.current.restorePublishing = true
             setMicPublishing(false)
@@ -355,9 +364,15 @@ export function useVoiceFlagsController({
             }
           } else {
             if (nextMic) {
-              void applyMicProcessing(room.localParticipant).then(() => {
-                syncLocalSpeakingTrack(room)
-              })
+              void applyMicProcessing(room.localParticipant)
+                .then(() => {
+                  if (!isCurrentVoiceSession(room, activeChannelId)) return
+                  syncLocalSpeakingTrack(room)
+                })
+                .catch(() => {
+                  // applyMicProcessing не критичен; говорящая-детекция просто
+                  // останется на необработанном треке.
+                })
             } else {
               syncLocalSpeakingTrack(room)
             }
@@ -373,6 +388,9 @@ export function useVoiceFlagsController({
           }
         })
         .catch((error) => {
+          if (!isCurrentVoiceSession(room, activeChannelId)) {
+            return
+          }
           syncMicFromRoom(room, describeMicDeviceError(error))
           syncRoomParticipants()
           if (activeChannelId && userId && status === 'connected') {

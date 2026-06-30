@@ -293,8 +293,14 @@ export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
   room.on(RoomEvent.ParticipantDisconnected, onRemoteParticipantDisconnected)
   room.on(RoomEvent.LocalTrackPublished, onLocalParticipantsChanged)
   room.on(RoomEvent.LocalTrackUnpublished, onLocalParticipantsChanged)
-  room.on(RoomEvent.TrackPublished, (_publication, participant) => {
-    if (!participant.isLocal) {
+  room.on(RoomEvent.TrackPublished, (publication, participant) => {
+    // Подписочная логика экрана относится только к screen-share-трекам;
+    // для прочих публикаций (камера/аудио) обновлять screen-подписку не нужно.
+    if (
+      !participant.isLocal &&
+      (publication.source === Track.Source.ScreenShare ||
+        publication.source === Track.Source.ScreenShareAudio)
+    ) {
       deps.applyRemoteScreenParticipantSubscription(participant)
     }
     onParticipantsChanged()

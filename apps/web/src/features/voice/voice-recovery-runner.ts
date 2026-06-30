@@ -66,6 +66,14 @@ export type VoiceRecoveryRunnerDeps = {
   activeChannelAudioBitrateKbps: () => number
   applyMicProcessing: (participant: Room['localParticipant']) => Promise<unknown>
   getSelfDeafened: () => boolean
+  /**
+   * Опциональный in-flight guard для repair_publisher. Возвращает false, если
+   * ремонт уже запущен (предотвращает дублирующие startNativeMicrophone /
+   * setMicrophoneEnabled на быстрых health_tick). Реализация держит флаг до
+   * завершения промиса ремонта.
+   */
+  tryStartPublisherRepair?: () => boolean
+  endPublisherRepair?: () => void
 }
 
 export function nativeOrBrowserPublisherHealthy(
@@ -174,6 +182,14 @@ export function runVoiceRecovery(
       return
     }
 
+    // In-flight guard: не запускаем повторный ремонт, пока предыдущий не дошёл.
+    // Предотвращает дублирующие startNativeMicrophone / setMicrophoneEnabled
+    // на быстрых health_tick-срабатываниях.
+    if (deps.tryStartPublisherRepair && !deps.tryStartPublisherRepair()) {
+      return
+    }
+    const finishRepair = () => deps.endPublisherRepair?.()
+
     console.warn('[voice-recovery] repairing voice publisher', {
       trigger,
       reason: action.reason,
@@ -207,6 +223,7 @@ export function runVoiceRecovery(
             deps.getSelfDeafened(),
           )
         })
+        .finally(finishRepair)
       return
     }
 
@@ -243,5 +260,6 @@ export function runVoiceRecovery(
           deps.getSelfDeafened(),
         )
       })
+      .finally(finishRepair)
   }
 }

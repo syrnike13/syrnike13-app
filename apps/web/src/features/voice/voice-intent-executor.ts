@@ -205,7 +205,12 @@ export function createVoiceIntentExecutor({
       return
     }
     pendingMoveSource = null
-    void getDeps().disconnectMoveSource(source)
+    void Promise.resolve(getDeps().disconnectMoveSource(source)).catch(
+      (error: unknown) => {
+        // disconnect не должен рвать исполнение очереди; логируем и идём дальше.
+        console.warn('[voice-intent] failed to disconnect move source', error)
+      },
+    )
     if (room === source.room) {
       setRoom(null)
     }
@@ -407,7 +412,10 @@ export function createVoiceIntentExecutor({
       targetChannelId,
     })
 
-    const promise = disconnectLocalSession()
+    const promise = disconnectLocalSession().catch((error) => {
+      // disconnect при supersede не должен всплывать unhandled rejection.
+      console.warn('[voice-intent] failed to disconnect superseded session', error)
+    })
     remoteSupersedeDisconnect = promise
     void promise.finally(() => {
       if (remoteSupersedeDisconnect === promise) {

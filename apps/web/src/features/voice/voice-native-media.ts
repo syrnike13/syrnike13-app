@@ -310,12 +310,20 @@ export async function startNativeMicrophone<
         deps.muted,
         deps.activeChannelAudioBitrateKbps(),
       )
+      // Recency-check после await: за время reconnect'а пользователя могло
+      // перекинуть в другой канал (move/leave). Не мутируем состояние и не
+      // пушим side-effects в возможный stale-канал.
+      if (
+        !deps.isCurrentVoiceSession(deps.room, targetChannelId)
+      ) {
+        return false
+      }
       active.channelId = targetChannelId
       deps.nativeMicrophoneMutedRef.current = deps.muted
       deps.setMicPublishing(!deps.muted)
       if (deps.muted) deps.setSelfSpeaking(false)
       deps.syncRoomParticipants()
-      return deps.isCurrentVoiceSession(deps.room, targetChannelId)
+      return true
     }
     await deps.setNativeMicrophoneMuted(deps.muted)
     return deps.isCurrentVoiceSession(deps.room, targetChannelId)

@@ -27,6 +27,7 @@ export function stageSyncScreenStateDebugKey(
     tracks: state.tracks,
     screenItems: state.screenItems,
     localScreenItems: state.localScreenItems,
+    localScreenLive: state.localScreenLive,
   })
 }
 

@@ -1431,34 +1431,42 @@ async function reconnectNativeMicrophoneSession(
   if (!session || session.startOptions.kind !== 'microphone') {
     throw new Error('Native microphone runtime is not active')
   }
-  if (!isHelperWritable(session.helper)) {
-    throw new Error('Native media helper is not writable')
+  // Per-session reconnect lock: сериализуем с attemptSidecarReconnect и
+  // handleHelperExit, которые тоже могут реконнектить ту же сессию. Без этого
+  // два параллельных reconnect'а могут повредить разделяемое состояние сессии.
+  if (session.reconnecting) {
+    throw new Error('Native microphone session is already reconnecting')
   }
-  assertMediaStartRequestCurrent(options)
+  session.reconnecting = true
+  try {
+    if (!isHelperWritable(session.helper)) {
+      throw new Error('Native media helper is not writable')
+    }
+    assertMediaStartRequestCurrent(options)
 
-  const readyPromise = waitForSidecarReady(sessionId)
-  const command = buildNativeMediaReconnectStartCommand(
-    {
-      startOptions: options,
-      effectiveMicrophoneConfig: session.effectiveMicrophoneConfig,
-      effectiveMuted: session.effectiveMuted,
-    },
-    sessionId,
-    getWindow,
-  )
+    const readyPromise = waitForSidecarReady(sessionId)
+    const command = buildNativeMediaReconnectStartCommand(
+      {
+        startOptions: options,
+        effectiveMicrophoneConfig: session.effectiveMicrophoneConfig,
+        effectiveMuted: session.effectiveMuted,
+      },
+      sessionId,
+      getWindow,
+    )
 
-  if (!writeHelperCommand(session.helper, command)) {
-    pendingStartResolvers.delete(sessionId)
-    throw new Error('Native media helper is not writable')
-  }
+    if (!writeHelperCommand(session.helper, command)) {
+      pendingStartResolvers.delete(sessionId)
+      throw new Error('Native media helper is not writable')
+    }
 
-  const readyEvent = await readyPromise
-  assertMediaStartRequestCurrent(options)
-  if (readyEvent.type !== 'ready') {
-    throw new Error('Native microphone reconnect failed')
-  }
+    const readyEvent = await readyPromise
+    assertMediaStartRequestCurrent(options)
+    if (readyEvent.type !== 'ready') {
+      throw new Error('Native microphone reconnect failed')
+    }
 
-  const audioMetadata = mapReadyAudioMetadata(readyEvent)
+    const audioMetadata = mapReadyAudioMetadata(readyEvent)
   const audio = buildSessionAudio(
     true,
     mapAudioMode(readyEvent.audio_mode),
@@ -1515,6 +1523,9 @@ async function reconnectNativeMicrophoneSession(
     nativeParticipantIdentity:
       readyEvent.native_participant_identity ??
       options.livekit.participantIdentity,
+  }
+  } finally {
+    session.reconnecting = false
   }
 }
 

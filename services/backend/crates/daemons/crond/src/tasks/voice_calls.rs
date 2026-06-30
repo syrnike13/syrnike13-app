@@ -43,7 +43,12 @@ async fn sweep_voice_call_timeouts(
             server_id: None,
         };
         if get_voice_channel_members(&channel).await?.is_none() {
-            remove_orphaned_active_voice_channel(&channel).await?;
+            // Не позволяем одиночной ошибке orphan-cleanup прервать весь sweep:
+            // остальные активные каналы и call-timeout'ы тоже нуждаются в обработке.
+            if let Err(error) = remove_orphaned_active_voice_channel(&channel).await {
+                syrnike_config::capture_internal_error!(&error);
+                warn!("Failed to remove orphaned voice channel {channel_id}: {error:?}");
+            }
             continue;
         }
         if let Err(error) =
