@@ -393,6 +393,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const stopNativeScreenShareFromRef = useCallback(async () => {
     await stopNativeScreenShareRef.current()
   }, [])
+  const notifyNativeScreenPublicationLost = useCallback<NativeScreenPublicationLossHandler>(
+    (loss) => {
+      nativeScreenPublicationLostRef.current?.(loss)
+    },
+    [],
+  )
 
   const {
     stageMediaItems,
@@ -422,9 +428,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     stopNativeScreenShare: stopNativeScreenShareFromRef,
     setScreenShareEnabled: setScreenShareEnabledFromRef,
     syncRoomParticipants: syncRoomParticipantsFromRef,
-    onNativeScreenPublicationLost: (loss) => {
-      nativeScreenPublicationLostRef.current?.(loss)
-    },
+    onNativeScreenPublicationLost: notifyNativeScreenPublicationLost,
     logStageSyncDebug: logVoiceDebugAgent,
   })
 

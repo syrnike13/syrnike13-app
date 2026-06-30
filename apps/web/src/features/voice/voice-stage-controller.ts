@@ -90,6 +90,7 @@ export function useVoiceStageController({
   const [stageFullscreen, setStageFullscreen] = useState(false)
 
   const setStageMediaItems = useCallback((items: VoiceStageMediaItem[]) => {
+    if (areStageMediaItemsEqual(stageMediaItemsRef.current, items)) return
     stageMediaItemsRef.current = items
     setStageMediaItemsState(items)
   }, [])
@@ -378,4 +379,27 @@ export function useVoiceStageController({
     publishScreenViewerLeaves,
     resetStageState,
   }
+}
+
+function areStageMediaItemsEqual(
+  left: readonly VoiceStageMediaItem[],
+  right: readonly VoiceStageMediaItem[],
+) {
+  if (left.length !== right.length) return false
+
+  return left.every((leftItem, index) => {
+    const rightItem = right[index]
+    return (
+      leftItem.id === rightItem.id &&
+      leftItem.userId === rightItem.userId &&
+      leftItem.kind === rightItem.kind &&
+      leftItem.source === rightItem.source &&
+      leftItem.track === rightItem.track &&
+      leftItem.publication === rightItem.publication &&
+      leftItem.isLocal === rightItem.isLocal &&
+      leftItem.subscribed === rightItem.subscribed &&
+      leftItem.live === rightItem.live &&
+      leftItem.pending === rightItem.pending
+    )
+  })
 }
