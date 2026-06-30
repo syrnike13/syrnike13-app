@@ -7,11 +7,20 @@ import { VoiceStageControls } from './voice-stage-controls'
 
 const voiceJoinMock = vi.hoisted(() => vi.fn())
 
-vi.mock('#/features/voice/voice-context', () => ({
-  useVoice: () => ({
+vi.mock('#/features/voice/voice-session-context', () => ({
+  useVoiceSession: () => ({
     micEnabled: true,
     micPublishing: false,
     deafened: false,
+    toggleMic: vi.fn(),
+    toggleDeafen: vi.fn(),
+    leave: vi.fn(),
+    join: voiceJoinMock,
+  }),
+}))
+
+vi.mock('#/features/voice/voice-media-context', () => ({
+  useVoiceMedia: () => ({
     cameraEnabled: false,
     screenShareEnabled: false,
     screenShareStarting: false,
@@ -20,12 +29,19 @@ vi.mock('#/features/voice/voice-context', () => ({
       camera: 'available',
       screenShare: 'available',
     },
-    toggleMic: vi.fn(),
-    toggleDeafen: vi.fn(),
     toggleCamera: vi.fn(),
     toggleScreenShare: vi.fn(),
-    leave: vi.fn(),
-    join: voiceJoinMock,
+  }),
+}))
+
+vi.mock('#/features/voice/voice-stage-context', () => ({
+  useVoiceStage: () => ({
+    stageMediaFilters: {
+      avatars: true,
+      camera: true,
+      screen: true,
+    },
+    setStageMediaFilters: vi.fn(),
   }),
 }))
 

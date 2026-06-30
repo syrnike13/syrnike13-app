@@ -18,7 +18,7 @@ import {
   useMediaDevices,
 } from '#/features/voice/use-media-devices'
 import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   VOICE_OUTPUT_VOLUME_MAX,
   voicePreferenceStore,
@@ -54,7 +54,7 @@ function sliderToOutputVolume(value: number) {
 
 function useMicInputSettingsModel() {
   const prefs = useVoicePreferences()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const auth = useAuth()
   const inputDevices = useMediaDevices('audioinput')
   const [meterLevels, setMeterLevels] = useState(() =>

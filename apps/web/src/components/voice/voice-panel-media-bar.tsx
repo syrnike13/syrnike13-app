@@ -11,7 +11,8 @@ import {
 
 import { TooltipProvider } from '#/components/ui/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceMedia } from '#/features/voice/voice-media-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { voiceMediaControlState } from '#/features/voice/voice-media-availability'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
@@ -87,20 +88,21 @@ function PanelMediaButtonSoon({ title, children }: { title: string; children: Re
 }
 
 export function VoicePanelMediaBar() {
-  const voice = useVoice()
-  const connecting = voice.status === 'connecting'
-  const cameraOn = voice.cameraEnabled
-  const sharingScreen = voice.screenShareEnabled
-  const screenShareStarting = voice.screenShareStarting
+  const voiceSession = useVoiceSession()
+  const voiceMedia = useVoiceMedia()
+  const connecting = voiceSession.status === 'connecting'
+  const cameraOn = voiceMedia.cameraEnabled
+  const sharingScreen = voiceMedia.screenShareEnabled
+  const screenShareStarting = voiceMedia.screenShareStarting
   const cameraControl = voiceMediaControlState({
-    availability: voice.mediaAvailability.camera,
+    availability: voiceMedia.mediaAvailability.camera,
     active: cameraOn,
     connecting,
     activeTitle: 'Выключить камеру',
     inactiveTitle: 'Включить камеру',
   })
   const screenShareControl = voiceMediaControlState({
-    availability: voice.mediaAvailability.screenShare,
+    availability: voiceMedia.mediaAvailability.screenShare,
     active: sharingScreen,
     connecting,
     busy: screenShareStarting,
@@ -116,7 +118,7 @@ export function VoicePanelMediaBar() {
           title={cameraControl.title}
           active={cameraOn}
           disabled={cameraControl.disabled}
-          onClick={voice.toggleCamera}
+          onClick={voiceMedia.toggleCamera}
         >
           {cameraOn ? (
             <VideoIcon className="size-[1.125rem]" />
@@ -129,7 +131,7 @@ export function VoicePanelMediaBar() {
           title={screenShareControl.title}
           active={sharingScreen || screenShareStarting}
           disabled={screenShareControl.disabled}
-          onClick={voice.toggleScreenShare}
+          onClick={voiceMedia.toggleScreenShare}
         >
           {screenShareStarting ? (
             <Loader2Icon className="size-[1.125rem] animate-spin" />

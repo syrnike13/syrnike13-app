@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createVoiceJoinRunner,
   nativeCredentialsFromJoinResponse,
+  type VoiceJoinRunnerDeps,
   voiceJoinErrorMessage,
 } from './voice-join'
 import { syncStore } from '#/features/sync/sync-store'
@@ -73,6 +74,24 @@ beforeEach(() => {
   })
 })
 
+async function expectSuccessfulJoin(
+  promise: Promise<unknown>,
+): Promise<{ room: unknown }> {
+  const result = await promise
+  expect(result).toMatchObject({
+    room: expect.objectContaining({
+      connect: expect.any(Function),
+      disconnect: expect.any(Function),
+      removeAllListeners: expect.any(Function),
+    }),
+  })
+  return result as { room: unknown }
+}
+
+function createRunner(deps: VoiceJoinRunnerDeps) {
+  return createVoiceJoinRunner({ getDeps: () => deps })
+}
+
 describe('voiceJoinErrorMessage', () => {
   it('uses error message when available', () => {
     expect(voiceJoinErrorMessage(new Error('Voice join timed out'))).toBe(
@@ -88,7 +107,7 @@ describe('voiceJoinErrorMessage', () => {
 })
 
 describe('createVoiceJoinRunner', () => {
-  it('detaches replaced room handlers only when the move is finalized', () => {
+  it('detaches replaced source rooms through VoiceIntentExecutor', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
     )
@@ -98,22 +117,32 @@ describe('createVoiceJoinRunner', () => {
     )
 
     expect(providerSource).toMatch(
-      /finalizePendingVoiceMove[\s\S]*pending\.room\.removeAllListeners\(\)[\s\S]*pending\.room\.disconnect\(\)\.catch\(\(\) => \{\}\)/,
+      /disconnectMoveSource: async \(\{ room, channelId \}\) => \{[\s\S]*room\.removeAllListeners\(\)[\s\S]*await room\.disconnect\(\)\.catch/,
     )
+    expect(providerSource).not.toContain('finalizePendingVoiceMove')
   })
 
   it('ignores stale room disconnect events after a newer room is active', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
     )
+    const roomAudioSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-room-audio.ts'),
+      'utf8',
+    )
     const providerSource = readFileSync(
       resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
       'utf8',
     )
 
-    expect(providerSource).toMatch(
-      /room\.on\(RoomEvent\.Disconnected[\s\S]*if \(roomRef\.current !== room\) \{[\s\S]*room\.removeAllListeners\(\)[\s\S]*return[\s\S]*\}[\s\S]*const intent = disconnectIntentRef\.current/,
+    expect(roomAudioSource).toMatch(
+      /room\.on\(RoomEvent\.Disconnected[\s\S]*if \(deps\.getCurrentRoom\(\) !== room\) \{[\s\S]*room\.removeAllListeners\(\)[\s\S]*return[\s\S]*\}[\s\S]*deps\.onUnexpectedRoomDisconnect\(targetChannelId\)/,
     )
+    expect(roomAudioSource).not.toContain('getDisconnectIntent')
+    expect(providerSource).toMatch(
+      /onUnexpectedRoomDisconnect[\s\S]*voiceIntentExecutorRef\.current\.onRoomDisconnected\(\s*false,\s*'Room disconnected',?\s*\)/,
+    )
+    expect(providerSource).not.toContain('voiceRejoinRef')
   })
 
   it('cleans up voice silently on provider unmount instead of playing a manual leave sound', () => {
@@ -126,32 +155,21 @@ describe('createVoiceJoinRunner', () => {
     )
 
     expect(providerSource).toMatch(
-      /return \(\) => \{[\s\S]*void leaveVoiceSessionRef\.current\('cleanup'\)/,
+      /return \(\) => \{[\s\S]*void voiceIntentExecutorRef\.current\.disconnectLocalSession\(\)/,
     )
     expect(providerSource).toMatch(
-      /useEffect\(\(\) => \{[\s\S]*return \(\) => \{[\s\S]*leaveVoiceSessionRef\.current\('cleanup'\)[\s\S]*\}[\s\S]*\}, \[\]\)/,
+      /useEffect\(\(\) => \{[\s\S]*return \(\) => \{[\s\S]*voiceIntentExecutorRef\.current\.disconnectLocalSession\(\)[\s\S]*\}[\s\S]*\}, \[\]\)/,
     )
   })
 
   it('reports concrete phases while joining voice', async () => {
     const phases: string[] = []
-    const requestJoinOperation = vi.fn(() => 'op-join')
-    const handleServerPrepareSucceeded = vi.fn()
-    const handleRoomConnected = vi.fn()
-    const runner = createVoiceJoinRunner({
+    const setActiveRoom = vi.fn()
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
-      getActiveSession: () => null,
-      requestJoinOperation,
-      handleServerPrepareSucceeded,
-      handleRoomConnected,
-      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession: vi.fn(),
-      restorePreviousSession: vi.fn(),
-      dropPreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -160,7 +178,9 @@ describe('createVoiceJoinRunner', () => {
       setConnectionPhase: (phase) => phases.push(phase),
     })
 
-    await runner('channel-1')
+    const result = await expectSuccessfulJoin(
+      runner('channel-1', { operationId: 'op-join' }),
+    )
 
     expect(phases).toEqual([
       'joining_channel',
@@ -174,12 +194,8 @@ describe('createVoiceJoinRunner', () => {
       false,
       { operationId: 'op-join' },
     )
-    expect(requestJoinOperation).toHaveBeenCalledWith(
-      'channel-1',
-      'manual_join',
-    )
-    expect(handleServerPrepareSucceeded).toHaveBeenCalledWith('op-join')
-    expect(handleRoomConnected).toHaveBeenCalledWith('op-join')
+    expect(setActiveRoom).not.toHaveBeenCalled()
+    expect(result.room).toBeTruthy()
   })
 
   it('does not suppress an immediate user join retry for the same channel', async () => {
@@ -188,20 +204,11 @@ describe('createVoiceJoinRunner', () => {
       channel_type: 'VoiceChannel',
       server: 'server-1',
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
-      getActiveSession: () => null,
-      requestJoinOperation: vi.fn(() => 'op-join'),
-      handleServerPrepareSucceeded: vi.fn(),
-      handleRoomConnected: vi.fn(),
-      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession: vi.fn(),
-      restorePreviousSession: vi.fn(),
-      dropPreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -210,28 +217,23 @@ describe('createVoiceJoinRunner', () => {
       setConnectionPhase: vi.fn(),
     })
 
-    await expect(runner('channel-repeat')).resolves.toBe(true)
-    await expect(runner('channel-repeat')).resolves.toBe(true)
+    await expectSuccessfulJoin(
+      runner('channel-repeat', { operationId: 'op-join-1' }),
+    )
+    await expectSuccessfulJoin(
+      runner('channel-repeat', { operationId: 'op-join-2' }),
+    )
 
     expect(requestVoiceJoin).toHaveBeenCalledTimes(2)
   })
 
   it('allows an immediate retry after a failed manual join when the rate window allows it', async () => {
     vi.mocked(requestVoiceJoin).mockRejectedValueOnce(new Error('rtc failed'))
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
-      getActiveSession: () => null,
-      requestJoinOperation: vi.fn(() => 'op-join'),
-      handleServerPrepareSucceeded: vi.fn(),
-      handleRoomConnected: vi.fn(),
-      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession: vi.fn(),
-      restorePreviousSession: vi.fn(),
-      dropPreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -240,37 +242,26 @@ describe('createVoiceJoinRunner', () => {
       setConnectionPhase: vi.fn(),
     })
 
-    await expect(runner('channel-1')).resolves.toBe(false)
-    await expect(runner('channel-1')).resolves.toBe(true)
+    await expect(
+      runner('channel-1', { operationId: 'op-join-failed' }),
+    ).resolves.toBe(false)
+    await expectSuccessfulJoin(
+      runner('channel-1', { operationId: 'op-join-retry' }),
+    )
     expect(requestVoiceJoin).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps the current voice session alive until the replacement room connects', async () => {
+  it('leaves move source handoff to VoiceIntentExecutor', async () => {
     const previousRoom = {
       connect: vi.fn(),
       disconnect: vi.fn(),
       removeAllListeners: vi.fn(),
-    } as never
-    const previousSession = {
-      room: previousRoom,
-      channelId: 'old-channel',
-      localVoiceReady: true,
     }
-    const disconnectReplacedSession = vi.fn(async () => {})
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
-      getActiveSession: () => previousSession,
-      requestJoinOperation: vi.fn(() => 'op-join'),
-      handleServerPrepareSucceeded: vi.fn(),
-      handleRoomConnected: vi.fn(),
-      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession,
-      restorePreviousSession: vi.fn(),
-      dropPreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -279,56 +270,36 @@ describe('createVoiceJoinRunner', () => {
       setConnectionPhase: vi.fn(),
     })
 
-    await expect(runner('channel-1')).resolves.toBe(true)
-
-    expect(disconnectReplacedSession).toHaveBeenCalledWith(previousSession)
-  })
-
-  it('drops the previous voice session when a move fails before the target connects', async () => {
-    vi.mocked(requestVoiceJoin).mockRejectedValueOnce(new Error('rtc failed'))
-    const previousSession = {
-      room: {
-        connect: vi.fn(),
-        disconnect: vi.fn(),
-        removeAllListeners: vi.fn(),
-      } as never,
-      channelId: 'old-channel',
-      localVoiceReady: true,
-    }
-    const dropPreviousSession = vi.fn(async () => {})
-    const restorePreviousSession = vi.fn()
-    const runner = createVoiceJoinRunner({
-      getToken: () => 'session-token',
-      getLocalUserId: () => 'user-1',
-      isJoinBlocked: () => false,
-      getActiveSession: () => previousSession,
-      requestJoinOperation: vi.fn(() => 'op-join'),
-      handleServerPrepareSucceeded: vi.fn(),
-      handleRoomConnected: vi.fn(),
-      handleRoomConnectFailed: vi.fn(),
-      beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession: vi.fn(),
-      restorePreviousSession,
-      dropPreviousSession,
-      attachRoomHandlers: vi.fn(),
-      setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
-      onJoinSuccess: vi.fn(),
-      abortJoin: vi.fn(),
-      setConnectionPhase: vi.fn(),
-    })
-
-    await expect(runner('channel-1')).resolves.toBe(false)
-
-    expect(dropPreviousSession).toHaveBeenCalledWith(
-      previousSession,
-      'channel-1',
+    await expectSuccessfulJoin(
+      runner('channel-1', { operationId: 'op-join' }),
     )
-    expect(restorePreviousSession).not.toHaveBeenCalled()
+
+    expect(previousRoom.removeAllListeners).not.toHaveBeenCalled()
+    expect(previousRoom.disconnect).not.toHaveBeenCalled()
   })
 
-  it('provider defers old room disconnect until the move commit is observed', () => {
+  it('does not drop the previous voice session when a move fails before the target connects', async () => {
+    vi.mocked(requestVoiceJoin).mockRejectedValueOnce(new Error('rtc failed'))
+    const runner = createRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      beginConnecting: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      onRoomConnected: vi.fn(),
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(
+      runner('channel-1', { operationId: 'op-join' }),
+    ).resolves.toBe(false)
+
+  })
+
+  it('provider routes move source handoff through VoiceIntentExecutor', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
     )
@@ -337,16 +308,18 @@ describe('createVoiceJoinRunner', () => {
       'utf8',
     )
 
-    expect(providerSource).toMatch(/pendingReplacedVoiceRoomRef/)
     expect(providerSource).toMatch(
-      /controller\.handleServerCommitObserved\(operationId, commit\.channelId\)[\s\S]*finalizePendingVoiceMove\(operationId\)/,
+      /disconnectMoveSource: async \(\{ room, channelId \}\) => \{[\s\S]*room\.removeAllListeners\(\)[\s\S]*await room\.disconnect\(\)\.catch/,
     )
     expect(providerSource).not.toMatch(
-      /const disconnectReplacedVoiceSession = useCallback\([\s\S]*room\.removeAllListeners\(\)[\s\S]*await room\.disconnect\(\)\.catch/,
+      /disconnectMoveSource: async \(\{ room, channelId \}\) => \{[\s\S]*disconnectNativeMediaForHandoff\(\)/,
+    )
+    expect(providerSource).not.toMatch(
+      /voiceIntentExecutorRef\.current\.observeCommit\(action\.operationId, action\.channelId\)[\s\S]*finalizePendingVoiceMove\(action\.operationId\)/,
     )
   })
 
-  it('provider finalizes the old source when move commit arrived before target room connect', () => {
+  it('provider no longer stores pending move sources outside the executor', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
     )
@@ -355,15 +328,11 @@ describe('createVoiceJoinRunner', () => {
       'utf8',
     )
 
-    expect(providerSource).toMatch(
-      /const controllerState =[\s\S]*voiceSessionControllerRef\.current\.getState\(\)[\s\S]*const operationId = controllerState\.activeOperationId/,
-    )
-    expect(providerSource).toMatch(
-      /pendingReplacedVoiceRoomRef\.current = \{[\s\S]*operationId,[\s\S]*room: session\.room,[\s\S]*channelId: session\.channelId,[\s\S]*localVoiceReady: session\.localVoiceReady,[\s\S]*\}[\s\S]*if \(controllerState\.phase === 'connected'\) \{[\s\S]*finalizePendingVoiceMove\(operationId\)/,
-    )
+    expect(providerSource).not.toContain('pendingReplacedVoiceRoomRef')
+    expect(providerSource).not.toContain('disconnectReplacedVoiceSession')
   })
 
-  it('provider can cancel a pending move back to the source room without a backend join', () => {
+  it('provider lets VoiceIntentExecutor restore pending move sources', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
     )
@@ -372,17 +341,14 @@ describe('createVoiceJoinRunner', () => {
       'utf8',
     )
 
-    expect(providerSource).toMatch(/restorePendingVoiceMoveToSource/)
+    expect(providerSource).not.toContain('restorePendingVoiceMoveToSource')
+    expect(providerSource).not.toContain('restorePreviousSession')
     expect(providerSource).toMatch(
-      /if \(restorePendingVoiceMoveToSource\(targetChannelId\)\) \{[\s\S]*return true[\s\S]*\}/,
+      /voiceIntentExecutorRef\.current\.intent\(targetChannelId, reason\)/,
     )
-    expect(providerSource).toMatch(
-      /voiceSessionControllerRef\.current\.restorePreviousSession\(source\.channelId\)/,
-    )
-    expect(providerSource).toMatch(/rememberCanceledVoiceOperation\(source\.operationId\)/)
   })
 
-  it('provider hard leave cleans up both target and source rooms during a pending move', () => {
+  it('provider terminal leave delegates pending source cleanup to VoiceIntentExecutor', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
     )
@@ -391,12 +357,9 @@ describe('createVoiceJoinRunner', () => {
       'utf8',
     )
 
-    expect(providerSource).toMatch(/disconnectPendingReplacedVoiceRoom/)
+    expect(providerSource).not.toContain('disconnectPendingReplacedVoiceRoom')
     expect(providerSource).toMatch(
-      /const pendingSource = disconnectPendingReplacedVoiceRoom\(\)[\s\S]*if \(room\) \{/,
-    )
-    expect(providerSource).toMatch(
-      /if \(pendingSource\?\.channelId && userId\) \{[\s\S]*syncStore\.removeVoiceParticipant\(pendingSource\.channelId, userId\)/,
+      /completeTerminalLeave: async \(\{ channelId: leftChannelId, room \}\) => \{[\s\S]*if \(room\) \{/,
     )
   })
 
@@ -413,12 +376,13 @@ describe('createVoiceJoinRunner', () => {
       /if \(inFlight\) \{[\s\S]*await inFlight\.promise\.catch/,
     )
     expect(providerSource).toMatch(/isCurrentJoinOperation/)
-    expect(providerSource).toMatch(/disconnectSupersededTargetRoom/)
+    expect(providerSource).not.toContain('disconnectSupersededTargetRoom')
     expect(providerSource).toMatch(/previousVisualChannelId/)
-    expect(providerSource).toMatch(/const pendingSource = pendingReplacedVoiceRoomRef\.current/)
-    expect(providerSource).toMatch(/controllerState\.previousChannelId/)
+    expect(providerSource).not.toContain('pendingReplacedVoiceRoomRef')
+    expect(providerSource).not.toContain('controllerState.previousChannelId')
+    expect(providerSource).not.toContain('rememberVoiceIntentCanceledOperation')
     expect(providerSource).toMatch(
-      /const supersededOperationId =[\s\S]*voiceSessionControllerRef\.current\.getState\(\)\.activeOperationId[\s\S]*rememberCanceledVoiceOperation\(supersededOperationId\)[\s\S]*const promise = performVoiceJoinRef\.current\(targetChannelId\)/,
+      /voiceIntentExecutorRef\.current\.intent\(targetChannelId, reason\)/,
     )
   })
 
@@ -430,20 +394,11 @@ describe('createVoiceJoinRunner', () => {
       recipients: ['user-1', 'user-2'],
       voice: { max_users: null },
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
-      getActiveSession: () => null,
-      requestJoinOperation: vi.fn(() => 'op-join'),
-      handleServerPrepareSucceeded: vi.fn(),
-      handleRoomConnected: vi.fn(),
-      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession: vi.fn(),
-      restorePreviousSession: vi.fn(),
-      dropPreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -452,7 +407,9 @@ describe('createVoiceJoinRunner', () => {
       setConnectionPhase: vi.fn(),
     })
 
-    await expect(runner('dm-channel')).resolves.toBe(true)
+    await expectSuccessfulJoin(
+      runner('dm-channel', { operationId: 'op-join' }),
+    )
 
     expect(requestVoiceJoin).toHaveBeenCalledWith(
       'dm-channel',
@@ -473,20 +430,11 @@ describe('createVoiceJoinRunner', () => {
       recipients: ['user-1', 'user-2'],
       voice: { max_users: null },
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
-      getActiveSession: () => null,
-      requestJoinOperation: vi.fn(() => 'op-join'),
-      handleServerPrepareSucceeded: vi.fn(),
-      handleRoomConnected: vi.fn(),
-      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession: vi.fn(),
-      restorePreviousSession: vi.fn(),
-      dropPreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -495,7 +443,9 @@ describe('createVoiceJoinRunner', () => {
       setConnectionPhase: vi.fn(),
     })
 
-    await expect(runner('dm-channel', { rejoin: true })).resolves.toBe(true)
+    await expectSuccessfulJoin(
+      runner('dm-channel', { operationId: 'op-join', rejoin: true }),
+    )
 
     expect(requestVoiceJoin).toHaveBeenCalledWith(
       'dm-channel',
@@ -522,20 +472,11 @@ describe('createVoiceJoinRunner', () => {
       permissions: null,
       nsfw: false,
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
-      getActiveSession: () => null,
-      requestJoinOperation: vi.fn(() => 'op-join'),
-      handleServerPrepareSucceeded: vi.fn(),
-      handleRoomConnected: vi.fn(),
-      handleRoomConnectFailed: vi.fn(),
       beginConnecting: vi.fn(),
-      setActiveRoom: vi.fn(),
-      disconnectReplacedSession: vi.fn(),
-      restorePreviousSession: vi.fn(),
-      dropPreviousSession: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
       onRoomConnected: vi.fn(),
@@ -544,7 +485,9 @@ describe('createVoiceJoinRunner', () => {
       setConnectionPhase: vi.fn(),
     })
 
-    await expect(runner('group-channel')).resolves.toBe(true)
+    await expectSuccessfulJoin(
+      runner('group-channel', { operationId: 'op-join' }),
+    )
 
     expect(requestVoiceJoin).toHaveBeenCalledWith(
       'group-channel',

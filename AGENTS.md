@@ -57,6 +57,12 @@ pnpm livekit:check
 
 Use the narrower package/service command when a task touches only one area.
 
+### Windows backend checks
+
+- On Windows, do not spend time installing or repairing the backend Rust/OpenSSL/Docker toolchain just to satisfy `pnpm backend:check`. This workspace may not have OpenSSL/vcpkg/Docker configured.
+- If `pnpm backend:check` or Rust backend checks fail because `openssl-sys`, OpenSSL, vcpkg, Docker, or other local toolchain pieces are missing, report it as an environment blocker instead of downloading/installing those dependencies.
+- Only install or reconfigure Windows backend dependencies when the user explicitly asks for local backend setup. For backend changes, prefer focused checks that already run in the current environment, then state that full backend verification needs a configured Linux/backend environment or CI.
+
 ## Production Context
 
 - Production domain: `syrnike13.ru`.

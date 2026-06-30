@@ -16,7 +16,9 @@ import {
   screenShareBroadcastIcon,
 } from '#/features/voice/voice-broadcast-source'
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceMedia } from '#/features/voice/voice-media-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
@@ -93,7 +95,8 @@ function BroadcastStrip({
 }
 
 function useLocalScreenShareSource() {
-  const voice = useVoice()
+  const voiceMedia = useVoiceMedia()
+  const voiceStage = useVoiceStage()
   const nativeStats = useSyncExternalStore(
     nativeMediaEngineStatsStore.subscribe,
     nativeMediaEngineStatsStore.getState,
@@ -101,9 +104,9 @@ function useLocalScreenShareSource() {
   )
 
   return useMemo(() => {
-    if (!voice.screenShareEnabled) return null
+    if (!voiceMedia.screenShareEnabled) return null
 
-    const item = voice.stageMediaItems.find(
+    const item = voiceStage.stageMediaItems.find(
       (entry) => entry.isLocal && entry.kind === 'screen',
     )
 
@@ -122,25 +125,27 @@ function useLocalScreenShareSource() {
       ...source,
       label: `${source.label} · Нативный${methodSuffix}`,
     }
-  }, [voice.screenShareEnabled, voice.stageMediaItems, nativeStats])
+  }, [voiceMedia.screenShareEnabled, voiceStage.stageMediaItems, nativeStats])
 }
 
 function useLocalCameraSourceLabel() {
-  const voice = useVoice()
+  const voiceMedia = useVoiceMedia()
+  const voiceStage = useVoiceStage()
 
   return useMemo(() => {
-    if (!voice.cameraEnabled) return null
+    if (!voiceMedia.cameraEnabled) return null
 
-    const item = voice.stageMediaItems.find(
+    const item = voiceStage.stageMediaItems.find(
       (entry) => entry.isLocal && entry.kind === 'camera',
     )
 
     return readCameraBroadcastLabel(item?.track?.mediaStreamTrack)
-  }, [voice.cameraEnabled, voice.stageMediaItems])
+  }, [voiceMedia.cameraEnabled, voiceStage.stageMediaItems])
 }
 
 export function VoiceScreenShareStrip() {
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceMedia = useVoiceMedia()
   const source = useLocalScreenShareSource()
 
   if (!source) return null
@@ -151,14 +156,15 @@ export function VoiceScreenShareStrip() {
       Icon={screenShareBroadcastIcon(source.surface)}
       StopIcon={MonitorXIcon}
       stopTitle="Остановить демонстрацию"
-      disabled={voice.status === 'connecting'}
-      onStop={voice.toggleScreenShare}
+      disabled={voiceSession.status === 'connecting'}
+      onStop={voiceMedia.toggleScreenShare}
     />
   )
 }
 
 export function VoiceCameraStrip() {
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceMedia = useVoiceMedia()
   const sourceLabel = useLocalCameraSourceLabel()
 
   if (!sourceLabel) return null
@@ -169,8 +175,8 @@ export function VoiceCameraStrip() {
       Icon={cameraBroadcastIcon()}
       StopIcon={VideoOffIcon}
       stopTitle="Выключить камеру"
-      disabled={voice.status === 'connecting'}
-      onStop={voice.toggleCamera}
+      disabled={voiceSession.status === 'connecting'}
+      onStop={voiceMedia.toggleCamera}
     />
   )
 }

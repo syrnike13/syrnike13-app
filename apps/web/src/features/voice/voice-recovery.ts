@@ -35,7 +35,7 @@ export type VoiceRecoveryInput = {
   gatewayConnected: boolean
   channelId: string | null
   desiredChannelId: string | null
-  userId: string | undefined
+  userId: string | null
   status: VoiceStatus
   voiceParticipants: VoiceParticipantsByChannel
   canTrustServerState: boolean

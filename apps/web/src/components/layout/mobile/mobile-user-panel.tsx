@@ -8,7 +8,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { selectHomeNotificationBadge } from '#/features/notifications/notification-selectors'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { userStatusSubtitle } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
@@ -28,14 +28,14 @@ const gatewayLabels = {
 export function MobileUserPanel() {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
-  const voice = useVoice()
+  const voiceStage = useVoiceStage()
   const user = auth.user
   const homeBadge = useSyncStore((s) =>
     selectHomeNotificationBadge(s, auth.user?._id),
   )
 
   if (!user) return null
-  if (voice.stageFullscreen) return null
+  if (voiceStage.stageFullscreen) return null
 
   const displayName = user.display_name ?? user.username
   const gatewayConnected = auth.gatewayState === 'connected'

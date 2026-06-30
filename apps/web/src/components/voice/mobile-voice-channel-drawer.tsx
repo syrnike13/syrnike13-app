@@ -7,7 +7,7 @@ import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
@@ -20,7 +20,7 @@ import { cn } from '#/lib/utils'
  */
 export function MobileVoiceChannelDrawer() {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const { channelId, openVoiceChannelDrawer, closeVoiceChannelDrawer } =
     useMobileVoiceChannelDrawer()
   const channel = useSyncStore((s) =>

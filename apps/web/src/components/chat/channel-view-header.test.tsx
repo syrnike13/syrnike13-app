@@ -116,8 +116,8 @@ vi.mock('#/features/chat/use-channel-chat', () => ({
   }),
 }))
 
-vi.mock('#/features/voice/voice-context', () => ({
-  useVoice: () => ({
+vi.mock('#/features/voice/voice-session-context', () => ({
+  useVoiceSession: () => ({
     channelId: voiceState.channelId,
     status: voiceState.status,
     join: voiceJoinMock,

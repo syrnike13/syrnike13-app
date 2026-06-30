@@ -1,6 +1,6 @@
 use iso8601_timestamp::Timestamp;
 use redis_kiss::{
-    redis::{cmd, FromRedisValue, RedisError, RedisWrite, ToRedisArgs, Value},
+    redis::{cmd, Cmd, FromRedisValue, RedisError, RedisWrite, ToRedisArgs, Value},
     AsyncCommands,
 };
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use syrnike_result::{Result, ToSyrnikeError};
 use super::{partial_voice_state_for_track, UserVoiceChannel};
 
 pub const VOICE_SESSION_TTL_SECONDS: usize = 120;
+pub const VOICE_MEMBERSHIP_TTL_SECONDS: usize = 30;
 
 pub fn voice_session_key(operation_id: &str) -> String {
     format!("voice_session:{operation_id}")
@@ -62,6 +63,7 @@ end
 
 redis.call('SETEX', KEYS[1], tonumber(ARGV[3]), raw_session)
 redis.call('SET', KEYS[2], ARGV[2])
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[4]))
 return 1
 "#;
 
@@ -70,7 +72,8 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then
   return 0
 end
 
-redis.call('SET', KEYS[2], ARGV[2])
+redis.call('SETEX', KEYS[2], tonumber(ARGV[3]), ARGV[2])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))
 return 1
 "#;
 
@@ -84,12 +87,19 @@ if current_node == false or current_node ~= ARGV[5] then
   return 0
 end
 
-redis.call('SET', KEYS[2], ARGV[2])
+redis.call('SETEX', KEYS[2], tonumber(ARGV[7]), ARGV[2])
 redis.call('SADD', KEYS[3], ARGV[3])
 redis.call('SADD', KEYS[4], ARGV[4])
 redis.call('SET', KEYS[5], ARGV[5])
 if ARGV[6] ~= '' then
   redis.call('SET', KEYS[6], ARGV[6])
+end
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[8]))
+redis.call('EXPIRE', KEYS[3], tonumber(ARGV[8]))
+redis.call('EXPIRE', KEYS[4], tonumber(ARGV[8]))
+redis.call('EXPIRE', KEYS[5], tonumber(ARGV[8]))
+if ARGV[6] ~= '' then
+  redis.call('EXPIRE', KEYS[6], tonumber(ARGV[8]))
 end
 
 return 1
@@ -127,9 +137,28 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then
   return 0
 end
 
-redis.call('SET', KEYS[2], ARGV[2])
+redis.call('SETEX', KEYS[2], tonumber(ARGV[4]), ARGV[2])
 redis.call('SET', KEYS[1], ARGV[3])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[5]))
 redis.call('DEL', KEYS[3])
+return 1
+"#;
+
+const REFRESH_ACTIVE_VOICE_SESSION_PROJECTION: &str = r#"
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[1]))
+redis.call('EXPIRE', KEYS[3], tonumber(ARGV[2]))
+redis.call('EXPIRE', KEYS[4], tonumber(ARGV[1]))
+if redis.call('EXISTS', KEYS[5]) == 1 then
+  redis.call('EXPIRE', KEYS[5], tonumber(ARGV[1]))
+end
+redis.call('EXPIRE', KEYS[6], tonumber(ARGV[1]))
+return 1
+"#;
+
+const REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL: &str = r#"
+redis.call('SREM', KEYS[1], ARGV[1])
+redis.call('DEL', KEYS[2], KEYS[3], KEYS[4])
 return 1
 "#;
 
@@ -322,32 +351,48 @@ impl FromRedisValue for VoiceSession {
     }
 }
 
-pub async fn create_voice_session(session: &VoiceSession) -> Result<()> {
-    let raw_session = serde_json::to_string(session).to_internal_error()?;
-    cmd("EVAL")
-        .arg(CREATE_VOICE_SESSION)
-        .arg(2)
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_current_key(&session.user_id))
-        .arg(raw_session)
-        .arg(&session.operation_id)
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .query_async::<_, ()>(&mut super::get_connection().await?.into_inner())
+async fn run_eval<T>(
+    script: &'static str,
+    num_keys: usize,
+    append_args: impl FnOnce(&mut Cmd),
+) -> Result<T>
+where
+    T: FromRedisValue,
+{
+    let mut command = cmd("EVAL");
+    command.arg(script).arg(num_keys);
+    append_args(&mut command);
+    command
+        .query_async(&mut super::get_connection().await?.into_inner())
         .await
         .to_internal_error()
 }
 
+pub async fn create_voice_session(session: &VoiceSession) -> Result<()> {
+    let raw_session = serde_json::to_string(session).to_internal_error()?;
+    run_eval(CREATE_VOICE_SESSION, 2, |command| {
+        command
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_current_key(&session.user_id))
+            .arg(raw_session)
+            .arg(&session.operation_id)
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await
+}
+
 pub async fn save_current_voice_session(session: &VoiceSession) -> Result<bool> {
-    let saved: i64 = cmd("EVAL")
-        .arg(SAVE_CURRENT_VOICE_SESSION)
-        .arg(2)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(&session.operation_id)
-        .arg(session)
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let saved: i64 = run_eval(SAVE_CURRENT_VOICE_SESSION, 2, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(&session.operation_id)
+            .arg(session)
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await?;
 
     Ok(saved == 1)
 }
@@ -356,18 +401,18 @@ pub async fn replace_current_voice_session_operation(
     previous_operation_id: &str,
     session: &VoiceSession,
 ) -> Result<bool> {
-    let replaced: i64 = cmd("EVAL")
-        .arg(REPLACE_CURRENT_VOICE_SESSION_OPERATION)
-        .arg(3)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_session_key(previous_operation_id))
-        .arg(previous_operation_id)
-        .arg(session)
-        .arg(&session.operation_id)
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let replaced: i64 = run_eval(REPLACE_CURRENT_VOICE_SESSION_OPERATION, 3, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_session_key(previous_operation_id))
+            .arg(previous_operation_id)
+            .arg(session)
+            .arg(&session.operation_id)
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await?;
 
     Ok(replaced == 1)
 }
@@ -429,44 +474,42 @@ pub async fn get_active_voice_session_for_user(user_id: &str) -> Result<Option<V
 }
 
 async fn persist_active_voice_session_if_current(session: &VoiceSession) -> Result<bool> {
-    let committed: i64 = cmd("EVAL")
-        .arg(COMMIT_VOICE_SESSION_JOIN)
-        .arg(6)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_active_channels_key())
-        .arg(voice_channel_members_key(&session.channel.id))
-        .arg(voice_channel_node_key(&session.channel.id))
-        .arg(voice_room_session_key(&session.channel.id))
-        .arg(&session.operation_id)
-        .arg(session)
-        .arg(&session.channel.id)
-        .arg(&session.user_id)
-        .arg(&session.node)
-        .arg(session.room_sid.as_deref().unwrap_or(""))
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let committed: i64 = run_eval(COMMIT_VOICE_SESSION_JOIN, 6, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_members_key(&session.channel.id))
+            .arg(voice_channel_node_key(&session.channel.id))
+            .arg(voice_room_session_key(&session.channel.id))
+            .arg(&session.operation_id)
+            .arg(session)
+            .arg(&session.channel.id)
+            .arg(&session.user_id)
+            .arg(&session.node)
+            .arg(session.room_sid.as_deref().unwrap_or(""))
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await?;
 
     Ok(committed == 1)
 }
 
 pub(super) async fn remove_active_voice_session_projection(session: &VoiceSession) -> Result<()> {
-    cmd("EVAL")
-        .arg(REMOVE_ACTIVE_VOICE_SESSION_PROJECTION)
-        .arg(5)
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_channel_members_key(&session.channel.id))
-        .arg(voice_active_channels_key())
-        .arg(voice_channel_node_key(&session.channel.id))
-        .arg(voice_room_session_key(&session.channel.id))
-        .arg(session)
-        .arg(&session.user_id)
-        .arg(&session.channel.id)
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .query_async::<_, ()>(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()
+    run_eval(REMOVE_ACTIVE_VOICE_SESSION_PROJECTION, 5, |command| {
+        command
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_channel_members_key(&session.channel.id))
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_node_key(&session.channel.id))
+            .arg(voice_room_session_key(&session.channel.id))
+            .arg(session)
+            .arg(&session.user_id)
+            .arg(&session.channel.id)
+            .arg(VOICE_SESSION_TTL_SECONDS);
+    })
+    .await
 }
 
 pub async fn list_active_voice_channel_ids() -> Result<Vec<String>> {
@@ -478,21 +521,19 @@ pub async fn list_active_voice_channel_ids() -> Result<Vec<String>> {
 }
 
 pub async fn delete_current_voice_session(session: &VoiceSession) -> Result<bool> {
-    let deleted: i64 = cmd("EVAL")
-        .arg(DELETE_CURRENT_VOICE_SESSION)
-        .arg(6)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_channel_members_key(&session.channel.id))
-        .arg(voice_active_channels_key())
-        .arg(voice_channel_node_key(&session.channel.id))
-        .arg(voice_room_session_key(&session.channel.id))
-        .arg(&session.operation_id)
-        .arg(&session.user_id)
-        .arg(&session.channel.id)
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let deleted: i64 = run_eval(DELETE_CURRENT_VOICE_SESSION, 6, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_channel_members_key(&session.channel.id))
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_node_key(&session.channel.id))
+            .arg(voice_room_session_key(&session.channel.id))
+            .arg(&session.operation_id)
+            .arg(&session.user_id)
+            .arg(&session.channel.id);
+    })
+    .await?;
 
     Ok(deleted == 1)
 }
@@ -539,6 +580,37 @@ pub async fn commit_voice_session_join(
         voice_state: session.voice_state(joined_at),
         previous_channels,
     }))
+}
+
+pub(super) async fn refresh_active_voice_session_projection_ttl(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    operation_id: &str,
+) -> Result<()> {
+    run_eval(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION, 6, |command| {
+        command
+            .arg(voice_current_key(user_id))
+            .arg(voice_channel_members_key(&channel.id))
+            .arg(voice_session_key(operation_id))
+            .arg(voice_channel_node_key(&channel.id))
+            .arg(voice_room_session_key(&channel.id))
+            .arg(voice_active_channels_key())
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
+            .arg(VOICE_SESSION_TTL_SECONDS);
+    })
+    .await
+}
+
+pub async fn remove_orphaned_active_voice_channel(channel: &UserVoiceChannel) -> Result<()> {
+    run_eval(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL, 4, |command| {
+        command
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_node_key(&channel.id))
+            .arg(voice_room_session_key(&channel.id))
+            .arg(voice_channel_members_key(&channel.id))
+            .arg(&channel.id);
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -726,5 +798,53 @@ mod tests {
         );
         assert!(REPLACE_CURRENT_VOICE_SESSION_OPERATION
             .contains("redis.call('GET', KEYS[1]) ~= ARGV[1]"));
+    }
+
+    #[test]
+    fn redis_voice_membership_scripts_keep_ttl_on_live_state() {
+        assert!(CREATE_VOICE_SESSION.contains("redis.call('EXPIRE', KEYS[2], tonumber(ARGV[4]))"));
+        assert!(SAVE_CURRENT_VOICE_SESSION
+            .contains("redis.call('SETEX', KEYS[2], tonumber(ARGV[3]), ARGV[2])"));
+        assert!(
+            SAVE_CURRENT_VOICE_SESSION.contains("redis.call('EXPIRE', KEYS[1], tonumber(ARGV[4]))")
+        );
+        assert!(COMMIT_VOICE_SESSION_JOIN
+            .contains("redis.call('SETEX', KEYS[2], tonumber(ARGV[7]), ARGV[2])"));
+        assert!(
+            COMMIT_VOICE_SESSION_JOIN.contains("redis.call('EXPIRE', KEYS[1], tonumber(ARGV[8]))")
+        );
+        assert!(
+            COMMIT_VOICE_SESSION_JOIN.contains("redis.call('EXPIRE', KEYS[3], tonumber(ARGV[8]))")
+        );
+        assert!(
+            COMMIT_VOICE_SESSION_JOIN.contains("redis.call('EXPIRE', KEYS[4], tonumber(ARGV[8]))")
+        );
+        assert!(
+            COMMIT_VOICE_SESSION_JOIN.contains("redis.call('EXPIRE', KEYS[5], tonumber(ARGV[8]))")
+        );
+        assert!(
+            COMMIT_VOICE_SESSION_JOIN.contains("redis.call('EXPIRE', KEYS[6], tonumber(ARGV[8]))")
+        );
+        assert!(REPLACE_CURRENT_VOICE_SESSION_OPERATION
+            .contains("redis.call('SETEX', KEYS[2], tonumber(ARGV[4]), ARGV[2])"));
+        assert!(REPLACE_CURRENT_VOICE_SESSION_OPERATION
+            .contains("redis.call('EXPIRE', KEYS[1], tonumber(ARGV[5]))"));
+    }
+
+    #[test]
+    fn redis_voice_heartbeat_scripts_refresh_ttl_and_clean_orphan_active_channels() {
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('EXPIRE', KEYS[2], tonumber(ARGV[1]))"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('EXPIRE', KEYS[3], tonumber(ARGV[2]))"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('EXPIRE', KEYS[6], tonumber(ARGV[1]))"));
+        assert!(
+            REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL.contains("redis.call('SREM', KEYS[1], ARGV[1])")
+        );
+        assert!(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL
+            .contains("redis.call('DEL', KEYS[2], KEYS[3], KEYS[4])"));
     }
 }

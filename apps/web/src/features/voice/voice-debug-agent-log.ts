@@ -1,6 +1,6 @@
 import { env } from '#/env'
 
-type VoiceDebugAgentPayload = Record<string, unknown> & {
+export type VoiceDebugAgentPayload = Record<string, unknown> & {
   hypothesis: string
   event: string
 }

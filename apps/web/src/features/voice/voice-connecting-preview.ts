@@ -24,8 +24,8 @@ export function createConnectingLocalVoiceState(
 
 export function isVoiceLocalUserId(
   userId: string,
-  authUserId?: string,
-  liveKitIdentity?: string,
+  authUserId: string | null = null,
+  liveKitIdentity: string | null = null,
 ) {
   if (authUserId && userId === authUserId) return true
   return Boolean(liveKitIdentity && userId === liveKitIdentity)

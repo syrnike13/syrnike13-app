@@ -15,12 +15,19 @@ export type NativeScreenPublicationMatch = {
 }
 
 export type NativeScreenPublicationOptions = {
-  userId?: string
+  userId: string | null
   nativeParticipantIdentity?: string
 }
 
+type RemoteTrackPublicationWithLegacySid = RemoteTrackPublication & {
+  sid?: string
+}
+
 function publicationSid(publication: RemoteTrackPublication) {
-  return publication.trackSid || publication.sid
+  return (
+    publication.trackSid ||
+    (publication as RemoteTrackPublicationWithLegacySid).sid
+  )
 }
 
 function isNativeScreenParticipant(

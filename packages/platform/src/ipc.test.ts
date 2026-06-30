@@ -18,6 +18,12 @@ describe('desktop media IPC contract', () => {
     )
   })
 
+  it('exposes native microphone reconnect through the media namespace', () => {
+    expect(IPC.mediaReconnectMicrophoneSession).toBe(
+      'syrnike-desktop:media:reconnect-microphone-session',
+    )
+  })
+
   it('does not expose out-of-band media audio preparation channels', () => {
     expect('mediaPrepareSystemAudio' in IPC).toBe(false)
     expect('mediaClearSystemAudio' in IPC).toBe(false)

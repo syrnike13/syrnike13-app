@@ -147,6 +147,9 @@ export class RemoteAudioMixer {
 
     const stream = new MediaStream([track.mediaStreamTrack])
     const audioSettings = track.mediaStreamTrack.getSettings?.() ?? {}
+    const audioSettingsWithLatency = audioSettings as MediaTrackSettings & {
+      latency?: number
+    }
     logVoiceDebugAgent({
       hypothesis: 'H4-audio-frame-gaps',
       event: 'remote-audio-track-add',
@@ -162,7 +165,7 @@ export class RemoteAudioMixer {
       trackSettings: {
         sampleRate: audioSettings.sampleRate,
         channelCount: audioSettings.channelCount,
-        latency: audioSettings.latency,
+        latency: audioSettingsWithLatency.latency,
         echoCancellation: audioSettings.echoCancellation,
         noiseSuppression: audioSettings.noiseSuppression,
         autoGainControl: audioSettings.autoGainControl,

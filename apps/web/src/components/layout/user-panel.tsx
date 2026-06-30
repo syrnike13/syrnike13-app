@@ -20,7 +20,8 @@ import {
 } from '#/components/ui/popover'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { userStatusSubtitle } from '#/lib/presence'
 import { USER_PANEL_SPAN_WIDTH } from '#/components/layout/left-sidebar-stack'
@@ -45,27 +46,28 @@ const userPanelControlButtonClass =
 export function UserPanel() {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceStage = useVoiceStage()
   const [menuOpen, setMenuOpen] = useState(false)
   const [globalProfileOpen, setGlobalProfileOpen] = useState(false)
   const user = auth.user
   if (!user) return null
-  if (voice.stageFullscreen) return null
+  if (voiceStage.stageFullscreen) return null
 
   const displayName = user.display_name ?? user.username
   const usernameLabel = `@${user.username}`
   const inVoiceSession =
-    voice.channelId != null &&
-    (voice.status === 'connected' || voice.status === 'connecting')
-  const inVoice = voice.status === 'connected'
+    voiceSession.channelId != null &&
+    (voiceSession.status === 'connected' || voiceSession.status === 'connecting')
+  const inVoice = voiceSession.status === 'connected'
   const gatewayConnected = auth.gatewayState === 'connected'
   const gatewayReconnecting = auth.gatewayState === 'reconnecting'
   const micMuted = isMicVisuallyMuted({
     inVoiceSession,
-    micEnabled: voice.micEnabled,
-    micPublishing: voice.micPublishing,
+    micEnabled: voiceSession.micEnabled,
+    micPublishing: voiceSession.micPublishing,
   })
-  const soundOff = voice.deafened
+  const soundOff = voiceSession.deafened
 
   const statusLabel = gatewayConnected
     ? userStatusSubtitle(user)
@@ -150,17 +152,17 @@ export function UserPanel() {
                 <VoiceMicSplitControl
                   surface="panel"
                   inVoice={inVoice}
-                  connecting={voice.status === 'connecting'}
+                  connecting={voiceSession.status === 'connecting'}
                   micMuted={micMuted}
-                  onToggleMic={voice.toggleMic}
+                  onToggleMic={voiceSession.toggleMic}
                 />
 
                 <VoiceSoundSplitControl
                   surface="panel"
                   inVoice={inVoice}
-                  connecting={voice.status === 'connecting'}
+                  connecting={voiceSession.status === 'connecting'}
                   soundOff={soundOff}
-                  onToggleDeafen={voice.toggleDeafen}
+                  onToggleDeafen={voiceSession.toggleDeafen}
                 />
 
                 <Button

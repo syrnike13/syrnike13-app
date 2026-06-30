@@ -14,6 +14,199 @@ function readVoiceProviderSource() {
   )
 }
 
+function readVoiceStageMediaSyncSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-stage-media-sync.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceLocalSetupSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-local-setup.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceNativeMediaSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceRoomAudioSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-room-audio.ts'),
+    'utf8',
+  )
+}
+
+function readNativeScreenPublicationLossSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(
+      repoRoot,
+      'apps/web/src/features/voice/native-screen-publication-loss.ts',
+    ),
+    'utf8',
+  )
+}
+
+function readVoiceScreenShareSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-screen-share.ts'),
+    'utf8',
+  )
+}
+
+function readUseVoiceScreenShareSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/use-voice-screen-share.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceStageControllerSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-stage-controller.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceDebugTelemetrySource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-debug-telemetry.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceMediaFlagsSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-media-flags.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceFlagsControllerSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-flags-controller.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceContextSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-context.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceSessionContextSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-session-context.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceMediaContextSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-media-context.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceStageContextSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-stage-context.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceTelemetryContextSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-telemetry-context.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceIntentExecutorSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-intent-executor.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceJoinSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-join.ts'),
+    'utf8',
+  )
+}
+
+function readVoiceNativeMediaOwnerSource() {
+  const repoRoot = resolve(
+    fileURLToPath(new URL('../../../../..', import.meta.url)),
+  )
+  return readFileSync(
+    resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media-owner.ts'),
+    'utf8',
+  )
+}
+
 describe('voice provider speaking boundary', () => {
   it('does not reference the removed single-source speaking setter', () => {
     const source = readVoiceProviderSource()
@@ -21,96 +214,480 @@ describe('voice provider speaking boundary', () => {
   })
 
   it('keeps stale native screen ended callbacks from clearing a newer session', () => {
-    const source = readVoiceProviderSource()
+    const screenShareSource = readVoiceScreenShareSource()
 
-    expect(source).toContain('if (!active || active !== session) return')
+    expect(screenShareSource).toContain('if (!active || active !== session) return')
   })
 
   it('guards native screen share starts against stale voice sessions', () => {
     const source = readVoiceProviderSource()
+    const mediaFlagsSource = readVoiceMediaFlagsSource()
+    const nativeMediaSource = readVoiceNativeMediaSource()
+    const ownerSource = readVoiceNativeMediaOwnerSource()
+    const screenShareSource = readVoiceScreenShareSource()
 
     expect(source).toContain('const screenShareStartGenerationRef = useRef(0)')
-    expect(source.match(/screenShareStartGenerationRef\.current \+= 1/g)).toHaveLength(2)
-    expect(source).toContain('const screenShareStartingRef = useRef(false)')
-    expect(source).toContain('if (screenShareStartingRef.current || nativeScreenShareRef.current) return')
-    expect(source).toContain('screenShareStartingRef.current = true')
-    expect(source).toContain('const isCurrentScreenShareStart = () =>')
-    expect(source).toContain('const clearCurrentScreenShareStart = () =>')
-    expect(source).toContain('if (!isCurrentScreenShareStart())')
-    expect(source).toContain('await session.stop().catch(() => {})')
-    expect(source).toContain("desktop.media.cancelPendingStarts('screen')")
+    expect(
+      nativeMediaSource.match(/screenShareStartGenerationRef\.current \+= 1/g),
+    ).toHaveLength(1)
+    expect(source).toContain('nativeMedia.reset({')
+    expect(source).toContain('nativeMedia.disconnectForHandoff({')
+    expect(ownerSource.match(/resetNativeMediaState\(\{/g)).toHaveLength(1)
+    expect(ownerSource).toContain('disconnectNativeMediaForHandoff({')
+    expect(nativeMediaSource).toContain('resetStatsWithoutActiveScreen: true')
+    expect(mediaFlagsSource).toContain('const screenShareStartingRef = useRef(false)')
+    expect(screenShareSource).toContain(
+      'deps.screenShareStartingRef.current || deps.nativeScreenShareRef.current',
+    )
+    expect(screenShareSource).toContain('deps.screenShareStartingRef.current = true')
+    expect(screenShareSource).toContain('function createScreenShareStartToken')
+    expect(screenShareSource).toContain('const currentStartToken =')
+    expect(screenShareSource).toContain('if (!currentStartToken.isCurrent())')
+    expect(screenShareSource).toContain('Promise.resolve(session.stop())')
+    expect(screenShareSource).toContain("desktop.media.cancelPendingStarts('screen')")
   })
 
   it('guards local voice setup against stale room completions', () => {
     const source = readVoiceProviderSource()
+    const localSetupSource = readVoiceLocalSetupSource()
 
-    expect(source).toContain(
-      'if (!nativeStarted || !isCurrentVoiceSession(room, targetChannelId))',
+    expect(source).toContain('finishLocalVoiceSetup as finishLocalVoiceSetupFromDeps')
+    expect(source).toContain('isCurrentVoiceSession,')
+    expect(localSetupSource).toContain(
+      'if (!nativeStarted || !deps.isCurrentVoiceSession(room, targetChannelId))',
     )
-    expect(source).toContain('setLocalVoiceReady(true)')
-    expect(source).toContain("setConnectionPhase('connected')")
+    expect(localSetupSource).toContain('setLocalVoiceReady(true)')
+    expect(localSetupSource).toContain("setConnectionPhase('connected')")
   })
 
   it('defers native screen share starts until local voice setup is ready', () => {
     const source = readVoiceProviderSource()
+    const hookSource = readUseVoiceScreenShareSource()
+    const nativeMediaSource = readVoiceNativeMediaSource()
+    const screenShareSource = readVoiceScreenShareSource()
 
     expect(source).toContain('const localVoiceReadyRef = useRef(false)')
     expect(source).toContain('localVoiceReadyRef.current = localVoiceReady')
     expect(source).toContain('const pendingScreenShareStartRef = useRef')
-    expect(source).toContain('pendingScreenShareStartRef.current = { quality, withAudio }')
-    expect(source).toContain('screen-start-deferred-local-voice-not-ready')
-    expect(source).toContain('screen-start-resumed-after-local-voice-ready')
-    expect(source).toContain('void startLocalScreenShare(pending.quality, pending.withAudio)')
-    expect(source.match(/pendingScreenShareStartRef\.current = null/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(screenShareSource).toContain('deps.pendingScreenShareStartRef.current = {')
+    expect(screenShareSource).toContain('screen-start-deferred-local-voice-not-ready')
+    expect(hookSource).toContain('screen-start-resumed-after-local-voice-ready')
+    expect(hookSource).toContain('void startLocalScreenShare(pending.quality, pending.withAudio)')
+    expect(
+      [
+        ...(source.match(/pendingScreenShareStartRef\.current = null/g) ?? []),
+        ...(nativeMediaSource.match(
+          /pendingScreenShareStartRef\.current = null/g,
+        ) ?? []),
+        ...(screenShareSource.match(
+          /pendingScreenShareStartRef\.current = null/g,
+        ) ?? []),
+        ...(hookSource.match(
+          /pendingScreenShareStartRef\.current = null/g,
+        ) ?? []),
+      ].length,
+    ).toBeGreaterThanOrEqual(3)
   })
 
   it('does not mark native screen share active from the helper ref alone', () => {
     const source = readVoiceProviderSource()
+    const hookSource = readUseVoiceScreenShareSource()
+    const mediaFlagsSource = readVoiceMediaFlagsSource()
 
     expect(source).not.toContain(
       'localMedia.screensharing || Boolean(nativeScreenShareRef.current)',
     )
-    expect(source).toContain('findNativeScreenPublication')
+    expect(hookSource).toContain('findNativeScreenPublication')
     expect(source).toContain('nativeMediaReducer')
-    expect(source).toContain('isNativeScreenPublished(nativeMediaState)')
+    expect(mediaFlagsSource).toContain('isNativeScreenPublished(nativeMediaState)')
   })
 
   it('keeps native media coordinator ref in sync before room resyncs', () => {
     const source = readVoiceProviderSource()
+    const mediaFlagsSource = readVoiceMediaFlagsSource()
+    const stageMediaSyncSource = readVoiceStageMediaSyncSource()
 
     expect(source).toContain('const nativeMediaStateRef = useRef(nativeMediaState)')
     expect(source).toContain(
       'nativeMediaStateRef.current = nativeMediaReducer(',
     )
-    expect(source).toContain(
-      'isNativeScreenPublished(nativeMediaStateRef.current)',
+    expect(source).toContain('useVoiceMediaFlags({')
+    expect(mediaFlagsSource).toContain('nativeMediaState: nativeMediaStateRef.current')
+    expect(mediaFlagsSource).toContain(
+      'syncRoomParticipants as syncRoomParticipantsForRoom',
+    )
+    expect(stageMediaSyncSource).toContain(
+      'isNativeScreenPublished(options.nativeMediaState)',
     )
   })
 
   it('cleans up native screen state when the LiveKit publication disappears', () => {
     const source = readVoiceProviderSource()
+    const stageMediaSyncSource = readVoiceStageMediaSyncSource()
+    const screenShareSource = readVoiceScreenShareSource()
+    const roomAudioSource = readVoiceRoomAudioSource()
+    const nativeScreenLossSource = readNativeScreenPublicationLossSource()
 
-    expect(source).toContain('native-screen-publication-lost')
-    expect(source).toContain('RoomEvent.ParticipantDisconnected')
-    expect(source).toContain('RoomEvent.TrackUnpublished')
-    expect(source).toContain("reason: 'publication-missing'")
-    expect(source).toContain("dispatchNativeMedia({ type: 'screen_stopped' })")
+    expect(screenShareSource).toContain('native-screen-publication-lost')
+    expect(nativeScreenLossSource).toContain(
+      'export function hasCurrentNativeScreenPublication',
+    )
+    expect(nativeScreenLossSource).toContain(
+      'export function isCurrentNativeScreenPublication',
+    )
+    expect(stageMediaSyncSource).toContain(
+      "from '#/features/voice/native-screen-publication-loss'",
+    )
+    expect(roomAudioSource).toContain(
+      "from '#/features/voice/native-screen-publication-loss'",
+    )
+    expect(roomAudioSource).not.toContain(
+      'function isCurrentNativeScreenParticipant',
+    )
+    expect(stageMediaSyncSource).not.toContain(
+      'export function hasCurrentNativeScreenPublication',
+    )
+    expect(roomAudioSource).toContain('RoomEvent.ParticipantDisconnected')
+    expect(roomAudioSource).toContain('RoomEvent.TrackUnpublished')
+    expect(nativeScreenLossSource).toContain("reason: 'publication-missing'")
+    expect(stageMediaSyncSource).toContain(
+      'detectMissingNativeScreenPublicationLoss',
+    )
+    expect(source).toContain('onNativeScreenPublicationLost')
+    expect(screenShareSource).toContain(
+      "dispatchNativeMedia({ type: 'screen_stopped' })",
+    )
   })
 
   it('cleans native screen state and session-machine state on unexpected room disconnect', () => {
     const source = readVoiceProviderSource()
+    const nativeMediaSource = readVoiceNativeMediaSource()
+    const ownerSource = readVoiceNativeMediaOwnerSource()
+    const roomAudioSource = readVoiceRoomAudioSource()
     const disconnectBlock =
       source.match(
-        /room\.on\(RoomEvent\.Disconnected[\s\S]*?voiceRejoinRef\.current\.onUnexpectedDisconnect\(targetChannelId\)[\s\S]*?\}\)/,
+        /onUnexpectedRoomDisconnect[\s\S]*?setConnectionPhase\('reconnecting'\)[\s\S]*?\}/,
       )?.[0] ?? ''
 
-    expect(disconnectBlock).toContain(
+    expect(roomAudioSource).toContain('RoomEvent.Disconnected')
+    expect(disconnectBlock).toMatch(
+      /voiceIntentExecutorRef\.current\.onRoomDisconnected\(\s*false,\s*'Room disconnected',?\s*\)/,
+    )
+    expect(disconnectBlock).not.toContain('voiceRejoinRef')
+    expect(disconnectBlock).not.toContain(
       'voiceSessionControllerRef.current.handleRoomDisconnected',
     )
     expect(disconnectBlock).toContain('disconnectNativeMediaForHandoff()')
-    expect(source).toContain('screenShareStartGenerationRef.current += 1')
-    expect(source).toContain('pendingScreenShareStartRef.current = null')
-    expect(source).toContain('nativeScreenShareRef.current')
-    expect(source).toContain("dispatchNativeMedia({ type: 'screen_stopped' })")
+    expect(source).toContain('nativeMedia.reset({')
+    expect(ownerSource).toContain('resetNativeMediaState({')
+    expect(nativeMediaSource).toContain('screenShareStartGenerationRef.current += 1')
+    expect(nativeMediaSource).toContain('pendingScreenShareStartRef.current = null')
+    expect(nativeMediaSource).toContain('nativeScreenShareRef.current')
+    expect(readVoiceScreenShareSource()).toContain(
+      "dispatchNativeMedia({ type: 'screen_stopped' })",
+    )
+  })
+
+  it('starts Phase D wiring through VoiceIntentExecutor without a second operation source', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).toContain('createVoiceIntentExecutor')
+    expect(source).toContain('voiceIntentActionFromGatewayEvent')
+    expect(source).toMatch(
+      /voiceIntentExecutorRef\.current\.intent\(targetChannelId, reason\)/,
+    )
+    expect(source).toMatch(
+      /const action = voiceIntentActionFromGatewayEvent\([\s\S]*event,[\s\S]*auth\.user\?\._id \?\? null,[\s\S]*\)[\s\S]*voiceIntentExecutorRef\.current\.observeCommit\(action\.operationId, action\.channelId\)/,
+    )
+    expect(source).not.toContain('pendingVoiceIntentOperationIdRef')
+    expect(source).not.toMatch(
+      /voiceSessionControllerRef\.current\.requestJoin\([\s\S]*pendingVoiceIntentOperationIdRef[\s\S]*voiceIntentExecutorRef\.current\.intent\(targetChannelId, reason\)/,
+    )
+    expect(source).not.toContain('voiceCommitFromGatewayEvent')
+    expect(source).not.toContain('voiceCommitOperationIdToObserve')
+  })
+
+  it('routes public leave through VoiceIntentExecutor clearIntent', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).toMatch(
+      /const leave = useCallback\(\(\) => \{[\s\S]*voiceIntentExecutorRef\.current\.clearIntent\(\)[\s\S]*\},/,
+    )
+    expect(source).not.toContain('rememberVoiceIntentCanceledOperation')
+    expect(source).not.toMatch(
+      /const leave = useCallback\(\(\) => \{[\s\S]*leaveVoiceSession\('leave'\)/,
+    )
+    expect(source).not.toMatch(
+      /const leave = useCallback\(\(\) => \{[\s\S]*voiceSessionControllerRef\.current\.requestLeave\(\)/,
+    )
+  })
+
+  it('keeps gateway subscription as direct commit and leave mapping', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).toMatch(
+      /voiceIntentActionFromGatewayEvent\([\s\S]*event,[\s\S]*auth\.user\?\._id \?\? null,[\s\S]*\)[\s\S]*voiceIntentExecutorRef\.current\.observeCommit\(action\.operationId, action\.channelId\)/,
+    )
+    expect(source).toMatch(
+      /action\?\.type === 'leave_observed'[\s\S]*voiceIntentExecutorRef\.current\.observeLeave\(action\.operationId\)/,
+    )
+    expect(source).toContain(
+      'disconnectLocalSession: async ({ channelId: leftChannelId, room })',
+    )
+    expect(source).not.toContain('voiceIntentSupersedeFromGatewayEvent')
+    expect(source).not.toMatch(
+      /eventsGateway\.subscribeEvents[\s\S]*observeSupersede\(/,
+    )
+    expect(source).not.toContain('remoteVoiceSupersedeInFlightRef')
+    expect(source).not.toContain('stopRemoteSupersededVoiceSession')
+    expect(source).not.toContain('voiceSessionControllerRef.current.requestLeave')
+    expect(source).not.toContain(
+      'voiceSessionControllerRef.current.handleRoomDisconnected',
+    )
+    expect(source).not.toContain('leaveVoiceSessionRef')
+  })
+
+  it('keeps room assignment ownership inside VoiceIntentExecutor', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).not.toContain('setActiveRoom')
+    expect(source).toMatch(/onRoomChanged: \(room\) => \{[\s\S]*roomRef\.current = room/)
+  })
+
+  it('delegates recovery desired channel ownership to VoiceIntentExecutor', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).toContain('voiceIntentExecutorRef.current.reconcileWithServer')
+    expect(source).not.toContain('getDesiredChannelId: () => {')
+    expect(source).not.toContain('voiceSessionControllerRef.current.getState()')
+  })
+
+  it('keeps planned disconnect state out of the provider and room audio wiring', () => {
+    const providerSource = readVoiceProviderSource()
+    const roomAudioSource = readVoiceRoomAudioSource()
+
+    expect(providerSource).not.toContain('disconnectIntentRef')
+    expect(providerSource).not.toContain('type DisconnectIntent')
+    expect(roomAudioSource).not.toContain('getDisconnectIntent')
+    expect(roomAudioSource).not.toContain('clearDisconnectIntent')
+  })
+
+  it('keeps voice transition rate-limit attempt storage outside the provider', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).toContain('createVoiceTransitionRateLimiter')
+    expect(source).not.toContain('voiceTransitionAttemptsRef')
+  })
+
+  it('does not own recovery rejoin backoff or create rejoin operations in the provider', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).not.toContain('requestRejoinOperation:')
+    expect(source).not.toContain('createVoiceRejoinController')
+    expect(source).not.toContain('VoiceRejoinControllerOptions')
+    expect(source).not.toContain('voiceRejoinRef')
+    expect(source).not.toContain('voiceRejoinDepsRef')
+    expect(source).not.toContain('recoveryJoinInFlightRef')
+    expect(source).not.toContain('attemptRejoin: (channelId) =>')
+    expect(source).not.toContain('voiceSessionControllerRef.current.requestJoin')
+  })
+
+  it('does not construct the legacy session controller in the provider', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).not.toContain('createVoiceSessionController')
+    expect(source).not.toContain('voiceSessionControllerRef')
+  })
+
+  it('preserves executor rejoin reason when invoking the join runner', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).toMatch(
+      /performVoiceJoin: \(targetChannelId, options\) =>[\s\S]*performVoiceJoinRef\.current\(targetChannelId, \{[\s\S]*operationId: options\.operationId,[\s\S]*rejoin: options\.reason === 'rejoin',[\s\S]*\}\)/,
+    )
+  })
+
+  it('passes live deps into join runner and executor through getDeps accessors', () => {
+    const source = readVoiceProviderSource()
+    const joinSource = readVoiceJoinSource()
+    const executorSource = readVoiceIntentExecutorSource()
+
+    expect(source).toContain('getDeps: () => voiceJoinDepsRef.current')
+    expect(source).toContain('getDeps: () => voiceIntentExecutorDepsRef.current')
+    expect(joinSource).toContain('getDeps: () => VoiceJoinRunnerDeps')
+    expect(executorSource).toContain('getDeps: () => VoiceExecutorDeps')
+    expect(source).not.toContain(
+      'getToken: () => voiceJoinDepsRef.current.getToken()',
+    )
+    expect(source).not.toContain(
+      'getToken: () => voiceIntentExecutorDepsRef.current.getToken()',
+    )
+    expect(source).not.toContain(
+      'getGatewayConnected: () =>\n' +
+        '          voiceIntentExecutorDepsRef.current.recovery.getGatewayConnected()',
+    )
+  })
+
+  it('keeps join runner recency checks on the shared active operation reader', () => {
+    const source = readVoiceProviderSource()
+    const joinDepsBlock =
+      source.match(
+        /voiceJoinDepsRef\.current = \{[\s\S]*?voiceIntentExecutorDepsRef\.current = \{/,
+      )?.[0] ?? ''
+
+    expect(joinDepsBlock).toContain('getActiveVoiceOperationId() === operationId')
+    expect(joinDepsBlock).not.toContain('voiceSessionControllerRef.current.getState()')
+  })
+
+  it('does not mirror join runner phases into the legacy session controller', () => {
+    const source = readVoiceProviderSource()
+
+    expect(source).not.toContain(
+      'voiceSessionControllerRef.current.handleServerPrepareSucceeded',
+    )
+    expect(source).not.toContain(
+      'voiceSessionControllerRef.current.handleRoomConnected',
+    )
+    expect(source).not.toContain(
+      'voiceSessionControllerRef.current.handleRoomConnectFailed',
+    )
+  })
+
+  it('keeps stage state and screen-watch orchestration inside useVoiceStageController', () => {
+    const providerSource = readVoiceProviderSource()
+    const stageControllerSource = readVoiceStageControllerSource()
+
+    expect(providerSource).toContain('useVoiceStageController({')
+    expect(stageControllerSource).toContain('export function useVoiceStageController')
+    expect(stageControllerSource).toContain('const stageMediaItemsRef = useRef')
+    expect(stageControllerSource).toContain('const watchedRemoteScreenIdsRef = useRef')
+    expect(stageControllerSource).toContain('watchParticipantScreenShare')
+    expect(stageControllerSource).toContain('setStageMediaSubscribed')
+    expect(stageControllerSource).toContain('syncStageMediaItemsForRoom')
+    expect(stageControllerSource).toContain('stageFullscreen')
+    expect(stageControllerSource).toContain('toggleStageFullscreen')
+    expect(providerSource).not.toContain('const [stageFullscreen, setStageFullscreen]')
+  })
+
+  it('keeps voice ping and rtc debug sampling inside useVoiceTelemetryDebug', () => {
+    const providerSource = readVoiceProviderSource()
+    const telemetrySource = readVoiceDebugTelemetrySource()
+
+    expect(providerSource).toContain('useVoiceTelemetryDebug({')
+    expect(telemetrySource).toContain('export function useVoiceTelemetryDebug')
+    expect(telemetrySource).toContain('measureVoicePingMs')
+    expect(telemetrySource).toContain('appendVoicePingSample')
+    expect(telemetrySource).toContain('collectVoiceRtcDebugSnapshot')
+    expect(telemetrySource).toContain('rtc-screen-sample')
+    expect(telemetrySource).toContain('screenShareDebugRun')
+    expect(telemetrySource).toContain('setScreenShareDebugRun')
+    expect(telemetrySource).toContain('resetVoiceTelemetryDebugState')
+    expect(providerSource).not.toContain('const [voicePingMs, setVoicePingMs]')
+    expect(providerSource).not.toContain('const [rtcDebugEnabled, setRtcDebugEnabled]')
+    expect(providerSource).not.toContain('const [screenShareDebugRun, setScreenShareDebugRun]')
+  })
+
+  it('keeps camera and screen-share UI flags inside useVoiceMediaFlags', () => {
+    const providerSource = readVoiceProviderSource()
+    const mediaFlagsSource = readVoiceMediaFlagsSource()
+
+    expect(providerSource).toContain('useVoiceMediaFlags({')
+    expect(mediaFlagsSource).toContain('export function useVoiceMediaFlags')
+    expect(mediaFlagsSource).toContain('cameraEnabled')
+    expect(mediaFlagsSource).toContain('screenShareEnabledForUi')
+    expect(mediaFlagsSource).toContain('screenShareStartingForUi')
+    expect(mediaFlagsSource).toContain('syncRoomParticipantsForRoom')
+    expect(mediaFlagsSource).toContain('toggleCamera')
+    expect(providerSource).not.toContain('const [cameraEnabled, setCameraEnabled]')
+    expect(providerSource).not.toContain('const [screenShareEnabled, setScreenShareEnabled]')
+    expect(providerSource).not.toContain('const [screenShareStarting, setScreenShareStarting]')
+  })
+
+  it('keeps mic, deafen, and self-monitoring controls inside useVoiceFlagsController', () => {
+    const providerSource = readVoiceProviderSource()
+    const flagsControllerSource = readVoiceFlagsControllerSource()
+
+    expect(providerSource).toContain('useVoiceFlagsController({')
+    expect(flagsControllerSource).toContain('export function useVoiceFlagsController')
+    expect(flagsControllerSource).toContain('const setSelfMonitoringActive = useCallback')
+    expect(flagsControllerSource).toContain('const toggleMic = useCallback')
+    expect(flagsControllerSource).toContain('const toggleDeafen = useCallback')
+    expect(flagsControllerSource).toContain('selfMonitoringRef.current.restorePublishing')
+    expect(flagsControllerSource).toContain('voicePreferenceStore.setMicEnabled')
+    expect(providerSource).not.toContain('const setSelfMonitoringActive = useCallback')
+    expect(providerSource).not.toContain('const toggleMic = useCallback')
+    expect(providerSource).not.toContain('const toggleDeafen = useCallback')
+  })
+
+  it('keeps screen-share orchestration inside useVoiceScreenShare', () => {
+    const providerSource = readVoiceProviderSource()
+    const hookSource = readUseVoiceScreenShareSource()
+    const screenShareSource = readVoiceScreenShareSource()
+
+    expect(providerSource).toContain('useVoiceScreenShare({')
+    expect(hookSource).toContain('export function useVoiceScreenShare')
+    expect(hookSource).toContain('startLocalScreenShareFromDeps')
+    expect(hookSource).not.toContain('startBrowserScreenShareFromDeps')
+    expect(hookSource).toContain('stopNativeScreenShareFromDeps')
+    expect(hookSource).toContain('handleNativeScreenPublicationLostFromDeps')
+    expect(hookSource).toContain('screen-start-resumed-after-local-voice-ready')
+    expect(hookSource).toContain('toggleScreenShare')
+    expect(hookSource).toContain('teardownScreenShare')
+    expect(screenShareSource).toContain('type ScreenShareStartContext')
+    expect(screenShareSource).toContain('export function teardownScreenShare')
+    expect(screenShareSource).toContain('export async function startNativeScreenShare')
+    expect(screenShareSource).toContain('export async function startBrowserScreenShare')
+    expect(screenShareSource).toContain(
+      'await startNativeScreenShare({',
+    )
+    expect(screenShareSource).toContain('await startBrowserScreenShare({')
+    expect(providerSource).not.toContain('const startLocalScreenShare = useCallback')
+    expect(providerSource).not.toContain('const startBrowserScreenShare = useCallback')
+    expect(providerSource).not.toContain('const handleNativeScreenPublicationLost = useCallback')
+    expect(providerSource).not.toContain('const toggleScreenShare = useCallback')
+  })
+
+  it('splits voice consumers across session, media, stage, and telemetry contexts', () => {
+    const providerSource = readVoiceProviderSource()
+    const contextSource = readVoiceContextSource()
+    const sessionContextSource = readVoiceSessionContextSource()
+    const mediaContextSource = readVoiceMediaContextSource()
+    const stageContextSource = readVoiceStageContextSource()
+    const telemetryContextSource = readVoiceTelemetryContextSource()
+
+    expect(contextSource).toContain('export type VoiceStageMediaItem')
+    expect(contextSource).not.toContain('createContext')
+    expect(contextSource).not.toContain('export function useVoice')
+    expect(providerSource).toContain('VoiceSessionContext.Provider')
+    expect(providerSource).toContain('VoiceMediaContext.Provider')
+    expect(providerSource).toContain('VoiceStageContext.Provider')
+    expect(providerSource).toContain('VoiceTelemetryContext.Provider')
+    expect(providerSource).not.toContain('useMemo<VoiceContextValue>')
+    expect(providerSource).not.toContain('VoiceContext.Provider')
+    expect(sessionContextSource).toContain('export function useVoiceSession')
+    expect(mediaContextSource).toContain('export function useVoiceMedia')
+    expect(stageContextSource).toContain('export function useVoiceStage')
+    expect(telemetryContextSource).toContain('export function useVoiceTelemetry')
+  })
+
+  it('keeps native microphone publisher ownership inside the voice executor', () => {
+    const providerSource = readVoiceProviderSource()
+    const executorSource = readVoiceIntentExecutorSource()
+    const ownerSource = readVoiceNativeMediaOwnerSource()
+
+    expect(providerSource).not.toContain('nativeMicrophoneRef = useRef')
+    expect(providerSource).not.toContain('nativeMicrophoneStartRef = useRef')
+    expect(providerSource).not.toContain(
+      'nativeMicrophoneStartGenerationRef = useRef',
+    )
+    expect(providerSource).not.toContain('nativeMicrophoneMutedRef = useRef')
+    expect(providerSource).not.toContain('liveKitCredentialsRef = useRef')
+    expect(executorSource).toContain('createVoiceNativeMediaOwner')
+    expect(executorSource).toContain('nativeMedia')
+    expect(ownerSource).toContain('const nativeMicrophoneRef')
+    expect(ownerSource).toContain('startMicrophone')
+    expect(ownerSource).toContain('setMicrophoneMuted')
+    expect(ownerSource).toContain('refreshLiveKitCredentials')
+    expect(ownerSource).toContain('disconnectForHandoff')
   })
 })

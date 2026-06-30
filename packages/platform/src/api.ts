@@ -6,6 +6,7 @@ import type {
   NativeMicrophoneMetricsEvent,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaSession,
+  NativeMediaMicrophoneSessionStartOptions,
   NativeMediaSessionStartOptions,
   NativeMediaState,
   NativeMediaStateEvent,
@@ -162,6 +163,7 @@ export type {
   NativeMediaSidecarLostEvent,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaSessionKind,
+  NativeMediaMicrophoneSessionStartOptions,
   NativeMediaSessionStartOptions,
   NativeMicrophonePreviewSession,
   NativeMicrophonePreviewStartOptions,
@@ -262,6 +264,10 @@ export interface SyrnikeDesktopApi {
       config: NativeMicrophoneRuntimeConfig,
     ): Promise<void>
     setMicrophoneMuted(sessionId: string, muted: boolean): Promise<void>
+    reconnectMicrophoneSession(
+      sessionId: string,
+      options: NativeMediaMicrophoneSessionStartOptions,
+    ): Promise<NativeMediaSession>
     stopSession(sessionId?: string): Promise<void>
     getState(): Promise<NativeMediaState>
     onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
