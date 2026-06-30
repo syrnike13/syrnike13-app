@@ -8,11 +8,13 @@ import {
 
 import {
   applyRemoteScreenParticipantSubscription,
-  hasCurrentNativeScreenPublication,
   stageMediaTrackSource,
   syncRoomParticipants,
   syncStageMediaItems,
 } from '#/features/voice/voice-stage-media-sync'
+import {
+  hasCurrentNativeScreenPublication,
+} from '#/features/voice/native-screen-publication-loss'
 import type { NativeMediaState } from '#/features/voice/native-media-coordinator'
 import type { StageMediaFilters } from '#/features/voice/voice-stage-media'
 

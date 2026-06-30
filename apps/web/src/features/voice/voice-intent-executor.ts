@@ -103,6 +103,10 @@ export type VoiceExecutorDeps = {
   createOperationId?: () => string
 }
 
+export type VoiceIntentExecutorOptions = {
+  getDeps: () => VoiceExecutorDeps
+}
+
 export interface VoiceIntentExecutor {
   nativeMedia: VoiceNativeMediaOwner
   getState(): VoiceDirectorState
@@ -127,10 +131,11 @@ export interface VoiceIntentExecutor {
   teardown(): Promise<void>
 }
 
-export function createVoiceIntentExecutor(
-  deps: VoiceExecutorDeps,
-): VoiceIntentExecutor {
-  const createOperationId = deps.createOperationId ?? createVoiceOperationId
+export function createVoiceIntentExecutor({
+  getDeps,
+}: VoiceIntentExecutorOptions): VoiceIntentExecutor {
+  const createOperationId =
+    getDeps().createOperationId ?? createVoiceOperationId
   const listeners = new Set<(state: VoiceDirectorState) => void>()
   let state = createInitialDirectorState()
   let room: Room | null = null
@@ -191,7 +196,7 @@ export function createVoiceIntentExecutor(
       return
     }
     room = nextRoom
-    deps.onRoomChanged(room)
+    getDeps().onRoomChanged(room)
   }
 
   function finalizeMoveSource(operationId: string) {
@@ -200,7 +205,7 @@ export function createVoiceIntentExecutor(
       return
     }
     pendingMoveSource = null
-    void deps.disconnectMoveSource(source)
+    void getDeps().disconnectMoveSource(source)
     if (room === source.room) {
       setRoom(null)
     }
@@ -260,6 +265,7 @@ export function createVoiceIntentExecutor(
     }
 
     const terminalLeave = state.desired.kind === 'none' && state.steps.length === 1
+    const deps = getDeps()
     deps.requestVoiceLeave()
     deps.clearVisualPresence(channelId)
     if (terminalLeave) {
@@ -285,6 +291,7 @@ export function createVoiceIntentExecutor(
       return
     }
 
+    const deps = getDeps()
     deps.beginVisualTransition(channelId)
     const moveSource =
       reason === 'rejoin' ? null : deps.getActiveSession()
@@ -364,12 +371,12 @@ export function createVoiceIntentExecutor(
       requestRejoin(channelId)
       return true
     },
-    onGiveUp: deps.onAbort,
-    isGatewayConnected: () => deps.recovery.getGatewayConnected(),
+    onGiveUp: () => getDeps().onAbort(),
+    isGatewayConnected: () => getDeps().recovery.getGatewayConnected(),
     shouldKeepTrying: (channelId) =>
-      Boolean(deps.getToken()) &&
-      !deps.isJoinBlocked() &&
-      deps.shouldKeepRejoining(channelId),
+      Boolean(getDeps().getToken()) &&
+      !getDeps().isJoinBlocked() &&
+      getDeps().shouldKeepRejoining(channelId),
   })
 
   async function disconnectLocalSession() {
@@ -381,7 +388,7 @@ export function createVoiceIntentExecutor(
     startedOperationId = null
     pendingMoveSource = null
     dispatch({ type: 'reset' })
-    await deps.disconnectLocalSession({
+    await getDeps().disconnectLocalSession({
       channelId: currentChannelId,
       room: currentRoom,
     })
@@ -450,7 +457,7 @@ export function createVoiceIntentExecutor(
         voiceRejoin.onGatewayConnected()
       }
       runVoiceRecovery(trigger, {
-        ...deps.recovery,
+        ...getDeps().recovery,
         getDesiredChannelId: () =>
           state.desired.kind === 'channel' ? state.desired.channelId : null,
         getRoom: () => room,

@@ -607,6 +607,10 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-local-setup.ts'),
       'utf8',
     )
+    const flagsControllerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-flags-controller.ts'),
+      'utf8',
+    )
     const mediaContextSource = readFileSync(
       resolve(repoRoot, 'apps/web/src/features/voice/voice-media-context.ts'),
       'utf8',
@@ -625,12 +629,14 @@ describe('native microphone provider boundary', () => {
     expect(localSetupSource).toContain(
       'deps.selfMonitoringActive && prefs.micEnabled',
     )
-    expect(providerSource).toContain(
+    expect(flagsControllerSource).toContain(
       'selfMonitoringRef.current.restorePublishing = wantsMic',
     )
-    expect(providerSource).toContain('void setNativeMicrophoneMuted(true)')
-    expect(providerSource).toContain('void startNativeMicrophone(room, true)')
-    expect(providerSource).toContain('syncVoiceFlagsToGateway(activeChannelId, true')
+    expect(flagsControllerSource).toContain('void setNativeMicrophoneMuted(true)')
+    expect(flagsControllerSource).toContain('void startNativeMicrophone(room, true)')
+    expect(flagsControllerSource).toContain(
+      'syncVoiceFlagsToGateway(activeChannelId, true',
+    )
     expect(settingsSource).toContain(
       'setSelfMonitoringActiveRef.current(micTestActive)',
     )

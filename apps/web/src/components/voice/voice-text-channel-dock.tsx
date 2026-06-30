@@ -87,7 +87,10 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           )}
         >
           {participants.slice(0, 4).map((participant) => {
-            const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id)
+            const isSelf = isVoiceLocalUserId(
+              participant.id,
+              auth.user?._id ?? null,
+            )
             const user =
               users[participant.id] ?? (isSelf ? auth.user ?? undefined : undefined)
             return (

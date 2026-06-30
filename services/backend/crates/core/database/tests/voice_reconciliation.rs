@@ -127,8 +127,12 @@ fn reconciliation_removes_native_sidecar_for_stale_operation() {
 #[test]
 fn reconciliation_verdict_distinguishes_dead_room_from_transient_skip() {
     assert!(matches!(
-        VoiceParticipantReconciliationVerdict::DeadRoom,
-        VoiceParticipantReconciliationVerdict::DeadRoom
+        VoiceParticipantReconciliationVerdict::DeadRoom {
+            stale_members: Vec::new()
+        },
+        VoiceParticipantReconciliationVerdict::DeadRoom {
+            stale_members: members
+        } if members.is_empty()
     ));
     assert!(matches!(
         VoiceParticipantReconciliationVerdict::SkipTransient,

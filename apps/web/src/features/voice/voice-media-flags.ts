@@ -13,17 +13,14 @@ import {
   syncRoomParticipants as syncRoomParticipantsForRoom,
 } from '#/features/voice/voice-stage-media-sync'
 import { playUiSound } from '#/features/sounds/sound-player'
-
-type Ref<T> = {
-  current: T
-}
+import type { MutableRef } from '#/features/voice/voice-types'
 
 export type VoiceMediaFlagsOptions = {
-  authUserId: string | null | undefined
-  roomRef: Ref<Room | null>
-  channelIdRef: Ref<string | null>
+  authUserId: string | null
+  roomRef: MutableRef<Room | null>
+  channelIdRef: MutableRef<string | null>
   nativeMediaState: NativeMediaState
-  nativeMediaStateRef: Ref<NativeMediaState>
+  nativeMediaStateRef: MutableRef<NativeMediaState>
   syncStageMediaItems: (room: Room) => void
 }
 

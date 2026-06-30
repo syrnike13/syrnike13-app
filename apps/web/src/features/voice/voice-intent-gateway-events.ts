@@ -13,7 +13,7 @@ export type VoiceIntentGatewayAction =
 
 export function voiceIntentActionFromGatewayEvent(
   event: GatewayServerEvent,
-  localUserId: string | null | undefined,
+  localUserId: string | null,
 ): VoiceIntentGatewayAction | null {
   if (!localUserId) return null
 

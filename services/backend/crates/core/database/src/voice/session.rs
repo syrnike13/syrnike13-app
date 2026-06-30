@@ -1,6 +1,6 @@
 use iso8601_timestamp::Timestamp;
 use redis_kiss::{
-    redis::{cmd, FromRedisValue, RedisError, RedisWrite, ToRedisArgs, Value},
+    redis::{cmd, Cmd, FromRedisValue, RedisError, RedisWrite, ToRedisArgs, Value},
     AsyncCommands,
 };
 use serde::{Deserialize, Serialize};
@@ -351,35 +351,48 @@ impl FromRedisValue for VoiceSession {
     }
 }
 
-pub async fn create_voice_session(session: &VoiceSession) -> Result<()> {
-    let raw_session = serde_json::to_string(session).to_internal_error()?;
-    cmd("EVAL")
-        .arg(CREATE_VOICE_SESSION)
-        .arg(2)
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_current_key(&session.user_id))
-        .arg(raw_session)
-        .arg(&session.operation_id)
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
-        .query_async::<_, ()>(&mut super::get_connection().await?.into_inner())
+async fn run_eval<T>(
+    script: &'static str,
+    num_keys: usize,
+    append_args: impl FnOnce(&mut Cmd),
+) -> Result<T>
+where
+    T: FromRedisValue,
+{
+    let mut command = cmd("EVAL");
+    command.arg(script).arg(num_keys);
+    append_args(&mut command);
+    command
+        .query_async(&mut super::get_connection().await?.into_inner())
         .await
         .to_internal_error()
 }
 
+pub async fn create_voice_session(session: &VoiceSession) -> Result<()> {
+    let raw_session = serde_json::to_string(session).to_internal_error()?;
+    run_eval(CREATE_VOICE_SESSION, 2, |command| {
+        command
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_current_key(&session.user_id))
+            .arg(raw_session)
+            .arg(&session.operation_id)
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await
+}
+
 pub async fn save_current_voice_session(session: &VoiceSession) -> Result<bool> {
-    let saved: i64 = cmd("EVAL")
-        .arg(SAVE_CURRENT_VOICE_SESSION)
-        .arg(2)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(&session.operation_id)
-        .arg(session)
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let saved: i64 = run_eval(SAVE_CURRENT_VOICE_SESSION, 2, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(&session.operation_id)
+            .arg(session)
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await?;
 
     Ok(saved == 1)
 }
@@ -388,20 +401,18 @@ pub async fn replace_current_voice_session_operation(
     previous_operation_id: &str,
     session: &VoiceSession,
 ) -> Result<bool> {
-    let replaced: i64 = cmd("EVAL")
-        .arg(REPLACE_CURRENT_VOICE_SESSION_OPERATION)
-        .arg(3)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_session_key(previous_operation_id))
-        .arg(previous_operation_id)
-        .arg(session)
-        .arg(&session.operation_id)
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let replaced: i64 = run_eval(REPLACE_CURRENT_VOICE_SESSION_OPERATION, 3, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_session_key(previous_operation_id))
+            .arg(previous_operation_id)
+            .arg(session)
+            .arg(&session.operation_id)
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await?;
 
     Ok(replaced == 1)
 }
@@ -463,46 +474,42 @@ pub async fn get_active_voice_session_for_user(user_id: &str) -> Result<Option<V
 }
 
 async fn persist_active_voice_session_if_current(session: &VoiceSession) -> Result<bool> {
-    let committed: i64 = cmd("EVAL")
-        .arg(COMMIT_VOICE_SESSION_JOIN)
-        .arg(6)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_active_channels_key())
-        .arg(voice_channel_members_key(&session.channel.id))
-        .arg(voice_channel_node_key(&session.channel.id))
-        .arg(voice_room_session_key(&session.channel.id))
-        .arg(&session.operation_id)
-        .arg(session)
-        .arg(&session.channel.id)
-        .arg(&session.user_id)
-        .arg(&session.node)
-        .arg(session.room_sid.as_deref().unwrap_or(""))
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let committed: i64 = run_eval(COMMIT_VOICE_SESSION_JOIN, 6, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_members_key(&session.channel.id))
+            .arg(voice_channel_node_key(&session.channel.id))
+            .arg(voice_room_session_key(&session.channel.id))
+            .arg(&session.operation_id)
+            .arg(session)
+            .arg(&session.channel.id)
+            .arg(&session.user_id)
+            .arg(&session.node)
+            .arg(session.room_sid.as_deref().unwrap_or(""))
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+    })
+    .await?;
 
     Ok(committed == 1)
 }
 
 pub(super) async fn remove_active_voice_session_projection(session: &VoiceSession) -> Result<()> {
-    cmd("EVAL")
-        .arg(REMOVE_ACTIVE_VOICE_SESSION_PROJECTION)
-        .arg(5)
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_channel_members_key(&session.channel.id))
-        .arg(voice_active_channels_key())
-        .arg(voice_channel_node_key(&session.channel.id))
-        .arg(voice_room_session_key(&session.channel.id))
-        .arg(session)
-        .arg(&session.user_id)
-        .arg(&session.channel.id)
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .query_async::<_, ()>(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()
+    run_eval(REMOVE_ACTIVE_VOICE_SESSION_PROJECTION, 5, |command| {
+        command
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_channel_members_key(&session.channel.id))
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_node_key(&session.channel.id))
+            .arg(voice_room_session_key(&session.channel.id))
+            .arg(session)
+            .arg(&session.user_id)
+            .arg(&session.channel.id)
+            .arg(VOICE_SESSION_TTL_SECONDS);
+    })
+    .await
 }
 
 pub async fn list_active_voice_channel_ids() -> Result<Vec<String>> {
@@ -514,21 +521,19 @@ pub async fn list_active_voice_channel_ids() -> Result<Vec<String>> {
 }
 
 pub async fn delete_current_voice_session(session: &VoiceSession) -> Result<bool> {
-    let deleted: i64 = cmd("EVAL")
-        .arg(DELETE_CURRENT_VOICE_SESSION)
-        .arg(6)
-        .arg(voice_current_key(&session.user_id))
-        .arg(voice_session_key(&session.operation_id))
-        .arg(voice_channel_members_key(&session.channel.id))
-        .arg(voice_active_channels_key())
-        .arg(voice_channel_node_key(&session.channel.id))
-        .arg(voice_room_session_key(&session.channel.id))
-        .arg(&session.operation_id)
-        .arg(&session.user_id)
-        .arg(&session.channel.id)
-        .query_async(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+    let deleted: i64 = run_eval(DELETE_CURRENT_VOICE_SESSION, 6, |command| {
+        command
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_channel_members_key(&session.channel.id))
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_node_key(&session.channel.id))
+            .arg(voice_room_session_key(&session.channel.id))
+            .arg(&session.operation_id)
+            .arg(&session.user_id)
+            .arg(&session.channel.id);
+    })
+    .await?;
 
     Ok(deleted == 1)
 }
@@ -575,6 +580,37 @@ pub async fn commit_voice_session_join(
         voice_state: session.voice_state(joined_at),
         previous_channels,
     }))
+}
+
+pub(super) async fn refresh_active_voice_session_projection_ttl(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    operation_id: &str,
+) -> Result<()> {
+    run_eval(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION, 6, |command| {
+        command
+            .arg(voice_current_key(user_id))
+            .arg(voice_channel_members_key(&channel.id))
+            .arg(voice_session_key(operation_id))
+            .arg(voice_channel_node_key(&channel.id))
+            .arg(voice_room_session_key(&channel.id))
+            .arg(voice_active_channels_key())
+            .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
+            .arg(VOICE_SESSION_TTL_SECONDS);
+    })
+    .await
+}
+
+pub async fn remove_orphaned_active_voice_channel(channel: &UserVoiceChannel) -> Result<()> {
+    run_eval(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL, 4, |command| {
+        command
+            .arg(voice_active_channels_key())
+            .arg(voice_channel_node_key(&channel.id))
+            .arg(voice_room_session_key(&channel.id))
+            .arg(voice_channel_members_key(&channel.id))
+            .arg(&channel.id);
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -811,39 +847,4 @@ mod tests {
         assert!(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL
             .contains("redis.call('DEL', KEYS[2], KEYS[3], KEYS[4])"));
     }
-}
-
-pub(super) async fn refresh_active_voice_session_projection_ttl(
-    channel: &UserVoiceChannel,
-    user_id: &str,
-    operation_id: &str,
-) -> Result<()> {
-    cmd("EVAL")
-        .arg(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION)
-        .arg(6)
-        .arg(voice_current_key(user_id))
-        .arg(voice_channel_members_key(&channel.id))
-        .arg(voice_session_key(operation_id))
-        .arg(voice_channel_node_key(&channel.id))
-        .arg(voice_room_session_key(&channel.id))
-        .arg(voice_active_channels_key())
-        .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
-        .arg(VOICE_SESSION_TTL_SECONDS)
-        .query_async::<_, ()>(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()
-}
-
-pub async fn remove_orphaned_active_voice_channel(channel: &UserVoiceChannel) -> Result<()> {
-    cmd("EVAL")
-        .arg(REMOVE_ORPHANED_ACTIVE_VOICE_CHANNEL)
-        .arg(4)
-        .arg(voice_active_channels_key())
-        .arg(voice_channel_node_key(&channel.id))
-        .arg(voice_room_session_key(&channel.id))
-        .arg(voice_channel_members_key(&channel.id))
-        .arg(&channel.id)
-        .query_async::<_, ()>(&mut super::get_connection().await?.into_inner())
-        .await
-        .to_internal_error()
 }

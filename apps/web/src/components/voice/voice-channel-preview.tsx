@@ -49,7 +49,7 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
       className={`mb-1 flex flex-col gap-0.5 ${VOICE_PREVIEW_TEXT_INSET}`}
     >
       {participants.map((participant) => {
-        const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id)
+        const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id ?? null)
         const user = users[participant.id] ?? (isSelf ? auth.user ?? undefined : undefined)
         const voiceElsewhere = isSelf && !inThisChannel
         const member =

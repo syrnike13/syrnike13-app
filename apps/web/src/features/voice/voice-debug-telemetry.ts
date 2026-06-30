@@ -17,15 +17,12 @@ import { rtcDebugScreenSlice } from '#/features/voice/voice-screen-share'
 import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
 import type { VoiceStatus } from '#/features/voice/voice-mic-status'
 import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
-
-type Ref<T> = {
-  current: T
-}
+import type { MutableRef } from '#/features/voice/voice-types'
 
 export type VoiceTelemetryDebugOptions = {
   status: VoiceStatus
-  roomRef: Ref<Room | null>
-  stageMediaItemsRef: Ref<VoiceStageMediaItem[]>
+  roomRef: MutableRef<Room | null>
+  stageMediaItemsRef: MutableRef<VoiceStageMediaItem[]>
 }
 
 export function useVoiceTelemetryDebug({

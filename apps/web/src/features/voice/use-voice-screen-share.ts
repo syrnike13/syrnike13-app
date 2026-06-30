@@ -5,16 +5,15 @@ import { toast } from 'sonner'
 import {
   isLiveKitTokenFailure,
 } from '#/features/voice/voice-token-helpers'
-import type {
-  ScreenShareCaptureLimits,
-} from '#/features/voice/voice-capture'
 import {
   handleNativeScreenPublicationLost as handleNativeScreenPublicationLostFromDeps,
-  startBrowserScreenShare as startBrowserScreenShareFromDeps,
   startLocalScreenShare as startLocalScreenShareFromDeps,
   stopNativeScreenShare as stopNativeScreenShareFromDeps,
-  type NativeScreenPublicationLoss,
+  teardownScreenShare,
 } from '#/features/voice/voice-screen-share'
+import type {
+  NativeScreenPublicationLoss,
+} from '#/features/voice/native-screen-publication-loss'
 import {
   nativeMediaEngineStatsStore,
 } from '#/features/voice/native-media-engine-stats'
@@ -49,10 +48,7 @@ import type { VoiceStatus } from '#/features/voice/voice-mic-status'
 import { resolveScreenShareCaptureLimits } from '#/features/voice/voice-screen-share-limits'
 import { playUiSound } from '#/features/sounds/sound-player'
 import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
-
-type MutableRef<T> = {
-  current: T
-}
+import type { MutableRef } from '#/features/voice/voice-types'
 
 type PendingScreenShareStart = {
   quality: ScreenShareQualityName
@@ -76,7 +72,7 @@ export type UseVoiceScreenShareOptions = {
   nativeScreenPublicationLossKeyRef: MutableRef<string | null>
   nativeMediaStateRef: MutableRef<NativeMediaState>
   getActiveVoiceOperationId: () => string | null
-  getUserId: () => string | undefined
+  getUserId: () => string | null
   isCurrentVoiceSession: (room: Room, targetChannelId: string | null) => boolean
   activeChannelAudioBitrateKbps: () => number
   refreshNativeLiveKitCredentials: (
@@ -160,30 +156,6 @@ export function useVoiceScreenShare({
     ],
   )
 
-  const startBrowserScreenShare = useCallback(
-    async (
-      room: Room,
-      quality: ScreenShareQualityName,
-      withAudio: boolean,
-      limits?: ScreenShareCaptureLimits,
-    ) => {
-      await startBrowserScreenShareFromDeps({
-        room,
-        quality,
-        withAudio,
-        limits,
-        activeChannelAudioBitrateKbps,
-        setScreenShareEnabled,
-        syncRoomParticipants,
-        playUiSound,
-        setChromiumNativeMediaStats: () => {
-          nativeMediaEngineStatsStore.setChromium()
-        },
-      })
-    },
-    [activeChannelAudioBitrateKbps, setScreenShareEnabled, syncRoomParticipants],
-  )
-
   const startLocalScreenShare = useCallback(
     async (quality: ScreenShareQualityName, withAudio: boolean) => {
       await startLocalScreenShareFromDeps({
@@ -212,12 +184,14 @@ export function useVoiceScreenShare({
         dispatchNativeMedia,
         syncRoomParticipants,
         stopNativeScreenShare,
-        startBrowserScreenShare,
         refreshNativeLiveKitCredentials,
         activeChannelAudioBitrateKbps,
         logVoiceDebugAgent,
         toastError: (message) => toast.error(message),
         playUiSound,
+        setChromiumNativeMediaStats: () => {
+          nativeMediaEngineStatsStore.setChromium()
+        },
         warn: (message, detail) => console.warn(message, detail),
         readVoicePreferences,
         setScreenShareQualityPreference: (nextQuality) => {
@@ -258,7 +232,6 @@ export function useVoiceScreenShare({
       setScreenShareDebugRun,
       setScreenShareEnabled,
       setScreenShareStarting,
-      startBrowserScreenShare,
       statusRef,
       stopNativeScreenShare,
       stoppedNativeScreenIdentityRef,
@@ -286,6 +259,13 @@ export function useVoiceScreenShare({
     status,
   ])
 
+  const teardownAfterUserToggle = useCallback(() => {
+    teardownScreenShare(
+      { setScreenShareEnabled, syncRoomParticipants, playUiSound },
+      { reason: 'user-toggle', playStoppedSound: true },
+    )
+  }, [setScreenShareEnabled, syncRoomParticipants])
+
   const toggleScreenShare = useCallback(() => {
     const room = roomRef.current
     if (!room) return
@@ -298,11 +278,7 @@ export function useVoiceScreenShare({
     if (room.localParticipant.isScreenShareEnabled || nativeScreenShareRef.current) {
       if (nativeScreenShareRef.current) {
         void stopNativeScreenShare()
-          .then(() => {
-            setScreenShareEnabled(false)
-            playUiSound('screen_share.stopped')
-            syncRoomParticipants()
-          })
+          .then(teardownAfterUserToggle)
           .catch((error) => {
             toast.error(
               error instanceof Error
@@ -315,11 +291,7 @@ export function useVoiceScreenShare({
 
       void room.localParticipant
         .setScreenShareEnabled(false)
-        .then(() => {
-          setScreenShareEnabled(false)
-          playUiSound('screen_share.stopped')
-          syncRoomParticipants()
-        })
+        .then(teardownAfterUserToggle)
         .catch((error) => {
           toast.error(
             error instanceof Error
@@ -337,10 +309,9 @@ export function useVoiceScreenShare({
     pendingScreenShareStartRef,
     roomRef,
     screenShareStarting,
-    setScreenShareEnabled,
     startLocalScreenShare,
     stopNativeScreenShare,
-    syncRoomParticipants,
+    teardownAfterUserToggle,
   ])
 
   return {

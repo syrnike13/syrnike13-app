@@ -4,7 +4,7 @@ export function mergeSpeakingUserIds({
   selfSpeaking,
 }: {
   remoteUserIds: ReadonlySet<string>
-  selfUserId: string | null | undefined
+  selfUserId: string | null
   selfSpeaking: boolean
 }) {
   const next = new Set(remoteUserIds)

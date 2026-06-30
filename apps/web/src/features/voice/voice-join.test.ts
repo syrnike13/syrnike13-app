@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createVoiceJoinRunner,
   nativeCredentialsFromJoinResponse,
+  type VoiceJoinRunnerDeps,
   voiceJoinErrorMessage,
 } from './voice-join'
 import { syncStore } from '#/features/sync/sync-store'
@@ -87,6 +88,10 @@ async function expectSuccessfulJoin(
   return result as { room: unknown }
 }
 
+function createRunner(deps: VoiceJoinRunnerDeps) {
+  return createVoiceJoinRunner({ getDeps: () => deps })
+}
+
 describe('voiceJoinErrorMessage', () => {
   it('uses error message when available', () => {
     expect(voiceJoinErrorMessage(new Error('Voice join timed out'))).toBe(
@@ -160,7 +165,7 @@ describe('createVoiceJoinRunner', () => {
   it('reports concrete phases while joining voice', async () => {
     const phases: string[] = []
     const setActiveRoom = vi.fn()
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
@@ -199,7 +204,7 @@ describe('createVoiceJoinRunner', () => {
       channel_type: 'VoiceChannel',
       server: 'server-1',
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
@@ -224,7 +229,7 @@ describe('createVoiceJoinRunner', () => {
 
   it('allows an immediate retry after a failed manual join when the rate window allows it', async () => {
     vi.mocked(requestVoiceJoin).mockRejectedValueOnce(new Error('rtc failed'))
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
@@ -252,7 +257,7 @@ describe('createVoiceJoinRunner', () => {
       disconnect: vi.fn(),
       removeAllListeners: vi.fn(),
     }
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
@@ -275,7 +280,7 @@ describe('createVoiceJoinRunner', () => {
 
   it('does not drop the previous voice session when a move fails before the target connects', async () => {
     vi.mocked(requestVoiceJoin).mockRejectedValueOnce(new Error('rtc failed'))
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
@@ -389,7 +394,7 @@ describe('createVoiceJoinRunner', () => {
       recipients: ['user-1', 'user-2'],
       voice: { max_users: null },
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
@@ -425,7 +430,7 @@ describe('createVoiceJoinRunner', () => {
       recipients: ['user-1', 'user-2'],
       voice: { max_users: null },
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,
@@ -467,7 +472,7 @@ describe('createVoiceJoinRunner', () => {
       permissions: null,
       nsfw: false,
     } as never)
-    const runner = createVoiceJoinRunner({
+    const runner = createRunner({
       getToken: () => 'session-token',
       getLocalUserId: () => 'user-1',
       isJoinBlocked: () => false,

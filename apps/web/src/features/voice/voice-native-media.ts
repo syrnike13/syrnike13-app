@@ -1,6 +1,4 @@
-type MutableRef<T> = {
-  current: T
-}
+import type { MutableRef } from '#/features/voice/voice-types'
 
 type NativeMicrophoneSessionLike = {
   sessionId?: string

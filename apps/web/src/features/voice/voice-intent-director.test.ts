@@ -102,20 +102,19 @@ describe('reduceDirector', () => {
     expect(next).toBe(joining)
   })
 
-  it('plans a hard leave before joining another committed channel', () => {
+  it('plans a server-side replace join when moving from another committed channel', () => {
     const state = reduceDirector(
       committedState('voice-a'),
       { type: 'intent', channelId: 'voice-b', reason: 'switch' },
-      operationIds('op-leave-a', 'op-join-b'),
+      operationIds('op-join-b'),
     )
 
     expect(state).toMatchObject({
       desired: { kind: 'channel', channelId: 'voice-b' },
       committed: 'voice-a',
-      phase: 'leaving',
-      activeOperationId: 'op-leave-a',
+      phase: 'joining',
+      activeOperationId: 'op-join-b',
       steps: [
-        { kind: 'hard_leave', operationId: 'op-leave-a', channelId: 'voice-a' },
         {
           kind: 'join',
           operationId: 'op-join-b',
@@ -126,11 +125,11 @@ describe('reduceDirector', () => {
     })
   })
 
-  it('coalesces A to B to C by preserving only the hard leave head and latest join', () => {
+  it('coalesces A to B to C by preserving only the latest server-side replace join', () => {
     const movingToB = reduceDirector(
       committedState('voice-a'),
       { type: 'intent', channelId: 'voice-b', reason: 'switch' },
-      operationIds('op-leave-a', 'op-join-b'),
+      operationIds('op-join-b'),
     )
 
     const movingToC = reduceDirector(
@@ -140,7 +139,6 @@ describe('reduceDirector', () => {
     )
 
     expect(movingToC.steps).toEqual([
-      { kind: 'hard_leave', operationId: 'op-leave-a', channelId: 'voice-a' },
       {
         kind: 'join',
         operationId: 'op-join-c',

@@ -83,6 +83,10 @@ export type VoiceJoinRunnerDeps = {
   abortJoin: () => void
 }
 
+export type VoiceJoinRunnerOptions = {
+  getDeps: () => VoiceJoinRunnerDeps
+}
+
 export function voiceJoinErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message
@@ -108,11 +112,12 @@ function voiceCallRecipients(
   return recipients.length > 0 ? recipients : undefined
 }
 
-export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
+export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
   return async function performVoiceJoin(
     targetChannelId: string,
     options: VoiceJoinOptions,
   ): Promise<VoiceJoinResult> {
+    const deps = getDeps()
     const token = deps.getToken()
     if (!token) {
       if (!options.rejoin) toast.error('Нет сессии')
@@ -178,39 +183,41 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       )
       if (!credentials) {
         if (!options.rejoin) {
-          deps.abortJoin()
+          getDeps().abortJoin()
         }
         return false
       }
-      if (deps.isCurrentJoinOperation?.(operationId) === false) {
+      if (getDeps().isCurrentJoinOperation?.(operationId) === false) {
         return false
       }
 
       const { url, token: livekitToken } = credentials
       room = new Room(createVoiceRoomOptions())
-      deps.setLiveKitCredentials(nativeCredentialsFromJoinResponse(credentials))
-      deps.attachRoomHandlers(room)
+      getDeps().setLiveKitCredentials(
+        nativeCredentialsFromJoinResponse(credentials),
+      )
+      getDeps().attachRoomHandlers(room)
 
-      deps.setConnectionPhase('connecting_rtc')
+      getDeps().setConnectionPhase('connecting_rtc')
       await room.connect(url, livekitToken)
-      if (deps.isCurrentJoinOperation?.(operationId) === false) {
+      if (getDeps().isCurrentJoinOperation?.(operationId) === false) {
         room.removeAllListeners()
         await room.disconnect().catch(() => {})
         return false
       }
 
-      deps.setConnectionPhase('connecting_microphone')
-      deps.onRoomConnected(room, targetChannelId)
-      deps.onJoinSuccess()
+      getDeps().setConnectionPhase('connecting_microphone')
+      getDeps().onRoomConnected(room, targetChannelId)
+      getDeps().onJoinSuccess()
       return { room }
     } catch (error) {
-      deps.setConnectionPhase('failed')
+      getDeps().setConnectionPhase('failed')
       if (!options.rejoin) {
         if (room) {
           room.removeAllListeners()
           await room.disconnect().catch(() => {})
         }
-        deps.abortJoin()
+        getDeps().abortJoin()
         toast.error(voiceJoinErrorMessage(error))
       }
       return false

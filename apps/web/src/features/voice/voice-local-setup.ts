@@ -51,8 +51,8 @@ export type SyncMicFromRoomDeps = {
   shouldUseNativeMicrophone: boolean
   hasNativeMicrophone: boolean
   nativeMicrophoneMuted: boolean
-  activeChannelId: string | null | undefined
-  userId: string | null | undefined
+  activeChannelId: string | null
+  userId: string | null
   currentMicIssue: VoiceMicIssue | null
   fallbackIssue: VoiceMicIssue
   setMicPublishing: (publishing: boolean) => void
@@ -93,7 +93,7 @@ export type FinishLocalVoiceSetupDeps = {
   applyMicProcessing: (participant: Room['localParticipant']) => Promise<unknown>
   syncLocalSpeakingTrack: (room: Room) => void
   syncRoomParticipants: () => void
-  getUserId: () => string | null | undefined
+  getUserId: () => string | null
   hasNativeMicrophonePublishing: () => boolean
   patchLocalVoiceDeafen: (
     channelId: string,

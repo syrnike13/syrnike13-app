@@ -90,17 +90,19 @@ interface VoiceIntentDirector {
 ### Контракт `move`
 
 На клиенте `move(newChannel)` — **одна** операция. На бэкенд уходит единый
-`move`-запрос; сервер выполняет **hard-leave (old op) + join (new op)** под
-капотом. Клиент не оркестрирует два под-шага сам. Legacy-семантика
-`replaces_operation_id` / `moved_from` на бэкенде остаётся как fallback для
-старых клиентов и ожидаемо отмирает.
+`VoiceStateUpdate{channel_id: newChannel, operation_id}`. Если у пользователя
+уже есть активная голосовая сессия, бэкенд связывает новую операцию с
+предыдущей через `replaces_operation_id` и при commit нового LiveKit join
+сам завершает predecessor. То есть **hard-leave(old op) + join(new op)**
+происходит под капотом серверного commit, а клиент не шлёт отдельный
+`VoiceStateUpdate{channel_id: null}` для move.
 
 ### Hard-leave — fire-and-forget
 
-Director не ждёт коммит leave перед началом следующего join — это держит move
-на скорости Discord. Детерминизм даёт очередь, а не блокировка. Старому
-`operation_id` посылается явный hard-leave, чтобы сервер не полагался на
-tombstone/timeout.
+Hard-leave остаётся только для явного выхода (`clear_intent`) и force-cleanup
+сценариев. Director не использует hard-leave как обязательный под-шаг move:
+скорость и детерминизм move даёт один join-запрос с server-side
+`replaces_operation_id` fencing.
 
 ### Таймауты шагов
 

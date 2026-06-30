@@ -15,7 +15,7 @@ export type NativeScreenPublicationMatch = {
 }
 
 export type NativeScreenPublicationOptions = {
-  userId?: string
+  userId: string | null
   nativeParticipantIdentity?: string
 }
 

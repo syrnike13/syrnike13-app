@@ -224,7 +224,10 @@ export function VoiceStageView({
     const kindLabel = stageMediaKindLabel(focusedItem.kind)
     if (!kindLabel) return null
 
-    const isLocal = isVoiceLocalUserId(focusedItem.userId, auth.user?._id)
+    const isLocal = isVoiceLocalUserId(
+      focusedItem.userId,
+      auth.user?._id ?? null,
+    )
     const user =
       users[focusedItem.userId] ?? (isLocal ? auth.user ?? undefined : undefined)
     const participant = participantsById.get(focusedItem.userId)
@@ -365,7 +368,7 @@ export function VoiceStageView({
       variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
       onStreamAspectRatioChange?: (aspectRatio: number) => void,
     ) => {
-      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id)
+      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id ?? null)
       return (
         <StageMediaTile
           key={item.id}

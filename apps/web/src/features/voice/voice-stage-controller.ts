@@ -13,7 +13,9 @@ import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import type { NativeMediaState } from '#/features/voice/native-media-coordinator'
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 import type { NativeScreenShareSession } from '#/features/voice/native-screen-share-publish'
-import type { NativeScreenPublicationLoss } from '#/features/voice/voice-screen-share'
+import type {
+  NativeScreenPublicationLoss,
+} from '#/features/voice/native-screen-publication-loss'
 import {
   SCREEN_VIEWER_SOUND_TOPIC,
   createScreenViewerSoundPayload,
@@ -40,20 +42,17 @@ import { isVoiceConnectedInChannel } from '#/features/voice/voice-watch-screen-s
 import type { VoiceStatus } from '#/features/voice/voice-mic-status'
 import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import type { VoiceDebugAgentPayload } from '#/features/voice/voice-debug-agent-log'
-
-type Ref<T> = {
-  current: T
-}
+import type { MutableRef } from '#/features/voice/voice-types'
 
 export type VoiceStageControllerOptions = {
-  authUserId: string | null | undefined
+  authUserId: string | null
   channelId: string | null
   status: VoiceStatus
   join: (channelId: string) => Promise<boolean>
-  roomRef: Ref<Room | null>
-  nativeMediaStateRef: Ref<NativeMediaState>
-  stoppedNativeScreenIdentityRef: Ref<string | null>
-  nativeScreenShareRef: Ref<NativeScreenShareSession | null>
+  roomRef: MutableRef<Room | null>
+  nativeMediaStateRef: MutableRef<NativeMediaState>
+  stoppedNativeScreenIdentityRef: MutableRef<string | null>
+  nativeScreenShareRef: MutableRef<NativeScreenShareSession | null>
   stopNativeScreenShare: () => Promise<void>
   setScreenShareEnabled: (enabled: boolean) => void
   syncRoomParticipants: () => void
@@ -141,7 +140,7 @@ export function useVoiceStageController({
       return applyRemoteScreenParticipantSubscriptionToRoom(participant, {
         subscribed,
         currentUserId: authUserId,
-        localParticipantIdentity: roomRef.current?.localParticipant.identity,
+        localParticipantIdentity: roomRef.current?.localParticipant.identity ?? null,
         watchedRemoteScreenIds: watchedRemoteScreenIdsRef.current,
         pendingScreenWatchIds: pendingScreenWatchIdsRef.current,
       })
@@ -186,7 +185,7 @@ export function useVoiceStageController({
   const watchParticipantScreenShare = useCallback(
     async (targetChannelId: string, userId: string) => {
       const mediaId = stageMediaItemId(userId, 'screen')
-      const isLocal = isVoiceLocalUserId(userId, authUserId ?? undefined)
+      const isLocal = isVoiceLocalUserId(userId, authUserId)
       const wasWatching = watchedRemoteScreenIdsRef.current.has(mediaId)
 
       if (!isLocal) {

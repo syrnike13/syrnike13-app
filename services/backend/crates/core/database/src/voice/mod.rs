@@ -9,7 +9,7 @@ use crate::{
     Database, Server,
 };
 use iso8601_timestamp::Timestamp;
-use livekit_protocol::{participant_info, ParticipantInfo, ParticipantPermission};
+use livekit_protocol::{participant_info, ParticipantInfo, ParticipantPermission, TrackSource};
 use redis_kiss::{
     get_connection as _get_connection,
     redis::{cmd, FromRedisValue, Pipeline, RedisError, RedisWrite, ToRedisArgs, Value},
@@ -90,7 +90,7 @@ pub struct VoiceParticipantReconciliation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VoiceParticipantReconciliationVerdict {
     Ready(VoiceParticipantReconciliation),
-    DeadRoom,
+    DeadRoom { stale_members: Vec<String> },
     SkipTransient,
 }
 
@@ -581,23 +581,17 @@ async fn update_voice_state_tracks_matching(
 }
 
 fn partial_voice_state_for_track(added: bool, track: i32) -> PartialUserVoiceState {
-    match track {
-        /* TrackSource::Unknown */ 0 => PartialUserVoiceState::default(),
-        /* TrackSource::Camera */
-        1 => PartialUserVoiceState {
+    match TrackSource::try_from(track) {
+        Ok(TrackSource::Camera) => PartialUserVoiceState {
             camera: Some(added),
             ..Default::default()
         },
-        /* TrackSource::Microphone */
-        2 => PartialUserVoiceState::default(),
-        /* TrackSource::ScreenShare */
-        3 => PartialUserVoiceState {
+        Ok(TrackSource::ScreenShare) => PartialUserVoiceState {
             screensharing: Some(added),
             ..Default::default()
         },
-        /* TrackSource::ScreenShareAudio */
-        4 => PartialUserVoiceState::default(),
-        _ => unreachable!(),
+        Ok(TrackSource::Unknown | TrackSource::Microphone | TrackSource::ScreenShareAudio)
+        | Err(_) => PartialUserVoiceState::default(),
     }
 }
 
@@ -730,7 +724,11 @@ pub async fn get_voice_participant_reconciliation(
         .await
     {
         Ok(Some(participants)) => participants,
-        Ok(None) => return Ok(VoiceParticipantReconciliationVerdict::DeadRoom),
+        Ok(None) => {
+            return Ok(VoiceParticipantReconciliationVerdict::DeadRoom {
+                stale_members: redis_members,
+            });
+        }
         Err(error) => {
             log::warn!(
                 "Skipping voice reconciliation for channel {} on node {node}: {error}",

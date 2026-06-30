@@ -300,13 +300,6 @@ function replan(
   const steps: VoiceStep[] = preservedHead ? [preservedHead] : []
 
   if (options.desired.kind === 'channel') {
-    if (fromPosition !== null && fromPosition !== options.desired.channelId) {
-      steps.push({
-        kind: 'hard_leave',
-        operationId: createOperationId(),
-        channelId: fromPosition,
-      })
-    }
     if (fromPosition !== options.desired.channelId) {
       steps.push({
         kind: 'join',

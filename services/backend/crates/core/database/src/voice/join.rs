@@ -250,15 +250,12 @@ pub async fn reconcile_voice_channel_members_with_call_cleanup(
 ) -> Result<Option<VoiceParticipantReconciliation>> {
     let reconciliation = match get_voice_participant_reconciliation(voice_client, channel).await? {
         VoiceParticipantReconciliationVerdict::Ready(reconciliation) => reconciliation,
-        VoiceParticipantReconciliationVerdict::DeadRoom => {
-            let members = get_voice_channel_members(channel)
-                .await?
-                .unwrap_or_default();
-            delete_channel_voice_state(channel, &members).await?;
+        VoiceParticipantReconciliationVerdict::DeadRoom { stale_members } => {
+            delete_channel_voice_state(channel, &stale_members).await?;
             cleanup_removed_voice_member_call(db, amqp, channel).await?;
             return Ok(Some(VoiceParticipantReconciliation {
                 livekit_members: Vec::new(),
-                stale_members: members,
+                stale_members,
                 stale_livekit_participants: Vec::new(),
             }));
         }

@@ -17,12 +17,12 @@ import type {
   NativeMediaAction,
   NativeMediaState,
 } from '#/features/voice/native-media-coordinator'
+import type {
+  NativeScreenPublicationLoss,
+} from '#/features/voice/native-screen-publication-loss'
 import type { VoiceStatus } from '#/features/voice/voice-mic-status'
 import { tuneScreenShareAfterPublish } from '#/features/voice/voice-screen-share-tuning'
-
-type MutableRef<T> = {
-  current: T
-}
+import type { MutableRef } from '#/features/voice/voice-types'
 
 type NativeScreenShareSessionLike = {
   nativeParticipantIdentity?: string | null
@@ -39,21 +39,40 @@ type VoiceDebugAgentPayload = Record<string, unknown> & {
   event: string
 }
 
-export type NativeScreenPublicationLossReason =
-  | 'participant-disconnected'
-  | 'track-unpublished'
-  | 'publication-missing'
+type ScreenShareSound = 'screen_share.started' | 'screen_share.stopped'
+type PlayScreenShareSound = (sound: ScreenShareSound) => void
 
-export type NativeScreenPublicationLoss = {
-  reason: NativeScreenPublicationLossReason
-  participantIdentity: string
-  publicationSid?: string
-  remoteParticipants?: number
+export type ScreenShareTeardownReason =
+  | 'browser-track-ended'
+  | 'native-ended'
+  | 'native-publication-lost'
+  | 'native-sidecar-lost'
+  | 'user-toggle'
+
+export type TeardownScreenShareDeps = {
+  setScreenShareEnabled: (enabled: boolean) => void
+  syncRoomParticipants: () => void
+  playUiSound?: PlayScreenShareSound
 }
 
-export type NativeScreenPublicationLossHandler = (
-  loss: NativeScreenPublicationLoss,
-) => void
+export type TeardownScreenShareOptions = {
+  reason: ScreenShareTeardownReason
+  screenShareEnabled?: boolean
+  playStoppedSound?: boolean
+  beforeSync?: () => void
+}
+
+export function teardownScreenShare(
+  deps: TeardownScreenShareDeps,
+  options: TeardownScreenShareOptions,
+) {
+  deps.setScreenShareEnabled(options.screenShareEnabled ?? false)
+  if (options.playStoppedSound) {
+    deps.playUiSound?.('screen_share.stopped')
+  }
+  options.beforeSync?.()
+  deps.syncRoomParticipants()
+}
 
 export type StopNativeScreenShareDeps = {
   nativeScreenShareRef: MutableRef<NativeScreenShareSessionLike | null>
@@ -85,7 +104,7 @@ export type StartBrowserScreenShareDeps = {
   activeChannelAudioBitrateKbps: () => number
   setScreenShareEnabled: (enabled: boolean) => void
   syncRoomParticipants: () => void
-  playUiSound: (sound: 'screen_share.stopped') => void
+  playUiSound: PlayScreenShareSound
   setChromiumNativeMediaStats: () => void
 }
 
@@ -140,7 +159,7 @@ export type StartLocalScreenShareDeps = {
   stoppedNativeScreenIdentityRef: MutableRef<string | null>
   nativeScreenPublicationLossKeyRef: MutableRef<string | null>
   getActiveVoiceOperationId: () => string | null
-  getUserId: () => string | undefined
+  getUserId: () => string | null
   isCurrentVoiceSession: (room: Room, targetChannelId: string | null) => boolean
   createRequestId: () => string
   nowMs: () => number
@@ -151,12 +170,6 @@ export type StartLocalScreenShareDeps = {
   dispatchNativeMedia: (action: NativeMediaAction) => void
   syncRoomParticipants: () => void
   stopNativeScreenShare: () => Promise<void>
-  startBrowserScreenShare: (
-    room: Room,
-    quality: ScreenShareQualityName,
-    withAudio: boolean,
-    limits?: ScreenShareCaptureLimits,
-  ) => Promise<void>
   refreshNativeLiveKitCredentials: (
     mediaKind: 'screen',
     forceRefresh?: boolean,
@@ -164,7 +177,8 @@ export type StartLocalScreenShareDeps = {
   activeChannelAudioBitrateKbps: () => number
   logVoiceDebugAgent: (entry: VoiceDebugAgentPayload) => void
   toastError: (message: string) => void
-  playUiSound: (sound: 'screen_share.started') => void
+  playUiSound: PlayScreenShareSound
+  setChromiumNativeMediaStats: () => void
   warn: (message: string, detail: string) => void
   readVoicePreferences: () => VoiceScreenSharePreferences
   setScreenShareQualityPreference: (quality: ScreenShareQualityName) => void
@@ -191,20 +205,41 @@ export type StartLocalScreenShareDeps = {
   findNativeScreenPublication: (
     room: Room,
     options: {
-      userId: string | undefined
+      userId: string | null
       nativeParticipantIdentity?: string
     },
   ) => NativeScreenPublication | null
   waitForNativeScreenPublication: (
     room: Room,
     options: {
-      userId: string | undefined
+      userId: string | null
       nativeParticipantIdentity?: string
     },
     timeoutMs: number,
   ) => Promise<NativeScreenPublication>
   isLiveKitTokenFailure: (error: unknown) => boolean
   resetNativeMediaEngineStats: () => void
+}
+
+type ScreenShareStartContext = {
+  room: Room
+  targetChannelId: string
+  startGeneration: number
+  requestId: string
+  debugStartedAt: number
+  screenOperationId: string
+  screenShareLimits: ScreenShareCaptureLimits
+  currentStartToken: ScreenShareStartToken
+}
+
+type ScreenShareStartToken = {
+  isCurrent: () => boolean
+  clear: () => void
+}
+
+type StartNativeScreenShareDeps = StartLocalScreenShareDeps & {
+  context: ScreenShareStartContext
+  desktop: DesktopScreenShareRuntime
 }
 
 export function rtcDebugScreenSlice(snapshot: RtcDebugSnapshot) {
@@ -347,8 +382,7 @@ export function handleNativeScreenPublicationLost(
 
   if (!deps.nativeScreenShareRef.current) {
     deps.dispatchNativeMedia({ type: 'screen_stopped' })
-    deps.setScreenShareEnabled(false)
-    deps.syncRoomParticipants()
+    teardownScreenShare(deps, { reason: 'native-publication-lost' })
     deps.toastError('Демонстрация экрана отключилась')
     return
   }
@@ -363,8 +397,7 @@ export function handleNativeScreenPublicationLost(
       })
     })
     .finally(() => {
-      deps.setScreenShareEnabled(false)
-      deps.syncRoomParticipants()
+      teardownScreenShare(deps, { reason: 'native-publication-lost' })
       deps.toastError('Демонстрация экрана отключилась')
     })
 }
@@ -411,13 +444,221 @@ export async function startBrowserScreenShare(
 
   videoTrack?.on('ended', () => {
     void deps.room.localParticipant.setScreenShareEnabled(false).then(() => {
-      deps.setScreenShareEnabled(
-        localParticipantVoiceFlags(deps.room.localParticipant).screensharing,
-      )
-      deps.playUiSound('screen_share.stopped')
-      deps.syncRoomParticipants()
+      teardownScreenShare(deps, {
+        reason: 'browser-track-ended',
+        screenShareEnabled: localParticipantVoiceFlags(
+          deps.room.localParticipant,
+        ).screensharing,
+        playStoppedSound: true,
+      })
     })
   })
+}
+
+export async function startNativeScreenShare(
+  deps: StartNativeScreenShareDeps,
+) {
+  const {
+    room,
+    targetChannelId,
+    requestId,
+    debugStartedAt,
+    screenOperationId,
+    screenShareLimits,
+    currentStartToken,
+  } = deps.context
+  const { desktop } = deps
+
+  deps.dispatchNativeMedia({
+    type: 'screen_start_requested',
+    operationId: screenOperationId,
+    channelId: targetChannelId,
+    requestId,
+  })
+  deps.stoppedNativeScreenIdentityRef.current = null
+  deps.nativeScreenPublicationLossKeyRef.current = null
+  const pickerPromise = deps.waitForNativePickerSelection()
+  await desktop.media.openDisplayPicker(deps.withAudio)
+  const selection = await pickerPromise
+  deps.logVoiceDebugAgent({
+    hypothesis: 'H1-screen-start-lifecycle',
+    event: 'native-picker-selected',
+    elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
+    audioRequested: selection.audioRequested,
+  })
+  if (!currentStartToken.isCurrent()) {
+    currentStartToken.clear()
+    void Promise.resolve(
+      desktop.media.cancelPendingStarts('screen'),
+    ).catch(() => {})
+    void Promise.resolve(
+      desktop.media.disconnectPreparedScreenSession(),
+    ).catch(() => {})
+    return
+  }
+  deps.setScreenShareAudioPreference(selection.audioRequested)
+  const handleSidecarLost = (message: string) => {
+    deps.warn('[voice] native media engine lost', message)
+    deps.toastError('Нативный захват прерван')
+    deps.dispatchNativeMedia({
+      type: 'screen_failed',
+      operationId: screenOperationId,
+      channelId: targetChannelId,
+      error: message,
+    })
+    void deps.stopNativeScreenShare().catch(() => {})
+    teardownScreenShare(deps, { reason: 'native-sidecar-lost' })
+  }
+  let session: NativeScreenShareSessionLike | null = null
+  const handleNativeScreenEnded = () => {
+    const active = deps.nativeScreenShareRef.current
+    if (!active || active !== session) return
+    deps.nativeScreenShareRef.current = null
+    deps.stoppedNativeScreenIdentityRef.current =
+      active.nativeParticipantIdentity ?? null
+    deps.resetNativeMediaEngineStats()
+    deps.dispatchNativeMedia({ type: 'screen_stopped' })
+    teardownScreenShare(deps, {
+      reason: 'native-ended',
+      beforeSync: currentStartToken.clear,
+    })
+  }
+  const startNative = async (forceRefresh: boolean) => {
+    if (!currentStartToken.isCurrent()) {
+      return null
+    }
+    return deps.publishNativeScreenShare(
+      room,
+      room.localParticipant,
+      selection.sourceId,
+      requestId,
+      deps.quality,
+      selection.audioRequested,
+      deps.activeChannelAudioBitrateKbps(),
+      handleSidecarLost,
+      handleNativeScreenEnded,
+      await deps.refreshNativeLiveKitCredentials('screen', forceRefresh),
+      screenShareLimits,
+    )
+  }
+
+  try {
+    session = await startNative(false)
+  } catch (error) {
+    if (!deps.isLiveKitTokenFailure(error)) throw error
+    await deps.stopNativeScreenShare()
+    session = await startNative(true)
+  }
+  if (!session) {
+    throw new Error('Native screen share did not start')
+  }
+  deps.logVoiceDebugAgent({
+    hypothesis: 'H1-screen-start-lifecycle',
+    event: 'native-session-started',
+    elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
+    width: session.width,
+    height: session.height,
+    fps: session.fps,
+    bitrate: session.bitrate,
+    hasAudio: Boolean(session.audio),
+    hasNativeParticipantIdentity: Boolean(
+      session.nativeParticipantIdentity,
+    ),
+  })
+  if (!currentStartToken.isCurrent()) {
+    await Promise.resolve(session.stop()).catch(() => {})
+    return
+  }
+  deps.nativeScreenShareRef.current = session
+  const publicationOptions = {
+    userId: deps.getUserId(),
+    nativeParticipantIdentity: session.nativeParticipantIdentity ?? undefined,
+  }
+  const observedPublication =
+    deps.findNativeScreenPublication(room, publicationOptions) ??
+    (await deps.waitForNativeScreenPublication(
+      room,
+      publicationOptions,
+      10_000,
+    ))
+  if (!currentStartToken.isCurrent()) {
+    await Promise.resolve(session.stop()).catch(() => {})
+    return
+  }
+  deps.dispatchNativeMedia({
+    type: 'screen_publication_observed',
+    operationId: screenOperationId,
+    channelId: targetChannelId,
+    participantIdentity: observedPublication.participantIdentity,
+    publicationSid: observedPublication.publicationSid,
+  })
+  deps.logVoiceDebugAgent({
+    hypothesis: 'H3-remote-decode-lag',
+    event: 'native-publication-observed',
+    elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
+    hasParticipantIdentity: Boolean(
+      observedPublication.participantIdentity,
+    ),
+    hasPublicationSid: Boolean(observedPublication.publicationSid),
+  })
+  deps.setScreenShareEnabled(true)
+  deps.playUiSound('screen_share.started')
+  currentStartToken.clear()
+  deps.syncRoomParticipants()
+}
+
+function createScreenShareStartToken(
+  deps: StartLocalScreenShareDeps,
+  room: Room,
+  targetChannelId: string,
+  startGeneration: number,
+): ScreenShareStartToken {
+  return {
+    isCurrent: () =>
+      deps.screenShareStartGenerationRef.current === startGeneration &&
+      deps.isCurrentVoiceSession(room, targetChannelId),
+    clear: () => {
+      if (deps.screenShareStartGenerationRef.current !== startGeneration) return
+      deps.screenShareStartingRef.current = false
+      deps.setScreenShareStarting(false)
+    },
+  }
+}
+
+async function runBrowserScreenShareStart(
+  deps: StartLocalScreenShareDeps,
+  context: ScreenShareStartContext,
+) {
+  const { room, debugStartedAt, currentStartToken, screenShareLimits } = context
+  await startBrowserScreenShare({
+    room,
+    quality: deps.quality,
+    withAudio: deps.withAudio,
+    limits: screenShareLimits,
+    activeChannelAudioBitrateKbps: deps.activeChannelAudioBitrateKbps,
+    setScreenShareEnabled: deps.setScreenShareEnabled,
+    syncRoomParticipants: deps.syncRoomParticipants,
+    playUiSound: deps.playUiSound,
+    setChromiumNativeMediaStats: deps.setChromiumNativeMediaStats,
+  })
+  deps.logVoiceDebugAgent({
+    hypothesis: 'H5-browser-sender-tuning-miss',
+    event: 'browser-screen-started',
+    elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
+    quality: deps.quality,
+    withAudio: deps.withAudio,
+  })
+  if (!currentStartToken.isCurrent()) {
+    await room.localParticipant.setScreenShareEnabled(false).catch(() => {})
+    currentStartToken.clear()
+    return
+  }
+  deps.setScreenShareEnabled(
+    localParticipantVoiceFlags(room.localParticipant).screensharing,
+  )
+  deps.playUiSound('screen_share.started')
+  currentStartToken.clear()
+  deps.syncRoomParticipants()
 }
 
 export async function startLocalScreenShare(
@@ -452,14 +693,12 @@ export async function startLocalScreenShare(
   deps.setScreenShareDebugRun((run) => run + 1)
   const screenOperationId =
     deps.getActiveVoiceOperationId() ?? `screen:${startGeneration}`
-  const isCurrentScreenShareStart = () =>
-    deps.screenShareStartGenerationRef.current === startGeneration &&
-    deps.isCurrentVoiceSession(room, targetChannelId)
-  const clearCurrentScreenShareStart = () => {
-    if (deps.screenShareStartGenerationRef.current !== startGeneration) return
-    deps.screenShareStartingRef.current = false
-    deps.setScreenShareStarting(false)
-  }
+  const currentStartToken = createScreenShareStartToken(
+    deps,
+    room,
+    targetChannelId,
+    startGeneration,
+  )
 
   deps.setScreenShareQualityPreference(deps.quality)
   deps.setScreenShareAudioPreference(deps.withAudio)
@@ -485,145 +724,24 @@ export async function startLocalScreenShare(
     roomState: room.state,
     limits: screenShareLimits,
   })
+  const startContext: ScreenShareStartContext = {
+    room,
+    targetChannelId,
+    startGeneration,
+    requestId,
+    debugStartedAt,
+    screenOperationId,
+    screenShareLimits,
+    currentStartToken,
+  }
 
   try {
     if (useNative && desktop) {
-      deps.dispatchNativeMedia({
-        type: 'screen_start_requested',
-        operationId: screenOperationId,
-        channelId: targetChannelId,
-        requestId,
+      await startNativeScreenShare({
+        ...deps,
+        context: startContext,
+        desktop,
       })
-      deps.stoppedNativeScreenIdentityRef.current = null
-      deps.nativeScreenPublicationLossKeyRef.current = null
-      const pickerPromise = deps.waitForNativePickerSelection()
-      await desktop.media.openDisplayPicker(deps.withAudio)
-      const selection = await pickerPromise
-      deps.logVoiceDebugAgent({
-        hypothesis: 'H1-screen-start-lifecycle',
-        event: 'native-picker-selected',
-        elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
-        audioRequested: selection.audioRequested,
-      })
-      if (!isCurrentScreenShareStart()) {
-        clearCurrentScreenShareStart()
-        void Promise.resolve(
-          desktop.media.cancelPendingStarts('screen'),
-        ).catch(() => {})
-        void Promise.resolve(
-          desktop.media.disconnectPreparedScreenSession(),
-        ).catch(() => {})
-        return
-      }
-      deps.setScreenShareAudioPreference(selection.audioRequested)
-      const handleSidecarLost = (message: string) => {
-        deps.warn('[voice] native media engine lost', message)
-        deps.toastError('Нативный захват прерван')
-        deps.dispatchNativeMedia({
-          type: 'screen_failed',
-          operationId: screenOperationId,
-          channelId: targetChannelId,
-          error: message,
-        })
-        void deps.stopNativeScreenShare().catch(() => {})
-        deps.setScreenShareEnabled(false)
-        deps.syncRoomParticipants()
-      }
-      let session: NativeScreenShareSessionLike | null = null
-      const handleNativeScreenEnded = () => {
-        const active = deps.nativeScreenShareRef.current
-        if (!active || active !== session) return
-        deps.nativeScreenShareRef.current = null
-        deps.stoppedNativeScreenIdentityRef.current =
-          active.nativeParticipantIdentity ?? null
-        deps.resetNativeMediaEngineStats()
-        deps.dispatchNativeMedia({ type: 'screen_stopped' })
-        deps.setScreenShareEnabled(false)
-        clearCurrentScreenShareStart()
-        deps.syncRoomParticipants()
-      }
-      const startNative = async (forceRefresh: boolean) => {
-        if (!isCurrentScreenShareStart()) {
-          return null
-        }
-        return deps.publishNativeScreenShare(
-          room,
-          room.localParticipant,
-          selection.sourceId,
-          requestId,
-          deps.quality,
-          selection.audioRequested,
-          deps.activeChannelAudioBitrateKbps(),
-          handleSidecarLost,
-          handleNativeScreenEnded,
-          await deps.refreshNativeLiveKitCredentials('screen', forceRefresh),
-          screenShareLimits,
-        )
-      }
-
-      try {
-        session = await startNative(false)
-      } catch (error) {
-        if (!deps.isLiveKitTokenFailure(error)) throw error
-        await deps.stopNativeScreenShare()
-        session = await startNative(true)
-      }
-      if (!session) {
-        throw new Error('Native screen share did not start')
-      }
-      deps.logVoiceDebugAgent({
-        hypothesis: 'H1-screen-start-lifecycle',
-        event: 'native-session-started',
-        elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
-        width: session.width,
-        height: session.height,
-        fps: session.fps,
-        bitrate: session.bitrate,
-        hasAudio: Boolean(session.audio),
-        hasNativeParticipantIdentity: Boolean(
-          session.nativeParticipantIdentity,
-        ),
-      })
-      if (!isCurrentScreenShareStart()) {
-        await Promise.resolve(session.stop()).catch(() => {})
-        return
-      }
-      deps.nativeScreenShareRef.current = session
-      const publicationOptions = {
-        userId: deps.getUserId(),
-        nativeParticipantIdentity: session.nativeParticipantIdentity ?? undefined,
-      }
-      const observedPublication =
-        deps.findNativeScreenPublication(room, publicationOptions) ??
-        (await deps.waitForNativeScreenPublication(
-          room,
-          publicationOptions,
-          10_000,
-        ))
-      if (!isCurrentScreenShareStart()) {
-        await Promise.resolve(session.stop()).catch(() => {})
-        return
-      }
-      deps.dispatchNativeMedia({
-        type: 'screen_publication_observed',
-        operationId: screenOperationId,
-        channelId: targetChannelId,
-        participantIdentity: observedPublication.participantIdentity,
-        publicationSid: observedPublication.publicationSid,
-      })
-      deps.logVoiceDebugAgent({
-        hypothesis: 'H3-remote-decode-lag',
-        event: 'native-publication-observed',
-        elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
-        hasParticipantIdentity: Boolean(
-          observedPublication.participantIdentity,
-        ),
-        hasPublicationSid: Boolean(observedPublication.publicationSid),
-      })
-      deps.setScreenShareEnabled(true)
-      deps.playUiSound('screen_share.started')
-      clearCurrentScreenShareStart()
-      deps.syncRoomParticipants()
       return
     }
 
@@ -631,32 +749,9 @@ export async function startLocalScreenShare(
       throw new Error('Нативный media engine недоступен')
     }
 
-    await deps.startBrowserScreenShare(
-      room,
-      deps.quality,
-      deps.withAudio,
-      screenShareLimits,
-    )
-    deps.logVoiceDebugAgent({
-      hypothesis: 'H5-browser-sender-tuning-miss',
-      event: 'browser-screen-started',
-      elapsedMs: Math.round(deps.performanceNow() - debugStartedAt),
-      quality: deps.quality,
-      withAudio: deps.withAudio,
-    })
-    if (!isCurrentScreenShareStart()) {
-      await room.localParticipant.setScreenShareEnabled(false).catch(() => {})
-      clearCurrentScreenShareStart()
-      return
-    }
-    deps.setScreenShareEnabled(
-      localParticipantVoiceFlags(room.localParticipant).screensharing,
-    )
-    deps.playUiSound('screen_share.started')
-    clearCurrentScreenShareStart()
-    deps.syncRoomParticipants()
+    await runBrowserScreenShareStart(deps, startContext)
   } catch (error) {
-    if (!isCurrentScreenShareStart()) {
+    if (!currentStartToken.isCurrent()) {
       return
     }
     deps.logVoiceDebugAgent({
@@ -666,7 +761,7 @@ export async function startLocalScreenShare(
       message: error instanceof Error ? error.message : String(error),
       useNative: Boolean(useNative && desktop),
     })
-    clearCurrentScreenShareStart()
+    currentStartToken.clear()
     deps.dispatchNativeMedia({
       type: 'screen_failed',
       operationId: screenOperationId,

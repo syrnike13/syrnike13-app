@@ -11,6 +11,12 @@ import {
   baseVoiceIdentity,
   isDesktopNativeVoiceIdentity,
 } from '#/features/voice/native-voice-identity'
+import {
+  detectNativeScreenParticipantDisconnectLoss,
+  detectNativeScreenTrackUnpublishedLoss,
+  type NativeScreenPublicationLoss,
+  type NativeScreenPublicationState,
+} from '#/features/voice/native-screen-publication-loss'
 import { SYRNIKE_MIC_PROCESSOR_NAME } from '#/features/voice/voice-mic-processor'
 import type {
   RemoteAudioMixer,
@@ -19,10 +25,6 @@ import type {
 
 export type AudioTrackWithMedia = Track & {
   mediaStreamTrack?: MediaStreamTrack
-  sid?: string
-}
-
-type RemoteTrackPublicationWithLegacySid = RemoteTrackPublication & {
   sid?: string
 }
 
@@ -47,7 +49,7 @@ export type ApplyRemoteAudioDeps = {
 }
 
 export type PlayRemoteAudioTrackDeps = {
-  currentUserId: string | null | undefined
+  currentUserId: string | null
   getRemoteAudioMixer: () => Pick<RemoteAudioMixer, 'addTrack'> | null
   applyRemoteAudio: () => void
   logError?: typeof console.error
@@ -60,18 +62,14 @@ export type CleanupRemoteAudioTrackSubscriptionDeps = {
   > | null
 }
 
-export type NativeScreenStateForRoomAudio =
-  | { status: 'published'; participantIdentity: string; publicationSid: string }
-  | { status: string; participantIdentity?: string; publicationSid?: string }
-
 export type AttachRoomAudioDeps = {
-  currentUserId: string | null | undefined
+  currentUserId: string | null
   getRemoteAudioMixer: () => Pick<
     RemoteAudioMixer,
     'addTrack' | 'removeTrack' | 'removeMediaStreamTrack' | 'applyVolumes'
   > | null
   getDeafened: () => boolean
-  getNativeScreenState: () => NativeScreenStateForRoomAudio
+  getNativeScreenState: () => NativeScreenPublicationState
   getStoppedNativeScreenIdentity: () => string | null
   getCurrentRoom: () => Room | null
   getTargetChannelId: () => string | null
@@ -85,12 +83,7 @@ export type AttachRoomAudioDeps = {
   ) => boolean
   syncMicFromRoom: (room: Room, issue?: unknown) => void
   abortJoinAttempt: () => void
-  onNativeScreenPublicationLost: (loss: {
-    reason: 'participant-disconnected' | 'track-unpublished'
-    participantIdentity: string
-    publicationSid?: string
-    remoteParticipants?: number
-  }) => void
+  onNativeScreenPublicationLost: (loss: NativeScreenPublicationLoss) => void
   onUnexpectedRoomDisconnect: (targetChannelId: string) => void
   playUiSound: (sound: 'voice.user_join') => void
   describeMicDeviceError?: (error: unknown) => unknown
@@ -128,6 +121,10 @@ export function remoteAudioTrackId(
   )
 }
 
+function removeDetachedElement(element: Element) {
+  element.remove()
+}
+
 export function cleanupVoiceRoomAudio(deps: VoiceRoomAudioCleanupDeps) {
   deps.getRemoteAudioMixer()?.clear()
   deps.getLocalSpeakingDetector()?.clear()
@@ -149,9 +146,6 @@ export function playRemoteAudioTrack(
 ) {
   if (track.kind !== Track.Kind.Audio) return
 
-  const removeDetachedElement = (element: Element) => {
-    element.remove()
-  }
   if (
     isDesktopNativeVoiceIdentity(participant.identity) &&
     baseVoiceIdentity(participant.identity) === deps.currentUserId
@@ -213,39 +207,7 @@ export function cleanupRemoteAudioTrackSubscription(
   track.detach().forEach((element) => element.remove())
 }
 
-function remotePublicationSid(publication: RemoteTrackPublication) {
-  return (
-    publication.trackSid ||
-    (publication as RemoteTrackPublicationWithLegacySid).sid
-  )
-}
-
-function isCurrentNativeScreenParticipant(
-  screen: NativeScreenStateForRoomAudio,
-  participantIdentity: string,
-) {
-  return (
-    screen.status === 'published' &&
-    screen.participantIdentity === participantIdentity
-  )
-}
-
-function isCurrentNativeScreenPublication(
-  screen: NativeScreenStateForRoomAudio,
-  participantIdentity: string,
-  publication: RemoteTrackPublication,
-) {
-  if (!isCurrentNativeScreenParticipant(screen, participantIdentity)) {
-    return false
-  }
-  return remotePublicationSid(publication) === screen.publicationSid
-}
-
 export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
-  const removeDetachedElement = (element: Element) => {
-    element.remove()
-  }
-
   const playTrack = (
     track: Track,
     publication: RemoteTrackPublication,
@@ -271,17 +233,14 @@ export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
   const onRemoteParticipantDisconnected = (
     participant: RemoteParticipant,
   ) => {
-    const screen = deps.getNativeScreenState()
-    if (
-      deps.getStoppedNativeScreenIdentity() !== participant.identity &&
-      isCurrentNativeScreenParticipant(screen, participant.identity)
-    ) {
-      deps.onNativeScreenPublicationLost({
-        reason: 'participant-disconnected',
-        participantIdentity: participant.identity,
-        publicationSid: screen.publicationSid,
-        remoteParticipants: room.remoteParticipants.size,
-      })
+    const loss = detectNativeScreenParticipantDisconnectLoss({
+      screen: deps.getNativeScreenState(),
+      stoppedNativeScreenIdentity: deps.getStoppedNativeScreenIdentity(),
+      remoteParticipants: room.remoteParticipants.size,
+      participantIdentity: participant.identity,
+    })
+    if (loss) {
+      deps.onNativeScreenPublicationLost(loss)
     }
     onParticipantsChanged()
   }
@@ -289,22 +248,15 @@ export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
     publication: RemoteTrackPublication,
     participant: RemoteParticipant,
   ) => {
-    const screen = deps.getNativeScreenState()
-    if (
-      deps.getStoppedNativeScreenIdentity() !== participant.identity &&
-      publication.source === Track.Source.ScreenShare &&
-      isCurrentNativeScreenPublication(
-        screen,
-        participant.identity,
-        publication,
-      )
-    ) {
-      deps.onNativeScreenPublicationLost({
-        reason: 'track-unpublished',
-        participantIdentity: participant.identity,
-        publicationSid: remotePublicationSid(publication),
-        remoteParticipants: room.remoteParticipants.size,
-      })
+    const loss = detectNativeScreenTrackUnpublishedLoss({
+      screen: deps.getNativeScreenState(),
+      stoppedNativeScreenIdentity: deps.getStoppedNativeScreenIdentity(),
+      remoteParticipants: room.remoteParticipants.size,
+      participantIdentity: participant.identity,
+      publication,
+    })
+    if (loss) {
+      deps.onNativeScreenPublicationLost(loss)
     }
     onParticipantsChanged()
   }

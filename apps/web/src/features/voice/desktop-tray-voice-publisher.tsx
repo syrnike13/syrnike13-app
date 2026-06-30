@@ -23,7 +23,7 @@ export function DesktopTrayVoicePublisher() {
     () =>
       deriveDesktopTrayVoiceState({
         channelId: voice.channelId,
-        currentUserId: auth.user?._id,
+        currentUserId: auth.user?._id ?? null,
         localParticipant,
         speakingUserIds: voice.speakingUserIds,
       }),
