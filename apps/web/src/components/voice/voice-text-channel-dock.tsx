@@ -11,7 +11,7 @@ import {
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
@@ -23,7 +23,7 @@ type VoiceTextChannelDockProps = {
 
 export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const prefix = useAppRoutePrefix()
   const [expanded, setExpanded] = useState(false)
   const users = useSyncStore((s) => s.users)

@@ -28,7 +28,7 @@ import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { selectDirectMessageCallActionLabel } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
 import { writeClipboardText } from '#/lib/clipboard'
 import {
@@ -55,7 +55,7 @@ export function UserContextMenuContent({
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const { openSettings } = useSettingsModal()
 
   const server = useSyncStore((s) =>

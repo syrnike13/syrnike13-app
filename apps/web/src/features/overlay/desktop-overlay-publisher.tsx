@@ -4,7 +4,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { useSyncStore } from '#/features/sync/sync-store'
 import type { UserVoiceState } from '#/features/sync/voice-types'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { usePlatform } from '#/platform/use-platform'
 
 import { buildVoiceOverlaySnapshot } from './voice-overlay-snapshot'
@@ -13,7 +13,7 @@ const EMPTY_PARTICIPANTS: UserVoiceState[] = []
 
 export function DesktopOverlayPublisher() {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const { desktop, os } = usePlatform()
   const overlayInput = useSyncStore((state) => {
     if (!voice.channelId) {

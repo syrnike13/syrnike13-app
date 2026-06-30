@@ -5,15 +5,12 @@ import {
   useReducer,
   useRef,
   useState,
-  type Dispatch,
   type ReactNode,
-  type SetStateAction,
 } from 'react'
 import {
   Room,
   RoomEvent,
   Track,
-  type RemoteParticipant,
 } from 'livekit-client'
 import { toast } from 'sonner'
 
@@ -41,12 +38,11 @@ import {
 import {
   voiceIntentActionFromGatewayEvent,
 } from '#/features/voice/voice-intent-gateway-events'
+import { useVoiceTelemetryDebug } from '#/features/voice/voice-debug-telemetry'
+import { useVoiceMediaFlags } from '#/features/voice/voice-media-flags'
+import { useVoiceStageController } from '#/features/voice/voice-stage-controller'
+import { useVoiceScreenShare } from '#/features/voice/use-voice-screen-share'
 import {
-  readStageMediaFilters,
-  writeStageMediaFilters,
-} from '#/features/voice/voice-stage-filters'
-import {
-  isLiveKitTokenFailure,
   shouldRefreshLiveKitToken,
 } from '#/features/voice/voice-token-helpers'
 import {
@@ -78,62 +74,32 @@ import {
 import { mergeSpeakingUserIds } from '#/features/voice/voice-speaking-users'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import {
-  patchLocalVoiceCamera,
   patchLocalVoiceDeafen,
   patchLocalVoiceMic,
   removeLocalUserFromAllVoiceChannels,
 } from '#/features/voice/voice-participant-sync'
 import {
-  localParticipantVoiceFlags,
   participantMicPublishing,
 } from '#/features/voice/voice-participant-media'
 import {
-  appendVoicePingSample,
-  type VoicePingSample,
-} from '#/features/voice/voice-ping-history'
-import { measureVoicePingMs } from '#/features/voice/voice-ping'
-import {
-  appendRtcDebugSample,
-  collectVoiceRtcDebugSnapshot,
-  deriveRtcRates,
-  type RtcDebugSnapshot,
-  type RtcDebugStageMediaItem,
-} from '#/features/voice/voice-rtc-debug'
-import {
-  type ScreenShareCaptureLimits,
   voiceMicPublishOptions,
 } from '#/features/voice/voice-capture'
-import { resolveScreenShareCaptureLimits } from '#/features/voice/voice-screen-share-limits'
-import {
-  handleNativeScreenPublicationLost as handleNativeScreenPublicationLostFromDeps,
-  rtcDebugScreenSlice,
-  startBrowserScreenShare as startBrowserScreenShareFromDeps,
-  startLocalScreenShare as startLocalScreenShareFromDeps,
-  stopNativeScreenShare as stopNativeScreenShareFromDeps,
-  type NativeScreenPublicationLoss,
-  type NativeScreenPublicationLossHandler,
+import type {
+  NativeScreenPublicationLossHandler,
 } from '#/features/voice/voice-screen-share'
 import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
 import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
-import { shouldUseNativeScreenShare } from '#/features/voice/native-screen-share-mode'
 import { createVoiceOperationId } from '#/features/voice/voice-operation'
 import {
   nativeOrBrowserPublisherHealthy,
 } from '#/features/voice/voice-recovery-runner'
 import {
   createInitialNativeMediaState,
-  isNativeScreenPublished,
-  isNativeScreenStarting,
   type NativeMediaAction,
   nativeMediaReducer,
 } from '#/features/voice/native-media-coordinator'
 import {
-  findNativeScreenPublication,
-  waitForNativeScreenPublication,
-} from '#/features/voice/voice-publication-observer'
-import {
-  publishNativeScreenShare,
   type NativeScreenShareSession,
 } from '#/features/voice/native-screen-share-publish'
 import {
@@ -141,22 +107,8 @@ import {
   publishNativeMicrophone,
   shouldRestartNativeMicrophonePublisher,
   shouldUseNativeMicrophone,
-  type NativeMicrophoneSession,
 } from '#/features/voice/native-microphone-publish'
-import {
-  disconnectNativeMediaForHandoff as disconnectNativeMediaForHandoffFromDeps,
-  refreshNativeLiveKitCredentials as refreshNativeLiveKitCredentialsFromDeps,
-  resetNativeMediaState,
-  setNativeMicrophoneMuted as setNativeMicrophoneMutedFromDeps,
-  startNativeMicrophone as startNativeMicrophoneFromDeps,
-} from '#/features/voice/voice-native-media'
-import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
-import {
-  clearNativePickerSelection,
-  rejectNativePickerSelection,
-  waitForNativePickerSelection,
-} from '#/features/voice/native-screen-share-session'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 import {
   applyMicProcessing,
@@ -173,7 +125,6 @@ import {
 } from '#/features/voice/voice-mic-status'
 import { useMediaDevices } from '#/features/voice/use-media-devices'
 import { buildVoiceMediaAvailabilityState } from '#/features/voice/voice-media-availability'
-import { isVoiceConnectedInChannel } from '#/features/voice/voice-watch-screen-share'
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
 import {
   effectiveVoiceJoinPreferences,
@@ -182,27 +133,9 @@ import {
 } from '#/features/voice/voice-preference-store'
 import {
   createConnectingLocalVoiceState,
-  isVoiceLocalUserId,
   withConnectingLocalAvatarItem,
 } from '#/features/voice/voice-connecting-preview'
 import {
-  type StageMediaFilters,
-  stageMediaItemId,
-} from '#/features/voice/voice-stage-media'
-import {
-  applyRemoteScreenParticipantSubscription as applyRemoteScreenParticipantSubscriptionToRoom,
-  syncRoomParticipants as syncRoomParticipantsForRoom,
-  syncStageMediaItems as syncStageMediaItemsForRoom,
-} from '#/features/voice/voice-stage-media-sync'
-import {
-  resolveStageScreenSubscriptionTarget,
-  setRemoteScreenWatchIntent,
-  setStageScreenSubscription,
-  stageScreenMediaUserId,
-} from '#/features/voice/voice-stage-subscription'
-import {
-  SCREEN_VIEWER_SOUND_TOPIC,
-  createScreenViewerSoundPayload,
   screenViewerSoundEventFromData,
 } from '#/features/voice/voice-screen-viewer-sounds'
 import { runVoiceRequest } from '#/features/voice/voice-request-gate'
@@ -210,10 +143,21 @@ import { createVoiceTransitionRateLimiter } from '#/features/voice/voice-transit
 import { channelAudioBitrateKbps } from '#/lib/channel-audio-bitrate'
 import { playUiSound } from '#/features/sounds/sound-player'
 import {
-  VoiceContext,
-  type VoiceContextValue,
-  type VoiceStageMediaItem,
-} from '#/features/voice/voice-context'
+  VoiceMediaContext,
+  type VoiceMediaContextValue,
+} from '#/features/voice/voice-media-context'
+import {
+  VoiceSessionContext,
+  type VoiceSessionContextValue,
+} from '#/features/voice/voice-session-context'
+import {
+  VoiceStageContext,
+  type VoiceStageContextValue,
+} from '#/features/voice/voice-stage-context'
+import {
+  VoiceTelemetryContext,
+  type VoiceTelemetryContextValue,
+} from '#/features/voice/voice-telemetry-context'
 
 const VOICE_RECOVERY_HEALTH_INTERVAL_MS = 5_000
 const VOICE_RECOVERY_SERVER_STATE_GRACE_MS = 10_000
@@ -236,15 +180,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   } | null>(null)
   const screenShareStartGenerationRef = useRef(0)
   const stoppedNativeScreenIdentityRef = useRef<string | null>(null)
-  const nativeMicrophoneRef = useRef<NativeMicrophoneSession | null>(null)
-  const nativeMicrophoneStartRef = useRef<Promise<boolean> | null>(null)
-  const nativeMicrophoneStartGenerationRef = useRef(0)
-  const nativeMicrophoneMutedRef = useRef(false)
-  const liveKitCredentialsRef = useRef<LiveKitNativeCredentials | null>(null)
-  const watchedRemoteScreenIdsRef = useRef<Set<string>>(new Set())
-  const pendingScreenWatchIdsRef = useRef<Set<string>>(new Set())
-  const screenShareDebugUntilRef = useRef(0)
-  const lastStageSyncDebugKeyRef = useRef<string | null>(null)
   const nativeScreenPublicationLossKeyRef = useRef<string | null>(null)
   const nativeScreenPublicationLostRef =
     useRef<NativeScreenPublicationLossHandler | null>(null)
@@ -261,6 +196,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const micPublishingRef = useRef(readVoicePreferences().micEnabled)
   const micIssueRef = useRef<VoiceMicIssue | null>(null)
   const voiceTransitionRateLimitRef = useRef(createVoiceTransitionRateLimiter())
+  const joinRef = useRef<(channelId: string) => Promise<boolean>>(
+    async () => false,
+  )
+  const syncRoomParticipantsRef = useRef<() => void>(() => {})
+  const setScreenShareEnabledRef = useRef<(enabled: boolean) => void>(() => {})
+  const stopNativeScreenShareRef = useRef<() => Promise<void>>(async () => {})
   const selfMonitoringRef = useRef({
     active: false,
     restorePublishing: false,
@@ -439,8 +380,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       },
     }),
   )
-  const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
-  const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
+  const nativeMedia = voiceIntentExecutorRef.current.nativeMedia
   const lastVoicePreferencesRef = useRef(readVoicePreferences())
 
   const [channelId, setChannelId] = useState<string | null>(null)
@@ -503,25 +443,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     publishSpeakingUserIds()
   }, [auth.user?._id, publishSpeakingUserIds])
-  const [voicePingMs, setVoicePingMs] = useState<number | null>(null)
-  const [voicePingHistory, setVoicePingHistory] = useState<VoicePingSample[]>(
-    [],
-  )
-  const [rtcDebugEnabled, setRtcDebugEnabled] = useState(false)
-  const [rtcDebugSnapshot, setRtcDebugSnapshot] =
-    useState<RtcDebugSnapshot | null>(null)
-  const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
-  const [screenShareDebugRun, setScreenShareDebugRun] = useState(0)
-  const [stageMediaItems, setStageMediaItemsState] = useState<
-    VoiceStageMediaItem[]
-  >([])
-  const [stageMediaFilters, setStageMediaFiltersState] = useState(
-    readStageMediaFilters,
-  )
-  const [cameraEnabled, setCameraEnabled] = useState(false)
-  const [screenShareEnabled, setScreenShareEnabled] = useState(false)
-  const [screenShareStarting, setScreenShareStarting] = useState(false)
-  const screenShareStartingRef = useRef(false)
   const [nativeMediaState, dispatchNativeMediaState] = useReducer(
     nativeMediaReducer,
     undefined,
@@ -536,10 +457,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     )
     dispatchNativeMediaState(action)
   }, [])
-  const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null)
-  const [stageFocusNonce, setStageFocusNonce] = useState(0)
-  const [stageFullscreen, setStageFullscreen] = useState(false)
-
   channelIdRef.current = channelId
   statusRef.current = status
   localVoiceReadyRef.current = localVoiceReady
@@ -567,106 +484,90 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const setStageMediaItems = useCallback((items: VoiceStageMediaItem[]) => {
-    stageMediaItemsRef.current = items
-    setStageMediaItemsState(items)
+  const syncRoomParticipantsFromRef = useCallback(() => {
+    syncRoomParticipantsRef.current()
+  }, [])
+  const joinFromRef = useCallback((targetChannelId: string) => {
+    return joinRef.current(targetChannelId)
+  }, [])
+  const setScreenShareEnabledFromRef = useCallback((enabled: boolean) => {
+    setScreenShareEnabledRef.current(enabled)
+  }, [])
+  const stopNativeScreenShareFromRef = useCallback(async () => {
+    await stopNativeScreenShareRef.current()
   }, [])
 
-  const publishScreenViewerSound = useCallback(
-    (room: Room, screenOwnerId: string, action: 'join' | 'leave') => {
-      return room.localParticipant
-        .publishData(createScreenViewerSoundPayload({ action, screenOwnerId }), {
-          reliable: true,
-          destinationIdentities: [screenOwnerId],
-          topic: SCREEN_VIEWER_SOUND_TOPIC,
-        })
-        .catch((error) => {
-          if (import.meta.env.DEV) {
-            console.warn('Failed to publish screen viewer sound intent', error)
-          }
-        })
+  const {
+    stageMediaItems,
+    stageMediaItemsRef,
+    stageMediaFilters,
+    setStageMediaFilters,
+    focusedMediaId,
+    stageFocusNonce,
+    setFocusedMediaId,
+    stageFullscreen,
+    toggleStageFullscreen,
+    syncStageMediaItems,
+    applyRemoteScreenParticipantSubscription,
+    watchParticipantScreenShare,
+    setStageMediaSubscribed,
+    publishScreenViewerLeaves,
+    resetStageState,
+  } = useVoiceStageController({
+    authUserId: auth.user?._id,
+    channelId,
+    status,
+    join: joinFromRef,
+    roomRef,
+    nativeMediaStateRef,
+    stoppedNativeScreenIdentityRef,
+    nativeScreenShareRef,
+    stopNativeScreenShare: stopNativeScreenShareFromRef,
+    setScreenShareEnabled: setScreenShareEnabledFromRef,
+    syncRoomParticipants: syncRoomParticipantsFromRef,
+    onNativeScreenPublicationLost: (loss) => {
+      nativeScreenPublicationLostRef.current?.(loss)
     },
-    [],
-  )
+    logStageSyncDebug: logVoiceDebugAgent,
+  })
 
-  const publishScreenViewerLeaves = useCallback(
-    async (room: Room) => {
-      await Promise.all(
-        Array.from(watchedRemoteScreenIdsRef.current).flatMap((mediaId) => {
-          const screenOwnerId = stageScreenMediaUserId(mediaId)
-          return screenOwnerId
-            ? [publishScreenViewerSound(room, screenOwnerId, 'leave')]
-            : []
-        }),
-      )
-    },
-    [publishScreenViewerSound],
-  )
+  const {
+    voicePingMs,
+    voicePingHistory,
+    rtcDebugEnabled,
+    setRtcDebugEnabled,
+    rtcDebugSnapshot,
+    rtcDebugHistory,
+    screenShareDebugUntilRef,
+    setScreenShareDebugRun,
+    resetVoiceTelemetryDebugState,
+  } = useVoiceTelemetryDebug({
+    status,
+    roomRef,
+    stageMediaItemsRef,
+  })
 
-  const setStageMediaFilters: Dispatch<
-    SetStateAction<StageMediaFilters>
-  > = useCallback((next) => {
-    setStageMediaFiltersState((previous) => {
-      const value = typeof next === 'function' ? next(previous) : next
-      writeStageMediaFilters(value)
-      return value
-    })
-  }, [])
-
-  const applyRemoteScreenParticipantSubscription = useCallback(
-    (participant: RemoteParticipant, subscribed?: boolean) => {
-      return applyRemoteScreenParticipantSubscriptionToRoom(participant, {
-        subscribed,
-        currentUserId: auth.user?._id,
-        localParticipantIdentity: roomRef.current?.localParticipant.identity,
-        watchedRemoteScreenIds: watchedRemoteScreenIdsRef.current,
-        pendingScreenWatchIds: pendingScreenWatchIdsRef.current,
-      })
-    },
-    [auth.user?._id],
-  )
-
-  const syncStageMediaItems = useCallback(
-    (room: Room) => {
-      syncStageMediaItemsForRoom({
-        room,
-        nativeMediaState: nativeMediaStateRef.current,
-        stoppedNativeScreenIdentity: stoppedNativeScreenIdentityRef.current,
-        authUserId: auth.user?._id,
-        stageMediaFilters,
-        watchedRemoteScreenIds: watchedRemoteScreenIdsRef.current,
-        pendingScreenWatchIds: pendingScreenWatchIdsRef.current,
-        lastStageSyncDebugKey: lastStageSyncDebugKeyRef,
-        applyRemoteScreenParticipantSubscription,
-        setStageMediaItems,
-        onNativeScreenPublicationLost: (loss) => {
-          nativeScreenPublicationLostRef.current?.(loss)
-        },
-        logStageSyncDebug: logVoiceDebugAgent,
-      })
-    },
-    [
-      applyRemoteScreenParticipantSubscription,
-      auth.user?._id,
-      setStageMediaItems,
-      stageMediaFilters,
-    ],
-  )
-
-  const syncRoomParticipants = useCallback(() => {
-    const room = roomRef.current
-    if (!room) return
-    syncRoomParticipantsForRoom({
-      room,
-      nativeMediaState: nativeMediaStateRef.current,
-      activeChannelId: channelIdRef.current,
-      userId: auth.user?._id,
-      setCameraEnabled,
-      setScreenShareEnabled,
-      patchLocalVoiceCamera,
-      syncStageMediaItems,
-    })
-  }, [auth.user?._id, syncStageMediaItems])
+  const {
+    cameraEnabled,
+    screenShareStarting,
+    screenShareEnabledForUi,
+    screenShareStartingForUi,
+    setCameraEnabled,
+    setScreenShareEnabled,
+    setScreenShareStarting,
+    screenShareStartingRef,
+    syncRoomParticipants,
+    toggleCamera,
+  } = useVoiceMediaFlags({
+    authUserId: auth.user?._id,
+    roomRef,
+    channelIdRef,
+    nativeMediaState,
+    nativeMediaStateRef,
+    syncStageMediaItems,
+  })
+  syncRoomParticipantsRef.current = syncRoomParticipants
+  setScreenShareEnabledRef.current = setScreenShareEnabled
 
   const cleanupAudio = useCallback(() => {
     cleanupVoiceRoomAudio({
@@ -738,8 +639,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         issue,
         wantsMic: voicePreferenceStore.getMicEnabled(),
         shouldUseNativeMicrophone: shouldUseNativeMicrophone(),
-        hasNativeMicrophone: Boolean(nativeMicrophoneRef.current),
-        nativeMicrophoneMuted: nativeMicrophoneMutedRef.current,
+        hasNativeMicrophone: nativeMedia.hasActiveMicrophone(),
+        nativeMicrophoneMuted: nativeMedia.isMicrophoneMuted(),
         activeChannelId: channelIdRef.current,
         userId: auth.user?._id,
         currentMicIssue: micIssueRef.current,
@@ -753,7 +654,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         patchLocalVoiceMic,
       })
     },
-    [auth.user?._id, setCurrentMicIssue],
+    [auth.user?._id, nativeMedia, setCurrentMicIssue],
   )
 
   const syncVoiceFlagsToGateway = useCallback(
@@ -769,19 +670,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       selfDeaf: deafenedRef.current,
       selfMonitoringActive: selfMonitoringRef.current.active,
       shouldUseNativeMicrophone: shouldUseNativeMicrophone(),
-      hasNativeMicrophone: Boolean(nativeMicrophoneRef.current),
-      nativeMicrophoneMuted: nativeMicrophoneMutedRef.current,
+      hasNativeMicrophone: nativeMedia.hasActiveMicrophone(),
+      nativeMicrophoneMuted: nativeMedia.isMicrophoneMuted(),
       fallbackMicPublishing: micPublishingRef.current,
     })
-  }, [])
+  }, [nativeMedia])
 
   const refreshNativeLiveKitCredentials = useCallback(
     async (
       mediaKind: LiveKitNativeMediaKind,
       force = false,
     ): Promise<LiveKitNativePublisherCredentials> => {
-      return refreshNativeLiveKitCredentialsFromDeps({
-        liveKitCredentialsRef,
+      return nativeMedia.refreshLiveKitCredentials({
         channelIdRef,
         readCurrentVoiceFlags,
         shouldRefreshLiveKitToken,
@@ -792,7 +692,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         getDesktop: getSyrnikeDesktop,
       }, mediaKind, force)
     },
-    [auth.gatewayState, readCurrentVoiceFlags],
+    [auth.gatewayState, nativeMedia, readCurrentVoiceFlags],
   )
 
   const activeChannelAudioBitrateKbps = useCallback(() => {
@@ -806,23 +706,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const resetVoiceState = useCallback(() => {
-    resetNativeMediaState({
-      nativeMicrophoneStartGenerationRef,
-      nativeMicrophoneStartRef,
+    nativeMedia.reset({
       screenShareStartGenerationRef,
       screenShareStartingRef,
       pendingScreenShareStartRef,
-      nativeMicrophoneRef,
-      nativeMicrophoneMutedRef,
       selfMonitoringRef,
       nativeScreenShareRef,
       stoppedNativeScreenIdentityRef,
       nativeScreenPublicationLossKeyRef,
-      watchedRemoteScreenIdsRef,
-      pendingScreenWatchIdsRef,
       resetNativeMediaEngineStats: () => nativeMediaEngineStatsStore.reset(),
       getDesktop: getSyrnikeDesktop,
-      clearWatchedScreenIds: true,
+      clearWatchedScreenIds: false,
       resetStatsWithoutActiveScreen: false,
     })
     setChannelId(null)
@@ -836,22 +730,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     remoteSpeakingUserIdsRef.current = new Set()
     selfSpeakingRef.current = false
     setSpeakingUserIds((current) => (current.size === 0 ? current : new Set()))
-    setVoicePingMs(null)
-    setVoicePingHistory([])
-    rtcDebugSnapshotRef.current = null
-    setRtcDebugSnapshot(null)
-    setRtcDebugHistory([])
-    setStageMediaItems([])
+    resetVoiceTelemetryDebugState()
+    resetStageState()
     setCameraEnabled(false)
     setScreenShareEnabled(false)
     setScreenShareStarting(false)
     dispatchNativeMedia({ type: 'reset' })
-    setFocusedMediaId(null)
-    setStageFullscreen(false)
   }, [
     restoreVoicePreferences,
+    nativeMedia,
+    resetStageState,
+    resetVoiceTelemetryDebugState,
     setCurrentMicIssue,
-    setStageMediaItems,
   ])
 
   const abortJoinAttempt = useCallback(() => {
@@ -888,37 +778,28 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const setNativeMicrophoneMuted = useCallback(
     async (muted: boolean) => {
-      await setNativeMicrophoneMutedFromDeps({
-        nativeMicrophoneRef,
-        nativeMicrophoneMutedRef,
+      await nativeMedia.setMicrophoneMuted({
         setMicPublishing,
         setSelfSpeaking,
         syncRoomParticipants,
       }, muted)
     },
-    [setSelfSpeaking, syncRoomParticipants],
+    [nativeMedia, setSelfSpeaking, syncRoomParticipants],
   )
 
   const startNativeMicrophone = useCallback(
     async (room: Room, muted = false) => {
-      return startNativeMicrophoneFromDeps({
+      return nativeMedia.startMicrophone({
         room,
         muted,
         getTargetChannelId: () => channelIdRef.current,
         isCurrentVoiceSession,
-        nativeMicrophoneRef,
-        nativeMicrophoneStartRef,
-        nativeMicrophoneStartGenerationRef,
-        nativeMicrophoneMutedRef,
-        setNativeMicrophoneMuted,
         publishNativeMicrophone,
         refreshNativeLiveKitCredentials,
         activeChannelAudioBitrateKbps,
         createRequestId: () => crypto.randomUUID(),
         onNativeMicrophoneStopped: (sessionId) => {
-          if (nativeMicrophoneRef.current?.sessionId !== sessionId) return
-          nativeMicrophoneRef.current = null
-          nativeMicrophoneMutedRef.current = false
+          if (!nativeMedia.handleMicrophoneStopped(sessionId)) return
           setMicPublishing(false)
           setSelfSpeaking(false)
           const activeChannelId = channelIdRef.current
@@ -969,9 +850,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               }
             })
         },
-        setNativeMicrophoneSession: (session) => {
-          nativeMicrophoneRef.current = session
-        },
         setMicPublishing,
         setSelfSpeaking,
         syncRoomParticipants,
@@ -982,9 +860,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       activeChannelAudioBitrateKbps,
       auth.user?._id,
       isCurrentVoiceSession,
+      nativeMedia,
       readCurrentVoiceFlags,
       setSelfSpeaking,
-      setNativeMicrophoneMuted,
       syncMicFromRoom,
       syncRoomParticipants,
       syncVoiceFlagsToGateway,
@@ -1025,7 +903,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         syncRoomParticipants,
         getUserId: () => auth.user?._id,
         hasNativeMicrophonePublishing: () =>
-          Boolean(nativeMicrophoneRef.current && !nativeMicrophoneMutedRef.current),
+          nativeMedia.hasMicrophonePublishing(),
         patchLocalVoiceDeafen,
         syncVoiceFlagsToGateway,
         setLocalVoiceReady,
@@ -1035,6 +913,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       applyVoiceDevices,
       auth.user?._id,
       isCurrentVoiceSession,
+      nativeMedia,
       setCurrentMicIssue,
       startNativeMicrophone,
       activeChannelAudioBitrateKbps,
@@ -1064,7 +943,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       const wantsMic = voicePreferenceStore.getMicEnabled()
       const publishing = shouldUseNativeMicrophone()
-        ? Boolean(nativeMicrophoneRef.current && !nativeMicrophoneMutedRef.current)
+        ? nativeMedia.hasMicrophonePublishing()
         : participantMicPublishing(room.localParticipant)
 
       if (active) {
@@ -1185,6 +1064,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       auth.user?._id,
       activeChannelAudioBitrateKbps,
       isCurrentVoiceSession,
+      nativeMedia,
       setCurrentMicIssue,
       setSelfSpeaking,
       startNativeMicrophone,
@@ -1198,14 +1078,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const disconnectNativeMediaForHandoff = useCallback(() => {
-    disconnectNativeMediaForHandoffFromDeps({
-      nativeMicrophoneStartGenerationRef,
-      nativeMicrophoneStartRef,
+    nativeMedia.disconnectForHandoff({
       screenShareStartGenerationRef,
       screenShareStartingRef,
       pendingScreenShareStartRef,
-      nativeMicrophoneRef,
-      nativeMicrophoneMutedRef,
       selfMonitoringRef,
       nativeScreenShareRef,
       stoppedNativeScreenIdentityRef,
@@ -1219,7 +1095,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setCameraEnabled,
       dispatchNativeMedia,
     })
-  }, [setSelfSpeaking])
+  }, [
+    dispatchNativeMedia,
+    nativeMedia,
+    setCameraEnabled,
+    setScreenShareEnabled,
+    setScreenShareStarting,
+    setSelfSpeaking,
+  ])
 
   const attachAudio = useCallback(
     (room: Room) => {
@@ -1350,7 +1233,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       },
       attachRoomHandlers: (room) => attachAudio(room),
       setLiveKitCredentials: (credentials) => {
-        liveKitCredentialsRef.current = credentials
+        nativeMedia.setLiveKitCredentials(credentials)
         const desktop = getSyrnikeDesktop()
         if (desktop?.platform.os === 'win32') {
           void desktop.media.prepareScreenSession({ livekit: credentials.screen }).catch(() => {})
@@ -1486,7 +1369,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         roomRef.current = room
       },
       setLiveKitCredentials: (credentials) => {
-        liveKitCredentialsRef.current = credentials
+        nativeMedia.setLiveKitCredentials(credentials)
       },
       setConnectionPhase,
       recovery: {
@@ -1506,8 +1389,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isPublisherHealthy: (room) =>
           nativeOrBrowserPublisherHealthy(room, {
             shouldUseNativeMicrophone,
-            hasActiveNativeMicrophone: () => Boolean(nativeMicrophoneRef.current),
-            isNativeMicrophoneMuted: () => nativeMicrophoneMutedRef.current,
+            hasActiveNativeMicrophone: () => nativeMedia.hasActiveMicrophone(),
+            isNativeMicrophoneMuted: () => nativeMedia.isMicrophoneMuted(),
           }),
         syncVoiceFlagsToGateway,
         shouldUseNativeMicrophone,
@@ -1628,48 +1511,40 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       status,
     ],
   )
+  joinRef.current = join
 
-  useEffect(() => {
-    const room = roomRef.current
-    if (room) syncStageMediaItems(room)
-  }, [stageMediaFilters, syncStageMediaItems])
-
-  useEffect(() => {
-    setFocusedMediaId((current) =>
-      current && stageMediaItems.some((item) => item.id === current && item.live)
-        ? current
-        : null,
-    )
-  }, [stageMediaItems])
-
-  const stopNativeScreenShare = useCallback(async () => {
-    await stopNativeScreenShareFromDeps({
-      nativeScreenShareRef,
-      nativeScreenPublicationLossKeyRef,
-      screenShareStartingRef,
-      stoppedNativeScreenIdentityRef,
-      resetNativeMediaEngineStats: () => nativeMediaEngineStatsStore.reset(),
-      dispatchNativeMedia,
-      logVoiceDebugAgent,
-    })
-  }, [])
-
-  const handleNativeScreenPublicationLost = useCallback(
-    (loss: NativeScreenPublicationLoss) => {
-      handleNativeScreenPublicationLostFromDeps({
-        nativeMediaStateRef,
-        nativeScreenPublicationLossKeyRef,
-        nativeScreenShareRef,
-        dispatchNativeMedia,
-        setScreenShareEnabled,
-        syncRoomParticipants,
-        toastError: (message) => toast.error(message),
-        stopNativeScreenShare,
-        logVoiceDebugAgent,
-      }, loss)
-    },
-    [stopNativeScreenShare, syncRoomParticipants],
-  )
+  const {
+    stopNativeScreenShare,
+    handleNativeScreenPublicationLost,
+    toggleScreenShare,
+  } = useVoiceScreenShare({
+    roomRef,
+    channelIdRef,
+    status,
+    statusRef,
+    localVoiceReady,
+    localVoiceReadyRef,
+    screenShareStarting,
+    screenShareStartingRef,
+    pendingScreenShareStartRef,
+    screenShareStartGenerationRef,
+    screenShareDebugUntilRef,
+    nativeScreenShareRef,
+    stoppedNativeScreenIdentityRef,
+    nativeScreenPublicationLossKeyRef,
+    nativeMediaStateRef,
+    getActiveVoiceOperationId,
+    getUserId: () => auth.user?._id,
+    isCurrentVoiceSession,
+    activeChannelAudioBitrateKbps,
+    refreshNativeLiveKitCredentials,
+    setScreenShareDebugRun,
+    setScreenShareStarting,
+    setScreenShareEnabled,
+    dispatchNativeMedia,
+    syncRoomParticipants,
+  })
+  stopNativeScreenShareRef.current = stopNativeScreenShare
 
   useEffect(() => {
     nativeScreenPublicationLostRef.current = handleNativeScreenPublicationLost
@@ -1681,333 +1556,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [handleNativeScreenPublicationLost])
-
-  const requestStageMediaFocus = useCallback((mediaId: string) => {
-    setFocusedMediaId(mediaId)
-    setStageFocusNonce((current) => current + 1)
-  }, [])
-
-  const watchParticipantScreenShare = useCallback(
-    async (targetChannelId: string, userId: string) => {
-      const mediaId = stageMediaItemId(userId, 'screen')
-      const localUserId = auth.user?._id
-      const isLocal = isVoiceLocalUserId(userId, localUserId)
-      const wasWatching = watchedRemoteScreenIdsRef.current.has(mediaId)
-
-      if (!isLocal) {
-        pendingScreenWatchIdsRef.current.add(mediaId)
-        watchedRemoteScreenIdsRef.current.add(mediaId)
-      }
-
-      if (!isVoiceConnectedInChannel({ channelId, status }, targetChannelId)) {
-        await join(targetChannelId)
-      }
-
-      if (!isLocal) {
-        pendingScreenWatchIdsRef.current.add(mediaId)
-        watchedRemoteScreenIdsRef.current.add(mediaId)
-      }
-
-      const room = roomRef.current
-      if (room && !isLocal) {
-        for (const participant of room.remoteParticipants.values()) {
-          if (baseVoiceIdentity(participant.identity) !== userId) continue
-          applyRemoteScreenParticipantSubscription(participant, true)
-        }
-        if (!wasWatching) {
-          void publishScreenViewerSound(room, userId, 'join')
-        }
-        syncStageMediaItems(room)
-      }
-
-      requestStageMediaFocus(mediaId)
-    },
-    [
-      applyRemoteScreenParticipantSubscription,
-      auth.user?._id,
-      channelId,
-      join,
-      publishScreenViewerSound,
-      requestStageMediaFocus,
-      status,
-      syncStageMediaItems,
-    ],
-  )
-
-  const setStageMediaSubscribed = useCallback(
-    (mediaId: string, subscribed: boolean) => {
-      const room = roomRef.current
-      if (!room) return
-      const item = stageMediaItemsRef.current.find(
-        (stageItem) => stageItem.id === mediaId,
-      )
-      const currentUserIds = new Set<string>()
-      if (auth.user?._id) currentUserIds.add(auth.user._id)
-      currentUserIds.add(baseVoiceIdentity(room.localParticipant.identity))
-      const target = resolveStageScreenSubscriptionTarget(
-        item,
-        mediaId,
-        currentUserIds,
-      )
-      if (!target) return
-      const wasWatching = watchedRemoteScreenIdsRef.current.has(target.mediaId)
-
-      const action = item
-        ? setStageScreenSubscription(item, subscribed)
-        : target.isLocal && !subscribed
-          ? 'stop-local-screen'
-          : 'none'
-
-      if (!target.isLocal) {
-        setRemoteScreenWatchIntent(
-          watchedRemoteScreenIdsRef.current,
-          pendingScreenWatchIdsRef.current,
-          target.mediaId,
-          subscribed,
-        )
-        for (const participant of room.remoteParticipants.values()) {
-          if (baseVoiceIdentity(participant.identity) !== target.userId) continue
-          applyRemoteScreenParticipantSubscription(participant, subscribed)
-        }
-        if (wasWatching !== subscribed) {
-          void publishScreenViewerSound(
-            room,
-            target.userId,
-            subscribed ? 'join' : 'leave',
-          )
-        }
-
-        syncStageMediaItems(room)
-        return
-      }
-
-      if (action === 'stop-local-screen') {
-        if (nativeScreenShareRef.current) {
-          void stopNativeScreenShare()
-            .then(() => {
-              setScreenShareEnabled(false)
-              syncRoomParticipants()
-            })
-            .catch((error) => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Не удалось остановить демонстрацию',
-              )
-            })
-          return
-        }
-
-        void room.localParticipant
-          .setScreenShareEnabled(false)
-          .then(() => {
-            setScreenShareEnabled(false)
-            syncRoomParticipants()
-          })
-          .catch((error) => {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось остановить демонстрацию',
-            )
-          })
-        return
-      }
-
-      if (action === 'none') {
-        syncStageMediaItems(room)
-      }
-    },
-    [
-      applyRemoteScreenParticipantSubscription,
-      auth.user?._id,
-      publishScreenViewerSound,
-      stopNativeScreenShare,
-      syncRoomParticipants,
-      syncStageMediaItems,
-    ],
-  )
-
-  const toggleCamera = useCallback(() => {
-    const room = roomRef.current
-    if (!room) return
-    const next = !localParticipantVoiceFlags(room.localParticipant).camera
-    void room.localParticipant
-      .setCameraEnabled(next)
-      .then(() => {
-        setCameraEnabled(next)
-        playUiSound(next ? 'camera.started' : 'camera.stopped')
-        syncRoomParticipants()
-      })
-      .catch((error) => {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'Не удалось переключить камеру',
-        )
-      })
-  }, [syncRoomParticipants])
-
-  const startBrowserScreenShare = useCallback(
-    async (
-      room: Room,
-      quality: ScreenShareQualityName,
-      withAudio: boolean,
-      limits?: ScreenShareCaptureLimits,
-    ) => {
-      await startBrowserScreenShareFromDeps({
-        room,
-        quality,
-        withAudio,
-        limits,
-        activeChannelAudioBitrateKbps,
-        setScreenShareEnabled,
-        syncRoomParticipants,
-        playUiSound,
-        setChromiumNativeMediaStats: () => {
-          nativeMediaEngineStatsStore.setChromium()
-        },
-      })
-    },
-    [activeChannelAudioBitrateKbps, syncRoomParticipants],
-  )
-
-  const startLocalScreenShare = useCallback(
-    async (quality: ScreenShareQualityName, withAudio: boolean) => {
-      await startLocalScreenShareFromDeps({
-        quality,
-        withAudio,
-        roomRef,
-        channelIdRef,
-        statusRef,
-        localVoiceReadyRef,
-        screenShareStartingRef,
-        pendingScreenShareStartRef,
-        screenShareStartGenerationRef,
-        screenShareDebugUntilRef,
-        nativeScreenShareRef,
-        stoppedNativeScreenIdentityRef,
-        nativeScreenPublicationLossKeyRef,
-        getActiveVoiceOperationId,
-        getUserId: () => auth.user?._id,
-        isCurrentVoiceSession,
-        createRequestId: () => crypto.randomUUID(),
-        nowMs: () => Date.now(),
-        performanceNow: () => performance.now(),
-        setScreenShareDebugRun,
-        setScreenShareStarting,
-        setScreenShareEnabled,
-        dispatchNativeMedia,
-        syncRoomParticipants,
-        stopNativeScreenShare,
-        startBrowserScreenShare,
-        refreshNativeLiveKitCredentials,
-        activeChannelAudioBitrateKbps,
-        logVoiceDebugAgent,
-        toastError: (message) => toast.error(message),
-        playUiSound,
-        warn: (message, detail) => console.warn(message, detail),
-        readVoicePreferences,
-        setScreenShareQualityPreference: (nextQuality) => {
-          voicePreferenceStore.setScreenShareQuality(nextQuality)
-        },
-        setScreenShareAudioPreference: (nextWithAudio) => {
-          voicePreferenceStore.setScreenShareAudio(nextWithAudio)
-        },
-        getDesktop: getSyrnikeDesktop,
-        shouldUseNativeScreenShare,
-        resolveScreenShareCaptureLimits,
-        waitForNativePickerSelection,
-        clearNativePickerSelection,
-        rejectNativePickerSelection,
-        publishNativeScreenShare,
-        findNativeScreenPublication,
-        waitForNativeScreenPublication,
-        isLiveKitTokenFailure,
-        resetNativeMediaEngineStats: () => nativeMediaEngineStatsStore.reset(),
-      })
-    },
-    [
-      refreshNativeLiveKitCredentials,
-      getActiveVoiceOperationId,
-      activeChannelAudioBitrateKbps,
-      auth.user?._id,
-      isCurrentVoiceSession,
-      startBrowserScreenShare,
-      stopNativeScreenShare,
-      syncRoomParticipants,
-    ],
-  )
-
-  useEffect(() => {
-    if (status !== 'connected' || !localVoiceReady) return
-    if (screenShareStartingRef.current || nativeScreenShareRef.current) return
-    const pending = pendingScreenShareStartRef.current
-    if (!pending) return
-    pendingScreenShareStartRef.current = null
-    logVoiceDebugAgent({
-      hypothesis: 'H6-screen-start-before-local-voice-ready',
-      event: 'screen-start-resumed-after-local-voice-ready',
-    })
-    void startLocalScreenShare(pending.quality, pending.withAudio)
-  }, [localVoiceReady, startLocalScreenShare, status])
-
-  const toggleScreenShare = useCallback(() => {
-    const room = roomRef.current
-    if (!room) return
-    if (screenShareStarting) return
-    if (pendingScreenShareStartRef.current) {
-      pendingScreenShareStartRef.current = null
-      return
-    }
-
-    if (room.localParticipant.isScreenShareEnabled || nativeScreenShareRef.current) {
-      if (nativeScreenShareRef.current) {
-        void stopNativeScreenShare()
-          .then(() => {
-            setScreenShareEnabled(false)
-            playUiSound('screen_share.stopped')
-            syncRoomParticipants()
-          })
-          .catch((error) => {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : 'Не удалось остановить демонстрацию',
-            )
-          })
-        return
-      }
-
-      void room.localParticipant
-        .setScreenShareEnabled(false)
-        .then(() => {
-          setScreenShareEnabled(false)
-          playUiSound('screen_share.stopped')
-          syncRoomParticipants()
-        })
-        .catch((error) => {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : 'Не удалось остановить демонстрацию',
-          )
-        })
-      return
-    }
-
-    const prefs = readVoicePreferences()
-    void startLocalScreenShare(prefs.screenShareQuality, prefs.screenShareAudio)
-  }, [
-    screenShareStarting,
-    startLocalScreenShare,
-    stopNativeScreenShare,
-    syncRoomParticipants,
-  ])
-
-  const toggleStageFullscreen = useCallback(() => {
-    setStageFullscreen((value) => !value)
-  }, [])
 
   const toggleMic = useCallback(() => {
     const room = roomRef.current
@@ -2252,16 +1800,16 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!desktop) return
 
     return desktop.media.onMicrophoneMetrics((metrics) => {
-      const active = nativeMicrophoneRef.current
+      const active = nativeMedia.getMicrophoneSession()
       if (!active || metrics.sessionId !== active.sessionId) return
       setSelfSpeaking(
         metrics.open &&
-          !nativeMicrophoneMutedRef.current &&
+          !nativeMedia.isMicrophoneMuted() &&
           !deafenedRef.current &&
           !selfMonitoringRef.current.active,
       )
     })
-  }, [setSelfSpeaking, status])
+  }, [nativeMedia, setSelfSpeaking, status])
 
   useEffect(() => {
     if (status !== 'connected') return
@@ -2296,7 +1844,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       if (effects.devicesChanged) {
         void applyVoiceDevices(room).then(() => {
           if (shouldUseNativeMicrophone()) {
-            configureNativeMicrophoneSession(nativeMicrophoneRef.current, next)
+            configureNativeMicrophoneSession(
+              nativeMedia.getMicrophoneSession(),
+              next,
+            )
           } else {
             void refreshMicProcessing(room).then(() => {
               syncLocalSpeakingTrack(room)
@@ -2308,7 +1859,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }
       if (effects.micProcessingChanged) {
         if (shouldUseNativeMicrophone()) {
-          configureNativeMicrophoneSession(nativeMicrophoneRef.current, next)
+          configureNativeMicrophoneSession(
+            nativeMedia.getMicrophoneSession(),
+            next,
+          )
         } else {
           void refreshMicProcessing(room).then(() => {
             syncLocalSpeakingTrack(room)
@@ -2316,7 +1870,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       }
     })
-  }, [applyVoiceDevices, startNativeMicrophone, status, syncLocalSpeakingTrack])
+  }, [
+    applyVoiceDevices,
+    nativeMedia,
+    startNativeMicrophone,
+    status,
+    syncLocalSpeakingTrack,
+  ])
 
   useEffect(() => {
     return () => {
@@ -2327,145 +1887,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void resolveVoiceNodeName()
   }, [])
-
-  useEffect(() => {
-    if (status !== 'connected') {
-      setVoicePingMs(null)
-      setVoicePingHistory([])
-      return
-    }
-
-    const room = roomRef.current
-    if (!room) return
-
-    let active = true
-
-    async function samplePing() {
-      const ping = await measureVoicePingMs(room!)
-      if (!active) return
-      setVoicePingMs(ping)
-      if (ping != null) {
-        setVoicePingHistory((history) =>
-          appendVoicePingSample(history, {
-            timestamp: Date.now(),
-            ms: ping,
-          }),
-        )
-      }
-    }
-
-    void samplePing()
-    const interval = window.setInterval(() => void samplePing(), 2000)
-
-    return () => {
-      active = false
-      window.clearInterval(interval)
-    }
-  }, [status])
-
-  useEffect(() => {
-    if (status !== 'connected') {
-      rtcDebugSnapshotRef.current = null
-      setRtcDebugSnapshot(null)
-      setRtcDebugHistory([])
-      return
-    }
-    if (!rtcDebugEnabled) return
-
-    const room = roomRef.current
-    if (!room) return
-
-    let active = true
-
-    async function sampleRtcDebug() {
-      try {
-        const current = await collectVoiceRtcDebugSnapshot(
-          room!,
-          stageMediaItemsRef.current as RtcDebugStageMediaItem[],
-        )
-        if (!active) return
-
-        const previous = rtcDebugSnapshotRef.current
-        const snapshot: RtcDebugSnapshot = previous
-          ? {
-              ...current,
-              rates: deriveRtcRates(previous, current),
-            }
-          : current
-
-        rtcDebugSnapshotRef.current = snapshot
-        setRtcDebugSnapshot(snapshot)
-        setRtcDebugHistory((history) =>
-          appendRtcDebugSample(history, snapshot),
-        )
-      } catch {
-        if (!active) return
-        rtcDebugSnapshotRef.current = null
-        setRtcDebugSnapshot(null)
-      }
-    }
-
-    void sampleRtcDebug()
-    const interval = window.setInterval(() => void sampleRtcDebug(), 1000)
-
-    return () => {
-      active = false
-      window.clearInterval(interval)
-    }
-  }, [rtcDebugEnabled, status])
-
-  useEffect(() => {
-    if (status !== 'connected') return
-    if (screenShareDebugRun === 0) return
-
-    const room = roomRef.current
-    if (!room) return
-
-    let active = true
-    let interval: number | null = null
-
-    async function sampleScreenShareDebug() {
-      if (Date.now() > screenShareDebugUntilRef.current) {
-        if (interval != null) {
-          window.clearInterval(interval)
-          interval = null
-        }
-        return
-      }
-      try {
-        const snapshot = await collectVoiceRtcDebugSnapshot(
-          room!,
-          stageMediaItemsRef.current as RtcDebugStageMediaItem[],
-        )
-        if (!active) return
-        logVoiceDebugAgent({
-          hypothesis: 'H2-bitrate-ramp,H3-remote-decode-lag',
-          event: 'rtc-screen-sample',
-          ...rtcDebugScreenSlice(snapshot),
-        })
-      } catch (error) {
-        if (!active) return
-        logVoiceDebugAgent({
-          hypothesis: 'H2-bitrate-ramp,H3-remote-decode-lag',
-          event: 'rtc-screen-sample-failed',
-          message: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    void sampleScreenShareDebug()
-    interval = window.setInterval(
-      () => void sampleScreenShareDebug(),
-      1000,
-    )
-
-    return () => {
-      active = false
-      if (interval != null) {
-        window.clearInterval(interval)
-      }
-    }
-  }, [screenShareDebugRun, status])
 
   const stageMediaItemsForUi = useMemo(
     () =>
@@ -2499,12 +1920,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       }),
     [inputDevices, micIssue, videoDevices],
   )
-  const screenShareEnabledForUi =
-    screenShareEnabled || isNativeScreenPublished(nativeMediaState)
-  const screenShareStartingForUi =
-    screenShareStarting || isNativeScreenStarting(nativeMediaState)
-
-  const value = useMemo<VoiceContextValue>(
+  const sessionValue = useMemo<VoiceSessionContextValue>(
     () => ({
       channelId,
       status,
@@ -2512,34 +1928,38 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       localVoiceReady,
       micEnabled,
       micPublishing,
-      micIssue,
-      mediaAvailability,
       deafened,
       participantCount,
       speakingUserIds,
-      voicePingMs,
-      voicePingHistory,
-      rtcDebugEnabled,
-      setRtcDebugEnabled,
-      rtcDebugSnapshot,
-      rtcDebugHistory,
+      join,
+      leave,
+      toggleMic,
+      toggleDeafen,
+    }),
+    [
+      channelId,
+      connectionPhase,
+      deafened,
+      join,
+      leave,
+      localVoiceReady,
+      micEnabled,
+      micPublishing,
+      participantCount,
+      speakingUserIds,
+      status,
+      toggleDeafen,
+      toggleMic,
+    ],
+  )
+
+  const mediaValue = useMemo<VoiceMediaContextValue>(
+    () => ({
+      micIssue,
+      mediaAvailability,
       cameraEnabled,
       screenShareEnabled: screenShareEnabledForUi,
       screenShareStarting: screenShareStartingForUi,
-      stageMediaItems: stageMediaItemsForUi,
-      focusedMediaId,
-      stageFocusNonce,
-      join,
-      leave,
-      setFocusedMediaId,
-      watchParticipantScreenShare,
-      stageMediaFilters,
-      setStageMediaFilters,
-      setStageMediaSubscribed,
-      stageFullscreen,
-      toggleMic,
-      toggleStageFullscreen,
-      toggleDeafen,
       toggleCamera,
       toggleScreenShare,
       setSelfMonitoringActive,
@@ -2547,49 +1967,74 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }),
     [
       cameraEnabled,
-      channelId,
-      connectionPhase,
-      deafened,
-      focusedMediaId,
-      stageFocusNonce,
-      join,
-      leave,
-      watchParticipantScreenShare,
-      localVoiceReady,
-      micEnabled,
-      micIssue,
+      getNativeMicrophonePreviewTrack,
       mediaAvailability,
-      micPublishing,
-      participantCount,
+      micIssue,
       screenShareEnabledForUi,
       screenShareStartingForUi,
-      speakingUserIds,
+      setSelfMonitoringActive,
+      toggleCamera,
+      toggleScreenShare,
+    ],
+  )
+
+  const stageValue = useMemo<VoiceStageContextValue>(
+    () => ({
+      stageMediaItems: stageMediaItemsForUi,
+      focusedMediaId,
+      setFocusedMediaId,
+      stageFocusNonce,
+      watchParticipantScreenShare,
+      stageMediaFilters,
+      setStageMediaFilters,
+      setStageMediaSubscribed,
+      stageFullscreen,
+      toggleStageFullscreen,
+    }),
+    [
+      focusedMediaId,
+      setFocusedMediaId,
+      setStageMediaFilters,
+      setStageMediaSubscribed,
+      stageFocusNonce,
+      stageFullscreen,
       stageMediaFilters,
       stageMediaItemsForUi,
-      stageFullscreen,
-      status,
+      toggleStageFullscreen,
+      watchParticipantScreenShare,
+    ],
+  )
+
+  const telemetryValue = useMemo<VoiceTelemetryContextValue>(
+    () => ({
+      voicePingMs,
+      voicePingHistory,
+      rtcDebugEnabled,
+      setRtcDebugEnabled,
+      rtcDebugSnapshot,
+      rtcDebugHistory,
+    }),
+    [
       rtcDebugEnabled,
       rtcDebugHistory,
       rtcDebugSnapshot,
-      voicePingMs,
+      setRtcDebugEnabled,
       voicePingHistory,
-      toggleCamera,
-      toggleDeafen,
-      toggleMic,
-      toggleScreenShare,
-      toggleStageFullscreen,
-      setSelfMonitoringActive,
-      setStageMediaFilters,
-      setStageMediaSubscribed,
-      getNativeMicrophonePreviewTrack,
+      voicePingMs,
     ],
   )
 
   return (
-    <VoiceContext.Provider value={value}>
-      {children}
-      <NativeScreenShareCoordinator />
-      <DesktopScreenSharePicker />
-    </VoiceContext.Provider>
+    <VoiceSessionContext.Provider value={sessionValue}>
+      <VoiceMediaContext.Provider value={mediaValue}>
+        <VoiceStageContext.Provider value={stageValue}>
+          <VoiceTelemetryContext.Provider value={telemetryValue}>
+            {children}
+            <NativeScreenShareCoordinator />
+            <DesktopScreenSharePicker />
+          </VoiceTelemetryContext.Provider>
+        </VoiceStageContext.Provider>
+      </VoiceMediaContext.Provider>
+    </VoiceSessionContext.Provider>
   )
 }

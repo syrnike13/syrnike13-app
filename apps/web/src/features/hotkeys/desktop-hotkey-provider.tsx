@@ -3,11 +3,19 @@ import { useNavigate, useRouter } from '@tanstack/react-router'
 import type { HotkeyActivationEvent } from '@syrnike13/platform'
 
 import { usePlatform } from '#/platform/use-platform'
-import { useVoice } from '#/features/voice/voice-context'
+import {
+  useVoiceMedia,
+  type VoiceMediaContextValue,
+} from '#/features/voice/voice-media-context'
+import {
+  useVoiceSession,
+  type VoiceSessionContextValue,
+} from '#/features/voice/voice-session-context'
 
 export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
   const { desktop } = usePlatform()
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceMedia = useVoiceMedia()
   const navigate = useNavigate()
   const router = useRouter()
   const pushToTalkChangedMicRef = useRef(false)
@@ -18,22 +26,23 @@ export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
 
     return desktop.hotkeys.onPressed((event) => {
       runHotkeyAction(event, {
-        voice,
+        voiceSession,
+        voiceMedia,
         pushToTalkChangedMicRef,
         pushToMuteChangedMicRef,
         navigateBack: () => router.history.go(-1),
         navigateForward: () => router.history.go(1),
         navigateToVoice: () => {
-          if (!voice.channelId) return
+          if (!voiceSession.channelId) return
           void navigate({
             to: '/app/c/$channelId',
-            params: { channelId: voice.channelId },
+            params: { channelId: voiceSession.channelId },
             search: { m: undefined },
           })
         },
       })
     })
-  }, [desktop, navigate, router, voice])
+  }, [desktop, navigate, router, voiceMedia, voiceSession])
 
   return children
 }
@@ -41,7 +50,8 @@ export function DesktopHotkeyProvider({ children }: { children: ReactNode }) {
 function runHotkeyAction(
   event: HotkeyActivationEvent,
   context: {
-    voice: ReturnType<typeof useVoice>
+    voiceSession: VoiceSessionContextValue
+    voiceMedia: VoiceMediaContextValue
     pushToTalkChangedMicRef: { current: boolean }
     pushToMuteChangedMicRef: { current: boolean }
     navigateBack: () => void
@@ -52,19 +62,19 @@ function runHotkeyAction(
   switch (event.action) {
     case 'toggle-mic':
       if (event.phase === 'released') break
-      context.voice.toggleMic()
+      context.voiceSession.toggleMic()
       break
     case 'toggle-deafen':
       if (event.phase === 'released') break
-      context.voice.toggleDeafen()
+      context.voiceSession.toggleDeafen()
       break
     case 'toggle-camera':
       if (event.phase === 'released') break
-      context.voice.toggleCamera()
+      context.voiceMedia.toggleCamera()
       break
     case 'toggle-screen-share':
       if (event.phase === 'released') break
-      context.voice.toggleScreenShare()
+      context.voiceMedia.toggleScreenShare()
       break
     case 'return-to-voice':
       if (event.phase === 'released') break
@@ -72,7 +82,7 @@ function runHotkeyAction(
       break
     case 'disconnect-voice':
       if (event.phase === 'released') break
-      context.voice.leave()
+      context.voiceSession.leave()
       break
     case 'navigate-back':
       if (event.phase === 'released') break
@@ -84,19 +94,23 @@ function runHotkeyAction(
       break
     case 'push-to-talk':
       if (event.phase === 'pressed') {
-        context.pushToTalkChangedMicRef.current = !context.voice.micEnabled
-        if (context.pushToTalkChangedMicRef.current) context.voice.toggleMic()
+        context.pushToTalkChangedMicRef.current = !context.voiceSession.micEnabled
+        if (context.pushToTalkChangedMicRef.current) {
+          context.voiceSession.toggleMic()
+        }
       } else if (context.pushToTalkChangedMicRef.current) {
-        context.voice.toggleMic()
+        context.voiceSession.toggleMic()
         context.pushToTalkChangedMicRef.current = false
       }
       break
     case 'push-to-mute':
       if (event.phase === 'pressed') {
-        context.pushToMuteChangedMicRef.current = context.voice.micEnabled
-        if (context.pushToMuteChangedMicRef.current) context.voice.toggleMic()
+        context.pushToMuteChangedMicRef.current = context.voiceSession.micEnabled
+        if (context.pushToMuteChangedMicRef.current) {
+          context.voiceSession.toggleMic()
+        }
       } else if (context.pushToMuteChangedMicRef.current) {
-        context.voice.toggleMic()
+        context.voiceSession.toggleMic()
         context.pushToMuteChangedMicRef.current = false
       }
       break

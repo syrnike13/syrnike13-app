@@ -31,7 +31,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '#/components/ui/tooltip'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceMedia } from '#/features/voice/voice-media-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import {
   microphoneMediaControlState,
   voiceMediaControlState,
@@ -240,25 +242,26 @@ export function VoiceStageControls({
   declineLabel = 'Отменить',
   onDeclineIncomingCall,
 }: VoiceStageControlsProps) {
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceMedia = useVoiceMedia()
   const micMuted = isMicVisuallyMuted({
     inVoiceSession: inCall || connecting,
-    micEnabled: voice.micEnabled,
-    micPublishing: voice.micPublishing,
+    micEnabled: voiceSession.micEnabled,
+    micPublishing: voiceSession.micPublishing,
   })
-  const soundOff = voice.deafened
-  const cameraOn = voice.cameraEnabled
-  const sharingScreen = voice.screenShareEnabled
-  const screenShareStarting = voice.screenShareStarting
+  const soundOff = voiceSession.deafened
+  const cameraOn = voiceMedia.cameraEnabled
+  const sharingScreen = voiceMedia.screenShareEnabled
+  const screenShareStarting = voiceMedia.screenShareStarting
   const cameraControl = voiceMediaControlState({
-    availability: voice.mediaAvailability.camera,
+    availability: voiceMedia.mediaAvailability.camera,
     active: cameraOn,
     connecting,
     activeTitle: 'Выключить камеру',
     inactiveTitle: 'Включить камеру',
   })
   const screenShareControl = voiceMediaControlState({
-    availability: voice.mediaAvailability.screenShare,
+    availability: voiceMedia.mediaAvailability.screenShare,
     active: sharingScreen,
     connecting,
     busy: screenShareStarting,
@@ -286,11 +289,12 @@ export function VoiceStageControls({
         incomingCall={incomingCall}
         declineLabel={declineLabel}
         onDeclineIncomingCall={onDeclineIncomingCall}
-        onToggleMic={voice.toggleMic}
-        onToggleDeafen={voice.toggleDeafen}
-        onToggleCamera={voice.toggleCamera}
-        onToggleScreenShare={voice.toggleScreenShare}
-        onLeave={voice.leave}
+        onToggleMic={voiceSession.toggleMic}
+        onToggleDeafen={voiceSession.toggleDeafen}
+        onToggleCamera={voiceMedia.toggleCamera}
+        onToggleScreenShare={voiceMedia.toggleScreenShare}
+        onLeave={voiceSession.leave}
+        onJoin={() => void voiceSession.join(channelId)}
       />
     )
   }
@@ -306,11 +310,11 @@ export function VoiceStageControls({
       screenShareStarting={screenShareStarting}
       cameraControl={cameraControl}
       screenShareControl={screenShareControl}
-      onToggleMic={voice.toggleMic}
-      onToggleDeafen={voice.toggleDeafen}
-      onToggleCamera={voice.toggleCamera}
-      onToggleScreenShare={voice.toggleScreenShare}
-      onLeave={voice.leave}
+      onToggleMic={voiceSession.toggleMic}
+      onToggleDeafen={voiceSession.toggleDeafen}
+      onToggleCamera={voiceMedia.toggleCamera}
+      onToggleScreenShare={voiceMedia.toggleScreenShare}
+      onLeave={voiceSession.leave}
     />
   ) : (
     <LegacyControlBar
@@ -324,11 +328,11 @@ export function VoiceStageControls({
       screenShareStarting={screenShareStarting}
       cameraControl={cameraControl}
       screenShareControl={screenShareControl}
-      onToggleMic={voice.toggleMic}
-      onToggleDeafen={voice.toggleDeafen}
-      onToggleCamera={voice.toggleCamera}
-      onToggleScreenShare={voice.toggleScreenShare}
-      onLeave={voice.leave}
+      onToggleMic={voiceSession.toggleMic}
+      onToggleDeafen={voiceSession.toggleDeafen}
+      onToggleCamera={voiceMedia.toggleCamera}
+      onToggleScreenShare={voiceMedia.toggleScreenShare}
+      onLeave={voiceSession.leave}
     />
   )
 
@@ -338,7 +342,7 @@ export function VoiceStageControls({
         type="button"
         size="lg"
         className="rounded-full px-8"
-        onClick={() => void voice.join(channelId)}
+        onClick={() => void voiceSession.join(channelId)}
       >
         {joinLabel}
       </Button>
@@ -406,7 +410,6 @@ type ControlBarStateProps = {
 }
 
 function VoiceStageMobileDrawerControlBar({
-  channelId,
   connecting,
   inCall,
   joinLabel,
@@ -427,6 +430,7 @@ function VoiceStageMobileDrawerControlBar({
   onToggleCamera,
   onToggleScreenShare,
   onLeave,
+  onJoin,
 }: ControlBarStateProps & {
   channelId: string
   joinLabel?: string
@@ -435,8 +439,8 @@ function VoiceStageMobileDrawerControlBar({
   incomingCall?: boolean
   declineLabel?: string
   onDeclineIncomingCall?: () => void
+  onJoin: () => void
 }) {
-  const voice = useVoice()
   const barClass =
     'flex w-full min-w-0 items-center gap-2 rounded-2xl bg-[#111214]/95 p-2 shadow-lg ring-1 ring-white/10'
   const sideButtonClass =
@@ -447,7 +451,7 @@ function VoiceStageMobileDrawerControlBar({
       <Button
         type="button"
         className="h-11 min-w-0 flex-1 rounded-full bg-[#23a559] px-4 text-sm font-semibold text-white hover:bg-[#1a9d4f]"
-        onClick={() => void voice.join(channelId)}
+        onClick={onJoin}
       >
         {joinLabel}
       </Button>
@@ -816,9 +820,9 @@ function LegacyControlBar({
   onToggleScreenShare,
   onLeave,
 }: ControlBarStateProps & { compact: boolean }) {
-  const voice = useVoice()
+  const voiceMedia = useVoiceMedia()
   const micControl = microphoneMediaControlState({
-    availability: voice.mediaAvailability.microphone,
+    availability: voiceMedia.mediaAvailability.microphone,
     inVoice: inCall,
     micMuted,
     connecting,
@@ -913,8 +917,8 @@ function StageViewSettings({
   /** overlay: «…» как в Discord; legacy: шестерёнка */
   trigger?: 'settings' | 'more'
 }) {
-  const voice = useVoice()
-  const filters = voice.stageMediaFilters
+  const voiceStage = useVoiceStage()
+  const filters = voiceStage.stageMediaFilters
   const resolvedTrigger = overlay ? 'more' : trigger
 
   const icon =
@@ -965,7 +969,7 @@ function StageViewSettings({
           checked={filters.showOwnStream}
           label="Показывать мой стрим"
           onChange={(checked) =>
-            voice.setStageMediaFilters((current) => ({
+            voiceStage.setStageMediaFilters((current) => ({
               ...current,
               showOwnStream: checked,
             }))
@@ -975,7 +979,7 @@ function StageViewSettings({
           checked={filters.showRemoteStreams}
           label="Показывать чужие стримы"
           onChange={(checked) =>
-            voice.setStageMediaFilters((current) => ({
+            voiceStage.setStageMediaFilters((current) => ({
               ...current,
               showRemoteStreams: checked,
             }))
@@ -985,7 +989,7 @@ function StageViewSettings({
           checked={filters.showParticipantsWithoutMedia}
           label="Показывать участников без видео"
           onChange={(checked) =>
-            voice.setStageMediaFilters((current) => ({
+            voiceStage.setStageMediaFilters((current) => ({
               ...current,
               showParticipantsWithoutMedia: checked,
             }))

@@ -8,7 +8,7 @@ import {
   VoiceSplitControl,
   type VoiceSplitControlSurface,
 } from '#/components/voice/voice-split-control'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { microphoneMediaControlState } from '#/features/voice/voice-media-availability'
 
 export function VoiceMicSplitControl({
@@ -24,9 +24,9 @@ export function VoiceMicSplitControl({
   micMuted: boolean
   onToggleMic: () => void
 }) {
-  const voice = useVoice()
+  const voiceMedia = useVoiceMedia()
   const { disabled, title } = microphoneMediaControlState({
-    availability: voice.mediaAvailability.microphone,
+    availability: voiceMedia.mediaAvailability.microphone,
     inVoice,
     micMuted,
     connecting,

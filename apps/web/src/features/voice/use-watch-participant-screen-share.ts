@@ -2,10 +2,10 @@ import { useNavigate } from '@tanstack/react-router'
 import { useCallback } from 'react'
 
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 
 export function useWatchParticipantScreenShare() {
-  const voice = useVoice()
+  const voice = useVoiceStage()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
 

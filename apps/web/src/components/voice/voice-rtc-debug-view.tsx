@@ -4,7 +4,9 @@ import { RtcDebugMetricChart } from '#/components/voice/voice-rtc-debug-chart'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
+import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import {
   RTC_DEBUG_BROWSER_UNAVAILABLE,
   formatRtcBitrate,
@@ -30,9 +32,11 @@ const sections: Array<{ id: DebugSection; label: string }> = [
 ]
 
 export function VoiceRtcDebugView() {
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceStage = useVoiceStage()
+  const voiceTelemetry = useVoiceTelemetry()
   const auth = useAuth()
-  const { setRtcDebugEnabled } = voice
+  const { setRtcDebugEnabled } = voiceTelemetry
   const [section, setSection] = useState<DebugSection>('general')
   const [nodeName, setNodeName] = useState<string | null>(null)
 
@@ -51,7 +55,7 @@ export function VoiceRtcDebugView() {
     }
   }, [])
 
-  const snapshot = voice.rtcDebugSnapshot
+  const snapshot = voiceTelemetry.rtcDebugSnapshot
 
   return (
     <div className="flex min-h-0 flex-1 bg-[#1e1f24] text-[#f2f3f5]">
@@ -59,7 +63,7 @@ export function VoiceRtcDebugView() {
         <div className="mb-6">
           <h1 className="text-xl font-bold leading-none">General</h1>
           <p className="mt-3 text-base text-white">
-            {voice.status === 'connected' ? 'Connected' : 'Disconnected'}
+            {voiceSession.status === 'connected' ? 'Connected' : 'Disconnected'}
           </p>
         </div>
 
@@ -86,18 +90,18 @@ export function VoiceRtcDebugView() {
       <main className="min-w-0 flex-1">
         <ScrollArea className="h-full">
           <div className="mx-auto w-full max-w-5xl px-10 py-10">
-            {voice.status !== 'connected' ? (
+            {voiceSession.status !== 'connected' ? (
               <DebugEmptyState />
             ) : (
               <DebugSectionBody
                 section={section}
                 snapshot={snapshot}
-                history={voice.rtcDebugHistory}
+                history={voiceTelemetry.rtcDebugHistory}
                 nodeName={nodeName}
                 localIdentity={auth.user?._id ?? null}
-                channelId={voice.channelId}
-                participantCount={voice.participantCount}
-                stageMediaCount={voice.stageMediaItems.length}
+                channelId={voiceSession.channelId}
+                participantCount={voiceSession.participantCount}
+                stageMediaCount={voiceStage.stageMediaItems.length}
               />
             )}
           </div>

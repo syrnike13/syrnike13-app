@@ -571,6 +571,10 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-local-setup.ts'),
       'utf8',
     )
+    const ownerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media-owner.ts'),
+      'utf8',
+    )
 
     const nativeBranchIndex = localSetupSource.indexOf(
       'if (deps.shouldUseNativeMicrophone)',
@@ -584,7 +588,7 @@ describe('native microphone provider boundary', () => {
     expect(source).toContain('finishLocalVoiceSetup as finishLocalVoiceSetupFromDeps')
     expect(localSetupSource).toContain('await deps.startNativeMicrophone(')
     expect(source).toContain('setNativeMicrophoneMuted')
-    expect(source).toContain('nativeMicrophoneMutedRef.current')
+    expect(ownerSource).toContain('nativeMicrophoneMutedRef.current')
     expect(localSetupSource).toContain('!deps.shouldUseNativeMicrophone')
     expect(localSetupSource).toContain(
       'await deps.applyMicProcessing(room.localParticipant)',
@@ -603,8 +607,8 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-local-setup.ts'),
       'utf8',
     )
-    const contextSource = readFileSync(
-      resolve(repoRoot, 'apps/web/src/features/voice/voice-context.ts'),
+    const mediaContextSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-media-context.ts'),
       'utf8',
     )
     const settingsSource = readFileSync(
@@ -612,7 +616,7 @@ describe('native microphone provider boundary', () => {
       'utf8',
     )
 
-    expect(contextSource).toContain(
+    expect(mediaContextSource).toContain(
       'setSelfMonitoringActive: (active: boolean) => void',
     )
     expect(providerSource).toContain(
@@ -659,11 +663,15 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media.ts'),
       'utf8',
     )
-
-    expect(providerSource).toContain(
-      'const nativeMicrophoneStartRef = useRef<Promise<boolean> | null>(null)',
+    const ownerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media-owner.ts'),
+      'utf8',
     )
-    expect(providerSource).toContain('startNativeMicrophoneFromDeps({')
+
+    expect(providerSource).not.toContain('nativeMicrophoneStartRef = useRef')
+    expect(providerSource).toContain('nativeMedia.startMicrophone({')
+    expect(ownerSource).toContain('const nativeMicrophoneStartRef = {')
+    expect(ownerSource).toContain('startNativeMicrophone({')
     expect(providerSource).toContain('getTargetChannelId: () => channelIdRef.current')
     expect(nativeMediaSource).toContain(
       'const targetChannelId = deps.getTargetChannelId()',
@@ -690,12 +698,17 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media.ts'),
       'utf8',
     )
+    const ownerSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media-owner.ts'),
+      'utf8',
+    )
 
     const controlledStops = nativeMediaSource.match(
       /const activeNativeMicrophone = deps\.nativeMicrophoneRef\.current[\s\S]*?deps\.nativeMicrophoneRef\.current = null[\s\S]*?activeNativeMicrophone\.disconnect\(\)/g,
     )
 
-    expect(providerSource).toContain('resetNativeMediaState({')
+    expect(providerSource).toContain('nativeMedia.reset({')
+    expect(ownerSource).toContain('resetNativeMediaState({')
     expect(controlledStops).toHaveLength(1)
   })
 })

@@ -41,8 +41,8 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/voice/voice-context', () => ({
-  useVoice: () => ({
+vi.mock('#/features/voice/voice-session-context', () => ({
+  useVoiceSession: () => ({
     join: voiceJoinMock,
   }),
 }))

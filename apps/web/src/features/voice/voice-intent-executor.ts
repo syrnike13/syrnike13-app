@@ -17,6 +17,10 @@ import {
   runVoiceRecovery,
   type VoiceRecoveryRunnerDeps,
 } from '#/features/voice/voice-recovery-runner'
+import {
+  createVoiceNativeMediaOwner,
+  type VoiceNativeMediaOwner,
+} from '#/features/voice/voice-native-media-owner'
 
 export type VoiceExecutorSnapshot = {
   activeOperationId: string | null
@@ -100,6 +104,7 @@ export type VoiceExecutorDeps = {
 }
 
 export interface VoiceIntentExecutor {
+  nativeMedia: VoiceNativeMediaOwner
   getState(): VoiceDirectorState
   getSnapshot(): VoiceExecutorSnapshot
   getRoom(): Room | null
@@ -134,6 +139,7 @@ export function createVoiceIntentExecutor(
   let pendingMoveSource: VoiceMoveSourceSession | null = null
   let remoteSupersedeDisconnect: Promise<void> | null = null
   let recoveryJoinInFlight: VoiceJoinInFlight | null = null
+  const nativeMedia = createVoiceNativeMediaOwner()
 
   function getSnapshot(): VoiceExecutorSnapshot {
     return {
@@ -404,6 +410,7 @@ export function createVoiceIntentExecutor(
   }
 
   return {
+    nativeMedia,
     getState: () => state,
     getSnapshot,
     getRoom: () => room,

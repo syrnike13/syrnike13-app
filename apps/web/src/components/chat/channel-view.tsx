@@ -25,7 +25,7 @@ import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-d
 import { useChannelChat } from '#/features/chat/use-channel-chat'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,
@@ -138,7 +138,7 @@ export function ChannelView({
   const navigate = useNavigate()
   const routePrefix = useAppRoutePrefix()
   const isMobileRoute = routePrefix === '/m'
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
   const [fullProfileOpen, setFullProfileOpen] = useState(false)

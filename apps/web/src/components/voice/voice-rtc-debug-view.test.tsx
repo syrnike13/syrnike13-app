@@ -19,8 +19,16 @@ vi.mock('#/features/voice/voice-node', () => ({
   resolveVoiceNodeName: () => Promise.resolve('worldwide'),
 }))
 
-vi.mock('#/features/voice/voice-context', () => ({
-  useVoice: () => voiceState,
+vi.mock('#/features/voice/voice-session-context', () => ({
+  useVoiceSession: () => voiceState,
+}))
+
+vi.mock('#/features/voice/voice-stage-context', () => ({
+  useVoiceStage: () => voiceState,
+}))
+
+vi.mock('#/features/voice/voice-telemetry-context', () => ({
+  useVoiceTelemetry: () => voiceState,
 }))
 
 const snapshot: RtcDebugSnapshot = {
