@@ -12,7 +12,7 @@ use iso8601_timestamp::Timestamp;
 use livekit_protocol::{participant_info, ParticipantInfo, ParticipantPermission};
 use redis_kiss::{
     get_connection as _get_connection,
-    redis::{FromRedisValue, Pipeline, RedisError, RedisWrite, ToRedisArgs, Value},
+    redis::{cmd, FromRedisValue, Pipeline, RedisError, RedisWrite, ToRedisArgs, Value},
     AsyncCommands, Conn,
 };
 use syrnike_config::FeaturesLimits;
@@ -85,6 +85,13 @@ pub struct VoiceParticipantReconciliation {
     pub livekit_members: Vec<String>,
     pub stale_members: Vec<String>,
     pub stale_livekit_participants: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VoiceParticipantReconciliationVerdict {
+    Ready(VoiceParticipantReconciliation),
+    DeadRoom,
+    SkipTransient,
 }
 
 pub fn voice_participant_reconciliation(
@@ -216,9 +223,11 @@ pub async fn raise_if_in_voice(user: &User, _channel: &UserVoiceChannel) -> Resu
 }
 
 pub async fn set_channel_node(channel_id: &str, node: &str) -> Result<()> {
-    get_connection()
-        .await?
-        .set(voice_channel_node_key(channel_id), node)
+    cmd("SETEX")
+        .arg(voice_channel_node_key(channel_id))
+        .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
+        .arg(node)
+        .query_async::<_, ()>(&mut get_connection().await?.into_inner())
         .await
         .to_internal_error()
 }
@@ -688,7 +697,7 @@ pub async fn get_voice_channel_members(channel: &UserVoiceChannel) -> Result<Opt
 pub async fn get_voice_participant_reconciliation(
     voice_client: &VoiceClient,
     channel: &UserVoiceChannel,
-) -> Result<Option<VoiceParticipantReconciliation>> {
+) -> Result<VoiceParticipantReconciliationVerdict> {
     let redis_members = get_voice_channel_members(channel)
         .await?
         .unwrap_or_default();
@@ -709,7 +718,11 @@ pub async fn get_voice_participant_reconciliation(
         }
     }
     let Some(node) = get_channel_node(&channel.id).await? else {
-        return Ok(None);
+        log::warn!(
+            "Skipping voice reconciliation for channel {} because no voice node is recorded",
+            channel.id
+        );
+        return Ok(VoiceParticipantReconciliationVerdict::SkipTransient);
     };
 
     let livekit_participants = match voice_client
@@ -717,23 +730,29 @@ pub async fn get_voice_participant_reconciliation(
         .await
     {
         Ok(Some(participants)) => participants,
-        Ok(None) => Vec::new(),
+        Ok(None) => return Ok(VoiceParticipantReconciliationVerdict::DeadRoom),
         Err(error) => {
             log::warn!(
                 "Skipping voice reconciliation for channel {} on node {node}: {error}",
                 channel.id
             );
-            return Ok(None);
+            return Ok(VoiceParticipantReconciliationVerdict::SkipTransient);
         }
     };
 
-    Ok(Some(
-        voice_participant_reconciliation_with_current_operations(
-            &redis_members,
-            &livekit_participants,
-            &current_operations,
-        ),
-    ))
+    let reconciliation = voice_participant_reconciliation_with_current_operations(
+        &redis_members,
+        &livekit_participants,
+        &current_operations,
+    );
+
+    for (user_id, operation_id) in &current_operations {
+        if reconciliation.livekit_members.contains(user_id) {
+            refresh_active_voice_session_projection_ttl(channel, user_id, operation_id).await?;
+        }
+    }
+
+    Ok(VoiceParticipantReconciliationVerdict::Ready(reconciliation))
 }
 
 pub async fn get_voice_state(

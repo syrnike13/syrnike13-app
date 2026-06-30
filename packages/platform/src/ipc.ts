@@ -50,6 +50,8 @@ export const IPC = {
   mediaConfigureMicrophoneRuntime:
     'syrnike-desktop:media:configure-microphone-runtime',
   mediaSetMicrophoneMuted: 'syrnike-desktop:media:set-microphone-muted',
+  mediaReconnectMicrophoneSession:
+    'syrnike-desktop:media:reconnect-microphone-session',
   mediaStopSession: 'syrnike-desktop:media:stop-session',
   mediaGetState: 'syrnike-desktop:media:get-state',
   mediaStats: 'syrnike-desktop:media:stats',

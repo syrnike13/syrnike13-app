@@ -1,8 +1,10 @@
 #![cfg(feature = "voice")]
 
 use livekit_protocol::{participant_info, ParticipantInfo};
+use std::{fs::read_to_string, path::Path};
 use syrnike_database::voice::{
     voice_participant_reconciliation, voice_participant_reconciliation_with_current_operations,
+    VoiceParticipantReconciliationVerdict,
 };
 
 fn ids(values: &[&str]) -> Vec<String> {
@@ -120,4 +122,36 @@ fn reconciliation_removes_native_sidecar_for_stale_operation() {
         plan.stale_livekit_participants,
         ids(&["user-a:desktop-native:op-old:screen"])
     );
+}
+
+#[test]
+fn reconciliation_verdict_distinguishes_dead_room_from_transient_skip() {
+    assert!(matches!(
+        VoiceParticipantReconciliationVerdict::DeadRoom,
+        VoiceParticipantReconciliationVerdict::DeadRoom
+    ));
+    assert!(matches!(
+        VoiceParticipantReconciliationVerdict::SkipTransient,
+        VoiceParticipantReconciliationVerdict::SkipTransient
+    ));
+}
+
+#[test]
+fn reconciliation_missing_node_skips_instead_of_declaring_dead_room() {
+    let source = read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("voice")
+            .join("mod.rs"),
+    )
+    .expect("voice mod source should be readable");
+
+    let missing_node_branch = source
+        .split("let Some(node) = get_channel_node(&channel.id).await? else {")
+        .nth(1)
+        .and_then(|tail| tail.split("};").next())
+        .expect("missing node branch should stay explicit");
+
+    assert!(missing_node_branch.contains("VoiceParticipantReconciliationVerdict::SkipTransient"));
+    assert!(!missing_node_branch.contains("VoiceParticipantReconciliationVerdict::DeadRoom"));
 }

@@ -8,13 +8,13 @@ use crate::{
             VoiceCallLeaveEffect, VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase,
             VoiceCallStateMutation, VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
-        create_voice_session, desktop_native_voice_identity,
+        create_voice_session, delete_channel_voice_state, desktop_native_voice_identity,
         finish_voice_call_started_system_message, get_channel_node, get_voice_channel_members,
         get_voice_participant_reconciliation, is_in_voice_channel, raise_if_in_voice,
         remove_user_from_voice_channel, remove_user_voice_transport,
         set_call_notification_recipients, set_channel_node, UserVoiceChannel, VoiceClient,
-        VoiceParticipantReconciliation, VoiceSession, VoiceSessionCreate,
-        VOICE_SESSION_TTL_SECONDS,
+        VoiceParticipantReconciliation, VoiceParticipantReconciliationVerdict, VoiceSession,
+        VoiceSessionCreate, VOICE_SESSION_TTL_SECONDS,
     },
     Database, User, VoiceCallEndReason, AMQP,
 };
@@ -248,9 +248,21 @@ pub async fn reconcile_voice_channel_members_with_call_cleanup(
     amqp: &AMQP,
     channel: &UserVoiceChannel,
 ) -> Result<Option<VoiceParticipantReconciliation>> {
-    let Some(reconciliation) = get_voice_participant_reconciliation(voice_client, channel).await?
-    else {
-        return Ok(None);
+    let reconciliation = match get_voice_participant_reconciliation(voice_client, channel).await? {
+        VoiceParticipantReconciliationVerdict::Ready(reconciliation) => reconciliation,
+        VoiceParticipantReconciliationVerdict::DeadRoom => {
+            let members = get_voice_channel_members(channel)
+                .await?
+                .unwrap_or_default();
+            delete_channel_voice_state(channel, &members).await?;
+            cleanup_removed_voice_member_call(db, amqp, channel).await?;
+            return Ok(Some(VoiceParticipantReconciliation {
+                livekit_members: Vec::new(),
+                stale_members: members,
+                stale_livekit_participants: Vec::new(),
+            }));
+        }
+        VoiceParticipantReconciliationVerdict::SkipTransient => return Ok(None),
     };
 
     for user_id in &reconciliation.stale_members {

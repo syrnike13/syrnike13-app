@@ -20,7 +20,6 @@ import {
 } from './voice-event-utils'
 import { voiceCallUiKey } from './voice-call-utils'
 import { isValidVoiceUserId } from './voice-participant-resolve'
-import { shouldIgnoreVoiceGatewayEvent } from '#/features/voice/voice-local-event-guard'
 import { serverChannelServerId } from '#/lib/channel-voice'
 
 function emptyState(): SyncState {
@@ -953,7 +952,6 @@ export const syncStore = {
         break
       }
       case 'VoiceChannelJoin': {
-        if (shouldIgnoreVoiceGatewayEvent(event)) break
         /** Voice state v1: `id` — канал, `state` — UserVoiceState (state.id — user). */
         const payload = event as {
           id: string
@@ -987,7 +985,6 @@ export const syncStore = {
         break
       }
       case 'VoiceChannelMove': {
-        if (shouldIgnoreVoiceGatewayEvent(event)) break
         const payload = event as {
           user: string
           from: string

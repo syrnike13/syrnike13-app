@@ -308,6 +308,85 @@ describe('native microphone publish', () => {
     expect(stopSession).not.toHaveBeenCalled()
   })
 
+  it('reconnects native microphone publisher through desktop media without stopping capture', async () => {
+    const stopSession = vi.fn(async () => {})
+    const reconnectMicrophoneSession = vi.fn(async () => ({
+      kind: 'microphone',
+      sessionId: 'native-mic-1',
+      audio: {
+        mode: 'microphone',
+        sampleRate: 48_000,
+        channels: 1,
+        noiseSuppression: 'software',
+        echoCancellation: 'software',
+      },
+      nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1-reconnected',
+    }))
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startSession: vi.fn(async () => ({
+          kind: 'microphone',
+          sessionId: 'native-mic-1',
+          audio: {
+            mode: 'microphone',
+            sampleRate: 48_000,
+            channels: 1,
+            noiseSuppression: 'software',
+            echoCancellation: 'software',
+          },
+          nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
+        })),
+        stopSession,
+        setMicrophoneMuted: vi.fn(async () => {}),
+        reconnectMicrophoneSession,
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    const session = await publishNativeMicrophone(
+      { identity: 'user-1' } as never,
+      undefined,
+      {
+        url: 'wss://livekit-a.example',
+        token: 'native-livekit-token-a',
+        participantIdentity: 'user-1:desktop-native:a',
+      },
+      'mic-request-1',
+      false,
+      32,
+    )
+
+    await session.reconnect(
+      {
+        url: 'wss://livekit-b.example',
+        token: 'native-livekit-token-b',
+        participantIdentity: 'user-1:desktop-native:b',
+      },
+      'mic-request-2',
+      true,
+      48,
+    )
+
+    expect(reconnectMicrophoneSession).toHaveBeenCalledWith(
+      'native-mic-1',
+      expect.objectContaining({
+        kind: 'microphone',
+        requestId: 'mic-request-2',
+        muted: true,
+        audioBitrate: 48_000,
+        livekit: {
+          url: 'wss://livekit-b.example',
+          token: 'native-livekit-token-b',
+          participantIdentity: 'user-1:desktop-native:b',
+        },
+      }),
+    )
+    expect(session.nativeParticipantIdentity).toBe(
+      'user-1:desktop-native:native-mic-1-reconnected',
+    )
+    expect(stopSession).not.toHaveBeenCalled()
+  })
+
   it('notifies once when the native media engine stops the microphone session', async () => {
     const stopSession = vi.fn(async () => {})
     const unsubscribeEnded = vi.fn()
@@ -446,6 +525,7 @@ describe('native microphone publish', () => {
       sessionId: 'native-mic-1',
       nativeParticipantIdentity: 'user-1:desktop-native',
       setMuted: vi.fn(async () => {}),
+      reconnect: vi.fn(async () => {}),
       disconnect: vi.fn(),
     }
 
@@ -487,19 +567,28 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
       'utf8',
     )
+    const localSetupSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-local-setup.ts'),
+      'utf8',
+    )
 
-    const nativeBranchIndex = source.indexOf('if (shouldUseNativeMicrophone())')
-    const liveKitCaptureIndex = source.indexOf(
+    const nativeBranchIndex = localSetupSource.indexOf(
+      'if (deps.shouldUseNativeMicrophone)',
+    )
+    const liveKitCaptureIndex = localSetupSource.indexOf(
       'await room.localParticipant.setMicrophoneEnabled(',
     )
 
     expect(nativeBranchIndex).toBeGreaterThanOrEqual(0)
     expect(liveKitCaptureIndex).toBeGreaterThan(nativeBranchIndex)
-    expect(source).toContain('await startNativeMicrophone(')
+    expect(source).toContain('finishLocalVoiceSetup as finishLocalVoiceSetupFromDeps')
+    expect(localSetupSource).toContain('await deps.startNativeMicrophone(')
     expect(source).toContain('setNativeMicrophoneMuted')
     expect(source).toContain('nativeMicrophoneMutedRef.current')
-    expect(source).toContain('!shouldUseNativeMicrophone()')
-    expect(source).toContain('await applyMicProcessing(room.localParticipant)')
+    expect(localSetupSource).toContain('!deps.shouldUseNativeMicrophone')
+    expect(localSetupSource).toContain(
+      'await deps.applyMicProcessing(room.localParticipant)',
+    )
   })
 
   it('temporarily suspends voice publishing while settings self-monitoring is active', () => {
@@ -508,6 +597,10 @@ describe('native microphone provider boundary', () => {
     )
     const providerSource = readFileSync(
       resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
+      'utf8',
+    )
+    const localSetupSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-local-setup.ts'),
       'utf8',
     )
     const contextSource = readFileSync(
@@ -523,7 +616,10 @@ describe('native microphone provider boundary', () => {
       'setSelfMonitoringActive: (active: boolean) => void',
     )
     expect(providerSource).toContain(
-      'selfMonitoringRef.current.active && prefs.micEnabled',
+      'selfMonitoringActive: selfMonitoringRef.current.active',
+    )
+    expect(localSetupSource).toContain(
+      'deps.selfMonitoringActive && prefs.micEnabled',
     )
     expect(providerSource).toContain(
       'selfMonitoringRef.current.restorePublishing = wantsMic',
@@ -559,19 +655,27 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
       'utf8',
     )
+    const nativeMediaSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media.ts'),
+      'utf8',
+    )
 
     expect(providerSource).toContain(
       'const nativeMicrophoneStartRef = useRef<Promise<boolean> | null>(null)',
     )
-    expect(providerSource).toContain('const targetChannelId = channelIdRef.current')
-    expect(providerSource).toContain(
-      'if (!started || !isCurrentVoiceSession(room, targetChannelId))',
+    expect(providerSource).toContain('startNativeMicrophoneFromDeps({')
+    expect(providerSource).toContain('getTargetChannelId: () => channelIdRef.current')
+    expect(nativeMediaSource).toContain(
+      'const targetChannelId = deps.getTargetChannelId()',
     )
-    expect(providerSource).toContain(
-      'const pendingNativeMicrophoneStart = nativeMicrophoneStartRef.current',
+    expect(nativeMediaSource).toContain(
+      'if (!started || !deps.isCurrentVoiceSession(deps.room, targetChannelId))',
     )
-    expect(providerSource).toContain('await pendingNativeMicrophoneStart')
-    expect(providerSource).toContain('nativeMicrophoneStartRef.current = start')
+    expect(nativeMediaSource).toContain(
+      'const pendingNativeMicrophoneStart = deps.nativeMicrophoneStartRef.current',
+    )
+    expect(nativeMediaSource).toContain('await pendingNativeMicrophoneStart')
+    expect(nativeMediaSource).toContain('deps.nativeMicrophoneStartRef.current = start')
   })
 
   it('suppresses native microphone stop side effects during controlled voice disconnects', () => {
@@ -582,11 +686,16 @@ describe('native microphone provider boundary', () => {
       resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
       'utf8',
     )
-
-    const controlledStops = providerSource.match(
-      /const activeNativeMicrophone = nativeMicrophoneRef\.current[\s\S]*?nativeMicrophoneRef\.current = null[\s\S]*?activeNativeMicrophone\.disconnect\(\)/g,
+    const nativeMediaSource = readFileSync(
+      resolve(repoRoot, 'apps/web/src/features/voice/voice-native-media.ts'),
+      'utf8',
     )
 
-    expect(controlledStops).toHaveLength(2)
+    const controlledStops = nativeMediaSource.match(
+      /const activeNativeMicrophone = deps\.nativeMicrophoneRef\.current[\s\S]*?deps\.nativeMicrophoneRef\.current = null[\s\S]*?activeNativeMicrophone\.disconnect\(\)/g,
+    )
+
+    expect(providerSource).toContain('resetNativeMediaState({')
+    expect(controlledStops).toHaveLength(1)
   })
 })

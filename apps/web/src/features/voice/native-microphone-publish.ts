@@ -17,8 +17,15 @@ import {
 
 export type NativeMicrophoneSession = {
   sessionId: string
+  channelId?: string | null
   nativeParticipantIdentity: string
   setMuted: (muted: boolean) => Promise<void>
+  reconnect: (
+    livekit: NativeMicrophoneLiveKitCredentials,
+    requestId: string,
+    muted: boolean,
+    audioBitrateKbps: number,
+  ) => Promise<void>
   disconnect: () => void
 }
 
@@ -139,6 +146,7 @@ export async function publishNativeMicrophone(
     muted,
     audioBitrateKbps,
   )
+  let nativeParticipantIdentity = session.nativeParticipantIdentity
 
   let stopped = false
   let subscriptions: (() => void)[] = []
@@ -176,11 +184,36 @@ export async function publishNativeMicrophone(
   ].filter((unsubscribe): unsubscribe is () => void => Boolean(unsubscribe))
 
   const disconnect = () => completeStopped(true)
+  const reconnect = async (
+    livekit: NativeMicrophoneLiveKitCredentials,
+    requestId: string,
+    muted: boolean,
+    audioBitrateKbps: number,
+  ) => {
+    const nextSession = await desktop.media.reconnectMicrophoneSession(
+      session.sessionId,
+      nativeMicrophoneSessionOptions(
+        readVoicePreferences(),
+        livekit,
+        requestId,
+        undefined,
+        muted,
+        audioBitrateKbps,
+      ),
+    )
+    if (nextSession.kind !== 'microphone') {
+      throw new Error('Native media engine returned a non-microphone session')
+    }
+    nativeParticipantIdentity = nextSession.nativeParticipantIdentity
+  }
 
   return {
     sessionId: session.sessionId,
-    nativeParticipantIdentity: session.nativeParticipantIdentity,
+    get nativeParticipantIdentity() {
+      return nativeParticipantIdentity
+    },
     setMuted: (muted) => desktop.media.setMicrophoneMuted(session.sessionId, muted),
+    reconnect,
     disconnect,
   }
 }

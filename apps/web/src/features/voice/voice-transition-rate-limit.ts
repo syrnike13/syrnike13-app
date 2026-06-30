@@ -21,3 +21,16 @@ export function recordVoiceTransitionAttempt(
 ) {
   return [...recentVoiceTransitionAttempts(attempts, now), now]
 }
+
+export function createVoiceTransitionRateLimiter() {
+  let attempts: number[] = []
+
+  return {
+    isBlocked(now: number) {
+      return voiceTransitionBlockedUntil(attempts, now) > now
+    },
+    record(now: number) {
+      attempts = recordVoiceTransitionAttempt(attempts, now)
+    },
+  }
+}

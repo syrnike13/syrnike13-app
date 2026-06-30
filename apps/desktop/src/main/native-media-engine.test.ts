@@ -35,6 +35,10 @@ describe('native media engine entrypoint', () => {
       IPC.mediaSetMicrophoneMuted,
       expect.any(Function),
     )
+    expect(ipcMain.handle).toHaveBeenCalledWith(
+      IPC.mediaReconnectMicrophoneSession,
+      expect.any(Function),
+    )
     expect(ipcMain.handle).not.toHaveBeenCalledWith(
       expect.stringContaining('start-screen-share'),
       expect.any(Function),
@@ -433,6 +437,28 @@ describe('native media engine entrypoint', () => {
       voiceGateThresholdDb: -55,
       muted: true,
     })
+  })
+
+  it('reconnects a native microphone session without hard-stopping the helper', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./native-media-engine.ts', import.meta.url)),
+      'utf8',
+    )
+    const reconnectBody = source.match(
+      /async function reconnectNativeMicrophoneSession[\s\S]*?\r?\n}\r?\n\r?\nasync function startNativeMicrophonePreview/,
+    )?.[0]
+
+    expect(source).toContain('IPC.mediaReconnectMicrophoneSession')
+    expect(reconnectBody).toBeDefined()
+    expect(reconnectBody).toContain('buildNativeMediaReconnectStartCommand')
+    expect(reconnectBody).toContain('assertMediaStartRequestCurrent(options)')
+    expect(reconnectBody).toMatch(
+      /const readyEvent = await readyPromise[\s\S]*assertMediaStartRequestCurrent\(options\)[\s\S]*session\.startOptions = options/,
+    )
+    expect(reconnectBody).toContain('writeHelperCommand(session.helper')
+    expect(reconnectBody).not.toContain('stopActiveMicrophoneSessions')
+    expect(reconnectBody).not.toContain('.kill()')
+    expect(source).toContain('latestStartRequestIds.microphone = options.requestId')
   })
 
   it('handles replacement helper exits during reconnect but ignores stale helpers', async () => {

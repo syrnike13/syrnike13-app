@@ -15,11 +15,17 @@ import {
   runVoiceRequest,
 } from '#/features/voice/voice-request-gate'
 import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
-import type { VoiceJoinReason } from '#/features/voice/voice-session-machine'
 
 export type VoiceJoinOptions = {
+  operationId: string
   rejoin?: boolean
 }
+
+export type VoiceJoinSuccess = {
+  room: Room
+}
+
+export type VoiceJoinResult = false | VoiceJoinSuccess
 
 export type LiveKitNativeMediaKind = 'microphone' | 'screen' | 'camera'
 export type LiveKitNativePublisherCredentials = {
@@ -64,29 +70,11 @@ export type VoiceJoinRunnerDeps = {
   getToken: () => string | undefined
   getLocalUserId: () => string | undefined
   isJoinBlocked: () => boolean
-  getActiveSession: () => ActiveVoiceSessionSnapshot | null
-  requestJoinOperation: (
-    channelId: string,
-    reason: VoiceJoinReason,
-  ) => string
-  handleServerPrepareSucceeded: (operationId: string) => void
-  handleRoomConnected: (operationId: string) => void
-  handleRoomConnectFailed: (operationId: string, error: string) => void
   isCurrentJoinOperation?: (operationId: string) => boolean
   beginConnecting: (
     channelId: string,
     preview: ReturnType<typeof createConnectingLocalVoiceState>[],
   ) => void
-  setActiveRoom: (room: Room) => void
-  disconnectReplacedSession: (session: ActiveVoiceSessionSnapshot) => Promise<void>
-  restorePreviousSession: (
-    session: ActiveVoiceSessionSnapshot,
-    failedTargetChannelId: string,
-  ) => void
-  dropPreviousSession: (
-    session: ActiveVoiceSessionSnapshot,
-    failedTargetChannelId: string,
-  ) => Promise<void>
   attachRoomHandlers: (room: Room) => void
   setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
   setConnectionPhase: (phase: VoiceConnectionPhase) => void
@@ -120,27 +108,11 @@ function voiceCallRecipients(
   return recipients.length > 0 ? recipients : undefined
 }
 
-function voiceJoinReason(
-  channel: Channel | undefined,
-  options: VoiceJoinOptions,
-  previousSession: ActiveVoiceSessionSnapshot | null,
-): VoiceJoinReason {
-  if (options.rejoin) return 'rejoin'
-  if (previousSession) return 'switch'
-  if (
-    channel?.channel_type === 'DirectMessage' ||
-    channel?.channel_type === 'Group'
-  ) {
-    return 'dm_answer'
-  }
-  return 'manual_join'
-}
-
 export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
   return async function performVoiceJoin(
     targetChannelId: string,
-    options: VoiceJoinOptions = {},
-  ): Promise<boolean> {
+    options: VoiceJoinOptions,
+  ): Promise<VoiceJoinResult> {
     const token = deps.getToken()
     if (!token) {
       if (!options.rejoin) toast.error('Нет сессии')
@@ -161,11 +133,7 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
 
     const prefs = readVoicePreferences()
     const localUserId = deps.getLocalUserId()
-    const previousSession = options.rejoin ? null : deps.getActiveSession()
-    const operationId = deps.requestJoinOperation(
-      targetChannelId,
-      voiceJoinReason(targetChannel, options, previousSession),
-    )
+    const operationId = options.operationId
     const preview = localUserId
       ? [
           createConnectingLocalVoiceState(localUserId, {
@@ -209,9 +177,7 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         0,
       )
       if (!credentials) {
-        if (previousSession) {
-          await deps.dropPreviousSession(previousSession, targetChannelId)
-        } else if (!options.rejoin) {
+        if (!options.rejoin) {
           deps.abortJoin()
         }
         return false
@@ -219,7 +185,6 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
       if (deps.isCurrentJoinOperation?.(operationId) === false) {
         return false
       }
-      deps.handleServerPrepareSucceeded(operationId)
 
       const { url, token: livekitToken } = credentials
       room = new Room(createVoiceRoomOptions())
@@ -233,29 +198,19 @@ export function createVoiceJoinRunner(deps: VoiceJoinRunnerDeps) {
         await room.disconnect().catch(() => {})
         return false
       }
-      deps.handleRoomConnected(operationId)
-      deps.setActiveRoom(room)
-      if (previousSession && previousSession.room !== room) {
-        await deps.disconnectReplacedSession(previousSession)
-      }
 
       deps.setConnectionPhase('connecting_microphone')
       deps.onRoomConnected(room, targetChannelId)
       deps.onJoinSuccess()
-      return true
+      return { room }
     } catch (error) {
       deps.setConnectionPhase('failed')
-      deps.handleRoomConnectFailed(operationId, voiceJoinErrorMessage(error))
       if (!options.rejoin) {
         if (room) {
           room.removeAllListeners()
           await room.disconnect().catch(() => {})
         }
-        if (previousSession) {
-          await deps.dropPreviousSession(previousSession, targetChannelId)
-        } else {
-          deps.abortJoin()
-        }
+        deps.abortJoin()
         toast.error(voiceJoinErrorMessage(error))
       }
       return false

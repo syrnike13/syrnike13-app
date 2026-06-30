@@ -23,6 +23,7 @@ import type {
   NativeMediaSession,
   NativeMediaSidecarLostEvent,
   NativeMediaScreenSessionPrepareOptions,
+  NativeMediaMicrophoneSessionStartOptions,
   NativeMediaSessionStartOptions,
   NativeMediaState,
   NativeMediaStateEvent,
@@ -295,6 +296,16 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         sessionId,
         muted,
       )
+    },
+    reconnectMicrophoneSession(
+      sessionId: string,
+      options: NativeMediaMicrophoneSessionStartOptions,
+    ) {
+      return ipcRenderer.invoke(
+        IPC.mediaReconnectMicrophoneSession,
+        sessionId,
+        options,
+      ) as Promise<NativeMediaSession>
     },
     stopSession(sessionId?: string) {
       return ipcRenderer.invoke(IPC.mediaStopSession, sessionId)

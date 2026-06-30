@@ -23,6 +23,7 @@ import {
   type NativeMicrophonePreviewStartOptions,
   type NativeMicrophoneRuntimeConfig,
   type NativeMediaLiveKitCredentials,
+  type NativeMediaMicrophoneSessionStartOptions,
   type NativeMediaScreenSessionPrepareOptions,
   type NativeMediaSession,
   type NativeMediaSidecarLostEvent,
@@ -1413,6 +1414,110 @@ function setNativeMicrophoneMuted(sessionId: string, muted: boolean) {
   session.effectiveMuted = muted
 }
 
+async function reconnectNativeMicrophoneSession(
+  getWindow: () => BrowserWindow | null,
+  sessionId: string,
+  options: NativeMediaMicrophoneSessionStartOptions,
+): Promise<NativeMediaSession> {
+  if (process.platform !== 'win32') {
+    throw new Error('Native media engine is only available on Windows')
+  }
+  if (options.kind !== 'microphone') {
+    throw new Error('Native microphone reconnect requires microphone options')
+  }
+
+  getWindowRef = getWindow
+  const session = activeSessions.get(sessionId)
+  if (!session || session.startOptions.kind !== 'microphone') {
+    throw new Error('Native microphone runtime is not active')
+  }
+  if (!isHelperWritable(session.helper)) {
+    throw new Error('Native media helper is not writable')
+  }
+  assertMediaStartRequestCurrent(options)
+
+  const readyPromise = waitForSidecarReady(sessionId)
+  const command = buildNativeMediaReconnectStartCommand(
+    {
+      startOptions: options,
+      effectiveMicrophoneConfig: session.effectiveMicrophoneConfig,
+      effectiveMuted: session.effectiveMuted,
+    },
+    sessionId,
+    getWindow,
+  )
+
+  if (!writeHelperCommand(session.helper, command)) {
+    pendingStartResolvers.delete(sessionId)
+    throw new Error('Native media helper is not writable')
+  }
+
+  const readyEvent = await readyPromise
+  assertMediaStartRequestCurrent(options)
+  if (readyEvent.type !== 'ready') {
+    throw new Error('Native microphone reconnect failed')
+  }
+
+  const audioMetadata = mapReadyAudioMetadata(readyEvent)
+  const audio = buildSessionAudio(
+    true,
+    mapAudioMode(readyEvent.audio_mode),
+    readyEvent.audio_port,
+    audioMetadata,
+  )
+  if (!audio || audio.mode !== 'microphone') {
+    throw new Error('Native microphone session did not reconnect')
+  }
+
+  session.startOptions = options
+  session.port = undefined
+  session.frameBufferPath = undefined
+  session.width = readyEvent.width
+  session.height = readyEvent.height
+  session.fps = readyEvent.fps
+  session.bitrate = readyEvent.bitrate
+  session.audio = audio
+  session.stats = emptyStats()
+  session.activeMethod = undefined
+  session.publishedVideo = false
+  session.publishedAudio = false
+  session.audioFrames = undefined
+  session.audioPackets = undefined
+  session.audioPeakDb = undefined
+  session.audioRmsDb = undefined
+  session.videoFrames = undefined
+  session.videoIntervalFrames = undefined
+  session.videoLateFrames = undefined
+  session.videoNoFrameCount = undefined
+  session.videoRepeatedFrameCount = undefined
+  session.videoRecoverableLostCount = undefined
+  session.videoAvgCaptureUs = undefined
+  session.videoAvgReadbackUs = undefined
+  session.videoAvgScaleUs = undefined
+  session.videoAvgPublishUs = undefined
+  session.videoSourceWidth = undefined
+  session.videoSourceHeight = undefined
+  session.videoContentWidth = undefined
+  session.videoContentHeight = undefined
+  session.captureThreadMmcss = undefined
+  session.reconnectAttempts = 0
+
+  return {
+    kind: 'microphone',
+    sessionId,
+    audio: {
+      mode: 'microphone',
+      sampleRate: audioMetadata.sampleRate ?? 48_000,
+      channels: 1,
+      noiseSuppression: audioMetadata.noiseSuppression ?? 'disabled',
+      echoCancellation: audioMetadata.echoCancellation ?? 'disabled',
+    },
+    nativeParticipantIdentity:
+      readyEvent.native_participant_identity ??
+      options.livekit.participantIdentity,
+  }
+}
+
 async function startNativeMicrophonePreview(
   options: NativeMicrophonePreviewStartOptions,
 ): Promise<NativeMicrophonePreviewSession> {
@@ -2564,6 +2669,26 @@ export function registerNativeMediaEngineIpc(getWindow: () => BrowserWindow | nu
         throw new Error('Untrusted media engine mute request')
       }
       setNativeMicrophoneMuted(sessionId, Boolean(muted))
+    },
+  )
+
+  ipcMain.handle(
+    IPC.mediaReconnectMicrophoneSession,
+    async (
+      event,
+      sessionId: string,
+      options: NativeMediaMicrophoneSessionStartOptions,
+    ) => {
+      if (!isTrustedSender(event, getWindow)) {
+        throw new Error('Untrusted media engine reconnect request')
+      }
+      latestStartRequestIds.microphone = options.requestId
+      const reconnect = startSessionQueues.microphone.then(() => {
+        assertMediaStartRequestCurrent(options)
+        return reconnectNativeMicrophoneSession(getWindow, sessionId, options)
+      })
+      startSessionQueues.microphone = reconnect.catch(() => undefined)
+      return reconnect
     },
   )
 

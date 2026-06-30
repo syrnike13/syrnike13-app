@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  createVoiceTransitionRateLimiter,
   recordVoiceTransitionAttempt,
   voiceTransitionBlockedUntil,
 } from './voice-transition-rate-limit'
@@ -23,5 +24,18 @@ describe('voice transition rate limit', () => {
 
     expect(voiceTransitionBlockedUntil(attempts, 10_999)).toBe(11_000)
     expect(voiceTransitionBlockedUntil(attempts, 11_000)).toBe(0)
+  })
+
+  it('keeps transition attempt state inside a small limiter object', () => {
+    const limiter = createVoiceTransitionRateLimiter()
+
+    for (let index = 0; index < 8; index += 1) {
+      const now = 1_000 + index * 1_000
+      expect(limiter.isBlocked(now)).toBe(false)
+      limiter.record(now)
+    }
+
+    expect(limiter.isBlocked(8_500)).toBe(true)
+    expect(limiter.isBlocked(11_000)).toBe(false)
   })
 })

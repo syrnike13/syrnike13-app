@@ -12,7 +12,7 @@ use syrnike_database::{
         },
         delete_voice_channel, finish_voice_call_started_system_message, get_voice_channel_members,
         list_active_voice_channel_ids, reconcile_voice_channel_members_with_call_cleanup,
-        UserVoiceChannel, VoiceClient,
+        remove_orphaned_active_voice_channel, UserVoiceChannel, VoiceClient,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
 };
@@ -43,6 +43,7 @@ async fn sweep_voice_call_timeouts(
             server_id: None,
         };
         if get_voice_channel_members(&channel).await?.is_none() {
+            remove_orphaned_active_voice_channel(&channel).await?;
             continue;
         }
         if let Err(error) =
