@@ -1,11 +1,11 @@
-use iso8601_timestamp::Timestamp;
+use iso8601_timestamp::{Duration, Timestamp};
 use redis_kiss::{
     redis::{cmd, Cmd, FromRedisValue, RedisError, RedisWrite, ToRedisArgs, Value},
     AsyncCommands,
 };
 use serde::{Deserialize, Serialize};
 use syrnike_models::v0::UserVoiceState;
-use syrnike_result::{Result, ToSyrnikeError};
+use syrnike_result::{create_error, Result, ToSyrnikeError};
 
 use super::{partial_voice_state_for_track, UserVoiceChannel};
 
@@ -145,13 +145,17 @@ return 1
 "#;
 
 const REFRESH_ACTIVE_VOICE_SESSION_PROJECTION: &str = r#"
-redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
-redis.call('EXPIRE', KEYS[2], tonumber(ARGV[1]))
-redis.call('EXPIRE', KEYS[3], tonumber(ARGV[2]))
-redis.call('EXPIRE', KEYS[4], tonumber(ARGV[1]))
-if redis.call('EXISTS', KEYS[5]) == 1 then
-  redis.call('EXPIRE', KEYS[5], tonumber(ARGV[1]))
+if redis.call('GET', KEYS[1]) == ARGV[3] then
+  redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
 end
+redis.call('SADD', KEYS[2], ARGV[4])
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[1]))
+redis.call('SETEX', KEYS[3], tonumber(ARGV[2]), ARGV[8])
+redis.call('SETEX', KEYS[4], tonumber(ARGV[1]), ARGV[5])
+if ARGV[6] ~= '' then
+  redis.call('SETEX', KEYS[5], tonumber(ARGV[1]), ARGV[6])
+end
+redis.call('SADD', KEYS[6], ARGV[7])
 redis.call('EXPIRE', KEYS[6], tonumber(ARGV[1]))
 return 1
 "#;
@@ -377,7 +381,7 @@ pub async fn create_voice_session(session: &VoiceSession) -> Result<()> {
             .arg(raw_session)
             .arg(&session.operation_id)
             .arg(VOICE_SESSION_TTL_SECONDS)
-            .arg(VOICE_MEMBERSHIP_TTL_SECONDS);
+            .arg(VOICE_SESSION_TTL_SECONDS);
     })
     .await
 }
@@ -555,6 +559,9 @@ pub async fn commit_voice_session_join(
     {
         return Ok(VoiceSessionCommitResult::Stale);
     }
+    session.expires_at = joined_at
+        .checked_add(Duration::seconds(VOICE_SESSION_TTL_SECONDS as i64))
+        .ok_or_else(|| create_error!(InternalError))?;
 
     if !persist_active_voice_session_if_current(&session).await? {
         return Ok(VoiceSessionCommitResult::Stale);
@@ -583,20 +590,24 @@ pub async fn commit_voice_session_join(
 }
 
 pub(super) async fn refresh_active_voice_session_projection_ttl(
-    channel: &UserVoiceChannel,
-    user_id: &str,
-    operation_id: &str,
+    session: &VoiceSession,
 ) -> Result<()> {
     run_eval(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION, 6, |command| {
         command
-            .arg(voice_current_key(user_id))
-            .arg(voice_channel_members_key(&channel.id))
-            .arg(voice_session_key(operation_id))
-            .arg(voice_channel_node_key(&channel.id))
-            .arg(voice_room_session_key(&channel.id))
+            .arg(voice_current_key(&session.user_id))
+            .arg(voice_channel_members_key(&session.channel.id))
+            .arg(voice_session_key(&session.operation_id))
+            .arg(voice_channel_node_key(&session.channel.id))
+            .arg(voice_room_session_key(&session.channel.id))
             .arg(voice_active_channels_key())
             .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
-            .arg(VOICE_SESSION_TTL_SECONDS);
+            .arg(VOICE_SESSION_TTL_SECONDS)
+            .arg(&session.operation_id)
+            .arg(&session.user_id)
+            .arg(&session.node)
+            .arg(session.room_sid.as_deref().unwrap_or_default())
+            .arg(&session.channel.id)
+            .arg(session);
     })
     .await
 }
@@ -616,7 +627,7 @@ pub async fn remove_orphaned_active_voice_channel(channel: &UserVoiceChannel) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iso8601_timestamp::{Duration, Timestamp};
+    use iso8601_timestamp::Timestamp;
 
     fn channel() -> UserVoiceChannel {
         UserVoiceChannel {
@@ -775,6 +786,11 @@ mod tests {
     }
 
     #[test]
+    fn pending_voice_session_lease_outlives_active_projection_lease() {
+        assert!(VOICE_SESSION_TTL_SECONDS > VOICE_MEMBERSHIP_TTL_SECONDS);
+    }
+
+    #[test]
     fn redis_commit_script_fences_against_current_operation() {
         assert!(COMMIT_VOICE_SESSION_JOIN.contains("redis.call('GET', KEYS[1]) ~= ARGV[1]"));
         assert!(COMMIT_VOICE_SESSION_JOIN.contains("current_node == false"));
@@ -834,11 +850,21 @@ mod tests {
     #[test]
     fn redis_voice_heartbeat_scripts_refresh_ttl_and_clean_orphan_active_channels() {
         assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('GET', KEYS[1]) == ARGV[3]"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('SADD', KEYS[2], ARGV[4])"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
             .contains("redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))"));
         assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
             .contains("redis.call('EXPIRE', KEYS[2], tonumber(ARGV[1]))"));
         assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
-            .contains("redis.call('EXPIRE', KEYS[3], tonumber(ARGV[2]))"));
+            .contains("redis.call('SETEX', KEYS[3], tonumber(ARGV[2]), ARGV[8])"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('SETEX', KEYS[4], tonumber(ARGV[1]), ARGV[5])"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('SETEX', KEYS[5], tonumber(ARGV[1]), ARGV[6])"));
+        assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
+            .contains("redis.call('SADD', KEYS[6], ARGV[7])"));
         assert!(REFRESH_ACTIVE_VOICE_SESSION_PROJECTION
             .contains("redis.call('EXPIRE', KEYS[6], tonumber(ARGV[1]))"));
         assert!(

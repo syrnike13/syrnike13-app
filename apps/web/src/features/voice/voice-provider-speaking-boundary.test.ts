@@ -267,7 +267,9 @@ describe('voice provider speaking boundary', () => {
     const screenShareSource = readVoiceScreenShareSource()
 
     expect(source).toContain('const localVoiceReadyRef = useRef(false)')
-    expect(source).toContain('localVoiceReadyRef.current = localVoiceReady')
+    expect(source).toContain(
+      'localVoiceReadyRef.current = nextSession.localVoiceReady',
+    )
     expect(source).toContain('const pendingScreenShareStartRef = useRef')
     expect(screenShareSource).toContain('deps.pendingScreenShareStartRef.current = {')
     expect(screenShareSource).toContain('screen-start-deferred-local-voice-not-ready')
@@ -364,20 +366,16 @@ describe('voice provider speaking boundary', () => {
     const nativeMediaSource = readVoiceNativeMediaSource()
     const ownerSource = readVoiceNativeMediaOwnerSource()
     const roomAudioSource = readVoiceRoomAudioSource()
-    const disconnectBlock =
-      source.match(
-        /onUnexpectedRoomDisconnect[\s\S]*?setConnectionPhase\('reconnecting'\)[\s\S]*?\}/,
-      )?.[0] ?? ''
 
     expect(roomAudioSource).toContain('RoomEvent.Disconnected')
-    expect(disconnectBlock).toMatch(
-      /voiceIntentExecutorRef\.current\.onRoomDisconnected\(\s*false,\s*'Room disconnected',?\s*\)/,
+    expect(source).toMatch(
+      /voiceIntentExecutorRef\.current\.onRoomDisconnected\(\s*room,\s*false,\s*'Room disconnected',?\s*\)/,
     )
-    expect(disconnectBlock).not.toContain('voiceRejoinRef')
-    expect(disconnectBlock).not.toContain(
+    expect(source).not.toContain('voiceRejoinRef')
+    expect(source).not.toContain(
       'voiceSessionControllerRef.current.handleRoomDisconnected',
     )
-    expect(disconnectBlock).toContain('disconnectNativeMediaForHandoff()')
+    expect(source).toContain('disconnectNativeMediaForHandoff()')
     expect(source).toContain('nativeMedia.reset({')
     expect(ownerSource).toContain('resetNativeMediaState({')
     expect(nativeMediaSource).toContain('screenShareStartGenerationRef.current += 1')
@@ -445,13 +443,6 @@ describe('voice provider speaking boundary', () => {
       'voiceSessionControllerRef.current.handleRoomDisconnected',
     )
     expect(source).not.toContain('leaveVoiceSessionRef')
-  })
-
-  it('keeps room assignment ownership inside VoiceIntentExecutor', () => {
-    const source = readVoiceProviderSource()
-
-    expect(source).not.toContain('setActiveRoom')
-    expect(source).toMatch(/onRoomChanged: \(room\) => \{[\s\S]*roomRef\.current = room/)
   })
 
   it('delegates recovery desired channel ownership to VoiceIntentExecutor', () => {

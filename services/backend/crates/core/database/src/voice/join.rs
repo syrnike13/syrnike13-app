@@ -114,7 +114,6 @@ pub async fn join_voice_channel(
     }
 
     let existing_node = get_channel_node(channel.id()).await?;
-    let has_existing_node = existing_node.is_some();
 
     let node = existing_node
         .or(options.node)
@@ -175,10 +174,7 @@ pub async fn join_voice_channel(
     .await?;
 
     let room = voice_client.create_room(&node, &channel).await?;
-
-    if !has_existing_node {
-        set_channel_node(channel.id(), &node).await?;
-    }
+    set_channel_node(channel.id(), &node).await?;
 
     log::debug!("Created room {}", room.name);
 

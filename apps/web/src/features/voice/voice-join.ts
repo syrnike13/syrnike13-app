@@ -78,7 +78,6 @@ export type VoiceJoinRunnerDeps = {
   attachRoomHandlers: (room: Room) => void
   setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
   setConnectionPhase: (phase: VoiceConnectionPhase) => void
-  onRoomConnected: (room: Room, channelId: string) => void
   onJoinSuccess: () => void
   abortJoin: () => void
 }
@@ -207,7 +206,6 @@ export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
       }
 
       getDeps().setConnectionPhase('connecting_microphone')
-      getDeps().onRoomConnected(room, targetChannelId)
       getDeps().onJoinSuccess()
       return { room }
     } catch (error) {

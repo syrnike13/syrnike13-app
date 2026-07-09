@@ -221,7 +221,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     attachRoomHandlers: (_room: Room) => {},
     setLiveKitCredentials: (_credentials: LiveKitNativeCredentials) => {},
     setConnectionPhase: (_phase: VoiceConnectionPhase) => {},
-    onRoomConnected: (_room: Room, _channelId: string) => {},
     onJoinSuccess: () => {},
     abortJoin: () => {},
   })
@@ -232,28 +231,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
   const voiceIntentExecutorDepsRef = useRef<VoiceExecutorDeps>({
     getToken: () => undefined,
-    getLocalUserId: () => undefined,
     isJoinBlocked: () => false,
-    getActiveSession: () => null,
     performVoiceJoin: async () => false,
     requestVoiceLeave: () => {},
     shouldKeepRejoining: () => false,
-    attachRoomHandlers: () => {},
-    onRoomConnected: () => {},
+    startLocalVoiceSetup: () => {},
     onAbort: () => {},
-    beginVisualTransition: () => {},
+    prepareVisualTransition: () => {},
     clearVisualPresence: () => {},
     completeTerminalLeave: async () => {},
     disconnectLocalSession: async () => {},
     disconnectMoveSource: async () => {},
-    onRoomChanged: () => {},
-    setLiveKitCredentials: () => {},
+    onSessionChanged: () => {},
     setConnectionPhase: () => {},
     recovery: {
       getGatewayConnected: () => false,
-      getActiveChannelId: () => null,
       getUserId: () => null,
-      getStatus: () => 'idle',
       getVoiceParticipants: () => ({}),
       canTrustServerState: () => false,
       readCurrentVoiceFlags: () => ({ selfMute: false, selfDeaf: false }),
@@ -263,7 +256,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       syncVoiceFlagsToGateway: () => {},
       shouldUseNativeMicrophone: () => false,
       startNativeMicrophone: async () => false,
-      isCurrentVoiceSession: () => false,
       syncMicFromRoom: () => {},
       syncRoomParticipants: () => {},
       syncLocalSpeakingTrack: () => {},
@@ -354,9 +346,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     )
     dispatchNativeMediaState(action)
   }, [])
-  channelIdRef.current = channelId
-  statusRef.current = status
-  localVoiceReadyRef.current = localVoiceReady
   deafenedRef.current = deafened
   micPublishingRef.current = micPublishing
 
@@ -620,11 +609,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       clearWatchedScreenIds: false,
       resetStatsWithoutActiveScreen: false,
     })
-    setChannelId(null)
-    setStatus('idle')
     voiceConnectedAtRef.current = 0
     setConnectionPhase('idle')
-    setLocalVoiceReady(false)
     restoreVoicePreferences()
     setCurrentMicIssue(null)
     setParticipantCount(0)
@@ -807,7 +793,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           nativeMedia.hasMicrophonePublishing(),
         patchLocalVoiceDeafen,
         syncVoiceFlagsToGateway,
-        setLocalVoiceReady,
+        setLocalVoiceReady: (ready) => {
+          voiceIntentExecutorRef.current.observeLocalVoiceReady(
+            room,
+            targetChannelId,
+            ready,
+          )
+        },
       })
     },
     [
@@ -890,17 +882,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         getNativeScreenState: () => nativeMediaStateRef.current.screen,
         getStoppedNativeScreenIdentity: () =>
           stoppedNativeScreenIdentityRef.current,
-        getCurrentRoom: () => roomRef.current,
+        isOwnedRoom: (candidateRoom) =>
+          voiceIntentExecutorRef.current.ownsRoom(candidateRoom),
         getTargetChannelId: () => channelIdRef.current,
-        markConnected: () => {
-          statusRef.current = 'connected'
-          voiceConnectedAtRef.current = Date.now()
-          setStatus('connected')
-        },
         setParticipantCount,
         syncRoomParticipants,
-        runVoiceRecovery: (trigger) =>
-          voiceIntentExecutorRef.current.reconcileWithServer(trigger),
+        runVoiceRecovery: (trigger, sourceRoom) =>
+          voiceIntentExecutorRef.current.reconcileWithServer(trigger, sourceRoom),
         syncLocalSpeakingTrack,
         applyRemoteScreenParticipantSubscription,
         syncMicFromRoom: (activeRoom, issue) => {
@@ -911,13 +899,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           nativeScreenPublicationLostRef.current?.(loss)
         },
         onUnexpectedRoomDisconnect: (targetChannelId) => {
-          const activeRoom = roomRef.current
-          if (activeRoom) {
-            activeRoom.removeAllListeners()
-            roomRef.current = null
-          }
+          room.removeAllListeners()
           const activeOperationId = getActiveVoiceOperationId()
-          voiceIntentExecutorRef.current.onRoomDisconnected(
+          const disposition = voiceIntentExecutorRef.current.onRoomDisconnected(
+            room,
             false,
             'Room disconnected',
           )
@@ -926,16 +911,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             event: 'voice-room-unexpected-disconnected',
             targetChannelId,
             activeOperationId,
+            disposition,
             hadNativeScreenShare: Boolean(nativeScreenShareRef.current),
             nativeScreenState: nativeMediaStateRef.current.screen.status,
           })
+          if (disposition === 'ignored') return
+          if (disposition === 'candidate_lost') {
+            setConnectionPhase('reconnecting')
+            return
+          }
           disconnectNativeMediaForHandoff()
+          if (disposition === 'retained_source_lost') return
           cleanupAudio()
-          setStatus('connecting')
           setConnectionPhase('reconnecting')
-          setLocalVoiceReady(false)
         },
-        playUiSound,
         describeMicDeviceError,
       })
 
@@ -962,24 +951,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  const getActiveVoiceSession = useCallback(() => {
-    const room = roomRef.current
-    const activeChannelId = channelIdRef.current
-    if (
-      !room ||
-      !activeChannelId ||
-      (statusRef.current !== 'connected' && statusRef.current !== 'connecting')
-    ) {
-      return null
-    }
-    return {
-      room,
-      channelId: activeChannelId,
-      localVoiceReady:
-        statusRef.current === 'connected' ? localVoiceReady : false,
-    }
-  }, [localVoiceReady])
-
   useEffect(() => {
     voiceJoinDepsRef.current = {
       getToken: () => auth.session?.token,
@@ -991,19 +962,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       isCurrentJoinOperation: (operationId) =>
         getActiveVoiceOperationId() === operationId,
       beginConnecting: (targetChannelId, preview) => {
-        const previousVisualChannelId = channelIdRef.current
-        const localUserId = auth.user?._id
-        if (
-          localUserId &&
-          previousVisualChannelId &&
-          previousVisualChannelId !== targetChannelId
-        ) {
-          syncStore.removeVoiceParticipant(previousVisualChannelId, localUserId)
-        }
-        setStatus('connecting')
-        setLocalVoiceReady(false)
-        setChannelId(targetChannelId)
-        restoreVoicePreferences()
         for (const participant of preview) {
           syncStore.addVoiceParticipant(targetChannelId, participant)
         }
@@ -1017,26 +975,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
       },
       setConnectionPhase,
-      onRoomConnected: (room, targetChannelId) => {
-        setLocalVoiceReady(false)
-        statusRef.current = 'connected'
-        voiceConnectedAtRef.current = Date.now()
-        setStatus('connected')
-        syncStore.clearVoiceCallDismissal(targetChannelId)
-        syncRoomParticipants()
-        void finishLocalVoiceSetup(room, targetChannelId)
-      },
       onJoinSuccess: () => {},
       abortJoin: abortJoinAttempt,
     }
     voiceIntentExecutorDepsRef.current = {
       getToken: () => auth.session?.token,
-      getLocalUserId: () => auth.user?._id,
       isJoinBlocked: () => {
         const now = Date.now()
         return voiceTransitionRateLimitRef.current.isBlocked(now)
       },
-      getActiveSession: getActiveVoiceSession,
       performVoiceJoin: (targetChannelId, options) =>
         performVoiceJoinRef.current(targetChannelId, {
           operationId: options.operationId,
@@ -1050,30 +997,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       shouldKeepRejoining: (channelId) =>
         Boolean(auth.session?.token) &&
         canJoinVoiceChannel(syncStore.getState().channels[channelId]),
-      attachRoomHandlers: (room) => attachAudio(room),
-      onRoomConnected: (room, targetChannelId) => {
-        setLocalVoiceReady(false)
-        statusRef.current = 'connected'
-        voiceConnectedAtRef.current = Date.now()
-        setStatus('connected')
-        syncStore.clearVoiceCallDismissal(targetChannelId)
-        syncRoomParticipants()
+      startLocalVoiceSetup: (room, targetChannelId) => {
         void finishLocalVoiceSetup(room, targetChannelId)
       },
       onAbort: abortJoinAttempt,
-      beginVisualTransition: (targetChannelId) => {
-        const previousVisualChannelId = channelIdRef.current
-        const localUserId = auth.user?._id
-        if (
-          localUserId &&
-          previousVisualChannelId &&
-          previousVisualChannelId !== targetChannelId
-        ) {
-          syncStore.removeVoiceParticipant(previousVisualChannelId, localUserId)
-        }
-        setStatus('connecting')
-        setLocalVoiceReady(false)
-        setChannelId(targetChannelId)
+      prepareVisualTransition: () => {
         restoreVoicePreferences()
       },
       clearVisualPresence: (targetChannelId) => {
@@ -1114,9 +1042,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           await publishScreenViewerLeaves(room)
           room.removeAllListeners()
           await room.disconnect().catch(() => {})
-          if (roomRef.current === room) {
-            roomRef.current = null
-          }
         }
 
         cleanupAudio()
@@ -1134,26 +1059,50 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         await publishScreenViewerLeaves(room)
         room.removeAllListeners()
         await room.disconnect().catch(() => {})
-        if (roomRef.current === room) {
-          roomRef.current = null
-        }
         const userId = auth.user?._id ?? room.localParticipant.identity
         if (userId) {
           syncStore.removeVoiceParticipant(channelId, userId)
         }
       },
-      onRoomChanged: (room) => {
-        roomRef.current = room
-      },
-      setLiveKitCredentials: (credentials) => {
-        nativeMedia.setLiveKitCredentials(credentials)
+      onSessionChanged: (nextSession) => {
+        const previousChannelId = channelIdRef.current
+        const previousStatus = statusRef.current
+        const localUserId = auth.user?._id
+        if (
+          localUserId &&
+          previousChannelId &&
+          previousChannelId !== nextSession.channelId
+        ) {
+          syncStore.removeVoiceParticipant(previousChannelId, localUserId)
+        }
+
+        roomRef.current = nextSession.room
+        channelIdRef.current = nextSession.channelId
+        statusRef.current = nextSession.status
+        localVoiceReadyRef.current = nextSession.localVoiceReady
+        setChannelId(nextSession.channelId)
+        setStatus(nextSession.status)
+        setLocalVoiceReady(nextSession.localVoiceReady)
+
+        if (nextSession.status === 'connected' && nextSession.channelId) {
+          if (previousStatus !== 'connected') {
+            voiceConnectedAtRef.current = Date.now()
+            playUiSound('voice.user_join')
+          }
+          setParticipantCount(nextSession.room?.numParticipants ?? 0)
+          syncStore.clearVoiceCallDismissal(nextSession.channelId)
+          syncRoomParticipantsRef.current()
+        } else if (nextSession.status === 'idle') {
+          voiceConnectedAtRef.current = 0
+          setParticipantCount(0)
+        } else {
+          setParticipantCount(0)
+        }
       },
       setConnectionPhase,
       recovery: {
         getGatewayConnected: () => auth.gatewayState === 'connected',
-        getActiveChannelId: () => channelIdRef.current,
         getUserId: () => auth.user?._id ?? null,
-        getStatus: () => statusRef.current,
         getVoiceParticipants: () => syncStore.getState().voiceParticipants,
         canTrustServerState: (recoveryTrigger) =>
           recoveryTrigger === 'gateway_connected' ||
@@ -1172,7 +1121,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         syncVoiceFlagsToGateway,
         shouldUseNativeMicrophone,
         startNativeMicrophone,
-        isCurrentVoiceSession,
         syncMicFromRoom: (activeRoom, issue) => {
           syncMicFromRoom(activeRoom, issue as VoiceMicIssue | null | undefined)
         },
@@ -1195,8 +1143,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     disconnectNativeMediaForHandoff,
     finishLocalVoiceSetup,
     getActiveVoiceOperationId,
-    getActiveVoiceSession,
-    isCurrentVoiceSession,
     publishScreenViewerLeaves,
     readCurrentVoiceFlags,
     resetVoiceState,
@@ -1271,7 +1217,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         return false
       }
 
-      const hasPreviousSession = Boolean(getActiveVoiceSession())
+      const hasPreviousSession =
+        voiceIntentExecutorRef.current.getSnapshot().committedChannelId !== null
       const reason: VoiceJoinReason = hasPreviousSession
         ? 'switch'
         : targetChannel.channel_type === 'DirectMessage' ||
@@ -1286,8 +1233,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     [
       auth.session?.token,
       channelId,
-      getActiveVoiceSession,
-      getActiveVoiceOperationId,
       status,
     ],
   )

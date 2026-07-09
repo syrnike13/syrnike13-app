@@ -388,6 +388,9 @@ describe('native media engine entrypoint', () => {
 
     expect(reconnectBody).toBeDefined()
     expect(reconnectBody).not.toContain("status: 'running'")
+    expect(reconnectBody).toMatch(/if \(\s*!writeHelperCommand\(/)
+    expect(reconnectBody).toContain('pendingStartResolvers.delete(session.sessionId)')
+    expect(reconnectBody).toContain('helper.kill()')
   })
 
   it('builds native microphone reconnect command from current runtime state', async () => {
@@ -456,17 +459,32 @@ describe('native media engine entrypoint', () => {
       /const readyEvent = await readyPromise[\s\S]*assertMediaStartRequestCurrent\(options\)[\s\S]*session\.startOptions = options/,
     )
     expect(reconnectBody).toContain('writeHelperCommand(session.helper')
+    expect(reconnectBody).toContain('let reconnectCommandSent = false')
+    expect(reconnectBody).toContain(
+      'reconnectCommandSent && activeSessions.get(sessionId) === session',
+    )
+    expect(reconnectBody).toContain('stopMediaEngineSession(sessionId, true)')
     expect(reconnectBody).not.toContain('stopActiveMicrophoneSessions')
     expect(reconnectBody).not.toContain('.kill()')
     expect(source).toContain('latestStartRequestIds.microphone = options.requestId')
   })
 
-  it('handles replacement helper exits during reconnect but ignores stale helpers', async () => {
+  it('handles active helper exits unless a replacement helper owns the reconnect', async () => {
     const { shouldHandleNativeMediaHelperExit } = await import(
       './native-media-engine'
     )
     const oldHelper = {} as never
     const replacementHelper = {} as never
+
+    expect(
+      shouldHandleNativeMediaHelperExit(
+        {
+          helper: oldHelper,
+          reconnecting: true,
+        },
+        oldHelper,
+      ),
+    ).toBe(true)
 
     expect(
       shouldHandleNativeMediaHelperExit(
@@ -927,6 +945,24 @@ describe('native media engine entrypoint', () => {
     expect(nativeSource).toContain('disconnectMicrophoneRoom')
     expect(nativeSource).toContain('connected.room->disconnect()')
     expect(nativeSource).not.toContain('g_running.store(false);\n      break;\n    }\n    if (commandMatches(line, "set_microphone_muted"))')
+  })
+
+  it('does not emit a stopped lifecycle event during native microphone reconnect', () => {
+    const nativeSource = readFileSync(
+      fileURLToPath(
+        new URL('../../native/native-voice-win/src/microphone_publisher.cpp', import.meta.url),
+      ),
+      'utf8',
+    )
+    const connectBody = nativeSource.match(
+      /bool connectMicrophoneRoom[\s\S]*?\r?\n}\r?\n\r?\n}  \/\/ namespace/,
+    )?.[0]
+
+    expect(connectBody).toBeDefined()
+    expect(nativeSource).toContain('bool emit_stopped_event = true')
+    expect(connectBody).toContain('disconnectMicrophoneRoom(connected, state, false)')
+    expect(nativeSource).toContain('commandMatches(line, "disconnect_microphone")')
+    expect(nativeSource).toContain('disconnectMicrophoneRoom(connected, state);')
   })
 
   it('publishes native microphone audio with explicit Opus voice options', () => {

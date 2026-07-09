@@ -750,7 +750,13 @@ export function shouldHandleNativeMediaHelperExit(
   session: NativeMediaHelperExitState,
   helper: ChildProcessWithoutNullStreams,
 ) {
-  if (session.reconnecting && session.helper === helper) return false
+  if (
+    session.reconnecting &&
+    session.reconnectHelper &&
+    session.helper === helper
+  ) {
+    return false
+  }
   return session.helper === helper || session.reconnectHelper === helper
 }
 
@@ -1088,14 +1094,21 @@ async function attemptSidecarReconnect(session: ActiveMediaEngineSession) {
     const helper = spawnMediaEngineHelper(reconnectOptions.kind, session.sessionId)
     session.reconnectHelper = helper
     const readyPromise = waitForSidecarReady(session.sessionId)
-    writeHelperCommand(
-      helper,
-      buildNativeMediaReconnectStartCommand(
-        session,
-        session.sessionId,
-        getWindow,
-      ),
-    )
+    if (
+      !writeHelperCommand(
+        helper,
+        buildNativeMediaReconnectStartCommand(
+          session,
+          session.sessionId,
+          getWindow,
+        ),
+      )
+    ) {
+      pendingStartResolvers.delete(session.sessionId)
+      helper.kill()
+      closeMediaEngineHelperReader(helper)
+      throw new Error('Native media helper is not writable')
+    }
 
     const readyEvent = await readyPromise
     if (readyEvent.type !== 'ready') {
@@ -1438,6 +1451,7 @@ async function reconnectNativeMicrophoneSession(
     throw new Error('Native microphone session is already reconnecting')
   }
   session.reconnecting = true
+  let reconnectCommandSent = false
   try {
     if (!isHelperWritable(session.helper)) {
       throw new Error('Native media helper is not writable')
@@ -1459,6 +1473,7 @@ async function reconnectNativeMicrophoneSession(
       pendingStartResolvers.delete(sessionId)
       throw new Error('Native media helper is not writable')
     }
+    reconnectCommandSent = true
 
     const readyEvent = await readyPromise
     assertMediaStartRequestCurrent(options)
@@ -1524,6 +1539,11 @@ async function reconnectNativeMicrophoneSession(
       readyEvent.native_participant_identity ??
       options.livekit.participantIdentity,
   }
+  } catch (error) {
+    if (reconnectCommandSent && activeSessions.get(sessionId) === session) {
+      stopMediaEngineSession(sessionId, true)
+    }
+    throw error
   } finally {
     session.reconnecting = false
   }

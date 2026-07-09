@@ -71,12 +71,11 @@ export type AttachRoomAudioDeps = {
   getDeafened: () => boolean
   getNativeScreenState: () => NativeScreenPublicationState
   getStoppedNativeScreenIdentity: () => string | null
-  getCurrentRoom: () => Room | null
+  isOwnedRoom: (room: Room) => boolean
   getTargetChannelId: () => string | null
-  markConnected: () => void
   setParticipantCount: (count: number) => void
   syncRoomParticipants: () => void
-  runVoiceRecovery: (trigger: string) => void
+  runVoiceRecovery: (trigger: string, sourceRoom: Room) => void
   syncLocalSpeakingTrack: (room: Room) => void
   applyRemoteScreenParticipantSubscription: (
     participant: RemoteParticipant,
@@ -85,7 +84,6 @@ export type AttachRoomAudioDeps = {
   abortJoinAttempt: () => void
   onNativeScreenPublicationLost: (loss: NativeScreenPublicationLoss) => void
   onUnexpectedRoomDisconnect: (targetChannelId: string) => void
-  playUiSound: (sound: 'voice.user_join') => void
   describeMicDeviceError?: (error: unknown) => unknown
 }
 
@@ -144,14 +142,14 @@ export function playRemoteAudioTrack(
   participant: RemoteParticipant,
   deps: PlayRemoteAudioTrackDeps,
 ) {
-  if (track.kind !== Track.Kind.Audio) return
+  if (track.kind !== Track.Kind.Audio) return null
 
   if (
     isDesktopNativeVoiceIdentity(participant.identity) &&
     baseVoiceIdentity(participant.identity) === deps.currentUserId
   ) {
     track.detach().forEach(removeDetachedElement)
-    return
+    return null
   }
 
   const audioTrack = track as AudioTrackWithMedia
@@ -173,11 +171,12 @@ export function playRemoteAudioTrack(
       userId: baseVoiceIdentity(participant.identity),
       publicationTrackSid: publication.trackSid,
     })
-    return
+    return null
   }
 
+  const trackId = remoteAudioTrackId(track, publication)
   const added = deps.getRemoteAudioMixer()?.addTrack({
-    trackId: remoteAudioTrackId(track, publication),
+    trackId,
     userId: baseVoiceIdentity(participant.identity),
     source: audioSourceFromPublication(publication),
     mediaStreamTrack,
@@ -190,6 +189,7 @@ export function playRemoteAudioTrack(
     })
   }
   deps.applyRemoteAudio()
+  return { trackId, mediaStreamTrack }
 }
 
 export function cleanupRemoteAudioTrackSubscription(
@@ -208,23 +208,64 @@ export function cleanupRemoteAudioTrackSubscription(
 }
 
 export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
+  const remoteAudioSubscriptions = new Map<
+    Track,
+    { trackId: string; mediaStreamTrack: MediaStreamTrack }
+  >()
   const playTrack = (
     track: Track,
     publication: RemoteTrackPublication,
     participant: RemoteParticipant,
   ) => {
-    playRemoteAudioTrack(track, publication, participant, {
+    const subscription = playRemoteAudioTrack(track, publication, participant, {
       currentUserId: deps.currentUserId,
       getRemoteAudioMixer: deps.getRemoteAudioMixer,
       applyRemoteAudio: () =>
         deps.getRemoteAudioMixer()?.applyVolumes(deps.getDeafened()),
     })
+    if (subscription) {
+      remoteAudioSubscriptions.set(track, subscription)
+    }
   }
 
-  const onParticipantsChanged = () => {
+  const cleanupRemoteAudioSubscription = (
+    track: Track,
+    publication: RemoteTrackPublication,
+  ) => {
+    const subscription = remoteAudioSubscriptions.get(track)
+    if (subscription) {
+      deps.getRemoteAudioMixer()?.removeTrack(subscription.trackId)
+      deps
+        .getRemoteAudioMixer()
+        ?.removeMediaStreamTrack(subscription.mediaStreamTrack)
+      remoteAudioSubscriptions.delete(track)
+      track.detach().forEach(removeDetachedElement)
+      return
+    }
+    cleanupRemoteAudioTrackSubscription(track, publication, {
+      getRemoteAudioMixer: deps.getRemoteAudioMixer,
+    })
+  }
+
+  const cleanupRoomRemoteAudio = () => {
+    for (const [track, subscription] of remoteAudioSubscriptions) {
+      deps.getRemoteAudioMixer()?.removeTrack(subscription.trackId)
+      deps
+        .getRemoteAudioMixer()
+        ?.removeMediaStreamTrack(subscription.mediaStreamTrack)
+      track.detach().forEach(removeDetachedElement)
+    }
+    remoteAudioSubscriptions.clear()
+  }
+
+  const syncParticipants = () => {
+    if (!deps.isOwnedRoom(room)) return
     deps.setParticipantCount(room.numParticipants)
     deps.syncRoomParticipants()
-    deps.runVoiceRecovery('participants_changed')
+  }
+  const onParticipantsChanged = () => {
+    syncParticipants()
+    deps.runVoiceRecovery('participants_changed', room)
   }
   const onLocalParticipantsChanged = () => {
     deps.syncLocalSpeakingTrack(room)
@@ -283,9 +324,7 @@ export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
   })
 
   room.on(RoomEvent.TrackUnsubscribed, (track, publication) => {
-    cleanupRemoteAudioTrackSubscription(track, publication, {
-      getRemoteAudioMixer: deps.getRemoteAudioMixer,
-    })
+    cleanupRemoteAudioSubscription(track, publication)
     onParticipantsChanged()
   })
 
@@ -320,10 +359,8 @@ export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
   })
 
   room.on(RoomEvent.Connected, () => {
-    if (!deps.getTargetChannelId()) return
-    deps.markConnected()
-    deps.playUiSound('voice.user_join')
-    onParticipantsChanged()
+    if (!deps.getTargetChannelId() || !deps.isOwnedRoom(room)) return
+    syncParticipants()
   })
 
   room.on(RoomEvent.MediaDevicesError, (error, kind) => {
@@ -332,10 +369,12 @@ export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
   })
 
   room.on(RoomEvent.Disconnected, () => {
-    if (deps.getCurrentRoom() !== room) {
+    if (!deps.isOwnedRoom(room)) {
       room.removeAllListeners()
       return
     }
+
+    cleanupRoomRemoteAudio()
 
     const targetChannelId = deps.getTargetChannelId()
     if (!targetChannelId) {
@@ -346,5 +385,5 @@ export function attachRoomAudio(room: Room, deps: AttachRoomAudioDeps) {
     deps.onUnexpectedRoomDisconnect(targetChannelId)
   })
 
-  onParticipantsChanged()
+  syncParticipants()
 }

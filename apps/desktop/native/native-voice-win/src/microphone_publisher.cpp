@@ -334,7 +334,8 @@ void emitMicrophoneReady(
 
 void disconnectMicrophoneRoom(
   ConnectedMicrophoneRoom& connected,
-  const std::shared_ptr<MicrophoneCaptureState>& state
+  const std::shared_ptr<MicrophoneCaptureState>& state,
+  bool emit_stopped_event = true
 ) {
   if (connected.audio_track) {
     connected.audio_track.reset();
@@ -344,14 +345,16 @@ void disconnectMicrophoneRoom(
     try {
       connected.room->disconnect();
     } catch (const std::exception& error) {
-      emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(connected.session_id) +
-           "\",\"kind\":\"microphone\",\"status\":\"stopped\",\"message\":\"disconnect_failed:" +
-           jsonEscape(error.what()) + "\"}");
+      if (emit_stopped_event) {
+        emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(connected.session_id) +
+             "\",\"kind\":\"microphone\",\"status\":\"stopped\",\"message\":\"disconnect_failed:" +
+             jsonEscape(error.what()) + "\"}");
+      }
     }
   }
   connected.room.reset();
   connected.delegate.reset();
-  if (!connected.session_id.empty()) {
+  if (emit_stopped_event && !connected.session_id.empty()) {
     emit("{\"type\":\"session_lifecycle\",\"session_id\":\"" + jsonEscape(connected.session_id) +
          "\",\"kind\":\"microphone\",\"status\":\"stopped\"}");
   }
@@ -377,7 +380,7 @@ bool connectMicrophoneRoom(
     return false;
   }
 
-  disconnectMicrophoneRoom(connected, state);
+  disconnectMicrophoneRoom(connected, state, false);
   setCaptureSessionId(state, command.session_id);
   const std::string native_identity = command.participant_identity;
 

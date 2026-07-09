@@ -122,29 +122,6 @@ describe('createVoiceJoinRunner', () => {
     expect(providerSource).not.toContain('finalizePendingVoiceMove')
   })
 
-  it('ignores stale room disconnect events after a newer room is active', () => {
-    const repoRoot = resolve(
-      fileURLToPath(new URL('../../../../..', import.meta.url)),
-    )
-    const roomAudioSource = readFileSync(
-      resolve(repoRoot, 'apps/web/src/features/voice/voice-room-audio.ts'),
-      'utf8',
-    )
-    const providerSource = readFileSync(
-      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
-      'utf8',
-    )
-
-    expect(roomAudioSource).toMatch(
-      /room\.on\(RoomEvent\.Disconnected[\s\S]*if \(deps\.getCurrentRoom\(\) !== room\) \{[\s\S]*room\.removeAllListeners\(\)[\s\S]*return[\s\S]*\}[\s\S]*deps\.onUnexpectedRoomDisconnect\(targetChannelId\)/,
-    )
-    expect(roomAudioSource).not.toContain('getDisconnectIntent')
-    expect(providerSource).toMatch(
-      /onUnexpectedRoomDisconnect[\s\S]*voiceIntentExecutorRef\.current\.onRoomDisconnected\(\s*false,\s*'Room disconnected',?\s*\)/,
-    )
-    expect(providerSource).not.toContain('voiceRejoinRef')
-  })
-
   it('cleans up voice silently on provider unmount instead of playing a manual leave sound', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
@@ -172,7 +149,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: (phase) => phases.push(phase),
@@ -211,7 +187,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: vi.fn(),
@@ -236,7 +211,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: vi.fn(),
@@ -264,7 +238,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: vi.fn(),
@@ -287,7 +260,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: vi.fn(),
@@ -363,29 +335,6 @@ describe('createVoiceJoinRunner', () => {
     )
   })
 
-  it('provider lets a newer move supersede an in-flight move to another channel', () => {
-    const repoRoot = resolve(
-      fileURLToPath(new URL('../../../../..', import.meta.url)),
-    )
-    const providerSource = readFileSync(
-      resolve(repoRoot, 'apps/web/src/features/voice/voice-provider.tsx'),
-      'utf8',
-    )
-
-    expect(providerSource).not.toMatch(
-      /if \(inFlight\) \{[\s\S]*await inFlight\.promise\.catch/,
-    )
-    expect(providerSource).toMatch(/isCurrentJoinOperation/)
-    expect(providerSource).not.toContain('disconnectSupersededTargetRoom')
-    expect(providerSource).toMatch(/previousVisualChannelId/)
-    expect(providerSource).not.toContain('pendingReplacedVoiceRoomRef')
-    expect(providerSource).not.toContain('controllerState.previousChannelId')
-    expect(providerSource).not.toContain('rememberVoiceIntentCanceledOperation')
-    expect(providerSource).toMatch(
-      /voiceIntentExecutorRef\.current\.intent\(targetChannelId, reason\)/,
-    )
-  })
-
   it('passes DM recipients to the voice join request', async () => {
     syncStore.upsertChannel({
       _id: 'dm-channel',
@@ -401,7 +350,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: vi.fn(),
@@ -437,7 +385,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: vi.fn(),
@@ -479,7 +426,6 @@ describe('createVoiceJoinRunner', () => {
       beginConnecting: vi.fn(),
       attachRoomHandlers: vi.fn(),
       setLiveKitCredentials: vi.fn(),
-      onRoomConnected: vi.fn(),
       onJoinSuccess: vi.fn(),
       abortJoin: vi.fn(),
       setConnectionPhase: vi.fn(),

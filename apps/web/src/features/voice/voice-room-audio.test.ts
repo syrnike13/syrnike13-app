@@ -48,9 +48,8 @@ function createAttachRoomAudioDeps(overrides: Partial<Parameters<typeof attachRo
     getDeafened: () => false,
     getNativeScreenState: () => ({ status: 'idle' }),
     getStoppedNativeScreenIdentity: () => null,
-    getCurrentRoom: () => null,
+    isOwnedRoom: () => false,
     getTargetChannelId: () => 'voice-a',
-    markConnected: vi.fn(),
     setParticipantCount: vi.fn(),
     syncRoomParticipants: vi.fn(),
     runVoiceRecovery: vi.fn(),
@@ -60,7 +59,6 @@ function createAttachRoomAudioDeps(overrides: Partial<Parameters<typeof attachRo
     abortJoinAttempt: vi.fn(),
     onNativeScreenPublicationLost: vi.fn(),
     onUnexpectedRoomDisconnect: vi.fn(),
-    playUiSound: vi.fn(),
     ...overrides,
   }
 }
@@ -241,13 +239,11 @@ describe('voice room audio helpers', () => {
     expect(document.body.contains(detachedElement)).toBe(false)
   })
 
-  it('marks the room connected and syncs participants when LiveKit connects', () => {
+  it('syncs participants for an executor-owned room when LiveKit connects', () => {
     const { room, emit } = createRoomHarness()
-    const markConnected = vi.fn()
     const setParticipantCount = vi.fn()
     const syncRoomParticipants = vi.fn()
     const runVoiceRecovery = vi.fn()
-    const playUiSound = vi.fn()
 
     attachRoomAudio(room as never, {
       currentUserId: 'local-user',
@@ -255,9 +251,8 @@ describe('voice room audio helpers', () => {
       getDeafened: () => false,
       getNativeScreenState: () => ({ status: 'idle', visibleInRoom: false }),
       getStoppedNativeScreenIdentity: () => null,
-      getCurrentRoom: () => room as never,
+      isOwnedRoom: () => true,
       getTargetChannelId: () => 'voice-a',
-      markConnected,
       setParticipantCount,
       syncRoomParticipants,
       runVoiceRecovery,
@@ -267,16 +262,30 @@ describe('voice room audio helpers', () => {
       abortJoinAttempt: vi.fn(),
       onNativeScreenPublicationLost: vi.fn(),
       onUnexpectedRoomDisconnect: vi.fn(),
-      playUiSound,
     })
 
     emit('connected')
 
-    expect(markConnected).toHaveBeenCalled()
-    expect(playUiSound).toHaveBeenCalledWith('voice.user_join')
     expect(setParticipantCount).toHaveBeenCalledWith(3)
     expect(syncRoomParticipants).toHaveBeenCalled()
-    expect(runVoiceRecovery).toHaveBeenCalledWith('participants_changed')
+    expect(runVoiceRecovery).not.toHaveBeenCalled()
+  })
+
+  it('ignores late connected events from rooms no longer owned by the executor', () => {
+    const { room, emit } = createRoomHarness()
+    const setParticipantCount = vi.fn()
+    const syncRoomParticipants = vi.fn()
+
+    attachRoomAudio(room as never, createAttachRoomAudioDeps({
+      isOwnedRoom: () => false,
+      setParticipantCount,
+      syncRoomParticipants,
+    }))
+
+    emit(RoomEvent.Connected)
+
+    expect(setParticipantCount).not.toHaveBeenCalled()
+    expect(syncRoomParticipants).not.toHaveBeenCalled()
   })
 
   it('forwards active unexpected room disconnects to recovery wiring', () => {
@@ -284,7 +293,7 @@ describe('voice room audio helpers', () => {
     const onUnexpectedRoomDisconnect = vi.fn()
 
     attachRoomAudio(room as never, createAttachRoomAudioDeps({
-      getCurrentRoom: () => room as never,
+      isOwnedRoom: () => true,
       onUnexpectedRoomDisconnect,
     }))
 
@@ -293,12 +302,49 @@ describe('voice room audio helpers', () => {
     expect(onUnexpectedRoomDisconnect).toHaveBeenCalledWith('voice-a')
   })
 
+  it('removes only the disconnected room audio subscriptions from the mixer', () => {
+    const { room, emit } = createRoomHarness()
+    const mixer = {
+      addTrack: vi.fn(() => true),
+      removeTrack: vi.fn(),
+      removeMediaStreamTrack: vi.fn(),
+      applyVolumes: vi.fn(),
+    }
+    const sourceElement = document.createElement('audio')
+    sourceElement.play = vi.fn(() => Promise.resolve())
+    const mediaStreamTrack = { id: 'room-track' } as MediaStreamTrack
+    const track = {
+      kind: Track.Kind.Audio,
+      mediaStreamTrack,
+      detach: vi.fn(() => []),
+      attach: vi.fn(() => sourceElement),
+    } as unknown as Track
+    const publication = {
+      source: Track.Source.Microphone,
+      trackSid: 'publication-room-track',
+    } as RemoteTrackPublication
+    const participant = {
+      identity: 'remote-user',
+      isLocal: false,
+    } as RemoteParticipant
+
+    attachRoomAudio(room as never, createAttachRoomAudioDeps({
+      getRemoteAudioMixer: () => mixer,
+      isOwnedRoom: () => true,
+    }))
+    emit(RoomEvent.TrackSubscribed, track, publication, participant)
+    emit(RoomEvent.Disconnected)
+
+    expect(mixer.removeTrack).toHaveBeenCalledWith('publication-room-track')
+    expect(mixer.removeMediaStreamTrack).toHaveBeenCalledWith(mediaStreamTrack)
+  })
+
   it('aborts join attempts when a disconnect has no target channel', () => {
     const { room, emit } = createRoomHarness()
     const abortJoinAttempt = vi.fn()
 
     attachRoomAudio(room as never, createAttachRoomAudioDeps({
-      getCurrentRoom: () => room as never,
+      isOwnedRoom: () => true,
       getTargetChannelId: () => null,
       abortJoinAttempt,
     }))
@@ -313,7 +359,7 @@ describe('voice room audio helpers', () => {
     const onUnexpectedRoomDisconnect = vi.fn()
 
     attachRoomAudio(room as never, createAttachRoomAudioDeps({
-      getCurrentRoom: () => null,
+      isOwnedRoom: () => false,
       onUnexpectedRoomDisconnect,
     }))
 

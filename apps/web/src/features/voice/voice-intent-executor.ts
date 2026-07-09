@@ -8,10 +8,9 @@ import {
 } from '#/features/voice/voice-intent-director'
 import { createVoiceOperationId } from '#/features/voice/voice-operation'
 import type {
-  ActiveVoiceSessionSnapshot,
-  LiveKitNativeCredentials,
-} from '#/features/voice/voice-join'
-import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
+  VoiceConnectionPhase,
+  VoiceStatus,
+} from '#/features/voice/voice-mic-status'
 import { createVoiceRejoinController } from '#/features/voice/voice-rejoin'
 import {
   runVoiceRecovery,
@@ -25,10 +24,21 @@ import {
 export type VoiceExecutorSnapshot = {
   activeOperationId: string | null
   room: Room | null
+  channelId: string | null
+  status: VoiceStatus
+  localVoiceReady: boolean
   committedChannelId: string | null
   phase: VoiceDirectorState['phase']
   lastError: string | null
 }
+
+export type VoiceExecutorSession = Readonly<{
+  operationId: string | null
+  room: Room | null
+  channelId: string | null
+  status: VoiceStatus
+  localVoiceReady: boolean
+}>
 
 export type VoiceIntentExecutorJoinOptions = {
   operationId: string
@@ -51,14 +61,31 @@ export type VoiceLocalDisconnectSession = {
   room: Room | null
 }
 
-export type VoiceMoveSourceSession = ActiveVoiceSessionSnapshot & {
+export type VoiceMoveSourceSession = {
   operationId: string
+  room: Room
+  channelId: string
+  localVoiceReady: boolean
 }
+
+type PendingMoveSource = {
+  source: VoiceExecutorSession & { room: Room; channelId: string }
+  targetOperationId: string
+}
+
+export type VoiceRoomDisconnectDisposition =
+  | 'ignored'
+  | 'retained_source_lost'
+  | 'candidate_lost'
+  | 'committed_session_lost'
 
 export type VoiceExecutorRecoveryDeps = Omit<
   VoiceRecoveryRunnerDeps,
   | 'getDesiredChannelId'
+  | 'getActiveChannelId'
+  | 'getStatus'
   | 'getRoom'
+  | 'isCurrentVoiceSession'
   | 'requestRejoinOperation'
   | 'stopRemoteSupersededVoiceSession'
   | 'getPendingRejoinChannelId'
@@ -73,19 +100,16 @@ type VoiceJoinInFlight = {
 
 export type VoiceExecutorDeps = {
   getToken: () => string | undefined
-  getLocalUserId: () => string | undefined
   isJoinBlocked: () => boolean
-  getActiveSession: () => ActiveVoiceSessionSnapshot | null
   performVoiceJoin: (
     channelId: string,
     options: VoiceIntentExecutorJoinOptions,
   ) => Promise<VoiceIntentExecutorJoinResult>
   requestVoiceLeave: () => void
   shouldKeepRejoining: (channelId: string) => boolean
-  attachRoomHandlers: (room: Room) => void
-  onRoomConnected: (room: Room, channelId: string) => void
+  startLocalVoiceSetup: (room: Room, channelId: string) => void
   onAbort: () => void
-  beginVisualTransition: (channelId: string) => void
+  prepareVisualTransition: (channelId: string) => void
   clearVisualPresence: (channelId: string) => void
   completeTerminalLeave: (
     session: VoiceTerminalLeaveSession,
@@ -96,8 +120,7 @@ export type VoiceExecutorDeps = {
   disconnectMoveSource: (
     session: VoiceMoveSourceSession,
   ) => Promise<void> | void
-  onRoomChanged: (room: Room | null) => void
-  setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
+  onSessionChanged: (session: VoiceExecutorSession) => void
   setConnectionPhase: (phase: VoiceConnectionPhase) => void
   recovery: VoiceExecutorRecoveryDeps
   createOperationId?: () => string
@@ -112,6 +135,7 @@ export interface VoiceIntentExecutor {
   getState(): VoiceDirectorState
   getSnapshot(): VoiceExecutorSnapshot
   getRoom(): Room | null
+  ownsRoom(room: Room): boolean
   subscribe(listener: (state: VoiceDirectorState) => void): () => void
   intent(channelId: string, reason: VoiceJoinReason): void
   requestRejoin(channelId: string): string
@@ -124,8 +148,17 @@ export interface VoiceIntentExecutor {
     error?: string,
   ): void
   observeSupersede(reason: string, targetChannelId?: string): void
-  reconcileWithServer(trigger: string): void
-  onRoomDisconnected(expected: boolean, error?: string): void
+  reconcileWithServer(trigger: string, sourceRoom?: Room): void
+  onRoomDisconnected(
+    room: Room,
+    expected: boolean,
+    error?: string,
+  ): VoiceRoomDisconnectDisposition
+  observeLocalVoiceReady(
+    room: Room,
+    channelId: string,
+    ready: boolean,
+  ): void
   disconnectLocalSession(): Promise<void>
   reset(): void
   teardown(): Promise<void>
@@ -138,10 +171,17 @@ export function createVoiceIntentExecutor({
     getDeps().createOperationId ?? createVoiceOperationId
   const listeners = new Set<(state: VoiceDirectorState) => void>()
   let state = createInitialDirectorState()
-  let room: Room | null = null
+  let session: VoiceExecutorSession = {
+    operationId: null,
+    room: null,
+    channelId: null,
+    status: 'idle',
+    localVoiceReady: false,
+  }
   let executing = false
   let startedOperationId: string | null = null
-  let pendingMoveSource: VoiceMoveSourceSession | null = null
+  let pendingMoveSource: PendingMoveSource | null = null
+  let localSetupOperationId: string | null = null
   let remoteSupersedeDisconnect: Promise<void> | null = null
   let recoveryJoinInFlight: VoiceJoinInFlight | null = null
   const nativeMedia = createVoiceNativeMediaOwner()
@@ -149,7 +189,10 @@ export function createVoiceIntentExecutor({
   function getSnapshot(): VoiceExecutorSnapshot {
     return {
       activeOperationId: state.activeOperationId,
-      room,
+      room: session.room,
+      channelId: session.channelId,
+      status: session.status,
+      localVoiceReady: session.localVoiceReady,
       committedChannelId: state.committed,
       phase: state.phase,
       lastError: state.lastError,
@@ -191,40 +234,72 @@ export function createVoiceIntentExecutor({
     )
   }
 
-  function setRoom(nextRoom: Room | null) {
-    if (room === nextRoom) {
+  function setSession(next: VoiceExecutorSession) {
+    if (
+      session.operationId === next.operationId &&
+      session.room === next.room &&
+      session.channelId === next.channelId &&
+      session.status === next.status &&
+      session.localVoiceReady === next.localVoiceReady
+    ) {
       return
     }
-    room = nextRoom
-    getDeps().onRoomChanged(room)
+    session = next
+    getDeps().onSessionChanged(session)
+  }
+
+  function setIdleSession() {
+    localSetupOperationId = null
+    setSession({
+      operationId: null,
+      room: null,
+      channelId: null,
+      status: 'idle',
+      localVoiceReady: false,
+    })
   }
 
   function finalizeMoveSource(operationId: string) {
-    const source = pendingMoveSource
-    if (!source || source.operationId !== operationId) {
+    const pending = pendingMoveSource
+    if (!pending || pending.targetOperationId !== operationId) {
       return
     }
     pendingMoveSource = null
-    void Promise.resolve(getDeps().disconnectMoveSource(source)).catch(
+    const { source } = pending
+    void Promise.resolve(getDeps().disconnectMoveSource({
+      operationId,
+      room: source.room,
+      channelId: source.channelId,
+      localVoiceReady: source.localVoiceReady,
+    })).catch(
       (error: unknown) => {
         // disconnect не должен рвать исполнение очереди; логируем и идём дальше.
         console.warn('[voice-intent] failed to disconnect move source', error)
       },
     )
-    if (room === source.room) {
-      setRoom(null)
-    }
   }
 
   function restoreMoveSource(channelId: string) {
-    const source = pendingMoveSource
-    if (!source || source.channelId !== channelId) {
+    const pending = pendingMoveSource
+    if (
+      !pending ||
+      pending.source.channelId !== channelId ||
+      state.committed !== channelId
+    ) {
       return false
     }
 
-    const targetRoom = room
+    const targetRoom = session.room
+    const { source } = pending
     pendingMoveSource = null
-    setRoom(source.room)
+    setSession(source)
+    getDeps().setConnectionPhase(
+      source.localVoiceReady ? 'connected' : 'connecting_microphone',
+    )
+    localSetupOperationId = source.operationId
+    if (!source.localVoiceReady) {
+      getDeps().startLocalVoiceSetup(source.room, source.channelId)
+    }
     if (targetRoom && targetRoom !== source.room) {
       targetRoom.removeAllListeners()
       void targetRoom.disconnect().catch(() => {})
@@ -235,6 +310,29 @@ export function createVoiceIntentExecutor({
       supersededOperationId: state.activeOperationId,
     })
     return true
+  }
+
+  function completeCommittedRoom(operationId: string, channelId: string) {
+    if (
+      session.operationId !== operationId ||
+      session.channelId !== channelId ||
+      !session.room ||
+      state.committedOperationId !== operationId ||
+      state.committed !== channelId
+    ) {
+      return
+    }
+
+    const room = session.room
+    setSession({
+      ...session,
+      status: 'connected',
+    })
+    if (localSetupOperationId !== operationId) {
+      localSetupOperationId = operationId
+      getDeps().startLocalVoiceSetup(room, channelId)
+    }
+    finalizeMoveSource(operationId)
   }
 
   async function maybeExecute() {
@@ -274,10 +372,10 @@ export function createVoiceIntentExecutor({
     deps.requestVoiceLeave()
     deps.clearVisualPresence(channelId)
     if (terminalLeave) {
-      const terminalRoom = room
+      const terminalRoom = session.room
       await deps.completeTerminalLeave({ channelId, room: terminalRoom })
-      if (room === terminalRoom) {
-        setRoom(null)
+      if (session.room === terminalRoom) {
+        setIdleSession()
       }
     }
 
@@ -297,9 +395,37 @@ export function createVoiceIntentExecutor({
     }
 
     const deps = getDeps()
-    deps.beginVisualTransition(channelId)
-    const moveSource =
-      reason === 'rejoin' ? null : deps.getActiveSession()
+    const previousSession = session
+    if (
+      !pendingMoveSource &&
+      previousSession.room &&
+      previousSession.channelId &&
+      previousSession.status === 'connected'
+    ) {
+      pendingMoveSource = {
+        source: {
+          ...previousSession,
+          room: previousSession.room,
+          channelId: previousSession.channelId,
+        },
+        targetOperationId: operationId,
+      }
+    } else if (pendingMoveSource) {
+      pendingMoveSource.targetOperationId = operationId
+    } else if (previousSession.room) {
+      previousSession.room.removeAllListeners()
+      void previousSession.room.disconnect().catch(() => {})
+    }
+
+    localSetupOperationId = null
+    deps.prepareVisualTransition(channelId)
+    setSession({
+      operationId,
+      room: null,
+      channelId,
+      status: 'connecting',
+      localVoiceReady: false,
+    })
     try {
       const result = await deps.performVoiceJoin(channelId, {
         operationId,
@@ -317,22 +443,16 @@ export function createVoiceIntentExecutor({
         return
       }
       if (typeof result === 'object') {
-        if (
-          moveSource &&
-          moveSource.room !== result.room &&
-          moveSource.channelId !== channelId
-        ) {
-          pendingMoveSource = {
-            ...moveSource,
-            operationId,
-          }
-        }
-        setRoom(result.room)
-        if (state.committed === channelId) {
-          finalizeMoveSource(operationId)
-        }
+        setSession({
+          operationId,
+          room: result.room,
+          channelId,
+          status: 'connecting',
+          localVoiceReady: false,
+        })
       }
       dispatch({ type: 'step_awaiting_commit', operationId })
+      completeCommittedRoom(operationId, channelId)
     } catch (error) {
       if (!isCurrent(operationId)) {
         return
@@ -345,14 +465,12 @@ export function createVoiceIntentExecutor({
     }
   }
 
-  function disconnectRoom() {
-    const currentRoom = room
-    setRoom(null)
-    if (!currentRoom) {
+  function disconnectRoom(room: Room | null) {
+    if (!room) {
       return Promise.resolve()
     }
-    currentRoom.removeAllListeners()
-    return currentRoom.disconnect().catch(() => {})
+    room.removeAllListeners()
+    return room.disconnect().catch(() => {})
   }
 
   function requestRejoin(channelId: string) {
@@ -376,7 +494,10 @@ export function createVoiceIntentExecutor({
       requestRejoin(channelId)
       return true
     },
-    onGiveUp: () => getDeps().onAbort(),
+    onGiveUp: () => {
+      getDeps().onAbort()
+      resetExecutor()
+    },
     isGatewayConnected: () => getDeps().recovery.getGatewayConnected(),
     shouldKeepTrying: (channelId) =>
       Boolean(getDeps().getToken()) &&
@@ -385,26 +506,40 @@ export function createVoiceIntentExecutor({
   })
 
   async function disconnectLocalSession() {
-    const currentRoom = room
+    const currentRoom = session.room
     const currentChannelId =
       state.committed ??
+      session.channelId ??
       (state.desired.kind === 'channel' ? state.desired.channelId : null)
+    const retainedSource = pendingMoveSource
 
     startedOperationId = null
     pendingMoveSource = null
     dispatch({ type: 'reset' })
-    await getDeps().disconnectLocalSession({
-      channelId: currentChannelId,
-      room: currentRoom,
-    })
-    if (room === currentRoom) {
-      setRoom(null)
+    setIdleSession()
+
+    const disconnects: Promise<unknown>[] = [
+      Promise.resolve(getDeps().disconnectLocalSession({
+        channelId: currentChannelId,
+        room: currentRoom,
+      })),
+    ]
+    if (retainedSource && retainedSource.source.room !== currentRoom) {
+      disconnects.push(
+        Promise.resolve(getDeps().disconnectMoveSource({
+          operationId: retainedSource.targetOperationId,
+          room: retainedSource.source.room,
+          channelId: retainedSource.source.channelId,
+          localVoiceReady: retainedSource.source.localVoiceReady,
+        })),
+      )
     }
+    await Promise.all(disconnects)
   }
 
   function observeSupersede(reason: string, targetChannelId?: string) {
     if (remoteSupersedeDisconnect) return
-    if (!room && !state.committed && state.desired.kind !== 'channel') return
+    if (!session.room && !state.committed && state.desired.kind !== 'channel') return
 
     console.warn('[voice-session] local voice session superseded', {
       reason,
@@ -424,11 +559,23 @@ export function createVoiceIntentExecutor({
     })
   }
 
+  function resetExecutor() {
+    voiceRejoin.cancel()
+    recoveryJoinInFlight = null
+    startedOperationId = null
+    pendingMoveSource = null
+    state = createInitialDirectorState()
+    setIdleSession()
+    notify()
+  }
+
   return {
     nativeMedia,
     getState: () => state,
     getSnapshot,
-    getRoom: () => room,
+    getRoom: () => session.room,
+    ownsRoom: (room) =>
+      session.room === room || pendingMoveSource?.source.room === room,
     subscribe(listener) {
       listeners.add(listener)
       return () => {
@@ -440,17 +587,38 @@ export function createVoiceIntentExecutor({
       if (restoreMoveSource(channelId)) {
         return
       }
+      if (
+        state.committed === channelId &&
+        state.desired.kind === 'channel' &&
+        state.desired.channelId !== channelId
+      ) {
+        requestRejoin(channelId)
+        return
+      }
       dispatch({ type: 'intent', channelId, reason })
     },
     requestRejoin,
     clearIntent() {
       voiceRejoin.cancel()
+      if (
+        pendingMoveSource &&
+        state.committed === pendingMoveSource.source.channelId
+      ) {
+        restoreMoveSource(pendingMoveSource.source.channelId)
+      } else if (pendingMoveSource) {
+        finalizeMoveSource(pendingMoveSource.targetOperationId)
+      }
       dispatch({ type: 'clear_intent' })
+      if (state.committed === null && state.steps.length === 0) {
+        const transientRoom = session.room
+        setIdleSession()
+        void disconnectRoom(transientRoom)
+      }
     },
     observeCommit(operationId, channelId) {
       voiceRejoin.cancel()
       dispatch({ type: 'commit', operationId, channelId })
-      finalizeMoveSource(operationId)
+      completeCommittedRoom(operationId, channelId)
     },
     observeLeave(operationId) {
       voiceRejoin.cancel()
@@ -460,15 +628,30 @@ export function createVoiceIntentExecutor({
       dispatch({ type: 'disconnected', operationId, expected, error })
     },
     observeSupersede,
-    reconcileWithServer(trigger) {
+    reconcileWithServer(trigger, sourceRoom) {
       if (trigger === 'gateway_connected') {
         voiceRejoin.onGatewayConnected()
       }
+      if (
+        (sourceRoom && sourceRoom !== session.room) ||
+        !session.room ||
+        !session.channelId ||
+        session.status !== 'connected' ||
+        state.committed !== session.channelId
+      ) {
+        return
+      }
       runVoiceRecovery(trigger, {
         ...getDeps().recovery,
+        getActiveChannelId: () => session.channelId,
         getDesiredChannelId: () =>
           state.desired.kind === 'channel' ? state.desired.channelId : null,
-        getRoom: () => room,
+        getStatus: () => session.status,
+        getRoom: () => session.room,
+        isCurrentVoiceSession: (room, channelId) =>
+          session.room === room &&
+          session.channelId === channelId &&
+          session.status === 'connected',
         getPendingRejoinChannelId: () => voiceRejoin.getPendingChannelId(),
         getJoinInFlight: () => recoveryJoinInFlight,
         setJoinInFlight: (join) => {
@@ -478,33 +661,63 @@ export function createVoiceIntentExecutor({
         stopRemoteSupersededVoiceSession: observeSupersede,
       })
     },
-    onRoomDisconnected(expected, error) {
-      const operationId = state.activeOperationId
-      if (!operationId && state.committed === null) {
-        return
+    onRoomDisconnected(room, expected, error) {
+      if (pendingMoveSource?.source.room === room) {
+        pendingMoveSource = null
+        return 'retained_source_lost'
       }
-      const reconnectChannelId =
-        state.committed ??
-        (state.desired.kind === 'channel' ? state.desired.channelId : null)
+      if (session.room !== room) {
+        return 'ignored'
+      }
+      const operationId =
+        session.operationId ??
+        state.committedOperationId ??
+        state.activeOperationId
+      if (!operationId && state.committed === null) {
+        return 'ignored'
+      }
+      const candidateLost =
+        session.status === 'connecting' ||
+        session.operationId !== state.committedOperationId
+      const reconnectChannelId = candidateLost
+        ? session.channelId
+        : state.committed ??
+          (state.desired.kind === 'channel' ? state.desired.channelId : null)
       if (!expected) {
-        setRoom(null)
-        if (reconnectChannelId) {
+        setSession({
+          operationId,
+          room: null,
+          channelId: reconnectChannelId,
+          status: reconnectChannelId ? 'connecting' : 'idle',
+          localVoiceReady: false,
+        })
+        if (!candidateLost && reconnectChannelId) {
           voiceRejoin.onUnexpectedDisconnect(reconnectChannelId)
         }
       }
       dispatch({ type: 'disconnected', operationId, expected, error })
+      return candidateLost ? 'candidate_lost' : 'committed_session_lost'
+    },
+    observeLocalVoiceReady(room, channelId, ready) {
+      if (
+        session.room !== room ||
+        session.channelId !== channelId ||
+        session.status !== 'connected'
+      ) {
+        return
+      }
+      setSession({ ...session, localVoiceReady: ready })
     },
     disconnectLocalSession,
-    reset() {
-      voiceRejoin.cancel()
-      recoveryJoinInFlight = null
-      startedOperationId = null
-      state = createInitialDirectorState()
-      notify()
-    },
+    reset: resetExecutor,
     async teardown() {
-      this.reset()
-      await disconnectRoom()
+      const currentRoom = session.room
+      const retainedRoom = pendingMoveSource?.source.room ?? null
+      resetExecutor()
+      await Promise.all([
+        disconnectRoom(currentRoom),
+        retainedRoom !== currentRoom ? disconnectRoom(retainedRoom) : Promise.resolve(),
+      ])
     },
   }
 }

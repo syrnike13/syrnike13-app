@@ -8,7 +8,7 @@ use crate::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Database, Server,
 };
-use iso8601_timestamp::Timestamp;
+use iso8601_timestamp::{Duration, Timestamp};
 use livekit_protocol::{participant_info, ParticipantInfo, ParticipantPermission, TrackSource};
 use redis_kiss::{
     get_connection as _get_connection,
@@ -225,7 +225,7 @@ pub async fn raise_if_in_voice(user: &User, _channel: &UserVoiceChannel) -> Resu
 pub async fn set_channel_node(channel_id: &str, node: &str) -> Result<()> {
     cmd("SETEX")
         .arg(voice_channel_node_key(channel_id))
-        .arg(VOICE_MEMBERSHIP_TTL_SECONDS)
+        .arg(VOICE_SESSION_TTL_SECONDS)
         .arg(node)
         .query_async::<_, ()>(&mut get_connection().await?.into_inner())
         .await
@@ -688,6 +688,25 @@ pub async fn get_voice_channel_members(channel: &UserVoiceChannel) -> Result<Opt
         .map(|opt| opt.and_then(|v| if v.is_empty() { None } else { Some(v) }))
 }
 
+fn consistent_voice_node<'a>(mut nodes: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    let node = nodes.next()?;
+    nodes.all(|candidate| candidate == node).then_some(node)
+}
+
+fn voice_session_is_within_transient_grace(expires_at: Timestamp, now: Timestamp) -> bool {
+    expires_at > now
+}
+
+async fn refresh_current_voice_session_projections(sessions: &[VoiceSession]) -> Result<()> {
+    let now = Timestamp::now_utc();
+    for session in sessions {
+        if voice_session_is_within_transient_grace(session.expires_at, now) {
+            refresh_active_voice_session_projection_ttl(session).await?;
+        }
+    }
+    Ok(())
+}
+
 pub async fn get_voice_participant_reconciliation(
     voice_client: &VoiceClient,
     channel: &UserVoiceChannel,
@@ -695,28 +714,45 @@ pub async fn get_voice_participant_reconciliation(
     let redis_members = get_voice_channel_members(channel)
         .await?
         .unwrap_or_default();
-    let mut current_operations = Vec::new();
+    let mut current_sessions = Vec::new();
     for user_id in &redis_members {
         if let Some(session) = get_current_voice_session(user_id).await? {
             if same_voice_channel(&session.channel, channel)
                 && session.state == VoiceSessionState::Active
             {
-                current_operations.push((user_id.clone(), session.operation_id));
+                current_sessions.push(session);
             } else if let Some(previous_session) =
                 get_replaced_active_voice_session(&session).await?
             {
                 if same_voice_channel(&previous_session.channel, channel) {
-                    current_operations.push((user_id.clone(), previous_session.operation_id));
+                    current_sessions.push(previous_session);
                 }
             }
         }
     }
-    let Some(node) = get_channel_node(&channel.id).await? else {
-        log::warn!(
-            "Skipping voice reconciliation for channel {} because no voice node is recorded",
-            channel.id
-        );
-        return Ok(VoiceParticipantReconciliationVerdict::SkipTransient);
+    let current_operations = current_sessions
+        .iter()
+        .map(|session| (session.user_id.clone(), session.operation_id.clone()))
+        .collect::<Vec<_>>();
+    let node = match get_channel_node(&channel.id).await? {
+        Some(node) => node,
+        None => {
+            let Some(node) =
+                consistent_voice_node(current_sessions.iter().map(|session| session.node.as_str()))
+            else {
+                log::warn!(
+                    "Skipping voice reconciliation for channel {} because no consistent voice node is recorded",
+                    channel.id
+                );
+                return Ok(VoiceParticipantReconciliationVerdict::SkipTransient);
+            };
+            let node = node.to_owned();
+            log::warn!(
+                "Using the active voice session to probe the missing node projection for channel {}",
+                channel.id
+            );
+            node
+        }
     };
 
     let livekit_participants = match voice_client
@@ -734,6 +770,7 @@ pub async fn get_voice_participant_reconciliation(
                 "Skipping voice reconciliation for channel {} on node {node}: {error}",
                 channel.id
             );
+            refresh_current_voice_session_projections(&current_sessions).await?;
             return Ok(VoiceParticipantReconciliationVerdict::SkipTransient);
         }
     };
@@ -744,9 +781,14 @@ pub async fn get_voice_participant_reconciliation(
         &current_operations,
     );
 
-    for (user_id, operation_id) in &current_operations {
-        if reconciliation.livekit_members.contains(user_id) {
-            refresh_active_voice_session_projection_ttl(channel, user_id, operation_id).await?;
+    let confirmed_at = Timestamp::now_utc();
+    for session in &current_sessions {
+        if reconciliation.livekit_members.contains(&session.user_id) {
+            let mut renewed_session = session.clone();
+            renewed_session.expires_at = confirmed_at
+                .checked_add(Duration::seconds(VOICE_SESSION_TTL_SECONDS as i64))
+                .ok_or_else(|| create_error!(InternalError))?;
+            refresh_active_voice_session_projection_ttl(&renewed_session).await?;
         }
     }
 
@@ -1260,9 +1302,43 @@ impl FromRedisValue for UserVoiceChannel {
 mod tests {
     use super::partial_voice_state_for_track;
     use crate::{SystemMessage, VoiceCallEndReason};
-    use iso8601_timestamp::Timestamp;
+    use iso8601_timestamp::{Duration, Timestamp};
     use std::collections::HashMap;
     use syrnike_models::v0::PartialUserVoiceState;
+
+    #[test]
+    fn consistent_voice_node_requires_one_shared_node() {
+        assert_eq!(
+            super::consistent_voice_node(std::iter::empty::<&str>()),
+            None
+        );
+        assert_eq!(
+            super::consistent_voice_node(["node-a", "node-a"].into_iter()),
+            Some("node-a")
+        );
+        assert_eq!(
+            super::consistent_voice_node(["node-a", "node-b"].into_iter()),
+            None
+        );
+    }
+
+    #[test]
+    fn transient_projection_refresh_has_a_fixed_session_deadline() {
+        let now = Timestamp::UNIX_EPOCH + Duration::seconds(60);
+
+        assert!(super::voice_session_is_within_transient_grace(
+            Timestamp::UNIX_EPOCH + Duration::seconds(61),
+            now,
+        ));
+        assert!(!super::voice_session_is_within_transient_grace(
+            Timestamp::UNIX_EPOCH + Duration::seconds(60),
+            now,
+        ));
+        assert!(!super::voice_session_is_within_transient_grace(
+            Timestamp::UNIX_EPOCH + Duration::seconds(59),
+            now,
+        ));
+    }
 
     #[test]
     fn screen_share_video_updates_streaming_state() {
