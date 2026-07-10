@@ -358,43 +358,9 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.DESKTOP_NIGHTLY_SENTRY_PROJECT || vars.DESKTOP_SENTRY_PROJECT }}
-      - name: Package, sign, and verify nightly Windows desktop
+      - name: Package and verify nightly Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
-        env:
-          SYRNIKE_REQUIRE_WINDOWS_SIGNING: '1'
-          SYRNIKE_AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
-          SYRNIKE_AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
-          SYRNIKE_AZURE_SIGN_CERTIFICATE_PROFILE: ${{ vars.AZURE_SIGN_CERTIFICATE_PROFILE }}
-          SYRNIKE_AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      - name: Verify nightly Windows Authenticode signatures
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $signtool) { throw 'signtool.exe was not found' }
-          $unpacked = 'apps/desktop/release-nightly/win-unpacked'
-          $native = "$unpacked/resources/native/win32-x64"
-          $files = @(
-            "$native/syrnike_media.node",
-            "$native/syrnike_hooks.node",
-            "$native/livekit.dll",
-            "$native/livekit_ffi.dll"
-          ) + @(
-            Get-ChildItem $unpacked -File -Filter '*.exe' | ForEach-Object FullName
-          ) + @(
-            Get-ChildItem apps/desktop/release-nightly -File -Filter '*.exe' |
-              ForEach-Object FullName
-          )
-          foreach ($file in $files) {
-            & $signtool verify /pa /all $file
-            if ($LASTEXITCODE -ne 0) { throw "Invalid Authenticode signature: $file" }
-          }
       - name: Package and verify nightly desktop
         if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared

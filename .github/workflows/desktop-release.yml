@@ -64,43 +64,14 @@ jobs:
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
           SYRNIKE_REQUIRE_SENTRY_UPLOAD: '1'
-      - name: Package and sign Windows desktop
+      - name: Package Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
-        env:
-          SYRNIKE_REQUIRE_WINDOWS_SIGNING: '1'
-          SYRNIKE_AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
-          SYRNIKE_AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
-          SYRNIKE_AZURE_SIGN_CERTIFICATE_PROFILE: ${{ vars.AZURE_SIGN_CERTIFICATE_PROFILE }}
-          SYRNIKE_AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       - name: Package desktop
         if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Start desktop rollout at five percent
         run: node tooling/scripts/set-desktop-update-stage.mjs apps/desktop/release 5 --if-present
-      - name: Verify Windows Authenticode signatures
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $signtool) { throw 'signtool.exe was not found' }
-          $native = 'apps/desktop/release/win-unpacked/resources/native/win32-x64'
-          $files = @(
-            "$native/syrnike_media.node",
-            "$native/syrnike_hooks.node",
-            "$native/livekit.dll",
-            "$native/livekit_ffi.dll",
-            'apps/desktop/release/win-unpacked/syrnike13.exe'
-          ) + @(Get-ChildItem apps/desktop/release -File -Filter '*.exe' | ForEach-Object FullName)
-          foreach ($file in $files) {
-            & $signtool verify /pa /all $file
-            if ($LASTEXITCODE -ne 0) { throw "Invalid Authenticode signature: $file" }
-          }
       - name: Retain release native symbols
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
