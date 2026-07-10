@@ -71,26 +71,31 @@ int main() try {
   MediaRuntime runtime(sink, livekit);
 
   MediaCommand connect;
-  connect.type = "connectMicrophone";
-  connect.request_id = "mic-connect";
-  connect.session_id = "mic-session";
+  connect.type = "connectScreen";
+  connect.request_id = "screen-connect";
+  connect.session_id = "screen-session";
   connect.generation = 1;
   connect.livekit_url = "wss://livekit.example";
   connect.livekit_token = "token";
-  connect.participant_identity = "user:desktop-native:microphone";
-  connect.audio_bitrate = 64'000;
-  connect.muted = false;
-  require(runtime.dispatch(connect), "media runtime rejected microphone connect");
+  connect.participant_identity = "user:desktop-native:screen";
+  connect.source_id = "screen:1";
+  connect.width = 1280;
+  connect.height = 720;
+  connect.fps = 30;
+  connect.bitrate = 2'500'000;
+  connect.audio_bitrate = 128'000;
+  connect.audio_requested = false;
+  require(runtime.dispatch(connect), "media runtime rejected screen connect");
 
   livekit->waitUntilPending(
     DeterministicFakeLiveKitPublicationClient::Operation::Connect,
     1
   );
 
-  MediaCommand mic_probe;
-  mic_probe.type = "probeMicrophoneActor";
-  mic_probe.request_id = "probe-microphone";
-  require(runtime.dispatch(mic_probe), "media runtime rejected microphone probe");
+  MediaCommand screen_probe;
+  screen_probe.type = "probeScreenActor";
+  screen_probe.request_id = "probe-screen";
+  require(runtime.dispatch(screen_probe), "media runtime rejected screen probe");
 
   MediaCommand query_probe;
   query_probe.type = "probeQueryWorker";
@@ -102,13 +107,13 @@ int main() try {
     "query probe did not reply independently"
   );
   require(
-    sink->waitReply("probe-microphone", std::chrono::milliseconds(500)),
-    "microphone probe did not reply while microphone connect was blocked"
+    sink->waitReply("probe-screen", std::chrono::milliseconds(500)),
+    "screen probe did not reply while screen connect was blocked"
   );
 
   require(
-    !sink->hasReply("mic-connect"),
-    "microphone connect completed before the blocked connect was released"
+    !sink->hasReply("screen-connect"),
+    "screen connect completed before the blocked connect was released"
   );
 
   livekit->releaseNext(
@@ -116,8 +121,8 @@ int main() try {
   );
 
   require(
-    sink->waitReply("mic-connect", std::chrono::seconds(2)),
-    "microphone connect did not complete after connect released"
+    sink->waitReply("screen-connect", std::chrono::seconds(2)),
+    "screen connect did not complete after connect released"
   );
 
   runtime.requestShutdown();
