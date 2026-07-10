@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DESKTOP_APP_USER_MODEL_ID,
+  DESKTOP_RELEASE_CHANNEL,
   desktopReleaseMetadata,
   desktopWindowIconAssetName,
 } from './desktop-app-identity'
@@ -17,7 +18,9 @@ describe('desktop app identity', () => {
   })
 
   it('uses the packaged app id as the Windows AppUserModelID', () => {
-    expect(DESKTOP_APP_USER_MODEL_ID).toBe('ru.syrnike13.desktop')
+    expect(DESKTOP_APP_USER_MODEL_ID).toBe(
+      desktopReleaseMetadata(DESKTOP_RELEASE_CHANNEL).appId,
+    )
   })
 
   it('keeps stable release metadata isolated from nightly', () => {
