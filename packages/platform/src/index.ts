@@ -1,4 +1,10 @@
 export type {
+  LiveKitNativePublisherCredentials,
+  LocalMediaIntent,
+  LocalMediaIntentAcceptanceResult,
+  LocalMediaIntentMicrophone,
+  LocalMediaIntentScreen,
+  LocalMediaObservedStateEvent,
   NativeMediaAudioMode,
   NativeMediaScreenAudioMode,
   NativeMediaEncoderBackend,
@@ -29,6 +35,24 @@ export type {
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
   NativeMediaTarget,
+  ScreenSourceSpec,
+} from './media'
+export {
+  assertLiveKitNativePublisherCredentials,
+  assertLocalMediaIntent,
+  assertLocalMediaIntentAcceptanceResult,
+  assertLocalMediaObservedStateEvent,
+  assertScreenSourceSpec,
+  isLiveKitNativePublisherCredentials,
+  isLocalMediaIntent,
+  isLocalMediaIntentAcceptanceResult,
+  isLocalMediaObservedStateEvent,
+  isScreenSourceSpec,
+  parseLiveKitNativePublisherCredentials,
+  parseLocalMediaIntent,
+  parseLocalMediaIntentAcceptanceResult,
+  parseLocalMediaObservedStateEvent,
+  parseScreenSourceSpec,
 } from './media'
 export type {
   DesktopOverlayBounds,

@@ -48,6 +48,10 @@ pub struct GatewayErrorRequest {
     pub operation_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authoritative_operation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authoritative_channel_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -392,6 +396,8 @@ pub enum EventV1 {
     VoiceChannelLeave {
         id: String,
         user: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        operation_id: Option<String>,
     },
     VoiceChannelMove {
         user: String,
@@ -555,6 +561,8 @@ mod tests {
                 nonce: Some("nonce-1".to_string()),
                 operation_id: Some("op-join".to_string()),
                 channel_id: Some("channel-1".to_string()),
+                authoritative_operation_id: Some("op-current".to_string()),
+                authoritative_channel_id: Some("channel-current".to_string()),
             }),
         };
 
@@ -565,6 +573,10 @@ mod tests {
         assert_eq!(value["scope"], json!("VoiceStateUpdate"));
         assert_eq!(value["request"]["kind"], json!("VoiceStateUpdate"));
         assert_eq!(value["request"]["nonce"], json!("nonce-1"));
+        assert_eq!(
+            value["request"]["authoritative_operation_id"],
+            json!("op-current")
+        );
         assert_eq!(value["request"]["operation_id"], json!("op-join"));
         assert_eq!(value["request"]["channel_id"], json!("channel-1"));
     }

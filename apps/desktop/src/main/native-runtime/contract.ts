@@ -120,6 +120,9 @@ export type MediaRuntimeCommand =
       config: NativeMicrophonePipelineConfig
     }
   | ({ type: 'setMicrophoneMuted'; muted: boolean } & SessionCommandBase)
+  | { type: 'probeMicrophoneActor' }
+  | { type: 'probeScreenActor' }
+  | { type: 'probeQueryWorker' }
   | { type: 'shutdown' }
 
 export type HooksRuntimeCommand =
@@ -127,6 +130,7 @@ export type HooksRuntimeCommand =
   | { type: 'stopHotkeys' }
   | { type: 'startOverlay' }
   | { type: 'stopOverlay' }
+  | { type: 'probeHooksRuntime' }
   | { type: 'shutdown' }
 
 export type NativeRuntimeCommand = MediaRuntimeCommand | HooksRuntimeCommand
@@ -499,10 +503,14 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
       )
     case 'setMicrophoneMuted':
       return isSessionCommand(value) && typeof value.muted === 'boolean'
+    case 'probeMicrophoneActor':
+    case 'probeScreenActor':
+    case 'probeQueryWorker':
     case 'startHotkeys':
     case 'stopHotkeys':
     case 'startOverlay':
     case 'stopOverlay':
+    case 'probeHooksRuntime':
     case 'shutdown':
       return true
     default:

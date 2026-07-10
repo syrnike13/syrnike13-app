@@ -1,16 +1,15 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC,
+  assertLocalMediaIntent,
   type DesktopDisplayMediaRequest,
   type DesktopDisplayMediaSource,
-  type NativeMediaMicrophoneSessionStartOptions,
-  type NativeMediaScreenSessionPrepareOptions,
-  type NativeMediaSessionKind,
-  type NativeMediaSessionStartOptions,
+  type LocalMediaIntent,
   type NativeMicrophonePipelineConfig,
 } from '@syrnike13/platform'
 
 import type { NativeMediaController } from './native-media-controller'
+import type { NativeMediaReconciler } from './native-media-reconciler'
 
 const NATIVE_PICKER_TIMEOUT_MS = 120_000
 
@@ -49,6 +48,7 @@ export function clearPendingNativePicker() {
 export function registerNativeMediaIpc(
   getWindow: () => BrowserWindow | null,
   controller: NativeMediaController,
+  reconciler: NativeMediaReconciler,
 ) {
   if (registered) return
   registered = true
@@ -57,9 +57,6 @@ export function registerNativeMediaIpc(
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     switch (message.type) {
-      case 'state':
-        win.webContents.send(IPC.mediaStateChanged, message.event)
-        return
       case 'stats':
         win.webContents.send(IPC.mediaStats, message.event)
         return
@@ -69,46 +66,28 @@ export function registerNativeMediaIpc(
       case 'microphonePreviewState':
         win.webContents.send(IPC.mediaMicrophonePreviewState, message.event)
         return
+      case 'state':
       case 'streamEnded':
-        win.webContents.send(IPC.mediaStreamEnded, message.sessionId)
-        return
       case 'streamError':
-        win.webContents.send(IPC.mediaStreamError, message.event)
-        return
       case 'runtimeLost':
-        win.webContents.send(IPC.mediaRuntimeLost, message.event)
-        return
+      case 'executionTerminal':
       case 'operationMetric':
         return
     }
   })
 
-  ipcMain.handle(
-    IPC.mediaPrepareScreenSession,
-    async (event, options: NativeMediaScreenSessionPrepareOptions) => {
-      assertTrusted(event, getWindow, 'prepare')
-      return controller.prepareScreenSession(options)
-    },
-  )
-
-  ipcMain.handle(IPC.mediaDisconnectPreparedScreenSession, async (event) => {
-    if (!isTrustedSender(event, getWindow)) return
-    return controller.disconnectPreparedScreenSession()
+  reconciler.subscribe((event) => {
+    const win = getWindow()
+    if (!win || win.isDestroyed()) return
+    win.webContents.send(IPC.mediaLocalMediaState, event)
   })
 
   ipcMain.handle(
-    IPC.mediaStartSession,
-    async (event, options: NativeMediaSessionStartOptions) => {
-      assertTrusted(event, getWindow, 'start')
-      return controller.startSession(options)
-    },
-  )
-
-  ipcMain.handle(
-    IPC.mediaCancelPendingStarts,
-    async (event, kind?: NativeMediaSessionKind) => {
-      if (!isTrustedSender(event, getWindow)) return
-      return controller.cancelPendingStarts(kind)
+    IPC.mediaApplyLocalMediaIntent,
+    async (event, intent: LocalMediaIntent) => {
+      assertTrusted(event, getWindow, 'apply local media intent')
+      assertLocalMediaIntent(intent)
+      return reconciler.applyIntent(intent)
     },
   )
 
@@ -122,31 +101,6 @@ export function registerNativeMediaIpc(
       return controller.configureMicrophonePipeline(config)
     },
   )
-
-  ipcMain.handle(
-    IPC.mediaSetMicrophoneMuted,
-    async (event, sessionId: string, muted: boolean) => {
-      assertTrusted(event, getWindow, 'mute')
-      return controller.setMicrophoneMuted(sessionId, Boolean(muted))
-    },
-  )
-
-  ipcMain.handle(
-    IPC.mediaReconnectMicrophoneSession,
-    async (
-      event,
-      sessionId: string,
-      options: NativeMediaMicrophoneSessionStartOptions,
-    ) => {
-      assertTrusted(event, getWindow, 'reconnect')
-      return controller.reconnectMicrophoneSession(sessionId, options)
-    },
-  )
-
-  ipcMain.handle(IPC.mediaStopSession, async (event, sessionId?: string) => {
-    if (!isTrustedSender(event, getWindow)) return
-    return controller.stopSession(sessionId)
-  })
 
   ipcMain.handle(IPC.mediaListDevices, async (event, kind: 'audioinput') => {
     if (!isTrustedSender(event, getWindow)) return []

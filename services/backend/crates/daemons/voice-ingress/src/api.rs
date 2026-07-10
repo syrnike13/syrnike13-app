@@ -7,22 +7,23 @@ use syrnike_database::{
     iso8601_timestamp::{Duration, Timestamp},
     util::reference::Reference,
     voice::{
-        base_voice_identity,
+        base_voice_identity, browser_voice_operation_id_from_identity,
         call_lifecycle::{
             get_channel_voice_call, mutate_channel_voice_call_if_current, voice_call_join_effect,
             voice_call_leave_effect, VoiceCallJoinEffect, VoiceCallLeaveEffect,
             VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase, VoiceCallStateMutation,
             VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
-        cleanup_committed_voice_member_removal, commit_voice_session_join,
-        create_voice_call_started_system_message, delete_channel_voice_state_for_room,
-        delete_voice_state_for_session, desktop_native_voice_operation_id,
-        finish_voice_call_started_system_message, get_call_notification_recipients,
-        get_user_moved_from_voice, get_voice_channel_members, is_desktop_native_voice_identity,
+        cleanup_committed_voice_member_removal, clear_call_notification_recipients,
+        commit_voice_session_join, create_voice_call_started_system_message,
+        delete_channel_voice_state_for_room, delete_voice_state_for_session,
+        desktop_native_voice_operation_id, finish_voice_call_started_system_message,
+        get_call_notification_recipients, get_user_moved_from_voice, get_voice_channel_members,
+        is_desktop_native_voice_identity, is_valid_voice_operation_id,
         native_voice_participant_matches_current_operation, publish_voice_state_snapshot,
         reconcile_voice_channel_members_with_call_cleanup, update_voice_state_tracks_for_operation,
         update_voice_state_tracks_for_session, RoomMetadata, UserVoiceChannel, VoiceClient,
-        VoiceSessionCommitResult,
+        VoiceSessionCommitResult, BROWSER_VOICE_OPERATION_ID_ATTRIBUTE,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
 };
@@ -42,14 +43,55 @@ fn room_metadata_from_webhook(metadata: &str) -> Option<RoomMetadata> {
     serde_json::from_str::<RoomMetadata>(metadata).ok()
 }
 
-fn forbidden_track_removal_identity<'a>(
-    participant_identity: &'a str,
-    base_user_id: &'a str,
-) -> &'a str {
-    if is_desktop_native_voice_identity(participant_identity) {
-        participant_identity
+fn forbidden_track_removal_identity(participant_identity: &str) -> &str {
+    participant_identity
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OwnedBrowserParticipantOperation {
+    Valid(String),
+    Missing,
+    Invalid,
+}
+
+fn valid_browser_operation_id(operation_id: &str) -> bool {
+    is_valid_voice_operation_id(operation_id)
+}
+
+fn browser_participant_operation_id(
+    participant: &livekit_protocol::ParticipantInfo,
+) -> OwnedBrowserParticipantOperation {
+    let operation_id = if let Some(operation_id) = participant
+        .attributes
+        .get(BROWSER_VOICE_OPERATION_ID_ATTRIBUTE)
+        .map(String::as_str)
+    {
+        operation_id.to_string()
     } else {
-        base_user_id
+        let metadata = participant.metadata.trim();
+        if metadata.is_empty() {
+            return OwnedBrowserParticipantOperation::Missing;
+        }
+
+        let Ok(metadata) = serde_json::from_str::<serde_json::Value>(metadata) else {
+            return OwnedBrowserParticipantOperation::Invalid;
+        };
+        let Some(operation_id) = metadata
+            .get(BROWSER_VOICE_OPERATION_ID_ATTRIBUTE)
+            .and_then(serde_json::Value::as_str)
+        else {
+            return OwnedBrowserParticipantOperation::Missing;
+        };
+        operation_id.to_string()
+    };
+
+    if valid_browser_operation_id(&operation_id)
+        && browser_voice_operation_id_from_identity(&participant.identity)
+            == Some(operation_id.as_str())
+    {
+        OwnedBrowserParticipantOperation::Valid(operation_id)
+    } else {
+        OwnedBrowserParticipantOperation::Invalid
     }
 }
 
@@ -410,7 +452,8 @@ pub async fn ingress(
 
     let channel_id = event.room.as_ref().map(|r| &r.name);
     let room_id = event.room.as_ref().map(|r| &r.sid);
-    let user_id = event.participant.as_ref().map(|r| &r.identity);
+    let participant = event.participant.as_ref();
+    let user_id = participant.map(|r| &r.identity);
     let participant_id = event.participant.as_ref().map(|r| &r.sid);
     let room_metadata = event.room.as_ref().map(|room| room.metadata.as_str());
 
@@ -420,6 +463,7 @@ pub async fn ingress(
             let channel_id = channel_id.to_internal_error()?;
             let participant_identity = user_id.to_internal_error()?;
             let user_id = base_voice_identity(participant_identity);
+            let participant = participant.to_internal_error()?;
             let participant_id = participant_id.to_internal_error()?;
             let room_id = room_id.to_internal_error()?;
             let channel = voice_channel_from_webhook(db, channel_id, room_metadata).await;
@@ -448,43 +492,65 @@ pub async fn ingress(
             let connected_members_before_join = get_voice_channel_members(&channel)
                 .await?
                 .unwrap_or_default();
-            let requested_recipients =
-                get_call_notification_recipients(channel_id, user_id).await?;
-
-            let VoiceSessionCommitResult::Committed(commit) =
-                commit_voice_session_join(&channel, user_id, joined_at, participant_id, room_id)
-                    .await?
+            let OwnedBrowserParticipantOperation::Valid(operation_id) =
+                browser_participant_operation_id(participant)
             else {
                 log::debug!(
-                    "Removing user {user_id} from stale LiveKit join in channel {channel_id}; latest VoiceSession targets another operation."
+                    "Ignoring browser participant_joined for {participant_identity} in channel {channel_id}; signed voice operation id is missing or invalid."
                 );
-                let _ = voice_client
-                    .remove_user(node, participant_identity, channel_id)
-                    .await;
                 return Ok(EmptyResponse);
             };
-            let operation_id = Some(commit.operation_id);
-            let voice_state = commit.voice_state;
-            let previous_channels = commit.previous_channels;
 
-            for previous_channel in &previous_channels {
-                cleanup_committed_voice_member_removal(
-                    db,
-                    voice_client,
-                    amqp,
-                    previous_channel,
-                    user_id,
-                )
-                .await?;
+            let commit_result = commit_voice_session_join(
+                &channel,
+                user_id,
+                &operation_id,
+                joined_at,
+                participant_id,
+                room_id,
+            )
+            .await?;
+            let VoiceSessionCommitResult::Committed(commit) = commit_result else {
+                log::debug!(
+                    "Ignoring stale participant_joined for user {user_id} in channel {channel_id}; signed voice operation {operation_id} is no longer current."
+                );
+                if let Ok(Some(participants)) =
+                    voice_client.list_room_participants(node, channel_id).await
+                {
+                    let stale_identity_is_still_present = participants.iter().any(|candidate| {
+                        candidate.identity.as_str() == participant_identity.as_str()
+                            && browser_participant_operation_id(candidate)
+                                == OwnedBrowserParticipantOperation::Valid(operation_id.clone())
+                    });
+                    if stale_identity_is_still_present {
+                        let _ = voice_client
+                            .remove_user(node, participant_identity, channel_id)
+                            .await;
+                    }
+                }
+                return Ok(EmptyResponse);
+            };
+            let operation_id = commit.operation_id;
+            let voice_state = commit.voice_state;
+            let retired_sessions = commit.retired_sessions;
+            let moved_from = retired_sessions
+                .iter()
+                .find(|session| session.channel.id.as_str() != channel_id.as_str())
+                .map(|session| session.channel.clone());
+            let requested_recipients =
+                get_call_notification_recipients(channel_id, user_id, &operation_id).await?;
+
+            for retired_session in &retired_sessions {
+                cleanup_committed_voice_member_removal(db, amqp, retired_session).await?;
             }
 
             // Only publish one event when a user is moved from one channel to another.
-            if let Some(moved_from) = previous_channels.first() {
+            if let Some(moved_from) = moved_from {
                 EventV1::VoiceChannelMove {
                     user: user_id.to_string(),
-                    from: moved_from.id.clone(),
+                    from: moved_from.id,
                     to: channel_id.to_string(),
-                    operation_id,
+                    operation_id: Some(operation_id.clone()),
                     state: voice_state,
                 }
                 .p(channel_id.to_string())
@@ -492,7 +558,7 @@ pub async fn ingress(
             } else {
                 EventV1::VoiceChannelJoin {
                     id: channel_id.to_string(),
-                    operation_id,
+                    operation_id: Some(operation_id.clone()),
                     state: voice_state,
                 }
                 .p(channel_id.to_string())
@@ -510,6 +576,9 @@ pub async fn ingress(
                 config.api.livekit.call_ring_duration as i64,
             )
             .await?;
+            clear_call_notification_recipients(channel_id, user_id, &operation_id)
+                .await
+                .ok();
         }
         // User left a channel
         "participant_left" => {
@@ -523,14 +592,16 @@ pub async fn ingress(
                 return Ok(EmptyResponse);
             }
 
-            if !delete_voice_state_for_session(&channel, user_id, participant_id).await? {
+            let Some(left_operation_id) =
+                delete_voice_state_for_session(&channel, user_id, participant_id).await?
+            else {
                 log::debug!(
                     "Ignoring stale participant_left for user {user_id} in channel {channel_id} from LiveKit participant {participant_id}."
                 );
                 reconcile_voice_channel_members_with_call_cleanup(db, voice_client, amqp, &channel)
                     .await?;
                 return Ok(EmptyResponse);
-            }
+            };
 
             // Dont send leave event when a user is moved
             if get_user_moved_from_voice(channel_id, user_id)
@@ -540,6 +611,7 @@ pub async fn ingress(
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
                     user: user_id.to_string(),
+                    operation_id: Some(left_operation_id),
                 }
                 .p(channel_id.clone())
                 .await;
@@ -634,8 +706,7 @@ pub async fn ingress(
                 };
 
                 if disconnect {
-                    let removal_identity =
-                        forbidden_track_removal_identity(participant_identity, user_id);
+                    let removal_identity = forbidden_track_removal_identity(participant_identity);
                     log::debug!(
                         "Removing LiveKit participant {removal_identity} for base user {user_id} from channel {channel_id} {event:?} due to forbidden track."
                     );
@@ -659,12 +730,13 @@ pub async fn ingress(
                                 publish_voice_state_snapshot(channel_id, &state).await;
                             }
                         }
-                    } else if delete_voice_state_for_session(&channel, user_id, participant_id)
-                        .await?
+                    } else if let Some(left_operation_id) =
+                        delete_voice_state_for_session(&channel, user_id, participant_id).await?
                     {
                         EventV1::VoiceChannelLeave {
                             id: channel_id.clone(),
                             user: user_id.to_string(),
+                            operation_id: Some(left_operation_id),
                         }
                         .p(channel_id.clone())
                         .await;
@@ -737,19 +809,22 @@ pub async fn ingress(
             let members = get_voice_channel_members(&channel)
                 .await?
                 .unwrap_or_default();
-            if !delete_channel_voice_state_for_room(&channel, &members, room_id).await? {
+            let Some(deleted_sessions) =
+                delete_channel_voice_state_for_room(&channel, &members, room_id).await?
+            else {
                 log::debug!(
                     "Ignoring stale room_finished for channel {channel_id} from LiveKit room {room_id}."
                 );
                 reconcile_voice_channel_members_with_call_cleanup(db, voice_client, amqp, &channel)
                     .await?;
                 return Ok(EmptyResponse);
-            }
+            };
 
-            for user_id in members {
+            for (user_id, operation_id) in deleted_sessions {
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
                     user: user_id,
+                    operation_id: Some(operation_id),
                 }
                 .p(channel_id.clone())
                 .await;
@@ -776,11 +851,16 @@ pub async fn ingress(
 #[cfg(test)]
 mod tests {
     use super::{
-        forbidden_track_removal_identity, room_metadata_from_webhook,
-        video_resolution_limit_for_track_source,
+        browser_participant_operation_id, forbidden_track_removal_identity,
+        room_metadata_from_webhook, video_resolution_limit_for_track_source,
+        OwnedBrowserParticipantOperation,
     };
+    use livekit_protocol::ParticipantInfo;
     use std::collections::HashMap;
     use syrnike_config::FeaturesLimits;
+    use syrnike_database::voice::{browser_voice_identity, BROWSER_VOICE_OPERATION_ID_ATTRIBUTE};
+
+    const OPERATION_ID: &str = "voice-op-550e8400-e29b-41d4-a716-446655440000";
 
     #[test]
     fn empty_room_metadata_is_absent_not_invalid() {
@@ -804,16 +884,94 @@ mod tests {
     #[test]
     fn forbidden_desktop_native_track_removes_only_native_participant() {
         assert_eq!(
-            forbidden_track_removal_identity("user-a:desktop-native:op-join:screen", "user-a"),
+            forbidden_track_removal_identity("user-a:desktop-native:op-join:screen"),
             "user-a:desktop-native:op-join:screen"
         );
     }
 
     #[test]
-    fn forbidden_browser_track_removes_base_participant() {
+    fn forbidden_browser_track_removes_exact_operation_participant() {
+        let identity = browser_voice_identity("user-a", OPERATION_ID);
+        assert_eq!(forbidden_track_removal_identity(&identity), identity);
+    }
+
+    fn browser_participant() -> ParticipantInfo {
+        ParticipantInfo {
+            identity: browser_voice_identity("user-a", OPERATION_ID),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn browser_operation_is_read_from_signed_attributes() {
+        let mut participant = browser_participant();
+        participant.attributes.insert(
+            BROWSER_VOICE_OPERATION_ID_ATTRIBUTE.to_string(),
+            OPERATION_ID.to_string(),
+        );
+
         assert_eq!(
-            forbidden_track_removal_identity("user-a", "user-a"),
-            "user-a"
+            browser_participant_operation_id(&participant),
+            OwnedBrowserParticipantOperation::Valid(OPERATION_ID.to_string())
+        );
+    }
+
+    #[test]
+    fn invalid_browser_operation_metadata_does_not_fallback() {
+        let mut participant = browser_participant();
+        participant.metadata = "{".to_string();
+
+        assert_eq!(
+            browser_participant_operation_id(&participant),
+            OwnedBrowserParticipantOperation::Invalid
+        );
+    }
+
+    #[test]
+    fn browser_operation_can_be_read_from_signed_metadata_when_attributes_are_absent() {
+        let mut participant = browser_participant();
+        participant.metadata =
+            format!(r#"{{"{BROWSER_VOICE_OPERATION_ID_ATTRIBUTE}":"{OPERATION_ID}"}}"#);
+
+        assert_eq!(
+            browser_participant_operation_id(&participant),
+            OwnedBrowserParticipantOperation::Valid(OPERATION_ID.to_string())
+        );
+    }
+
+    #[test]
+    fn browser_operation_rejects_identity_attribute_mismatch() {
+        let mut participant = browser_participant();
+        participant.attributes.insert(
+            BROWSER_VOICE_OPERATION_ID_ATTRIBUTE.to_string(),
+            "voice-op-550e8400-e29b-41d4-a716-446655440001".to_string(),
+        );
+
+        assert_eq!(
+            browser_participant_operation_id(&participant),
+            OwnedBrowserParticipantOperation::Invalid
+        );
+    }
+
+    #[test]
+    fn invalid_browser_operation_value_in_metadata_does_not_fallback() {
+        let mut participant = browser_participant();
+        participant.metadata =
+            format!(r#"{{"{BROWSER_VOICE_OPERATION_ID_ATTRIBUTE}":"not-a-uuid"}}"#);
+
+        assert_eq!(
+            browser_participant_operation_id(&participant),
+            OwnedBrowserParticipantOperation::Invalid
+        );
+    }
+
+    #[test]
+    fn missing_browser_operation_metadata_does_not_fallback() {
+        let participant = browser_participant();
+
+        assert_eq!(
+            browser_participant_operation_id(&participant),
+            OwnedBrowserParticipantOperation::Missing
         );
     }
 

@@ -4,9 +4,9 @@ import type { Room } from 'livekit-client'
 import {
   createVoiceIntentExecutor,
   type VoiceExecutorDeps,
+  type VoiceIntentExecutorJoinOptions,
   type VoiceIntentExecutorJoinResult,
 } from '#/features/voice/voice-intent-executor'
-import type { VoiceJoinReason } from '#/features/voice/voice-intent-director'
 import type { VoiceRecoveryRunnerDeps } from '#/features/voice/voice-recovery-runner'
 
 function operationIds(...ids: string[]) {
@@ -33,7 +33,7 @@ function createDeps(options: {
   createOperationId?: () => string
   performVoiceJoin?: (
     channelId: string,
-    options: { operationId: string; reason: VoiceJoinReason },
+    options: VoiceIntentExecutorJoinOptions,
   ) => Promise<VoiceIntentExecutorJoinResult>
   recovery?: Partial<
     Omit<
@@ -113,8 +113,16 @@ function createDeps(options: {
   }
 }
 
-function createExecutor(deps: VoiceExecutorDeps) {
-  return createVoiceIntentExecutor({ getDeps: () => deps })
+function createExecutor(
+  deps: VoiceExecutorDeps,
+  now: () => number = Date.now,
+  commitTimeoutMs = 15_000,
+) {
+  return createVoiceIntentExecutor({
+    getDeps: () => deps,
+    now,
+    commitTimeoutMs,
+  })
 }
 
 describe('createVoiceIntentExecutor', () => {
@@ -146,6 +154,8 @@ describe('createVoiceIntentExecutor', () => {
         operationId: 'op-2',
         channelId: 'voice-a',
         reason: 'rejoin',
+        gatewayDispatched: false,
+        expectedCurrentOperationId: 'op-rejoin',
       },
     ])
   })
@@ -157,10 +167,10 @@ describe('createVoiceIntentExecutor', () => {
     executor.intent('voice-a', 'manual_join')
     await flush()
 
-    expect(deps.performVoiceJoin).toHaveBeenCalledWith('voice-a', {
+    expect(deps.performVoiceJoin).toHaveBeenCalledWith('voice-a', expect.objectContaining({
       operationId: 'op-join-a',
       reason: 'manual_join',
-    })
+    }))
     expect(executor.getState()).toMatchObject({
       committed: null,
       activeOperationId: 'op-join-a',
@@ -290,6 +300,85 @@ describe('createVoiceIntentExecutor', () => {
     })
   })
 
+  it('repairs a failed publisher only after local setup finishes', async () => {
+    const room = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    const publisherRepair = deferred<boolean>()
+    const startNativeMicrophone = vi.fn(() => publisherRepair.promise)
+    const deps = createDeps({
+      createOperationId: operationIds('op-join-a'),
+      performVoiceJoin: vi.fn(async () => ({ room })),
+      recovery: {
+        isPublisherHealthy: () => false,
+        shouldUseNativeMicrophone: () => true,
+        startNativeMicrophone,
+      },
+    })
+    const executor = createExecutor(deps)
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    executor.observeCommit('op-join-a', 'voice-a')
+
+    executor.reconcileWithServer('participants_changed', room)
+    await flush()
+    expect(startNativeMicrophone).not.toHaveBeenCalled()
+
+    executor.observeLocalVoiceReady(room, 'voice-a', true)
+    executor.reconcileWithServer('health_tick', room)
+    await flush()
+    executor.reconcileWithServer('participants_changed', room)
+    await flush()
+    expect(startNativeMicrophone).toHaveBeenCalledTimes(1)
+    expect(startNativeMicrophone).toHaveBeenCalledWith(room, false)
+
+    publisherRepair.resolve(true)
+    await flush()
+  })
+
+  it('backs off repeated publisher repair failures for the same voice session', async () => {
+    let now = 10_000
+    const room = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    const startNativeMicrophone = vi.fn(async () => {
+      throw new Error('track publication timed out')
+    })
+    const deps = createDeps({
+      createOperationId: operationIds('op-join-a'),
+      performVoiceJoin: vi.fn(async () => ({ room })),
+      recovery: {
+        isPublisherHealthy: () => false,
+        shouldUseNativeMicrophone: () => true,
+        startNativeMicrophone,
+      },
+    })
+    const executor = createExecutor(deps, () => now)
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    executor.observeCommit('op-join-a', 'voice-a')
+    executor.observeLocalVoiceReady(room, 'voice-a', true)
+
+    executor.reconcileWithServer('local_setup_complete', room)
+    await vi.waitFor(() =>
+      expect(startNativeMicrophone).toHaveBeenCalledTimes(1),
+    )
+
+    executor.reconcileWithServer('participants_changed', room)
+    await flush()
+    expect(startNativeMicrophone).toHaveBeenCalledTimes(1)
+
+    now += 1_000
+    executor.reconcileWithServer('health_tick', room)
+    await vi.waitFor(() =>
+      expect(startNativeMicrophone).toHaveBeenCalledTimes(2),
+    )
+  })
+
   it('accepts a committed join result when gateway commit arrives before the room resolves', async () => {
     const joinedRoom = deferred<{ room: Room }>()
     const room = {
@@ -405,6 +494,214 @@ describe('createVoiceIntentExecutor', () => {
     expect(targetRoom.disconnect).toHaveBeenCalledTimes(1)
   })
 
+  it('cancels locally when returning before the target reached the gateway', async () => {
+    const sourceRoom = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    let callIndex = 0
+    const performVoiceJoin = vi.fn(
+      async (_channelId: string, options: VoiceIntentExecutorJoinOptions) => {
+        callIndex += 1
+        if (callIndex === 1) return { room: sourceRoom }
+        return await new Promise<false>((resolve) => {
+          options.signal.addEventListener('abort', () => resolve(false), {
+            once: true,
+          })
+        })
+      },
+    )
+    const deps = createDeps({
+      createOperationId: operationIds('op-join-a', 'op-join-b'),
+      performVoiceJoin,
+    })
+    const executor = createExecutor(deps)
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    executor.observeCommit('op-join-a', 'voice-a')
+    executor.observeLocalVoiceReady(sourceRoom, 'voice-a', true)
+
+    executor.intent('voice-b', 'switch')
+    await flush()
+    executor.intent('voice-a', 'switch')
+    await flush()
+
+    expect(performVoiceJoin).toHaveBeenCalledTimes(2)
+    expect(
+      (performVoiceJoin.mock.calls[1]?.[1] as VoiceIntentExecutorJoinOptions)
+        .signal.aborted,
+    ).toBe(true)
+    expect(executor.getSnapshot()).toMatchObject({
+      room: sourceRoom,
+      channelId: 'voice-a',
+      committedChannelId: 'voice-a',
+      activeOperationId: null,
+      phase: 'connected',
+    })
+  })
+
+  it('uses an explicit CAS restore after the target operation reached the gateway', async () => {
+    const sourceRoom = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    let callIndex = 0
+    const performVoiceJoin = vi.fn(
+      async (_channelId: string, options: VoiceIntentExecutorJoinOptions) => {
+        callIndex += 1
+        if (callIndex === 1) return { room: sourceRoom }
+        if (callIndex === 2) {
+          options.onGatewayDispatched()
+          return await new Promise<false>((resolve) => {
+            if (options.signal.aborted) {
+              resolve(false)
+              return
+            }
+            options.signal.addEventListener('abort', () => resolve(false), {
+              once: true,
+            })
+          })
+        }
+        return true
+      },
+    )
+    const deps = createDeps({
+      createOperationId: operationIds(
+        'op-join-a',
+        'op-join-b',
+        'op-restore-a',
+      ),
+      performVoiceJoin,
+    })
+    const executor = createExecutor(deps)
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    executor.observeCommit('op-join-a', 'voice-a')
+    executor.observeLocalVoiceReady(sourceRoom, 'voice-a', true)
+
+    executor.intent('voice-b', 'switch')
+    await flush()
+    expect(executor.getState().steps[0]).toMatchObject({
+      operationId: 'op-join-b',
+      gatewayDispatched: true,
+    })
+
+    executor.intent('voice-a', 'switch')
+    await flush()
+    await flush()
+
+    expect(performVoiceJoin).toHaveBeenCalledTimes(3)
+    expect(
+      (performVoiceJoin.mock.calls[1]?.[1] as VoiceIntentExecutorJoinOptions)
+        .signal.aborted,
+    ).toBe(true)
+    expect(performVoiceJoin).toHaveBeenLastCalledWith(
+      'voice-a',
+      expect.objectContaining({
+        operationId: 'op-join-a',
+        expectedCurrentOperationId: 'op-join-b',
+        reason: 'switch',
+      }),
+    )
+    expect(executor.getState()).toMatchObject({
+      desired: { kind: 'channel', channelId: 'voice-a' },
+      committed: 'voice-a',
+      activeOperationId: 'op-join-a',
+    })
+    expect(executor.ownsRoom(sourceRoom)).toBe(true)
+  })
+
+  it('retains A after a dispatched B times out before the return intent', async () => {
+    const sourceRoom = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    let callIndex = 0
+    const performVoiceJoin = vi.fn(
+      async (_channelId: string, options: VoiceIntentExecutorJoinOptions) => {
+        callIndex += 1
+        if (callIndex === 1) return { room: sourceRoom }
+        if (callIndex === 2) {
+          options.onGatewayDispatched()
+          throw new Error('Voice join timed out')
+        }
+        return true
+      },
+    )
+    const deps = createDeps({
+      createOperationId: operationIds('op-join-a', 'op-join-b'),
+      performVoiceJoin,
+    })
+    const executor = createExecutor(deps)
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    executor.observeCommit('op-join-a', 'voice-a')
+    executor.observeLocalVoiceReady(sourceRoom, 'voice-a', true)
+    executor.intent('voice-b', 'switch')
+    await flush()
+
+    expect(executor.getState()).toMatchObject({
+      activeOperationId: null,
+      lastError: 'Voice join timed out',
+      operationJournal: expect.arrayContaining([
+        expect.objectContaining({
+          operationId: 'op-join-b',
+          gatewayDispatched: true,
+          lifecycle: 'failed',
+        }),
+      ]),
+    })
+
+    executor.intent('voice-a', 'switch')
+    await flush()
+
+    expect(performVoiceJoin).toHaveBeenCalledTimes(3)
+    expect(performVoiceJoin).toHaveBeenLastCalledWith(
+      'voice-a',
+      expect.objectContaining({
+        operationId: 'op-join-a',
+        expectedCurrentOperationId: 'op-join-b',
+        reuseExistingRoom: true,
+      }),
+    )
+  })
+
+  it('terminates a join that never receives its broadcast commit', async () => {
+    vi.useFakeTimers()
+    const room = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    const deps = createDeps({
+      createOperationId: operationIds('op-join-a'),
+      performVoiceJoin: vi.fn(async () => ({ room })),
+    })
+    const executor = createExecutor(deps, Date.now, 50)
+
+    try {
+      executor.intent('voice-a', 'manual_join')
+      await flush()
+      expect(executor.getSnapshot().status).toBe('connecting')
+
+      await vi.advanceTimersByTimeAsync(50)
+      await flush()
+
+      expect(executor.getSnapshot()).toMatchObject({
+        room: null,
+        status: 'idle',
+        activeOperationId: null,
+        lastError: 'Voice commit timed out for voice-a',
+      })
+      expect(room.disconnect).toHaveBeenCalledTimes(1)
+    } finally {
+      await executor.teardown()
+      vi.useRealTimers()
+    }
+  })
+
   it('restarts unfinished local setup when restoring the move source', async () => {
     const sourceRoom = {
       removeAllListeners: vi.fn(),
@@ -443,6 +740,62 @@ describe('createVoiceIntentExecutor', () => {
       status: 'connected',
       localVoiceReady: false,
     })
+  })
+
+  it('does not start a second native repair lineage while restored A local setup is still restarting', async () => {
+    const sourceRoom = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    const targetRoom = {
+      removeAllListeners: vi.fn(),
+      disconnect: vi.fn(async () => {}),
+    } as unknown as Room
+    const startNativeMicrophone = vi.fn(async () => true)
+    const deps = createDeps({
+      createOperationId: operationIds('op-join-a', 'op-join-b'),
+      performVoiceJoin: vi
+        .fn()
+        .mockResolvedValueOnce({ room: sourceRoom })
+        .mockResolvedValueOnce({ room: targetRoom }),
+      recovery: {
+        isPublisherHealthy: () => false,
+        shouldUseNativeMicrophone: () => true,
+        startNativeMicrophone,
+      },
+    })
+    const executor = createExecutor(deps)
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    executor.observeCommit('op-join-a', 'voice-a')
+    expect(deps.startLocalVoiceSetup).toHaveBeenCalledTimes(1)
+
+    executor.intent('voice-b', 'switch')
+    await flush()
+    executor.intent('voice-a', 'switch')
+    await flush()
+
+    expect(executor.getSnapshot()).toMatchObject({
+      room: sourceRoom,
+      channelId: 'voice-a',
+      status: 'connected',
+      localVoiceReady: false,
+      committedChannelId: 'voice-a',
+    })
+
+    executor.reconcileWithServer('health_tick', sourceRoom)
+    executor.reconcileWithServer('participants_changed', sourceRoom)
+    await flush()
+
+    expect(startNativeMicrophone).not.toHaveBeenCalled()
+
+    executor.observeLocalVoiceReady(sourceRoom, 'voice-a', true)
+    executor.reconcileWithServer('health_tick', sourceRoom)
+    await vi.waitFor(() =>
+      expect(startNativeMicrophone).toHaveBeenCalledTimes(1),
+    )
+    expect(startNativeMicrophone).toHaveBeenCalledWith(sourceRoom, false)
   })
 
   it('rejoins the source instead of restoring it after the retained room is lost', async () => {
@@ -484,14 +837,14 @@ describe('createVoiceIntentExecutor', () => {
     await flush()
 
     expect(deps.performVoiceJoin).toHaveBeenCalledTimes(3)
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', {
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', expect.objectContaining({
       operationId: 'op-rejoin-a',
       reason: 'rejoin',
-    })
+    }))
     expect(targetRoom.disconnect).toHaveBeenCalledTimes(1)
   })
 
-  it('retries a disconnected target candidate without discarding the retained source', async () => {
+  it('keeps the retained source and retries a failed candidate only on a new intent', async () => {
     const sourceRoom = {
       removeAllListeners: vi.fn(),
       disconnect: vi.fn(async () => {}),
@@ -524,11 +877,15 @@ describe('createVoiceIntentExecutor', () => {
       executor.onRoomDisconnected(targetRoom, false, 'Target disconnected'),
     ).toBe('candidate_lost')
     await flush()
+    expect(deps.performVoiceJoin).toHaveBeenCalledTimes(2)
 
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-b', {
+    executor.intent('voice-b', 'switch')
+    await flush()
+
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-b', expect.objectContaining({
       operationId: 'op-join-b-retry',
       reason: 'switch',
-    })
+    }))
     expect(executor.ownsRoom(sourceRoom)).toBe(true)
     expect(deps.disconnectMoveSource).not.toHaveBeenCalled()
   })
@@ -547,10 +904,10 @@ describe('createVoiceIntentExecutor', () => {
 
     expect(deps.requestVoiceLeave).not.toHaveBeenCalled()
     expect(deps.clearVisualPresence).not.toHaveBeenCalled()
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-b', {
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-b', expect.objectContaining({
       operationId: 'op-join-b',
       reason: 'switch',
-    })
+    }))
   })
 
   it('runs terminal leave cleanup for clearIntent on a connected room', async () => {
@@ -705,10 +1062,10 @@ describe('createVoiceIntentExecutor', () => {
     expect(deps.onSessionChanged).toHaveBeenCalledWith(
       expect.objectContaining({ room: null, status: 'connecting' }),
     )
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', {
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', expect.objectContaining({
       operationId: 'op-rejoin-a',
       reason: 'rejoin',
-    })
+    }))
     expect(executor.getState()).toMatchObject({
       desired: { kind: 'channel', channelId: 'voice-a' },
       committed: null,
@@ -730,10 +1087,10 @@ describe('createVoiceIntentExecutor', () => {
     executor.observeDisconnected('op-join-a', false, 'gateway reconnect drift')
     await flush()
 
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', {
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', expect.objectContaining({
       operationId: 'op-rejoin-a',
       reason: 'rejoin',
-    })
+    }))
     expect(executor.getState()).toMatchObject({
       desired: { kind: 'channel', channelId: 'voice-a' },
       committed: null,
@@ -756,10 +1113,10 @@ describe('createVoiceIntentExecutor', () => {
     await flush()
 
     expect(operationId).toBe('op-rejoin-a')
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', {
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-a', expect.objectContaining({
       operationId: 'op-rejoin-a',
       reason: 'rejoin',
-    })
+    }))
   })
 
   it('ignores a superseded join result and executes the latest intent', async () => {
@@ -779,10 +1136,10 @@ describe('createVoiceIntentExecutor', () => {
     await flush()
 
     expect(deps.performVoiceJoin).toHaveBeenCalledTimes(2)
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-b', {
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-b', expect.objectContaining({
       operationId: 'op-join-b',
       reason: 'switch',
-    })
+    }))
     expect(executor.getState()).toMatchObject({
       desired: { kind: 'channel', channelId: 'voice-b' },
       committed: null,
@@ -790,7 +1147,7 @@ describe('createVoiceIntentExecutor', () => {
     })
   })
 
-  it('keeps desired and replans when the current join throws', async () => {
+  it('stops after a thrown join and allows an explicit same-intent retry', async () => {
     const deps = createDeps({
       createOperationId: operationIds('op-join-a', 'op-join-a-retry'),
       performVoiceJoin: vi
@@ -803,15 +1160,20 @@ describe('createVoiceIntentExecutor', () => {
     executor.intent('voice-a', 'manual_join')
     await flush()
 
-    expect(deps.performVoiceJoin).toHaveBeenCalledTimes(2)
+    expect(deps.performVoiceJoin).toHaveBeenCalledTimes(1)
     expect(executor.getState()).toMatchObject({
       desired: { kind: 'channel', channelId: 'voice-a' },
-      activeOperationId: 'op-join-a-retry',
+      activeOperationId: null,
       lastError: 'timeout',
     })
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    expect(deps.performVoiceJoin).toHaveBeenCalledTimes(2)
+    expect(executor.getState().activeOperationId).toBe('op-join-a-retry')
   })
 
-  it('keeps desired and replans when the current join returns false', async () => {
+  it('stops after a false join result and allows an explicit same-intent retry', async () => {
     const deps = createDeps({
       createOperationId: operationIds('op-join-a', 'op-join-a-retry'),
       performVoiceJoin: vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
@@ -821,15 +1183,20 @@ describe('createVoiceIntentExecutor', () => {
     executor.intent('voice-a', 'manual_join')
     await flush()
 
-    expect(deps.performVoiceJoin).toHaveBeenCalledTimes(2)
+    expect(deps.performVoiceJoin).toHaveBeenCalledTimes(1)
     expect(executor.getState()).toMatchObject({
       desired: { kind: 'channel', channelId: 'voice-a' },
-      activeOperationId: 'op-join-a-retry',
+      activeOperationId: null,
       lastError: 'Voice join was aborted',
     })
+
+    executor.intent('voice-a', 'manual_join')
+    await flush()
+    expect(deps.performVoiceJoin).toHaveBeenCalledTimes(2)
+    expect(executor.getState().activeOperationId).toBe('op-join-a-retry')
   })
 
-  it('ignores stale commits and accepts the current join commit', async () => {
+  it('records late authoritative commits and accepts the current join commit', async () => {
     const deps = createDeps({ createOperationId: operationIds('op-join-a', 'op-join-b') })
     const executor = createExecutor(deps)
 
@@ -838,7 +1205,7 @@ describe('createVoiceIntentExecutor', () => {
     await flush()
 
     executor.observeCommit('op-join-a', 'voice-a')
-    expect(executor.getState().committed).toBeNull()
+    expect(executor.getState().committed).toBe('voice-a')
 
     executor.observeCommit('op-join-b', 'voice-b')
     expect(executor.getSnapshot()).toMatchObject({
@@ -866,9 +1233,9 @@ describe('createVoiceIntentExecutor', () => {
 
     expect(deps.requestVoiceLeave).not.toHaveBeenCalled()
     expect(deps.performVoiceJoin).toHaveBeenCalledTimes(3)
-    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-c', {
+    expect(deps.performVoiceJoin).toHaveBeenLastCalledWith('voice-c', expect.objectContaining({
       operationId: 'op-join-c',
       reason: 'switch',
-    })
+    }))
   })
 })

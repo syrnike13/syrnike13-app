@@ -3,7 +3,7 @@ use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{
         cancel_current_pending_voice_join_in_server, get_user_voice_channel_in_server,
-        remove_user_from_voice_channel, UserVoiceChannel, VoiceClient,
+        remove_user_from_voice_channel, UserVoiceChannel,
     },
     Database, Message, RemovalIntention, ServerBan, User,
 };
@@ -21,7 +21,6 @@ use validator::Validate;
 #[put("/<server>/bans/<target>", data = "<data>")]
 pub async fn ban(
     db: &State<Database>,
-    voice_client: &State<VoiceClient>,
     user: User,
     server: Reference<'_>,
     target: Reference<'_>,
@@ -62,9 +61,9 @@ pub async fn ban(
             .await?;
 
         // If the member is in a voice channel while banned kick them from the voice channel
+        cancel_current_pending_voice_join_in_server(target.id, &server.id).await?;
         if let Some(channel_id) = get_user_voice_channel_in_server(target.id, &server.id).await? {
             remove_user_from_voice_channel(
-                voice_client,
                 &UserVoiceChannel {
                     id: channel_id,
                     server_id: Some(server.id.clone()),
@@ -73,7 +72,6 @@ pub async fn ban(
             )
             .await?;
         }
-        cancel_current_pending_voice_join_in_server(voice_client, target.id, &server.id).await?;
     }
     // We do this outside the member check so we can sweep hit-and-run spammers who already left.
     if let Some(seconds) = data.delete_message_seconds {

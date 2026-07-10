@@ -1,6 +1,9 @@
-import { describe, expectTypeOf, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import type {
+  LocalMediaIntent,
+  LocalMediaIntentAcceptanceResult,
+  LocalMediaObservedStateEvent,
   NativeMediaEngineSessionSummary,
   NativeMediaEchoCancellationMode,
   NativeMediaMicrophoneSession,
@@ -12,6 +15,12 @@ import type {
   NativeMediaScreenSession,
   NativeMediaScreenSessionStartOptions,
   NativeMediaSessionStartOptions,
+} from './media'
+import type { SyrnikeDesktopApi } from './api'
+import {
+  parseLocalMediaIntent,
+  parseLocalMediaIntentAcceptanceResult,
+  parseLocalMediaObservedStateEvent,
 } from './media'
 
 describe('native media session contract', () => {
@@ -202,5 +211,195 @@ describe('native media session contract', () => {
     >()
     expectTypeOf(noiseStatus).toMatchTypeOf<NativeMediaNoiseSuppressionMode>()
     expectTypeOf(echoStatus).toMatchTypeOf<NativeMediaEchoCancellationMode>()
+  })
+
+  it('models immutable local media intent, acceptance, and observed state', () => {
+    expectTypeOf<LocalMediaIntent>().toMatchTypeOf<{
+      operationId: string | null
+      envelopeRevision: number
+      microphone:
+        | { revision: number; state: 'off' }
+        | { revision: number; state: 'retain'; muted: boolean }
+        | {
+            revision: number
+            state: 'publish'
+            muted: boolean
+            audioBitrateKbps: number
+            credentials: {
+              url: string
+              token: string
+              participantIdentity: string
+            }
+          }
+      screen:
+        | { revision: number; state: 'off' }
+        | {
+            revision: number
+            state: 'prepare' | 'publish'
+            credentials: {
+              url: string
+              token: string
+              participantIdentity: string
+            }
+            source: {
+              sourceId: string
+              width: number
+              height: number
+              fps: number
+              bitrate: number
+              audioBitrate: number
+              audioRequested: boolean
+            }
+          }
+    }>()
+
+    expectTypeOf<LocalMediaIntentAcceptanceResult>().toMatchTypeOf<{
+      operationId: string | null
+      acceptedEnvelopeRevision: number
+      disposition: 'accepted' | 'duplicate'
+    }>()
+
+    expectTypeOf<LocalMediaObservedStateEvent>().toMatchTypeOf<
+      | {
+          kind: 'microphone'
+          operationId: string | null
+          revision: number
+          reconcileAttempt: number
+        }
+      | {
+          kind: 'screen'
+          operationId: string | null
+          revision: number
+          reconcileAttempt: number
+        }
+    >()
+  })
+
+  it('validates local media intent payloads at runtime', () => {
+    const parsed = parseLocalMediaIntent({
+      operationId: 'voice-op-1',
+      envelopeRevision: 4,
+      microphone: {
+        revision: 8,
+        state: 'publish',
+        muted: false,
+        audioBitrateKbps: 96,
+        credentials: {
+          url: 'wss://example.test',
+          token: 'token',
+          participantIdentity: 'user:desktop-native:voice-op-1:microphone',
+        },
+      },
+      screen: {
+        revision: 3,
+        state: 'prepare',
+        credentials: {
+          url: 'wss://example.test',
+          token: 'token',
+          participantIdentity: 'user:desktop-native:voice-op-1:screen',
+        },
+        source: {
+          sourceId: 'window:42',
+          width: 1_920,
+          height: 1_080,
+          fps: 60,
+          bitrate: 8_000_000,
+          audioBitrate: 128_000,
+          audioRequested: true,
+        },
+      },
+    })
+
+    expect(parsed.envelopeRevision).toBe(4)
+    expect(() =>
+      parseLocalMediaIntent({
+        operationId: 'voice-op-1',
+        envelopeRevision: -1,
+        microphone: {
+          revision: 1,
+          state: 'retain',
+          muted: true,
+        },
+        screen: {
+          revision: 0,
+          state: 'off',
+        },
+      }),
+    ).toThrow(/envelopeRevision/)
+  })
+
+  it('validates local media acceptance payloads at runtime', () => {
+    const parsed = parseLocalMediaIntentAcceptanceResult({
+      operationId: null,
+      acceptedEnvelopeRevision: 7,
+      disposition: 'duplicate',
+    })
+
+    expect(parsed.disposition).toBe('duplicate')
+    expect(() =>
+      parseLocalMediaIntentAcceptanceResult({
+        operationId: '',
+        acceptedEnvelopeRevision: 7,
+        disposition: 'accepted',
+      }),
+    ).toThrow(/operationId/)
+  })
+
+  it('validates local media observed state payloads at runtime', () => {
+    const parsed = parseLocalMediaObservedStateEvent({
+      kind: 'screen',
+      operationId: 'voice-op-2',
+      revision: 11,
+      reconcileAttempt: 5,
+      sequence: 12,
+      state: 'published',
+      source: {
+        sourceId: 'screen:main',
+        width: 1_920,
+        height: 1_080,
+        fps: 60,
+        bitrate: 8_000_000,
+        audioBitrate: 128_000,
+        audioRequested: true,
+      },
+      participantIdentity: 'user:desktop-native:screen-2',
+    })
+
+    expect(parsed.kind).toBe('screen')
+    expect(() =>
+      parseLocalMediaObservedStateEvent({
+        kind: 'microphone',
+        operationId: 'voice-op-2',
+        revision: 11,
+        reconcileAttempt: 5,
+        sequence: 13,
+        state: 'error',
+        muted: false,
+        audioBitrateKbps: 96,
+        participantIdentity: 'user:desktop-native:microphone-2',
+        errorCode: '',
+        errorMessage: 'publish failed',
+        errorStage: 'publish',
+        retryable: true,
+      }),
+    ).toThrow(/errorCode/)
+  })
+
+  it('replaces imperative publication methods on the desktop media api', () => {
+    type DesktopMediaApi = SyrnikeDesktopApi['media']
+
+    expectTypeOf<DesktopMediaApi>().toHaveProperty('applyLocalMediaIntent')
+    expectTypeOf<DesktopMediaApi>().toHaveProperty('onLocalMediaState')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('prepareScreenSession')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('disconnectPreparedScreenSession')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('startSession')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('cancelPendingStarts')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('setMicrophoneMuted')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('reconnectMicrophoneSession')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('stopSession')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('onStateChange')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('onStreamEnded')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('onStreamError')
+    expectTypeOf<DesktopMediaApi>().not.toHaveProperty('onRuntimeLost')
   })
 })

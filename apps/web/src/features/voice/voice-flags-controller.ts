@@ -104,7 +104,7 @@ export function useVoiceFlagsController({
 
       const wantsMic = voicePreferenceStore.getMicEnabled()
       const publishing = shouldUseNativeMicrophone()
-        ? nativeMedia.hasMicrophonePublishing()
+        ? nativeMedia.hasMicrophonePublishing(activeChannelId)
         : participantMicPublishing(room.localParticipant)
 
       if (active) {

@@ -8,6 +8,8 @@
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
+#include "livekit_publication_client.hpp"
+#include "microphone_publication_controller.hpp"
 
 namespace syrnike::desktop_native::media {
 
@@ -21,14 +23,15 @@ class MicrophoneActor final {
   MicrophoneActor(
     SequencedEmitter& emitter,
     InternalPost post,
-    IsCurrent is_current);
+    IsCurrent is_current,
+    std::shared_ptr<LiveKitPublicationClient> livekit_client = createRealLiveKitPublicationClient());
   ~MicrophoneActor();
 
   MicrophoneActor(const MicrophoneActor&) = delete;
   MicrophoneActor& operator=(const MicrophoneActor&) = delete;
 
   void warm(const MediaCommand& command);
-  RuntimeEvent connect(const MediaCommand& command);
+  void connect(const MediaCommand& command);
   RuntimeEvent configure(const MediaCommand& command);
   void setMuted(const MediaCommand& command);
   void setPreviewConsumer(
@@ -40,6 +43,8 @@ class MicrophoneActor final {
   bool isCurrentCaptureFailure(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_stopped = true);
   void handleTerminal(const MediaCommand& command);
+  void handleWorkerCommand(const MediaCommand& command);
+  RuntimeEvent probe(const MediaCommand& command);
   void shutdown();
 
  private:

@@ -1,14 +1,12 @@
 import type {
+  LocalMediaIntent,
+  LocalMediaIntentAcceptanceResult,
+  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
   NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaSession,
-  NativeMediaMicrophoneSessionStartOptions,
-  NativeMediaSessionStartOptions,
   NativeMediaState,
-  NativeMediaStateEvent,
   NativeMediaStatsEvent,
 } from './media'
 import type {
@@ -154,23 +152,23 @@ export type DesktopDisplayMediaSelection = {
 
 export type {
   NativeMediaEncoderBackend,
+  LiveKitNativePublisherCredentials,
+  LocalMediaIntent,
+  LocalMediaIntentAcceptanceResult,
+  LocalMediaIntentMicrophone,
+  LocalMediaIntentScreen,
+  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
   NativeMediaLoopbackMode,
-  NativeMediaSession,
-  NativeMediaRuntimeLostEvent,
+  NativeMediaLiveKitCredentials,
   NativeMicrophonePipelineConfig,
   NativeMicrophonePreviewStateEvent,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaSessionKind,
-  NativeMediaMicrophoneSessionStartOptions,
-  NativeMediaSessionStartOptions,
-  NativeMediaScreenSessionStartOptions,
   NativeMediaState,
-  NativeMediaStateEvent,
   NativeMediaStatsEvent,
   NativeMediaTarget,
+  ScreenSourceSpec,
 } from './media'
 
 /**
@@ -251,18 +249,9 @@ export interface SyrnikeDesktopApi {
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,
     ): () => void
-    prepareScreenSession(
-      options: NativeMediaScreenSessionPrepareOptions,
-    ): Promise<void>
-    disconnectPreparedScreenSession(): Promise<void>
-    startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
-    cancelPendingStarts(kind?: import('./media').NativeMediaSessionKind): Promise<void>
-    setMicrophoneMuted(sessionId: string, muted: boolean): Promise<void>
-    reconnectMicrophoneSession(
-      sessionId: string,
-      options: NativeMediaMicrophoneSessionStartOptions,
-    ): Promise<NativeMediaSession>
-    stopSession(sessionId?: string): Promise<void>
+    applyLocalMediaIntent(
+      intent: LocalMediaIntent,
+    ): Promise<LocalMediaIntentAcceptanceResult>
     getState(): Promise<NativeMediaState>
     onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
     onMicrophoneMetrics(
@@ -271,13 +260,8 @@ export interface SyrnikeDesktopApi {
     onMicrophonePreviewState(
       handler: (event: NativeMicrophonePreviewStateEvent) => void,
     ): () => void
-    onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
-    onStreamEnded(handler: (sessionId: string) => void): () => void
-    onStreamError(
-      handler: (event: { sessionId: string; message: string }) => void,
-    ): () => void
-    onRuntimeLost(
-      handler: (event: import('./media').NativeMediaRuntimeLostEvent) => void,
+    onLocalMediaState(
+      handler: (event: LocalMediaObservedStateEvent) => void,
     ): () => void
   }
 }

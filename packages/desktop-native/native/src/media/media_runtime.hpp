@@ -1,16 +1,25 @@
 #pragma once
 
+#include <chrono>
+#include <functional>
 #include <memory>
 
 #include "../common/bounded_queue.hpp"
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
+#include "livekit_publication_client.hpp"
 
 namespace syrnike::desktop_native::media {
 
 class MediaRuntime final {
  public:
-  explicit MediaRuntime(EventSinkPtr sink);
+  using SteadyNow = std::function<std::chrono::steady_clock::time_point()>;
+
+  explicit MediaRuntime(
+    EventSinkPtr sink,
+    std::shared_ptr<LiveKitPublicationClient> livekit_client = createRealLiveKitPublicationClient(),
+    SteadyNow screen_now = {}
+  );
   ~MediaRuntime();
 
   MediaRuntime(const MediaRuntime&) = delete;

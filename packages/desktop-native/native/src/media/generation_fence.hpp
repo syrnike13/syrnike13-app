@@ -39,6 +39,18 @@ class GenerationFence {
     return {session_id_, generation_};
   }
 
+  template <typename Commit>
+  bool commitIfCurrent(
+    const std::string& session_id,
+    std::uint64_t generation,
+    Commit&& commit
+  ) {
+    std::lock_guard lock(mutex_);
+    if (session_id_ != session_id || generation_ != generation) return false;
+    std::forward<Commit>(commit)();
+    return true;
+  }
+
   void restoreIfCurrent(
     const std::string& candidate_session,
     std::uint64_t candidate_generation,

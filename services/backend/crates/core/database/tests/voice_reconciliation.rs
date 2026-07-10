@@ -6,6 +6,10 @@ use syrnike_database::voice::{
     VoiceParticipantReconciliationVerdict,
 };
 
+const OP_A: &str = "voice-op-550e8400-e29b-41d4-a716-446655440001";
+const OP_B: &str = "voice-op-550e8400-e29b-41d4-a716-446655440002";
+const OP_NEW: &str = "voice-op-550e8400-e29b-41d4-a716-446655440003";
+
 fn ids(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
 }
@@ -16,6 +20,18 @@ fn participant(identity: &str, state: participant_info::State) -> ParticipantInf
         state: state as i32,
         ..Default::default()
     }
+}
+
+fn participant_with_operation(
+    identity: &str,
+    operation_id: &str,
+    state: participant_info::State,
+) -> ParticipantInfo {
+    let mut participant = participant(&format!("{identity}:browser:{operation_id}"), state);
+    participant
+        .attributes
+        .insert("voice_operation_id".to_string(), operation_id.to_string());
+    participant
 }
 
 #[test]
@@ -31,7 +47,7 @@ fn reconciliation_keeps_livekit_standard_participants() {
     let plan = voice_participant_reconciliation(
         &ids(&["user-a", "user-b"]),
         &[
-            participant("user-a", participant_info::State::Active),
+            participant_with_operation("user-a", "op-a", participant_info::State::Active),
             participant("user-b", participant_info::State::Joined),
         ],
     );
@@ -87,13 +103,14 @@ fn reconciliation_keeps_native_sidecar_for_committed_base_member() {
     let plan = voice_participant_reconciliation_with_current_operations(
         &ids(&["user-a"]),
         &[
-            participant("user-a", participant_info::State::Active),
+            participant_with_operation("user-a", OP_A, participant_info::State::Active),
             participant(
-                "user-a:desktop-native:op-a:screen",
+                &format!("user-a:desktop-native:{OP_A}:screen"),
                 participant_info::State::Active,
             ),
         ],
-        &[("user-a".to_string(), "op-a".to_string())],
+        &[("user-a".to_string(), OP_A.to_string())],
+        &[],
     );
 
     assert_eq!(plan.livekit_members, ids(&["user-a"]));
@@ -106,13 +123,14 @@ fn reconciliation_removes_native_sidecar_for_stale_operation() {
     let plan = voice_participant_reconciliation_with_current_operations(
         &ids(&["user-a"]),
         &[
-            participant("user-a", participant_info::State::Active),
+            participant_with_operation("user-a", OP_NEW, participant_info::State::Active),
             participant(
                 "user-a:desktop-native:op-old:screen",
                 participant_info::State::Active,
             ),
         ],
-        &[("user-a".to_string(), "op-new".to_string())],
+        &[("user-a".to_string(), OP_NEW.to_string())],
+        &[],
     );
 
     assert_eq!(plan.livekit_members, ids(&["user-a"]));
@@ -121,6 +139,76 @@ fn reconciliation_removes_native_sidecar_for_stale_operation() {
         plan.stale_livekit_participants,
         ids(&["user-a:desktop-native:op-old:screen"])
     );
+}
+
+#[test]
+fn reconciliation_keeps_prepared_browser_and_predecessor_membership() {
+    let prepared = ids(&["user-a"]);
+    let candidate = voice_participant_reconciliation_with_current_operations(
+        &[],
+        &[participant_with_operation(
+            "user-a",
+            OP_B,
+            participant_info::State::Active,
+        )],
+        &[("user-a".to_string(), OP_B.to_string())],
+        &prepared,
+    );
+    assert!(candidate.stale_livekit_participants.is_empty());
+
+    let predecessor = voice_participant_reconciliation_with_current_operations(
+        &ids(&["user-a"]),
+        &[],
+        &[("user-a".to_string(), OP_A.to_string())],
+        &prepared,
+    );
+    assert!(predecessor.stale_members.is_empty());
+}
+
+#[test]
+fn reconciliation_accepts_both_finalized_and_prepared_native_operations() {
+    let plan = voice_participant_reconciliation_with_current_operations(
+        &ids(&["user-a"]),
+        &[
+            participant_with_operation("user-a", OP_B, participant_info::State::Active),
+            participant(
+                &format!("user-a:desktop-native:{OP_A}:screen"),
+                participant_info::State::Active,
+            ),
+            participant(
+                &format!("user-a:desktop-native:{OP_B}:microphone"),
+                participant_info::State::Active,
+            ),
+        ],
+        &[
+            ("user-a".to_string(), OP_A.to_string()),
+            ("user-a".to_string(), OP_B.to_string()),
+        ],
+        &ids(&["user-a"]),
+    );
+
+    assert!(plan.stale_livekit_participants.is_empty());
+}
+
+#[test]
+fn reconciliation_removes_stale_browser_operation_for_same_identity() {
+    let plan = voice_participant_reconciliation_with_current_operations(
+        &ids(&["user-a"]),
+        &[participant_with_operation(
+            "user-a",
+            OP_B,
+            participant_info::State::Active,
+        )],
+        &[("user-a".to_string(), OP_A.to_string())],
+        &[],
+    );
+
+    assert_eq!(plan.livekit_members, ids(&["user-a"]));
+    assert_eq!(
+        plan.stale_livekit_participants,
+        ids(&[&format!("user-a:browser:{OP_B}")])
+    );
+    assert!(plan.stale_members.is_empty());
 }
 
 #[test]

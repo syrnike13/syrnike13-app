@@ -499,6 +499,10 @@ class HooksRuntime::Implementation {
         emitter_.emit(successfulReply(command));
         return true;
       }
+      if (command.type == "probeHooksRuntime") {
+        emitter_.emit(successfulReply(command));
+        return true;
+      }
       if (command.type == "stopOverlay") {
         overlay_.stop();
         emitter_.emit(successfulReply(command));

@@ -42,27 +42,17 @@ export const IPC = {
   mediaListDevices: 'syrnike-desktop:media:list-devices',
   mediaStartMicrophonePreview: 'syrnike-desktop:media:start-microphone-preview',
   mediaStopMicrophonePreview: 'syrnike-desktop:media:stop-microphone-preview',
-  mediaPrepareScreenSession: 'syrnike-desktop:media:prepare-screen-session',
-  mediaDisconnectPreparedScreenSession:
-    'syrnike-desktop:media:disconnect-prepared-screen-session',
-  mediaStartSession: 'syrnike-desktop:media:start-session',
-  mediaCancelPendingStarts: 'syrnike-desktop:media:cancel-pending-starts',
+  mediaApplyLocalMediaIntent:
+    'syrnike-desktop:media:apply-local-media-intent',
   mediaConfigureMicrophonePipeline:
     'syrnike-desktop:media:configure-microphone-pipeline',
-  mediaSetMicrophoneMuted: 'syrnike-desktop:media:set-microphone-muted',
-  mediaReconnectMicrophoneSession:
-    'syrnike-desktop:media:reconnect-microphone-session',
-  mediaStopSession: 'syrnike-desktop:media:stop-session',
   mediaGetState: 'syrnike-desktop:media:get-state',
   mediaStats: 'syrnike-desktop:media:stats',
   mediaMicrophoneMetrics: 'syrnike-desktop:media:microphone-metrics',
   mediaMicrophonePreviewState:
     'syrnike-desktop:media:microphone-preview-state',
-  mediaStateChanged: 'syrnike-desktop:media:state-changed',
+  mediaLocalMediaState: 'syrnike-desktop:media:local-media-state',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
-  mediaStreamEnded: 'syrnike-desktop:media:stream-ended',
-  mediaStreamError: 'syrnike-desktop:media:stream-error',
-  mediaRuntimeLost: 'syrnike-desktop:media:runtime-lost',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

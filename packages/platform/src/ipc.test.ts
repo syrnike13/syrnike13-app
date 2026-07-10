@@ -3,25 +3,31 @@ import { describe, expect, it } from 'vitest'
 import { IPC } from './ipc'
 
 describe('desktop media IPC contract', () => {
-  it('uses a generic media session start channel', () => {
-    expect(IPC.mediaStartSession).toBe('syrnike-desktop:media:start-session')
-    expect('mediaStartScreenShare' in IPC).toBe(false)
+  it('uses one declarative local-media intent channel', () => {
+    expect(IPC.mediaApplyLocalMediaIntent).toBe(
+      'syrnike-desktop:media:apply-local-media-intent',
+    )
+    expect(IPC.mediaLocalMediaState).toBe(
+      'syrnike-desktop:media:local-media-state',
+    )
   })
 
   it('exposes native media device enumeration through the media namespace', () => {
     expect(IPC.mediaListDevices).toBe('syrnike-desktop:media:list-devices')
   })
 
-  it('exposes native microphone mute through the media namespace', () => {
-    expect(IPC.mediaSetMicrophoneMuted).toBe(
-      'syrnike-desktop:media:set-microphone-muted',
-    )
-  })
-
-  it('exposes native microphone reconnect through the media namespace', () => {
-    expect(IPC.mediaReconnectMicrophoneSession).toBe(
-      'syrnike-desktop:media:reconnect-microphone-session',
-    )
+  it('does not expose imperative publication channels', () => {
+    expect('mediaPrepareScreenSession' in IPC).toBe(false)
+    expect('mediaDisconnectPreparedScreenSession' in IPC).toBe(false)
+    expect('mediaStartSession' in IPC).toBe(false)
+    expect('mediaCancelPendingStarts' in IPC).toBe(false)
+    expect('mediaSetMicrophoneMuted' in IPC).toBe(false)
+    expect('mediaReconnectMicrophoneSession' in IPC).toBe(false)
+    expect('mediaStopSession' in IPC).toBe(false)
+    expect('mediaStateChanged' in IPC).toBe(false)
+    expect('mediaStreamEnded' in IPC).toBe(false)
+    expect('mediaStreamError' in IPC).toBe(false)
+    expect('mediaRuntimeLost' in IPC).toBe(false)
   })
 
   it('does not expose out-of-band media audio preparation channels', () => {
@@ -29,10 +35,6 @@ describe('desktop media IPC contract', () => {
     expect('mediaClearSystemAudio' in IPC).toBe(false)
   })
 
-  it('names isolated utility host loss as runtime loss', () => {
-    expect(IPC.mediaRuntimeLost).toBe('syrnike-desktop:media:runtime-lost')
-    expect('mediaEngineLost' in IPC).toBe(false)
-  })
 })
 
 describe('desktop tray IPC contract', () => {

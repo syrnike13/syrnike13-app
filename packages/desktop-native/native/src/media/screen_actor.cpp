@@ -1,381 +1,128 @@
 #include "screen_actor.hpp"
 
-#include <livekit/livekit.h>
-#include <livekit/local_audio_track.h>
-#include <livekit/local_track_publication.h>
-#include <livekit/local_video_track.h>
-#include <livekit/room_delegate.h>
-
-#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
-#include "screen_capture_priority.hpp"
+#include "../common/diagnostic_log.hpp"
+#include "livekit_disconnect_reason.hpp"
 #include "screen_audio_capture.hpp"
-#include "screen_session_invariants.hpp"
+#include "screen_capture_priority.hpp"
 #include "screen_video_capture.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
 
-class ScreenRoomDelegate final : public livekit::RoomDelegate {
- public:
-  explicit ScreenRoomDelegate(ScreenActor::InternalPost post) : post_(std::move(post)) {}
+using diagnostics::DiagnosticField;
 
-  void updateIdentity(std::string session_id, std::uint64_t generation) {
-    std::lock_guard lock(mutex_);
-    session_id_ = std::move(session_id);
-    generation_ = generation;
-  }
+std::string sanitizeDiagnosticMessage(std::string_view message) {
+  return diagnostics::redactForDiagnostics(message);
+}
 
-  void onConnectionStateChanged(
-    livekit::Room&,
-    const livekit::ConnectionStateChangedEvent& event
-  ) override {
-    bool terminal = false;
-    {
-      std::lock_guard lock(mutex_);
-      state_ = event.state;
-      if (state_ == livekit::ConnectionState::Connected) was_connected_ = true;
-      terminal = state_ == livekit::ConnectionState::Disconnected && was_connected_ && !intentional_;
-    }
-    changed_.notify_all();
-    if (terminal) postTerminal("livekit_disconnected");
-  }
-
-  void onDisconnected(livekit::Room&, const livekit::DisconnectedEvent&) override {
-    bool terminal = false;
-    {
-      std::lock_guard lock(mutex_);
-      state_ = livekit::ConnectionState::Disconnected;
-      disconnected_ = true;
-      terminal = !intentional_;
-    }
-    changed_.notify_all();
-    if (terminal) postTerminal("livekit_disconnected");
-  }
-
-  bool waitConnected() {
-    std::unique_lock lock(mutex_);
-    return changed_.wait_for(lock, std::chrono::seconds(10), [&] {
-      return state_ == livekit::ConnectionState::Connected || disconnected_;
-    }) && state_ == livekit::ConnectionState::Connected;
-  }
-
-  void markIntentional() {
-    std::lock_guard lock(mutex_);
-    intentional_ = true;
-  }
-
- private:
-  void postTerminal(const char* message) {
-    if (terminal_posted_.exchange(true)) return;
-    MediaCommand command;
-    command.type = "__screenTerminal";
-    {
-      std::lock_guard lock(mutex_);
-      command.session_id = session_id_;
-      command.generation = generation_;
-    }
-    command.internal_message = message;
-    post_(std::move(command));
-  }
-
-  ScreenActor::InternalPost post_;
-  std::mutex mutex_;
-  std::condition_variable changed_;
-  livekit::ConnectionState state_ = livekit::ConnectionState::Disconnected;
-  std::string session_id_;
-  std::uint64_t generation_ = 0;
-  bool disconnected_ = false;
-  bool intentional_ = false;
-  bool was_connected_ = false;
-  std::atomic_bool terminal_posted_{false};
-};
-
-int screenBitrate(int requested) {
-  if (requested <= 625'000) return 625'000;
-  if (requested <= 2'500'000) return 2'500'000;
-  if (requested <= 4'000'000) return 4'000'000;
-  return 8'000'000;
+void logScreen(
+  std::string_view event,
+  std::initializer_list<DiagnosticField> fields = {}
+) {
+  auto& logger = diagnostics::DiagnosticLog::instance();
+  if (!logger.enabled()) return;
+  logger.write(event, fields);
 }
 
 }  // namespace
 
 class ScreenActor::Implementation {
  public:
-  Implementation(SequencedEmitter& emitter, InternalPost post, IsCurrent is_current)
-    : emitter_(emitter), post_(std::move(post)), is_current_(std::move(is_current)) {}
+  Implementation(
+    SequencedEmitter& emitter,
+    InternalPost post,
+    IsCurrent is_current,
+    std::shared_ptr<LiveKitPublicationClient> livekit_client,
+    CommitIfCurrent commit_if_current,
+    Now now
+  ) : emitter_(emitter),
+      post_(std::move(post)),
+      publication_(std::make_unique<ScreenPublicationController>(
+        emitter,
+        post_,
+        std::move(is_current),
+        std::move(livekit_client),
+        std::move(commit_if_current),
+        std::move(now),
+        [this](const MediaCommand& command) {
+          return describePublication(command);
+        },
+        [this](
+          const MediaCommand& command,
+          const ScreenPublicationDescription& description,
+          const std::shared_ptr<livekit::VideoSource>& video_source,
+          const std::shared_ptr<livekit::AudioSource>& audio_source,
+          const std::shared_ptr<std::atomic_bool>& running,
+          const std::function<bool()>& is_current,
+          std::thread& capture_thread,
+          std::thread& audio_thread
+        ) {
+          startCaptureWorkers(
+            command,
+            description,
+            video_source,
+            audio_source,
+            running,
+            is_current,
+            capture_thread,
+            audio_thread
+          );
+        },
+        [this](const std::string& session_id, std::uint64_t generation) {
+          resetStats(session_id, generation);
+        }
+      )) {}
 
   ~Implementation() { shutdown(); }
 
-  RuntimeEvent connect(const MediaCommand& command) {
-    if (!is_current_(command.session_id, command.generation)) {
-      throw std::runtime_error("stale screen connect generation");
-    }
-    validateConnect(command);
-    const bool credentials_match =
-      room_ &&
-      connected_url_ == command.livekit_url &&
-      connected_token_ == command.livekit_token &&
-      participant_identity_ == command.participant_identity;
-    if (!canReuseActiveScreenRoom(
-      capture_active_,
-      active_session_id_,
-      active_generation_,
-      command.session_id,
-      command.generation,
-      credentials_match
-    )) {
-      throw std::logic_error(
-        "cannot preconnect or retag a screen room while capture is active"
-      );
-    }
-    if (capture_active_) return successfulReply(command);
-    if (credentials_match) {
-      active_session_id_ = command.session_id;
-      active_generation_ = command.generation;
-      delegate_->updateIdentity(active_session_id_, active_generation_);
-      return successfulReply(command);
-    }
+  void connect(const MediaCommand& command) { publication_->connect(command); }
 
-    disconnectRoom();
-    auto room = std::make_unique<livekit::Room>();
-    auto delegate = std::make_unique<ScreenRoomDelegate>(post_);
-    delegate->updateIdentity(command.session_id, command.generation);
-    room->setDelegate(delegate.get());
-    livekit::RoomOptions options;
-    options.auto_subscribe = false;
-    options.single_peer_connection = false;
-    if (!room->connect(command.livekit_url, command.livekit_token, options)) {
-      throw std::runtime_error("LiveKit screen connect returned false");
-    }
-    if (!delegate->waitConnected()) {
-      delegate->markIntentional();
-      room->disconnect();
-      throw std::runtime_error("LiveKit screen connection timed out");
-    }
-    if (!is_current_(command.session_id, command.generation)) {
-      delegate->markIntentional();
-      room->disconnect();
-      throw std::runtime_error("stale screen connect generation");
-    }
-    room_ = std::move(room);
-    delegate_ = std::move(delegate);
-    connected_url_ = command.livekit_url;
-    connected_token_ = command.livekit_token;
-    participant_identity_ = command.participant_identity;
-    active_session_id_ = command.session_id;
-    active_generation_ = command.generation;
-    return successfulReply(command);
-  }
-
-  RuntimeEvent startCapture(const MediaCommand& command) {
-    if (!is_current_(command.session_id, command.generation)) {
-      throw std::runtime_error("stale screen capture generation");
-    }
-    stopCaptureInternal(false);
-    connect(command);
-    try {
-    const auto target = syrnike::voice::resolveScreenCaptureTarget(command.source_id);
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    syrnike::voice::resolveScreenCaptureSize(
-      target,
-      static_cast<std::uint32_t>(command.width),
-      static_cast<std::uint32_t>(command.height),
-      width,
-      height
-    );
-    const int fps = std::clamp(command.fps, 1, 240);
-    const int bitrate = screenBitrate(command.bitrate);
-    const bool publish_audio =
-      command.audio_requested && (!target.window || target.process_id != 0);
-    if (publish_audio) {
-      syrnike::voice::validateScreenLoopbackAudio(target, command.exclude_process_id);
-    }
-    auto source = std::make_shared<livekit::VideoSource>(
-      static_cast<int>(width), static_cast<int>(height)
-    );
-    auto capturer = syrnike::voice::ScreenVideoCapturer::create(target, width, height);
-    auto running = std::make_shared<std::atomic_bool>(true);
-
-    active_session_id_ = command.session_id;
-    active_generation_ = command.generation;
-    delegate_->updateIdentity(active_session_id_, active_generation_);
-    capture_running_ = running;
-    capture_width_ = static_cast<int>(width);
-    capture_height_ = static_cast<int>(height);
-    capture_fps_ = fps;
-    capture_bitrate_ = bitrate;
-    resetStats(command.session_id, command.generation);
-    video_source_ = source;
-    capture_thread_ = std::thread(
-      [this,
-       session_id = command.session_id,
-       generation = command.generation,
-       width,
-       height,
-       fps,
-       source,
-       running,
-       capturer = std::move(capturer)]() mutable {
-        captureLoop(
-          std::move(session_id), generation, width, height, fps,
-          std::move(source), std::move(running), std::move(capturer)
-        );
-      }
-    );
-
-      auto participant = room_->localParticipant().lock();
-      if (!participant) throw std::runtime_error("LiveKit screen participant is unavailable");
-      video_track_ = livekit::LocalVideoTrack::createLocalVideoTrack("screen", video_source_);
-      livekit::TrackPublishOptions options;
-      options.source = livekit::TrackSource::SOURCE_SCREENSHARE;
-      options.stream = "screen";
-      options.simulcast = false;
-      options.video_encoding = livekit::VideoEncodingOptions{
-        static_cast<std::uint64_t>(bitrate), static_cast<double>(fps),
-      };
-      participant->publishTrack(video_track_, options);
-      const auto publication = video_track_->publication();
-      if (!publication) throw std::runtime_error("LiveKit screen publication was not acknowledged");
-      video_publication_sid_ = publication->sid();
-      if (video_publication_sid_.empty()) {
-        throw std::runtime_error("LiveKit screen publication SID is empty");
-      }
-      if (!is_current_(command.session_id, command.generation)) {
-        throw std::runtime_error("stale screen publish generation");
-      }
-
-      if (publish_audio) {
-        audio_source_ = std::make_shared<livekit::AudioSource>(48'000, 2);
-        audio_track_ = livekit::LocalAudioTrack::createLocalAudioTrack(
-          "screen-audio", audio_source_
-        );
-        livekit::AudioEncodingOptions audio_encoding;
-        audio_encoding.max_bitrate = command.audio_bitrate;
-        livekit::TrackPublishOptions audio_options;
-        audio_options.audio_encoding = audio_encoding;
-        audio_options.dtx = false;
-        audio_options.red = false;
-        audio_options.source = livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
-        participant->publishTrack(audio_track_, audio_options);
-        const auto audio_publication = audio_track_->publication();
-        if (!audio_publication) {
-          throw std::runtime_error("LiveKit screen audio publication was not acknowledged");
-        }
-        audio_publication_sid_ = audio_publication->sid();
-        if (audio_publication_sid_.empty()) {
-          throw std::runtime_error("LiveKit screen audio publication SID is empty");
-        }
-        audio_mode_ = target.window ? "process" : "system_exclude";
-        loopback_mode_ = target.window
-          ? "include_target_process_tree"
-          : "exclude_target_process_tree";
-        audio_target_process_id_ = target.window
-          ? target.process_id
-          : command.exclude_process_id;
-        const auto session_id = command.session_id;
-        const auto generation = command.generation;
-        auto on_failure = [this, session_id, generation](std::string message) {
-          MediaCommand terminal;
-          terminal.type = "__screenTerminal";
-          terminal.session_id = session_id;
-          terminal.generation = generation;
-          terminal.internal_message = "screen_audio_capture_failed:" + message;
-          post_(std::move(terminal));
-        };
-        auto on_stats = [this, session_id, generation](
-          std::uint64_t frames,
-          std::uint64_t packets,
-          double peak_db,
-          double rms_db
-        ) {
-          recordAudioStats(
-            session_id, generation, frames, packets, peak_db, rms_db
-          );
-        };
-        if (target.window) {
-          audio_thread_ = std::thread(
-            syrnike::voice::captureProcessLoopbackAudio,
-            target.process_id,
-            command.session_id,
-            audio_source_,
-            capture_running_,
-            std::move(on_failure),
-            std::move(on_stats)
-          );
-        } else {
-          audio_thread_ = std::thread(
-            syrnike::voice::captureSystemLoopbackAudio,
-            command.exclude_process_id,
-            command.session_id,
-            audio_source_,
-            capture_running_,
-            std::move(on_failure),
-            std::move(on_stats)
-          );
-        }
-      }
-      capture_active_ = true;
-    auto result = successfulReply(command);
-    result.kind = "screen";
-    result.width = static_cast<int>(width);
-    result.height = static_cast<int>(height);
-    result.fps = fps;
-    result.bitrate = bitrate;
-    result.audio_mode = audio_mode_;
-    result.loopback_mode = loopback_mode_;
-    result.audio_target_process_id = audio_target_process_id_;
-    result.native_participant_identity = participant_identity_;
-    return result;
-    } catch (...) {
-      stopCaptureInternal(false);
-      disconnectRoom();
-      throw;
-    }
+  void startCapture(const MediaCommand& command) {
+    publication_->startCapture(command);
   }
 
   void stopCapture(const MediaCommand& command, bool emit_stopped) {
-    if (!is_current_(command.session_id, command.generation)) {
-      throw std::runtime_error("stale screen stop generation");
-    }
-    if (!command.session_id.empty() && active_session_id_ != command.session_id) return;
-    stopCaptureInternal(emit_stopped);
+    publication_->stopCapture(command, emit_stopped);
   }
 
   void disconnect(const MediaCommand& command, bool emit_stopped) {
-    if ((command.type == "disconnectScreen" || command.terminal || command.force) &&
-        !is_current_(command.session_id, command.generation)) {
-      throw std::runtime_error("stale screen disconnect generation");
-    }
-    if (
-      !command.terminal && !command.force && !command.session_id.empty() &&
-      !matchesActive(command)
-    ) return;
-    if (!command.session_id.empty() && active_session_id_ != command.session_id) return;
-    stopCaptureInternal(emit_stopped);
-    disconnectRoom();
+    publication_->disconnect(command, emit_stopped);
   }
 
   void handleTerminal(const MediaCommand& command) {
-    if (command.internal_message != "livekit_disconnected" && !capture_active_) return;
-    if (!matchesActive(command)) return;
+    logScreen(
+      "screen_handle_terminal",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"message", sanitizeDiagnosticMessage(command.internal_message)}
+      }
+    );
+    const bool livekit_terminal = isLiveKitDisconnectTerminalMessage(command.internal_message);
+    if (!publication_->handleTerminal(command, livekit_terminal)) return;
     const auto reason = command.internal_message.empty()
       ? std::string("runtime_error")
       : command.internal_message;
-    stopCaptureInternal(false);
-    disconnectRoom();
+    logScreen(
+      "screen_terminal_state",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"message", reason}
+      }
+    );
     RuntimeEvent ended;
     ended.type = "screenCaptureEnded";
     ended.session_id = command.session_id;
@@ -391,88 +138,144 @@ class ScreenActor::Implementation {
     emitter_.emit(std::move(stopped));
   }
 
+  void handleWorkerCommand(const MediaCommand& command) {
+    publication_->handleWorkerCommand(command);
+  }
+
+  RuntimeEvent probe(const MediaCommand& command) {
+    return publication_->probe(command);
+  }
+
   void shutdown() {
-    stopCaptureInternal(false);
-    disconnectRoom();
+    if (!publication_) return;
+    publication_->shutdown();
   }
 
  private:
-  RuntimeEvent successfulReply(const MediaCommand& command) const {
-    RuntimeEvent result;
-    result.type = "reply";
-    result.request_id = command.request_id;
-    result.session_id = command.session_id;
-    result.generation = command.generation;
-    result.ok = true;
-    return result;
-  }
-
-  void validateConnect(const MediaCommand& command) const {
-    if (command.livekit_url.empty()) throw std::invalid_argument("LiveKit URL is required");
-    if (command.livekit_token.empty()) throw std::invalid_argument("LiveKit token is required");
-    if (command.participant_identity.empty()) {
-      throw std::invalid_argument("participantIdentity is required");
+  ScreenPublicationDescription describePublication(const MediaCommand& command) const {
+    ScreenPublicationDescription description;
+    description.target = syrnike::voice::resolveScreenCaptureTarget(command.source_id);
+    syrnike::voice::resolveScreenCaptureSize(
+      description.target,
+      static_cast<std::uint32_t>(command.width),
+      static_cast<std::uint32_t>(command.height),
+      description.width,
+      description.height
+    );
+    description.publish_audio =
+      command.audio_requested &&
+      (!description.target.window || description.target.process_id != 0);
+    if (description.publish_audio) {
+      syrnike::voice::validateScreenLoopbackAudio(
+        description.target,
+        command.exclude_process_id
+      );
+      description.audio_mode = description.target.window ? "process" : "system_exclude";
+      description.loopback_mode = description.target.window
+        ? "include_target_process_tree"
+        : "exclude_target_process_tree";
+      description.audio_target_process_id = description.target.window
+        ? description.target.process_id
+        : command.exclude_process_id;
     }
+    return description;
   }
 
-  bool matchesActive(const MediaCommand& command) const {
-    return active_session_id_ == command.session_id && active_generation_ == command.generation;
-  }
-
-  void stopCaptureInternal(bool emit_stopped) {
-    const auto stopped_session_id = active_session_id_;
-    const auto stopped_generation = active_generation_;
-    const bool was_active = capture_active_;
-    capture_active_ = false;
-    if (capture_running_) capture_running_->store(false);
-    if (capture_thread_.joinable()) capture_thread_.join();
-    if (audio_thread_.joinable()) audio_thread_.join();
-    if (!video_publication_sid_.empty()) {
-      if (auto participant = room_ ? room_->localParticipant().lock() : nullptr) {
-        try { participant->unpublishTrack(video_publication_sid_); } catch (...) {}
+  void startCaptureWorkers(
+    const MediaCommand& command,
+    const ScreenPublicationDescription& description,
+    const std::shared_ptr<livekit::VideoSource>& video_source,
+    const std::shared_ptr<livekit::AudioSource>& audio_source,
+    const std::shared_ptr<std::atomic_bool>& running,
+    const std::function<bool()>& is_current,
+    std::thread& capture_thread,
+    std::thread& audio_thread
+  ) {
+    auto capturer = syrnike::voice::ScreenVideoCapturer::create(
+      description.target,
+      description.width,
+      description.height
+    );
+    if (!is_current()) throw std::runtime_error("stale screen capture generation");
+    capture_thread = std::thread(
+      [this,
+       session_id = command.session_id,
+       generation = command.generation,
+       width = description.width,
+       height = description.height,
+       fps = description.fps,
+       source = video_source,
+       running,
+       capturer = std::move(capturer)]() mutable {
+        captureLoop(
+          std::move(session_id),
+          generation,
+          width,
+          height,
+          fps,
+          std::move(source),
+          std::move(running),
+          std::move(capturer)
+        );
       }
-    }
-    video_publication_sid_.clear();
-    if (!audio_publication_sid_.empty()) {
-      if (auto participant = room_ ? room_->localParticipant().lock() : nullptr) {
-        try { participant->unpublishTrack(audio_publication_sid_); } catch (...) {}
-      }
-    }
-    audio_publication_sid_.clear();
-    video_track_.reset();
-    audio_track_.reset();
-    video_source_.reset();
-    audio_source_.reset();
-    capture_running_.reset();
-    capture_width_ = 0;
-    capture_height_ = 0;
-    capture_fps_ = 0;
-    capture_bitrate_ = 0;
-    audio_mode_ = "none";
-    loopback_mode_.clear();
-    audio_target_process_id_ = 0;
-    if (emit_stopped && was_active && !stopped_session_id.empty()) {
-      RuntimeEvent event;
-      event.type = "sessionStopped";
-      event.session_id = stopped_session_id;
-      event.generation = stopped_generation;
-      event.reason = "stopped";
-      emitter_.emit(std::move(event));
+    );
+    if (description.publish_audio) {
+      startAudioCapture(
+        command,
+        description.target,
+        audio_source,
+        running,
+        audio_thread
+      );
     }
   }
 
-  void disconnectRoom() {
-    if (delegate_) delegate_->markIntentional();
-    if (room_) {
-      try { room_->disconnect(); } catch (...) {}
+  void startAudioCapture(
+    const MediaCommand& command,
+    const syrnike::voice::ScreenCaptureTarget& target,
+    const std::shared_ptr<livekit::AudioSource>& audio_source,
+    const std::shared_ptr<std::atomic_bool>& running,
+    std::thread& audio_thread
+  ) {
+    const auto session_id = command.session_id;
+    const auto generation = command.generation;
+    auto on_failure = [this, session_id, generation](std::string message) {
+      MediaCommand terminal;
+      terminal.type = "__screenTerminal";
+      terminal.session_id = session_id;
+      terminal.generation = generation;
+      terminal.internal_message = "screen_audio_capture_failed:" + message;
+      post_(std::move(terminal));
+    };
+    auto on_stats = [this, session_id, generation](
+      std::uint64_t frames,
+      std::uint64_t packets,
+      double peak_db,
+      double rms_db
+    ) {
+      recordAudioStats(session_id, generation, frames, packets, peak_db, rms_db);
+    };
+    if (target.window) {
+      audio_thread = std::thread(
+        syrnike::voice::captureProcessLoopbackAudio,
+        target.process_id,
+        session_id,
+        audio_source,
+        running,
+        std::move(on_failure),
+        std::move(on_stats)
+      );
+    } else {
+      audio_thread = std::thread(
+        syrnike::voice::captureSystemLoopbackAudio,
+        command.exclude_process_id,
+        session_id,
+        audio_source,
+        running,
+        std::move(on_failure),
+        std::move(on_stats)
+      );
     }
-    room_.reset();
-    delegate_.reset();
-    connected_url_.clear();
-    connected_token_.clear();
-    participant_identity_.clear();
-    active_session_id_.clear();
-    active_generation_ = 0;
   }
 
   void resetStats(const std::string& session_id, std::uint64_t generation) {
@@ -567,6 +370,16 @@ class ScreenActor::Implementation {
     std::shared_ptr<std::atomic_bool> running,
     std::unique_ptr<syrnike::voice::ScreenVideoCapturer> capturer
   ) {
+    logScreen(
+      "screen_capture_loop_start",
+      {
+        {"sessionId", session_id},
+        {"generation", generation},
+        {"width", static_cast<std::uint64_t>(width)},
+        {"height", static_cast<std::uint64_t>(height)},
+        {"fps", static_cast<std::uint64_t>(fps)}
+      }
+    );
     syrnike::voice::ScreenCapturePriorityScope priority;
     const auto interval = std::chrono::microseconds(1'000'000 / fps);
     auto next_frame = std::chrono::steady_clock::now();
@@ -610,6 +423,16 @@ class ScreenActor::Implementation {
               ? "target_closed"
               : "capture_failed";
           running->store(false);
+          logScreen(
+            "screen_capture_loop_terminal",
+            {
+              {"sessionId", session_id},
+              {"generation", generation},
+              {"targetClosed",
+               capture.status == syrnike::voice::ScreenCaptureFrameStatus::TargetClosed},
+              {"frames", frames}
+            }
+          );
           post_(std::move(terminal));
           break;
         }
@@ -628,45 +451,59 @@ class ScreenActor::Implementation {
         if (now > next_frame + interval) next_frame = now;
         else std::this_thread::sleep_until(next_frame);
       }
-    } catch (...) {
+    } catch (const std::exception& error) {
       if (running->exchange(false)) {
+        logScreen(
+          "screen_capture_loop_error",
+          {
+            {"sessionId", session_id},
+            {"generation", generation},
+            {"frames", frames},
+            {"message", sanitizeDiagnosticMessage(error.what())}
+          }
+        );
         MediaCommand terminal;
         terminal.type = "__screenTerminal";
-        terminal.session_id = std::move(session_id);
+        terminal.session_id = session_id;
+        terminal.generation = generation;
+        terminal.internal_message = "capture_failed";
+        post_(std::move(terminal));
+      }
+    } catch (...) {
+      if (running->exchange(false)) {
+        logScreen(
+          "screen_capture_loop_error_unknown",
+          {
+            {"sessionId", session_id},
+            {"generation", generation},
+            {"frames", frames}
+          }
+        );
+        MediaCommand terminal;
+        terminal.type = "__screenTerminal";
+        terminal.session_id = session_id;
         terminal.generation = generation;
         terminal.internal_message = "capture_failed";
         post_(std::move(terminal));
       }
     }
+    logScreen(
+      "screen_capture_loop_exit",
+      {
+        {"sessionId", session_id},
+        {"generation", generation},
+        {"frames", frames},
+        {"methodWgc", method_wgc},
+        {"methodDxgi", method_dxgi},
+        {"methodGdiBlt", method_gdi_blt},
+        {"running", running->load()}
+      }
+    );
   }
 
   SequencedEmitter& emitter_;
   InternalPost post_;
-  IsCurrent is_current_;
-  std::unique_ptr<livekit::Room> room_;
-  std::unique_ptr<ScreenRoomDelegate> delegate_;
-  std::string connected_url_;
-  std::string connected_token_;
-  std::string participant_identity_;
-  std::string active_session_id_;
-  std::uint64_t active_generation_ = 0;
-  std::shared_ptr<std::atomic_bool> capture_running_;
-  std::thread capture_thread_;
-  std::shared_ptr<livekit::VideoSource> video_source_;
-  std::shared_ptr<livekit::LocalVideoTrack> video_track_;
-  std::string video_publication_sid_;
-  std::shared_ptr<livekit::AudioSource> audio_source_;
-  std::shared_ptr<livekit::LocalAudioTrack> audio_track_;
-  std::string audio_publication_sid_;
-  std::thread audio_thread_;
-  std::string audio_mode_ = "none";
-  std::string loopback_mode_;
-  std::uint32_t audio_target_process_id_ = 0;
-  int capture_width_ = 0;
-  int capture_height_ = 0;
-  int capture_fps_ = 0;
-  int capture_bitrate_ = 0;
-  bool capture_active_ = false;
+  std::unique_ptr<ScreenPublicationController> publication_;
   std::mutex stats_mutex_;
   std::string stats_session_id_;
   std::uint64_t stats_generation_ = 0;
@@ -682,26 +519,50 @@ class ScreenActor::Implementation {
   std::chrono::steady_clock::time_point next_stats_at_{};
 };
 
-ScreenActor::ScreenActor(SequencedEmitter& emitter, InternalPost post, IsCurrent is_current)
-  : implementation_(std::make_unique<Implementation>(
-      emitter, std::move(post), std::move(is_current)
+ScreenActor::ScreenActor(
+  SequencedEmitter& emitter,
+  InternalPost post,
+  IsCurrent is_current,
+  std::shared_ptr<LiveKitPublicationClient> livekit_client,
+  CommitIfCurrent commit_if_current,
+  Now now
+) : implementation_(std::make_unique<Implementation>(
+      emitter,
+      std::move(post),
+      std::move(is_current),
+      std::move(livekit_client),
+      std::move(commit_if_current),
+      std::move(now)
     )) {}
+
 ScreenActor::~ScreenActor() = default;
-RuntimeEvent ScreenActor::connect(const MediaCommand& command) {
-  return implementation_->connect(command);
+
+void ScreenActor::connect(const MediaCommand& command) { implementation_->connect(command); }
+
+void ScreenActor::startCapture(const MediaCommand& command) {
+  implementation_->startCapture(command);
 }
-RuntimeEvent ScreenActor::startCapture(const MediaCommand& command) {
-  return implementation_->startCapture(command);
-}
+
 void ScreenActor::stopCapture(const MediaCommand& command, bool emit_stopped) {
   implementation_->stopCapture(command, emit_stopped);
 }
+
 void ScreenActor::disconnect(const MediaCommand& command, bool emit_stopped) {
   implementation_->disconnect(command, emit_stopped);
 }
+
 void ScreenActor::handleTerminal(const MediaCommand& command) {
   implementation_->handleTerminal(command);
 }
+
+void ScreenActor::handleWorkerCommand(const MediaCommand& command) {
+  implementation_->handleWorkerCommand(command);
+}
+
+RuntimeEvent ScreenActor::probe(const MediaCommand& command) {
+  return implementation_->probe(command);
+}
+
 void ScreenActor::shutdown() { implementation_->shutdown(); }
 
 }  // namespace syrnike::desktop_native::media

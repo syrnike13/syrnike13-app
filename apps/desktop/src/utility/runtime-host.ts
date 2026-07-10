@@ -3,6 +3,10 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import {
+  createNativeDiagnosticLog,
+  type NativeDiagnosticLog,
+} from '../main/native-runtime/diagnostic-log'
+import {
   NATIVE_RUNTIME_CONTRACT_VERSION,
   isNativeRuntimeRequest,
   isNativeRuntimeEvent,
@@ -91,6 +95,11 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   if (!parentPort) {
     throw new Error('Native utility host has no Electron parent port')
   }
+  const diagnosticLog = createUtilityDiagnosticLog(runtimeKind)
+  diagnosticLog?.log('utility_startup', {
+    pid: process.pid,
+    runtimeKind,
+  })
 
   const nativeModulePath = process.env.SYRNIKE_NATIVE_MODULE_PATH
   const nativeRoot = process.env.SYRNIKE_NATIVE_ROOT
@@ -105,7 +114,14 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
     path.basename(nativeModulePath) !== expectedModuleName ||
     !existsSync(nativeModulePath)
   ) {
+    diagnosticLog?.log('startup_validation_failed', {
+      reason: 'invalid_native_module_environment',
+      runtimeKind,
+      nativeModuleFile:
+        typeof nativeModulePath === 'string' ? path.basename(nativeModulePath) : undefined,
+    })
     postIncompatibleReady(parentPort, runtimeKind)
+    await diagnosticLog?.close()
     return
   }
 
@@ -124,7 +140,12 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
     !expectedCommitSha ||
     !/^[0-9a-f]{40}$/i.test(expectedCommitSha)
   ) {
+    diagnosticLog?.log('startup_validation_failed', {
+      reason: 'invalid_runtime_metadata_environment',
+      runtimeKind,
+    })
     postIncompatibleReady(parentPort, runtimeKind)
+    await diagnosticLog?.close()
     return
   }
 
@@ -140,7 +161,12 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
       releaseChannel,
     })
   } catch {
+    diagnosticLog?.log('startup_validation_failed', {
+      reason: 'artifact_distribution_verification_failed',
+      runtimeKind,
+    })
     postIncompatibleReady(parentPort, runtimeKind)
+    await diagnosticLog?.close()
     return
   }
 
@@ -148,15 +174,24 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   let addon: NativeRuntimeAddon
   try {
     addon = require(nativeModulePath) as NativeRuntimeAddon
+    diagnosticLog?.log('addon_loaded', {
+      nativeModuleFile: path.basename(nativeModulePath),
+    })
   } catch {
+    diagnosticLog?.log('addon_load_failed', {
+      nativeModuleFile: path.basename(nativeModulePath),
+    })
     postIncompatibleReady(parentPort, runtimeKind)
+    await diagnosticLog?.close()
     return
   }
   let info: ReturnType<NonNullable<NativeRuntimeAddon['getRuntimeInfo']>> = {}
   try {
     info = addon.getRuntimeInfo?.() ?? {}
   } catch {
+    diagnosticLog?.log('addon_info_failed')
     postIncompatibleReady(parentPort, runtimeKind)
+    await diagnosticLog?.close()
     return
   }
   const factory =
@@ -171,10 +206,16 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   const shutdown = (exitCode = 0) => {
     if (shuttingDown) return
     shuttingDown = true
+    diagnosticLog?.log('utility_shutdown', {
+      exitCode,
+      runtimeWasActive: Boolean(runtime),
+      shutdownRequestId,
+    })
     const current = runtime
     runtime = null
     void Promise.resolve()
       .then(() => current?.shutdown())
+      .then(() => diagnosticLog?.close())
       .then(
         () => process.exit(exitCode),
         () => process.exit(1),
@@ -183,6 +224,10 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   const failContractCorruption = () => {
     if (contractCorrupted) return
     contractCorrupted = true
+    diagnosticLog?.log('native_contract_corruption', {
+      runtimeKind,
+      runtimeWasActive: Boolean(runtime),
+    })
     parentPort.postMessage({
       type: 'event',
       event: {
@@ -194,7 +239,8 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
         ),
       } satisfies NativeRuntimeEvent,
     })
-    setImmediate(() => process.exit(1))
+    setTimeout(() => process.exit(1), 2_000)
+    shutdown(1)
   }
   const emit = (rawEvent: Record<string, unknown>) => {
     if (isNativeReplyEvent(rawEvent)) {
@@ -202,6 +248,7 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
         failContractCorruption()
         return
       }
+      diagnosticLog?.log('native_reply', rawEvent)
       const reply = rawEvent.ok
         ? rawEvent
         : { ...rawEvent, error: sanitizeRuntimeError(rawEvent.error) }
@@ -213,6 +260,7 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
       failContractCorruption()
       return
     }
+    diagnosticLog?.log('native_event', rawEvent)
     parentPort.postMessage({ type: 'event', event: rawEvent })
   }
 
@@ -272,12 +320,19 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
     !capabilitiesMatch ||
     contractVersion !== NATIVE_RUNTIME_CONTRACT_VERSION
   ) {
+    diagnosticLog?.log('utility_ready_incompatible', ready)
     parentPort.postMessage(ready)
+    await diagnosticLog?.close()
     return
   }
 
   if (!factory) {
+    diagnosticLog?.log('startup_validation_failed', {
+      reason: 'missing_runtime_factory',
+      runtimeKind,
+    })
     postIncompatibleReady(parentPort, runtimeKind)
+    await diagnosticLog?.close()
     return
   }
   runtime = factory(emit)
@@ -286,10 +341,12 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   try {
     await runtime.ready?.()
   } catch {
+    diagnosticLog?.log('runtime_ready_failed')
     shutdown(1)
     return
   }
   if (shuttingDown) return
+  diagnosticLog?.log('utility_ready', ready)
   parentPort.postMessage({
     ...ready,
   })
@@ -297,6 +354,7 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   parentPort.on('message', (messageEvent: { data: unknown }) => {
     const request = messageEvent.data
     if (!isNativeRuntimeRequest(request)) return
+    diagnosticLog?.log('incoming_dispatch', request)
     try {
       if (request.command.type === 'shutdown') {
         shutdownRequestId = request.requestId
@@ -306,6 +364,10 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
         requestId: request.requestId,
       })
     } catch (error) {
+      diagnosticLog?.log('dispatch_failed', {
+        requestId: request.requestId,
+        error: sanitizeDispatchError(error),
+      })
       postReply(parentPort, request.requestId, error)
       if (request.requestId === shutdownRequestId) shutdown()
     }
@@ -325,5 +387,20 @@ function postIncompatibleReady(
       electron: process.versions.electron,
       napi: process.versions.napi,
     },
+  })
+}
+
+function createUtilityDiagnosticLog(
+  runtime: NativeRuntimeKind,
+): NativeDiagnosticLog | null {
+  const runId = process.env.SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID
+  const filePath = process.env.SYRNIKE_NATIVE_UTILITY_LOG_PATH
+  if (runtime !== 'media' || !runId || !filePath) return null
+  return createNativeDiagnosticLog({
+    runtime,
+    role: 'utility',
+    runId,
+    directory: path.dirname(filePath),
+    filePath,
   })
 }

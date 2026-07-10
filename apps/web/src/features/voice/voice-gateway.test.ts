@@ -43,6 +43,7 @@ describe('voice gateway reliable state updates', () => {
     const { sendVoiceStateUpdate } = await import('./voice-gateway')
 
     sendVoiceStateUpdate({
+      request: { mode: 'join', operation_id: 'op-join' },
       channel_id: 'channel-1',
       self_mute: false,
       self_deaf: false,
@@ -51,12 +52,13 @@ describe('voice gateway reliable state updates', () => {
     const firstEvent = sendReliable.mock.calls[0]?.[0]
     expect(firstEvent).toMatchObject({
       type: 'VoiceStateUpdate',
+      request: { mode: 'join', operation_id: 'op-join' },
       channel_id: 'channel-1',
       self_mute: false,
       self_deaf: false,
       nonce: expect.any(String),
     })
-    expect(sendReliable.mock.calls[0]?.[1]).toBe('voice-state')
+    expect(sendReliable.mock.calls[0]?.[1]).toBe('voice-operation:op-join')
 
     await vi.advanceTimersByTimeAsync(5_000)
     expect(sendReliable).toHaveBeenCalledTimes(2)
@@ -73,10 +75,48 @@ describe('voice gateway reliable state updates', () => {
     expect(sendReliable).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps control-operation retry independent from coalesced flag updates', async () => {
+    const { sendVoiceStateUpdate } = await import('./voice-gateway')
+
+    sendVoiceStateUpdate({
+      request: { mode: 'replace_operation', operation_id: 'op-b', expected_current_operation_id: 'op-a' },
+      channel_id: 'channel-b',
+      self_mute: false,
+      self_deaf: false,
+    })
+    sendVoiceStateUpdate({
+      request: { mode: 'join', operation_id: 'op-a' },
+      channel_id: 'channel-a',
+      self_mute: true,
+      self_deaf: false,
+      suppress_call_notifications: true,
+    })
+
+    const operationEvent = sendReliable.mock.calls[0]?.[0]
+    const flagsEvent = sendReliable.mock.calls[1]?.[0]
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    expect(sendReliable).toHaveBeenCalledTimes(4)
+    expect(sendReliable.mock.calls[2]?.[0]).toEqual(operationEvent)
+    expect(sendReliable.mock.calls[3]?.[0]).toEqual(flagsEvent)
+
+    emitEvent({
+      type: 'VoiceStateAck',
+      nonce: operationEvent.nonce,
+      channel_id: 'channel-b',
+      ok: true,
+    })
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    expect(sendReliable).toHaveBeenCalledTimes(5)
+    expect(sendReliable.mock.calls[4]?.[0]).toEqual(flagsEvent)
+  })
+
   it('drops pending ack retry when gateway becomes idle', async () => {
     const { sendVoiceStateUpdate } = await import('./voice-gateway')
 
     sendVoiceStateUpdate({
+      request: { mode: 'join', operation_id: 'op-join' },
       channel_id: 'channel-1',
       self_mute: false,
       self_deaf: false,
@@ -91,12 +131,11 @@ describe('voice gateway reliable state updates', () => {
     const { sendVoiceStateUpdate } = await import('./voice-gateway')
 
     sendVoiceStateUpdate({
-      operation_id: 'op-join',
+      request: { mode: 'join', operation_id: 'op-join' },
       channel_id: 'channel-1',
       self_mute: false,
       self_deaf: false,
       node: 'node-1',
-      refresh_credentials: true,
     })
 
     emitEvent({
@@ -114,6 +153,7 @@ describe('voice gateway reliable state updates', () => {
     const { sendVoiceStateUpdate } = await import('./voice-gateway')
 
     sendVoiceStateUpdate({
+      request: { mode: 'join', operation_id: 'op-current' },
       channel_id: 'channel-1',
       self_mute: true,
       self_deaf: false,
@@ -141,11 +181,10 @@ describe('voice gateway reliable state updates', () => {
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
-      operation_id: 'op-join',
+      request: { mode: 'join', operation_id: 'op-join' },
       self_mute: false,
       self_deaf: false,
       node: 'node-1',
-      refresh_credentials: true,
     })
     expect(sendReliable.mock.calls[0]?.[0]).not.toHaveProperty(
       'force_disconnect',
@@ -184,8 +223,7 @@ describe('voice gateway reliable state updates', () => {
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
-      operation_id: 'op-join',
-      refresh_credentials: true,
+      request: { mode: 'join', operation_id: 'op-join' },
     })
     expect(sendReliable.mock.calls[0]?.[1]).toBe('voice-operation:op-join')
 
@@ -220,6 +258,109 @@ describe('voice gateway reliable state updates', () => {
       operation_id: 'op-join',
       channel_id: 'channel-1',
     })
+  })
+
+  it('dispatches an explicit CAS operation replacement without resolving a new node', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+    const onDispatched = vi.fn()
+
+    const restorePromise = requestVoiceJoin('channel-a', false, false, {
+      operationId: 'op-restore-a',
+      expectedCurrentOperationId: 'op-move-b',
+      onDispatched,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
+      type: 'VoiceStateUpdate',
+      channel_id: 'channel-a',
+      request: {
+        mode: 'replace_operation',
+        operation_id: 'op-restore-a',
+        expected_current_operation_id: 'op-move-b',
+      },
+    })
+    expect(sendReliable.mock.calls[0]?.[0]).not.toHaveProperty('node')
+    expect(onDispatched).toHaveBeenCalledTimes(1)
+
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-restore-a',
+      channel_id: 'channel-a',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+
+    await expect(restorePromise).resolves.toMatchObject({
+      operation_id: 'op-restore-a',
+      channel_id: 'channel-a',
+    })
+  })
+
+  it('uses the distinct retain_finalized CAS for a live retained room', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+
+    const retainPromise = requestVoiceJoin('channel-a', false, false, {
+      operationId: 'op-finalized-a',
+      expectedCurrentOperationId: 'op-candidate-b',
+      retainFinalized: true,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
+      request: {
+        mode: 'retain_finalized',
+        operation_id: 'op-finalized-a',
+        expected_current_operation_id: 'op-candidate-b',
+      },
+    })
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-finalized-a',
+      channel_id: 'channel-a',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+
+    await expect(retainPromise).resolves.toMatchObject({
+      operation_id: 'op-finalized-a',
+    })
+  })
+
+  it('keeps observing an already-dispatched request after local supersession', async () => {
+    const { requestVoiceJoin } = await import('./voice-gateway')
+    const abortController = new AbortController()
+
+    const joinPromise = requestVoiceJoin('channel-b', false, false, {
+      operationId: 'op-move-b',
+      signal: abortController.signal,
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sendReliable).toHaveBeenCalledTimes(1)
+
+    abortController.abort()
+
+    expect(sendReliable).toHaveBeenCalledTimes(1)
+    emitEvent({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-move-b',
+      channel_id: 'channel-b',
+      node: 'node-1',
+      url: 'wss://livekit.example',
+      token: 'browser-token',
+      native_microphone: { token: 'mic-token', identity: 'user-1:mic' },
+      native_screen: { token: 'screen-token', identity: 'user-1:screen' },
+      native_camera: { token: 'camera-token', identity: 'user-1:camera' },
+    })
+    await expect(joinPromise).resolves.toMatchObject({ operation_id: 'op-move-b' })
   })
 
   it('ignores recoverable voice errors for a different operation while waiting for credentials', async () => {
@@ -277,11 +418,17 @@ describe('voice gateway reliable state updates', () => {
         kind: 'VoiceStateUpdate',
         operation_id: 'op-join',
         channel_id: 'channel-1',
+        authoritative_operation_id: 'op-current',
+        authoritative_channel_id: 'channel-current',
       },
       data: { type: 'InvalidOperation', message: 'Voice join rejected' },
     })
 
-    await expect(joinPromise).rejects.toThrow('Voice join rejected')
+    await expect(joinPromise).rejects.toMatchObject({
+      message: 'Voice join rejected',
+      authoritativeOperationId: 'op-current',
+      authoritativeChannelId: 'channel-current',
+    })
   })
 
   it('rejects credentials wait immediately on malformed gateway errors', async () => {
@@ -317,9 +464,11 @@ describe('voice gateway reliable state updates', () => {
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
-      operation_id: 'op-refresh',
+      request: {
+        mode: 'refresh_credentials',
+        operation_id: 'op-refresh',
+      },
       suppress_call_notifications: true,
-      refresh_credentials: true,
     })
     expect(sendReliable.mock.calls[0]?.[0]).not.toHaveProperty(
       'force_disconnect',
@@ -347,11 +496,12 @@ describe('voice gateway reliable state updates', () => {
   it('suppresses call notifications for voice flag updates', async () => {
     const { requestVoiceFlagsUpdate } = await import('./voice-gateway')
 
-    requestVoiceFlagsUpdate('channel-1', true, false)
+    requestVoiceFlagsUpdate('channel-1', true, false, 'op-current')
 
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
+      request: { mode: 'join', operation_id: 'op-current' },
       self_mute: true,
       self_deaf: false,
       suppress_call_notifications: true,
@@ -374,9 +524,8 @@ describe('voice gateway reliable state updates', () => {
     expect(sendReliable.mock.calls[0]?.[0]).toMatchObject({
       type: 'VoiceStateUpdate',
       channel_id: 'channel-1',
-      operation_id: 'op-rejoin',
+      request: { mode: 'join', operation_id: 'op-rejoin' },
       suppress_call_notifications: true,
-      refresh_credentials: true,
     })
 
     emitEvent({

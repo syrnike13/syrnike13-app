@@ -3,14 +3,11 @@ import type { Room } from 'livekit-client'
 import { toast } from 'sonner'
 
 import {
-  isLiveKitTokenFailure,
-} from '#/features/voice/voice-token-helpers'
-import {
-  handleNativeScreenPublicationLost as handleNativeScreenPublicationLostFromDeps,
-  startLocalScreenShare as startLocalScreenShareFromDeps,
-  stopNativeScreenShare as stopNativeScreenShareFromDeps,
-  teardownScreenShare,
-} from '#/features/voice/voice-screen-share'
+  screenShareAudioCaptureOptions,
+  screenShareCaptureOptions,
+  screenShareCombinedPublishOptions,
+  type ScreenShareCaptureLimits,
+} from '#/features/voice/voice-capture'
 import type {
   NativeScreenPublicationLoss,
 } from '#/features/voice/native-screen-publication-loss'
@@ -19,13 +16,9 @@ import {
 } from '#/features/voice/native-media-engine-stats'
 import { shouldUseNativeScreenShare } from '#/features/voice/native-screen-share-mode'
 import {
-  findNativeScreenPublication,
   waitForNativeScreenPublication,
 } from '#/features/voice/voice-publication-observer'
-import {
-  publishNativeScreenShare,
-  type NativeScreenShareSession,
-} from '#/features/voice/native-screen-share-publish'
+import type { NativeScreenShareSession } from '#/features/voice/native-screen-share-publish'
 import {
   clearNativePickerSelection,
   rejectNativePickerSelection,
@@ -38,24 +31,36 @@ import {
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 import type {
-  LiveKitNativePublisherCredentials,
-} from '#/features/voice/voice-join'
-import type {
   NativeMediaAction,
   NativeMediaState,
 } from '#/features/voice/native-media-coordinator'
 import type { VoiceStatus } from '#/features/voice/voice-mic-status'
 import { resolveScreenShareCaptureLimits } from '#/features/voice/voice-screen-share-limits'
 import { playUiSound } from '#/features/sounds/sound-player'
-import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
+import {
+  teardownScreenShare,
+} from '#/features/voice/voice-screen-share'
 import type { MutableRef } from '#/features/voice/voice-types'
+import type { VoiceNativeMediaOwner } from '#/features/voice/voice-native-media-owner'
 
 type PendingScreenShareStart = {
   quality: ScreenShareQualityName
   withAudio: boolean
 }
 
+type NativeDisplayPickerSelection = {
+  sourceId: string
+  audioRequested: boolean
+}
+
+type ScreenShareStartToken = {
+  isCurrent: () => boolean
+  clear: () => void
+  cancel: () => void
+}
+
 export type UseVoiceScreenShareOptions = {
+  nativeMedia: VoiceNativeMediaOwner
   roomRef: MutableRef<Room | null>
   channelIdRef: MutableRef<string | null>
   status: VoiceStatus
@@ -75,10 +80,6 @@ export type UseVoiceScreenShareOptions = {
   getUserId: () => string | null
   isCurrentVoiceSession: (room: Room, targetChannelId: string | null) => boolean
   activeChannelAudioBitrateKbps: () => number
-  refreshNativeLiveKitCredentials: (
-    mediaKind: 'screen',
-    forceRefresh?: boolean,
-  ) => Promise<LiveKitNativePublisherCredentials>
   setScreenShareDebugRun: (updater: (run: number) => number) => void
   setScreenShareStarting: (starting: boolean) => void
   setScreenShareEnabled: (enabled: boolean) => void
@@ -86,7 +87,82 @@ export type UseVoiceScreenShareOptions = {
   syncRoomParticipants: () => void
 }
 
+function createScreenShareStartToken(
+  deps: UseVoiceScreenShareOptions,
+  room: Room,
+  targetChannelId: string,
+  startGeneration: number,
+): ScreenShareStartToken {
+  return {
+    isCurrent: () =>
+      deps.screenShareStartGenerationRef.current === startGeneration &&
+      deps.isCurrentVoiceSession(room, targetChannelId),
+    clear: () => {
+      if (deps.screenShareStartGenerationRef.current !== startGeneration) return
+      deps.screenShareStartingRef.current = false
+      deps.setScreenShareStarting(false)
+    },
+    cancel: () => {
+      if (deps.screenShareStartGenerationRef.current !== startGeneration) return
+      deps.screenShareStartGenerationRef.current += 1
+      deps.screenShareStartingRef.current = false
+      deps.setScreenShareStarting(false)
+    },
+  }
+}
+
+async function startBrowserScreenShare(
+  room: Room,
+  quality: ScreenShareQualityName,
+  withAudio: boolean,
+  limits: ScreenShareCaptureLimits,
+  activeChannelAudioBitrateKbps: number,
+  onEnded: () => void,
+) {
+  const capture = screenShareCaptureOptions(quality, limits)
+  const publication = await room.localParticipant.setScreenShareEnabled(
+    true,
+    {
+      ...capture.capture,
+      audio: screenShareAudioCaptureOptions(withAudio),
+    },
+    withAudio
+      ? screenShareCombinedPublishOptions(
+          quality,
+          activeChannelAudioBitrateKbps,
+          limits,
+        )
+      : capture.publish,
+  )
+
+  publication?.videoTrack?.on('ended', () => {
+    void room.localParticipant.setScreenShareEnabled(false).then(onEnded)
+  })
+}
+
+function buildScreenSourceSpec(
+  selection: NativeDisplayPickerSelection,
+  quality: ScreenShareQualityName,
+  limits: ScreenShareCaptureLimits,
+  audioBitrateKbps: number,
+) {
+  const capture = screenShareCaptureOptions(quality, limits)
+  return {
+    sourceId: selection.sourceId,
+    width: capture.capture.resolution.width,
+    height: capture.capture.resolution.height,
+    fps: capture.capture.resolution.frameRate ?? 30,
+    bitrate:
+      capture.publish.screenShareEncoding?.maxBitrate ??
+      capture.publish.videoEncoding?.maxBitrate ??
+      2_500_000,
+    audioBitrate: audioBitrateKbps * 1000,
+    audioRequested: selection.audioRequested,
+  }
+}
+
 export function useVoiceScreenShare({
+  nativeMedia,
   roomRef,
   channelIdRef,
   status,
@@ -106,7 +182,6 @@ export function useVoiceScreenShare({
   getUserId,
   isCurrentVoiceSession,
   activeChannelAudioBitrateKbps,
-  refreshNativeLiveKitCredentials,
   setScreenShareDebugRun,
   setScreenShareStarting,
   setScreenShareEnabled,
@@ -114,15 +189,16 @@ export function useVoiceScreenShare({
   syncRoomParticipants,
 }: UseVoiceScreenShareOptions) {
   const stopNativeScreenShare = useCallback(async () => {
-    await stopNativeScreenShareFromDeps({
-      nativeScreenShareRef,
-      nativeScreenPublicationLossKeyRef,
-      screenShareStartingRef,
-      stoppedNativeScreenIdentityRef,
-      resetNativeMediaEngineStats: () => nativeMediaEngineStatsStore.reset(),
-      dispatchNativeMedia,
-      logVoiceDebugAgent,
-    })
+    const active = nativeScreenShareRef.current
+    if (!active) return
+    nativeScreenShareRef.current = null
+    nativeScreenPublicationLossKeyRef.current = null
+    screenShareStartingRef.current = false
+    stoppedNativeScreenIdentityRef.current =
+      active.nativeParticipantIdentity ?? null
+    nativeMediaEngineStatsStore.reset()
+    dispatchNativeMedia({ type: 'screen_stopped' })
+    await active.stop()
   }, [
     dispatchNativeMedia,
     nativeScreenPublicationLossKeyRef,
@@ -133,23 +209,35 @@ export function useVoiceScreenShare({
 
   const handleNativeScreenPublicationLost = useCallback(
     (loss: NativeScreenPublicationLoss) => {
-      handleNativeScreenPublicationLostFromDeps({
-        nativeMediaStateRef,
-        nativeScreenPublicationLossKeyRef,
-        nativeScreenShareRef,
-        dispatchNativeMedia,
-        setScreenShareEnabled,
-        syncRoomParticipants,
-        toastError: (message) => toast.error(message),
-        stopNativeScreenShare,
-        logVoiceDebugAgent,
-      }, loss)
+      const screen = nativeMediaStateRef.current.screen
+      if (screen.status !== 'published') return
+      if (loss.participantIdentity !== screen.participantIdentity) return
+      if (loss.publicationSid && loss.publicationSid !== screen.publicationSid) {
+        return
+      }
+
+      const lossKey = [
+        screen.operationId,
+        screen.participantIdentity,
+        screen.publicationSid,
+        loss.reason,
+      ].join(':')
+      if (nativeScreenPublicationLossKeyRef.current === lossKey) return
+      nativeScreenPublicationLossKeyRef.current = lossKey
+
+      void stopNativeScreenShare()
+        .catch(() => {})
+        .finally(() => {
+          teardownScreenShare(
+            { setScreenShareEnabled, syncRoomParticipants, playUiSound },
+            { reason: 'native-publication-lost' },
+          )
+          toast.error('Демонстрация экрана отключилась')
+        })
     },
     [
-      dispatchNativeMedia,
       nativeMediaStateRef,
       nativeScreenPublicationLossKeyRef,
-      nativeScreenShareRef,
       setScreenShareEnabled,
       stopNativeScreenShare,
       syncRoomParticipants,
@@ -158,60 +246,201 @@ export function useVoiceScreenShare({
 
   const startLocalScreenShare = useCallback(
     async (quality: ScreenShareQualityName, withAudio: boolean) => {
-      await startLocalScreenShareFromDeps({
-        quality,
-        withAudio,
-        roomRef,
-        channelIdRef,
-        statusRef,
-        localVoiceReadyRef,
-        screenShareStartingRef,
-        pendingScreenShareStartRef,
-        screenShareStartGenerationRef,
-        screenShareDebugUntilRef,
-        nativeScreenShareRef,
-        stoppedNativeScreenIdentityRef,
-        nativeScreenPublicationLossKeyRef,
-        getActiveVoiceOperationId,
-        getUserId,
-        isCurrentVoiceSession,
-        createRequestId: () => crypto.randomUUID(),
-        nowMs: () => Date.now(),
-        performanceNow: () => performance.now(),
-        setScreenShareDebugRun,
-        setScreenShareStarting,
-        setScreenShareEnabled,
-        dispatchNativeMedia,
-        syncRoomParticipants,
-        stopNativeScreenShare,
-        refreshNativeLiveKitCredentials,
-        activeChannelAudioBitrateKbps,
-        logVoiceDebugAgent,
-        toastError: (message) => toast.error(message),
-        playUiSound,
-        setChromiumNativeMediaStats: () => {
-          nativeMediaEngineStatsStore.setChromium()
+      const room = roomRef.current
+      if (!room) return
+      const targetChannelId = channelIdRef.current
+      if (!targetChannelId) return
+      if (!isCurrentVoiceSession(room, targetChannelId)) return
+      if (screenShareStartingRef.current || nativeScreenShareRef.current) return
+      if (!localVoiceReadyRef.current) {
+        pendingScreenShareStartRef.current = { quality, withAudio }
+        return
+      }
+
+      const startGeneration = screenShareStartGenerationRef.current + 1
+      screenShareStartGenerationRef.current = startGeneration
+      screenShareDebugUntilRef.current = Date.now() + 30_000
+      setScreenShareDebugRun((run) => run + 1)
+      screenShareStartingRef.current = true
+      setScreenShareStarting(true)
+      voicePreferenceStore.setScreenShareQuality(quality)
+      voicePreferenceStore.setScreenShareAudio(withAudio)
+
+      const currentStartToken = createScreenShareStartToken(
+        {
+          nativeMedia,
+          roomRef,
+          channelIdRef,
+          status,
+          statusRef,
+          localVoiceReady,
+          localVoiceReadyRef,
+          screenShareStarting,
+          screenShareStartingRef,
+          pendingScreenShareStartRef,
+          screenShareStartGenerationRef,
+          screenShareDebugUntilRef,
+          nativeScreenShareRef,
+          stoppedNativeScreenIdentityRef,
+          nativeScreenPublicationLossKeyRef,
+          nativeMediaStateRef,
+          getActiveVoiceOperationId,
+          getUserId,
+          isCurrentVoiceSession,
+          activeChannelAudioBitrateKbps,
+          setScreenShareDebugRun,
+          setScreenShareStarting,
+          setScreenShareEnabled,
+          dispatchNativeMedia,
+          syncRoomParticipants,
         },
-        warn: (message, detail) => console.warn(message, detail),
-        readVoicePreferences,
-        setScreenShareQualityPreference: (nextQuality) => {
-          voicePreferenceStore.setScreenShareQuality(nextQuality)
-        },
-        setScreenShareAudioPreference: (nextWithAudio) => {
-          voicePreferenceStore.setScreenShareAudio(nextWithAudio)
-        },
-        getDesktop: getSyrnikeDesktop,
-        shouldUseNativeScreenShare,
-        resolveScreenShareCaptureLimits,
-        waitForNativePickerSelection,
-        clearNativePickerSelection,
-        rejectNativePickerSelection,
-        publishNativeScreenShare,
-        findNativeScreenPublication,
-        waitForNativeScreenPublication,
-        isLiveKitTokenFailure,
-        resetNativeMediaEngineStats: () => nativeMediaEngineStatsStore.reset(),
-      })
+        room,
+        targetChannelId,
+        startGeneration,
+      )
+      const screenOperationId =
+        getActiveVoiceOperationId() ?? `screen:${startGeneration}`
+      const screenShareLimits = await resolveScreenShareCaptureLimits()
+
+      try {
+        const prefs = readVoicePreferences()
+        const desktop = getSyrnikeDesktop()
+        const useNative =
+          shouldUseNativeScreenShare(prefs.screenShareCaptureMode) && desktop
+
+        if (useNative) {
+          dispatchNativeMedia({
+            type: 'screen_start_requested',
+            operationId: screenOperationId,
+            channelId: targetChannelId,
+            requestId: `screen:${startGeneration}`,
+          })
+          stoppedNativeScreenIdentityRef.current = null
+          nativeScreenPublicationLossKeyRef.current = null
+
+          const pickerPromise = waitForNativePickerSelection()
+          await Promise.resolve(desktop.media.openDisplayPicker(withAudio))
+          const selection = (await pickerPromise) as NativeDisplayPickerSelection
+          if (!currentStartToken.isCurrent()) {
+            currentStartToken.cancel()
+            await nativeMedia.stopScreenShare().catch(() => {})
+            return
+          }
+
+          const source = buildScreenSourceSpec(
+            selection,
+            quality,
+            screenShareLimits,
+            activeChannelAudioBitrateKbps(),
+          )
+          const prepareRevision = await nativeMedia.prepareScreenShare(source)
+          await nativeMedia.waitForScreenState(prepareRevision, [
+            'prepared',
+            'published',
+          ])
+          if (!currentStartToken.isCurrent()) {
+            currentStartToken.cancel()
+            await nativeMedia.stopScreenShare().catch(() => {})
+            return
+          }
+
+          const publishRevision = await nativeMedia.publishScreenShare(source)
+          const observedPublish = await nativeMedia.waitForScreenState(
+            publishRevision,
+            ['published'],
+          )
+          if (!currentStartToken.isCurrent()) {
+            currentStartToken.cancel()
+            await nativeMedia.stopScreenShare().catch(() => {})
+            return
+          }
+
+          const publication = await waitForNativeScreenPublication(
+            room,
+            {
+              userId: getUserId(),
+              nativeParticipantIdentity:
+                observedPublish.participantIdentity ?? undefined,
+            },
+            10_000,
+          )
+          if (!currentStartToken.isCurrent()) {
+            currentStartToken.cancel()
+            await nativeMedia.stopScreenShare().catch(() => {})
+            return
+          }
+
+          nativeScreenShareRef.current = {
+            nativeParticipantIdentity:
+              observedPublish.participantIdentity ?? null,
+            stop: async () => {
+              await nativeMedia.stopScreenShare()
+            },
+          }
+          dispatchNativeMedia({
+            type: 'screen_publication_observed',
+            operationId: screenOperationId,
+            channelId: targetChannelId,
+            participantIdentity: publication.participantIdentity,
+            publicationSid: publication.publicationSid,
+          })
+          playUiSound('screen_share.started')
+          currentStartToken.clear()
+          setScreenShareEnabled(true)
+          syncRoomParticipants()
+          return
+        }
+
+        await startBrowserScreenShare(
+          room,
+          quality,
+          withAudio,
+          screenShareLimits,
+          activeChannelAudioBitrateKbps(),
+          () => {
+            teardownScreenShare(
+              { setScreenShareEnabled, syncRoomParticipants, playUiSound },
+              {
+                reason: 'browser-track-ended',
+                screenShareEnabled: false,
+                playStoppedSound: true,
+              },
+            )
+          },
+        )
+        if (!currentStartToken.isCurrent()) {
+          await room.localParticipant.setScreenShareEnabled(false).catch(() => {})
+          currentStartToken.cancel()
+          return
+        }
+        playUiSound('screen_share.started')
+        currentStartToken.clear()
+        setScreenShareEnabled(true)
+        syncRoomParticipants()
+      } catch (error) {
+        if (!currentStartToken.isCurrent()) {
+          return
+        }
+        currentStartToken.cancel()
+        dispatchNativeMedia({
+          type: 'screen_failed',
+          operationId: screenOperationId,
+          channelId: targetChannelId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        await nativeMedia.stopScreenShare().catch(() => {})
+        clearNativePickerSelection()
+        rejectNativePickerSelection(
+          error instanceof Error
+            ? error
+            : new Error('Не удалось начать демонстрацию экрана'),
+        )
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Не удалось начать демонстрацию экрана',
+        )
+      }
     },
     [
       activeChannelAudioBitrateKbps,
@@ -220,20 +449,23 @@ export function useVoiceScreenShare({
       getActiveVoiceOperationId,
       getUserId,
       isCurrentVoiceSession,
+      localVoiceReady,
       localVoiceReadyRef,
+      nativeMedia,
+      nativeMediaStateRef,
       nativeScreenPublicationLossKeyRef,
       nativeScreenShareRef,
       pendingScreenShareStartRef,
-      refreshNativeLiveKitCredentials,
       roomRef,
       screenShareDebugUntilRef,
       screenShareStartGenerationRef,
+      screenShareStarting,
       screenShareStartingRef,
       setScreenShareDebugRun,
       setScreenShareEnabled,
       setScreenShareStarting,
+      status,
       statusRef,
-      stopNativeScreenShare,
       stoppedNativeScreenIdentityRef,
       syncRoomParticipants,
     ],
@@ -245,10 +477,6 @@ export function useVoiceScreenShare({
     const pending = pendingScreenShareStartRef.current
     if (!pending) return
     pendingScreenShareStartRef.current = null
-    logVoiceDebugAgent({
-      hypothesis: 'H6-screen-start-before-local-voice-ready',
-      event: 'screen-start-resumed-after-local-voice-ready',
-    })
     void startLocalScreenShare(pending.quality, pending.withAudio)
   }, [
     localVoiceReady,

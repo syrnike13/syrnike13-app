@@ -77,6 +77,11 @@ int main() try {
         !sink->waitReply(overlay_start_id).ok) {
       throw std::runtime_error("overlay actor failed to start");
     }
+    const auto probe_id = "probe-" + std::to_string(cycle);
+    if (!runtime.dispatch(HooksCommand{"probeHooksRuntime", probe_id}) ||
+        !sink->waitReply(probe_id).ok) {
+      throw std::runtime_error("hooks runtime probe failed");
+    }
     const auto overlay_stop_id = "overlay-stop-" + std::to_string(cycle);
     if (!runtime.dispatch(HooksCommand{"stopOverlay", overlay_stop_id}) ||
         !sink->waitReply(overlay_stop_id).ok) {

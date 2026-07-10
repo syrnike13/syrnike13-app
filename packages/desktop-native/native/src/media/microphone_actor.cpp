@@ -6,9 +6,6 @@
 #include <wrl/client.h>
 
 #include <livekit/livekit.h>
-#include <livekit/local_audio_track.h>
-#include <livekit/room_delegate.h>
-
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -16,17 +13,23 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "../common/diagnostic_log.hpp"
 #include "audio_constants.hpp"
 #include "audio_devices.hpp"
 #include "capture_lifecycle_invariants.hpp"
+#include "livekit_disconnect_reason.hpp"
+#include "livekit_publication_client.hpp"
 #include "microphone_audio_processor.hpp"
 #include "microphone_echo_reference.hpp"
+#include "microphone_metrics_cadence.hpp"
+#include "microphone_publication_controller.hpp"
 #include "runtime_config.hpp"
 #include "runtime_config_patch.hpp"
 
@@ -35,95 +38,22 @@ using Microsoft::WRL::ComPtr;
 namespace syrnike::desktop_native::media {
 namespace {
 
-constexpr auto connect_timeout = std::chrono::seconds(10);
+using diagnostics::DiagnosticField;
 
-class RoomDelegate final : public livekit::RoomDelegate {
- public:
-  RoomDelegate(std::string session_id, std::uint64_t generation, MicrophoneActor::InternalPost post)
-    : session_id_(std::move(session_id)), generation_(generation), post_(std::move(post)) {}
-
-  void onConnectionStateChanged(
-    livekit::Room&,
-    const livekit::ConnectionStateChangedEvent& event
-  ) override {
-    bool notify_terminal = false;
-    {
-      std::lock_guard lock(mutex_);
-      state_ = event.state;
-      if (state_ == livekit::ConnectionState::Connected) was_connected_ = true;
-      notify_terminal =
-        state_ == livekit::ConnectionState::Disconnected && was_connected_ && !intentional_;
-    }
-    changed_.notify_all();
-    if (notify_terminal) postTerminal("livekit_disconnected");
-  }
-
-  void onDisconnected(livekit::Room&, const livekit::DisconnectedEvent&) override {
-    bool notify = false;
-    {
-      std::lock_guard lock(mutex_);
-      state_ = livekit::ConnectionState::Disconnected;
-      disconnected_ = true;
-      notify = !intentional_;
-    }
-    changed_.notify_all();
-    if (notify) postTerminal("livekit_disconnected");
-  }
-
-  bool waitConnected() {
-    std::unique_lock lock(mutex_);
-    return changed_.wait_for(lock, connect_timeout, [&] {
-      return state_ == livekit::ConnectionState::Connected || disconnected_;
-    }) && state_ == livekit::ConnectionState::Connected;
-  }
-
-  void markIntentional() {
-    std::lock_guard lock(mutex_);
-    intentional_ = true;
-  }
-
- private:
-  void postTerminal(const char* message) {
-    if (terminal_posted_.exchange(true)) return;
-    MediaCommand command;
-    command.type = "__microphoneTerminal";
-    command.session_id = session_id_;
-    command.generation = generation_;
-    command.internal_message = message;
-    post_(std::move(command));
-  }
-
-  std::string session_id_;
-  std::uint64_t generation_;
-  MicrophoneActor::InternalPost post_;
-  std::mutex mutex_;
-  std::condition_variable changed_;
-  livekit::ConnectionState state_ = livekit::ConnectionState::Disconnected;
-  bool disconnected_ = false;
-  bool intentional_ = false;
-  bool was_connected_ = false;
-  std::atomic_bool terminal_posted_{false};
-};
-
-struct PublishedRoom {
-  std::string session_id;
-  std::uint64_t generation = 0;
-  std::string participant_identity;
-  std::unique_ptr<livekit::Room> room;
-  std::unique_ptr<RoomDelegate> delegate;
-  std::shared_ptr<livekit::AudioSource> source;
-  std::shared_ptr<livekit::LocalAudioTrack> track;
-};
+void logMicrophone(
+  std::string_view event,
+  std::initializer_list<DiagnosticField> fields = {}
+) {
+  auto& logger = diagnostics::DiagnosticLog::instance();
+  if (!logger.enabled()) return;
+  logger.write(event, fields);
+}
 
 struct PipelineState {
   std::string device_id;
   syrnike::voice::RuntimeConfig config;
   std::uint64_t revision = 0;
 };
-
-std::string processingMode(bool enabled) {
-  return enabled ? "software" : "disabled";
-}
 
 }  // namespace
 
@@ -132,15 +62,35 @@ class MicrophoneActor::Implementation {
   Implementation(
     SequencedEmitter& emitter,
     InternalPost post,
-    IsCurrent is_current
-  ) : emitter_(emitter), post_(std::move(post)), is_current_(std::move(is_current)) {}
+    IsCurrent is_current,
+    std::shared_ptr<LiveKitPublicationClient> livekit_client
+  ) : emitter_(emitter),
+      post_(std::move(post)),
+      is_current_(std::move(is_current)),
+      livekit_client_(std::move(livekit_client)),
+      publication_(
+        emitter_,
+        post_,
+        is_current_,
+        [this](const auto& source) { addSink(source); },
+        [this](const auto& source) { removeSink(source); },
+        [this] { return captureHealthy(); },
+        livekit_client_
+      ) {}
 
   ~Implementation() { shutdown(); }
 
   void warm(const MediaCommand& command) {
+    logMicrophone(
+      "microphone_warm_start",
+      {
+        {"command", command.type},
+        {"sessionId", command.session_id},
+        {"generation", command.generation}
+      }
+    );
     if (command.type == "startPreview") {
-      std::lock_guard lock(room_mutex_);
-      if (!active_room_.session_id.empty()) {
+      if (!publication_.activeSessionId().empty()) {
         if (!captureHealthy()) {
           throw std::runtime_error("active microphone capture pipeline is not healthy");
         }
@@ -154,107 +104,69 @@ class MicrophoneActor::Implementation {
       desired.device_id = command.device_id;
     }
     ensureCapture(desired, true);
+    logMicrophone(
+      "microphone_warm_ok",
+      {
+        {"command", command.type},
+        {"sessionId", command.session_id},
+        {"generation", command.generation}
+      }
+    );
   }
 
-  RuntimeEvent connect(const MediaCommand& command) {
+  void connect(const MediaCommand& command) {
+    logMicrophone(
+      "microphone_connect_start",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"muted", command.muted},
+        {"audioBitrate", static_cast<std::uint64_t>(command.audio_bitrate)}
+      }
+    );
     if (!is_current_(command.session_id, command.generation)) {
+      logMicrophone(
+        "microphone_connect_stale_before_start",
+        {{"sessionId", command.session_id}, {"generation", command.generation}}
+      );
       throw std::runtime_error("stale microphone connect generation");
     }
-    validateConnect(command);
+    validateMicrophonePublicationCommand(command);
     const auto desired_pipeline = pipelineState();
-    ensureCapture(desired_pipeline, true);
-
-    auto candidate = PublishedRoom{};
-    candidate.session_id = command.session_id;
-    candidate.generation = command.generation;
-    candidate.participant_identity = command.participant_identity;
-    candidate.source = std::make_shared<livekit::AudioSource>(
-      syrnike::voice::kSampleRate,
-      syrnike::voice::kChannels
+    logMicrophone(
+      "microphone_connect_ensure_capture_start",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"pipelineRevision", desired_pipeline.revision}
+      }
     );
-    addSink(candidate.source);
+    ensureCapture(desired_pipeline, true);
+    logMicrophone(
+      "microphone_connect_ensure_capture_ok",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"captureHealthy", captureHealthy()}
+      }
+    );
 
-    try {
-      candidate.room = std::make_unique<livekit::Room>();
-      candidate.delegate = std::make_unique<RoomDelegate>(
-        command.session_id, command.generation, post_
-      );
-      candidate.room->setDelegate(candidate.delegate.get());
-      livekit::RoomOptions options;
-      options.auto_subscribe = false;
-      options.single_peer_connection = false;
-      if (!candidate.room->connect(command.livekit_url, command.livekit_token, options)) {
-        throw std::runtime_error("LiveKit microphone connect returned false");
-      }
-      if (!candidate.delegate->waitConnected()) {
-        throw std::runtime_error("LiveKit microphone connection timed out");
-      }
-      if (!is_current_(command.session_id, command.generation)) {
-        throw std::runtime_error("stale microphone connect generation");
-      }
-      auto participant = candidate.room->localParticipant().lock();
-      if (!participant) throw std::runtime_error("LiveKit local participant is unavailable");
-
-      candidate.track = livekit::LocalAudioTrack::createLocalAudioTrack(
-        "microphone", candidate.source
-      );
-      livekit::AudioEncodingOptions audio_encoding;
-      audio_encoding.max_bitrate = command.audio_bitrate;
-      livekit::TrackPublishOptions publish_options;
-      publish_options.audio_encoding = audio_encoding;
-      publish_options.dtx = true;
-      publish_options.source = livekit::TrackSource::SOURCE_MICROPHONE;
-      participant->publishTrack(candidate.track, publish_options);
-      if (!candidate.track->publication()) {
-        throw std::runtime_error("LiveKit microphone publication was not acknowledged");
-      }
-      if (command.muted) candidate.track->mute();
-      if (!is_current_(command.session_id, command.generation)) {
-        throw std::runtime_error("stale microphone publish generation");
-      }
-      if (!captureHealthy()) {
-        throw std::runtime_error("microphone capture pipeline is not healthy at commit");
-      }
-      if (!is_current_(command.session_id, command.generation)) {
-        throw std::runtime_error("stale microphone capture generation");
-      }
-    } catch (...) {
-      removeSink(candidate.source);
-      if (candidate.delegate) candidate.delegate->markIntentional();
-      if (candidate.room) {
-        try { candidate.room->disconnect(); } catch (...) {}
-      }
-      throw;
-    }
-
-    PublishedRoom previous;
-    {
-      std::lock_guard lock(room_mutex_);
-      previous = std::move(active_room_);
-      active_room_ = std::move(candidate);
-      muted_ = command.muted;
-    }
-    removeSink(previous.source);
-    disconnectRoom(previous);
-
-    RuntimeEvent result;
-    result.type = "reply";
-    result.request_id = command.request_id;
-    result.session_id = command.session_id;
-    result.generation = command.generation;
-    result.ok = true;
-    result.kind = "microphone";
-    result.audio_mode = "microphone";
-    result.noise_suppression = processingMode(desired_pipeline.config.noise_suppression_enabled);
-    result.echo_cancellation =
-      desired_pipeline.config.echo_cancellation_enabled ? "software" : "disabled";
-    result.native_participant_identity = command.participant_identity;
-    result.device_id = desired_pipeline.device_id;
-    result.revision = desired_pipeline.revision;
-    return result;
+    publication_.start(command, MicrophonePipelineSnapshot{
+      .device_id = desired_pipeline.device_id,
+      .revision = desired_pipeline.revision,
+      .noise_suppression_enabled = desired_pipeline.config.noise_suppression_enabled,
+      .echo_cancellation_enabled = desired_pipeline.config.echo_cancellation_enabled,
+    });
   }
 
   RuntimeEvent configure(const MediaCommand& command) {
+    logMicrophone(
+      "microphone_configure_start",
+      {
+        {"revision", command.revision},
+        {"hasRevision", command.has_revision}
+      }
+    );
     const auto current = pipelineState();
     if (command.has_revision && command.revision < current.revision) {
       throw std::runtime_error("stale microphone configuration revision");
@@ -275,20 +187,36 @@ class MicrophoneActor::Implementation {
     reply.kind = "microphoneConfig";
     reply.device_id = desired.device_id;
     reply.revision = desired.revision;
+    logMicrophone(
+      "microphone_configure_ok",
+      {
+        {"revision", desired.revision},
+        {"deviceSwitch", desired.device_id != current.device_id}
+      }
+    );
     return reply;
   }
 
   void setMuted(const MediaCommand& command) {
-    std::lock_guard lock(room_mutex_);
-    if (
-      !active_room_.session_id.empty() &&
-      (active_room_.session_id != command.session_id || active_room_.generation != command.generation)
-    ) {
-      throw std::runtime_error("stale microphone mute generation");
-    }
-    muted_ = command.muted;
-    if (!active_room_.track) return;
-    if (muted_) active_room_.track->mute(); else active_room_.track->unmute();
+    const auto started_at = diagnostics::DiagnosticLog::instance().steadyNowMs();
+    logMicrophone(
+      "microphone_set_muted_start",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"muted", command.muted}
+      }
+    );
+    publication_.setMuted(command);
+    logMicrophone(
+      "microphone_set_muted_ok",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"muted", command.muted},
+        {"durationMs", diagnostics::DiagnosticLog::instance().steadyNowMs() - started_at}
+      }
+    );
   }
 
   void setPreviewConsumer(
@@ -321,106 +249,92 @@ class MicrophoneActor::Implementation {
   }
 
   void disconnect(const MediaCommand& command, bool emit_stopped) {
-    if (command.type == "disconnectMicrophone" && !command.session_id.empty() &&
-        !is_current_(command.session_id, command.generation)) {
-      throw std::runtime_error("stale microphone disconnect generation");
-    }
-    PublishedRoom previous;
-    {
-      std::lock_guard lock(room_mutex_);
-      if (!active_room_.session_id.empty() && active_room_.session_id != command.session_id) {
-        return;
+    logMicrophone(
+      "microphone_disconnect_start",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"emitStopped", emit_stopped}
       }
-      previous = std::move(active_room_);
-    }
-    const bool had_active_room = !previous.session_id.empty();
-    removeSink(previous.source);
-    disconnectRoom(previous);
-    if (emit_stopped && had_active_room) {
-      RuntimeEvent event;
-      event.type = "sessionStopped";
-      event.request_id = command.request_id;
-      event.session_id = previous.session_id;
-      event.generation = previous.generation;
-      event.reason = "disconnected";
-      emitter_.emit(std::move(event));
-    }
+    );
+    const auto previous_session_id = publication_.activeSessionId();
+    const auto previous_generation = publication_.activeGeneration();
+    publication_.disconnect(command, emit_stopped);
+    logMicrophone(
+      "microphone_disconnect_cleanup_done",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"hadActiveRoom", !previous_session_id.empty()},
+        {"activeGeneration", previous_generation}
+      }
+    );
   }
 
   void handleTerminal(const MediaCommand& command) {
+    logMicrophone(
+      "microphone_handle_terminal",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation},
+        {"message", command.internal_message}
+      }
+    );
     MediaCommand effective = command;
     const bool capture_failure = command.internal_message.starts_with(
       "microphone_capture_failed:"
     );
     if (capture_failure) {
       if (!isCurrentCaptureFailureCommand(command)) return;
-      std::lock_guard lock(room_mutex_);
-      if (active_room_.session_id.empty()) return;
-      effective.session_id = active_room_.session_id;
-      effective.generation = active_room_.generation;
+      effective.session_id = publication_.activeSessionId();
+      effective.generation = publication_.activeGeneration();
     }
     if (effective.session_id.empty()) return;
-    {
-      std::lock_guard lock(room_mutex_);
-      if (
-        active_room_.session_id != effective.session_id ||
-        active_room_.generation != effective.generation
-      ) return;
+    publication_.handleTerminal(effective);
+  }
+
+  void handleWorkerCommand(const MediaCommand& command) {
+    publication_.handleWorkerCommand(command);
+  }
+
+  RuntimeEvent probe(const MediaCommand& command) {
+    RuntimeEvent result;
+    result.type = "reply";
+    result.request_id = command.request_id;
+    result.session_id = command.session_id;
+    result.generation = command.generation;
+
+    const auto capacity = publication_.capacityStatus();
+    if (capacity != MicrophonePublicationCapacityStatus::ActorUnresponsive) {
+      result.state = capacity == MicrophonePublicationCapacityStatus::ActorBusy
+        ? "busy"
+        : "available";
+      return result;
     }
-    disconnect(effective, false);
-    RuntimeEvent event;
-    event.type = "sessionLifecycle";
-    event.session_id = effective.session_id;
-    event.generation = effective.generation;
-    event.kind = "microphone";
-    event.status = "error";
-    event.detail = effective.internal_message;
-    event.error = NativeError{
-      "microphone_runtime_lost", effective.internal_message, "microphone", true,
+
+    result.ok = false;
+    result.error = NativeError{
+      .code = "actor_unresponsive",
+      .message = "microphone publication worker exceeded its operation deadline",
+      .stage = "probeMicrophoneActor",
+      .retryable = true,
+      .session_id = command.session_id,
+      .generation = command.session_id.empty()
+        ? std::optional<std::uint64_t>{}
+        : std::optional<std::uint64_t>{command.generation},
     };
-    event.error->session_id = effective.session_id;
-    event.error->generation = effective.generation;
-    emitter_.emit(std::move(event));
-    RuntimeEvent stopped;
-    stopped.type = "sessionStopped";
-    stopped.session_id = effective.session_id;
-    stopped.generation = effective.generation;
-    stopped.reason = "runtime_error";
-    emitter_.emit(std::move(stopped));
+    logMicrophone("microphone_probe_unresponsive");
+    return result;
   }
 
   void shutdown() {
-    MediaCommand command;
-    {
-      std::lock_guard lock(room_mutex_);
-      command.session_id = active_room_.session_id;
-      command.generation = active_room_.generation;
-    }
-    disconnect(command, false);
+    logMicrophone("microphone_shutdown_start");
+    publication_.shutdown();
     stopCapture();
+    logMicrophone("microphone_shutdown_done");
   }
 
  private:
-  void validateConnect(const MediaCommand& command) {
-    if (command.session_id.empty()) throw std::invalid_argument("sessionId is required");
-    if (command.livekit_url.empty()) throw std::invalid_argument("LiveKit URL is required");
-    if (command.livekit_token.empty()) throw std::invalid_argument("LiveKit token is required");
-    if (command.participant_identity.empty()) {
-      throw std::invalid_argument("participantIdentity is required");
-    }
-  }
-
-  void disconnectRoom(PublishedRoom& room) {
-    if (room.delegate) room.delegate->markIntentional();
-    room.track.reset();
-    if (room.room) {
-      try { room.room->disconnect(); } catch (...) {}
-    }
-    room.room.reset();
-    room.delegate.reset();
-    room.source.reset();
-  }
-
   void addSink(const std::shared_ptr<livekit::AudioSource>& source) {
     std::lock_guard lock(sinks_mutex_);
     sinks_.push_back(source);
@@ -478,6 +392,7 @@ class MicrophoneActor::Implementation {
   }
 
   void startCapture(const std::string& device_id) {
+    logMicrophone("microphone_capture_start_begin");
     {
       std::lock_guard lock(capture_startup_mutex_);
       capture_ready_ = false;
@@ -504,13 +419,23 @@ class MicrophoneActor::Implementation {
       : capture_startup_error_;
     startup_lock.unlock();
     stopCapture();
+    logMicrophone("microphone_capture_start_failed", {{"message", error}});
     throw std::runtime_error(error);
   }
 
   void ensureCapture(const PipelineState& desired, bool allow_rollback) {
     const auto previous = pipelineState();
+    logMicrophone(
+      "microphone_ensure_capture_start",
+      {
+        {"desiredRevision", desired.revision},
+        {"allowRollback", allow_rollback},
+        {"captureHealthy", captureHealthy()}
+      }
+    );
     if (captureDeviceMatches(desired.device_id) && captureHealthy()) {
       setPipelineState(desired);
+      logMicrophone("microphone_ensure_capture_reused");
       return;
     }
     const bool rollback_candidate = allow_rollback && captureHealthy();
@@ -518,12 +443,19 @@ class MicrophoneActor::Implementation {
     stopCapture();
     try {
       startCapture(desired.device_id);
+      logMicrophone("microphone_ensure_capture_started");
     } catch (const std::exception& error) {
       setPipelineState(previous);
       if (rollback_candidate) {
+        logMicrophone("microphone_ensure_capture_rollback_start");
         try {
           startCapture(previous.device_id);
+          logMicrophone("microphone_ensure_capture_rollback_ok");
         } catch (const std::exception& rollback_error) {
+          logMicrophone(
+            "microphone_ensure_capture_rollback_failed",
+            {{"message", rollback_error.what()}}
+          );
           MediaCommand terminal;
           terminal.type = "__microphoneTerminal";
           terminal.internal_message =
@@ -532,18 +464,22 @@ class MicrophoneActor::Implementation {
           post_(std::move(terminal));
         }
       }
+      logMicrophone("microphone_ensure_capture_failed", {{"message", error.what()}});
       throw std::runtime_error(error.what());
     }
   }
 
   void stopCapture() {
+    logMicrophone("microphone_capture_stop_start");
     capture_running_.store(false);
     if (capture_thread_.joinable()) capture_thread_.join();
     std::lock_guard lock(capture_lifecycle_mutex_);
     capture_device_id_.clear();
+    logMicrophone("microphone_capture_stop_done");
   }
 
   void captureLoop(std::string device_id, std::uint64_t epoch) {
+    logMicrophone("microphone_capture_loop_start", {{"epoch", epoch}});
     const auto com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool com_initialized = SUCCEEDED(com_result);
     DWORD task_index = 0;
@@ -578,6 +514,7 @@ class MicrophoneActor::Implementation {
         capture_ready_ = true;
       }
       capture_startup_changed_.notify_all();
+      logMicrophone("microphone_capture_loop_ready", {{"epoch", epoch}});
 
       syrnike::voice::MicrophoneAudioProcessor processor;
       syrnike::voice::MicrophoneEchoReference echo_reference;
@@ -586,7 +523,7 @@ class MicrophoneActor::Implementation {
       std::vector<float> raw_frame;
       raw_frame.reserve(syrnike::voice::kSamplesPer10Ms);
       std::vector<std::int16_t> silent_reference(syrnike::voice::kSamplesPer10Ms, 0);
-      auto next_metrics = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+      MicrophoneMetricsCadence metrics_cadence(std::chrono::steady_clock::now());
 
       while (capture_running_.load()) {
         UINT32 packet_frames = 0;
@@ -637,14 +574,14 @@ class MicrophoneActor::Implementation {
             );
             active_sinks[sink_index]->captureFrame(frame);
           }
-          if (std::chrono::steady_clock::now() >= next_metrics) {
+          const auto now = std::chrono::steady_clock::now();
+          if (metrics_cadence.shouldEmit(now)) {
             RuntimeEvent event;
             event.type = "microphoneMetrics";
             event.input_db = processed.gate_metrics.input_db;
             event.threshold_db = processed.gate_metrics.threshold_db;
             event.gate_open = processed.gate_metrics.open;
             emitter_.emit(std::move(event));
-            next_metrics = std::chrono::steady_clock::now() + std::chrono::seconds(1);
           }
           raw_frame.clear();
         }
@@ -654,6 +591,10 @@ class MicrophoneActor::Implementation {
       audio_client->Stop();
     } catch (const std::exception& error) {
       terminal_error = error.what();
+      logMicrophone(
+        "microphone_capture_loop_error",
+        {{"epoch", epoch}, {"message", error.what()}}
+      );
     }
 
     bool was_ready = false;
@@ -674,18 +615,24 @@ class MicrophoneActor::Implementation {
       command.internal_epoch = epoch;
       post_(std::move(command));
     }
+    logMicrophone(
+      "microphone_capture_loop_exit",
+      {
+        {"epoch", epoch},
+        {"wasReady", was_ready},
+        {"hadError", !terminal_error.empty()}
+      }
+    );
   }
 
   SequencedEmitter& emitter_;
   InternalPost post_;
   IsCurrent is_current_;
+  std::shared_ptr<LiveKitPublicationClient> livekit_client_;
   std::mutex pipeline_mutex_;
   PipelineState pipeline_;
   std::mutex sinks_mutex_;
   std::vector<std::shared_ptr<livekit::AudioSource>> sinks_;
-  std::mutex room_mutex_;
-  PublishedRoom active_room_;
-  bool muted_ = false;
   std::mutex capture_lifecycle_mutex_;
   std::thread capture_thread_;
   std::atomic_bool capture_running_{false};
@@ -699,23 +646,24 @@ class MicrophoneActor::Implementation {
   std::string preview_session_id_;
   std::uint64_t preview_generation_ = 0;
   PreviewConsumer preview_consumer_;
+  MicrophonePublicationController publication_;
 };
 
 MicrophoneActor::MicrophoneActor(
   SequencedEmitter& emitter,
   InternalPost post,
-  IsCurrent is_current
+  IsCurrent is_current,
+  std::shared_ptr<LiveKitPublicationClient> livekit_client
 ) : implementation_(std::make_unique<Implementation>(
       emitter,
       std::move(post),
-      std::move(is_current)
+      std::move(is_current),
+      std::move(livekit_client)
     )) {}
 
 MicrophoneActor::~MicrophoneActor() = default;
 void MicrophoneActor::warm(const MediaCommand& command) { implementation_->warm(command); }
-RuntimeEvent MicrophoneActor::connect(const MediaCommand& command) {
-  return implementation_->connect(command);
-}
+void MicrophoneActor::connect(const MediaCommand& command) { implementation_->connect(command); }
 RuntimeEvent MicrophoneActor::configure(const MediaCommand& command) {
   return implementation_->configure(command);
 }
@@ -741,6 +689,12 @@ void MicrophoneActor::disconnect(const MediaCommand& command, bool emit_stopped)
 }
 void MicrophoneActor::handleTerminal(const MediaCommand& command) {
   implementation_->handleTerminal(command);
+}
+void MicrophoneActor::handleWorkerCommand(const MediaCommand& command) {
+  implementation_->handleWorkerCommand(command);
+}
+RuntimeEvent MicrophoneActor::probe(const MediaCommand& command) {
+  return implementation_->probe(command);
 }
 void MicrophoneActor::shutdown() { implementation_->shutdown(); }
 

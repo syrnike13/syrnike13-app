@@ -35,6 +35,7 @@ function baseInput(
     wantsMic: true,
     selfMonitoringActive: false,
     publisherHealthy: true,
+    repairMutedPublisher: false,
     ...overrides,
   }
 }
@@ -137,6 +138,18 @@ describe('decideVoiceRecoveryAction', () => {
     ).toEqual({ type: 'repair_publisher', reason: 'publisher_unhealthy' })
   })
 
+  it('repairs a muted native publisher when user intent still wants microphone', () => {
+    expect(
+      decideVoiceRecoveryAction(
+        baseInput({
+          desiredSelfMute: true,
+          publisherHealthy: false,
+          repairMutedPublisher: true,
+        }),
+      ),
+    ).toEqual({ type: 'repair_publisher', reason: 'publisher_unhealthy' })
+  })
+
   it('sends flags when server voice flags differ from local intent', () => {
     expect(
       decideVoiceRecoveryAction(
@@ -173,6 +186,22 @@ describe('decideVoiceRecoveryAction', () => {
           desiredSelfMute: true,
           wantsMic: false,
           publisherHealthy: false,
+        }),
+      ),
+    ).toEqual({
+      type: 'send_flags',
+      reason: 'flags_mismatch',
+      selfMute: true,
+      selfDeaf: false,
+    })
+
+    expect(
+      decideVoiceRecoveryAction(
+        baseInput({
+          desiredSelfMute: true,
+          wantsMic: true,
+          publisherHealthy: false,
+          repairMutedPublisher: false,
         }),
       ),
     ).toEqual({

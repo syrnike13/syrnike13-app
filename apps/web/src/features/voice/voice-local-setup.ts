@@ -253,8 +253,13 @@ export async function finishLocalVoiceSetup(deps: FinishLocalVoiceSetupDeps) {
       return
     }
     micSetupFailed = true
-    deps.setConnectionPhase('failed')
-    deps.syncMicFromRoom(room, deps.describeMicDeviceError(error))
+    const issue = deps.describeMicDeviceError(error)
+    deps.syncMicFromRoom(
+      room,
+      deps.shouldUseNativeMicrophone
+        ? { ...issue, retryable: true }
+        : issue,
+    )
   }
 
   deps.setMicEnabled(deps.getMicEnabledPreference())
@@ -307,7 +312,5 @@ export async function finishLocalVoiceSetup(deps: FinishLocalVoiceSetupDeps) {
     return
   }
   deps.setLocalVoiceReady(true)
-  if (!micSetupFailed) {
-    deps.setConnectionPhase('connected')
-  }
+  deps.setConnectionPhase('connected')
 }

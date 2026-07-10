@@ -149,6 +149,8 @@ struct MediaCommand {
   bool terminal = false;
   std::string internal_message;
   std::uint64_t internal_epoch = 0;
+  std::uint64_t internal_enqueued_steady_ms = 0;
+  std::uint32_t internal_queue_depth = 0;
 };
 
 struct HooksCommand {

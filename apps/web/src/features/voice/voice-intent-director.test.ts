@@ -15,11 +15,22 @@ function committedState(channelId: string): VoiceDirectorState {
   return {
     desired: { kind: 'channel', channelId },
     committed: channelId,
-    committedOperationId: null,
+    committedOperationId: `op-committed-${channelId}`,
+    controlOperationId: `op-committed-${channelId}`,
     phase: 'connected',
     steps: [],
     activeOperationId: null,
-    supersededOperationIds: [],
+    operationJournal: [
+      {
+        operationId: `op-committed-${channelId}`,
+        channelId,
+        kind: 'join',
+        expectedCurrentOperationId: null,
+        gatewayDispatched: true,
+        authority: 'accepted',
+        lifecycle: 'committed',
+      },
+    ],
     lastError: null,
   }
 }
@@ -120,6 +131,7 @@ describe('reduceDirector', () => {
           operationId: 'op-join-b',
           channelId: 'voice-b',
           reason: 'switch',
+          expectedCurrentOperationId: 'op-committed-voice-a',
         },
       ],
     })
@@ -144,9 +156,111 @@ describe('reduceDirector', () => {
         operationId: 'op-join-c',
         channelId: 'voice-c',
         reason: 'switch',
+        gatewayDispatched: false,
+        expectedCurrentOperationId: 'op-committed-voice-a',
       },
     ])
-    expect(movingToC.supersededOperationIds).toContain('op-join-b')
+    expect(movingToC.operationJournal).toContainEqual(
+      expect.objectContaining({
+        operationId: 'op-join-b',
+        lifecycle: 'superseded',
+      }),
+    )
+  })
+
+  it('chains a superseding join from the last server-accepted operation', () => {
+    const movingToB = reduceDirector(
+      committedState('voice-a'),
+      { type: 'intent', channelId: 'voice-b', reason: 'switch' },
+      operationIds('op-join-b'),
+    )
+    const dispatchedToB = reduceDirector(
+      movingToB,
+      { type: 'gateway_dispatched', operationId: 'op-join-b' },
+      operationIds('op-unused'),
+    )
+    const acceptedToB = reduceDirector(
+      dispatchedToB,
+      { type: 'gateway_accepted', operationId: 'op-join-b' },
+      operationIds('op-unused'),
+    )
+
+    const movingToC = reduceDirector(
+      acceptedToB,
+      { type: 'intent', channelId: 'voice-c', reason: 'switch' },
+      operationIds('op-join-c'),
+    )
+
+    expect(movingToC.steps).toEqual([{
+      kind: 'join',
+      operationId: 'op-join-c',
+      channelId: 'voice-c',
+      reason: 'switch',
+      gatewayDispatched: false,
+      expectedCurrentOperationId: 'op-join-b',
+    }])
+  })
+
+  it('chains an idle supersede from the accepted prepared operation', () => {
+    const joiningA = reduceDirector(
+      createInitialDirectorState(),
+      { type: 'intent', channelId: 'voice-a', reason: 'manual_join' },
+      operationIds('op-join-a'),
+    )
+    const dispatchedA = reduceDirector(
+      joiningA,
+      { type: 'gateway_dispatched', operationId: 'op-join-a' },
+      operationIds('op-unused'),
+    )
+    const acceptedA = reduceDirector(
+      dispatchedA,
+      { type: 'gateway_accepted', operationId: 'op-join-a' },
+      operationIds('op-unused'),
+    )
+
+    const joiningB = reduceDirector(
+      acceptedA,
+      { type: 'intent', channelId: 'voice-b', reason: 'switch' },
+      operationIds('op-join-b'),
+    )
+
+    expect(joiningB.steps[0]).toMatchObject({
+      operationId: 'op-join-b',
+      expectedCurrentOperationId: 'op-join-a',
+    })
+  })
+
+  it('rewrites a queued successor only after the superseded request is accepted', () => {
+    const movingToB = reduceDirector(
+      committedState('voice-a'),
+      { type: 'intent', channelId: 'voice-b', reason: 'switch' },
+      operationIds('op-join-b'),
+    )
+    const dispatchedB = reduceDirector(
+      movingToB,
+      { type: 'gateway_dispatched', operationId: 'op-join-b' },
+      operationIds('op-unused'),
+    )
+    const movingToC = reduceDirector(
+      dispatchedB,
+      { type: 'intent', channelId: 'voice-c', reason: 'switch' },
+      operationIds('op-join-c'),
+    )
+    expect(movingToC.steps[0]).toMatchObject({
+      operationId: 'op-join-c',
+      expectedCurrentOperationId: 'op-committed-voice-a',
+    })
+
+    const acceptedB = reduceDirector(
+      movingToC,
+      { type: 'gateway_accepted', operationId: 'op-join-b' },
+      operationIds('op-unused'),
+    )
+    expect(acceptedB.controlOperationId).toBe('op-join-b')
+    expect(acceptedB.steps[0]).toMatchObject({
+      operationId: 'op-join-c',
+      expectedCurrentOperationId: 'op-join-b',
+    })
   })
 
   it('supersedes an in-flight idle join with the latest intent', () => {
@@ -168,31 +282,132 @@ describe('reduceDirector', () => {
         operationId: 'op-join-b',
         channelId: 'voice-b',
         reason: 'switch',
+        gatewayDispatched: false,
       },
     ])
     expect(joiningB.activeOperationId).toBe('op-join-b')
-    expect(joiningB.supersededOperationIds).toContain('op-join-a')
+    expect(joiningB.operationJournal).toContainEqual(
+      expect.objectContaining({
+        operationId: 'op-join-a',
+        lifecycle: 'superseded',
+      }),
+    )
   })
 
-  it('ignores stale commits for superseded operations', () => {
+  it('records a late authoritative commit without replacing the newer prepared join', () => {
     const joiningA = reduceDirector(
       createInitialDirectorState(),
       { type: 'intent', channelId: 'voice-a', reason: 'manual_join' },
       operationIds('op-join-a'),
     )
-    const joiningB = reduceDirector(
+    const dispatchedA = reduceDirector(
       joiningA,
+      { type: 'gateway_dispatched', operationId: 'op-join-a' },
+      operationIds('op-unused'),
+    )
+    const joiningB = reduceDirector(
+      dispatchedA,
       { type: 'intent', channelId: 'voice-b', reason: 'switch' },
       operationIds('op-join-b'),
     )
 
-    const stale = reduceDirector(
+    const observed = reduceDirector(
       joiningB,
       { type: 'commit', operationId: 'op-join-a', channelId: 'voice-a' },
       operationIds('op-unused'),
     )
 
-    expect(stale).toBe(joiningB)
+    expect(observed.committed).toBe('voice-a')
+    expect(observed.committedOperationId).toBe('op-join-a')
+    expect(observed.steps).toEqual(joiningB.steps)
+  })
+
+  it('falls back to a fresh reconnect when the candidate commits before retain wins', () => {
+    const movingToB = reduceDirector(
+      committedState('voice-a'),
+      { type: 'intent', channelId: 'voice-b', reason: 'switch' },
+      operationIds('op-join-b'),
+    )
+    const dispatchedToB = reduceDirector(
+      movingToB,
+      { type: 'gateway_dispatched', operationId: 'op-join-b' },
+      operationIds('op-unused'),
+    )
+    const retainingA = reduceDirector(
+      dispatchedToB,
+      {
+        type: 'restore_source_after_dispatch',
+        channelId: 'voice-a',
+        retainedOperationId: 'op-committed-voice-a',
+        expectedCurrentOperationId: 'op-join-b',
+        reason: 'switch',
+      },
+      operationIds('op-unused'),
+    )
+
+    const reconnectingA = reduceDirector(
+      retainingA,
+      { type: 'commit', operationId: 'op-join-b', channelId: 'voice-b' },
+      operationIds('op-return-a2'),
+    )
+
+    expect(reconnectingA).toMatchObject({
+      committed: 'voice-b',
+      committedOperationId: 'op-join-b',
+      desired: { kind: 'channel', channelId: 'voice-a' },
+      steps: [{
+        kind: 'join',
+        operationId: 'op-return-a2',
+        channelId: 'voice-a',
+        expectedCurrentOperationId: 'op-join-b',
+      }],
+    })
+    expect(reconnectingA.steps[0]).not.toHaveProperty('retainFinalized')
+  })
+
+  it('replans after a late candidate commit even when retain already failed', () => {
+    const movingToB = reduceDirector(
+      committedState('voice-a'),
+      { type: 'intent', channelId: 'voice-b', reason: 'switch' },
+      operationIds('op-join-b'),
+    )
+    const dispatchedToB = reduceDirector(
+      movingToB,
+      { type: 'gateway_dispatched', operationId: 'op-join-b' },
+      operationIds('op-unused'),
+    )
+    const retainingA = reduceDirector(
+      dispatchedToB,
+      {
+        type: 'restore_source_after_dispatch',
+        channelId: 'voice-a',
+        retainedOperationId: 'op-committed-voice-a',
+        expectedCurrentOperationId: 'op-join-b',
+        reason: 'switch',
+      },
+      operationIds('op-unused'),
+    )
+    const failedRetain = reduceDirector(
+      retainingA,
+      {
+        type: 'step_failed',
+        operationId: 'op-committed-voice-a',
+        error: 'retain conflict',
+      },
+      operationIds('op-unused'),
+    )
+    expect(failedRetain.steps).toEqual([])
+
+    const reconnectingA = reduceDirector(
+      failedRetain,
+      { type: 'commit', operationId: 'op-join-b', channelId: 'voice-b' },
+      operationIds('op-return-a2'),
+    )
+    expect(reconnectingA.steps[0]).toMatchObject({
+      operationId: 'op-return-a2',
+      channelId: 'voice-a',
+      expectedCurrentOperationId: 'op-join-b',
+    })
   })
 
   it('does not let local restore events advance committed state', () => {
@@ -251,7 +466,7 @@ describe('reduceDirector', () => {
     })
   })
 
-  it('keeps desired and replans when the current step fails', () => {
+  it('keeps desired without entering an automatic retry loop when a step fails', () => {
     const joining = reduceDirector(
       createInitialDirectorState(),
       { type: 'intent', channelId: 'voice-a', reason: 'manual_join' },
@@ -267,17 +482,10 @@ describe('reduceDirector', () => {
     expect(retried).toMatchObject({
       desired: { kind: 'channel', channelId: 'voice-a' },
       committed: null,
-      phase: 'joining',
-      activeOperationId: 'op-join-a-retry',
+      phase: 'idle',
+      activeOperationId: null,
       lastError: 'timeout',
-      steps: [
-        {
-          kind: 'join',
-          operationId: 'op-join-a-retry',
-          channelId: 'voice-a',
-          reason: 'manual_join',
-        },
-      ],
+      steps: [],
     })
   })
 
@@ -377,6 +585,73 @@ describe('reduceDirector', () => {
     )
 
     expect(next).toBe(state)
+  })
+
+  it('rejoins only after an exact operation-fenced committed leave', () => {
+    const state = committedState('voice-a')
+
+    const mismatch = reduceDirector(
+      state,
+      { type: 'leave_observed', operationId: 'op-other' },
+      operationIds('op-unused'),
+    )
+    expect(mismatch).toBe(state)
+
+    const left = reduceDirector(
+      state,
+      {
+        type: 'leave_observed',
+        operationId: 'op-committed-voice-a',
+      },
+      operationIds('op-rejoin-a'),
+    )
+    expect(left).toMatchObject({
+      committed: null,
+      committedOperationId: null,
+      controlOperationId: null,
+      desired: { kind: 'channel', channelId: 'voice-a' },
+      activeOperationId: 'op-rejoin-a',
+      steps: [
+        {
+          kind: 'join',
+          operationId: 'op-rejoin-a',
+          channelId: 'voice-a',
+          reason: 'rejoin',
+        },
+      ],
+    })
+  })
+
+  it('bounds the operation journal while preserving current authority', () => {
+    let state = committedState('voice-a')
+    let sequence = 0
+    const createOperationId = () => `op-switch-${sequence++}`
+
+    for (let index = 0; index < 100; index += 1) {
+      state = reduceDirector(
+        state,
+        {
+          type: 'intent',
+          channelId: index % 2 === 0 ? 'voice-b' : 'voice-c',
+          reason: 'switch',
+        },
+        createOperationId,
+      )
+    }
+
+    expect(state.operationJournal.length).toBeLessThanOrEqual(32)
+    expect(state.operationJournal).toContainEqual(
+      expect.objectContaining({
+        operationId: 'op-committed-voice-a',
+        lifecycle: 'committed',
+      }),
+    )
+    expect(state.operationJournal).toContainEqual(
+      expect.objectContaining({
+        operationId: state.activeOperationId,
+        lifecycle: 'active',
+      }),
+    )
   })
 
   it('resets to the initial state', () => {

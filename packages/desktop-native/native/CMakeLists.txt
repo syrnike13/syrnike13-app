@@ -72,7 +72,7 @@ function(syrnike_native_target target)
     _WIN32_WINNT=0x0A00
   )
   if(MSVC)
-    target_compile_options(${target} PRIVATE /W4 /WX /permissive- /EHsc /Zi)
+    target_compile_options(${target} PRIVATE /W4 /WX /permissive- /EHsc /Zi /FS)
     target_link_options(${target} PRIVATE /DEBUG:FULL)
     if(SYRNIKE_ENABLE_ASAN)
       set_property(TARGET ${target} PROPERTY
@@ -107,15 +107,19 @@ function(syrnike_copy_livekit_runtime target)
 endfunction()
 
 add_library(syrnike_media_core STATIC
+  src/common/diagnostic_log.cpp
   src/media/audio_devices.cpp
   src/media/audio_processing.cpp
   src/media/display_sources.cpp
+  src/media/livekit_publication_client.cpp
   src/media/media_runtime.cpp
   src/media/microphone_actor.cpp
   src/media/microphone_audio_processor.cpp
+  src/media/microphone_publication_controller.cpp
   src/media/microphone_echo_reference.cpp
   src/media/preview_actor.cpp
   src/media/screen_actor.cpp
+  src/media/screen_publication_controller.cpp
   src/media/screen_audio_capture.cpp
   src/media/screen_capture_priority.cpp
   src/media/screen_video_capture.cpp
@@ -184,6 +188,7 @@ endif()
 enable_testing()
 add_executable(syrnike-native-runtime-core-tests
   tests/runtime_core_test.cpp
+  src/common/diagnostic_log.cpp
   src/hooks/input_state.cpp
   src/hooks/key_codes.cpp
 )
@@ -210,6 +215,17 @@ add_test(
   COMMAND syrnike-native-media-actor-lifecycle-tests
 )
 
+add_executable(syrnike-native-livekit-publication-client-tests
+  tests/livekit_publication_client_test.cpp
+)
+syrnike_native_target(syrnike-native-livekit-publication-client-tests)
+target_link_libraries(syrnike-native-livekit-publication-client-tests PRIVATE syrnike_media_core)
+syrnike_copy_livekit_runtime(syrnike-native-livekit-publication-client-tests)
+add_test(
+  NAME syrnike-native-livekit-publication-client-tests
+  COMMAND syrnike-native-livekit-publication-client-tests
+)
+
 add_executable(syrnike-native-runtime-integration-tests
   tests/runtime_integration_test.cpp
 )
@@ -222,6 +238,45 @@ syrnike_copy_livekit_runtime(syrnike-native-runtime-integration-tests)
 add_test(
   NAME syrnike-native-runtime-integration-tests
   COMMAND syrnike-native-runtime-integration-tests
+)
+
+add_executable(syrnike-native-media-runtime-probe-tests
+  tests/media_runtime_probe_test.cpp
+)
+syrnike_native_target(syrnike-native-media-runtime-probe-tests)
+target_link_libraries(syrnike-native-media-runtime-probe-tests PRIVATE syrnike_media_core)
+syrnike_copy_livekit_runtime(syrnike-native-media-runtime-probe-tests)
+add_test(
+  NAME syrnike-native-media-runtime-probe-tests
+  COMMAND syrnike-native-media-runtime-probe-tests
+)
+
+add_executable(syrnike-native-microphone-publication-control-plane-tests
+  tests/microphone_publication_control_plane_test.cpp
+)
+syrnike_native_target(syrnike-native-microphone-publication-control-plane-tests)
+target_link_libraries(
+  syrnike-native-microphone-publication-control-plane-tests
+  PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-microphone-publication-control-plane-tests)
+add_test(
+  NAME syrnike-native-microphone-publication-control-plane-tests
+  COMMAND syrnike-native-microphone-publication-control-plane-tests
+)
+
+add_executable(syrnike-native-screen-publication-control-plane-tests
+  tests/screen_publication_control_plane_test.cpp
+)
+syrnike_native_target(syrnike-native-screen-publication-control-plane-tests)
+target_link_libraries(
+  syrnike-native-screen-publication-control-plane-tests
+  PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-screen-publication-control-plane-tests)
+add_test(
+  NAME syrnike-native-screen-publication-control-plane-tests
+  COMMAND syrnike-native-screen-publication-control-plane-tests
 )
 
 add_executable(syrnike-native-hooks-runtime-lifecycle-tests

@@ -30,6 +30,7 @@ bitfield = { workspace = true }
 # ID / key generation
 ulid = { workspace = true }
 nanoid = { workspace = true }
+uuid = { workspace = true }
 
 # serde
 serde_json = { workspace = true }

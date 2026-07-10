@@ -9,6 +9,7 @@
 #include "common/sequenced_emitter.hpp"
 #include "media/microphone_actor.hpp"
 #include "media/generation_fence.hpp"
+#include "media/livekit_disconnect_reason.hpp"
 #include "media/preview_actor.hpp"
 #include "media/screen_actor.hpp"
 
@@ -49,6 +50,30 @@ void requireThrows(Action action, const char* message) {
 int main() try {
   using namespace syrnike::desktop_native;
   using namespace syrnike::desktop_native::media;
+
+  const auto participant_removed =
+    describeLiveKitDisconnectReason(livekit::DisconnectReason::ParticipantRemoved);
+  if (
+    participant_removed.code != "participant_removed" ||
+    participant_removed.numeric_code != 4 ||
+    !participant_removed.known
+  ) {
+    throw std::runtime_error("known LiveKit disconnect reason mapping drifted");
+  }
+  if (
+    formatLiveKitDisconnectTerminalMessage(livekit::DisconnectReason::ParticipantRemoved) !=
+    "livekit_disconnected:participant_removed"
+  ) {
+    throw std::runtime_error("known LiveKit disconnect terminal message drifted");
+  }
+  const auto unknown_reason = static_cast<livekit::DisconnectReason>(99);
+  const auto unknown = describeLiveKitDisconnectReason(unknown_reason);
+  if (unknown.code != "unknown" || unknown.numeric_code != 99 || unknown.known) {
+    throw std::runtime_error("unknown LiveKit disconnect reason mapping drifted");
+  }
+  if (formatLiveKitDisconnectTerminalMessage(unknown_reason) != "livekit_disconnected:unknown:99") {
+    throw std::runtime_error("unknown LiveKit disconnect terminal message drifted");
+  }
 
   auto sink = std::make_shared<CollectingSink>();
   SequencedEmitter emitter(sink);

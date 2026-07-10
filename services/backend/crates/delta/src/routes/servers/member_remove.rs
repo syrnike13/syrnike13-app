@@ -4,7 +4,7 @@ use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{
         cancel_current_pending_voice_join_in_server, get_user_voice_channel_in_server,
-        remove_user_from_voice_channel, UserVoiceChannel, VoiceClient,
+        remove_user_from_voice_channel, UserVoiceChannel,
     },
     Database, RemovalIntention, User,
 };
@@ -18,7 +18,6 @@ use syrnike_result::{create_error, Result};
 #[delete("/<server_id>/members/<member_id>")]
 pub async fn kick(
     db: &State<Database>,
-    voice_client: &State<VoiceClient>,
     user: User,
     server_id: Reference<'_>,
     member_id: Reference<'_>,
@@ -49,9 +48,9 @@ pub async fn kick(
         .remove(db, &server, RemovalIntention::Kick, false)
         .await?;
 
+    cancel_current_pending_voice_join_in_server(member_id.id, &server.id).await?;
     if let Some(channel_id) = get_user_voice_channel_in_server(member_id.id, &server.id).await? {
         remove_user_from_voice_channel(
-            voice_client,
             &UserVoiceChannel {
                 id: channel_id,
                 server_id: Some(server.id.clone()),
@@ -60,7 +59,6 @@ pub async fn kick(
         )
         .await?;
     };
-    cancel_current_pending_voice_join_in_server(voice_client, member_id.id, &server.id).await?;
 
     Ok(EmptyResponse)
 }

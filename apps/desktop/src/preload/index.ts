@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC } from '@syrnike13/platform'
+import {
+  IPC,
+  isLocalMediaObservedStateEvent,
+  parseLocalMediaIntentAcceptanceResult,
+} from '@syrnike13/platform'
 
 import type {
   DesktopOverlaySnapshot,
@@ -17,14 +21,10 @@ import type {
   HotkeyActivationEvent,
   HotkeyAction,
   HotkeyBinding,
+  LocalMediaIntent,
+  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
-  NativeMediaSession,
-  NativeMediaRuntimeLostEvent,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaMicrophoneSessionStartOptions,
-  NativeMediaSessionStartOptions,
   NativeMediaState,
-  NativeMediaStateEvent,
   NativeMediaStatsEvent,
   NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
@@ -264,43 +264,18 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         ipcRenderer.removeListener(IPC.mediaDisplayPickerResolved, listener)
       }
     },
-    prepareScreenSession(options: NativeMediaScreenSessionPrepareOptions) {
-      return ipcRenderer.invoke(IPC.mediaPrepareScreenSession, options)
-    },
-    disconnectPreparedScreenSession() {
-      return ipcRenderer.invoke(IPC.mediaDisconnectPreparedScreenSession)
-    },
-    startSession(options: NativeMediaSessionStartOptions) {
-      return ipcRenderer.invoke(IPC.mediaStartSession, options) as Promise<NativeMediaSession>
-    },
-    cancelPendingStarts(kind?: NativeMediaSessionStartOptions['kind']) {
-      return ipcRenderer.invoke(IPC.mediaCancelPendingStarts, kind)
+    async applyLocalMediaIntent(intent: LocalMediaIntent) {
+      const result = await ipcRenderer.invoke(
+        IPC.mediaApplyLocalMediaIntent,
+        intent,
+      )
+      return parseLocalMediaIntentAcceptanceResult(result)
     },
     configureMicrophonePipeline(config: NativeMicrophonePipelineConfig) {
       return ipcRenderer.invoke(
         IPC.mediaConfigureMicrophonePipeline,
         config,
       )
-    },
-    setMicrophoneMuted(sessionId: string, muted: boolean) {
-      return ipcRenderer.invoke(
-        IPC.mediaSetMicrophoneMuted,
-        sessionId,
-        muted,
-      )
-    },
-    reconnectMicrophoneSession(
-      sessionId: string,
-      options: NativeMediaMicrophoneSessionStartOptions,
-    ) {
-      return ipcRenderer.invoke(
-        IPC.mediaReconnectMicrophoneSession,
-        sessionId,
-        options,
-      ) as Promise<NativeMediaSession>
-    },
-    stopSession(sessionId?: string) {
-      return ipcRenderer.invoke(IPC.mediaStopSession, sessionId)
     },
     getState() {
       return ipcRenderer.invoke(IPC.mediaGetState) as Promise<NativeMediaState>
@@ -334,42 +309,15 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         ipcRenderer.removeListener(IPC.mediaMicrophonePreviewState, listener)
       }
     },
-    onStateChange(handler: (event: NativeMediaStateEvent) => void) {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isNativeMediaStateEvent(payload)) handler(payload)
-      }
-      ipcRenderer.on(IPC.mediaStateChanged, listener)
-      return () => {
-        ipcRenderer.removeListener(IPC.mediaStateChanged, listener)
-      }
-    },
-    onStreamEnded(handler: (sessionId: string) => void) {
-      const listener = (_event: Electron.IpcRendererEvent, sessionId: unknown) => {
-        if (typeof sessionId === 'string') handler(sessionId)
-      }
-      ipcRenderer.on(IPC.mediaStreamEnded, listener)
-      return () => {
-        ipcRenderer.removeListener(IPC.mediaStreamEnded, listener)
-      }
-    },
-    onStreamError(
-      handler: (event: { sessionId: string; message: string }) => void,
+    onLocalMediaState(
+      handler: (event: LocalMediaObservedStateEvent) => void,
     ) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isCaptureStreamError(payload)) handler(payload)
+        if (isLocalMediaObservedStateEvent(payload)) handler(payload)
       }
-      ipcRenderer.on(IPC.mediaStreamError, listener)
+      ipcRenderer.on(IPC.mediaLocalMediaState, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.mediaStreamError, listener)
-      }
-    },
-    onRuntimeLost(handler: (event: NativeMediaRuntimeLostEvent) => void) {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isNativeMediaRuntimeLostEvent(payload)) handler(payload)
-      }
-      ipcRenderer.on(IPC.mediaRuntimeLost, listener)
-      return () => {
-        ipcRenderer.removeListener(IPC.mediaRuntimeLost, listener)
+        ipcRenderer.removeListener(IPC.mediaLocalMediaState, listener)
       }
     },
   },
@@ -528,34 +476,4 @@ function isNativeMicrophonePreviewStateEvent(
     return event.message === undefined
   }
   return event.status === 'error' && typeof event.message === 'string'
-}
-
-function isNativeMediaStateEvent(value: unknown): value is NativeMediaStateEvent {
-  if (!value || typeof value !== 'object') return false
-  const event = value as NativeMediaStateEvent
-  return typeof event.status === 'string'
-}
-
-function isCaptureStreamError(
-  value: unknown,
-): value is { sessionId: string; message: string } {
-  if (!value || typeof value !== 'object') return false
-  const event = value as { sessionId?: unknown; message?: unknown }
-  return typeof event.sessionId === 'string' && typeof event.message === 'string'
-}
-
-function isNativeMediaRuntimeLostEvent(
-  value: unknown,
-): value is NativeMediaRuntimeLostEvent {
-  if (!value || typeof value !== 'object') return false
-  const event = value as NativeMediaRuntimeLostEvent
-  return (
-    typeof event.sessionId === 'string' &&
-    (event.reason === 'exit' ||
-      event.reason === 'stream_error' ||
-      event.reason === 'circuit_open' ||
-      event.reason === 'handshake_failed') &&
-    typeof event.message === 'string' &&
-    typeof event.recovering === 'boolean'
-  )
 }

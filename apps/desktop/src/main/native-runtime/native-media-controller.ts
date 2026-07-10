@@ -15,6 +15,7 @@ import type {
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
 } from '@syrnike13/platform'
+import type { DiagnosticLogSink } from './diagnostic-log'
 
 import {
   isNativeMediaSession,
@@ -51,6 +52,7 @@ type ActiveSession = {
   session?: NativeMediaSession
   effectiveMuted?: boolean
   candidateGeneration?: number
+  stopOperation?: Promise<boolean>
 }
 
 type PreparedScreen = {
@@ -66,20 +68,8 @@ type PreviewSessionState = {
   status: 'starting' | 'running'
 }
 
-type RecoverySessionCandidate = {
-  session: ActiveSession
-  generation: number
-  requestId: string
-}
-
 type RecoveryDesiredState = {
   restartCount: number
-  latestRequestIds: Partial<Record<NativeMediaSessionKind, string>>
-  sessions: RecoverySessionCandidate[]
-  preparedScreen: {
-    prepared: PreparedScreen
-    generation: number
-  } | null
   preview: PreviewSessionState | null
   microphonePipelineDesiredWarm: boolean
 }
@@ -91,6 +81,16 @@ export type NativeMediaControllerEvent =
   | { type: 'microphonePreviewState'; event: NativeMicrophonePreviewStateEvent }
   | { type: 'streamEnded'; sessionId: string }
   | { type: 'streamError'; event: { sessionId: string; message: string } }
+  | {
+      type: 'executionTerminal'
+      event: {
+        kind: NativeMediaSessionKind
+        sessionId: string
+        code: string
+        stage: string
+        retryable: boolean
+      }
+    }
   | { type: 'runtimeLost'; event: NativeMediaRuntimeLostEvent }
   | {
       type: 'operationMetric'
@@ -105,6 +105,7 @@ export type NativeMediaControllerOptions = {
   runtimeAvailable: () => boolean
   getSelfWindowHwnd: () => string | undefined
   processId?: number
+  diagnostics?: DiagnosticLogSink
 }
 
 export class NativeMediaController {
@@ -113,6 +114,10 @@ export class NativeMediaController {
   private readonly queues: Record<NativeMediaSessionKind, Promise<unknown>> = {
     microphone: Promise.resolve(),
     screen: Promise.resolve(),
+  }
+  private readonly queueDepths: Record<NativeMediaSessionKind, number> = {
+    microphone: 0,
+    screen: 0,
   }
   private generations: Record<NativeMediaSessionKind | 'preview', number> = {
     microphone: 0,
@@ -154,13 +159,25 @@ export class NativeMediaController {
 
   async start() {
     if (!this.options.runtimeAvailable()) return
+    this.log('controller_start_requested', {
+      pendingCount: this.supervisorPendingCount(),
+    })
     await this.options.supervisor.start()
+    this.log('controller_start_completed', {
+      pendingCount: this.supervisorPendingCount(),
+    })
   }
 
   async prewarmMicrophone() {
     if (!this.options.runtimeAvailable()) return
     this.microphonePipelineDesiredWarm = true
+    this.log('microphone_prewarm_requested', {
+      pendingCount: this.supervisorPendingCount(),
+    })
     await this.ensureMicrophonePipelineWarm()
+    this.log('microphone_prewarm_completed', {
+      pendingCount: this.supervisorPendingCount(),
+    })
   }
 
   async listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]> {
@@ -269,7 +286,9 @@ export class NativeMediaController {
   }
 
   prepareScreenSession(options: NativeMediaScreenSessionPrepareOptions) {
-    return this.enqueue('screen', () => this.prepareScreenSessionNow(options))
+    return this.enqueue('screen', 'prepare_screen', () =>
+      this.prepareScreenSessionNow(options),
+    )
   }
 
   private async prepareScreenSessionNow(
@@ -319,12 +338,13 @@ export class NativeMediaController {
   }
 
   disconnectPreparedScreenSession() {
-    return this.enqueue('screen', () => this.disconnectPreparedScreenSessionNow())
+    return this.enqueue('screen', 'disconnect_prepared_screen', () =>
+      this.disconnectPreparedScreenSessionNow(),
+    )
   }
 
   private async disconnectPreparedScreenSessionNow() {
     const prepared = this.preparedScreen
-    this.preparedScreen = null
     if (!prepared) return
     await this.request(
       {
@@ -333,27 +353,59 @@ export class NativeMediaController {
         generation: prepared.generation,
       },
       STOP_TIMEOUT_MS,
-    ).catch(() => undefined)
+    )
+    if (this.preparedScreen === prepared) this.preparedScreen = null
   }
 
   startSession(options: NativeMediaSessionStartOptions) {
     assertSessionStartOptions(options, this.options.getSelfWindowHwnd())
     void this.cancelPendingStarts(options.kind)
     this.latestRequestIds[options.kind] = options.requestId
-    return this.enqueue(options.kind, () => this.startSessionNow(options))
+    return this.enqueue(options.kind, `start_${options.kind}`, () =>
+      this.startSessionNow(options),
+    )
   }
 
   async cancelPendingStarts(kind?: NativeMediaSessionKind) {
     const kinds: NativeMediaSessionKind[] = kind ? [kind] : ['microphone', 'screen']
+    const invalidations: Promise<unknown>[] = []
     for (const currentKind of kinds) {
       this.latestRequestIds[currentKind] = undefined
       this.generations[currentKind] += 1
       for (const session of Array.from(this.sessions.values())) {
-        if (session.options.kind !== currentKind || session.status !== 'starting') continue
-        this.sessions.delete(session.sessionId)
-        void this.stopNativeSession(session).catch(() => undefined)
+        if (session.options.kind !== currentKind) continue
+        if (session.status === 'starting') {
+          void this.retireSession(session).catch(() => undefined)
+          continue
+        }
+        if (
+          currentKind === 'microphone' &&
+          session.candidateGeneration !== undefined
+        ) {
+          const cancelledCandidateGeneration = session.candidateGeneration
+          const fenceGeneration = this.generations.microphone
+          session.candidateGeneration = undefined
+          this.log('microphone_reconnect_superseded', {
+            sessionId: session.sessionId,
+            generation: session.generation,
+            candidateGeneration: cancelledCandidateGeneration,
+            fenceGeneration,
+            pendingCount: this.supervisorPendingCount(),
+          })
+          invalidations.push(
+            this.request(
+              {
+                type: 'invalidateMicrophone',
+                sessionId: session.sessionId,
+                generation: fenceGeneration,
+              },
+              QUERY_TIMEOUT_MS,
+            ),
+          )
+        }
       }
     }
+    await Promise.allSettled(invalidations)
   }
 
   async configureMicrophonePipeline(config: NativeMicrophonePipelineConfig) {
@@ -370,26 +422,70 @@ export class NativeMediaController {
     this.microphonePipelineRevision = revision
     this.microphonePipelineConfig = { ...config }
     this.microphonePipelineDesiredWarm = true
+    this.log('microphone_config_requested', {
+      revision,
+      pendingCount: this.supervisorPendingCount(),
+    })
     if (!this.options.runtimeAvailable()) return
 
     await this.start()
     await this.ensureMicrophonePipelineWarm()
-    if (revision !== this.microphonePipelineRevision) return
+    if (revision !== this.microphonePipelineRevision) {
+      this.log('microphone_config_superseded', {
+        revision,
+        pendingCount: this.supervisorPendingCount(),
+      })
+      return
+    }
     await this.request(command, QUERY_TIMEOUT_MS)
+    this.log('microphone_config_completed', {
+      revision,
+      pendingCount: this.supervisorPendingCount(),
+    })
   }
 
   async setMicrophoneMuted(sessionId: string, muted: boolean) {
     const session = this.requireMicrophoneSession(sessionId)
-    await this.request(
-      {
-        type: 'setMicrophoneMuted',
+    const generation = session.generation
+    this.log('microphone_mute_requested', {
+      sessionId,
+      generation,
+      muted,
+      queueDepth: this.queueDepths.microphone,
+      bypassedQueue: true,
+      pendingCount: this.supervisorPendingCount(),
+    })
+    try {
+      await this.request(
+        {
+          type: 'setMicrophoneMuted',
+          sessionId,
+          generation,
+          muted,
+        },
+        QUERY_TIMEOUT_MS,
+      )
+      session.effectiveMuted = muted
+      this.log('microphone_mute_completed', {
         sessionId,
-        generation: session.generation,
+        generation,
         muted,
-      },
-      QUERY_TIMEOUT_MS,
-    )
-    session.effectiveMuted = muted
+        queueDepth: this.queueDepths.microphone,
+        bypassedQueue: true,
+        pendingCount: this.supervisorPendingCount(),
+      })
+    } catch (error) {
+      this.log('microphone_mute_failed', {
+        sessionId,
+        generation,
+        muted,
+        queueDepth: this.queueDepths.microphone,
+        bypassedQueue: true,
+        pendingCount: this.supervisorPendingCount(),
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
+      throw error
+    }
   }
 
   reconnectMicrophoneSession(
@@ -400,6 +496,14 @@ export class NativeMediaController {
     assertSessionStartOptions(options, undefined)
     this.latestRequestIds.microphone = options.requestId
     const generation = ++this.generations.microphone
+    this.log('microphone_reconnect_requested', {
+      sessionId,
+      generation: session.generation,
+      candidateGeneration: generation,
+      requestId: options.requestId,
+      muted: options.muted,
+      pendingCount: this.supervisorPendingCount(),
+    })
     const invalidated = this.request(
       {
         type: 'invalidateMicrophone',
@@ -408,8 +512,27 @@ export class NativeMediaController {
       },
       QUERY_TIMEOUT_MS,
     )
+    invalidated.then(
+      () =>
+        this.log('microphone_reconnect_invalidated', {
+          sessionId,
+          generation: session.generation,
+          candidateGeneration: generation,
+          requestId: options.requestId,
+          pendingCount: this.supervisorPendingCount(),
+        }),
+      (error) =>
+        this.log('microphone_reconnect_invalidation_failed', {
+          sessionId,
+          generation: session.generation,
+          candidateGeneration: generation,
+          requestId: options.requestId,
+          pendingCount: this.supervisorPendingCount(),
+          message: error instanceof Error ? error.message : 'Unknown error',
+        }),
+    )
     void invalidated.catch(() => undefined)
-    return this.enqueue('microphone', () =>
+    return this.enqueue('microphone', 'reconnect_microphone', () =>
       invalidated.then(() =>
         this.reconnectMicrophoneNow(sessionId, options, generation),
       ),
@@ -417,16 +540,26 @@ export class NativeMediaController {
   }
 
   async stopSession(sessionId?: string) {
+    this.log('session_stop_requested', {
+      sessionId,
+      pendingCount: this.supervisorPendingCount(),
+    })
     const selected = sessionId
       ? [this.sessions.get(sessionId)].filter((value): value is ActiveSession => Boolean(value))
       : Array.from(this.sessions.values())
-    if (sessionId && selected.length === 0) {
-      throw new Error('Native media session is not active')
-    }
+    if (sessionId && selected.length === 0) return
     for (const session of selected) {
-      this.sessions.delete(session.sessionId)
-      await this.stopNativeSession(session)
-      this.emit({ type: 'streamEnded', sessionId: session.sessionId })
+      const ownsRetirement = !session.stopOperation
+      const endedOwnedSession = await this.retireSession(session)
+      if (ownsRetirement && endedOwnedSession) {
+        this.emit({ type: 'streamEnded', sessionId: session.sessionId })
+        this.log('session_stop_completed', {
+          sessionId: session.sessionId,
+          generation: session.generation,
+          kind: session.options.kind,
+          pendingCount: this.supervisorPendingCount(),
+        })
+      }
     }
   }
 
@@ -475,6 +608,9 @@ export class NativeMediaController {
     this.preview = null
     this.previewStartOperation = null
     this.sessions.clear()
+    this.log('controller_disposed', {
+      pendingCount: this.supervisorPendingCount(),
+    })
     await this.options.supervisor.shutdown()
   }
 
@@ -482,6 +618,12 @@ export class NativeMediaController {
     options: NativeMediaSessionStartOptions,
   ): Promise<NativeMediaSession> {
     const operationStartedAt = performance.now()
+    this.log('session_start_requested', {
+      kind: options.kind,
+      requestId: options.requestId,
+      muted: options.kind === 'microphone' ? options.muted : undefined,
+      pendingCount: this.supervisorPendingCount(),
+    })
     this.assertCurrentRequest(options.kind, options.requestId)
     if (options.kind === 'screen') await this.screenTerminalOperation
     if (options.kind === 'microphone') {
@@ -520,6 +662,14 @@ export class NativeMediaController {
       effectiveMuted: options.kind === 'microphone' ? options.muted : undefined,
     }
     this.sessions.set(sessionId, active)
+    this.log('session_start_connecting', {
+      kind: options.kind,
+      requestId: options.requestId,
+      sessionId,
+      generation,
+      muted: active.effectiveMuted,
+      pendingCount: this.supervisorPendingCount(),
+    })
     this.emit({ type: 'state', event: { status: 'starting', sessionId } })
 
     const command: MediaRuntimeCommand =
@@ -549,6 +699,14 @@ export class NativeMediaController {
       active.status = 'running'
       active.session = session
       this.lastError = null
+      this.log('session_start_completed', {
+        kind: options.kind,
+        requestId: options.requestId,
+        sessionId,
+        generation,
+        durationMs: performance.now() - operationStartedAt,
+        pendingCount: this.supervisorPendingCount(),
+      })
       this.emit({ type: 'state', event: stateForSession(session) })
       this.emit({
         type: 'operationMetric',
@@ -559,8 +717,23 @@ export class NativeMediaController {
       })
       return session
     } catch (error) {
-      if (this.sessions.get(sessionId) === active) this.sessions.delete(sessionId)
-      void this.stopNativeSession(active).catch(() => undefined)
+      // A lost host owns no resources that can be cleaned up. Replaying a
+      // stale disconnect after the replacement host becomes ready would fence
+      // the reconciler's newer desired publication instead.
+      if (isRuntimeGone(error)) {
+        if (this.sessions.get(sessionId) === active) this.sessions.delete(sessionId)
+      } else {
+        void this.retireSession(active).catch(() => undefined)
+      }
+      this.log('session_start_failed', {
+        kind: options.kind,
+        requestId: options.requestId,
+        sessionId,
+        generation,
+        durationMs: performance.now() - operationStartedAt,
+        pendingCount: this.supervisorPendingCount(),
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
       this.emit({
         type: 'operationMetric',
         operation: 'sessionStart',
@@ -581,7 +754,14 @@ export class NativeMediaController {
     this.assertCurrentRequest('microphone', options.requestId)
     const previousGeneration = session.generation
     session.candidateGeneration = generation
-    session.requestId = options.requestId
+    this.log('microphone_reconnect_started', {
+      sessionId,
+      generation: previousGeneration,
+      candidateGeneration: generation,
+      requestId: options.requestId,
+      muted: session.effectiveMuted ?? options.muted,
+      pendingCount: this.supervisorPendingCount(),
+    })
     let nativeCommitted = false
     try {
       const result = await this.request<unknown>(
@@ -610,11 +790,18 @@ export class NativeMediaController {
       nativeCommitted = true
       session.generation = generation
       session.candidateGeneration = undefined
+      session.requestId = options.requestId
       session.options = options
       session.session = next
       session.status = 'running'
       this.lastError = null
-      this.assertCurrentRequest('microphone', options.requestId)
+      this.log('microphone_reconnect_completed', {
+        sessionId,
+        generation,
+        requestId: options.requestId,
+        muted: session.effectiveMuted,
+        pendingCount: this.supervisorPendingCount(),
+      })
       return next
     } catch (error) {
       if (
@@ -625,6 +812,14 @@ export class NativeMediaController {
         session.generation = previousGeneration
         session.candidateGeneration = undefined
       }
+      this.log('microphone_reconnect_failed', {
+        sessionId,
+        generation: previousGeneration,
+        candidateGeneration: generation,
+        requestId: options.requestId,
+        pendingCount: this.supervisorPendingCount(),
+        message: error instanceof Error ? error.message : 'Unknown error',
+      })
       throw error
     }
   }
@@ -632,13 +827,38 @@ export class NativeMediaController {
   private async stopKind(kind: NativeMediaSessionKind) {
     for (const session of Array.from(this.sessions.values())) {
       if (session.options.kind !== kind) continue
-      this.sessions.delete(session.sessionId)
-      await this.stopNativeSession(session).catch(() => undefined)
+      await this.retireSession(session)
     }
+  }
+
+  private retireSession(session: ActiveSession) {
+    if (session.stopOperation) return session.stopOperation
+    const operation = this.stopNativeSession(session).then(
+      () => {
+        const stillOwned = this.sessions.get(session.sessionId) === session
+        if (stillOwned) this.sessions.delete(session.sessionId)
+        return stillOwned
+      },
+      (error) => {
+        if (this.sessions.get(session.sessionId) === session) {
+          session.status = 'error'
+          session.stopOperation = undefined
+        }
+        throw error
+      },
+    )
+    session.stopOperation = operation
+    return operation
   }
 
   private async stopNativeSession(session: ActiveSession) {
     const generation = ++this.generations[session.options.kind]
+    this.log('native_stop_requested', {
+      kind: session.options.kind,
+      sessionId: session.sessionId,
+      generation,
+      pendingCount: this.supervisorPendingCount(),
+    })
     if (session.options.kind === 'microphone') {
       await this.request(
         {
@@ -648,6 +868,12 @@ export class NativeMediaController {
         },
         STOP_TIMEOUT_MS,
       )
+      this.log('native_stop_completed', {
+        kind: session.options.kind,
+        sessionId: session.sessionId,
+        generation,
+        pendingCount: this.supervisorPendingCount(),
+      })
       return
     }
     const operation = this.stopNativeScreenSession(session.sessionId, generation)
@@ -655,6 +881,23 @@ export class NativeMediaController {
       this.screenTerminalOperation,
       operation,
     ]).then(() => undefined)
+    void operation.then(
+      () =>
+        this.log('native_stop_completed', {
+          kind: session.options.kind,
+          sessionId: session.sessionId,
+          generation,
+          pendingCount: this.supervisorPendingCount(),
+        }),
+      (error) =>
+        this.log('native_stop_failed', {
+          kind: session.options.kind,
+          sessionId: session.sessionId,
+          generation,
+          pendingCount: this.supervisorPendingCount(),
+          message: error instanceof Error ? error.message : 'Unknown error',
+        }),
+    )
     return operation
   }
 
@@ -679,8 +922,41 @@ export class NativeMediaController {
     if (failure) throw failure
   }
 
-  private enqueue<T>(kind: NativeMediaSessionKind, task: () => Promise<T>) {
-    const result = this.queues[kind].then(task)
+  private enqueue<T>(
+    kind: NativeMediaSessionKind,
+    operation: string,
+    task: () => Promise<T>,
+  ) {
+    const enqueuedAt = performance.now()
+    this.queueDepths[kind] += 1
+    this.log('controller_queue_enqueued', {
+      kind,
+      operation,
+      queueDepth: this.queueDepths[kind],
+      pendingCount: this.supervisorPendingCount(),
+    })
+    const result = this.queues[kind].then(async () => {
+      const startedAt = performance.now()
+      this.log('controller_queue_started', {
+        kind,
+        operation,
+        queueDepth: this.queueDepths[kind],
+        queueWaitMs: startedAt - enqueuedAt,
+        pendingCount: this.supervisorPendingCount(),
+      })
+      try {
+        return await task()
+      } finally {
+        this.queueDepths[kind] -= 1
+        this.log('controller_queue_finished', {
+          kind,
+          operation,
+          queueDepth: this.queueDepths[kind],
+          durationMs: performance.now() - startedAt,
+          pendingCount: this.supervisorPendingCount(),
+        })
+      }
+    })
     this.queues[kind] = result.catch(() => undefined)
     return result
   }
@@ -780,6 +1056,16 @@ export class NativeMediaController {
           event.error.generation === session.generation)
       ) {
         this.emit({
+          type: 'executionTerminal',
+          event: {
+            kind: session.options.kind,
+            sessionId: session.sessionId,
+            code: event.error.code,
+            stage: event.error.stage ?? 'runtime',
+            retryable: event.error.retryable,
+          },
+        })
+        this.emit({
           type: 'streamError',
           event: { sessionId: session.sessionId, message: event.error.message },
         })
@@ -819,6 +1105,16 @@ export class NativeMediaController {
           session.status = 'error'
           this.lastError = event.state.message
           this.emit({
+            type: 'executionTerminal',
+            event: {
+              kind: session.options.kind,
+              sessionId: event.sessionId,
+              code: 'native_terminal',
+              stage: 'lifecycle',
+              retryable: true,
+            },
+          })
+          this.emit({
             type: 'streamError',
             event: { sessionId: event.sessionId, message: event.state.message },
           })
@@ -839,6 +1135,16 @@ export class NativeMediaController {
         return
       case 'screenCaptureEnded':
         this.sessions.delete(event.sessionId)
+        this.emit({
+          type: 'executionTerminal',
+          event: {
+            kind: 'screen',
+            sessionId: event.sessionId,
+            code: event.reason,
+            stage: 'capture',
+            retryable: event.reason !== 'target_closed',
+          },
+        })
         if (event.message) {
           this.emit({
             type: 'streamError',
@@ -863,6 +1169,11 @@ export class NativeMediaController {
         snapshot.restartCount,
       )
       const message = snapshot.lastFailure ?? 'Native media runtime is recovering'
+      this.log('controller_recovery_started', {
+        restartCount: snapshot.restartCount,
+        message,
+        pendingCount: this.supervisorPendingCount(),
+      })
       const reason = isHandshakeFailure(message) ? 'handshake_failed' : 'exit'
       for (const session of this.sessions.values()) {
         this.emit({
@@ -875,6 +1186,11 @@ export class NativeMediaController {
           },
         })
       }
+      this.sessions.clear()
+      this.preparedScreen = null
+      this.latestRequestIds = {}
+      this.generations.microphone += 1
+      this.generations.screen += 1
     }
     if (
       snapshot.status === 'ready' &&
@@ -884,6 +1200,10 @@ export class NativeMediaController {
       const desired = this.recoveryDesiredState
       this.recoveryDesiredState = null
       if (desired?.restartCount === snapshot.restartCount) {
+        this.log('controller_recovery_restoring', {
+          restartCount: snapshot.restartCount,
+          pendingCount: this.supervisorPendingCount(),
+        })
         void this.restoreDesiredState(desired)
       }
       return
@@ -895,6 +1215,12 @@ export class NativeMediaController {
       ? 'handshake_failed'
       : 'circuit_open'
     this.lastError = message
+    this.log('controller_recovery_degraded', {
+      restartCount: snapshot.restartCount,
+      message,
+      reason,
+      pendingCount: this.supervisorPendingCount(),
+    })
     this.microphonePipelineWarm = false
     this.microphonePipelineGeneration += 1
     this.microphonePipelineWarmOperation = null
@@ -929,20 +1255,8 @@ export class NativeMediaController {
   }
 
   private captureRecoveryDesiredState(restartCount: number): RecoveryDesiredState {
-    const prepared = this.preparedScreen
     return {
       restartCount,
-      latestRequestIds: { ...this.latestRequestIds },
-      sessions: Array.from(this.sessions.values())
-        .filter((session) => session.status === 'running')
-        .map((session) => ({
-          session,
-          generation: session.generation,
-          requestId: session.requestId,
-        })),
-      preparedScreen: prepared
-        ? { prepared, generation: prepared.generation }
-        : null,
       preview: this.preview?.status === 'running' ? this.preview : null,
       microphonePipelineDesiredWarm: this.microphonePipelineDesiredWarm,
     }
@@ -950,125 +1264,6 @@ export class NativeMediaController {
 
   private async restoreDesiredState(desired: RecoveryDesiredState) {
     if (this.disposed) return
-    const restoreKind = async (kind: NativeMediaSessionKind) => {
-      if (
-        kind === 'microphone' &&
-        desired.microphonePipelineDesiredWarm &&
-        this.microphonePipelineDesiredWarm
-      ) {
-        await this.ensureMicrophonePipelineWarm().catch(() => undefined)
-      }
-      if (
-        kind === 'screen' &&
-        desired.preparedScreen &&
-        this.preparedScreen === desired.preparedScreen.prepared &&
-        this.preparedScreen.generation === desired.preparedScreen.generation &&
-        this.latestRequestIds.screen === desired.latestRequestIds.screen
-      ) {
-        const prepared = desired.preparedScreen.prepared
-        const generation = ++this.generations.screen
-        prepared.generation = generation
-        prepared.status = 'connecting'
-        try {
-          await this.request(
-            {
-              type: 'connectScreen',
-              sessionId: prepared.sessionId,
-              generation,
-              options: prepared.options,
-            },
-            SESSION_TIMEOUT_MS,
-          )
-          if (
-            this.preparedScreen === prepared &&
-            prepared.generation === generation
-          ) {
-            prepared.status = 'ready'
-          }
-        } catch (error) {
-          if (
-            !isRecoverableRuntimeFailure(error) &&
-            this.preparedScreen === prepared &&
-            prepared.generation === generation
-          ) {
-            this.preparedScreen = null
-          }
-        }
-      }
-
-      const matching = desired.sessions.filter(
-        (candidate) => candidate.session.options.kind === kind,
-      )
-      await Promise.all(matching.map(async (candidate) => {
-        const session = candidate.session
-        if (
-          this.sessions.get(session.sessionId) !== session ||
-          session.status !== 'running' ||
-          session.generation !== candidate.generation ||
-          session.requestId !== candidate.requestId ||
-          this.latestRequestIds[kind] !== desired.latestRequestIds[kind]
-        ) {
-          return
-        }
-        const generation = ++this.generations[session.options.kind]
-        session.generation = generation
-        const command: MediaRuntimeCommand =
-          session.options.kind === 'microphone'
-            ? {
-                type: 'connectMicrophone',
-                sessionId: session.sessionId,
-                generation,
-                options: {
-                  ...session.options,
-                  muted: session.effectiveMuted ?? session.options.muted,
-                },
-                excludeProcessId: this.options.processId ?? process.pid,
-              }
-            : {
-                type: 'startScreenCapture',
-                sessionId: session.sessionId,
-                generation,
-                options: session.options,
-                selfWindowHwnd: this.options.getSelfWindowHwnd(),
-                excludeProcessId: this.options.processId ?? process.pid,
-              }
-        try {
-          const result = await this.request<unknown>(command, SESSION_TIMEOUT_MS)
-          if (
-            this.sessions.get(session.sessionId) !== session ||
-            session.generation !== generation ||
-            session.requestId !== candidate.requestId ||
-            this.latestRequestIds[kind] !== desired.latestRequestIds[kind]
-          ) {
-            return
-          }
-          session.session = readSessionResult(result, session.sessionId, session.options)
-          session.status = 'running'
-        } catch (error) {
-          if (
-            isRecoverableRuntimeFailure(error) ||
-            this.sessions.get(session.sessionId) !== session ||
-            session.generation !== generation ||
-            session.requestId !== candidate.requestId ||
-            this.latestRequestIds[kind] !== desired.latestRequestIds[kind]
-          ) {
-            return
-          }
-          this.sessions.delete(session.sessionId)
-          const message =
-            error instanceof Error ? error.message : 'Native media recovery failed'
-          this.emit({
-            type: 'runtimeLost',
-            event: {
-              sessionId: session.sessionId,
-              reason: 'stream_error',
-              message,
-              recovering: false,
-            },
-          })
-        }
-      }))
-    }
     const restorePreview = async () => {
       const preview = desired.preview
       if (
@@ -1109,17 +1304,64 @@ export class NativeMediaController {
         }
       }
     }
-    await Promise.all([
-      this.enqueue('microphone', async () => {
-        await restoreKind('microphone')
-        await restorePreview()
-      }),
-      this.enqueue('screen', () => restoreKind('screen')),
-    ])
+    await this.enqueue('microphone', 'recover_pipeline_preview', async () => {
+      if (
+        desired.microphonePipelineDesiredWarm &&
+        this.microphonePipelineDesiredWarm
+      ) {
+        await this.ensureMicrophonePipelineWarm().catch(() => undefined)
+      }
+      await restorePreview()
+    })
   }
 
   private emit(event: NativeMediaControllerEvent) {
-    for (const listener of this.listeners) listener(event)
+    for (const listener of this.listeners) {
+      try {
+        listener(event)
+      } catch {
+        // Native execution and recovery must not depend on renderer observers.
+      }
+    }
+  }
+
+  private supervisorPendingCount() {
+    return 'getPendingRequestCount' in this.options.supervisor &&
+      typeof this.options.supervisor.getPendingRequestCount === 'function'
+      ? this.options.supervisor.getPendingRequestCount()
+      : undefined
+  }
+
+  private log(
+    event: string,
+    detail: {
+      kind?: string
+      operation?: string
+      stage?: string
+      sessionId?: string
+      requestId?: string
+      generation?: number
+      candidateGeneration?: number
+      fenceGeneration?: number
+      revision?: number
+      muted?: boolean
+      pendingCount?: number
+      queueDepth?: number
+      queueWaitMs?: number
+      bypassedQueue?: boolean
+      restartCount?: number
+      durationMs?: number
+      reason?: string
+      message?: string
+      status?: string
+    },
+  ) {
+    this.options.diagnostics?.({
+      scope: 'native-media-controller',
+      event,
+      runtime: 'media',
+      ...detail,
+    })
   }
 }
 
@@ -1140,6 +1382,16 @@ function isRecoverableRuntimeFailure(error: unknown) {
     error.detail.retryable &&
     (error.detail.code === 'runtime_lost' ||
       error.detail.code === 'request_timeout' ||
+      error.detail.code === 'handshake_failed')
+  )
+}
+
+function isRuntimeGone(error: unknown) {
+  return (
+    error instanceof NativeRuntimeRequestError &&
+    (error.detail.code === 'runtime_lost' ||
+      error.detail.code === 'runtime_stopped' ||
+      error.detail.code === 'runtime_degraded' ||
       error.detail.code === 'handshake_failed')
   )
 }

@@ -44,6 +44,7 @@ export type VoiceRecoveryInput = {
   wantsMic: boolean
   selfMonitoringActive: boolean
   publisherHealthy: boolean
+  repairMutedPublisher: boolean
 }
 
 function findUserVoiceChannel(
@@ -105,7 +106,7 @@ export function decideVoiceRecoveryAction(
 
   if (
     input.wantsMic &&
-    !input.desiredSelfMute &&
+    (!input.desiredSelfMute || input.repairMutedPublisher) &&
     !input.desiredSelfDeaf &&
     !input.selfMonitoringActive &&
     !input.publisherHealthy
