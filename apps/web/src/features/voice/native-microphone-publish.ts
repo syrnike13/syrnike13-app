@@ -177,8 +177,9 @@ export async function publishNativeMicrophone(
       if (event.sessionId !== session.sessionId) return
       completeStopped(false)
     }),
-    desktop.media.onSidecarLost?.((event) => {
+    desktop.media.onRuntimeLost?.((event) => {
       if (event.sessionId !== session.sessionId) return
+      if (event.recovering) return
       completeStopped(false)
     }),
   ].filter((unsubscribe): unsubscribe is () => void => Boolean(unsubscribe))

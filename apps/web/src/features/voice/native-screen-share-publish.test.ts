@@ -35,7 +35,7 @@ describe('native screen share publish', () => {
     const startSession = vi.fn(async () => ({
       kind: 'screen',
       sessionId: 'native-screen-1',
-      encoder: 'media_foundation',
+      encoder: 'webrtc',
       width: 1920,
       height: 1038,
       fps: 60,
@@ -52,7 +52,7 @@ describe('native screen share publish', () => {
       void handler
       return vi.fn()
     })
-    const onSidecarLost = vi.fn(() => vi.fn())
+    const onRuntimeLost = vi.fn(() => vi.fn())
 
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
@@ -60,7 +60,7 @@ describe('native screen share publish', () => {
         startSession,
         stopSession,
         onStats,
-        onSidecarLost,
+        onRuntimeLost,
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
@@ -113,7 +113,7 @@ describe('native screen share publish', () => {
     }
     statsHandler({
       sessionId: 'native-screen-1',
-      methods: { wgc: 3, dxgi: 0, gdi_blt: 0, gdi_print: 0 },
+      methods: { wgc: 3, dxgi: 0, gdi_blt: 0 },
       activeMethod: 'wgc',
       publishedVideo: true,
       publishedAudio: true,
@@ -178,7 +178,7 @@ describe('native screen share publish', () => {
     const startSession = vi.fn(async () => ({
       kind: 'screen',
       sessionId: 'native-screen-1',
-      encoder: 'media_foundation',
+      encoder: 'webrtc',
       width: 1920,
       height: 1080,
       fps: 60,
@@ -230,13 +230,18 @@ describe('native screen share publish', () => {
     const unsubscribeStats = vi.fn()
     const unsubscribeEnded = vi.fn()
     const unsubscribeError = vi.fn()
-    const unsubscribeSidecar = vi.fn()
+    const unsubscribeRuntime = vi.fn()
     let onStreamEndedHandler: ((sessionId: string) => void) | undefined
     let onStreamErrorHandler:
       | ((event: { sessionId: string; message: string }) => void)
       | undefined
-    let onSidecarLostHandler:
-      | ((event: { sessionId: string; message: string }) => void)
+    let onRuntimeLostHandler:
+      | ((event: {
+          sessionId: string
+          message: string
+          reason: 'exit'
+          recovering: boolean
+        }) => void)
       | undefined
 
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
@@ -262,15 +267,15 @@ describe('native screen share publish', () => {
           onStreamErrorHandler = handler
           return unsubscribeError
         }),
-        onSidecarLost: vi.fn((handler) => {
-          onSidecarLostHandler = handler
-          return unsubscribeSidecar
+        onRuntimeLost: vi.fn((handler) => {
+          onRuntimeLostHandler = handler
+          return unsubscribeRuntime
         }),
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     const onEnded = vi.fn()
-    const onSidecarLost = vi.fn()
+    const onRuntimeLost = vi.fn()
     const session = await publishNativeScreenShare(
       {} as never,
       {} as never,
@@ -279,7 +284,7 @@ describe('native screen share publish', () => {
       'high60',
       false,
       48,
-      onSidecarLost,
+      onRuntimeLost,
       onEnded,
       {
         url: 'wss://livekit.example',
@@ -296,18 +301,20 @@ describe('native screen share publish', () => {
       sessionId: 'native-screen-1',
       message: 'capture failed',
     })
-    onSidecarLostHandler?.({
+    onRuntimeLostHandler?.({
       sessionId: 'native-screen-1',
-      message: 'sidecar exited',
+      message: 'runtime exited',
+      reason: 'exit',
+      recovering: false,
     })
 
     expect(onEnded).toHaveBeenCalledTimes(1)
-    expect(onSidecarLost).not.toHaveBeenCalled()
+    expect(onRuntimeLost).not.toHaveBeenCalled()
     expect(stopSession).not.toHaveBeenCalled()
     expect(unsubscribeStats).toHaveBeenCalledTimes(1)
     expect(unsubscribeEnded).toHaveBeenCalledTimes(1)
     expect(unsubscribeError).toHaveBeenCalledTimes(1)
-    expect(unsubscribeSidecar).toHaveBeenCalledTimes(1)
+    expect(unsubscribeRuntime).toHaveBeenCalledTimes(1)
 
     await session.stop()
     expect(stopSession).not.toHaveBeenCalled()

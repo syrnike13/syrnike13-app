@@ -1,8 +1,5 @@
-import { spawn, type ChildProcessByStdio } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import readline from 'node:readline'
-import type { Readable } from 'node:stream'
 
 import { app, type BrowserWindow, type WebContents } from 'electron'
 import {
@@ -17,6 +14,7 @@ import {
 } from '@syrnike13/platform'
 
 import { HotkeyState, REGISTERABLE_ACTIONS, comboKey } from './hotkey-state'
+import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
 
 const HOTKEYS_FILE = 'hotkeys-v2.json'
 
@@ -24,16 +22,25 @@ let bindings: HotkeyBinding[] = []
 let registrationResults: HotkeyRegistrationResult[] = []
 let suspended = false
 let recording = false
-let runtimeStatus: HotkeyRuntimeStatus = 'not-running'
-let helper: ChildProcessByStdio<null, Readable, Readable> | null = null
 let getWindowRef: (() => BrowserWindow | null) | null = null
+let unsubscribeRuntimeState: (() => void) | null = null
 const hotkeyState = new HotkeyState()
 
 export function initializeHotkeys(getWindow: () => BrowserWindow | null) {
   getWindowRef = getWindow
   bindings = readHotkeyBindings()
   registrationResults = validateBindings(bindings)
-  startNativeHelper()
+  unsubscribeRuntimeState?.()
+  unsubscribeRuntimeState = hooksRuntimeController.onStateChange((snapshot) => {
+    if (
+      snapshot.status === 'recovering' ||
+      snapshot.status === 'degraded' ||
+      snapshot.status === 'stopped'
+    ) {
+      emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
+    }
+  })
+  startNativeRuntime()
 }
 
 export function getHotkeyBindings() {
@@ -61,47 +68,30 @@ export function stopHotkeyRecording() {
 }
 
 export function getHotkeyRuntimeStatus() {
-  return runtimeStatus
+  if (process.platform !== 'win32') return 'unsupported-platform'
+  if (!hooksRuntimeController.isAvailable()) return 'not-running'
+  return hooksRuntimeController.getStatus() === 'ready' ? 'running' : 'not-running'
 }
 
 export function disposeHotkeys() {
   emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
-  helper?.kill()
-  helper = null
+  void hooksRuntimeController.stopHotkeys(handleNativeInputEvent)
+  unsubscribeRuntimeState?.()
+  unsubscribeRuntimeState = null
   getWindowRef = null
   registrationResults = []
 }
 
-function startNativeHelper() {
+function startNativeRuntime() {
   if (process.platform !== 'win32') {
-    runtimeStatus = 'unsupported-platform'
     return
   }
 
-  const helperPath = resolveHelperPath()
-  if (!helperPath) {
-    runtimeStatus = 'not-running'
-    return
-  }
-
-  const nextHelper = spawn(helperPath, [], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
-  helper = nextHelper
-  runtimeStatus = 'running'
-
-  const lines = readline.createInterface({ input: nextHelper.stdout })
-  lines.on('line', (line) => {
-    const event = parseNativeInputEvent(line)
-    if (event) handleNativeInputEvent(event)
-  })
-
-  nextHelper.stderr.resume()
-
-  nextHelper.on('exit', () => {
-    runtimeStatus = 'not-running'
-    helper = null
+  void hooksRuntimeController.startHotkeys(handleNativeInputEvent).catch((error) => {
+    console.warn(
+      '[hotkeys] native runtime failed to start',
+      error instanceof Error ? error.message : 'unknown error',
+    )
     emitHotkeyPressedEvents(hotkeyState.releaseHeldActions())
   })
 }
@@ -206,52 +196,6 @@ function writeHotkeyBindings(nextBindings: HotkeyBinding[]) {
 
 function resolveHotkeysPath() {
   return path.join(app.getPath('userData'), HOTKEYS_FILE)
-}
-
-function resolveHelperPath() {
-  const helperName = 'syrnike-hotkey-helper-win.exe'
-  const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'native', helperName)]
-    : [
-        path.resolve(app.getAppPath(), 'out/native', helperName),
-        path.resolve(
-          app.getAppPath(),
-          'native/hotkey-helper-win/build/Release',
-          helperName,
-        ),
-        path.resolve(
-          app.getAppPath(),
-          'native/hotkey-helper-win/build/Debug',
-          helperName,
-        ),
-      ]
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null
-}
-
-function parseNativeInputEvent(line: string): NativeInputEvent | null {
-  try {
-    const parsed = JSON.parse(line) as NativeInputEvent
-    if (
-      (parsed.type === 'inputDown' || parsed.type === 'inputUp') &&
-      (parsed.source === 'keyboard' || parsed.source === 'mouse') &&
-      typeof parsed.code === 'string' &&
-      typeof parsed.label === 'string' &&
-      Array.isArray(parsed.pressedCodes) &&
-      parsed.pressedCodes.every((code) => typeof code === 'string')
-    ) {
-      return {
-        type: parsed.type,
-        source: parsed.source,
-        code: parsed.code,
-        label: parsed.label,
-        pressedCodes: normalizeCodes(parsed.pressedCodes),
-      }
-    }
-  } catch {
-    return null
-  }
-  return null
 }
 
 function normalizeCodes(codes: string[]) {

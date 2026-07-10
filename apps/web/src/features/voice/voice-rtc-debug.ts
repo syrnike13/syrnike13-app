@@ -567,10 +567,7 @@ function screenShareSnapshot(
       nativeStats?.backend === 'native'
         ? nativeStats.methods.gdi_blt
         : hybridUnavailable,
-    hybridGdiPrintWindowFrames:
-      nativeStats?.backend === 'native'
-        ? nativeStats.methods.gdi_print
-        : hybridUnavailable,
+    hybridGdiPrintWindowFrames: hybridUnavailable,
     hybridGraphicsCaptureFrames:
       nativeStats?.backend === 'native' ? nativeStats.methods.wgc : hybridUnavailable,
     hybridVideohookFrames: hybridUnavailable,

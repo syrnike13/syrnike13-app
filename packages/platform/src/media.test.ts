@@ -40,13 +40,14 @@ describe('native media session contract', () => {
       kind: 'screen'
       audio?: {
         mode: 'process' | 'system_exclude' | 'none'
-        port?: number
       }
     }>()
 
     expectTypeOf<NativeMediaSessionStartOptions>().not.toHaveProperty('withAudio')
     expectTypeOf<NativeMediaSession>().not.toHaveProperty('audioPort')
     expectTypeOf<NativeMediaSession>().not.toHaveProperty('audioMode')
+    expectTypeOf<ScreenSession>().not.toHaveProperty('port')
+    expectTypeOf<NonNullable<ScreenSession['audio']>>().not.toHaveProperty('port')
   })
 
   it('models active session audio in the engine snapshot contract', () => {
@@ -60,7 +61,6 @@ describe('native media session contract', () => {
       sessionId: string
       audio?: {
         mode: 'process' | 'system_exclude' | 'none'
-        port?: number
       }
     }>()
   })
@@ -72,7 +72,6 @@ describe('native media session contract', () => {
         wgc: 120,
         dxgi: 0,
         gdi_blt: 0,
-        gdi_print: 0,
       },
       activeMethod: 'wgc',
       videoFrames: 120,

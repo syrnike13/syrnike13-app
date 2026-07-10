@@ -43,7 +43,6 @@ const emptyMethods = (): NativeMediaFrameStats => ({
   wgc: 0,
   dxgi: 0,
   gdi_blt: 0,
-  gdi_print: 0,
 })
 
 function snapshot(

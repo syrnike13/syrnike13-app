@@ -25,6 +25,12 @@
     "desktop:package": "pnpm version:sync && pnpm --filter @syrnike13/desktop package",
     "desktop:test": "pnpm --filter @syrnike13/desktop test",
     "desktop:typecheck": "pnpm --filter @syrnike13/desktop typecheck",
+    "desktop-native:build": "pnpm --filter @syrnike13/desktop-native build",
+    "desktop-native:build:debug": "pnpm --filter @syrnike13/desktop-native build:debug",
+    "desktop-native:build:asan": "pnpm --filter @syrnike13/desktop-native build:asan",
+    "desktop-native:test": "pnpm --filter @syrnike13/desktop-native test:native",
+    "desktop-native:test:debug": "pnpm --filter @syrnike13/desktop-native test:native:debug",
+    "desktop-native:verify": "pnpm --filter @syrnike13/desktop-native verify",
     "platform:build": "pnpm --filter @syrnike13/platform build",
     "backend:check": "cargo check --manifest-path services/backend/Cargo.toml --workspace",
     "livekit:check": "cd services/livekit-server && go test ./..."

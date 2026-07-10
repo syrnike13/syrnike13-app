@@ -46,7 +46,7 @@ export type ScreenShareTeardownReason =
   | 'browser-track-ended'
   | 'native-ended'
   | 'native-publication-lost'
-  | 'native-sidecar-lost'
+  | 'native-runtime-lost'
   | 'user-toggle'
 
 export type TeardownScreenShareDeps = {
@@ -197,7 +197,7 @@ export type StartLocalScreenShareDeps = {
     quality: ScreenShareQualityName,
     withAudio: boolean,
     audioBitrateKbps: number,
-    onSidecarLost: (message: string) => void,
+    onRuntimeLost: (message: string) => void,
     onEnded: () => void,
     credentials: LiveKitNativePublisherCredentials,
     limits: ScreenShareCaptureLimits,
@@ -497,7 +497,7 @@ export async function startNativeScreenShare(
     return
   }
   deps.setScreenShareAudioPreference(selection.audioRequested)
-  const handleSidecarLost = (message: string) => {
+  const handleRuntimeLost = (message: string) => {
     deps.warn('[voice] native media engine lost', message)
     deps.toastError('Нативный захват прерван')
     deps.dispatchNativeMedia({
@@ -507,7 +507,7 @@ export async function startNativeScreenShare(
       error: message,
     })
     void deps.stopNativeScreenShare().catch(() => {})
-    teardownScreenShare(deps, { reason: 'native-sidecar-lost' })
+    teardownScreenShare(deps, { reason: 'native-runtime-lost' })
   }
   let session: NativeScreenShareSessionLike | null = null
   const handleNativeScreenEnded = () => {
@@ -535,7 +535,7 @@ export async function startNativeScreenShare(
       deps.quality,
       selection.audioRequested,
       deps.activeChannelAudioBitrateKbps(),
-      handleSidecarLost,
+      handleRuntimeLost,
       handleNativeScreenEnded,
       await deps.refreshNativeLiveKitCredentials('screen', forceRefresh),
       screenShareLimits,

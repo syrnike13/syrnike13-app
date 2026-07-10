@@ -3,14 +3,10 @@ export type NativeMediaFrameMethod =
   | 'wgc'
   | 'dxgi'
   | 'gdi_blt'
-  | 'gdi_print'
 
 export type NativeMediaFrameStats = Record<NativeMediaFrameMethod, number>
 
-export type NativeMediaEncoderBackend =
-  | 'media_foundation'
-  | 'webrtc'
-  | 'openh264'
+export type NativeMediaEncoderBackend = 'webrtc'
 
 /** process/system_exclude = звук демонстрации; microphone = входной голос; none = звук недоступен. */
 export type NativeMediaAudioMode =
@@ -124,7 +120,6 @@ export type NativeMediaSessionStartOptions =
 export type NativeMediaScreenSession = {
   kind: 'screen'
   sessionId: string
-  port?: number
   encoder: NativeMediaEncoderBackend
   width?: number
   height?: number
@@ -132,7 +127,6 @@ export type NativeMediaScreenSession = {
   bitrate?: number
   audio?: {
     mode: NativeMediaScreenAudioMode
-    port?: number
     targetProcessId?: number
     loopbackMode?: NativeMediaLoopbackMode
   }
@@ -162,7 +156,6 @@ export type NativeMediaSessionStatus =
   | {
       status: 'running'
       sessionId: string
-      port?: number
       width?: number
       height?: number
       fps?: number
@@ -180,7 +173,6 @@ export type NativeMediaEngineCapabilities = {
 type NativeMediaEngineSessionSummaryBase = {
   sessionId: string
   status: 'starting' | 'running' | 'error'
-  port?: number
   width?: number
   height?: number
   fps?: number
@@ -192,7 +184,6 @@ export type NativeMediaScreenEngineSessionSummary =
     kind: 'screen'
     audio?: {
       mode: NativeMediaScreenAudioMode
-      port?: number
       targetProcessId?: number
       loopbackMode?: NativeMediaLoopbackMode
     }
@@ -203,7 +194,6 @@ export type NativeMediaMicrophoneEngineSessionSummary =
     kind: 'microphone'
     audio?: {
       mode: 'microphone'
-      port?: number
       sampleRate?: 48_000
       channels?: 1 | 2
       noiseSuppression?: NativeMediaNoiseSuppressionMode
@@ -217,9 +207,12 @@ export type NativeMediaEngineSessionSummary =
 
 export type NativeMediaEngineSnapshot = {
   available: boolean
-  helper: {
+  runtime: {
     available: boolean
-    running: boolean
+    status: 'stopped' | 'starting' | 'ready' | 'recovering' | 'degraded'
+    pid?: number
+    restartCount: number
+    degradedReason?: string
   }
   capabilities: NativeMediaEngineCapabilities
   activeSessions: NativeMediaEngineSessionSummary[]
@@ -268,7 +261,6 @@ export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   sessionId?: string
   audio?: {
     mode: NativeMediaAudioMode
-    port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
     noiseSuppression?: NativeMediaNoiseSuppressionMode
@@ -278,8 +270,9 @@ export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   }
 }
 
-export type NativeMediaSidecarLostEvent = {
+export type NativeMediaRuntimeLostEvent = {
   sessionId: string
-  reason: 'exit' | 'stream_error'
+  reason: 'exit' | 'stream_error' | 'circuit_open' | 'handshake_failed'
   message: string
+  recovering: boolean
 }

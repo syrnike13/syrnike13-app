@@ -3,9 +3,11 @@ packages:
   - apps/admin
   - apps/desktop
   - packages/api-types
+  - packages/desktop-native
   - packages/platform
 
 allowBuilds:
+  "@sentry/cli": true
   "@swc/core": true
   electron: true
   esbuild: true

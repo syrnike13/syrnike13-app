@@ -143,7 +143,7 @@ export type DesktopDisplayMediaSource = {
 export type DesktopDisplayMediaRequest = {
   id: string
   audioRequested: boolean
-  /** Видео идёт через нативный sidecar, не через desktopCapturer. */
+  /** Видео идёт через native runtime, не через desktopCapturer. */
   nativeVideo?: boolean
 }
 
@@ -160,7 +160,7 @@ export type {
   NativeMediaFrameStats,
   NativeMediaLoopbackMode,
   NativeMediaSession,
-  NativeMediaSidecarLostEvent,
+  NativeMediaRuntimeLostEvent,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaSessionKind,
   NativeMediaMicrophoneSessionStartOptions,
@@ -279,8 +279,8 @@ export interface SyrnikeDesktopApi {
     onStreamError(
       handler: (event: { sessionId: string; message: string }) => void,
     ): () => void
-    onSidecarLost(
-      handler: (event: import('./media').NativeMediaSidecarLostEvent) => void,
+    onRuntimeLost(
+      handler: (event: import('./media').NativeMediaRuntimeLostEvent) => void,
     ): () => void
   }
 }

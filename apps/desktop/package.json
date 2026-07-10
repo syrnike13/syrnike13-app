@@ -5,10 +5,8 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "build:hotkey-helper": "node scripts/build-hotkey-helper-win.mjs",
-    "build:overlay-detector": "node scripts/build-overlay-detector-win.mjs",
-    "build:native-voice": "node scripts/build-native-voice-win.mjs",
-    "build:shell": "pnpm --filter @syrnike13/platform build && tsup && pnpm run build:hotkey-helper && pnpm run build:overlay-detector && pnpm run build:native-voice",
+    "build:native-runtime": "pnpm --filter @syrnike13/desktop-native build",
+    "build:shell": "pnpm --filter @syrnike13/platform build && pnpm run build:native-runtime && tsup",
     "postinstall": "node scripts/ensure-electron-path.mjs",
     "predev": "node scripts/ensure-electron-path.mjs",
     "prestart": "node scripts/ensure-electron-path.mjs",
@@ -20,16 +18,20 @@
     "build": "pnpm --filter @syrnike13/web build && pnpm run verify:web-dist && pnpm run build:shell",
     "start": "pnpm exec electron .",
     "test": "vitest run",
-    "package": "pnpm run build && electron-builder --config electron-builder.config.cjs --publish never",
-    "package:nightly": "pnpm run build && electron-builder --config electron-builder.config.cjs --publish never",
+    "package": "pnpm run build && pnpm run package:prepared",
+    "package:nightly": "pnpm run build && pnpm run package:prepared",
+    "package:prepared": "electron-builder --config electron-builder.config.cjs --publish never && node scripts/verify-native-package.mjs",
+    "upload:debug-artifacts": "node scripts/upload-debug-artifacts.mjs",
     "typecheck": "pnpm --filter @syrnike13/platform build && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@syrnike13/platform": "workspace:*",
+    "@sentry/electron": "^7.15.0",
     "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "@syrnike13/web": "workspace:*",
+    "@sentry/cli": "^3.6.0",
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.2",
     "electron": "^35.7.5",

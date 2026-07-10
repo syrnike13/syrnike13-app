@@ -391,13 +391,18 @@ describe('native microphone publish', () => {
     const stopSession = vi.fn(async () => {})
     const unsubscribeEnded = vi.fn()
     const unsubscribeError = vi.fn()
-    const unsubscribeSidecar = vi.fn()
+    const unsubscribeRuntime = vi.fn()
     let onStreamEndedHandler: ((sessionId: string) => void) | undefined
     let onStreamErrorHandler:
       | ((event: { sessionId: string; message: string }) => void)
       | undefined
-    let onSidecarLostHandler:
-      | ((event: { sessionId: string; message: string }) => void)
+    let onRuntimeLostHandler:
+      | ((event: {
+          sessionId: string
+          message: string
+          reason: 'exit'
+          recovering: boolean
+        }) => void)
       | undefined
 
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
@@ -425,9 +430,9 @@ describe('native microphone publish', () => {
           onStreamErrorHandler = handler
           return unsubscribeError
         }),
-        onSidecarLost: vi.fn((handler) => {
-          onSidecarLostHandler = handler
-          return unsubscribeSidecar
+        onRuntimeLost: vi.fn((handler) => {
+          onRuntimeLostHandler = handler
+          return unsubscribeRuntime
         }),
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
@@ -452,16 +457,18 @@ describe('native microphone publish', () => {
       message: 'capture failed',
     })
     onStreamEndedHandler?.('native-mic-1')
-    onSidecarLostHandler?.({
+    onRuntimeLostHandler?.({
       sessionId: 'native-mic-1',
-      message: 'sidecar exited',
+      message: 'runtime exited',
+      reason: 'exit',
+      recovering: false,
     })
 
     expect(onStopped).toHaveBeenCalledTimes(1)
     expect(onStopped).toHaveBeenCalledWith('native-mic-1')
     expect(unsubscribeEnded).toHaveBeenCalledTimes(1)
     expect(unsubscribeError).toHaveBeenCalledTimes(1)
-    expect(unsubscribeSidecar).toHaveBeenCalledTimes(1)
+    expect(unsubscribeRuntime).toHaveBeenCalledTimes(1)
 
     session.disconnect()
     expect(stopSession).not.toHaveBeenCalled()

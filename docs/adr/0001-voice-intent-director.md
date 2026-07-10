@@ -115,13 +115,11 @@ Hard-leave остаётся только для явного выхода (`clea
 ### Native publishers (desktop)
 
 На уровне LiveKit переподключить трек между комнатами **нельзя** (трек
-принадлежит participant'у комнаты). НО нативный процесс уже умеет **менять
-комнату** через `connect_microphone` stdin-команду, переиспользуя `AudioSource`,
-capture-thread и DSP. Текущий полный рестарт при move — артефакт wiring'а в
-Electron (`mediaStartSession` делает hard-kill активных mic-сессий), а не
-ограничение LiveKit. Seamless-move для desktop — смена wiring'а (reconnect IPC +
-стабильная сессия через move + опциональный preconnect новой комнаты), без
-изменения LiveKit SDK.
+принадлежит participant'у комнаты). По ADR-0002 seamless move сохраняет один
+WASAPI capture-thread и DSP pipeline, а обработанный PCM временно направляет в
+отдельные room-owned `AudioSource`/track. Candidate room продвигается только
+после подтверждённой публикации и recency-проверки. Полный рестарт при move —
+артефакт старого Electron/EXE wiring, а не ограничение LiveKit SDK.
 
 ## Последствия
 

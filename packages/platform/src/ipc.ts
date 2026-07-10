@@ -60,7 +60,7 @@ export const IPC = {
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
   mediaStreamEnded: 'syrnike-desktop:media:stream-ended',
   mediaStreamError: 'syrnike-desktop:media:stream-error',
-  mediaEngineLost: 'syrnike-desktop:media:engine-lost',
+  mediaRuntimeLost: 'syrnike-desktop:media:runtime-lost',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

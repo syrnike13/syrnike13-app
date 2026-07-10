@@ -51,6 +51,7 @@ syncPackageJson('apps/web/package.json')
 syncPackageJson('apps/admin/package.json')
 syncPackageJson('apps/desktop/package.json')
 syncPackageJson('packages/api-types/package.json')
+syncPackageJson('packages/desktop-native/package.json')
 syncPackageJson('packages/platform/package.json')
 syncGeneratedVersionFiles()
 

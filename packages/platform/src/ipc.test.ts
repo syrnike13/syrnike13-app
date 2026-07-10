@@ -28,6 +28,11 @@ describe('desktop media IPC contract', () => {
     expect('mediaPrepareSystemAudio' in IPC).toBe(false)
     expect('mediaClearSystemAudio' in IPC).toBe(false)
   })
+
+  it('names isolated utility host loss as runtime loss', () => {
+    expect(IPC.mediaRuntimeLost).toBe('syrnike-desktop:media:runtime-lost')
+    expect('mediaEngineLost' in IPC).toBe(false)
+  })
 })
 
 describe('desktop tray IPC contract', () => {

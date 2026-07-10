@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
   DEFAULT_SOUND_AUTHOR_PACK_ID,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
@@ -166,6 +167,29 @@ describe('desktop local settings contract', () => {
           'voice.mute': 0,
           'voice.unmute': 0.35,
         },
+      },
+    })
+  })
+
+  it('defaults native metrics on and full crash reports off', () => {
+    expect(normalizeDesktopLocalSettings({}).observability).toEqual(
+      DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
+    )
+  })
+
+  it('accepts only boolean observability settings', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        observability: {
+          anonymousNativeMetrics: false,
+          nativeCrashReports: true,
+          roomUrl: 'wss://private.example',
+        },
+      }),
+    ).toEqual({
+      observability: {
+        anonymousNativeMetrics: false,
+        nativeCrashReports: true,
       },
     })
   })

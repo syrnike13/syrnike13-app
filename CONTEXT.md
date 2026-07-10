@@ -63,10 +63,42 @@ A desktop media publisher (microphone / screen / camera) implemented as its
 **own LiveKit participant** with identity `<user_id>:desktop-native:<kind>-N`,
 joining the voice room as a separate peer. A published track **cannot be
 repointed between rooms** at the LiveKit level (a track belongs to a room's
-participant). However, the native process can **swap rooms** via the existing
-`connect_microphone` stdin command, reusing the `AudioSource`, capture
-thread, and DSP state — so a seamless move is a *wiring* change (reconnect
-IPC + stable session across a move), not a LiveKit-SDK change.
+participant). A seamless move keeps the WASAPI capture thread and DSP state
+alive, processes each PCM frame once, and temporarily fans it out to a
+room-owned `AudioSource`/track for both the committed and candidate rooms.
+Only the latest execution generation may promote the candidate; after its
+publication is confirmed, the old room-owned source and track are retired.
+
+### Native Runtime Supervisor
+The Electron-main module that owns one native utility host lifecycle. It
+starts the host, validates its contract/build handshake, correlates requests,
+applies bounded restart backoff, opens a crash circuit after repeated failures,
+and rejects in-flight work with `runtime_lost`. It owns process execution only:
+it never owns voice intent, a target channel, or a LiveKit participant choice.
+
+There are two independent supervisors: **media** and **hooks**. This keeps a
+media crash from taking down chat, the renderer, hotkeys, or overlay detection.
+
+### MediaRuntime
+The instance-owned Windows native module behind `syrnike_media.node`. It owns
+exactly one LiveKit runtime lease and the microphone, screen, and preview
+actors. Its interface is deliberately small: enqueue a typed command, observe
+typed events, and request asynchronous shutdown. JSON, stdin/stdout transport,
+and process-global media state are not part of this interface.
+
+### Native media actor
+An instance-owned, serial command executor inside `MediaRuntime`. The
+`MicrophoneActor`, `ScreenActor`, and `PreviewActor` each own their threads and
+resources, apply latest-generation-wins fencing, and reach an explicit terminal
+state before releasing them. Actors do not infer user intent; they execute only
+commands already authorized by the renderer-side native media owner.
+
+### Native execution generation
+A monotonic fencing number scoped to a native execution kind/session. A newer
+start, reconnect, stop, or cancellation invalidates older asynchronous native
+work. Generation is intentionally separate from `operation_id`: the Director
+owns voice-operation recency, while the native runtime uses generation only to
+prevent stale implementation work from mutating current execution state.
 
 ### Recovery
 Reconciliation between the Director's `committed` channel and the server's

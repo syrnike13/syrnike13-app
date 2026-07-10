@@ -18,13 +18,14 @@ import {
 } from './auto-update'
 import { registerDesktopIpc } from './ipc'
 import { disposeHotkeys } from './hotkeys'
+import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
 import {
   configureDesktopOverlay,
   disposeDesktopOverlay,
 } from './overlay-manager'
 import {
-  disposePrewarmedNativeMediaEngineHelper,
-  prewarmNativeMediaEngineHelper,
+  disposeNativeMediaRuntime,
+  startNativeMediaRuntime,
 } from './native-media-engine'
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
@@ -52,6 +53,11 @@ import {
   DESKTOP_APP_USER_MODEL_ID,
   DESKTOP_RELEASE_METADATA,
 } from './desktop-app-identity'
+import {
+  initializeDesktopObservability,
+  pruneExpiredNativeCrashDumps,
+} from './desktop-observability'
+import { anonymousNativeMetricsReporter } from './native-runtime/anonymous-metrics'
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null
@@ -62,6 +68,10 @@ let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
 let desktopLocalSettings: DesktopLocalSettings = desktopLocalSettingsDefaults()
 let creatingApp: Promise<void> | null = null
 let trayVoiceState: DesktopTrayVoiceState = 'default'
+let shutdownPromise: Promise<void> | null = null
+let shutdownComplete = false
+
+const APP_SHUTDOWN_TIMEOUT_MS = 5_000
 
 const isDev = !app.isPackaged
 
@@ -145,6 +155,10 @@ async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
 
 function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
   desktopLocalSettings = settings
+  anonymousNativeMetricsReporter.configure({
+    enabled: settings.observability.anonymousNativeMetrics,
+    endpoint: app.isPackaged ? __DESKTOP_NATIVE_METRICS_ENDPOINT__ : '',
+  })
 }
 
 async function ensureAppCreated() {
@@ -321,6 +335,45 @@ function setupSingleInstance() {
   return true
 }
 
+async function disposeAppResources() {
+  const server = embeddedServer
+  embeddedServer = null
+  await Promise.allSettled([
+    Promise.resolve().then(() => disposeDesktopAutoUpdate()),
+    Promise.resolve().then(async () => {
+      disposeHotkeys()
+      disposeDesktopOverlay()
+      await hooksRuntimeController.dispose()
+    }),
+    Promise.resolve().then(() => disposeNativeMediaRuntime()),
+    Promise.resolve().then(() => server?.close()),
+    Promise.resolve().then(() =>
+      anonymousNativeMetricsReporter.flush().finally(() => {
+        anonymousNativeMetricsReporter.dispose()
+      }),
+    ),
+    Promise.resolve().then(() => {
+      tray?.destroy()
+      tray = null
+    }),
+  ])
+}
+
+async function disposeAppResourcesWithinDeadline() {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  try {
+    await Promise.race([
+      disposeAppResources(),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, APP_SHUTDOWN_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+    anonymousNativeMetricsReporter.dispose()
+  }
+}
+
 configureChromium()
 
 if (setupSingleInstance()) {
@@ -345,8 +398,16 @@ if (setupSingleInstance()) {
       desktopLocalSettingsPath(),
       desktopLocalSettingsDefaults(),
     )
+    applyDesktopLocalSettings(desktopLocalSettings)
+    initializeDesktopObservability({
+      nativeCrashReportsEnabled:
+        desktopLocalSettings.observability.nativeCrashReports,
+    })
+    void pruneExpiredNativeCrashDumps().catch(() => {
+      console.warn('[desktop] failed to prune expired native crash dumps')
+    })
     applyLoginItemSettings(desktopPreferences.openAtLogin)
-    prewarmNativeMediaEngineHelper()
+    startNativeMediaRuntime()
     if (initialDeepLinkRoute) {
       void navigateToDeepLink(initialDeepLinkRoute).catch(reportStartupFailure)
     } else {
@@ -367,14 +428,15 @@ if (setupSingleInstance()) {
     }
   })
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
     quitting = true
-    disposeDesktopAutoUpdate()
-    disposeHotkeys()
-    disposeDesktopOverlay()
-    disposePrewarmedNativeMediaEngineHelper()
-    tray?.destroy()
-    tray = null
-    void embeddedServer?.close()
+    if (shutdownComplete) return
+    event.preventDefault()
+    if (shutdownPromise) return
+    shutdownPromise = disposeAppResourcesWithinDeadline()
+    void shutdownPromise.finally(() => {
+      shutdownComplete = true
+      app.quit()
+    })
   })
 }

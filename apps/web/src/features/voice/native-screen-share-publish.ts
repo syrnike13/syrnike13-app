@@ -38,7 +38,7 @@ export async function publishNativeScreenShare(
   quality: ScreenShareQualityName,
   withAudio: boolean,
   audioBitrateKbps: number,
-  onSidecarLost: ((message: string) => void) | undefined,
+  onRuntimeLost: ((message: string) => void) | undefined,
   onEnded: (() => void) | undefined,
   livekit: NativeMicrophoneLiveKitCredentials,
   limits?: ScreenShareCaptureLimits,
@@ -90,7 +90,7 @@ export async function publishNativeScreenShare(
   }
 
   const completeStopped = (
-    reason: 'stop-requested' | 'stream-ended' | 'stream-error' | 'sidecar-lost',
+    reason: 'stop-requested' | 'stream-ended' | 'stream-error' | 'runtime-lost',
     stopNativeSession: boolean,
   ) => {
     if (stopped) return Promise.resolve()
@@ -162,18 +162,19 @@ export async function publishNativeScreenShare(
   const unsubscribeStreamError = desktop.media.onStreamError?.((event) => {
     if (stopped) return
     if (event.sessionId !== session.sessionId) return
-    onSidecarLost?.(event.message)
+    onRuntimeLost?.(event.message)
     void completeStopped('stream-error', false)
   })
   if (unsubscribeStreamError) subscriptions.push(unsubscribeStreamError)
 
-  const unsubscribeSidecarLost = desktop.media.onSidecarLost?.((event) => {
+  const unsubscribeRuntimeLost = desktop.media.onRuntimeLost?.((event) => {
     if (stopped) return
     if (event.sessionId !== session.sessionId) return
-    onSidecarLost?.(event.message)
-    void completeStopped('sidecar-lost', false)
+    if (event.recovering) return
+    onRuntimeLost?.(event.message)
+    void completeStopped('runtime-lost', false)
   })
-  if (unsubscribeSidecarLost) subscriptions.push(unsubscribeSidecarLost)
+  if (unsubscribeRuntimeLost) subscriptions.push(unsubscribeRuntimeLost)
 
   if (withAudio && session.audio?.mode === 'none') {
     toast.warning('Звук выбранного источника пока не подключён в native helper')

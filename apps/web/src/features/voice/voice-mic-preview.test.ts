@@ -19,6 +19,7 @@ vi.mock('#/platform/runtime', () => ({
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
 })
 
@@ -53,25 +54,36 @@ describe('native microphone processing boundary', () => {
     }
   })
 
-  it('initializes LiveKit before native preview uses the audio processor', () => {
-    const repoRoot = resolve(
-      fileURLToPath(new URL('../../../../..', import.meta.url)),
-    )
-    const source = readFileSync(
-      resolve(
-        repoRoot,
-        'apps/desktop/native/native-voice-win/src/microphone_preview.cpp',
-      ),
-      'utf8',
-    )
+  it('delegates Windows preview to the native runtime without browser capture', async () => {
+    const getUserMedia = vi.fn()
+    const startMicrophonePreview = vi.fn(async () => ({ sessionId: 'preview-1' }))
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startMicrophonePreview,
+        configureMicrophoneRuntime: vi.fn(async () => {}),
+        stopMicrophonePreview: vi.fn(async () => {}),
+        onMicrophoneMetrics: vi.fn(() => () => {}),
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
-    const initializeIndex = source.indexOf('livekit::initialize')
-    const processorIndex = source.indexOf('MicrophoneAudioProcessor processor')
-    const shutdownIndex = source.indexOf('livekit::shutdown')
+    const preview = await startMicPreview({
+      prefs: {
+        noiseSuppression: true,
+        echoCancellation: true,
+        voiceGateEnabled: true,
+        voiceGateThresholdDb: -28,
+        voiceGateAutoThreshold: true,
+        inputVolume: 1,
+        outputVolume: 1,
+      },
+      onLevels: vi.fn(),
+    })
 
-    expect(initializeIndex).toBeGreaterThanOrEqual(0)
-    expect(processorIndex).toBeGreaterThan(initializeIndex)
-    expect(shutdownIndex).toBeGreaterThan(processorIndex)
+    expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
+    expect(getUserMedia).not.toHaveBeenCalled()
+    preview.stop()
   })
 
   it('configures native preview gate and input gain without restarting preview', async () => {

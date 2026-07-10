@@ -21,7 +21,7 @@ import type {
   NativeMicrophonePreviewSession,
   NativeMicrophonePreviewStartOptions,
   NativeMediaSession,
-  NativeMediaSidecarLostEvent,
+  NativeMediaRuntimeLostEvent,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaMicrophoneSessionStartOptions,
   NativeMediaSessionStartOptions,
@@ -360,13 +360,13 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         ipcRenderer.removeListener(IPC.mediaStreamError, listener)
       }
     },
-    onSidecarLost(handler: (event: NativeMediaSidecarLostEvent) => void) {
+    onRuntimeLost(handler: (event: NativeMediaRuntimeLostEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isNativeMediaSidecarLostEvent(payload)) handler(payload)
+        if (isNativeMediaRuntimeLostEvent(payload)) handler(payload)
       }
-      ipcRenderer.on(IPC.mediaEngineLost, listener)
+      ipcRenderer.on(IPC.mediaRuntimeLost, listener)
       return () => {
-        ipcRenderer.removeListener(IPC.mediaEngineLost, listener)
+        ipcRenderer.removeListener(IPC.mediaRuntimeLost, listener)
       }
     },
   },
@@ -531,14 +531,18 @@ function isCaptureStreamError(
   return typeof event.sessionId === 'string' && typeof event.message === 'string'
 }
 
-function isNativeMediaSidecarLostEvent(
+function isNativeMediaRuntimeLostEvent(
   value: unknown,
-): value is NativeMediaSidecarLostEvent {
+): value is NativeMediaRuntimeLostEvent {
   if (!value || typeof value !== 'object') return false
-  const event = value as NativeMediaSidecarLostEvent
+  const event = value as NativeMediaRuntimeLostEvent
   return (
     typeof event.sessionId === 'string' &&
-    (event.reason === 'exit' || event.reason === 'stream_error') &&
-    typeof event.message === 'string'
+    (event.reason === 'exit' ||
+      event.reason === 'stream_error' ||
+      event.reason === 'circuit_open' ||
+      event.reason === 'handshake_failed') &&
+    typeof event.message === 'string' &&
+    typeof event.recovering === 'boolean'
   )
 }
