@@ -1,15 +1,12 @@
 import type {
+  LocalMediaIntent,
+  LocalMediaIntentAcceptanceResult,
+  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
-  NativeMicrophoneRuntimeConfig,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
+  NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaSession,
-  NativeMediaMicrophoneSessionStartOptions,
-  NativeMediaSessionStartOptions,
+  NativeMicrophonePreviewStateEvent,
   NativeMediaState,
-  NativeMediaStateEvent,
   NativeMediaStatsEvent,
 } from './media'
 import type {
@@ -143,7 +140,7 @@ export type DesktopDisplayMediaSource = {
 export type DesktopDisplayMediaRequest = {
   id: string
   audioRequested: boolean
-  /** Видео идёт через нативный sidecar, не через desktopCapturer. */
+  /** Видео идёт через native runtime, не через desktopCapturer. */
   nativeVideo?: boolean
 }
 
@@ -155,23 +152,23 @@ export type DesktopDisplayMediaSelection = {
 
 export type {
   NativeMediaEncoderBackend,
+  LiveKitNativePublisherCredentials,
+  LocalMediaIntent,
+  LocalMediaIntentAcceptanceResult,
+  LocalMediaIntentMicrophone,
+  LocalMediaIntentScreen,
+  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
   NativeMediaLoopbackMode,
-  NativeMediaSession,
-  NativeMediaSidecarLostEvent,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaSessionKind,
-  NativeMediaMicrophoneSessionStartOptions,
-  NativeMediaSessionStartOptions,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
-  NativeMediaScreenSessionStartOptions,
+  NativeMediaLiveKitCredentials,
+  NativeMicrophonePipelineConfig,
+  NativeMicrophonePreviewStateEvent,
   NativeMediaState,
-  NativeMediaStateEvent,
   NativeMediaStatsEvent,
   NativeMediaTarget,
+  ScreenSourceSpec,
 } from './media'
 
 /**
@@ -245,42 +242,26 @@ export interface SyrnikeDesktopApi {
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
     listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
-    startMicrophonePreview(
-      options: NativeMicrophonePreviewStartOptions,
-    ): Promise<NativeMicrophonePreviewSession>
-    stopMicrophonePreview(sessionId?: string): Promise<void>
+    configureMicrophonePipeline(config: NativeMicrophonePipelineConfig): Promise<void>
+    startMicrophonePreview(): Promise<void>
+    stopMicrophonePreview(): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,
     ): () => void
-    prepareScreenSession(
-      options: NativeMediaScreenSessionPrepareOptions,
-    ): Promise<void>
-    disconnectPreparedScreenSession(): Promise<void>
-    startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
-    cancelPendingStarts(kind?: import('./media').NativeMediaSessionKind): Promise<void>
-    configureMicrophoneRuntime(
-      sessionId: string,
-      config: NativeMicrophoneRuntimeConfig,
-    ): Promise<void>
-    setMicrophoneMuted(sessionId: string, muted: boolean): Promise<void>
-    reconnectMicrophoneSession(
-      sessionId: string,
-      options: NativeMediaMicrophoneSessionStartOptions,
-    ): Promise<NativeMediaSession>
-    stopSession(sessionId?: string): Promise<void>
+    applyLocalMediaIntent(
+      intent: LocalMediaIntent,
+    ): Promise<LocalMediaIntentAcceptanceResult>
     getState(): Promise<NativeMediaState>
     onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
     onMicrophoneMetrics(
       handler: (event: NativeMicrophoneMetricsEvent) => void,
     ): () => void
-    onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
-    onStreamEnded(handler: (sessionId: string) => void): () => void
-    onStreamError(
-      handler: (event: { sessionId: string; message: string }) => void,
+    onMicrophonePreviewState(
+      handler: (event: NativeMicrophonePreviewStateEvent) => void,
     ): () => void
-    onSidecarLost(
-      handler: (event: import('./media').NativeMediaSidecarLostEvent) => void,
+    onLocalMediaState(
+      handler: (event: LocalMediaObservedStateEvent) => void,
     ): () => void
   }
 }

@@ -11,8 +11,9 @@ use syrnike_database::{
             VoiceCallStateMutation, VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
         delete_voice_channel, finish_voice_call_started_system_message, get_voice_channel_members,
-        list_active_voice_channel_ids, reconcile_voice_channel_members_with_call_cleanup,
-        remove_orphaned_active_voice_channel, UserVoiceChannel, VoiceClient,
+        list_active_voice_channel_ids, reconcile_pending_voice_transport_cleanups,
+        reconcile_voice_channel_members_with_call_cleanup, remove_orphaned_active_voice_channel,
+        UserVoiceChannel, VoiceClient,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
 };
@@ -37,17 +38,39 @@ async fn sweep_voice_call_timeouts(
 ) -> Result<()> {
     let now = Timestamp::now_utc();
 
+    if let Err(error) = reconcile_pending_voice_transport_cleanups(voice_client).await {
+        syrnike_config::capture_internal_error!(&error);
+        warn!("Failed to reconcile pending voice transport cleanups: {error:?}");
+    }
+
     for channel_id in list_active_voice_channel_ids().await? {
         let channel = UserVoiceChannel {
             id: channel_id.clone(),
             server_id: None,
         };
         if get_voice_channel_members(&channel).await?.is_none() {
-            // Не позволяем одиночной ошибке orphan-cleanup прервать весь sweep:
-            // остальные активные каналы и call-timeout'ы тоже нуждаются в обработке.
-            if let Err(error) = remove_orphaned_active_voice_channel(&channel).await {
-                syrnike_config::capture_internal_error!(&error);
-                warn!("Failed to remove orphaned voice channel {channel_id}: {error:?}");
+            match reconcile_voice_channel_members_with_call_cleanup(
+                db,
+                voice_client,
+                amqp,
+                &channel,
+            )
+            .await
+            {
+                Ok(Some(reconciliation))
+                    if reconciliation.livekit_members.is_empty()
+                        && reconciliation.stale_livekit_participants.is_empty() =>
+                {
+                    if let Err(error) = remove_orphaned_active_voice_channel(&channel).await {
+                        syrnike_config::capture_internal_error!(&error);
+                        warn!("Failed to remove orphaned voice channel {channel_id}: {error:?}");
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    syrnike_config::capture_internal_error!(&error);
+                    warn!("Failed to reconcile orphaned voice channel {channel_id}: {error:?}");
+                }
             }
             continue;
         }

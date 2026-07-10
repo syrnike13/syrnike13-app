@@ -136,4 +136,35 @@ describe('runVoiceRecovery', () => {
       false,
     )
   })
+
+  it('keeps native microphone intent retryable after a publisher repair failure', async () => {
+    const room = {} as never
+    const syncMicFromRoom = vi.fn()
+    const endPublisherRepair = vi.fn()
+    const deps = baseDeps({
+      getRoom: () => room,
+      readCurrentVoiceFlags: () => ({ selfMute: true, selfDeaf: false }),
+      isPublisherHealthy: () => false,
+      shouldUseNativeMicrophone: () => true,
+      startNativeMicrophone: vi.fn(async () => {
+        throw new Error('track publication timed out')
+      }),
+      syncMicFromRoom,
+      tryStartPublisherRepair: () => true,
+      endPublisherRepair,
+    })
+
+    runVoiceRecovery('health_tick', deps)
+
+    await vi.waitFor(() =>
+      expect(syncMicFromRoom).toHaveBeenCalledWith(room, {
+        label: 'Микрофон недоступен',
+        hint: 'track publication timed out',
+        retryable: true,
+      }),
+    )
+    await vi.waitFor(() =>
+      expect(endPublisherRepair).toHaveBeenCalledWith(false),
+    )
+  })
 })

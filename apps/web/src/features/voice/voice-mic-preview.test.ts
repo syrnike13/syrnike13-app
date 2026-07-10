@@ -19,6 +19,7 @@ vi.mock('#/platform/runtime', () => ({
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
 })
 
@@ -53,36 +54,47 @@ describe('native microphone processing boundary', () => {
     }
   })
 
-  it('initializes LiveKit before native preview uses the audio processor', () => {
-    const repoRoot = resolve(
-      fileURLToPath(new URL('../../../../..', import.meta.url)),
-    )
-    const source = readFileSync(
-      resolve(
-        repoRoot,
-        'apps/desktop/native/native-voice-win/src/microphone_preview.cpp',
-      ),
-      'utf8',
-    )
+  it('delegates Windows preview to the native runtime without browser capture', async () => {
+    const getUserMedia = vi.fn()
+    const startMicrophonePreview = vi.fn(async () => {})
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        startMicrophonePreview,
+        configureMicrophonePipeline: vi.fn(async () => {}),
+        stopMicrophonePreview: vi.fn(async () => {}),
+        onMicrophoneMetrics: vi.fn(() => () => {}),
+        onMicrophonePreviewState: vi.fn(() => () => {}),
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
-    const initializeIndex = source.indexOf('livekit::initialize')
-    const processorIndex = source.indexOf('MicrophoneAudioProcessor processor')
-    const shutdownIndex = source.indexOf('livekit::shutdown')
+    const preview = await startMicPreview({
+      prefs: {
+        noiseSuppression: true,
+        echoCancellation: true,
+        voiceGateEnabled: true,
+        voiceGateThresholdDb: -28,
+        voiceGateAutoThreshold: true,
+        inputVolume: 1,
+        outputVolume: 1,
+      },
+      onLevels: vi.fn(),
+    })
 
-    expect(initializeIndex).toBeGreaterThanOrEqual(0)
-    expect(processorIndex).toBeGreaterThan(initializeIndex)
-    expect(shutdownIndex).toBeGreaterThan(processorIndex)
+    expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
+    expect(getUserMedia).not.toHaveBeenCalled()
+    preview.stop()
   })
 
   it('configures native preview gate and input gain without restarting preview', async () => {
     vi.useFakeTimers()
-    const startMicrophonePreview = vi.fn(async () => ({ sessionId: 'preview-1' }))
-    const configureMicrophoneRuntime = vi.fn(async () => {})
+    const startMicrophonePreview = vi.fn(async () => {})
+    const configureMicrophonePipeline = vi.fn(async () => {})
     const stopMicrophonePreview = vi.fn(async () => {})
     const unsubscribeMetrics = vi.fn()
     const microphoneMetricsHandlerRef: {
       current?: (event: {
-          sessionId: string
           inputDb: number
           thresholdDb: number
           open: boolean
@@ -92,12 +104,13 @@ describe('native microphone processing boundary', () => {
       platform: { os: 'win32' },
       media: {
         startMicrophonePreview,
-        configureMicrophoneRuntime,
+        configureMicrophonePipeline,
         stopMicrophonePreview,
         onMicrophoneMetrics: vi.fn((handler) => {
           microphoneMetricsHandlerRef.current = handler
           return unsubscribeMetrics
         }),
+        onMicrophonePreviewState: vi.fn(() => () => {}),
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
@@ -114,18 +127,17 @@ describe('native microphone processing boundary', () => {
     const onLevels = vi.fn()
     const onGateMetrics = vi.fn()
     const session = await startMicPreview({
+      inputDeviceId: 'mic-1',
       prefs,
       onLevels,
       onGateMetrics,
     })
     microphoneMetricsHandlerRef.current?.({
-      sessionId: 'preview-1',
       inputDb: -24,
       thresholdDb: -28,
       open: true,
     })
     microphoneMetricsHandlerRef.current?.({
-      sessionId: 'other-preview',
       inputDb: -6,
       thresholdDb: -28,
       open: true,
@@ -144,14 +156,24 @@ describe('native microphone processing boundary', () => {
     await vi.advanceTimersByTimeAsync(39)
 
     expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
-    expect(startMicrophonePreview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        voiceGateAutoThreshold: true,
-      }),
-    )
+    expect(startMicrophonePreview).toHaveBeenCalledWith()
     expect(stopMicrophonePreview).not.toHaveBeenCalled()
-    expect(configureMicrophoneRuntime).not.toHaveBeenCalled()
-    expect(onLevels).toHaveBeenCalledTimes(1)
+    expect(configureMicrophonePipeline).toHaveBeenCalledTimes(1)
+    expect(configureMicrophonePipeline).toHaveBeenNthCalledWith(1, {
+      deviceId: 'mic-1',
+      noiseSuppression: true,
+      echoCancellation: true,
+      inputVolume: 1,
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: -28,
+      voiceGateAutoThreshold: true,
+    })
+    expect(onLevels).toHaveBeenCalledTimes(2)
+    expect(onGateMetrics).toHaveBeenLastCalledWith({
+      inputDb: -6,
+      thresholdDb: -28,
+      open: true,
+    })
     expect(onGateMetrics).toHaveBeenCalledWith({
       inputDb: -24,
       thresholdDb: -28,
@@ -160,19 +182,71 @@ describe('native microphone processing boundary', () => {
 
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(configureMicrophoneRuntime).toHaveBeenCalledTimes(1)
-    expect(configureMicrophoneRuntime).toHaveBeenLastCalledWith(
-      'preview-1',
-      expect.objectContaining({
-        voiceGateEnabled: false,
-        voiceGateAutoThreshold: true,
-        noiseSuppression: false,
-        inputVolume: 1.5,
-      }),
-    )
+    expect(configureMicrophonePipeline).toHaveBeenCalledTimes(2)
+    expect(configureMicrophonePipeline).toHaveBeenLastCalledWith({
+      deviceId: 'mic-1',
+      noiseSuppression: false,
+      echoCancellation: true,
+      inputVolume: 1.5,
+      voiceGateEnabled: false,
+      voiceGateThresholdDb: -28,
+      voiceGateAutoThreshold: true,
+    })
 
     session.stop()
-    expect(stopMicrophonePreview).toHaveBeenCalledWith('preview-1')
+    expect(stopMicrophonePreview).toHaveBeenCalledWith()
     expect(unsubscribeMetrics).toHaveBeenCalled()
+  })
+
+  it('ends a native preview when the identity-free preview state becomes terminal', async () => {
+    const stopMicrophonePreview = vi.fn(async () => {})
+    const unsubscribeMetrics = vi.fn()
+    const unsubscribeState = vi.fn()
+    let previewStateHandler:
+      | ((event:
+          | { status: 'running' }
+          | { status: 'stopped' }
+          | { status: 'error'; message: string }) => void)
+      | undefined
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        configureMicrophonePipeline: vi.fn(async () => {}),
+        startMicrophonePreview: vi.fn(async () => {}),
+        stopMicrophonePreview,
+        onMicrophoneMetrics: vi.fn(() => unsubscribeMetrics),
+        onMicrophonePreviewState: vi.fn((handler) => {
+          previewStateHandler = handler
+          return unsubscribeState
+        }),
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+    const onLevels = vi.fn()
+    const onEnded = vi.fn()
+
+    const preview = await startMicPreview({
+      prefs: {
+        noiseSuppression: true,
+        echoCancellation: true,
+        voiceGateEnabled: false,
+        voiceGateThresholdDb: -45,
+        voiceGateAutoThreshold: true,
+        inputVolume: 1,
+        outputVolume: 1,
+      },
+      onLevels,
+      onEnded,
+    })
+    previewStateHandler?.({ status: 'running' })
+    previewStateHandler?.({ status: 'error', message: 'render failed' })
+
+    expect(onEnded).toHaveBeenCalledWith('render failed')
+    expect(onLevels).toHaveBeenLastCalledWith(
+      Array.from({ length: MIC_PREVIEW_METER_BAR_COUNT }, () => 0),
+    )
+    expect(unsubscribeMetrics).toHaveBeenCalledTimes(1)
+    expect(unsubscribeState).toHaveBeenCalledTimes(1)
+    preview.stop()
+    expect(stopMicrophonePreview).not.toHaveBeenCalled()
   })
 })

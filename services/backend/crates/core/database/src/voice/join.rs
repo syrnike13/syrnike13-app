@@ -3,18 +3,20 @@ use crate::{
     models::Channel,
     util::{permissions::perms, reference::Reference},
     voice::{
+        browser_voice_identity,
         call_lifecycle::{
             get_channel_voice_call, mutate_channel_voice_call_if_current, voice_call_leave_effect,
             VoiceCallLeaveEffect, VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase,
             VoiceCallStateMutation, VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
-        create_voice_session, delete_channel_voice_state, desktop_native_voice_identity,
+        clear_call_notification_recipients, create_voice_session_if_current,
+        delete_channel_voice_state, desktop_native_voice_identity,
         finish_voice_call_started_system_message, get_channel_node, get_voice_channel_members,
         get_voice_participant_reconciliation, is_in_voice_channel, raise_if_in_voice,
-        remove_user_from_voice_channel, remove_user_voice_transport,
-        set_call_notification_recipients, set_channel_node, UserVoiceChannel, VoiceClient,
-        VoiceParticipantReconciliation, VoiceParticipantReconciliationVerdict, VoiceSession,
-        VoiceSessionCreate, VOICE_SESSION_TTL_SECONDS,
+        remove_user_from_voice_channel, set_call_notification_recipients, set_channel_node,
+        UserVoiceChannel, VoiceClient, VoiceParticipantReconciliation,
+        VoiceParticipantReconciliationVerdict, VoiceSession, VoiceSessionCreate,
+        BROWSER_VOICE_OPERATION_ID_ATTRIBUTE, VOICE_SESSION_TTL_SECONDS,
     },
     Database, User, VoiceCallEndReason, AMQP,
 };
@@ -41,6 +43,7 @@ pub struct VoiceJoinCredentials {
 pub struct VoiceJoinOptions {
     pub node: Option<String>,
     pub operation_id: Option<String>,
+    pub expected_current_operation_id: Option<String>,
     pub recipients: Option<Vec<String>>,
     pub suppress_call_notifications: bool,
     pub self_mute: bool,
@@ -114,7 +117,6 @@ pub async fn join_voice_channel(
     }
 
     let existing_node = get_channel_node(channel.id()).await?;
-
     let node = existing_node
         .or(options.node)
         .ok_or_else(|| create_error!(UnknownNode))?;
@@ -136,57 +138,6 @@ pub async fn join_voice_channel(
         raise_if_in_voice(user, &user_voice_channel).await?;
     }
 
-    let token = voice_client
-        .create_token_for_identity(&node, db, user, &user.id, current_permissions, &channel)
-        .await?;
-    let native_microphone = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "microphone",
-        operation_id,
-        current_permissions,
-        &channel,
-    )
-    .await?;
-    let native_screen = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "screen",
-        operation_id,
-        current_permissions,
-        &channel,
-    )
-    .await?;
-    let native_camera = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "camera",
-        operation_id,
-        current_permissions,
-        &channel,
-    )
-    .await?;
-
-    let room = voice_client.create_room(&node, &channel).await?;
-    set_channel_node(channel.id(), &node).await?;
-
-    log::debug!("Created room {}", room.name);
-
-    if options.suppress_call_notifications {
-        set_call_notification_recipients(channel.id(), &user.id, &[]).await?;
-    } else if let Some(recipients) = options
-        .recipients
-        .filter(|recipients| !recipients.is_empty())
-    {
-        set_call_notification_recipients(channel.id(), &user.id, &recipients).await?;
-    }
-
     let session = voice_session_for_join_request(
         operation_id,
         &user.id,
@@ -196,7 +147,118 @@ pub async fn join_voice_channel(
         options.self_deaf,
         Timestamp::now_utc(),
     )?;
-    create_voice_session(&session).await?;
+    if !create_voice_session_if_current(&session, options.expected_current_operation_id.as_deref())
+        .await?
+    {
+        return Err(create_error!(InvalidOperation));
+    }
+    let room = match voice_client.create_room(&node, &channel).await {
+        Ok(room) => room,
+        Err(error) => {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    };
+    if let Err(error) = set_channel_node(channel.id(), &node).await {
+        clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+        return Err(error);
+    }
+
+    log::debug!("Created room {}", room.name);
+
+    if options.suppress_call_notifications {
+        if let Err(error) =
+            set_call_notification_recipients(channel.id(), &user.id, operation_id, &[]).await
+        {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    } else if let Some(recipients) = options
+        .recipients
+        .filter(|recipients| !recipients.is_empty())
+    {
+        if let Err(error) =
+            set_call_notification_recipients(channel.id(), &user.id, operation_id, &recipients)
+                .await
+        {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    }
+
+    let browser_identity = browser_voice_identity(&user.id, operation_id);
+    let token = match voice_client
+        .create_token_for_identity_with_attributes(
+            &node,
+            db,
+            user,
+            &browser_identity,
+            current_permissions,
+            &channel,
+            browser_token_attributes(operation_id),
+        )
+        .await
+    {
+        Ok(token) => token,
+        Err(error) => {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    };
+    let native_microphone = match create_native_credentials(
+        voice_client,
+        &node,
+        db,
+        user,
+        "microphone",
+        operation_id,
+        current_permissions,
+        &channel,
+    )
+    .await
+    {
+        Ok(credentials) => credentials,
+        Err(error) => {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    };
+    let native_screen = match create_native_credentials(
+        voice_client,
+        &node,
+        db,
+        user,
+        "screen",
+        operation_id,
+        current_permissions,
+        &channel,
+    )
+    .await
+    {
+        Ok(credentials) => credentials,
+        Err(error) => {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    };
+    let native_camera = match create_native_credentials(
+        voice_client,
+        &node,
+        db,
+        user,
+        "camera",
+        operation_id,
+        current_permissions,
+        &channel,
+    )
+    .await
+    {
+        Ok(credentials) => credentials,
+        Err(error) => {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    };
 
     Ok(VoiceJoinCredentials {
         channel_id: channel.id().to_string(),
@@ -213,7 +275,6 @@ const VOICE_CALL_MUTATION_RETRY_LIMIT: usize = 8;
 
 pub async fn remove_user_from_voice_channel_with_call_cleanup(
     db: &Database,
-    voice_client: &VoiceClient,
     amqp: &AMQP,
     channel: &UserVoiceChannel,
     user_id: &str,
@@ -222,20 +283,17 @@ pub async fn remove_user_from_voice_channel_with_call_cleanup(
         return Ok(());
     }
 
-    remove_user_from_voice_channel(voice_client, channel, user_id).await?;
+    remove_user_from_voice_channel(channel, user_id).await?;
 
     cleanup_removed_voice_member_call(db, amqp, channel).await
 }
 
 pub async fn cleanup_committed_voice_member_removal(
     db: &Database,
-    voice_client: &VoiceClient,
     amqp: &AMQP,
-    channel: &UserVoiceChannel,
-    user_id: &str,
+    session: &VoiceSession,
 ) -> Result<()> {
-    remove_user_voice_transport(voice_client, channel, user_id).await?;
-    cleanup_removed_voice_member_call(db, amqp, channel).await
+    cleanup_removed_voice_member_call(db, amqp, &session.channel).await
 }
 
 pub async fn reconcile_voice_channel_members_with_call_cleanup(
@@ -259,8 +317,7 @@ pub async fn reconcile_voice_channel_members_with_call_cleanup(
     };
 
     for user_id in &reconciliation.stale_members {
-        remove_user_from_voice_channel_with_call_cleanup(db, voice_client, amqp, channel, user_id)
-            .await?;
+        remove_user_from_voice_channel_with_call_cleanup(db, amqp, channel, user_id).await?;
     }
 
     if !reconciliation.stale_livekit_participants.is_empty() {
@@ -272,6 +329,12 @@ pub async fn reconcile_voice_channel_members_with_call_cleanup(
     }
 
     Ok(Some(reconciliation))
+}
+
+async fn clear_failed_join_metadata(channel_id: &str, user_id: &str, operation_id: &str) {
+    clear_call_notification_recipients(channel_id, user_id, operation_id)
+        .await
+        .ok();
 }
 
 async fn cleanup_removed_voice_member_call(
@@ -430,8 +493,17 @@ pub async fn refresh_voice_credentials(
         .ok_or_else(|| create_error!(UnknownNode))?
         .clone();
 
+    let browser_identity = browser_voice_identity(&user.id, operation_id);
     let token = voice_client
-        .create_token_for_identity(&node, db, user, &user.id, current_permissions, &channel)
+        .create_token_for_identity_with_attributes(
+            &node,
+            db,
+            user,
+            &browser_identity,
+            current_permissions,
+            &channel,
+            browser_token_attributes(operation_id),
+        )
         .await?;
     let native_microphone = create_native_credentials(
         voice_client,
@@ -494,6 +566,13 @@ async fn create_native_credentials(
         .await?;
 
     Ok(NativeVoiceCredentials { token, identity })
+}
+
+fn browser_token_attributes(operation_id: &str) -> [(&'static str, String); 1] {
+    [(
+        BROWSER_VOICE_OPERATION_ID_ATTRIBUTE,
+        operation_id.to_string(),
+    )]
 }
 
 fn should_reject_voice_join_for_capacity(

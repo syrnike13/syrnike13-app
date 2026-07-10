@@ -73,7 +73,7 @@ export type VoiceRecoveryRunnerDeps = {
    * завершения промиса ремонта.
    */
   tryStartPublisherRepair?: () => boolean
-  endPublisherRepair?: () => void
+  endPublisherRepair?: (succeeded: boolean) => void
 }
 
 export function nativeOrBrowserPublisherHealthy(
@@ -100,6 +100,7 @@ export function runVoiceRecovery(
   const { selfMute, selfDeaf } = deps.readCurrentVoiceFlags(room)
   const prefs = deps.readVoicePreferences()
   const publisherHealthy = deps.isPublisherHealthy(room)
+  const useNativeMicrophone = deps.shouldUseNativeMicrophone()
 
   const action = decideVoiceRecoveryAction({
     gatewayConnected: deps.getGatewayConnected(),
@@ -114,6 +115,7 @@ export function runVoiceRecovery(
     wantsMic: prefs.micEnabled,
     selfMonitoringActive: deps.isSelfMonitoringActive(),
     publisherHealthy,
+    repairMutedPublisher: useNativeMicrophone,
   })
 
   if (action.type === 'none') return
@@ -188,7 +190,8 @@ export function runVoiceRecovery(
     if (deps.tryStartPublisherRepair && !deps.tryStartPublisherRepair()) {
       return
     }
-    const finishRepair = () => deps.endPublisherRepair?.()
+    let repairSucceeded = false
+    const finishRepair = () => deps.endPublisherRepair?.(repairSucceeded)
 
     console.warn('[voice-recovery] repairing voice publisher', {
       trigger,
@@ -196,8 +199,9 @@ export function runVoiceRecovery(
       channelId: activeChannelId,
     })
 
-    if (deps.shouldUseNativeMicrophone()) {
-      void deps.startNativeMicrophone(room, false)
+    if (useNativeMicrophone) {
+      void Promise.resolve()
+        .then(() => deps.startNativeMicrophone(room, false))
         .then((started) => {
           if (!started || !deps.isCurrentVoiceSession(room, activeChannelId)) {
             return
@@ -210,12 +214,16 @@ export function runVoiceRecovery(
             flags.selfMute,
             flags.selfDeaf,
           )
+          repairSucceeded = true
         })
         .catch((error) => {
           if (!deps.isCurrentVoiceSession(room, activeChannelId)) {
             return
           }
-          deps.syncMicFromRoom(room, describeMicDeviceError(error))
+          deps.syncMicFromRoom(room, {
+            ...describeMicDeviceError(error),
+            retryable: true,
+          })
           deps.syncRoomParticipants()
           deps.syncVoiceFlagsToGateway(
             activeChannelId,
@@ -227,11 +235,13 @@ export function runVoiceRecovery(
       return
     }
 
-    void room.localParticipant
-      .setMicrophoneEnabled(
-        true,
-        undefined,
-        voiceMicPublishOptions(deps.activeChannelAudioBitrateKbps()),
+    void Promise.resolve()
+      .then(() =>
+        room.localParticipant.setMicrophoneEnabled(
+          true,
+          undefined,
+          voiceMicPublishOptions(deps.activeChannelAudioBitrateKbps()),
+        ),
       )
       .then(() => deps.applyMicProcessing(room.localParticipant))
       .then(() => {
@@ -247,6 +257,7 @@ export function runVoiceRecovery(
           flags.selfMute,
           flags.selfDeaf,
         )
+        repairSucceeded = true
       })
       .catch((error) => {
         if (!deps.isCurrentVoiceSession(room, activeChannelId)) {

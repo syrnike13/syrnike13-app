@@ -13,4 +13,12 @@ describe('native voice identity helpers', () => {
     expect(isDesktopNativeVoiceIdentity(identity)).toBe(true)
     expect(identity.endsWith(':screen')).toBe(true)
   })
+
+  it('maps operation-tagged browser participants back to the base user', () => {
+    expect(
+      baseVoiceIdentity(
+        'user-1:browser:voice-op-550e8400-e29b-41d4-a716-446655440000',
+      ),
+    ).toBe('user-1')
+  })
 })

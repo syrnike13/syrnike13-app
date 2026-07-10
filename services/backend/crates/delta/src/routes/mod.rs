@@ -17,6 +17,7 @@ mod root;
 mod safety;
 mod servers;
 mod sync;
+pub(crate) mod telemetry;
 mod users;
 mod voice_call_member_sync;
 mod webhooks;
@@ -44,6 +45,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/policy" => policy::routes(),
             "/push" => push::routes(),
             "/sync" => sync::routes(),
+            "/telemetry" => telemetry::routes(),
             "/webhooks" => webhooks::routes()
         };
     } else {
@@ -65,7 +67,8 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/onboard" => onboard::routes(),
             "/policy" => policy::routes(),
             "/push" => push::routes(),
-            "/sync" => sync::routes()
+            "/sync" => sync::routes(),
+            "/telemetry" => telemetry::routes()
         };
     }
 

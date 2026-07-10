@@ -30,8 +30,6 @@ function captureMethodLabel(method: string | undefined) {
       return 'DXGI'
     case 'gdi_blt':
       return 'GDI BitBlt'
-    case 'gdi_print':
-      return 'GDI PrintWindow'
     default:
       return method
   }

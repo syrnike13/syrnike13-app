@@ -8,7 +8,7 @@ export type VoiceIntentGatewayAction =
     }
   | {
       type: 'leave_observed'
-      operationId: string | null
+      operationId: string
     }
 
 export function voiceIntentActionFromGatewayEvent(
@@ -31,9 +31,11 @@ export function voiceIntentActionFromGatewayEvent(
 
   if (event.type === 'VoiceChannelLeave') {
     if (voiceEventUserId(event) !== localUserId) return null
+    const operationId = voiceEventOperationId(event)
+    if (!operationId) return null
     return {
       type: 'leave_observed',
-      operationId: voiceEventOperationId(event) ?? null,
+      operationId,
     }
   }
 

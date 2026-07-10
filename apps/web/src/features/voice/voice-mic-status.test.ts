@@ -111,4 +111,18 @@ describe('shouldResetMicPreferenceOnIssue', () => {
       }),
     ).toBe(false)
   })
+
+  it('preserves user intent for retryable native runtime failures', () => {
+    expect(
+      shouldResetMicPreferenceOnIssue({
+        wantsMic: true,
+        micPublishing: false,
+        micIssue: {
+          label: 'Микрофон временно недоступен',
+          hint: 'Track publication timed out',
+          retryable: true,
+        },
+      }),
+    ).toBe(false)
+  })
 })

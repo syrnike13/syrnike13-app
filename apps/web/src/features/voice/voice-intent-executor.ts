@@ -43,6 +43,12 @@ export type VoiceExecutorSession = Readonly<{
 export type VoiceIntentExecutorJoinOptions = {
   operationId: string
   reason: VoiceJoinReason
+  expectedCurrentOperationId?: string
+  reuseExistingRoom: boolean
+  onGatewayDispatched: () => void
+  onGatewayAccepted: () => void
+  onGatewayRejected: (authoritativeOperationId: string | null) => void
+  signal: AbortSignal
 }
 
 export type VoiceIntentExecutorJoinResult =
@@ -69,7 +75,7 @@ export type VoiceMoveSourceSession = {
 }
 
 type PendingMoveSource = {
-  source: VoiceExecutorSession & { room: Room; channelId: string }
+  source: VoiceExecutorSession & { operationId: string; room: Room; channelId: string }
   targetOperationId: string
 }
 
@@ -97,6 +103,21 @@ type VoiceJoinInFlight = {
   channelId: string
   promise: Promise<boolean>
 }
+
+type PublisherRepairState = {
+  room: Room
+  channelId: string
+  inFlight: boolean
+  failureCount: number
+  retryAt: number
+}
+
+type ActiveJoinAttempt = {
+  operationId: string
+  abortController: AbortController
+}
+
+const PUBLISHER_REPAIR_BACKOFF_MS = [1_000, 5_000, 15_000, 30_000] as const
 
 export type VoiceExecutorDeps = {
   getToken: () => string | undefined
@@ -128,6 +149,8 @@ export type VoiceExecutorDeps = {
 
 export type VoiceIntentExecutorOptions = {
   getDeps: () => VoiceExecutorDeps
+  now?: () => number
+  commitTimeoutMs?: number
 }
 
 export interface VoiceIntentExecutor {
@@ -141,7 +164,7 @@ export interface VoiceIntentExecutor {
   requestRejoin(channelId: string): string
   clearIntent(): void
   observeCommit(operationId: string, channelId: string): void
-  observeLeave(operationId: string | null): void
+  observeLeave(operationId: string): void
   observeDisconnected(
     operationId: string,
     expected: boolean,
@@ -166,6 +189,8 @@ export interface VoiceIntentExecutor {
 
 export function createVoiceIntentExecutor({
   getDeps,
+  now = Date.now,
+  commitTimeoutMs = 15_000,
 }: VoiceIntentExecutorOptions): VoiceIntentExecutor {
   const createOperationId =
     getDeps().createOperationId ?? createVoiceOperationId
@@ -184,7 +209,20 @@ export function createVoiceIntentExecutor({
   let localSetupOperationId: string | null = null
   let remoteSupersedeDisconnect: Promise<void> | null = null
   let recoveryJoinInFlight: VoiceJoinInFlight | null = null
+  let publisherRepairState: PublisherRepairState | null = null
+  let activeJoinAttempt: ActiveJoinAttempt | null = null
+  const commitTimers = new Map<string, ReturnType<typeof setTimeout>>()
   const nativeMedia = createVoiceNativeMediaOwner()
+
+  function syncNativeMediaContext() {
+    nativeMedia.setVoiceContext({
+      operationId: state.activeOperationId ?? state.committedOperationId,
+      channelId:
+        session.channelId ??
+        state.committed ??
+        (state.desired.kind === 'channel' ? state.desired.channelId : null),
+    })
+  }
 
   function getSnapshot(): VoiceExecutorSnapshot {
     return {
@@ -206,13 +244,73 @@ export function createVoiceIntentExecutor({
   }
 
   function dispatch(event: Parameters<typeof reduceDirector>[1]) {
+    if (event.type === 'reset') {
+      clearAllCommitTimers()
+    } else if (
+      event.type === 'step_failed' ||
+      event.type === 'disconnected'
+    ) {
+      if (event.operationId) {
+        clearCommitTimer(event.operationId)
+      }
+    }
+    const previousOperationId = state.activeOperationId
     const next = reduceDirector(state, event, createOperationId)
     if (next === state) {
       return
     }
     state = next
+    if (
+      previousOperationId &&
+      previousOperationId !== state.activeOperationId &&
+      (
+        event.type === 'reset' ||
+        event.type === 'force_rejoin' ||
+        event.type === 'gateway_rejected' ||
+        state.operationJournal.some(
+          (record) =>
+            record.operationId === previousOperationId &&
+            (record.lifecycle === 'superseded' ||
+              record.lifecycle === 'failed'),
+        )
+      ) &&
+      activeJoinAttempt?.operationId === previousOperationId
+    ) {
+      activeJoinAttempt.abortController.abort()
+    }
+    if (
+      previousOperationId &&
+      previousOperationId !== state.activeOperationId &&
+      state.committedOperationId !== previousOperationId
+    ) {
+      clearCommitTimer(previousOperationId)
+    }
     notify()
+    syncNativeMediaContext()
     void maybeExecute()
+  }
+
+  function clearCommitTimer(operationId: string) {
+    const timer = commitTimers.get(operationId)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      commitTimers.delete(operationId)
+    }
+  }
+
+  function clearAllCommitTimers() {
+    for (const timer of commitTimers.values()) {
+      clearTimeout(timer)
+    }
+    commitTimers.clear()
+  }
+
+  function operationWasDispatched(operationId: string) {
+    return Boolean(
+      state.operationJournal.find(
+        (record) => record.operationId === operationId,
+      )?.gatewayDispatched,
+    )
   }
 
   function isCurrent(operationId: string) {
@@ -246,6 +344,7 @@ export function createVoiceIntentExecutor({
     }
     session = next
     getDeps().onSessionChanged(session)
+    syncNativeMediaContext()
   }
 
   function setIdleSession() {
@@ -289,9 +388,12 @@ export function createVoiceIntentExecutor({
       return false
     }
 
+    const gatewayDispatched = operationWasDispatched(
+      pending.targetOperationId,
+    )
+
     const targetRoom = session.room
     const { source } = pending
-    pendingMoveSource = null
     setSession(source)
     getDeps().setConnectionPhase(
       source.localVoiceReady ? 'connected' : 'connecting_microphone',
@@ -304,6 +406,20 @@ export function createVoiceIntentExecutor({
       targetRoom.removeAllListeners()
       void targetRoom.disconnect().catch(() => {})
     }
+
+    if (gatewayDispatched) {
+      pendingMoveSource = null
+      dispatch({
+        type: 'restore_source_after_dispatch',
+        channelId,
+        retainedOperationId: source.operationId,
+        expectedCurrentOperationId: pending.targetOperationId,
+        reason: 'switch',
+      })
+      return true
+    }
+
+    pendingMoveSource = null
     dispatch({
       type: 'restore_source',
       channelId,
@@ -333,6 +449,46 @@ export function createVoiceIntentExecutor({
       getDeps().startLocalVoiceSetup(room, channelId)
     }
     finalizeMoveSource(operationId)
+  }
+
+  function armCommitTimeout(operationId: string, channelId: string) {
+    clearCommitTimer(operationId)
+    const timer = setTimeout(() => {
+      commitTimers.delete(operationId)
+      if (!isCurrent(operationId)) return
+
+      const retained =
+        pendingMoveSource?.targetOperationId === operationId
+          ? pendingMoveSource
+          : null
+      const candidateRoom =
+        session.operationId === operationId ? session.room : null
+      if (retained) {
+        pendingMoveSource = null
+        const { source } = retained
+        setSession(source)
+        getDeps().setConnectionPhase(
+          source.localVoiceReady ? 'connected' : 'connecting_microphone',
+        )
+        localSetupOperationId = source.operationId
+        if (!source.localVoiceReady) {
+          getDeps().startLocalVoiceSetup(source.room, source.channelId)
+        }
+        if (candidateRoom && candidateRoom !== source.room) {
+          void disconnectRoom(candidateRoom)
+        }
+      } else if (candidateRoom && state.committedOperationId !== operationId) {
+        void disconnectRoom(candidateRoom)
+        setIdleSession()
+      }
+
+      dispatch({
+        type: 'step_failed',
+        operationId,
+        error: `Voice commit timed out for ${channelId}`,
+      })
+    }, commitTimeoutMs)
+    commitTimers.set(operationId, timer)
   }
 
   async function maybeExecute() {
@@ -396,15 +552,30 @@ export function createVoiceIntentExecutor({
 
     const deps = getDeps()
     const previousSession = session
-    if (
+    const expectedCurrentOperationId = headExpectedCurrentOperationId(
+      state,
+      operationId,
+    )
+    const retainFinalized = headRetainsFinalized(state, operationId)
+    const reuseExistingRoom = Boolean(
+      retainFinalized &&
+      expectedCurrentOperationId &&
+      previousSession.room &&
+      previousSession.channelId === channelId,
+    )
+    if (reuseExistingRoom) {
+      pendingMoveSource = null
+    } else if (
       !pendingMoveSource &&
       previousSession.room &&
       previousSession.channelId &&
+      previousSession.operationId &&
       previousSession.status === 'connected'
     ) {
       pendingMoveSource = {
         source: {
           ...previousSession,
+          operationId: previousSession.operationId,
           room: previousSession.room,
           channelId: previousSession.channelId,
         },
@@ -421,15 +592,37 @@ export function createVoiceIntentExecutor({
     deps.prepareVisualTransition(channelId)
     setSession({
       operationId,
-      room: null,
+      room: reuseExistingRoom ? previousSession.room : null,
       channelId,
-      status: 'connecting',
-      localVoiceReady: false,
+      status: reuseExistingRoom ? previousSession.status : 'connecting',
+      localVoiceReady: reuseExistingRoom
+        ? previousSession.localVoiceReady
+        : false,
     })
+    const abortController = new AbortController()
+    activeJoinAttempt = { operationId, abortController }
     try {
       const result = await deps.performVoiceJoin(channelId, {
         operationId,
         reason,
+        ...(expectedCurrentOperationId
+          ? { expectedCurrentOperationId }
+          : {}),
+        reuseExistingRoom,
+        onGatewayDispatched: () => {
+          dispatch({ type: 'gateway_dispatched', operationId })
+        },
+        onGatewayAccepted: () => {
+          dispatch({ type: 'gateway_accepted', operationId })
+        },
+        onGatewayRejected: (authoritativeOperationId) => {
+          dispatch({
+            type: 'gateway_rejected',
+            operationId,
+            authoritativeOperationId,
+          })
+        },
+        signal: abortController.signal,
       })
       if (!canAcceptJoinResult(operationId, channelId)) {
         return
@@ -453,6 +646,9 @@ export function createVoiceIntentExecutor({
       }
       dispatch({ type: 'step_awaiting_commit', operationId })
       completeCommittedRoom(operationId, channelId)
+      if (isCurrent(operationId)) {
+        armCommitTimeout(operationId, channelId)
+      }
     } catch (error) {
       if (!isCurrent(operationId)) {
         return
@@ -462,6 +658,10 @@ export function createVoiceIntentExecutor({
         operationId,
         error: error instanceof Error ? error.message : 'Voice join failed',
       })
+    } finally {
+      if (activeJoinAttempt?.operationId === operationId) {
+        activeJoinAttempt = null
+      }
     }
   }
 
@@ -560,8 +760,12 @@ export function createVoiceIntentExecutor({
   }
 
   function resetExecutor() {
+    activeJoinAttempt?.abortController.abort()
+    activeJoinAttempt = null
     voiceRejoin.cancel()
     recoveryJoinInFlight = null
+    publisherRepairState = null
+    clearAllCommitTimers()
     startedOperationId = null
     pendingMoveSource = null
     state = createInitialDirectorState()
@@ -617,14 +821,44 @@ export function createVoiceIntentExecutor({
     },
     observeCommit(operationId, channelId) {
       voiceRejoin.cancel()
+      clearCommitTimer(operationId)
       dispatch({ type: 'commit', operationId, channelId })
       completeCommittedRoom(operationId, channelId)
     },
     observeLeave(operationId) {
       voiceRejoin.cancel()
+      if (state.committedOperationId !== operationId) {
+        dispatch({ type: 'leave_observed', operationId })
+        return
+      }
+      const lostCurrentRoom =
+        session.operationId === operationId ? session.room : null
+      const lostRetainedRoom =
+        pendingMoveSource?.source.operationId === operationId
+          ? pendingMoveSource.source.room
+          : null
+      if (lostRetainedRoom) {
+        pendingMoveSource = null
+      }
+      if (lostCurrentRoom) {
+        setSession({
+          operationId,
+          room: null,
+          channelId: session.channelId,
+          status: session.channelId ? 'connecting' : 'idle',
+          localVoiceReady: false,
+        })
+      }
       dispatch({ type: 'leave_observed', operationId })
+      if (lostCurrentRoom) {
+        void disconnectRoom(lostCurrentRoom)
+      }
+      if (lostRetainedRoom && lostRetainedRoom !== lostCurrentRoom) {
+        void disconnectRoom(lostRetainedRoom)
+      }
     },
     observeDisconnected(operationId, expected, error) {
+      clearCommitTimer(operationId)
       dispatch({ type: 'disconnected', operationId, expected, error })
     },
     observeSupersede,
@@ -641,8 +875,62 @@ export function createVoiceIntentExecutor({
       ) {
         return
       }
+      const recovery = getDeps().recovery
+      const repairOwner = {
+        room: session.room,
+        channelId: session.channelId,
+      }
       runVoiceRecovery(trigger, {
-        ...getDeps().recovery,
+        ...recovery,
+        // A committed Room becomes receive-ready before local microphone setup
+        // finishes. Treat its publisher as provisionally healthy until that
+        // setup reports completion, otherwise participant/health events can
+        // race the initial A→B→A reconnect with a second reconnect command.
+        isPublisherHealthy: (room) =>
+          !session.localVoiceReady || recovery.isPublisherHealthy(room),
+        tryStartPublisherRepair: () => {
+          let repairState = publisherRepairState
+          if (
+            repairState?.room !== repairOwner.room ||
+            repairState.channelId !== repairOwner.channelId
+          ) {
+            repairState = {
+              ...repairOwner,
+              inFlight: false,
+              failureCount: 0,
+              retryAt: 0,
+            }
+            publisherRepairState = repairState
+          }
+          if (repairState.inFlight || now() < repairState.retryAt) {
+            return false
+          }
+          repairState.inFlight = true
+          return true
+        },
+        endPublisherRepair: (succeeded) => {
+          const repairState = publisherRepairState
+          if (
+            repairState?.room !== repairOwner.room ||
+            repairState.channelId !== repairOwner.channelId
+          ) {
+            return
+          }
+          repairState.inFlight = false
+          if (succeeded) {
+            repairState.failureCount = 0
+            repairState.retryAt = 0
+            return
+          }
+          repairState.failureCount += 1
+          const delay = PUBLISHER_REPAIR_BACKOFF_MS[
+            Math.min(
+              repairState.failureCount - 1,
+              PUBLISHER_REPAIR_BACKOFF_MS.length - 1,
+            )
+          ]
+          repairState.retryAt = now() + delay
+        },
         getActiveChannelId: () => session.channelId,
         getDesiredChannelId: () =>
           state.desired.kind === 'channel' ? state.desired.channelId : null,
@@ -720,4 +1008,27 @@ export function createVoiceIntentExecutor({
       ])
     },
   }
+}
+
+function headExpectedCurrentOperationId(
+  state: VoiceDirectorState,
+  operationId: string,
+) {
+  const head = state.steps[0]
+  if (head?.kind !== 'join' || head.operationId !== operationId) {
+    return null
+  }
+  return head.expectedCurrentOperationId ?? null
+}
+
+function headRetainsFinalized(
+  state: VoiceDirectorState,
+  operationId: string,
+) {
+  const head = state.steps[0]
+  return Boolean(
+    head?.kind === 'join' &&
+    head.operationId === operationId &&
+    head.retainFinalized,
+  )
 }

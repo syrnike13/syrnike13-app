@@ -15,7 +15,6 @@ describe('nativeMediaEngineStatsStore', () => {
       wgc: 1,
       dxgi: 0,
       gdi_blt: 0,
-      gdi_print: 0,
     })
 
     expect(nativeMediaEngineStatsStore.getState()).not.toBe(first)
@@ -39,7 +38,6 @@ describe('nativeMediaEngineStatsStore', () => {
         wgc: 120,
         dxgi: 0,
         gdi_blt: 0,
-        gdi_print: 0,
       },
       'wgc',
       undefined,

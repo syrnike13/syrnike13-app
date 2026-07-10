@@ -44,6 +44,7 @@ export function isVoiceConnectionReady(options: {
 export type VoiceMicIssue = {
   label: string
   hint: string
+  retryable?: boolean
 }
 
 export function describeMicDeviceError(error: unknown): VoiceMicIssue {
@@ -106,7 +107,10 @@ export function shouldResetMicPreferenceOnIssue(options: {
   micIssue: VoiceMicIssue | null
 }) {
   return Boolean(
-    options.micIssue && options.wantsMic && !options.micPublishing,
+    options.micIssue &&
+      options.micIssue.retryable !== true &&
+      options.wantsMic &&
+      !options.micPublishing,
   )
 }
 

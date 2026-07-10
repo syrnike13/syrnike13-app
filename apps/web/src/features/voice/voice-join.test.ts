@@ -6,12 +6,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createVoiceJoinRunner,
-  nativeCredentialsFromJoinResponse,
+  nativeCredentialLeaseFromJoinResponse,
   type VoiceJoinRunnerDeps,
   voiceJoinErrorMessage,
 } from './voice-join'
 import { syncStore } from '#/features/sync/sync-store'
-import { requestVoiceJoin } from '#/features/voice/voice-gateway'
+import {
+  requestVoiceJoin,
+  type VoiceServerUpdateEvent,
+} from '#/features/voice/voice-gateway'
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
 
 vi.mock('livekit-client', () => ({
   Room: vi.fn(function Room() {
@@ -25,6 +38,8 @@ vi.mock('livekit-client', () => ({
 
 vi.mock('#/features/voice/voice-gateway', () => ({
   requestVoiceJoin: vi.fn(),
+  isVoiceRequestAborted: (error: unknown) =>
+    error instanceof Error && error.name === 'AbortError',
 }))
 
 vi.mock('sonner', () => ({
@@ -107,6 +122,45 @@ describe('voiceJoinErrorMessage', () => {
 })
 
 describe('createVoiceJoinRunner', () => {
+  it('renews a retained room operation without creating another browser Room', async () => {
+    const attachRoomHandlers = vi.fn()
+    const setLiveKitCredentials = vi.fn()
+    const onJoinSuccess = vi.fn()
+    const runner = createRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      beginConnecting: vi.fn(),
+      attachRoomHandlers,
+      setLiveKitCredentials,
+      onJoinSuccess,
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(
+      runner('channel-1', {
+        operationId: 'op-restore-a',
+        expectedCurrentOperationId: 'op-move-b',
+        reuseExistingRoom: true,
+      }),
+    ).resolves.toBe(true)
+
+    expect(requestVoiceJoin).toHaveBeenCalledWith(
+      'channel-1',
+      false,
+      false,
+      {
+        operationId: 'op-restore-a',
+        expectedCurrentOperationId: 'op-move-b',
+        retainFinalized: true,
+      },
+    )
+    expect(setLiveKitCredentials).toHaveBeenCalledTimes(1)
+    expect(attachRoomHandlers).not.toHaveBeenCalled()
+    expect(onJoinSuccess).toHaveBeenCalledTimes(1)
+  })
+
   it('detaches replaced source rooms through VoiceIntentExecutor', () => {
     const repoRoot = resolve(
       fileURLToPath(new URL('../../../../..', import.meta.url)),
@@ -200,6 +254,66 @@ describe('createVoiceJoinRunner', () => {
     )
 
     expect(requestVoiceJoin).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases a superseded join immediately but still observes its late authority', async () => {
+    const response = deferred<VoiceServerUpdateEvent>()
+    vi.mocked(requestVoiceJoin).mockReturnValueOnce(response.promise)
+    const onGatewayAccepted = vi.fn()
+    const setLiveKitCredentials = vi.fn()
+    const attachRoomHandlers = vi.fn()
+    let currentOperationId = 'op-join-b'
+    const runner = createRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      isCurrentJoinOperation: (operationId) =>
+        operationId === currentOperationId,
+      beginConnecting: vi.fn(),
+      attachRoomHandlers,
+      setLiveKitCredentials,
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+    const abortController = new AbortController()
+
+    const join = runner('channel-1', {
+      operationId: 'op-join-b',
+      onGatewayAccepted,
+      signal: abortController.signal,
+    })
+    await Promise.resolve()
+    currentOperationId = 'op-return-a'
+    abortController.abort()
+
+    await expect(join).resolves.toBe(false)
+    response.resolve({
+      type: 'VoiceServerUpdate',
+      operation_id: 'op-join-b',
+      channel_id: 'channel-1',
+      node: 'node-1',
+      token: 'browser-token-b',
+      url: 'wss://livekit.example',
+      native_microphone: {
+        token: 'mic-token-b',
+        identity: 'user-1:desktop-native:op-join-b:microphone',
+      },
+      native_screen: {
+        token: 'screen-token-b',
+        identity: 'user-1:desktop-native:op-join-b:screen',
+      },
+      native_camera: {
+        token: 'camera-token-b',
+        identity: 'user-1:desktop-native:op-join-b:camera',
+      },
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(onGatewayAccepted).toHaveBeenCalledTimes(1)
+    expect(setLiveKitCredentials).not.toHaveBeenCalled()
+    expect(attachRoomHandlers).not.toHaveBeenCalled()
   })
 
   it('allows an immediate retry after a failed manual join when the rate window allows it', async () => {
@@ -447,7 +561,7 @@ describe('createVoiceJoinRunner', () => {
   })
 })
 
-describe('nativeCredentialsFromJoinResponse', () => {
+describe('nativeCredentialLeaseFromJoinResponse', () => {
   it('keeps native microphone, screen, and camera publishers on separate identities', () => {
     const response = {
       type: 'VoiceServerUpdate' as const,
@@ -470,21 +584,25 @@ describe('nativeCredentialsFromJoinResponse', () => {
       },
     }
 
-    expect(nativeCredentialsFromJoinResponse(response)).toEqual({
-      microphone: {
-        url: 'wss://livekit.example',
-        token: 'mic-token',
-        participantIdentity: 'user-1:desktop-native:op-join:microphone',
-      },
-      screen: {
-        url: 'wss://livekit.example',
-        token: 'screen-token',
-        participantIdentity: 'user-1:desktop-native:op-join:screen',
-      },
-      camera: {
-        url: 'wss://livekit.example',
-        token: 'camera-token',
-        participantIdentity: 'user-1:desktop-native:op-join:camera',
+    expect(nativeCredentialLeaseFromJoinResponse(response)).toEqual({
+      operationId: 'op-join',
+      channelId: 'channel-1',
+      credentials: {
+        microphone: {
+          url: 'wss://livekit.example',
+          token: 'mic-token',
+          participantIdentity: 'user-1:desktop-native:op-join:microphone',
+        },
+        screen: {
+          url: 'wss://livekit.example',
+          token: 'screen-token',
+          participantIdentity: 'user-1:desktop-native:op-join:screen',
+        },
+        camera: {
+          url: 'wss://livekit.example',
+          token: 'camera-token',
+          participantIdentity: 'user-1:desktop-native:op-join:camera',
+        },
       },
     })
   })

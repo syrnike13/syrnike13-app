@@ -207,7 +207,7 @@ describe('voice rtc debug', () => {
 
   it('uses native helper dimensions for local native screen share diagnostics', async () => {
     nativeMediaEngineStatsStore.setNative(
-      { wgc: 60, dxgi: 0, gdi_blt: 0, gdi_print: 0 },
+      { wgc: 60, dxgi: 0, gdi_blt: 0 },
       'wgc',
       {
         mode: 'process',

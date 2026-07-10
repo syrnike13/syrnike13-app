@@ -62,6 +62,13 @@ export type DesktopSoundSettings = {
   easterEnabled: boolean
 }
 
+export type DesktopObservabilitySettings = {
+  /** Anonymous counters and timings for the Windows native runtime. */
+  anonymousNativeMetrics: boolean
+  /** Full native crash dumps. They can contain process memory and require opt-in. */
+  nativeCrashReports: boolean
+}
+
 export type { AppearanceSettings, AppearanceSettingsPatch, AppearanceColorMode } from './appearance'
 export {
   DEFAULT_APPEARANCE_SETTINGS,
@@ -78,6 +85,7 @@ export type DesktopLocalSettings = {
   overlay: DesktopOverlaySettings
   appearance: AppearanceSettings
   sounds: DesktopSoundSettings
+  observability: DesktopObservabilitySettings
 }
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
@@ -85,6 +93,8 @@ export type DesktopVoiceListenerSettingsPatch =
   Partial<DesktopVoiceListenerSettings>
 export type DesktopOverlaySettingsPatch = Partial<DesktopOverlaySettings>
 export type DesktopSoundSettingsPatch = Partial<DesktopSoundSettings>
+export type DesktopObservabilitySettingsPatch =
+  Partial<DesktopObservabilitySettings>
 
 export type DesktopLocalSettingsPatch = {
   voice?: DesktopVoiceSettingsPatch
@@ -92,6 +102,7 @@ export type DesktopLocalSettingsPatch = {
   overlay?: DesktopOverlaySettingsPatch
   appearance?: AppearanceSettingsPatch
   sounds?: DesktopSoundSettingsPatch
+  observability?: DesktopObservabilitySettingsPatch
 }
 
 const VOICE_VOLUME_MAX = 3
@@ -134,6 +145,11 @@ export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
   easterEnabled: true,
 }
 
+export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
+  anonymousNativeMetrics: true,
+  nativeCrashReports: false,
+}
+
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   version: 1,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
@@ -141,6 +157,7 @@ export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   appearance: DEFAULT_APPEARANCE_SETTINGS,
   sounds: DEFAULT_DESKTOP_SOUND_SETTINGS,
+  observability: DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
 }
 
 function objectRecord(value: unknown) {
@@ -356,6 +373,23 @@ export function normalizeDesktopSoundSettings(
   }
 }
 
+export function normalizeDesktopObservabilitySettings(
+  value: unknown,
+  defaults: DesktopObservabilitySettings = DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
+): DesktopObservabilitySettings {
+  const settings = objectRecord(value)
+  return {
+    anonymousNativeMetrics: booleanOrDefault(
+      settings.anonymousNativeMetrics,
+      defaults.anonymousNativeMetrics,
+    ),
+    nativeCrashReports: booleanOrDefault(
+      settings.nativeCrashReports,
+      defaults.nativeCrashReports,
+    ),
+  }
+}
+
 function normalizeDesktopOverlayGameSettings(
   value: unknown,
 ): DesktopOverlayGameSettings[] {
@@ -395,6 +429,10 @@ export function normalizeDesktopLocalSettings(
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
     appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
     sounds: normalizeDesktopSoundSettings(settings.sounds, defaults.sounds),
+    observability: normalizeDesktopObservabilitySettings(
+      settings.observability,
+      defaults.observability,
+    ),
   }
 }
 
@@ -552,6 +590,26 @@ export function normalizeDesktopSoundSettingsPatch(
   return Object.keys(next).length > 0 ? next : undefined
 }
 
+export function normalizeDesktopObservabilitySettingsPatch(
+  value: unknown,
+): DesktopObservabilitySettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopObservabilitySettingsPatch = {}
+  if (
+    'anonymousNativeMetrics' in patch &&
+    typeof patch.anonymousNativeMetrics === 'boolean'
+  ) {
+    next.anonymousNativeMetrics = patch.anonymousNativeMetrics
+  }
+  if (
+    'nativeCrashReports' in patch &&
+    typeof patch.nativeCrashReports === 'boolean'
+  ) {
+    next.nativeCrashReports = patch.nativeCrashReports
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 export function normalizeDesktopLocalSettingsPatch(
   value: unknown,
 ): DesktopLocalSettingsPatch {
@@ -564,10 +622,14 @@ export function normalizeDesktopLocalSettingsPatch(
   const overlay = normalizeDesktopOverlaySettingsPatch(patch.overlay)
   const appearance = normalizeAppearanceSettingsPatch(patch.appearance)
   const sounds = normalizeDesktopSoundSettingsPatch(patch.sounds)
+  const observability = normalizeDesktopObservabilitySettingsPatch(
+    patch.observability,
+  )
   if (voice) next.voice = voice
   if (voiceListener) next.voiceListener = voiceListener
   if (overlay) next.overlay = overlay
   if (appearance) next.appearance = appearance
   if (sounds) next.sounds = sounds
+  if (observability) next.observability = observability
   return next
 }

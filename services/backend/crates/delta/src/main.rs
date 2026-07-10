@@ -102,6 +102,8 @@ pub async fn web() -> Rocket<Build> {
     // Configure Rocket
     let rocket = rocket::build();
     let prometheus = PrometheusMetrics::new();
+    routes::telemetry::register_metrics(prometheus.registry())
+        .expect("failed to register desktop native telemetry metrics");
 
     // Ratelimits
     let ratelimits = ratelimiter::RatelimitStorage::new(util::ratelimits::DeltaRatelimits);

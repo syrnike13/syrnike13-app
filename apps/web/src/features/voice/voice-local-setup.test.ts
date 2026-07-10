@@ -323,4 +323,64 @@ describe('voice local setup helpers', () => {
     expect(setLocalVoiceReady).toHaveBeenCalledWith(true)
     expect(setConnectionPhase).toHaveBeenCalledWith('connected')
   })
+
+  it('keeps the receive room connected when native microphone publication fails', async () => {
+    const room = {
+      localParticipant: {
+        trackPublications: new Map(),
+      },
+    } as unknown as Room
+    const micIssue = { label: 'Mic', hint: 'Native publish failed' }
+    const setConnectionPhase = vi.fn()
+    const syncMicFromRoom = vi.fn()
+    const syncVoiceFlagsToGateway = vi.fn()
+    const setLocalVoiceReady = vi.fn()
+
+    await finishLocalVoiceSetup({
+      room,
+      targetChannelId: 'voice-a',
+      isCurrentVoiceSession: () => true,
+      readPreferences: () => ({ micEnabled: true, deafened: false }),
+      getMicEnabledPreference: () => true,
+      selfMonitoringActive: false,
+      setSelfMonitoringRestorePublishing: vi.fn(),
+      shouldUseNativeMicrophone: true,
+      startNativeMicrophone: vi.fn(async () => {
+        throw new Error('track publication timed out')
+      }),
+      voiceMicPublishOptions: () => ({}) as never,
+      activeChannelAudioBitrateKbps: () => 64,
+      describeMicDeviceError: () => micIssue,
+      setConnectionPhase,
+      syncMicFromRoom,
+      setMicEnabled: vi.fn(),
+      setMicPublishing: vi.fn(),
+      setCurrentMicIssue: vi.fn(),
+      setDeafened: vi.fn(),
+      setDeafenedRef: vi.fn(),
+      applyRemoteAudio: vi.fn(),
+      applyVoiceDevices: vi.fn(async () => {}),
+      applyMicProcessing: vi.fn(async () => {}),
+      syncLocalSpeakingTrack: vi.fn(),
+      syncRoomParticipants: vi.fn(),
+      getUserId: () => 'user-1',
+      hasNativeMicrophonePublishing: () => false,
+      patchLocalVoiceDeafen: vi.fn(),
+      syncVoiceFlagsToGateway,
+      setLocalVoiceReady,
+    })
+
+    expect(syncMicFromRoom).toHaveBeenCalledWith(room, {
+      ...micIssue,
+      retryable: true,
+    })
+    expect(syncVoiceFlagsToGateway).toHaveBeenCalledWith(
+      'voice-a',
+      true,
+      false,
+    )
+    expect(setLocalVoiceReady).toHaveBeenCalledWith(true)
+    expect(setConnectionPhase).toHaveBeenCalledTimes(1)
+    expect(setConnectionPhase).toHaveBeenCalledWith('connected')
+  })
 })

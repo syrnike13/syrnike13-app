@@ -40,6 +40,13 @@ jobs:
           echo "nightly_version=${BASE_VERSION}-nightly.${SHA_TAG}" >> "$GITHUB_OUTPUT"
           echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
 
+  native-windows:
+    name: Verify Windows DLL runtime
+    needs: version
+    uses: ./.github/workflows/native-media-windows.yml
+    with:
+      release_channel: nightly
+
   web:
     name: Publish nightly web image
     runs-on: ubuntu-latest
@@ -303,7 +310,9 @@ jobs:
 
   desktop:
     name: Build nightly desktop packages
-    needs: version
+    needs:
+      - version
+      - native-windows
     strategy:
       fail-fast: false
       matrix:
@@ -326,6 +335,8 @@ jobs:
       VITE_PROXY_URL: https://beta.syrnike13.ru/january
       VITE_GIFBOX_URL: https://api.gifbox.me
       VITE_VOICE_NODE: worldwide
+      SYRNIKE_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_NIGHTLY_SENTRY_DSN || vars.DESKTOP_SENTRY_DSN }}
+      SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT: nightly
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -338,7 +349,65 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
-      - run: pnpm --filter @syrnike13/desktop package:nightly
+      - name: Build nightly desktop and native runtime
+        run: pnpm --filter @syrnike13/desktop build
+      - name: Upload nightly Windows debug artifacts
+        if: runner.os == 'Windows'
+        run: pnpm --filter @syrnike13/desktop upload:debug-artifacts
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.DESKTOP_NIGHTLY_SENTRY_PROJECT || vars.DESKTOP_SENTRY_PROJECT }}
+      - name: Package, sign, and verify nightly Windows desktop
+        if: runner.os == 'Windows'
+        run: pnpm --filter @syrnike13/desktop package:prepared
+        env:
+          SYRNIKE_REQUIRE_WINDOWS_SIGNING: '1'
+          SYRNIKE_AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
+          SYRNIKE_AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          SYRNIKE_AZURE_SIGN_CERTIFICATE_PROFILE: ${{ vars.AZURE_SIGN_CERTIFICATE_PROFILE }}
+          SYRNIKE_AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      - name: Verify nightly Windows Authenticode signatures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw 'signtool.exe was not found' }
+          $unpacked = 'apps/desktop/release-nightly/win-unpacked'
+          $native = "$unpacked/resources/native/win32-x64"
+          $files = @(
+            "$native/syrnike_media.node",
+            "$native/syrnike_hooks.node",
+            "$native/livekit.dll",
+            "$native/livekit_ffi.dll"
+          ) + @(
+            Get-ChildItem $unpacked -File -Filter '*.exe' | ForEach-Object FullName
+          ) + @(
+            Get-ChildItem apps/desktop/release-nightly -File -Filter '*.exe' |
+              ForEach-Object FullName
+          )
+          foreach ($file in $files) {
+            & $signtool verify /pa /all $file
+            if ($LASTEXITCODE -ne 0) { throw "Invalid Authenticode signature: $file" }
+          }
+      - name: Package and verify nightly desktop
+        if: runner.os != 'Windows'
+        run: pnpm --filter @syrnike13/desktop package:prepared
+      - name: Retain nightly native symbols
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-nightly-windows-symbols-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            packages/desktop-native/build/**/*.pdb
+            packages/desktop-native/dist/win32-x64/native-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

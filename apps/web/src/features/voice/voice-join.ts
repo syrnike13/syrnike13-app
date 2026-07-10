@@ -7,25 +7,29 @@ import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
 import { createVoiceRoomOptions } from '#/features/voice/voice-capture'
 import { createConnectingLocalVoiceState } from '#/features/voice/voice-connecting-preview'
 import {
+  isVoiceRequestAborted,
   requestVoiceJoin,
   type VoiceServerUpdateEvent,
 } from '#/features/voice/voice-gateway'
 import { readVoicePreferences } from '#/features/voice/voice-preference-store'
-import {
-  runVoiceRequest,
-} from '#/features/voice/voice-request-gate'
 import type { VoiceConnectionPhase } from '#/features/voice/voice-mic-status'
 
 export type VoiceJoinOptions = {
   operationId: string
   rejoin?: boolean
+  expectedCurrentOperationId?: string
+  reuseExistingRoom?: boolean
+  onGatewayDispatched?: () => void
+  onGatewayAccepted?: () => void
+  onGatewayRejected?: (authoritativeOperationId: string | null) => void
+  signal?: AbortSignal
 }
 
 export type VoiceJoinSuccess = {
   room: Room
 }
 
-export type VoiceJoinResult = false | VoiceJoinSuccess
+export type VoiceJoinResult = boolean | VoiceJoinSuccess
 
 export type LiveKitNativeMediaKind = 'microphone' | 'screen' | 'camera'
 export type LiveKitNativePublisherCredentials = {
@@ -38,30 +42,40 @@ export type LiveKitNativeCredentials = Record<
   LiveKitNativePublisherCredentials
 >
 
+export type LiveKitNativeCredentialLease = Readonly<{
+  operationId: string
+  channelId: string
+  credentials: LiveKitNativeCredentials
+}>
+
 export type ActiveVoiceSessionSnapshot = {
   room: Room
   channelId: string
   localVoiceReady: boolean
 }
 
-export function nativeCredentialsFromJoinResponse(
+export function nativeCredentialLeaseFromJoinResponse(
   credentials: VoiceServerUpdateEvent,
-): LiveKitNativeCredentials {
+): LiveKitNativeCredentialLease {
   return {
-    microphone: {
-      url: credentials.url,
-      token: credentials.native_microphone.token,
-      participantIdentity: credentials.native_microphone.identity,
-    },
-    screen: {
-      url: credentials.url,
-      token: credentials.native_screen.token,
-      participantIdentity: credentials.native_screen.identity,
-    },
-    camera: {
-      url: credentials.url,
-      token: credentials.native_camera.token,
-      participantIdentity: credentials.native_camera.identity,
+    operationId: credentials.operation_id,
+    channelId: credentials.channel_id,
+    credentials: {
+      microphone: {
+        url: credentials.url,
+        token: credentials.native_microphone.token,
+        participantIdentity: credentials.native_microphone.identity,
+      },
+      screen: {
+        url: credentials.url,
+        token: credentials.native_screen.token,
+        participantIdentity: credentials.native_screen.identity,
+      },
+      camera: {
+        url: credentials.url,
+        token: credentials.native_camera.token,
+        participantIdentity: credentials.native_camera.identity,
+      },
     },
   }
 }
@@ -76,7 +90,7 @@ export type VoiceJoinRunnerDeps = {
     preview: ReturnType<typeof createConnectingLocalVoiceState>[],
   ) => void
   attachRoomHandlers: (room: Room) => void
-  setLiveKitCredentials: (credentials: LiveKitNativeCredentials) => void
+  setLiveKitCredentials: (lease: LiveKitNativeCredentialLease) => void
   setConnectionPhase: (phase: VoiceConnectionPhase) => void
   onJoinSuccess: () => void
   abortJoin: () => void
@@ -91,6 +105,56 @@ export function voiceJoinErrorMessage(error: unknown) {
     return error.message
   }
   return 'Не удалось подключиться к голосу'
+}
+
+const supersededJoin = Symbol('superseded-voice-join')
+
+function waitWhileCurrent<T>(promise: Promise<T>, signal?: AbortSignal) {
+  if (!signal) return promise as Promise<T | typeof supersededJoin>
+  if (signal.aborted) {
+    return Promise.resolve(supersededJoin)
+  }
+
+  return new Promise<T | typeof supersededJoin>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort)
+      resolve(supersededJoin)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+function observeGatewayAuthority(
+  promise: Promise<VoiceServerUpdateEvent>,
+  options: VoiceJoinOptions,
+) {
+  return promise.then(
+    (credentials) => {
+      options.onGatewayAccepted?.()
+      return credentials
+    },
+    (error: unknown) => {
+      if (
+        error instanceof Error &&
+        'authoritativeOperationId' in error &&
+        (typeof error.authoritativeOperationId === 'string' ||
+          error.authoritativeOperationId === null)
+      ) {
+        options.onGatewayRejected?.(error.authoritativeOperationId)
+      }
+      throw error
+    },
+  )
 }
 
 function voiceCallRecipients(
@@ -157,33 +221,37 @@ export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
       const callRecipients = options.rejoin
         ? undefined
         : voiceCallRecipients(targetChannel, localUserId)
-      const credentials = await runVoiceRequest(
-        `voice_join:${targetChannelId}`,
-        () => {
-          if (callRecipients) {
-            return requestVoiceJoin(
-              targetChannelId,
-              !prefs.micEnabled,
-              prefs.deafened,
-              { operationId, recipients: callRecipients },
-            )
-          }
-
-          return requestVoiceJoin(
+      const gatewayOptions = {
+        operationId,
+        ...(options.expectedCurrentOperationId
+          ? { expectedCurrentOperationId: options.expectedCurrentOperationId }
+          : {}),
+        ...(options.onGatewayDispatched
+          ? { onDispatched: options.onGatewayDispatched }
+          : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.reuseExistingRoom ? { retainFinalized: true } : {}),
+      }
+      const gatewayResponse = callRecipients
+        ? requestVoiceJoin(
+            targetChannelId,
+            !prefs.micEnabled,
+            prefs.deafened,
+            { ...gatewayOptions, recipients: callRecipients },
+          )
+        : requestVoiceJoin(
             targetChannelId,
             !prefs.micEnabled,
             prefs.deafened,
             options.rejoin
-              ? { operationId, suppress_call_notifications: true }
-              : { operationId },
+              ? { ...gatewayOptions, suppress_call_notifications: true }
+              : gatewayOptions,
           )
-        },
-        0,
+      const credentials = await waitWhileCurrent(
+        observeGatewayAuthority(gatewayResponse, options),
+        options.signal,
       )
-      if (!credentials) {
-        if (!options.rejoin) {
-          getDeps().abortJoin()
-        }
+      if (credentials === supersededJoin) {
         return false
       }
       if (getDeps().isCurrentJoinOperation?.(operationId) === false) {
@@ -191,14 +259,28 @@ export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
       }
 
       const { url, token: livekitToken } = credentials
-      room = new Room(createVoiceRoomOptions())
       getDeps().setLiveKitCredentials(
-        nativeCredentialsFromJoinResponse(credentials),
+        nativeCredentialLeaseFromJoinResponse(credentials),
       )
+      if (options.reuseExistingRoom) {
+        getDeps().setConnectionPhase('connecting_microphone')
+        getDeps().onJoinSuccess()
+        return true
+      }
+
+      room = new Room(createVoiceRoomOptions())
       getDeps().attachRoomHandlers(room)
 
       getDeps().setConnectionPhase('connecting_rtc')
-      await room.connect(url, livekitToken)
+      const connected = await waitWhileCurrent(
+        room.connect(url, livekitToken),
+        options.signal,
+      )
+      if (connected === supersededJoin) {
+        room.removeAllListeners()
+        void room.disconnect().catch(() => {})
+        return false
+      }
       if (getDeps().isCurrentJoinOperation?.(operationId) === false) {
         room.removeAllListeners()
         await room.disconnect().catch(() => {})
@@ -209,6 +291,16 @@ export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
       getDeps().onJoinSuccess()
       return { room }
     } catch (error) {
+      if (getDeps().isCurrentJoinOperation?.(operationId) === false) {
+        return false
+      }
+      if (isVoiceRequestAborted(error)) {
+        if (room) {
+          room.removeAllListeners()
+          await room.disconnect().catch(() => {})
+        }
+        return false
+      }
       getDeps().setConnectionPhase('failed')
       // Очистка transient-комнаты обязательна в обоих режимах: даже при
       // rejoin после `new Room()` + attachRoomHandlers могла повиснуть комната

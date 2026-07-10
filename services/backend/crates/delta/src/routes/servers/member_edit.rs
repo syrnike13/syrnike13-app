@@ -8,11 +8,12 @@ use syrnike_database::{
         reference::Reference,
     },
     voice::{
-        cancel_current_pending_voice_join_in_server, create_voice_session, get_channel_node,
-        get_user_voice_channel_in_server, get_voice_state, remove_user_from_voice_channel,
-        set_channel_node, set_user_moved_from_voice, set_user_moved_to_voice,
-        sync_user_voice_permissions, UserVoiceChannel, VoiceClient, VoiceSession,
-        VoiceSessionCreate, VOICE_SESSION_TTL_SECONDS,
+        browser_voice_identity, cancel_current_pending_voice_join_in_server, create_voice_session,
+        get_channel_node, get_current_voice_operation_id, get_user_voice_channel_in_server,
+        get_voice_state, remove_user_from_voice_channel, set_channel_node,
+        set_user_moved_from_voice, set_user_moved_to_voice, sync_user_voice_permissions,
+        UserVoiceChannel, VoiceClient, VoiceSession, VoiceSessionCreate,
+        BROWSER_VOICE_OPERATION_ID_ATTRIBUTE, VOICE_OPERATION_ID_PREFIX, VOICE_SESSION_TTL_SECONDS,
     },
     Database, File, PartialMember, User,
 };
@@ -23,6 +24,7 @@ use syrnike_permissions::{
     calculate_channel_permissions, calculate_server_permissions, ChannelPermission,
 };
 use syrnike_result::{create_error, Result};
+use uuid::Uuid;
 use validator::Validate;
 
 /// # Edit Member
@@ -254,7 +256,11 @@ pub async fn edit(
                 .as_ref()
                 .map(|state| state.self_deaf)
                 .unwrap_or(false);
-            let operation_id = format!("server-move:{}", ulid::Ulid::new());
+            let operation_id = format!("{VOICE_OPERATION_ID_PREFIX}{}", Uuid::new_v4());
+            let previous_operation_id =
+                get_current_voice_operation_id(&old_user_voice_channel, &target_user.id)
+                    .await?
+                    .ok_or_else(|| create_error!(NotConnected))?;
             let mut query = perms(db, &target_user).channel(&new_voice_channel);
             let permissions = calculate_channel_permissions(&mut query).await;
 
@@ -262,13 +268,14 @@ pub async fn edit(
                 .create_room(&new_node, &new_voice_channel)
                 .await?;
             let token = voice_client
-                .create_token_for_identity(
+                .create_token_for_identity_with_attributes(
                     &new_node,
                     db,
                     &target_user,
-                    &target_user.id,
+                    &browser_voice_identity(&target_user.id, &operation_id),
                     permissions,
                     &new_voice_channel,
+                    [(BROWSER_VOICE_OPERATION_ID_ATTRIBUTE, operation_id.clone())],
                 )
                 .await?;
             let created_at = Timestamp::now_utc();
@@ -286,9 +293,15 @@ pub async fn edit(
             }))
             .await?;
 
-            voice_client
-                .remove_user(&old_node, &target_user.id, &channel)
-                .await?;
+            let _ = async_std::future::timeout(
+                std::time::Duration::from_secs(2),
+                voice_client.remove_user(
+                    &old_node,
+                    &browser_voice_identity(&target_user.id, &previous_operation_id),
+                    &channel,
+                ),
+            )
+            .await;
 
             EventV1::UserMoveVoiceChannel {
                 node: new_node,
@@ -325,10 +338,10 @@ pub async fn edit(
     };
 
     if remove.contains(&FieldsMember::VoiceChannel) {
+        cancel_current_pending_voice_join_in_server(&target_user.id, &server.id).await?;
         if let Some(channel) = get_user_voice_channel_in_server(&target_user.id, &server.id).await?
         {
             remove_user_from_voice_channel(
-                voice_client,
                 &UserVoiceChannel {
                     id: channel,
                     server_id: Some(server.id.clone()),
@@ -337,8 +350,6 @@ pub async fn edit(
             )
             .await?;
         };
-        cancel_current_pending_voice_join_in_server(voice_client, &target_user.id, &server.id)
-            .await?;
     }
 
     Ok(Json(member.into()))

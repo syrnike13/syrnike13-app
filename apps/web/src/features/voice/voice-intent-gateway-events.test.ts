@@ -53,7 +53,7 @@ describe('voiceIntentActionFromGatewayEvent', () => {
     ).toBeNull()
   })
 
-  it('maps local voice leave broadcasts to nullable leave observations', () => {
+  it('requires operation-fenced local voice leave broadcasts', () => {
     expect(
       voiceIntentActionFromGatewayEvent(
         {
@@ -63,10 +63,7 @@ describe('voiceIntentActionFromGatewayEvent', () => {
         },
         'user-a',
       ),
-    ).toEqual({
-      type: 'leave_observed',
-      operationId: null,
-    })
+    ).toBeNull()
 
     expect(
       voiceIntentActionFromGatewayEvent(

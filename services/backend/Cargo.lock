@@ -9216,6 +9216,7 @@ dependencies = [
  "ulid 1.2.1",
  "unicode-segmentation",
  "url-escape",
+ "uuid",
  "validator 0.16.1",
 ]
 
@@ -9265,6 +9266,7 @@ dependencies = [
  "syrnike-result",
  "ulid 1.2.1",
  "url",
+ "uuid",
  "validator 0.16.1",
  "vergen",
 ]

@@ -35,7 +35,7 @@ import {
   loadDesktopLocalSettings,
   updateDesktopLocalSettings,
 } from './desktop-local-settings'
-import { registerNativeMediaEngineIpc } from './native-media-engine'
+import { registerNativeMediaRuntimeIpc } from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
 import {
   canSetDesktopOverlaySnapshot,
@@ -64,7 +64,7 @@ export function registerDesktopIpc(
 ) {
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
-  registerNativeMediaEngineIpc(getWindow)
+  registerNativeMediaRuntimeIpc(getWindow)
 
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),
