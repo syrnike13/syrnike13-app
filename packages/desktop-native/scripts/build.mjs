@@ -64,6 +64,7 @@ const desktopRequire = createRequire(
   path.resolve(repoRoot, 'apps', 'desktop', 'package.json'),
 )
 const electronVersion = desktopRequire('electron/package.json').version
+const buildCommitSha = process.env.GITHUB_SHA || gitCommitSha()
 const expectedBuildConfiguration = JSON.stringify(
   {
     arch: ARCH,
@@ -90,6 +91,21 @@ if (buildConfigurationChanged || unownedCmakeCache) {
 
 mkdirSync(buildRoot, { recursive: true })
 
+// CMake caches configure-time values. Refresh the commit definition explicitly
+// so an incremental build after a commit cannot stage addons whose embedded
+// metadata belongs to the previous HEAD.
+if (existsSync(cmakeCacheFile)) {
+  run('pnpm', [
+    'exec',
+    'cmake',
+    '-S',
+    nativeRoot,
+    '-B',
+    buildRoot,
+    `-DSYRNIKE_NATIVE_COMMIT=${buildCommitSha}`,
+  ])
+}
+
 run('pnpm', [
   'exec',
   'cmake-js',
@@ -111,6 +127,7 @@ run('pnpm', [
   '--CDLIVEKIT_LOCAL_SDK_DIR=',
   `--CDNAPI_VERSION=${NAPI_VERSION}`,
   `--CDSYRNIKE_ENABLE_ASAN=${enableAsan ? 'ON' : 'OFF'}`,
+  `--CDSYRNIKE_NATIVE_COMMIT=${buildCommitSha}`,
 ])
 
 writeFileSync(buildConfigurationFile, `${expectedBuildConfiguration}\n`, 'utf8')
@@ -153,7 +170,7 @@ const manifest = {
     readFileSync(path.resolve(repoRoot, 'VERSION'), 'utf8').trim(),
   releaseChannel:
     process.env.SYRNIKE_DESKTOP_CHANNEL === 'nightly' ? 'nightly' : 'stable',
-  commitSha: process.env.GITHUB_SHA || gitCommitSha(),
+  commitSha: buildCommitSha,
   electronVersion,
   napiVersion: NAPI_VERSION,
   liveKitVersion: LIVEKIT_VERSION,
