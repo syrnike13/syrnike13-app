@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Room } from 'livekit-client'
 
 import {
   createVoiceJoinRunner,
@@ -226,6 +227,93 @@ describe('createVoiceJoinRunner', () => {
     )
     expect(setActiveRoom).not.toHaveBeenCalled()
     expect(result.room).toBeTruthy()
+  })
+
+  it('publishes the native microphone before committing the browser room', async () => {
+    const nativePublication = deferred<void>()
+    const runner = createRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      beginConnecting: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      prepareNativeMicrophone: () => nativePublication.promise,
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+
+    const join = runner('channel-1', { operationId: 'op-join' })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(Room).not.toHaveBeenCalled()
+
+    nativePublication.resolve()
+    await expectSuccessfulJoin(join)
+    expect(Room).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels a superseded native-first move before creating its browser room', async () => {
+    const nativePublication = deferred<void>()
+    let currentOperationId = 'op-move-b'
+    const runner = createRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      isCurrentJoinOperation: (operationId) => operationId === currentOperationId,
+      beginConnecting: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      prepareNativeMicrophone: () => nativePublication.promise,
+      onJoinSuccess: vi.fn(),
+      abortJoin: vi.fn(),
+      setConnectionPhase: vi.fn(),
+    })
+    const abortController = new AbortController()
+
+    const move = runner('channel-1', {
+      operationId: 'op-move-b',
+      expectedCurrentOperationId: 'op-source-a',
+      signal: abortController.signal,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    currentOperationId = 'op-return-a'
+    abortController.abort()
+
+    await expect(move).resolves.toBe(false)
+    expect(Room).not.toHaveBeenCalled()
+    nativePublication.resolve()
+  })
+
+  it('keeps the retained source when native candidate publication fails', async () => {
+    const abortJoin = vi.fn()
+    const runner = createRunner({
+      getToken: () => 'session-token',
+      getLocalUserId: () => 'user-1',
+      isJoinBlocked: () => false,
+      beginConnecting: vi.fn(),
+      attachRoomHandlers: vi.fn(),
+      setLiveKitCredentials: vi.fn(),
+      prepareNativeMicrophone: async () => {
+        throw new Error('candidate publish failed')
+      },
+      onJoinSuccess: vi.fn(),
+      abortJoin,
+      setConnectionPhase: vi.fn(),
+    })
+
+    await expect(
+      runner('channel-1', {
+        operationId: 'op-move-b',
+        expectedCurrentOperationId: 'op-source-a',
+      }),
+    ).resolves.toBe(false)
+
+    expect(abortJoin).not.toHaveBeenCalled()
+    expect(Room).not.toHaveBeenCalled()
   })
 
   it('does not suppress an immediate user join retry for the same channel', async () => {

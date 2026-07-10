@@ -82,6 +82,17 @@ WASAPI/DSP pipeline. Для make-before-break move один обработанн
 временно подаётся в отдельные room-owned `AudioSource`; candidate становится
 активным только после подтверждённой публикации и проверки generation.
 
+При move native candidate подключается и получает publish acknowledgement по
+prepared reservation до подключения browser Room. Только browser join может
+финализировать backend operation и сделать predecessor stale. Если native
+candidate не опубликован или superseded, browser Room не создаётся, а
+финализированный predecessor остаётся rollback target.
+
+Retirement worker владеет своим состоянием через shared ownership. Перед
+уничтожением LiveKit Room runtime ждёт terminal disconnect, отсоединяет delegate
+и дожидается выхода уже начавшихся SDK callbacks; asynchronous disconnect не
+может пересечься с освобождением delegate/Room.
+
 `ScreenActor` сохраняет preconnected room до start/cancel и превращает target
 close, fatal capture, audio failure и terminal Room disconnect в явный terminal
 event с unpublish и cleanup. Process-wide priority не меняется; используется

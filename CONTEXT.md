@@ -77,6 +77,13 @@ whose signed token attribute contains the exact current reservation
 `operation_id`. Finalization consumes that exact reservation; a stale webhook
 cannot finalize or clean up a newer operation.
 
+On Windows native microphone handoff, the reservation is used to publish and
+acknowledge the candidate native track **before** the browser participant is
+connected and finalizes the operation. The predecessor therefore remains a
+valid finalized native publisher until its replacement is known-good. A failed
+or superseded candidate never commits its browser Room and the Director retains
+or restores the predecessor.
+
 The browser LiveKit identity is operation-scoped:
 `<user_id>:browser:<operation_id>`. The signed token attribute and identity must
 name the same valid operation. This makes replacement and cleanup address a

@@ -28,6 +28,20 @@ void logDelegate(
 
 class PostedRoomDelegate final : public livekit::RoomDelegate {
  public:
+  class CallbackGuard {
+   public:
+    explicit CallbackGuard(PostedRoomDelegate& owner)
+      : owner_(&owner), active_(owner.beginCallback()) {}
+    ~CallbackGuard() {
+      if (active_) owner_->endCallback();
+    }
+    explicit operator bool() const { return active_; }
+
+   private:
+    PostedRoomDelegate* owner_;
+    bool active_;
+  };
+
   PostedRoomDelegate(
     std::string kind,
     std::string terminal_type,
@@ -50,6 +64,8 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
     livekit::Room&,
     const livekit::ConnectionStateChangedEvent& event
   ) override {
+    CallbackGuard callback(*this);
+    if (!callback) return;
     std::string session_id;
     std::uint64_t generation = 0;
     {
@@ -72,6 +88,8 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   }
 
   void onDisconnected(livekit::Room&, const livekit::DisconnectedEvent& event) override {
+    CallbackGuard callback(*this);
+    if (!callback) return;
     const auto reason = describeLiveKitDisconnectReason(event.reason);
     const auto terminal_message = formatLiveKitDisconnectTerminalMessage(event.reason);
     std::string session_id;
@@ -113,12 +131,42 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
     }) && state_ == livekit::ConnectionState::Connected;
   }
 
+  bool waitDisconnected(std::chrono::milliseconds timeout) {
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, timeout, [&] { return disconnected_; });
+  }
+
   void markIntentionalDisconnect() {
     std::lock_guard lock(mutex_);
     intentional_ = true;
   }
 
+  void beginShutdown() {
+    std::lock_guard lock(callback_mutex_);
+    shutting_down_ = true;
+  }
+
+  void waitForCallbacks() {
+    std::unique_lock lock(callback_mutex_);
+    callbacks_changed_.wait(lock, [&] {
+      return active_callbacks_ == 0;
+    });
+  }
+
  private:
+  bool beginCallback() {
+    std::lock_guard lock(callback_mutex_);
+    if (shutting_down_) return false;
+    ++active_callbacks_;
+    return true;
+  }
+
+  void endCallback() {
+    std::lock_guard lock(callback_mutex_);
+    --active_callbacks_;
+    if (active_callbacks_ == 0) callbacks_changed_.notify_all();
+  }
+
   void postTerminal(
     std::string session_id,
     std::uint64_t generation,
@@ -151,6 +199,10 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   livekit::ConnectionState state_ = livekit::ConnectionState::Disconnected;
   bool disconnected_ = false;
   bool intentional_ = false;
+  std::mutex callback_mutex_;
+  std::condition_variable callbacks_changed_;
+  std::size_t active_callbacks_ = 0;
+  bool shutting_down_ = false;
   std::atomic_bool terminal_posted_{false};
   LiveKitPublicationClient::InternalPost post_;
 };
@@ -171,6 +223,21 @@ class RealLiveKitRoomSession final : public LiveKitRoomSession {
         std::move(post)
       )) {
     room_.setDelegate(delegate_.get());
+  }
+
+  ~RealLiveKitRoomSession() override {
+    // LiveKit disconnect is asynchronous. Destroying Room immediately after
+    // requesting it races its signalling/subscription callbacks during rapid
+    // make-before-break moves. Keep the delegate alive until the terminal
+    // callback is observed, then detach it before Room teardown.
+    delegate_->markIntentionalDisconnect();
+    try {
+      close();
+    } catch (...) {
+    }
+    delegate_->beginShutdown();
+    room_.setDelegate(nullptr);
+    delegate_->waitForCallbacks();
   }
 
   void updateIdentity(std::string session_id, std::uint64_t generation) override {
@@ -226,12 +293,20 @@ class RealLiveKitRoomSession final : public LiveKitRoomSession {
   }
 
   void disconnect() override {
-    room_.disconnect();
+    close();
   }
 
  private:
+  void close() {
+    if (!disconnect_requested_.exchange(true)) {
+      room_.disconnect();
+    }
+    delegate_->waitDisconnected(std::chrono::seconds(2));
+  }
+
   std::unique_ptr<PostedRoomDelegate> delegate_;
   livekit::Room room_;
+  std::atomic_bool disconnect_requested_{false};
 };
 
 class RealLiveKitPublicationClient final : public LiveKitPublicationClient {

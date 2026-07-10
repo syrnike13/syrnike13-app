@@ -610,20 +610,20 @@ class MicrophonePublicationController::Implementation {
   bool tryStartRetiring(std::unique_ptr<PublishedRoom> room) {
     if (!room) return true;
     if (retiring_) return false;
-    retiring_ = std::make_unique<RetiringState>();
+    retiring_ = std::make_shared<RetiringState>();
     retiring_->session_id = room->session_id;
     retiring_->generation = room->generation;
     retiring_->room = std::shared_ptr<PublishedRoom>(std::move(room));
-    auto *state = retiring_.get();
+    const auto state = retiring_;
     try {
       state->worker = std::thread([this, state] {
         disconnectRoomBlocking(*state->room);
-        state->finished.store(true, std::memory_order_release);
         MediaCommand internal;
         internal.type = "__microphoneRetireDone";
         internal.session_id = state->session_id;
         internal.generation = state->generation;
         post_(std::move(internal));
+        state->finished.store(true, std::memory_order_release);
       });
     } catch (...) {
       logPublication("retiring_worker_launch_failed",
@@ -790,7 +790,7 @@ class MicrophonePublicationController::Implementation {
   ApplyMute apply_mute_;
   std::unique_ptr<PublishedRoom> committed_;
   std::shared_ptr<AttemptState> candidate_;
-  std::unique_ptr<RetiringState> retiring_;
+  std::shared_ptr<RetiringState> retiring_;
   bool committed_pending_retire_ = false;
   std::optional<LiveKitConnectPolicy::Clock::time_point>
       committed_pending_since_;

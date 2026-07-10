@@ -658,7 +658,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const startNativeMicrophone = useCallback(
-    async (_room: Room, muted = false) => {
+    async (_room: Room | null, muted = false) => {
       const revision = await nativeMedia.syncMicrophone({
         enabled: true,
         muted,
@@ -889,6 +889,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setLiveKitCredentials: (credentials) => {
         nativeMedia.setLiveKitCredentials(credentials)
       },
+      prepareNativeMicrophone: shouldUseNativeMicrophone()
+        ? async () => {
+            const prefs = effectiveVoiceJoinPreferences(readVoicePreferences())
+            const suppressedBySelfMonitoring =
+              selfMonitoringRef.current.active && prefs.micEnabled
+            const started = await startNativeMicrophone(
+              null,
+              !prefs.micEnabled || suppressedBySelfMonitoring || prefs.deafened,
+            )
+            if (!started) {
+              throw new Error('Native microphone intent was superseded')
+            }
+          }
+        : undefined,
       setConnectionPhase,
       onJoinSuccess: () => {},
       abortJoin: abortJoinAttempt,

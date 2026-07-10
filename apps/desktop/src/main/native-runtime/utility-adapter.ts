@@ -157,7 +157,9 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       callbacks.onExit(exit)
     }
     child.on('message', (message) => {
-      this.diagnosticLog?.log('transport_message', message)
+      if (!isMicrophoneMetricsTransportMessage(message)) {
+        this.diagnosticLog?.log('transport_message', message)
+      }
       callbacks.onMessage(message)
     })
     child.on('error', (error) => {
@@ -196,6 +198,19 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
     this.diagnosticLog = null
     this.ownsDiagnosticLog = false
   }
+}
+
+function isMicrophoneMetricsTransportMessage(message: unknown) {
+  if (!message || typeof message !== 'object') return false
+  const envelope = message as { type?: unknown; event?: unknown }
+  if (
+    envelope.type !== 'event' ||
+    !envelope.event ||
+    typeof envelope.event !== 'object'
+  ) {
+    return false
+  }
+  return (envelope.event as { type?: unknown }).type === 'microphoneMetrics'
 }
 
 function nativeUtilityEnvironment(

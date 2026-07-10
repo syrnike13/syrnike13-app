@@ -91,6 +91,7 @@ export type VoiceJoinRunnerDeps = {
   ) => void
   attachRoomHandlers: (room: Room) => void
   setLiveKitCredentials: (lease: LiveKitNativeCredentialLease) => void
+  prepareNativeMicrophone?: () => Promise<void>
   setConnectionPhase: (phase: VoiceConnectionPhase) => void
   onJoinSuccess: () => void
   abortJoin: () => void
@@ -262,6 +263,20 @@ export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
       getDeps().setLiveKitCredentials(
         nativeCredentialLeaseFromJoinResponse(credentials),
       )
+      const prepareNativeMicrophone = getDeps().prepareNativeMicrophone
+      if (prepareNativeMicrophone) {
+        getDeps().setConnectionPhase('connecting_microphone')
+        const nativePrepared = await waitWhileCurrent(
+          prepareNativeMicrophone(),
+          options.signal,
+        )
+        if (nativePrepared === supersededJoin) {
+          return false
+        }
+        if (getDeps().isCurrentJoinOperation?.(operationId) === false) {
+          return false
+        }
+      }
       if (options.reuseExistingRoom) {
         getDeps().setConnectionPhase('connecting_microphone')
         getDeps().onJoinSuccess()
@@ -311,7 +326,12 @@ export function createVoiceJoinRunner({ getDeps }: VoiceJoinRunnerOptions) {
         await room.disconnect().catch(() => {})
       }
       if (!options.rejoin) {
-        getDeps().abortJoin()
+        // A replacement operation still owns a working source session. Its
+        // executor restores that source on failure; clearing all voice/native
+        // state here would destroy the rollback target.
+        if (!options.expectedCurrentOperationId) {
+          getDeps().abortJoin()
+        }
         toast.error(voiceJoinErrorMessage(error))
       }
       return false

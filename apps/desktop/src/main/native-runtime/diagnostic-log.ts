@@ -128,7 +128,7 @@ const MAX_OBJECT_KEYS = 64
 const DIAGNOSTIC_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000
 
 const SENSITIVE_KEY =
-  /token|authorization|url|identity|participant|user(?:id)?|device|source(?:id)?|window|hwnd|room(?:id|name|url)?|process(?:id|path)|path/i
+  /token|authorization|url|identity|participant|user(?:id)?|device|label|source(?:id)?|window|hwnd|room(?:id|name|url)?|process(?:id|path)|path/i
 
 export function createNativeDiagnosticSession({
   runtime,

@@ -52,6 +52,7 @@ describe('native diagnostic log', () => {
             participantIdentity: 'user:123',
           },
           preferredDevice: 'usb-mic',
+          devices: [{ label: 'Private microphone name', id: 'default' }],
         },
       },
       processPath: 'C:\\secret\\runtime.exe',

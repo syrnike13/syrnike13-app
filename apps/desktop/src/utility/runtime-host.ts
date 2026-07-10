@@ -260,7 +260,9 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
       failContractCorruption()
       return
     }
-    diagnosticLog?.log('native_event', rawEvent)
+    if (rawEvent.type !== 'microphoneMetrics') {
+      diagnosticLog?.log('native_event', rawEvent)
+    }
     parentPort.postMessage({ type: 'event', event: rawEvent })
   }
 
