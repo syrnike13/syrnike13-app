@@ -104,11 +104,12 @@ import {
   type NativeScreenShareSession,
 } from '#/features/voice/native-screen-share-publish'
 import {
-  configureNativeMicrophoneSession,
+  nativeMicrophonePipelineConfig,
   publishNativeMicrophone,
   shouldRestartNativeMicrophonePublisher,
   shouldUseNativeMicrophone,
 } from '#/features/voice/native-microphone-publish'
+import { configureNativeMicrophonePipeline } from '#/features/voice/native-microphone-pipeline-config'
 import { NativeScreenShareCoordinator } from '#/features/voice/native-screen-share-coordinator'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 import {
@@ -1298,8 +1299,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (!desktop) return
 
     return desktop.media.onMicrophoneMetrics((metrics) => {
-      const active = nativeMedia.getMicrophoneSession()
-      if (!active || metrics.sessionId !== active.sessionId) return
+      if (!nativeMedia.getMicrophoneSession()) return
       setSelfSpeaking(
         metrics.open &&
           !nativeMedia.isMicrophoneMuted() &&
@@ -1335,18 +1335,24 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const previous = lastVoicePreferencesRef.current
       const next = readVoicePreferences()
       lastVoicePreferencesRef.current = next
+      const effects = voicePreferenceEffectFlags(previous, next)
+      if (
+        shouldUseNativeMicrophone() &&
+        (effects.devicesChanged || effects.micProcessingChanged)
+      ) {
+        configureNativeMicrophonePipeline(
+          nativeMicrophonePipelineConfig(
+            next,
+            next.preferredAudioInputDevice,
+          ),
+        )
+      }
       if (status !== 'connected') return
       const room = roomRef.current
       if (!room) return
-      const effects = voicePreferenceEffectFlags(previous, next)
       if (effects.devicesChanged) {
         void applyVoiceDevices(room).then(() => {
-          if (shouldUseNativeMicrophone()) {
-            configureNativeMicrophoneSession(
-              nativeMedia.getMicrophoneSession(),
-              next,
-            )
-          } else {
+          if (!shouldUseNativeMicrophone()) {
             void refreshMicProcessing(room).then(() => {
               syncLocalSpeakingTrack(room)
             })
@@ -1355,17 +1361,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       } else if (effects.remoteAudioChanged) {
         applyRemoteAudio(deafenedRef.current)
       }
-      if (effects.micProcessingChanged) {
-        if (shouldUseNativeMicrophone()) {
-          configureNativeMicrophoneSession(
-            nativeMedia.getMicrophoneSession(),
-            next,
-          )
-        } else {
-          void refreshMicProcessing(room).then(() => {
-            syncLocalSpeakingTrack(room)
-          })
-        }
+      if (effects.micProcessingChanged && !shouldUseNativeMicrophone()) {
+        void refreshMicProcessing(room).then(() => {
+          syncLocalSpeakingTrack(room)
+        })
       }
     })
   }, [
@@ -1375,6 +1374,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     status,
     syncLocalSpeakingTrack,
   ])
+
+  useEffect(() => {
+    if (!shouldUseNativeMicrophone()) return
+    const preferences = readVoicePreferences()
+    configureNativeMicrophonePipeline(
+      nativeMicrophonePipelineConfig(
+        preferences,
+        preferences.preferredAudioInputDevice,
+      ),
+    )
+  }, [])
 
   useEffect(() => {
     return () => {

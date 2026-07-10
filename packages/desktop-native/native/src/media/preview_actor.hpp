@@ -15,12 +15,7 @@ class PreviewActor final {
   ~PreviewActor();
 
   RuntimeEvent start(const MediaCommand& command);
-  void pushFrame(
-    std::span<const std::int16_t> pcm,
-    double input_db,
-    double threshold_db,
-    bool gate_open
-  );
+  void pushFrame(std::span<const std::int16_t> pcm);
   bool failFromCapture(
     const std::string& session_id,
     std::uint64_t generation,

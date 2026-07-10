@@ -74,6 +74,10 @@ RuntimeEvent lifecycle(
   return event;
 }
 
+std::string warmKey(const MediaCommand& command) {
+  return command.session_id.empty() ? "__pipeline__" : command.session_id;
+}
+
 }  // namespace
 
 class MediaRuntime::Implementation {
@@ -133,13 +137,18 @@ class MediaRuntime::Implementation {
     const auto command_session_id = command.session_id;
     const auto command_generation = command.generation;
     std::pair<std::string, std::uint64_t> previous_desired_microphone;
+    std::pair<std::string, std::uint64_t> previous_warm_microphone;
     std::pair<std::string, std::uint64_t> previous_desired_screen;
     if (
-      type == "warmMicrophone" || type == "connectMicrophone" ||
+      type == "connectMicrophone" ||
       type == "disconnectMicrophone"
     ) {
       previous_desired_microphone = desired_microphone_.current();
       desired_microphone_.advance(command.session_id, command.generation);
+    }
+    if (type == "warmMicrophone") {
+      previous_warm_microphone = desired_microphone_warm_.current();
+      desired_microphone_warm_.advance(warmKey(command), command.generation);
     }
     if (
       type == "connectScreen" || type == "startScreenCapture" ||
@@ -164,7 +173,7 @@ class MediaRuntime::Implementation {
     if (!accepted) {
       pending_commands_.fetch_sub(1, std::memory_order_relaxed);
       if (
-        type == "warmMicrophone" || type == "connectMicrophone" ||
+        type == "connectMicrophone" ||
         type == "disconnectMicrophone"
       ) {
         desired_microphone_.restoreIfCurrent(
@@ -172,6 +181,14 @@ class MediaRuntime::Implementation {
           command_generation,
           previous_desired_microphone.first,
           previous_desired_microphone.second
+        );
+      }
+      if (type == "warmMicrophone") {
+        desired_microphone_warm_.restoreIfCurrent(
+          warmKey(command),
+          command_generation,
+          previous_warm_microphone.first,
+          previous_warm_microphone.second
         );
       }
       if (
@@ -192,6 +209,7 @@ class MediaRuntime::Implementation {
   void requestShutdown() {
     shutting_down_.store(true);
     desired_microphone_.advance("__shutdown__", UINT64_MAX);
+    desired_microphone_warm_.advance("__shutdown__", UINT64_MAX);
     desired_screen_.advance("__shutdown__", UINT64_MAX);
     control_commands_.close();
   }
@@ -227,21 +245,16 @@ class MediaRuntime::Implementation {
           preview_generation_,
           command.internal_message
         );
-        microphone_.restoreMetricIdentityIfCurrent(
-          preview_session_id_,
-          preview_generation_,
-          preview_previous_metric_session_id_,
-          preview_previous_metric_generation_
-        );
         preview_session_id_.clear();
         preview_generation_ = 0;
-        preview_previous_metric_session_id_.clear();
-        preview_previous_metric_generation_ = 0;
       }
       microphone_.handleTerminal(command);
       return;
     }
     if (command.type == "warmMicrophone") {
+      if (!desired_microphone_warm_.isCurrent(warmKey(command), command.generation)) {
+        throw std::runtime_error("stale microphone warm generation");
+      }
       microphone_.warm(command);
       emitter_.emit(reply(command));
       return;
@@ -258,8 +271,7 @@ class MediaRuntime::Implementation {
       return;
     }
     if (command.type == "configureMicrophone") {
-      microphone_.configure(command);
-      emitter_.emit(reply(command));
+      emitter_.emit(microphone_.configure(command));
       return;
     }
     if (command.type == "setMicrophoneMuted") {
@@ -279,44 +291,17 @@ class MediaRuntime::Implementation {
         previous_preview.session_id = preview_session_id_;
         previous_preview.generation = preview_generation_;
         preview_.stop(previous_preview, false);
-        microphone_.restoreMetricIdentityIfCurrent(
-          preview_session_id_,
-          preview_generation_,
-          preview_previous_metric_session_id_,
-          preview_previous_metric_generation_
-        );
         preview_session_id_.clear();
+        preview_generation_ = 0;
       }
-      const auto previous_identity = microphone_.currentMetricIdentity();
       microphone_.warm(command);
       RuntimeEvent result;
-      try {
-        result = preview_.start(command);
-      } catch (...) {
-        microphone_.restoreMetricIdentityIfCurrent(
-          command.session_id,
-          command.generation,
-          previous_identity.first,
-          previous_identity.second
-        );
-        throw;
-      }
+      result = preview_.start(command);
       preview_session_id_ = command.session_id;
       preview_generation_ = command.generation;
-      preview_previous_metric_session_id_ = previous_identity.first;
-      preview_previous_metric_generation_ = previous_identity.second;
-      microphone_.setPreviewConsumer(
-        command.session_id,
-        command.generation,
-        [this](
-          std::span<const std::int16_t> pcm,
-          double input_db,
-          double threshold_db,
-          bool gate_open
-        ) {
-          preview_.pushFrame(pcm, input_db, threshold_db, gate_open);
-        }
-      );
+      microphone_.setPreviewConsumer(command.session_id, command.generation, [this](auto pcm) {
+        preview_.pushFrame(pcm);
+      });
       emitter_.emit(result);
       RuntimeEvent started = result;
       started.type = "microphonePreviewStarted";
@@ -335,16 +320,8 @@ class MediaRuntime::Implementation {
         active.session_id = preview_session_id_;
         active.generation = preview_generation_;
         preview_.stop(active);
-        microphone_.restoreMetricIdentityIfCurrent(
-          preview_session_id_,
-          preview_generation_,
-          preview_previous_metric_session_id_,
-          preview_previous_metric_generation_
-        );
         preview_session_id_.clear();
         preview_generation_ = 0;
-        preview_previous_metric_session_id_.clear();
-        preview_previous_metric_generation_ = 0;
       }
       emitter_.emit(reply(command));
       return;
@@ -473,6 +450,7 @@ class MediaRuntime::Implementation {
 
   void closeWorkerQueues() {
     desired_microphone_.advance("__shutdown__", UINT64_MAX);
+    desired_microphone_warm_.advance("__shutdown__", UINT64_MAX);
     desired_screen_.advance("__shutdown__", UINT64_MAX);
     microphone_commands_.closeAndDiscard();
     screen_commands_.closeAndDiscard();
@@ -555,6 +533,7 @@ class MediaRuntime::Implementation {
 
   SequencedEmitter emitter_;
   GenerationFence desired_microphone_;
+  GenerationFence desired_microphone_warm_;
   MicrophoneActor microphone_;
   GenerationFence desired_screen_;
   ScreenActor screen_;
@@ -567,8 +546,6 @@ class MediaRuntime::Implementation {
   std::atomic_uint32_t pending_commands_{0};
   std::string preview_session_id_;
   std::uint64_t preview_generation_ = 0;
-  std::string preview_previous_metric_session_id_;
-  std::uint64_t preview_previous_metric_generation_ = 0;
   std::mutex shutdown_mutex_;
   std::mutex startup_mutex_;
   std::condition_variable startup_changed_;

@@ -47,8 +47,8 @@ export const IPC = {
     'syrnike-desktop:media:disconnect-prepared-screen-session',
   mediaStartSession: 'syrnike-desktop:media:start-session',
   mediaCancelPendingStarts: 'syrnike-desktop:media:cancel-pending-starts',
-  mediaConfigureMicrophoneRuntime:
-    'syrnike-desktop:media:configure-microphone-runtime',
+  mediaConfigureMicrophonePipeline:
+    'syrnike-desktop:media:configure-microphone-pipeline',
   mediaSetMicrophoneMuted: 'syrnike-desktop:media:set-microphone-muted',
   mediaReconnectMicrophoneSession:
     'syrnike-desktop:media:reconnect-microphone-session',
@@ -56,6 +56,8 @@ export const IPC = {
   mediaGetState: 'syrnike-desktop:media:get-state',
   mediaStats: 'syrnike-desktop:media:stats',
   mediaMicrophoneMetrics: 'syrnike-desktop:media:microphone-metrics',
+  mediaMicrophonePreviewState:
+    'syrnike-desktop:media:microphone-preview-state',
   mediaStateChanged: 'syrnike-desktop:media:state-changed',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
   mediaStreamEnded: 'syrnike-desktop:media:stream-ended',

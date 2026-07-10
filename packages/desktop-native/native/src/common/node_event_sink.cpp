@@ -203,6 +203,11 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
         result.Set("result", sourcesToArray(env, event.sources));
       } else if (event.kind == "microphone" || event.kind == "screen") {
         result.Set("result", sessionToObject(env, event));
+      } else if (event.kind == "microphoneConfig") {
+        auto config = Napi::Object::New(env);
+        if (event.revision) config.Set("revision", jsNumber(env, *event.revision));
+        setIfPresent(config, "deviceId", event.device_id);
+        result.Set("result", config);
       } else if (event.kind == "preview") {
         auto preview = Napi::Object::New(env);
         preview.Set("sessionId", event.session_id);
@@ -227,7 +232,6 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
     result.Set("stats", statsToObject(env, event));
   } else if (event.type == "microphoneMetrics") {
     auto metrics = Napi::Object::New(env);
-    metrics.Set("sessionId", event.session_id);
     metrics.Set("inputDb", event.input_db);
     metrics.Set("thresholdDb", event.threshold_db);
     metrics.Set("open", event.gate_open);

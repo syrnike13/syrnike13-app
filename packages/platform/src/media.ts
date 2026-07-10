@@ -74,43 +74,20 @@ export type NativeMediaScreenSessionPrepareOptions = {
 export type NativeMediaMicrophoneSessionStartOptions = {
   kind: 'microphone'
   requestId: string
-  deviceId?: string
-  sampleRate: 48_000
-  channels: 1
-  noiseSuppression: boolean
-  echoCancellation: boolean
-  inputVolume: number
   audioBitrate?: number
-  voiceGateEnabled?: boolean
-  voiceGateThresholdDb?: number
-  voiceGateAutoThreshold?: boolean
   muted?: boolean
   livekit: NativeMediaLiveKitCredentials
 }
 
-export type NativeMicrophoneRuntimeConfig = {
-  inputVolume?: number
-  voiceGateEnabled?: boolean
-  voiceGateThresholdDb?: number
-  voiceGateAutoThreshold?: boolean
-  noiseSuppression?: boolean
-  echoCancellation?: boolean
-}
-
-export type NativeMicrophonePreviewStartOptions = {
-  deviceId?: string
-  sampleRate: 48_000
-  channels: 1
+export type NativeMicrophonePipelineConfig = {
+  /** Explicit capture device, or null to follow the Windows default device. */
+  deviceId: string | null
   noiseSuppression: boolean
   echoCancellation: boolean
   inputVolume: number
-  voiceGateEnabled?: boolean
-  voiceGateThresholdDb?: number
-  voiceGateAutoThreshold?: boolean
-}
-
-export type NativeMicrophonePreviewSession = {
-  sessionId: string
+  voiceGateEnabled: boolean
+  voiceGateThresholdDb: number
+  voiceGateAutoThreshold: boolean
 }
 
 export type NativeMediaSessionStartOptions =
@@ -251,11 +228,15 @@ export type NativeMediaStatsEvent = {
 }
 
 export type NativeMicrophoneMetricsEvent = {
-  sessionId: string
   inputDb: number
   thresholdDb: number
   open: boolean
 }
+
+export type NativeMicrophonePreviewStateEvent =
+  | { status: 'running' }
+  | { status: 'stopped' }
+  | { status: 'error'; message: string }
 
 export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   sessionId?: string

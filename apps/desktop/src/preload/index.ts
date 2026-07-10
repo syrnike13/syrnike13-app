@@ -18,8 +18,6 @@ import type {
   HotkeyAction,
   HotkeyBinding,
   NativeMediaDeviceInfo,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
   NativeMediaSession,
   NativeMediaRuntimeLostEvent,
   NativeMediaScreenSessionPrepareOptions,
@@ -28,8 +26,9 @@ import type {
   NativeMediaState,
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
+  NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
-  NativeMicrophoneRuntimeConfig,
+  NativeMicrophonePreviewStateEvent,
   NativeInputEvent,
   SyrnikeDesktopApi,
 } from '@syrnike13/platform'
@@ -239,14 +238,11 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         kind,
       ) as Promise<NativeMediaDeviceInfo[]>
     },
-    startMicrophonePreview(options: NativeMicrophonePreviewStartOptions) {
-      return ipcRenderer.invoke(
-        IPC.mediaStartMicrophonePreview,
-        options,
-      ) as Promise<NativeMicrophonePreviewSession>
+    startMicrophonePreview() {
+      return ipcRenderer.invoke(IPC.mediaStartMicrophonePreview) as Promise<void>
     },
-    stopMicrophonePreview(sessionId?: string) {
-      return ipcRenderer.invoke(IPC.mediaStopMicrophonePreview, sessionId)
+    stopMicrophonePreview() {
+      return ipcRenderer.invoke(IPC.mediaStopMicrophonePreview)
     },
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void) {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
@@ -280,13 +276,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     cancelPendingStarts(kind?: NativeMediaSessionStartOptions['kind']) {
       return ipcRenderer.invoke(IPC.mediaCancelPendingStarts, kind)
     },
-    configureMicrophoneRuntime(
-      sessionId: string,
-      config: NativeMicrophoneRuntimeConfig,
-    ) {
+    configureMicrophonePipeline(config: NativeMicrophonePipelineConfig) {
       return ipcRenderer.invoke(
-        IPC.mediaConfigureMicrophoneRuntime,
-        sessionId,
+        IPC.mediaConfigureMicrophonePipeline,
         config,
       )
     },
@@ -329,6 +321,17 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.mediaMicrophoneMetrics, listener)
       return () => {
         ipcRenderer.removeListener(IPC.mediaMicrophoneMetrics, listener)
+      }
+    },
+    onMicrophonePreviewState(
+      handler: (event: NativeMicrophonePreviewStateEvent) => void,
+    ) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isNativeMicrophonePreviewStateEvent(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.mediaMicrophonePreviewState, listener)
+      return () => {
+        ipcRenderer.removeListener(IPC.mediaMicrophonePreviewState, listener)
       }
     },
     onStateChange(handler: (event: NativeMediaStateEvent) => void) {
@@ -510,11 +513,21 @@ function isNativeMicrophoneMetricsEvent(
   if (!value || typeof value !== 'object') return false
   const event = value as NativeMicrophoneMetricsEvent
   return (
-    typeof event.sessionId === 'string' &&
     typeof event.inputDb === 'number' &&
     typeof event.thresholdDb === 'number' &&
     typeof event.open === 'boolean'
   )
+}
+
+function isNativeMicrophonePreviewStateEvent(
+  value: unknown,
+): value is NativeMicrophonePreviewStateEvent {
+  if (!value || typeof value !== 'object') return false
+  const event = value as { status?: unknown; message?: unknown }
+  if (event.status === 'running' || event.status === 'stopped') {
+    return event.message === undefined
+  }
+  return event.status === 'error' && typeof event.message === 'string'
 }
 
 function isNativeMediaStateEvent(value: unknown): value is NativeMediaStateEvent {

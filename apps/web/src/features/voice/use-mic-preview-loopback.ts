@@ -64,6 +64,7 @@ export function useMicPreviewLoopback(
     }
 
     let cancelled = false
+    let runtimeEnded = false
 
     void (async () => {
       try {
@@ -81,8 +82,21 @@ export function useMicPreviewLoopback(
                 gateMetricsRef.current = metrics
               }
             : undefined,
+          onEnded: () => {
+            runtimeEnded = true
+            if (!cancelled) {
+              sessionRef.current = null
+              processingPrefsRef.current = null
+              setLevels(
+                Array.from(
+                  { length: MIC_PREVIEW_METER_BAR_COUNT },
+                  () => 0,
+                ),
+              )
+            }
+          },
         })
-        if (cancelled) {
+        if (cancelled || runtimeEnded) {
           session.stop()
           return
         }

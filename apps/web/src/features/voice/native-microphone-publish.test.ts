@@ -6,9 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { readVoicePreferences } from '#/features/voice/voice-preference-store'
 import { getSyrnikeDesktop } from '#/platform/runtime'
+import { configureNativeMicrophonePipeline } from './native-microphone-pipeline-config'
 
 import {
-  configureNativeMicrophoneSession,
+  startNativeMicrophonePublisher,
+  nativeMicrophonePipelineConfig,
   nativeMicrophoneSessionOptions,
   publishNativeMicrophone,
   shouldUseNativeMicrophone,
@@ -83,27 +85,20 @@ describe('native microphone publish', () => {
 
   it('builds native microphone session options from voice preferences', () => {
     expect(
-      nativeMicrophoneSessionOptions({
-        ...preferences(),
-        voiceGateAutoThreshold: true,
-      }, {
-        url: 'wss://livekit.example',
-        token: 'livekit-token',
-        participantIdentity: 'user-1:desktop-native',
-      }, 'mic-request-1', undefined, false, 48),
+      nativeMicrophoneSessionOptions(
+        {
+          url: 'wss://livekit.example',
+          token: 'livekit-token',
+          participantIdentity: 'user-1:desktop-native',
+        },
+        'mic-request-1',
+        false,
+        48,
+      ),
     ).toEqual({
       kind: 'microphone',
       requestId: 'mic-request-1',
-      deviceId: 'mic-1',
-      sampleRate: 48_000,
-      channels: 1,
       audioBitrate: 48_000,
-      noiseSuppression: true,
-      echoCancellation: true,
-      inputVolume: 0.75,
-      voiceGateEnabled: true,
-      voiceGateThresholdDb: -45,
-      voiceGateAutoThreshold: true,
       muted: false,
       livekit: {
         url: 'wss://livekit.example',
@@ -111,6 +106,43 @@ describe('native microphone publish', () => {
         participantIdentity: 'user-1:desktop-native',
       },
     })
+  })
+
+  it('applies the preferred input device through the pipeline before publish start', async () => {
+    const configureMicrophonePipeline = vi.fn(async () => {})
+    const startSession = vi.fn(async () => ({
+      kind: 'microphone',
+      sessionId: 'native-mic-1',
+      audio: {
+        mode: 'microphone',
+        sampleRate: 48_000,
+        channels: 1,
+        noiseSuppression: 'software',
+        echoCancellation: 'software',
+      },
+      nativeParticipantIdentity: 'user-1:desktop-native:native-mic-1',
+    }))
+    vi.mocked(getSyrnikeDesktop).mockReturnValue({
+      platform: { os: 'win32' },
+      media: {
+        configureMicrophonePipeline,
+        startSession,
+      },
+    } as unknown as ReturnType<typeof getSyrnikeDesktop>)
+
+    await startNativeMicrophonePublisher(
+      preferences(),
+      {
+        url: 'wss://livekit.example',
+        token: 'native-livekit-token',
+        participantIdentity: 'user-1:desktop-native',
+      },
+      'mic-request-1',
+    )
+
+    expect(configureMicrophonePipeline).toHaveBeenCalledWith(
+      nativeMicrophonePipelineConfig(preferences(), 'mic-1'),
+    )
   })
 
   it('detects Windows desktop as native microphone runtime', () => {
@@ -138,6 +170,7 @@ describe('native microphone publish', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
+        configureMicrophonePipeline: vi.fn(async () => {}),
         startSession,
         stopSession,
         setMicrophoneMuted: vi.fn(async () => {}),
@@ -180,6 +213,7 @@ describe('native microphone publish', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
+        configureMicrophonePipeline: vi.fn(async () => {}),
         startSession: vi.fn(async () => ({
           kind: 'microphone',
           sessionId: 'native-mic-1',
@@ -222,6 +256,7 @@ describe('native microphone publish', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
+        configureMicrophonePipeline: vi.fn(async () => {}),
         startSession: vi.fn(async () => ({
           kind: 'microphone',
           sessionId: 'native-mic-1',
@@ -280,6 +315,7 @@ describe('native microphone publish', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
+        configureMicrophonePipeline: vi.fn(async () => {}),
         startSession,
         stopSession,
         setMicrophoneMuted,
@@ -325,6 +361,7 @@ describe('native microphone publish', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
+        configureMicrophonePipeline: vi.fn(async () => {}),
         startSession: vi.fn(async () => ({
           kind: 'microphone',
           sessionId: 'native-mic-1',
@@ -408,6 +445,7 @@ describe('native microphone publish', () => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
+        configureMicrophonePipeline: vi.fn(async () => {}),
         startSession: vi.fn(async () => ({
           kind: 'microphone',
           sessionId: 'native-mic-1',
@@ -520,47 +558,48 @@ describe('native microphone publish', () => {
 
   it('debounces runtime config updates for native microphone publishing', async () => {
     vi.useFakeTimers()
-    const configureMicrophoneRuntime = vi.fn(async () => {})
+    const configureMicrophonePipeline = vi.fn(async () => {})
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
       media: {
-        configureMicrophoneRuntime,
+        configureMicrophonePipeline,
       },
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
-    const session = {
-      sessionId: 'native-mic-1',
-      nativeParticipantIdentity: 'user-1:desktop-native',
-      setMuted: vi.fn(async () => {}),
-      reconnect: vi.fn(async () => {}),
-      disconnect: vi.fn(),
-    }
-
-    configureNativeMicrophoneSession(session, {
-      ...preferences(),
-      voiceGateThresholdDb: -32,
-    })
-    configureNativeMicrophoneSession(session, {
-      ...preferences(),
-      inputVolume: 1.8,
-      voiceGateEnabled: false,
-      voiceGateAutoThreshold: true,
-    })
+    configureNativeMicrophonePipeline(
+      nativeMicrophonePipelineConfig(
+        {
+          ...preferences(),
+          voiceGateThresholdDb: -32,
+        },
+        'mic-1',
+      ),
+    )
+    configureNativeMicrophonePipeline(
+      nativeMicrophonePipelineConfig(
+        {
+          ...preferences(),
+          inputVolume: 1.8,
+          voiceGateEnabled: false,
+          voiceGateAutoThreshold: true,
+        },
+        'mic-1',
+      ),
+    )
     await vi.advanceTimersByTimeAsync(39)
 
-    expect(configureMicrophoneRuntime).not.toHaveBeenCalled()
+    expect(configureMicrophonePipeline).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(configureMicrophoneRuntime).toHaveBeenCalledTimes(1)
-    expect(configureMicrophoneRuntime).toHaveBeenCalledWith(
-      'native-mic-1',
-      expect.objectContaining({
+    expect(configureMicrophonePipeline).toHaveBeenCalledTimes(1)
+    expect(configureMicrophonePipeline).toHaveBeenCalledWith(
+      nativeMicrophonePipelineConfig({
+        ...preferences(),
         inputVolume: 1.8,
-        noiseSuppression: true,
         voiceGateEnabled: false,
         voiceGateAutoThreshold: true,
-      }),
+      }, 'mic-1'),
     )
   })
 })

@@ -47,7 +47,6 @@ class PreviewActor::Implementation {
     {
       std::lock_guard lock(audio_mutex_);
       queued_samples_.clear();
-      next_metrics_at_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
     }
     worker_ = std::thread([this, command] { run(command); });
 
@@ -74,47 +73,20 @@ class PreviewActor::Implementation {
     return reply;
   }
 
-  void pushFrame(
-    std::span<const std::int16_t> pcm,
-    double input_db,
-    double threshold_db,
-    bool gate_open
-  ) {
+  void pushFrame(std::span<const std::int16_t> pcm) {
     if (!running_.load()) return;
-    std::string session_id;
-    std::uint64_t generation = 0;
     {
       std::lock_guard lock(state_mutex_);
       if (!ready_) return;
-      session_id = session_id_;
-      generation = generation_;
     }
-
-    bool emit_metrics = false;
     {
       std::lock_guard lock(audio_mutex_);
       for (const auto sample : pcm) {
         queued_samples_.push_back(static_cast<float>(sample) / 32768.0f);
       }
       while (queued_samples_.size() > max_queued_samples) queued_samples_.pop_front();
-      const auto now = std::chrono::steady_clock::now();
-      if (now >= next_metrics_at_) {
-        emit_metrics = true;
-        next_metrics_at_ = now + std::chrono::seconds(1);
-      }
     }
     audio_ready_.notify_one();
-
-    if (emit_metrics) {
-      RuntimeEvent event;
-      event.type = "microphoneMetrics";
-      event.session_id = std::move(session_id);
-      event.generation = generation;
-      event.input_db = input_db;
-      event.threshold_db = threshold_db;
-      event.gate_open = gate_open;
-      emitter_.emit(std::move(event));
-    }
   }
 
   void stop(const MediaCommand& command, bool emit_stopped) {
@@ -344,7 +316,6 @@ class PreviewActor::Implementation {
   std::mutex audio_mutex_;
   std::condition_variable audio_ready_;
   std::deque<float> queued_samples_;
-  std::chrono::steady_clock::time_point next_metrics_at_{};
 };
 
 PreviewActor::PreviewActor(SequencedEmitter& emitter)
@@ -353,13 +324,8 @@ PreviewActor::~PreviewActor() = default;
 RuntimeEvent PreviewActor::start(const MediaCommand& command) {
   return implementation_->start(command);
 }
-void PreviewActor::pushFrame(
-  std::span<const std::int16_t> pcm,
-  double input_db,
-  double threshold_db,
-  bool gate_open
-) {
-  implementation_->pushFrame(pcm, input_db, threshold_db, gate_open);
+void PreviewActor::pushFrame(std::span<const std::int16_t> pcm) {
+  implementation_->pushFrame(pcm);
 }
 bool PreviewActor::failFromCapture(
   const std::string& session_id,

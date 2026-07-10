@@ -11,9 +11,8 @@ import {
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
-  clearNativeMicrophoneRuntimeConfig,
-  configureNativeMicrophoneRuntime,
-} from './native-microphone-runtime-config'
+  applyNativeMicrophonePipeline,
+} from './native-microphone-pipeline-config'
 
 export type NativeMicrophoneSession = {
   sessionId: string
@@ -45,7 +44,6 @@ export type NativeMicrophoneRecoveryState = {
 
 type NativeMicrophonePreferences = Pick<
   VoicePreferenceState,
-  | 'preferredAudioInputDevice'
   | 'noiseSuppression'
   | 'echoCancellation'
   | 'inputVolume'
@@ -53,6 +51,9 @@ type NativeMicrophonePreferences = Pick<
   | 'voiceGateThresholdDb'
   | 'voiceGateAutoThreshold'
 >
+
+type NativeMicrophonePipelinePreferences = NativeMicrophonePreferences &
+  Pick<VoicePreferenceState, 'preferredAudioInputDevice'>
 
 export function shouldUseNativeMicrophone() {
   return getSyrnikeDesktop()?.platform.os === 'win32'
@@ -70,36 +71,39 @@ export function shouldRestartNativeMicrophonePublisher(
 }
 
 export function nativeMicrophoneSessionOptions(
-  prefs: NativeMicrophonePreferences,
   livekit: NativeMicrophoneLiveKitCredentials,
   requestId: string,
-  deviceId = prefs.preferredAudioInputDevice,
   muted = false,
   audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ) {
   return {
     kind: 'microphone' as const,
     requestId,
-    deviceId,
-    sampleRate: 48_000 as const,
-    channels: 1 as const,
     audioBitrate: clampVoiceChannelAudioBitrateKbps(audioBitrateKbps) * 1000,
+    muted,
+    livekit,
+  }
+}
+
+export function nativeMicrophonePipelineConfig(
+  prefs: NativeMicrophonePreferences,
+  deviceId?: string,
+) {
+  return {
+    deviceId: deviceId ?? null,
     noiseSuppression: prefs.noiseSuppression,
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,
     voiceGateEnabled: prefs.voiceGateEnabled,
     voiceGateThresholdDb: prefs.voiceGateThresholdDb,
     voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
-    muted,
-    livekit,
   }
 }
 
 export async function startNativeMicrophonePublisher(
-  prefs: NativeMicrophonePreferences,
+  prefs: NativeMicrophonePipelinePreferences,
   livekit: NativeMicrophoneLiveKitCredentials,
   requestId: string,
-  deviceId?: string,
   muted = false,
   audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 ) {
@@ -108,12 +112,13 @@ export async function startNativeMicrophonePublisher(
     throw new Error('Desktop bridge is not available')
   }
 
+  await applyNativeMicrophonePipeline(
+    nativeMicrophonePipelineConfig(prefs, prefs.preferredAudioInputDevice),
+  )
   const session = await desktop.media.startSession(
     nativeMicrophoneSessionOptions(
-      prefs,
       livekit,
       requestId,
-      deviceId,
       muted,
       audioBitrateKbps,
     ),
@@ -142,7 +147,6 @@ export async function publishNativeMicrophone(
     prefs,
     livekit,
     requestId,
-    undefined,
     muted,
     audioBitrateKbps,
   )
@@ -152,7 +156,6 @@ export async function publishNativeMicrophone(
   let subscriptions: (() => void)[] = []
 
   const cleanup = () => {
-    clearNativeMicrophoneRuntimeConfig(session.sessionId)
     for (const unsubscribe of subscriptions) {
       unsubscribe()
     }
@@ -191,13 +194,18 @@ export async function publishNativeMicrophone(
     muted: boolean,
     audioBitrateKbps: number,
   ) => {
+    const nextPrefs = readVoicePreferences()
+    await applyNativeMicrophonePipeline(
+      nativeMicrophonePipelineConfig(
+        nextPrefs,
+        nextPrefs.preferredAudioInputDevice,
+      ),
+    )
     const nextSession = await desktop.media.reconnectMicrophoneSession(
       session.sessionId,
       nativeMicrophoneSessionOptions(
-        readVoicePreferences(),
         livekit,
         requestId,
-        undefined,
         muted,
         audioBitrateKbps,
       ),
@@ -217,18 +225,4 @@ export async function publishNativeMicrophone(
     reconnect,
     disconnect,
   }
-}
-
-export function configureNativeMicrophoneSession(
-  session: NativeMicrophoneSession | null,
-  prefs: NativeMicrophonePreferences,
-) {
-  configureNativeMicrophoneRuntime(session?.sessionId, {
-    noiseSuppression: prefs.noiseSuppression,
-    echoCancellation: prefs.echoCancellation,
-    inputVolume: prefs.inputVolume,
-    voiceGateEnabled: prefs.voiceGateEnabled,
-    voiceGateThresholdDb: prefs.voiceGateThresholdDb,
-    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
-  })
 }

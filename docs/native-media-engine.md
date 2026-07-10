@@ -3,7 +3,9 @@
 Windows desktop media capture goes through the native media engine instead of
 browser capture APIs. The renderer controls sessions through `desktop.media`
 from `@syrnike13/platform`; the native helper owns capture, processing, and
-LiveKit publishing for Windows-only native sessions.
+LiveKit publishing for Windows-only native sessions. The helper is an isolated
+Electron utility process loading `syrnike_media.node`; there is no application
+runtime EXE.
 
 ## API Boundary
 
@@ -23,17 +25,29 @@ const session = await desktop.media.startSession({
 })
 ```
 
-Microphone sessions request two independent processing toggles:
+Microphone device and processing settings belong to the persistent microphone
+pipeline, not to a preview or publish session:
+
+```ts
+await desktop.media.configureMicrophonePipeline({
+  deviceId: deviceId ?? null, // null follows the Windows default device
+  noiseSuppression: true,
+  echoCancellation: true,
+  inputVolume,
+  voiceGateEnabled,
+  voiceGateThresholdDb,
+  voiceGateAutoThreshold,
+})
+```
+
+A LiveKit publish session then supplies only publication intent:
 
 ```ts
 const session = await desktop.media.startSession({
   kind: 'microphone',
-  deviceId,
-  sampleRate: 48_000,
-  channels: 1,
-  noiseSuppression: true,
-  echoCancellation: true,
-  inputVolume,
+  requestId,
+  audioBitrate,
+  muted,
   livekit,
 })
 ```
@@ -63,19 +77,22 @@ The native signal order is:
 -> LiveKit native audio frame
 ```
 
-Noise suppression and echo cancellation are separate runtime booleans. The
-renderer can update them with `desktop.media.configureMicrophoneRuntime()`
-without restarting the microphone session.
+Noise suppression and echo cancellation are separate pipeline booleans. The
+renderer updates the complete desired configuration with
+`desktop.media.configureMicrophonePipeline()` without reconnecting the LiveKit
+publish session. DSP-only changes apply to subsequent frames; a device change
+restarts the single capture path and rolls back to the previous working device
+if the replacement cannot be opened.
 
 Echo cancellation is best-effort. If the render loopback reference cannot be
 opened or has not produced 10 ms reference frames yet, the microphone continues
 publishing and reports `echoCancellation: 'unavailable'`. Noise suppression can
 still run without echo reference.
 
-Microphone preview uses the same processor for noise suppression, input volume,
-voice gate, and limiter. Preview reports echo cancellation as unavailable when
-the checkbox is on because monitor audio is rendered to the same output device
-that a loopback AEC reference would capture.
+Microphone preview is a render consumer of that same pipeline. It does not own
+configuration, expose a renderer session ID, or open a second microphone
+capture path. Preview and LiveKit publish may consume the processed PCM stream
+at the same time.
 
 ## Status Values
 
@@ -91,9 +108,8 @@ audio: {
 }
 ```
 
-The helper also includes `noise_suppression` and `echo_cancellation` in
-microphone diagnostics events so manual QA can verify enabled, disabled, and
-unavailable states.
+Pipeline meter events contain only `inputDb`, `thresholdDb`, and `open`; they
+are not tagged with preview or publish session identity.
 
 ## Browser Boundary
 

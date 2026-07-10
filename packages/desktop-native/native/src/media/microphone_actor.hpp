@@ -16,10 +16,7 @@ class MicrophoneActor final {
   using InternalPost = std::function<bool(MediaCommand)>;
   using IsCurrent = std::function<bool(const std::string&, std::uint64_t)>;
   using PreviewConsumer = std::function<void(
-    std::span<const std::int16_t> pcm,
-    double input_db,
-    double threshold_db,
-    bool gate_open)>;
+    std::span<const std::int16_t> pcm)>;
 
   MicrophoneActor(
     SequencedEmitter& emitter,
@@ -32,7 +29,7 @@ class MicrophoneActor final {
 
   void warm(const MediaCommand& command);
   RuntimeEvent connect(const MediaCommand& command);
-  void configure(const MediaCommand& command);
+  RuntimeEvent configure(const MediaCommand& command);
   void setMuted(const MediaCommand& command);
   void setPreviewConsumer(
     const std::string& session_id,
@@ -40,13 +37,6 @@ class MicrophoneActor final {
     PreviewConsumer consumer
   );
   void clearPreviewConsumer(const std::string& session_id, std::uint64_t generation);
-  std::pair<std::string, std::uint64_t> currentMetricIdentity();
-  void restoreMetricIdentityIfCurrent(
-    const std::string& candidate_session,
-    std::uint64_t candidate_generation,
-    const std::string& previous_session,
-    std::uint64_t previous_generation
-  );
   bool isCurrentCaptureFailure(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_stopped = true);
   void handleTerminal(const MediaCommand& command);

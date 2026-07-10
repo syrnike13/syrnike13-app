@@ -11,10 +11,9 @@ import type {
   NativeMediaState,
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
+  NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
-  NativeMicrophoneRuntimeConfig,
+  NativeMicrophonePreviewStateEvent,
 } from '@syrnike13/platform'
 
 import {
@@ -32,11 +31,9 @@ import {
 const QUERY_TIMEOUT_MS = 5_000
 const SESSION_TIMEOUT_MS = 20_000
 const STOP_TIMEOUT_MS = 5_000
-const WARMED_MICROPHONE_SESSION_ID = 'native-microphone-monitor'
 
-const DEFAULT_MICROPHONE_WARMUP: NativeMicrophonePreviewStartOptions = {
-  sampleRate: 48_000,
-  channels: 1,
+const DEFAULT_MICROPHONE_PIPELINE_CONFIG: NativeMicrophonePipelineConfig = {
+  deviceId: null,
   noiseSuppression: true,
   echoCancellation: true,
   inputVolume: 1,
@@ -52,7 +49,6 @@ type ActiveSession = {
   options: NativeMediaSessionStartOptions
   status: 'starting' | 'running' | 'error'
   session?: NativeMediaSession
-  effectiveConfig?: NativeMicrophoneRuntimeConfig
   effectiveMuted?: boolean
   candidateGeneration?: number
 }
@@ -67,7 +63,6 @@ type PreparedScreen = {
 type PreviewSessionState = {
   sessionId: string
   generation: number
-  options: NativeMicrophonePreviewStartOptions
   status: 'starting' | 'running'
 }
 
@@ -86,13 +81,14 @@ type RecoveryDesiredState = {
     generation: number
   } | null
   preview: PreviewSessionState | null
-  warmOptions: NativeMicrophonePreviewStartOptions | null
+  microphonePipelineDesiredWarm: boolean
 }
 
 export type NativeMediaControllerEvent =
   | { type: 'state'; event: NativeMediaStateEvent }
   | { type: 'stats'; event: NativeMediaStatsEvent }
   | { type: 'microphoneMetrics'; event: NativeMicrophoneMetricsEvent }
+  | { type: 'microphonePreviewState'; event: NativeMicrophonePreviewStateEvent }
   | { type: 'streamEnded'; sessionId: string }
   | { type: 'streamError'; event: { sessionId: string; message: string } }
   | { type: 'runtimeLost'; event: NativeMediaRuntimeLostEvent }
@@ -127,7 +123,15 @@ export class NativeMediaController {
   private preparedScreen: PreparedScreen | null = null
   private screenTerminalOperation: Promise<void> = Promise.resolve()
   private preview: PreviewSessionState | null = null
-  private warmOptions: NativeMicrophonePreviewStartOptions | null = null
+  private previewStartOperation: Promise<void> | null = null
+  private microphonePipelineConfig: NativeMicrophonePipelineConfig = {
+    ...DEFAULT_MICROPHONE_PIPELINE_CONFIG,
+  }
+  private microphonePipelineRevision = 0
+  private microphonePipelineGeneration = 0
+  private microphonePipelineDesiredWarm = false
+  private microphonePipelineWarm = false
+  private microphonePipelineWarmOperation: Promise<void> | null = null
   private lastError: string | null = null
   private lastRestoredRestartCount = 0
   private lastNotifiedRestartCount = 0
@@ -153,21 +157,10 @@ export class NativeMediaController {
     await this.options.supervisor.start()
   }
 
-  async prewarmMicrophone(
-    options: NativeMicrophonePreviewStartOptions = DEFAULT_MICROPHONE_WARMUP,
-  ) {
+  async prewarmMicrophone() {
     if (!this.options.runtimeAvailable()) return
-    this.warmOptions = { ...options }
-    const generation = ++this.generations.microphone
-    await this.request(
-      {
-        type: 'warmMicrophone',
-        sessionId: WARMED_MICROPHONE_SESSION_ID,
-        generation,
-        options,
-      },
-      SESSION_TIMEOUT_MS,
-    )
+    this.microphonePipelineDesiredWarm = true
+    await this.ensureMicrophonePipelineWarm()
   }
 
   async listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]> {
@@ -192,32 +185,38 @@ export class NativeMediaController {
       : []
   }
 
-  async startMicrophonePreview(
-    options: NativeMicrophonePreviewStartOptions,
-  ): Promise<NativeMicrophonePreviewSession> {
-    const previous = this.preview
+  startMicrophonePreview(): Promise<void> {
+    if (this.preview?.status === 'running') return Promise.resolve()
+    if (this.previewStartOperation) return this.previewStartOperation
+
     const generation = ++this.generations.preview
+    const operation = this.startMicrophonePreviewNow(generation)
+    this.previewStartOperation = operation
+    void operation.finally(() => {
+      if (this.previewStartOperation === operation) {
+        this.previewStartOperation = null
+      }
+    }).catch(() => undefined)
+    return operation
+  }
+
+  private async startMicrophonePreviewNow(generation: number) {
+    await this.start()
+    this.microphonePipelineDesiredWarm = true
+    await this.ensureMicrophonePipelineWarm()
+    if (generation !== this.generations.preview) {
+      throw new Error('Native microphone preview start cancelled')
+    }
     const sessionId = crypto.randomUUID()
     const preview: PreviewSessionState = {
       sessionId,
       generation,
-      options: { ...options },
       status: 'starting',
     }
     this.preview = preview
-    if (previous?.status === 'running') {
-      await this.request(
-        {
-          type: 'stopPreview',
-          sessionId: previous.sessionId,
-          generation: previous.generation,
-        },
-        STOP_TIMEOUT_MS,
-      ).catch(() => undefined)
-    }
     try {
       const result = await this.request<unknown>(
-        { type: 'startPreview', sessionId, generation, options },
+        { type: 'startPreview', sessionId, generation },
         // PreviewActor has its own 5 s startup deadline. The transport deadline
         // must leave enough margin for actor teardown and message delivery.
         SESSION_TIMEOUT_MS,
@@ -229,29 +228,44 @@ export class NativeMediaController {
         ).catch(() => undefined)
         throw new Error('Native microphone preview start cancelled')
       }
-      const startedPreview = readPreviewResult(result, sessionId)
+      readPreviewResult(result, sessionId)
       preview.status = 'running'
-      return startedPreview
+      this.emit({
+        type: 'microphonePreviewState',
+        event: { status: 'running' },
+      })
     } catch (error) {
       if (this.preview === preview) this.preview = null
       throw error
     }
   }
 
-  async stopMicrophonePreview(sessionId?: string) {
+  async stopMicrophonePreview() {
     const preview = this.preview
-    if (sessionId && preview?.sessionId !== sessionId) return
+    const hadPreviewIntent = Boolean(preview || this.previewStartOperation)
     this.preview = null
-    this.generations.preview += 1
-    if (!preview) return
-    await this.request(
-      {
-        type: 'stopPreview',
-        sessionId: preview.sessionId,
-        generation: preview.generation,
-      },
-      STOP_TIMEOUT_MS,
-    ).catch(() => undefined)
+    this.previewStartOperation = null
+    const stoppedGeneration = ++this.generations.preview
+    if (preview) {
+      await this.request(
+        {
+          type: 'stopPreview',
+          sessionId: preview.sessionId,
+          generation: preview.generation,
+        },
+        STOP_TIMEOUT_MS,
+      ).catch(() => undefined)
+    }
+    if (
+      hadPreviewIntent &&
+      stoppedGeneration === this.generations.preview &&
+      !this.preview
+    ) {
+      this.emit({
+        type: 'microphonePreviewState',
+        event: { status: 'stopped' },
+      })
+    }
   }
 
   prepareScreenSession(options: NativeMediaScreenSessionPrepareOptions) {
@@ -342,21 +356,26 @@ export class NativeMediaController {
     }
   }
 
-  async configureMicrophoneRuntime(
-    sessionId: string,
-    config: NativeMicrophoneRuntimeConfig,
-  ) {
-    const session = this.requireMicrophoneSession(sessionId)
-    await this.request(
-      {
-        type: 'configureMicrophone',
-        sessionId,
-        generation: session.generation,
-        config,
-      },
-      QUERY_TIMEOUT_MS,
-    )
-    session.effectiveConfig = { ...session.effectiveConfig, ...config }
+  async configureMicrophonePipeline(config: NativeMicrophonePipelineConfig) {
+    const revision = this.microphonePipelineRevision + 1
+    const command: MediaRuntimeCommand = {
+      type: 'configureMicrophone',
+      revision,
+      config,
+    }
+    if (!isNativeRuntimeCommand(command)) {
+      throw new Error('Invalid native microphone pipeline configuration')
+    }
+
+    this.microphonePipelineRevision = revision
+    this.microphonePipelineConfig = { ...config }
+    this.microphonePipelineDesiredWarm = true
+    if (!this.options.runtimeAvailable()) return
+
+    await this.start()
+    await this.ensureMicrophonePipelineWarm()
+    if (revision !== this.microphonePipelineRevision) return
+    await this.request(command, QUERY_TIMEOUT_MS)
   }
 
   async setMicrophoneMuted(sessionId: string, muted: boolean) {
@@ -448,9 +467,13 @@ export class NativeMediaController {
   async dispose() {
     if (this.disposed) return
     this.disposed = true
-    this.warmOptions = null
+    this.microphonePipelineDesiredWarm = false
+    this.microphonePipelineWarm = false
+    this.microphonePipelineGeneration += 1
+    this.microphonePipelineWarmOperation = null
     this.preparedScreen = null
     this.preview = null
+    this.previewStartOperation = null
     this.sessions.clear()
     await this.options.supervisor.shutdown()
   }
@@ -461,6 +484,10 @@ export class NativeMediaController {
     const operationStartedAt = performance.now()
     this.assertCurrentRequest(options.kind, options.requestId)
     if (options.kind === 'screen') await this.screenTerminalOperation
+    if (options.kind === 'microphone') {
+      this.microphonePipelineDesiredWarm = true
+      await this.ensureMicrophonePipelineWarm()
+    }
     await this.stopKind(options.kind)
     this.assertCurrentRequest(options.kind, options.requestId)
 
@@ -564,7 +591,6 @@ export class NativeMediaController {
           generation,
           options: {
             ...options,
-            ...session.effectiveConfig,
             muted: session.effectiveMuted ?? options.muted,
           },
           excludeProcessId: this.options.processId ?? process.pid,
@@ -673,6 +699,35 @@ export class NativeMediaController {
     return session
   }
 
+  private ensureMicrophonePipelineWarm() {
+    if (this.microphonePipelineWarm) return Promise.resolve()
+    if (this.microphonePipelineWarmOperation) {
+      return this.microphonePipelineWarmOperation
+    }
+
+    const generation = ++this.microphonePipelineGeneration
+    const config = { ...this.microphonePipelineConfig }
+    const operation = this.request(
+      {
+        type: 'warmMicrophone',
+        generation,
+        config,
+      },
+      SESSION_TIMEOUT_MS,
+    ).then(() => {
+      if (generation === this.microphonePipelineGeneration) {
+        this.microphonePipelineWarm = true
+      }
+    })
+    this.microphonePipelineWarmOperation = operation
+    void operation.finally(() => {
+      if (this.microphonePipelineWarmOperation === operation) {
+        this.microphonePipelineWarmOperation = null
+      }
+    }).catch(() => undefined)
+    return operation
+  }
+
   private request<T = unknown>(command: MediaRuntimeCommand, timeoutMs: number) {
     if (this.disposed) {
       return Promise.reject(new Error('Native media controller is disposed'))
@@ -693,12 +748,13 @@ export class NativeMediaController {
         event.error.generation === preview.generation
       ) {
         this.preview = null
+        this.previewStartOperation = null
         this.generations.preview += 1
+        this.lastError = event.error.message
         this.emit({
-          type: 'streamError',
-          event: { sessionId: preview.sessionId, message: event.error.message },
+          type: 'microphonePreviewState',
+          event: { status: 'error', message: event.error.message },
         })
-        this.emit({ type: 'streamEnded', sessionId: preview.sessionId })
         return
       }
       const session = sessionId ? this.sessions.get(sessionId) : undefined
@@ -731,20 +787,24 @@ export class NativeMediaController {
       return
     }
     if (event.type === 'deviceList' || event.type === 'displaySourceList') return
+    if (event.type === 'microphoneMetrics') {
+      this.emit({ type: 'microphoneMetrics', event: event.metrics })
+      return
+    }
     const preview = this.preview
     if (
       preview &&
       event.sessionId === preview.sessionId &&
       event.generation === preview.generation
     ) {
-      if (event.type === 'microphoneMetrics') {
-        this.emit({ type: 'microphoneMetrics', event: event.metrics })
-        return
-      }
       if (event.type === 'sessionStopped') {
         this.preview = null
+        this.previewStartOperation = null
         this.generations.preview += 1
-        this.emit({ type: 'streamEnded', sessionId: preview.sessionId })
+        this.emit({
+          type: 'microphonePreviewState',
+          event: { status: 'stopped' },
+        })
         return
       }
       if (event.type === 'microphonePreviewStarted') return
@@ -775,9 +835,6 @@ export class NativeMediaController {
       case 'stats':
         this.emit({ type: 'stats', event: event.stats })
         return
-      case 'microphoneMetrics':
-        this.emit({ type: 'microphoneMetrics', event: event.metrics })
-        return
       case 'microphonePreviewStarted':
         return
       case 'screenCaptureEnded':
@@ -799,6 +856,9 @@ export class NativeMediaController {
       snapshot.restartCount > this.lastNotifiedRestartCount
     ) {
       this.lastNotifiedRestartCount = snapshot.restartCount
+      this.microphonePipelineWarm = false
+      this.microphonePipelineGeneration += 1
+      this.microphonePipelineWarmOperation = null
       this.recoveryDesiredState = this.captureRecoveryDesiredState(
         snapshot.restartCount,
       )
@@ -835,16 +895,19 @@ export class NativeMediaController {
       ? 'handshake_failed'
       : 'circuit_open'
     this.lastError = message
+    this.microphonePipelineWarm = false
+    this.microphonePipelineGeneration += 1
+    this.microphonePipelineWarmOperation = null
     this.preparedScreen = null
-    const preview = this.preview
+    const previewWasActive = Boolean(this.preview || this.previewStartOperation)
     this.preview = null
+    this.previewStartOperation = null
     this.generations.preview += 1
-    if (preview) {
+    if (previewWasActive) {
       this.emit({
-        type: 'streamError',
-        event: { sessionId: preview.sessionId, message },
+        type: 'microphonePreviewState',
+        event: { status: 'error', message },
       })
-      this.emit({ type: 'streamEnded', sessionId: preview.sessionId })
     }
     for (const session of Array.from(this.sessions.values())) {
       this.sessions.delete(session.sessionId)
@@ -881,7 +944,7 @@ export class NativeMediaController {
         ? { prepared, generation: prepared.generation }
         : null,
       preview: this.preview?.status === 'running' ? this.preview : null,
-      warmOptions: this.warmOptions,
+      microphonePipelineDesiredWarm: this.microphonePipelineDesiredWarm,
     }
   }
 
@@ -890,20 +953,10 @@ export class NativeMediaController {
     const restoreKind = async (kind: NativeMediaSessionKind) => {
       if (
         kind === 'microphone' &&
-        desired.warmOptions &&
-        this.warmOptions === desired.warmOptions &&
-        this.latestRequestIds.microphone === desired.latestRequestIds.microphone
+        desired.microphonePipelineDesiredWarm &&
+        this.microphonePipelineDesiredWarm
       ) {
-        const generation = ++this.generations.microphone
-        await this.request(
-          {
-            type: 'warmMicrophone',
-            sessionId: WARMED_MICROPHONE_SESSION_ID,
-            generation,
-            options: desired.warmOptions,
-          },
-          SESSION_TIMEOUT_MS,
-        ).catch(() => undefined)
+        await this.ensureMicrophonePipelineWarm().catch(() => undefined)
       }
       if (
         kind === 'screen' &&
@@ -967,7 +1020,6 @@ export class NativeMediaController {
                 generation,
                 options: {
                   ...session.options,
-                  ...session.effectiveConfig,
                   muted: session.effectiveMuted ?? session.options.muted,
                 },
                 excludeProcessId: this.options.processId ?? process.pid,
@@ -1034,7 +1086,6 @@ export class NativeMediaController {
             type: 'startPreview',
             sessionId: preview.sessionId,
             generation,
-            options: preview.options,
           },
           SESSION_TIMEOUT_MS,
         )
@@ -1045,14 +1096,16 @@ export class NativeMediaController {
           preview.generation === generation
         ) {
           this.preview = null
+          this.previewStartOperation = null
           this.generations.preview += 1
-          const message =
-            error instanceof Error ? error.message : 'Native microphone preview recovery failed'
+          this.lastError =
+            error instanceof Error
+              ? error.message
+              : 'Native microphone preview recovery failed'
           this.emit({
-            type: 'streamError',
-            event: { sessionId: preview.sessionId, message },
+            type: 'microphonePreviewState',
+            event: { status: 'error', message: this.lastError },
           })
-          this.emit({ type: 'streamEnded', sessionId: preview.sessionId })
         }
       }
     }

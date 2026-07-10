@@ -8,13 +8,11 @@ import type {
   NativeMediaSessionStartOptions,
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
+  NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
-  NativeMicrophoneRuntimeConfig,
 } from '@syrnike13/platform'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 1
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 2
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
 export type NativeRuntimeKind = 'media' | 'hooks'
@@ -81,9 +79,8 @@ type SessionCommandBase = {
 export type MediaRuntimeCommand =
   | {
       type: 'warmMicrophone'
-      sessionId: string
       generation: number
-      options: NativeMicrophonePreviewStartOptions
+      config: NativeMicrophonePipelineConfig
     }
   | {
       type: 'listDevices'
@@ -93,8 +90,7 @@ export type MediaRuntimeCommand =
       type: 'listDisplaySources'
       selfWindowHwnd?: string
     }
-  | ({ type: 'startPreview'; options: NativeMicrophonePreviewStartOptions } &
-      SessionCommandBase)
+  | ({ type: 'startPreview' } & SessionCommandBase)
   | ({ type: 'stopPreview' } & Partial<SessionCommandBase>)
   | ({ type: 'connectScreen'; options: NativeMediaScreenSessionPrepareOptions } &
       SessionCommandBase)
@@ -118,10 +114,11 @@ export type MediaRuntimeCommand =
   | ({ type: 'disconnectMicrophone' } & SessionCommandBase)
   | ({ type: 'invalidateMicrophone' } & SessionCommandBase)
   | ({ type: 'stopScreenCapture' } & SessionCommandBase)
-  | ({
+  | {
       type: 'configureMicrophone'
-      config: NativeMicrophoneRuntimeConfig
-    } & SessionCommandBase)
+      revision: number
+      config: NativeMicrophonePipelineConfig
+    }
   | ({ type: 'setMicrophoneMuted'; muted: boolean } & SessionCommandBase)
   | { type: 'shutdown' }
 
@@ -166,8 +163,8 @@ export type MediaRuntimeEvent =
   | ({ type: 'sessionStopped'; reason?: string } & SessionEventBase)
   | ({ type: 'stats'; stats: NativeMediaStatsEvent } & SessionEventBase)
   | ({ type: 'microphoneMetrics'; metrics: NativeMicrophoneMetricsEvent } &
-      SessionEventBase)
-  | ({ type: 'microphonePreviewStarted'; preview: NativeMicrophonePreviewSession } &
+      RuntimeEventBase)
+  | ({ type: 'microphonePreviewStarted'; preview: { sessionId: string } } &
       SessionEventBase)
   | ({ type: 'deviceList'; devices: NativeMediaDeviceInfo[] } & RuntimeEventBase)
   | ({ type: 'displaySourceList'; sources: DesktopDisplayMediaSource[] } &
@@ -255,20 +252,18 @@ function isLiveKitCredentials(value: unknown) {
   }
 }
 
-function isPreviewOptions(value: unknown) {
+function isMicrophonePipelineConfig(
+  value: unknown,
+): value is NativeMicrophonePipelineConfig {
   if (!isRecord(value)) return false
   return (
-    (value.deviceId === undefined || isNonEmptyString(value.deviceId, 2_048)) &&
-    value.sampleRate === 48_000 &&
-    value.channels === 1 &&
+    (value.deviceId === null || isNonEmptyString(value.deviceId, 2_048)) &&
     typeof value.noiseSuppression === 'boolean' &&
     typeof value.echoCancellation === 'boolean' &&
     isFiniteNumber(value.inputVolume, 0, 4) &&
-    (value.voiceGateEnabled === undefined || typeof value.voiceGateEnabled === 'boolean') &&
-    (value.voiceGateThresholdDb === undefined ||
-      isFiniteNumber(value.voiceGateThresholdDb, -100, 0)) &&
-    (value.voiceGateAutoThreshold === undefined ||
-      typeof value.voiceGateAutoThreshold === 'boolean')
+    typeof value.voiceGateEnabled === 'boolean' &&
+    isFiniteNumber(value.voiceGateThresholdDb, -100, 0) &&
+    typeof value.voiceGateAutoThreshold === 'boolean'
   )
 }
 
@@ -278,7 +273,6 @@ function isMicrophoneStartOptions(
   if (!isRecord(value) || value.kind !== 'microphone') return false
   return (
     isNonEmptyString(value.requestId, 256) &&
-    isPreviewOptions(value) &&
     (value.audioBitrate === undefined || isIntegerInRange(value.audioBitrate, 6_000, 512_000)) &&
     (value.muted === undefined || typeof value.muted === 'boolean') &&
     isLiveKitCredentials(value.livekit)
@@ -298,20 +292,6 @@ function isScreenStartOptions(value: unknown) {
     (value.audio === undefined ||
       (isRecord(value.audio) && typeof value.audio.requested === 'boolean')) &&
     isLiveKitCredentials(value.livekit)
-  )
-}
-
-function isRuntimeConfig(value: unknown) {
-  if (!isRecord(value)) return false
-  return (
-    (value.inputVolume === undefined || isFiniteNumber(value.inputVolume, 0, 4)) &&
-    (value.voiceGateEnabled === undefined || typeof value.voiceGateEnabled === 'boolean') &&
-    (value.voiceGateThresholdDb === undefined ||
-      isFiniteNumber(value.voiceGateThresholdDb, -100, 0)) &&
-    (value.voiceGateAutoThreshold === undefined ||
-      typeof value.voiceGateAutoThreshold === 'boolean') &&
-    (value.noiseSuppression === undefined || typeof value.noiseSuppression === 'boolean') &&
-    (value.echoCancellation === undefined || typeof value.echoCancellation === 'boolean')
   )
 }
 
@@ -464,13 +444,17 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
   if (!isRecord(value) || !isNonEmptyString(value.type, 128)) return false
   switch (value.type) {
     case 'warmMicrophone':
-      return isSessionCommand(value) && isPreviewOptions(value.options)
+      return (
+        Number.isSafeInteger(value.generation) &&
+        Number(value.generation) >= 0 &&
+        isMicrophonePipelineConfig(value.config)
+      )
     case 'listDevices':
       return value.kind === 'audioinput'
     case 'listDisplaySources':
       return value.selfWindowHwnd === undefined || isUnsignedIntegerString(value.selfWindowHwnd)
     case 'startPreview':
-      return isSessionCommand(value) && isPreviewOptions(value.options)
+      return isSessionCommand(value)
     case 'stopPreview':
       return (
         (value.sessionId === undefined || isNonEmptyString(value.sessionId, 256)) &&
@@ -508,7 +492,11 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
     case 'stopScreenCapture':
       return isSessionCommand(value)
     case 'configureMicrophone':
-      return isSessionCommand(value) && isRuntimeConfig(value.config)
+      return (
+        Number.isSafeInteger(value.revision) &&
+        Number(value.revision) >= 0 &&
+        isMicrophonePipelineConfig(value.config)
+      )
     case 'setMicrophoneMuted':
       return isSessionCommand(value) && typeof value.muted === 'boolean'
     case 'startHotkeys':
@@ -635,6 +623,14 @@ export function isNativeRuntimeEvent(
       )
     )
   }
+  if (value.type === 'microphoneMetrics') {
+    return (
+      isRecord(value.metrics) &&
+      Number.isFinite(value.metrics.inputDb) &&
+      Number.isFinite(value.metrics.thresholdDb) &&
+      typeof value.metrics.open === 'boolean'
+    )
+  }
 
   if (
     !isNonEmptyString(value.sessionId, 256) ||
@@ -659,14 +655,6 @@ export function isNativeRuntimeEvent(
       return value.reason === undefined || typeof value.reason === 'string'
     case 'stats':
       return isNativeMediaStats(value.stats, value.sessionId)
-    case 'microphoneMetrics':
-      return (
-        isRecord(value.metrics) &&
-        value.metrics.sessionId === value.sessionId &&
-        Number.isFinite(value.metrics.inputDb) &&
-        Number.isFinite(value.metrics.thresholdDb) &&
-        typeof value.metrics.open === 'boolean'
-      )
     case 'microphonePreviewStarted':
       return (
         isRecord(value.preview) &&

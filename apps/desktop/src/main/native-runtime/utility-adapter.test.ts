@@ -37,7 +37,7 @@ describe('ElectronUtilityAdapter', () => {
     expect(fork.mock.calls[0]?.[2]).toMatchObject({ stdio: 'ignore' })
     expect(fork.mock.calls[0]?.[2]?.env).toMatchObject({
       SYRNIKE_NATIVE_APP_VERSION: '0.5.1',
-      SYRNIKE_NATIVE_CONTRACT_VERSION: '1',
+      SYRNIKE_NATIVE_CONTRACT_VERSION: '2',
       SYRNIKE_NATIVE_LIVEKIT_VERSION: '1.3.0',
       SYRNIKE_NATIVE_COMMIT_SHA: 'a'.repeat(40),
       SYRNIKE_NATIVE_RELEASE_CHANNEL: 'stable',

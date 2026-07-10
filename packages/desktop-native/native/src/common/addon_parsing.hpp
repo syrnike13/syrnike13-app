@@ -96,6 +96,11 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
     : config_value.IsObject()
       ? config_value.As<Napi::Object>()
       : Napi::Object::New(object.Env());
+  const auto revision_value = object.Get("revision");
+  if (!revision_value.IsUndefined()) {
+    command.revision = uint64Field(object, "revision");
+    command.has_revision = true;
+  }
   command.device_id = stringField(settings, "deviceId");
   command.source_id = stringField(settings, "sourceId");
   command.livekit_url = nestedStringField(settings, "livekit", "url");

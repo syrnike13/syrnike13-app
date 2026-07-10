@@ -14,11 +14,12 @@ JSONL в stdin и угадывал владельца событий по про
 Electron и EXE.
 
 Media EXE дополнительно использовал process-global `g_running`, runtime config
-и независимые вызовы `livekit::initialize/shutdown`. Warmup и publish могли
-одновременно открыть два WASAPI capture path; microphone move был
-break-before-make; terminal LiveKit disconnect и fatal screen capture не всегда
-доходили до Electron. Большой Electron orchestrator одновременно владел IPC,
-процессами, JSON parsing, sessions, diagnostics, recovery и picker state.
+и независимые вызовы `livekit::initialize/shutdown`. Warmup, preview и publish
+могли одновременно открыть несколько WASAPI capture path вместо одного
+канонического microphone pipeline; microphone move был break-before-make;
+terminal LiveKit disconnect и fatal screen capture не всегда доходили до
+Electron. Большой Electron orchestrator одновременно владел IPC, процессами,
+JSON parsing, sessions, diagnostics, recovery и picker state.
 
 Прямая загрузка DLL в Electron main отвергнута: access violation, deadlock или
 долгий native join завершили бы или заморозили всё приложение.
@@ -52,17 +53,31 @@ enumeration и thread join никогда не выполняются на JS ev
 Lifecycle/error events не отбрасываются молча; saturation завершает utility host
 и превращается supervisor'ом в явный `runtime_lost`.
 
+Для microphone contract уточняется так: persistent **Microphone Pipeline**
+существует независимо от конкретного publish lifecycle, preview и meter не
+создают отдельный renderer-visible session identity. `sessionId`/`generation`
+в renderer-facing interface обязательны для publish и других execution, где
+есть lifecycle fencing. Для cancellation/recovery preview сохраняет внутреннюю
+generation между Electron main и utility host, но renderer её не видит.
+Renderer получает только identity-free preview lifecycle state. Публичный
+`monitor`/preview pseudo-session запрещён.
+
 ### Instance-owned implementation
 
-`MediaRuntime` владеет одной LiveKit lease и instance-owned actors. Каждый actor
-сериализует свои команды, использует cooperative cancellation и проверяет
-generation после asynchronous work. Shutdown сначала останавливает actors и
-workers, затем комнаты, и только после этого освобождает LiveKit runtime.
+`MediaRuntime` владеет одной LiveKit lease, `ScreenActor`, `MicrophoneActor` и
+render-only `PreviewActor`. `MicrophoneActor` реализует persistent
+**Microphone Pipeline**: владеет выбранным input device, единственным WASAPI
+capture path, DSP config, warm state и meter. Publish и `PreviewActor`
+подписываются на pipeline как consumers и могут сосуществовать, но не открывают
+параллельные capture path. Actors сериализуют свои команды,
+используют cooperative cancellation и проверяют generation после asynchronous
+work. Shutdown сначала останавливает consumers/actors и workers, затем комнаты,
+и только после этого освобождает LiveKit runtime.
 
-Microphone warmup и publication используют один долгоживущий WASAPI/DSP
-pipeline. Для make-before-break move один обработанный PCM frame временно
-подаётся в отдельные room-owned `AudioSource`; candidate становится активным
-только после подтверждённой публикации и проверки generation.
+Microphone warmup, preview и publication используют один долгоживущий
+WASAPI/DSP pipeline. Для make-before-break move один обработанный PCM frame
+временно подаётся в отдельные room-owned `AudioSource`; candidate становится
+активным только после подтверждённой публикации и проверки generation.
 
 `ScreenActor` сохраняет preconnected room до start/cancel и превращает target
 close, fatal capture, audio failure и terminal Room disconnect в явный terminal
@@ -77,7 +92,9 @@ correlation, timeouts, restart backoff и crash circuit. Media controller хра
 
 `VoiceIntentDirector`/executor по ADR-0001 остаётся единственным владельцем
 desired/committed/phase/operation recency. Native modules не выбирают канал и не
-восстанавливают session, уже отменённую более новой generation.
+восстанавливают session, уже отменённую более новой generation. Только publish
+lifecycle удерживает внешнюю session/generation identity; preview lifecycle не
+может подменять её и не может моделироваться как отдельная voice session.
 
 ### Поставка и диагностика
 

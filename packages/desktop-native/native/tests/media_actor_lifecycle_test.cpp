@@ -80,11 +80,34 @@ int main() try {
 
   MediaCommand partial;
   partial.type = "configureMicrophone";
-  partial.session_id = "mic";
-  partial.generation = 2;
   partial.input_volume = 0.5f;
   partial.has_input_volume = true;
   microphone.configure(partial);
+  MediaCommand revised = partial;
+  revised.request_id = "configure-2";
+  revised.revision = 2;
+  revised.has_revision = true;
+  const auto configured = microphone.configure(revised);
+  if (configured.kind != "microphoneConfig" || !configured.revision || *configured.revision != 2) {
+    throw std::runtime_error("microphone configure did not return pipeline revision");
+  }
+  MediaCommand explicit_device = revised;
+  explicit_device.revision = 3;
+  explicit_device.device_id = "capture-device";
+  microphone.configure(explicit_device);
+  MediaCommand default_device = revised;
+  default_device.revision = 4;
+  default_device.device_id.clear();
+  const auto default_configured = microphone.configure(default_device);
+  if (!default_configured.device_id.empty()) {
+    throw std::runtime_error("microphone pipeline did not restore default-device selection");
+  }
+  MediaCommand stale_revision = revised;
+  stale_revision.revision = 1;
+  requireThrows(
+    [&] { static_cast<void>(microphone.configure(stale_revision)); },
+    "stale microphone config revision reached actor state"
+  );
   microphone.disconnect(partial);
   microphone.disconnect(partial);
   microphone.handleTerminal(partial);

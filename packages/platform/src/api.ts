@@ -1,9 +1,8 @@
 import type {
   NativeMediaDeviceInfo,
-  NativeMicrophoneRuntimeConfig,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
+  NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
+  NativeMicrophonePreviewStateEvent,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaSession,
   NativeMediaMicrophoneSessionStartOptions,
@@ -161,12 +160,12 @@ export type {
   NativeMediaLoopbackMode,
   NativeMediaSession,
   NativeMediaRuntimeLostEvent,
+  NativeMicrophonePipelineConfig,
+  NativeMicrophonePreviewStateEvent,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaSessionKind,
   NativeMediaMicrophoneSessionStartOptions,
   NativeMediaSessionStartOptions,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
   NativeMediaScreenSessionStartOptions,
   NativeMediaState,
   NativeMediaStateEvent,
@@ -245,10 +244,9 @@ export interface SyrnikeDesktopApi {
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
     listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
-    startMicrophonePreview(
-      options: NativeMicrophonePreviewStartOptions,
-    ): Promise<NativeMicrophonePreviewSession>
-    stopMicrophonePreview(sessionId?: string): Promise<void>
+    configureMicrophonePipeline(config: NativeMicrophonePipelineConfig): Promise<void>
+    startMicrophonePreview(): Promise<void>
+    stopMicrophonePreview(): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,
@@ -259,10 +257,6 @@ export interface SyrnikeDesktopApi {
     disconnectPreparedScreenSession(): Promise<void>
     startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
     cancelPendingStarts(kind?: import('./media').NativeMediaSessionKind): Promise<void>
-    configureMicrophoneRuntime(
-      sessionId: string,
-      config: NativeMicrophoneRuntimeConfig,
-    ): Promise<void>
     setMicrophoneMuted(sessionId: string, muted: boolean): Promise<void>
     reconnectMicrophoneSession(
       sessionId: string,
@@ -273,6 +267,9 @@ export interface SyrnikeDesktopApi {
     onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
     onMicrophoneMetrics(
       handler: (event: NativeMicrophoneMetricsEvent) => void,
+    ): () => void
+    onMicrophonePreviewState(
+      handler: (event: NativeMicrophonePreviewStateEvent) => void,
     ): () => void
     onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
     onStreamEnded(handler: (sessionId: string) => void): () => void

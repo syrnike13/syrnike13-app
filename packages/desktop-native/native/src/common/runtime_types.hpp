@@ -73,6 +73,7 @@ struct RuntimeEvent {
   std::string request_id;
   std::string session_id;
   std::uint64_t generation = 0;
+  std::optional<std::uint64_t> revision;
   std::string kind;
   std::string status;
   std::string state;
@@ -92,6 +93,7 @@ struct RuntimeEvent {
   std::uint64_t audio_packets = 0;
   double audio_peak_db = -120.0;
   double audio_rms_db = -120.0;
+  std::string device_id;
   int width = 0;
   int height = 0;
   int fps = 0;
@@ -114,6 +116,7 @@ struct MediaCommand {
   std::string request_id;
   std::string session_id;
   std::uint64_t generation = 0;
+  std::uint64_t revision = 0;
   std::string device_id;
   std::string source_id;
   std::string livekit_url;
@@ -141,6 +144,7 @@ struct MediaCommand {
   bool has_voice_gate_threshold_db = false;
   bool has_voice_gate_auto_threshold = false;
   bool has_muted = false;
+  bool has_revision = false;
   bool force = false;
   bool terminal = false;
   std::string internal_message;

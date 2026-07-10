@@ -7,8 +7,7 @@ import {
   type NativeMediaScreenSessionPrepareOptions,
   type NativeMediaSessionKind,
   type NativeMediaSessionStartOptions,
-  type NativeMicrophonePreviewStartOptions,
-  type NativeMicrophoneRuntimeConfig,
+  type NativeMicrophonePipelineConfig,
 } from '@syrnike13/platform'
 
 import type { NativeMediaController } from './native-media-controller'
@@ -67,6 +66,9 @@ export function registerNativeMediaIpc(
       case 'microphoneMetrics':
         win.webContents.send(IPC.mediaMicrophoneMetrics, message.event)
         return
+      case 'microphonePreviewState':
+        win.webContents.send(IPC.mediaMicrophonePreviewState, message.event)
+        return
       case 'streamEnded':
         win.webContents.send(IPC.mediaStreamEnded, message.sessionId)
         return
@@ -111,14 +113,13 @@ export function registerNativeMediaIpc(
   )
 
   ipcMain.handle(
-    IPC.mediaConfigureMicrophoneRuntime,
+    IPC.mediaConfigureMicrophonePipeline,
     async (
       event,
-      sessionId: string,
-      config: NativeMicrophoneRuntimeConfig,
+      config: NativeMicrophonePipelineConfig,
     ) => {
       assertTrusted(event, getWindow, 'configure')
-      return controller.configureMicrophoneRuntime(sessionId, config)
+      return controller.configureMicrophonePipeline(config)
     },
   )
 
@@ -154,17 +155,17 @@ export function registerNativeMediaIpc(
 
   ipcMain.handle(
     IPC.mediaStartMicrophonePreview,
-    async (event, options: NativeMicrophonePreviewStartOptions) => {
+    async (event) => {
       assertTrusted(event, getWindow, 'preview')
-      return controller.startMicrophonePreview(options)
+      return controller.startMicrophonePreview()
     },
   )
 
   ipcMain.handle(
     IPC.mediaStopMicrophonePreview,
-    async (event, sessionId?: string) => {
+    async (event) => {
       if (!isTrustedSender(event, getWindow)) return
-      return controller.stopMicrophonePreview(sessionId)
+      return controller.stopMicrophonePreview()
     },
   )
 

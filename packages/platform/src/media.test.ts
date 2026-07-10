@@ -6,7 +6,7 @@ import type {
   NativeMediaMicrophoneSession,
   NativeMediaNoiseSuppressionMode,
   NativeMediaStatsEvent,
-  NativeMicrophoneRuntimeConfig,
+  NativeMicrophonePipelineConfig,
   NativeMediaSession,
   NativeMediaMicrophoneSessionStartOptions,
   NativeMediaScreenSession,
@@ -91,11 +91,21 @@ describe('native media session contract', () => {
       captureThreadMmcss: true,
     } satisfies NativeMediaStatsEvent
 
-    expectTypeOf(event.videoNoFrameCount).toEqualTypeOf<number | undefined>()
-    expectTypeOf(event.videoAvgReadbackUs).toEqualTypeOf<number | undefined>()
-    expectTypeOf(event.videoAvgScaleUs).toEqualTypeOf<number | undefined>()
-    expectTypeOf(event.videoAvgPublishUs).toEqualTypeOf<number | undefined>()
-    expectTypeOf(event.captureThreadMmcss).toEqualTypeOf<boolean | undefined>()
+    expectTypeOf<
+      NativeMediaStatsEvent['videoNoFrameCount']
+    >().toEqualTypeOf<number | undefined>()
+    expectTypeOf<
+      NativeMediaStatsEvent['videoAvgReadbackUs']
+    >().toEqualTypeOf<number | undefined>()
+    expectTypeOf<
+      NativeMediaStatsEvent['videoAvgScaleUs']
+    >().toEqualTypeOf<number | undefined>()
+    expectTypeOf<
+      NativeMediaStatsEvent['videoAvgPublishUs']
+    >().toEqualTypeOf<number | undefined>()
+    expectTypeOf<
+      NativeMediaStatsEvent['captureThreadMmcss']
+    >().toEqualTypeOf<boolean | undefined>()
   })
 
   it('models microphone capture as a native media session', () => {
@@ -114,14 +124,7 @@ describe('native media session contract', () => {
     expectTypeOf<MicrophoneStartOptions>().toMatchTypeOf<{
       kind: 'microphone'
       requestId: string
-      deviceId?: string
-      sampleRate: 48000
-      channels: 1
-      noiseSuppression: boolean
-      echoCancellation: boolean
-      inputVolume: number
       audioBitrate?: number
-      voiceGateAutoThreshold?: boolean
       muted?: boolean
       livekit: {
         url: string
@@ -158,12 +161,6 @@ describe('native media session contract', () => {
     const microphoneStart = {
       kind: 'microphone',
       requestId: 'mic-request-1',
-      sampleRate: 48_000,
-      channels: 1,
-      noiseSuppression: true,
-      echoCancellation: false,
-      inputVolume: 1,
-      voiceGateAutoThreshold: true,
       livekit: {
         url: 'wss://example.test',
         token: 'token',
@@ -171,27 +168,32 @@ describe('native media session contract', () => {
       },
     } satisfies NativeMediaMicrophoneSessionStartOptions
 
-    const runtimeConfig = {
+    const pipelineConfig = {
+      deviceId: 'microphone-1',
       noiseSuppression: false,
       echoCancellation: true,
+      inputVolume: 0.75,
+      voiceGateEnabled: true,
+      voiceGateThresholdDb: -24,
       voiceGateAutoThreshold: false,
-    } satisfies NativeMicrophoneRuntimeConfig
+    } satisfies NativeMicrophonePipelineConfig
 
     const noiseStatus: NativeMediaNoiseSuppressionMode = 'software'
     const echoStatus: NativeMediaEchoCancellationMode = 'unavailable'
 
     expectTypeOf<
-      NativeMediaMicrophoneSessionStartOptions['noiseSuppression']
+      NativeMediaMicrophoneSessionStartOptions['audioBitrate']
+    >().toEqualTypeOf<number | undefined>()
+    expectTypeOf<
+      NativeMicrophonePipelineConfig['echoCancellation']
     >().toEqualTypeOf<boolean>()
     expectTypeOf<
-      NativeMediaMicrophoneSessionStartOptions['voiceGateAutoThreshold']
-    >().toEqualTypeOf<boolean | undefined>()
+      NativeMicrophonePipelineConfig['deviceId']
+    >().toEqualTypeOf<string | null>()
     expectTypeOf<
-      NativeMicrophoneRuntimeConfig['echoCancellation']
-    >().toEqualTypeOf<boolean | undefined>()
-    expectTypeOf<
-      NativeMicrophoneRuntimeConfig['voiceGateAutoThreshold']
-    >().toEqualTypeOf<boolean | undefined>()
+      NativeMicrophonePipelineConfig['voiceGateAutoThreshold']
+    >().toEqualTypeOf<boolean>()
+    expectTypeOf(pipelineConfig.inputVolume).toEqualTypeOf<number>()
     expectTypeOf<NativeMediaNoiseSuppressionMode>().toEqualTypeOf<
       'disabled' | 'software' | 'unavailable'
     >()

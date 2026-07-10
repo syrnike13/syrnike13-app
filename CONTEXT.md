@@ -64,10 +64,26 @@ A desktop media publisher (microphone / screen / camera) implemented as its
 joining the voice room as a separate peer. A published track **cannot be
 repointed between rooms** at the LiveKit level (a track belongs to a room's
 participant). A seamless move keeps the WASAPI capture thread and DSP state
-alive, processes each PCM frame once, and temporarily fans it out to a
-room-owned `AudioSource`/track for both the committed and candidate rooms.
-Only the latest execution generation may promote the candidate; after its
-publication is confirmed, the old room-owned source and track are retired.
+alive through the **Microphone Pipeline**, processes each PCM frame once, and
+temporarily fans it out to a room-owned `AudioSource`/track for both the
+committed and candidate rooms. Only the latest publish execution generation may
+promote the candidate; after its publication is confirmed, the old room-owned
+source and track are retired.
+
+### Microphone Pipeline
+The single persistent Windows-native microphone pipeline owned by
+`MediaRuntime`. It owns the selected input device, one WASAPI capture path, DSP
+configuration, warm state, and microphone level meter. Preview render and
+LiveKit publish are **consumers** of this pipeline and may coexist at the same
+time; they must not open parallel capture paths for the same execution.
+
+Only microphone **publish** exposes session/generation identity through the
+renderer-facing `desktop.media` interface, because only publish participates in
+voice-session fencing and room ownership. Preview still has an internal
+main-to-utility generation for cancellation and recovery, but the renderer
+never sees it. Renderer preview lifecycle is reported as identity-free
+`running` / `stopped` / `error` state. A renderer-visible "monitor
+pseudo-session" is forbidden.
 
 ### Native Runtime Supervisor
 The Electron-main module that owns one native utility host lifecycle. It
@@ -81,17 +97,22 @@ media crash from taking down chat, the renderer, hotkeys, or overlay detection.
 
 ### MediaRuntime
 The instance-owned Windows native module behind `syrnike_media.node`. It owns
-exactly one LiveKit runtime lease and the microphone, screen, and preview
-actors. Its interface is deliberately small: enqueue a typed command, observe
+exactly one LiveKit runtime lease, the `ScreenActor`, the `MicrophoneActor` that
+implements the persistent `Microphone Pipeline`, and the `PreviewActor` render
+consumer. Preview and publish consume the pipeline without owning microphone
+capture. Its interface is deliberately small: enqueue a typed command, observe
 typed events, and request asynchronous shutdown. JSON, stdin/stdout transport,
 and process-global media state are not part of this interface.
 
 ### Native media actor
 An instance-owned, serial command executor inside `MediaRuntime`. The
-`MicrophoneActor`, `ScreenActor`, and `PreviewActor` each own their threads and
-resources, apply latest-generation-wins fencing, and reach an explicit terminal
-state before releasing them. Actors do not infer user intent; they execute only
-commands already authorized by the renderer-side native media owner.
+`MicrophoneActor`, `ScreenActor`, and `PreviewActor` own their respective
+threads and resources, apply latest-generation-wins fencing, and reach an
+explicit terminal state before releasing them. Microphone capture and DSP are
+centralized in the `Microphone Pipeline`; `PreviewActor` owns only render-side
+playback, while publish owns only room-specific LiveKit resources. Native
+executors do not infer user intent; they execute only commands already
+authorized by the renderer-side native media owner.
 
 ### Native execution generation
 A monotonic fencing number scoped to a native execution kind/session. A newer

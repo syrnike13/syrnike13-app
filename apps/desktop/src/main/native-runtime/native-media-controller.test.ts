@@ -73,11 +73,7 @@ function microphoneOptions(requestId = 'mic-request-1') {
   return {
     kind: 'microphone' as const,
     requestId,
-    sampleRate: 48_000 as const,
-    channels: 1 as const,
-    noiseSuppression: true,
-    echoCancellation: true,
-    inputVolume: 1,
+    audioBitrate: 64_000,
     muted: false,
     livekit: {
       url: 'wss://livekit.example',
@@ -105,16 +101,26 @@ function screenOptions(requestId = 'screen-request-1') {
   }
 }
 
-function previewOptions() {
+function pipelineConfig(
+  overrides: Partial<{
+    deviceId: string | null
+    noiseSuppression: boolean
+    echoCancellation: boolean
+    inputVolume: number
+    voiceGateEnabled: boolean
+    voiceGateThresholdDb: number
+    voiceGateAutoThreshold: boolean
+  }> = {},
+) {
   return {
-    sampleRate: 48_000 as const,
-    channels: 1 as const,
+    deviceId: null,
     noiseSuppression: true,
     echoCancellation: true,
     inputVolume: 1,
     voiceGateEnabled: false,
     voiceGateThresholdDb: -45,
     voiceGateAutoThreshold: true,
+    ...overrides,
   }
 }
 
@@ -219,6 +225,129 @@ describe('NativeMediaController', () => {
     expect(harness.controller.getState().engine.activeSessions).toEqual([])
   })
 
+  it('configures the warmed microphone pipeline without an active preview or publish', async () => {
+    const harness = createHarness()
+    await harness.controller.prewarmMicrophone()
+    const warmCommand = harness.request.mock.calls.find(
+      ([command]) => command.type === 'warmMicrophone',
+    )?.[0]
+    harness.request.mockClear()
+
+    const config = pipelineConfig({
+      inputVolume: 0.4,
+      voiceGateThresholdDb: -36,
+    })
+    await harness.controller.configureMicrophonePipeline(config)
+
+    expect(harness.request).toHaveBeenCalledWith(
+      {
+        type: 'configureMicrophone',
+        revision: 1,
+        config,
+      },
+      5_000,
+    )
+    expect(warmCommand.config).toEqual(pipelineConfig())
+  })
+
+  it('delivers pipeline metrics while warm without session routing', async () => {
+    const harness = createHarness()
+    const listener = vi.fn()
+    harness.controller.subscribe(listener)
+    await harness.controller.prewarmMicrophone()
+
+    harness.event({
+      type: 'microphoneMetrics',
+      sequence: 1,
+      metrics: {
+        inputDb: -20,
+        thresholdDb: -45,
+        open: true,
+      },
+    })
+
+    expect(listener).toHaveBeenCalledWith({
+      type: 'microphoneMetrics',
+      event: {
+        inputDb: -20,
+        thresholdDb: -45,
+        open: true,
+      },
+    })
+  })
+
+  it('persists the latest pipeline config through recovery', async () => {
+    const harness = createHarness()
+    await harness.controller.prewarmMicrophone()
+    const config = pipelineConfig({
+      inputVolume: 0.25,
+      voiceGateEnabled: true,
+    })
+    await harness.controller.configureMicrophonePipeline(config)
+    harness.request.mockClear()
+
+    harness.state({
+      runtime: 'media',
+      status: 'recovering',
+      restartCount: 1,
+      lastFailure: 'utility exited',
+    })
+    harness.state({
+      runtime: 'media',
+      status: 'ready',
+      restartCount: 1,
+    })
+    await vi.waitFor(() => {
+      const restored = harness.request.mock.calls.find(
+        ([command]) => command.type === 'warmMicrophone',
+      )?.[0]
+      expect(restored?.config).toEqual(config)
+    })
+  })
+
+  it('applies only the latest stale-raced pipeline configuration revision', async () => {
+    const harness = createHarness()
+    let releaseWarm!: () => void
+    const warmGate = new Promise<void>((resolve) => {
+      releaseWarm = resolve
+    })
+    harness.request.mockImplementation(async (command: any) => {
+      if (command.type === 'warmMicrophone') {
+        await warmGate
+      }
+      return undefined
+    })
+
+    const firstConfig = pipelineConfig({ inputVolume: 0.4 })
+    const latestConfig = pipelineConfig({
+      inputVolume: 0.75,
+      voiceGateEnabled: true,
+    })
+    const first = harness.controller.configureMicrophonePipeline(firstConfig)
+    const latest = harness.controller.configureMicrophonePipeline(latestConfig)
+    await vi.waitFor(() =>
+      expect(
+        harness.request.mock.calls.filter(
+          ([command]) => command.type === 'warmMicrophone',
+        ),
+      ).toHaveLength(1),
+    )
+
+    releaseWarm()
+    await Promise.all([first, latest])
+
+    const configureCommands = harness.request.mock.calls
+      .map(([command]) => command)
+      .filter((command) => command.type === 'configureMicrophone')
+    expect(configureCommands).toEqual([
+      {
+        type: 'configureMicrophone',
+        revision: 2,
+        config: latestConfig,
+      },
+    ])
+  })
+
   it('restores the committed generation after a failed microphone reconnect', async () => {
     const harness = createHarness()
     const session = await harness.controller.startSession(microphoneOptions())
@@ -228,7 +357,7 @@ describe('NativeMediaController', () => {
         generations.push(command.generation)
         throw new Error('candidate failed')
       }
-      if (command.type === 'configureMicrophone') {
+      if (command.type === 'setMicrophoneMuted') {
         generations.push(command.generation)
       }
       return undefined
@@ -240,9 +369,7 @@ describe('NativeMediaController', () => {
         microphoneOptions('mic-request-2'),
       ),
     ).rejects.toThrow('candidate failed')
-    await harness.controller.configureMicrophoneRuntime(session.sessionId, {
-      inputVolume: 0.5,
-    })
+    await harness.controller.setMicrophoneMuted(session.sessionId, true)
     expect(generations[1]).toBeLessThan(generations[0])
   })
 
@@ -260,7 +387,7 @@ describe('NativeMediaController', () => {
         if (command.options.requestId === 'mic-request-2') return firstResult
         throw new Error('latest candidate failed')
       }
-      if (command.type === 'configureMicrophone') {
+      if (command.type === 'setMicrophoneMuted') {
         reconnectGenerations.push(command.generation)
       }
       return undefined
@@ -297,9 +424,7 @@ describe('NativeMediaController', () => {
 
     await expect(stale).rejects.toThrow('cancelled')
     await expect(latest).rejects.toThrow('latest candidate failed')
-    await harness.controller.configureMicrophoneRuntime(session.sessionId, {
-      inputVolume: 0.75,
-    })
+    await harness.controller.setMicrophoneMuted(session.sessionId, true)
     expect(reconnectGenerations[2]).toBe(reconnectGenerations[0])
     expect(reconnectGenerations[2]).toBeLessThan(reconnectGenerations[1])
   })
@@ -680,7 +805,10 @@ describe('NativeMediaController', () => {
     await harness.controller.prepareScreenSession({
       livekit: screenOptions().livekit,
     })
-    const preview = await harness.controller.startMicrophonePreview(previewOptions())
+    await harness.controller.startMicrophonePreview()
+    const previewStart = harness.request.mock.calls.find(
+      ([command]) => command.type === 'startPreview',
+    )?.[0]
 
     harness.state({
       status: 'degraded',
@@ -688,18 +816,25 @@ describe('NativeMediaController', () => {
       degradedReason: 'Native runtime unavailable',
     })
 
-    expect(listener).toHaveBeenCalledWith({
-      type: 'streamError',
-      event: { sessionId: preview.sessionId, message: 'Native runtime unavailable' },
-    })
-    expect(listener).toHaveBeenCalledWith({
-      type: 'streamEnded',
-      sessionId: preview.sessionId,
-    })
+    expect(listener.mock.calls).not.toContainEqual([
+      {
+        type: 'streamError',
+        event: {
+          sessionId: previewStart.sessionId,
+          message: 'Native runtime unavailable',
+        },
+      },
+    ])
+    expect(listener.mock.calls).not.toContainEqual([
+      {
+        type: 'streamEnded',
+        sessionId: previewStart.sessionId,
+      },
+    ])
 
     harness.request.mockClear()
     await harness.controller.disconnectPreparedScreenSession()
-    await harness.controller.stopMicrophonePreview(preview.sessionId)
+    await harness.controller.stopMicrophonePreview()
     expect(harness.request).not.toHaveBeenCalled()
   })
 
@@ -823,7 +958,7 @@ describe('NativeMediaController', () => {
     expect(harness.controller.getState().engine.lastError).toBeNull()
   })
 
-  it('routes preview metrics and terminates a failed preview once', async () => {
+  it('routes warm metrics without leaking preview identity through public events', async () => {
     const harness = createHarness()
     harness.request.mockImplementation(async (command: any) => {
       if (command.type === 'startPreview') {
@@ -833,7 +968,7 @@ describe('NativeMediaController', () => {
     })
     const listener = vi.fn()
     harness.controller.subscribe(listener)
-    const preview = await harness.controller.startMicrophonePreview(previewOptions())
+    await harness.controller.startMicrophonePreview()
     const start = harness.request.mock.calls.find(
       ([command]) => command.type === 'startPreview',
     )?.[0]
@@ -841,10 +976,7 @@ describe('NativeMediaController', () => {
     harness.event({
       type: 'microphoneMetrics',
       sequence: 1,
-      sessionId: preview.sessionId,
-      generation: start.generation,
       metrics: {
-        sessionId: preview.sessionId,
         inputDb: -20,
         thresholdDb: -45,
         open: true,
@@ -853,7 +985,6 @@ describe('NativeMediaController', () => {
     expect(listener).toHaveBeenCalledWith({
       type: 'microphoneMetrics',
       event: {
-        sessionId: preview.sessionId,
         inputDb: -20,
         thresholdDb: -45,
         open: true,
@@ -868,32 +999,63 @@ describe('NativeMediaController', () => {
         message: 'capture failed',
         stage: 'preview',
         retryable: true,
-        sessionId: preview.sessionId,
+        sessionId: start.sessionId,
         generation: start.generation,
       },
     })
     harness.event({
       type: 'sessionStopped',
       sequence: 3,
-      sessionId: preview.sessionId,
+      sessionId: start.sessionId,
       generation: start.generation,
       reason: 'runtime_error',
     })
-    expect(listener).toHaveBeenCalledWith({
-      type: 'streamError',
-      event: { sessionId: preview.sessionId, message: 'capture failed' },
-    })
-    expect(listener.mock.calls).toContainEqual([
-      { type: 'streamEnded', sessionId: preview.sessionId },
+    expect(listener.mock.calls).not.toContainEqual([
+      {
+        type: 'streamError',
+        event: { sessionId: start.sessionId, message: 'capture failed' },
+      },
     ])
-    expect(
-      listener.mock.calls.filter(
-        ([event]) => event.type === 'streamEnded' && event.sessionId === preview.sessionId,
-      ),
-    ).toHaveLength(1)
+    expect(listener.mock.calls).not.toContainEqual([
+      { type: 'streamEnded', sessionId: start.sessionId },
+    ])
+    expect(listener).toHaveBeenCalledWith({
+      type: 'microphonePreviewState',
+      event: { status: 'error', message: 'capture failed' },
+    })
+    expect(harness.controller.getState().engine.lastError).toBe('capture failed')
   })
 
-  it('stops the previous running preview before replacing it', async () => {
+  it('coalesces concurrent preview starts into one singleton operation', async () => {
+    const harness = createHarness()
+    let resolveStart!: (value: unknown) => void
+    const startResult = new Promise((resolve) => {
+      resolveStart = resolve
+    })
+    harness.request.mockImplementation(async (command: any) => {
+      if (command.type === 'startPreview') return startResult
+      return undefined
+    })
+
+    const first = harness.controller.startMicrophonePreview()
+    const second = harness.controller.startMicrophonePreview()
+    expect(second).toBe(first)
+    await vi.waitFor(() =>
+      expect(
+        harness.request.mock.calls.filter(
+          ([command]) => command.type === 'startPreview',
+        ),
+      ).toHaveLength(1),
+    )
+    const start = harness.request.mock.calls.find(
+      ([command]) => command.type === 'startPreview',
+    )?.[0]
+    resolveStart({ sessionId: start.sessionId })
+
+    await Promise.all([first, second])
+  })
+
+  it('treats preview start as a singleton and keeps a running preview idempotent', async () => {
     const harness = createHarness()
     harness.request.mockImplementation(async (command: any) => {
       if (command.type === 'startPreview') {
@@ -902,24 +1064,15 @@ describe('NativeMediaController', () => {
       return undefined
     })
 
-    const first = await harness.controller.startMicrophonePreview(previewOptions())
-    harness.request.mockClear()
-
-    const second = await harness.controller.startMicrophonePreview({
-      ...previewOptions(),
-      inputVolume: 0.5,
-    })
-
-    const stop = harness.request.mock.calls.find(
-      ([command]) => command.type === 'stopPreview',
-    )?.[0]
-    const start = harness.request.mock.calls.find(
+    await harness.controller.startMicrophonePreview()
+    const firstStart = harness.request.mock.calls.find(
       ([command]) => command.type === 'startPreview',
     )?.[0]
+    harness.request.mockClear()
 
-    expect(stop.sessionId).toBe(first.sessionId)
-    expect(stop.generation).toBeLessThan(start.generation)
-    expect(second.sessionId).toBe(start.sessionId)
+    await harness.controller.startMicrophonePreview()
+    expect(harness.request).not.toHaveBeenCalled()
+    expect(firstStart.sessionId).toEqual(expect.any(String))
   })
 
   it('cancels a stale preview start when stop wins the race', async () => {
@@ -935,7 +1088,7 @@ describe('NativeMediaController', () => {
       return undefined
     })
 
-    const start = harness.controller.startMicrophonePreview(previewOptions())
+    const start = harness.controller.startMicrophonePreview()
     await vi.waitFor(() =>
       expect(
         harness.request.mock.calls.some(
@@ -966,7 +1119,7 @@ describe('NativeMediaController', () => {
     harness.request.mockRejectedValueOnce(new Error('preview startup failed'))
 
     await expect(
-      harness.controller.startMicrophonePreview(previewOptions()),
+      harness.controller.startMicrophonePreview(),
     ).rejects.toThrow('preview startup failed')
     harness.request.mockClear()
 
@@ -983,7 +1136,7 @@ describe('NativeMediaController', () => {
       return undefined
     })
 
-    const preview = await harness.controller.startMicrophonePreview(previewOptions())
+    await harness.controller.startMicrophonePreview()
     const initialStart = harness.request.mock.calls.find(
       ([command]) => command.type === 'startPreview',
     )?.[0]
@@ -1003,7 +1156,7 @@ describe('NativeMediaController', () => {
       .filter((command) => command.type === 'startPreview')
       .at(-1)
 
-    expect(restoredStart.sessionId).toBe(preview.sessionId)
+    expect(restoredStart.sessionId).toBe(initialStart.sessionId)
     expect(restoredStart.generation).toBeGreaterThan(initialStart.generation)
   })
 
@@ -1012,10 +1165,7 @@ describe('NativeMediaController', () => {
       isNativeRuntimeEvent({
         type: 'microphoneMetrics',
         sequence: 1,
-        sessionId: 'mic-1',
-        generation: 0,
         metrics: {
-          sessionId: 'mic-1',
           inputDb: -20,
           thresholdDb: -45,
           open: true,
