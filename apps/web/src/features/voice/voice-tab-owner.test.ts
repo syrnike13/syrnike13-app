@@ -126,11 +126,6 @@ class FakeOwnedClient implements OwnedBrowserVoiceClient {
     return () => undefined
   }
 
-  subscribeSpeaking(listener: (userIds: ReadonlySet<string>) => void) {
-    listener(new Set())
-    return () => undefined
-  }
-
   async dispose() {
     this.disposed = true
     this.listeners.clear()

@@ -14,6 +14,7 @@ const livekit = vi.hoisted(() => {
       setMicrophoneEnabled: ReturnType<typeof vi.fn>
       setCameraEnabled: ReturnType<typeof vi.fn>
       setScreenShareEnabled: ReturnType<typeof vi.fn>
+      getTrackPublication: ReturnType<typeof vi.fn>
     }
     emit(event: string, ...args: unknown[]): void
   }> = []
@@ -31,6 +32,16 @@ const remoteAudioMixers = vi.hoisted(() => ({
     applyVolumes: ReturnType<typeof vi.fn>
     setOutputDevice: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
+    onSpeakingUserIdsChange?: (userIds: ReadonlySet<string>) => void
+  }>,
+}))
+
+const localSpeakingDetectors = vi.hoisted(() => ({
+  instances: [] as Array<{
+    setTrack: ReturnType<typeof vi.fn>
+    setEnabled: ReturnType<typeof vi.fn>
+    dispose: ReturnType<typeof vi.fn>
+    onSpeakingChange?: (speaking: boolean) => void
   }>,
 }))
 
@@ -50,6 +61,7 @@ vi.mock('livekit-client', () => {
       setMicrophoneEnabled: vi.fn(async () => this.publication),
       setCameraEnabled: vi.fn(async () => undefined),
       setScreenShareEnabled: vi.fn(async () => undefined),
+      getTrackPublication: vi.fn(() => this.publication),
     }
 
     constructor() {
@@ -106,7 +118,9 @@ vi.mock('./voice-mic-processing', () => ({
 }))
 
 vi.mock('./remote-audio-mixer', () => ({
-  createRemoteAudioMixer: () => {
+  createRemoteAudioMixer: (options: {
+    onSpeakingUserIdsChange?: (userIds: ReadonlySet<string>) => void
+  }) => {
     const mixer = {
       addTrack: vi.fn(() => true),
       removeTrack: vi.fn(),
@@ -114,9 +128,25 @@ vi.mock('./remote-audio-mixer', () => ({
       applyVolumes: vi.fn(async () => undefined),
       setOutputDevice: vi.fn(async () => undefined),
       dispose: vi.fn(),
+      onSpeakingUserIdsChange: options.onSpeakingUserIdsChange,
     }
     remoteAudioMixers.instances.push(mixer)
     return mixer
+  },
+}))
+
+vi.mock('./local-speaking-detector', () => ({
+  createLocalSpeakingDetector: (options: {
+    onSpeakingChange: (speaking: boolean) => void
+  }) => {
+    const detector = {
+      setTrack: vi.fn(),
+      setEnabled: vi.fn(),
+      dispose: vi.fn(),
+      onSpeakingChange: options.onSpeakingChange,
+    }
+    localSpeakingDetectors.instances.push(detector)
+    return detector
   },
 }))
 
@@ -179,6 +209,7 @@ describe('BrowserRtcEngineAdapter', () => {
     livekit.rooms.length = 0
     livekit.connectPromise = null
     remoteAudioMixers.instances.length = 0
+    localSpeakingDetectors.instances.length = 0
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
   })
@@ -370,6 +401,47 @@ describe('BrowserRtcEngineAdapter', () => {
     expect(element.srcObject).toBeNull()
     expect(element.isConnected).toBe(false)
     await adapter.dispose()
+  })
+
+  it('uses local audio activity instead of LiveKit active-speaker events', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    const mixer = remoteAudioMixers.instances[0]
+
+    room.emit('activeSpeakersChanged', [{ identity: 'server-user' }])
+    expect(
+      events.some((event) => (event as { type?: string }).type === 'speakingChanged'),
+    ).toBe(false)
+
+    mixer.onSpeakingUserIdsChange?.(new Set(['remote-user']))
+    expect(events).toContainEqual({
+      type: 'speakingChanged',
+      participantIdentities: ['remote-user'],
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+    })
+    await adapter.dispose()
+  })
+
+  it('publishes self activity from the processed local microphone track', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const detector = localSpeakingDetectors.instances[0]
+    detector.onSpeakingChange?.(true)
+
+    expect(events).toContainEqual({
+      type: 'speakingChanged',
+      participantIdentities: ['identity-a'],
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+    })
+    await adapter.dispose()
+    expect(detector.dispose).toHaveBeenCalledTimes(1)
   })
 
   it('replaces a duplicate subscription without leaking decoder elements', async () => {

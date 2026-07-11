@@ -10,9 +10,7 @@ import {
   rmsFromFloatTimeDomain,
   rmsToDb,
 } from '#/features/voice/voice-gate-level'
-
-const CLIENT_SPEAKING_THRESHOLD_DB = -58
-const CLIENT_SPEAKING_CLOSE_HOLD_MS = 180
+import { advanceSpeakingPolicy } from '#/features/voice/speaking-activity-policy'
 
 type AudioContextConstructor = typeof AudioContext
 
@@ -382,7 +380,18 @@ export class RemoteAudioMixer {
     for (const entry of this.#entries.values()) {
       if (entry.source !== 'mic') continue
 
-      const speaking = this.#entrySpeaking(entry, now)
+      entry.analyserNode.getFloatTimeDomainData(entry.analyserSamples)
+      const next = advanceSpeakingPolicy({
+        state: entry,
+        levelDb: rmsToDb(rmsFromFloatTimeDomain(entry.analyserSamples)),
+        enabled:
+          entry.gainNode.gain.value > 0 &&
+          !entry.mediaStreamTrack.muted &&
+          entry.mediaStreamTrack.readyState === 'live',
+        now,
+      })
+      entry.quietSince = next.quietSince
+      const speaking = next.speaking
       if (entry.speaking !== speaking) {
         entry.speaking = speaking
         changed = true
@@ -392,32 +401,6 @@ export class RemoteAudioMixer {
     if (changed) {
       this.#publishSpeakingUsersIfChanged()
     }
-  }
-
-  #entrySpeaking(entry: RemoteAudioMixerEntry, now: number) {
-    if (
-      entry.gainNode.gain.value <= 0 ||
-      entry.mediaStreamTrack.muted ||
-      entry.mediaStreamTrack.readyState !== 'live'
-    ) {
-      entry.quietSince = null
-      return false
-    }
-
-    entry.analyserNode.getFloatTimeDomainData(entry.analyserSamples)
-    const levelDb = rmsToDb(rmsFromFloatTimeDomain(entry.analyserSamples))
-    if (levelDb >= CLIENT_SPEAKING_THRESHOLD_DB) {
-      entry.quietSince = null
-      return true
-    }
-
-    if (!entry.speaking) {
-      entry.quietSince = null
-      return false
-    }
-
-    entry.quietSince ??= now
-    return now - entry.quietSince < CLIENT_SPEAKING_CLOSE_HOLD_MS
   }
 
   #publishSpeakingUsersIfChanged() {

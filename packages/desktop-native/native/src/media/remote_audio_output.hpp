@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace livekit { class Track; }
 
@@ -32,8 +33,15 @@ float resolveRemoteAudioGain(
 class RemoteAudioOutput final {
  public:
   using FailureHandler = std::function<void(std::string, std::string)>;
+  // Called when the aggregate set of remote microphone speakers changes.
+  // The callback receives normalized participant identities and is never
+  // invoked while RemoteAudioOutput's internal mutex is held.
+  using SpeakingActivityHandler = std::function<void(std::vector<std::string>)>;
 
-  explicit RemoteAudioOutput(FailureHandler on_failure = {});
+  explicit RemoteAudioOutput(
+    FailureHandler on_failure = {},
+    SpeakingActivityHandler on_speaking_activity = {}
+  );
   ~RemoteAudioOutput();
   RemoteAudioOutput(const RemoteAudioOutput&) = delete;
   RemoteAudioOutput& operator=(const RemoteAudioOutput&) = delete;

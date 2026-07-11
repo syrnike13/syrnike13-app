@@ -468,9 +468,59 @@ describe('NativeRtcEngineAdapter', () => {
 
     expect(events).toContainEqual({
       type: 'speakingChanged',
-      participantIdentities: ['voice:v1|web|c|e|o|user-b'],
+      participantIdentities: ['user-b'],
       operationId: lease.operationId,
       connectionEpoch: lease.connectionEpoch,
+    })
+    adapter.dispose()
+  })
+
+  it('combines native microphone gate activity with remote activity', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      effectiveMuted: false,
+    }
+
+    await adapter.connect(lease, desired, new AbortController().signal)
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'connectMicrophone'),
+    )
+    await waitUntil(() =>
+      events.some(
+        (event) =>
+          (event as { type?: string; kind?: string; media?: { state?: string } })
+            .type === 'mediaState' &&
+          (event as { kind?: string }).kind === 'microphone' &&
+          (event as { media?: { state?: string } }).media?.state === 'running',
+      ),
+    )
+
+    runtime.emitEvent({
+      type: 'microphoneMetrics',
+      sequence: 3,
+      metrics: { inputDb: -12, thresholdDb: -28, open: true },
+    })
+    expect(events).toContainEqual({
+      type: 'speakingChanged',
+      participantIdentities: ['participant'],
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+    })
+
+    runtime.emitEvent({
+      type: 'activeSpeakers',
+      sequence: 4,
+      sessionId: lease.connectionEpoch,
+      generation: 1,
+      participantIdentities: ['remote-user'],
+    })
+    expect(events.at(-1)).toMatchObject({
+      type: 'speakingChanged',
+      participantIdentities: ['remote-user', 'participant'],
     })
     adapter.dispose()
   })

@@ -12,9 +12,6 @@ export interface OwnedBrowserVoiceClient {
   subscribe(listener: (snapshot: VoiceSnapshot) => void): () => void
   room(): Room | null
   subscribeRoom(listener: (room: Room | null) => void): () => void
-  subscribeSpeaking(
-    listener: (userIds: ReadonlySet<string>) => void,
-  ): () => void
   dispose(): Promise<void> | void
 }
 
@@ -85,9 +82,6 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     (snapshot: VoiceSnapshot) => void
   >()
   private readonly roomListeners = new Set<(room: Room | null) => void>()
-  private readonly speakingListeners = new Set<
-    (userIds: ReadonlySet<string>) => void
-  >()
   private ownedClient: OwnedBrowserVoiceClient | null = null
   private ownerId: string | null = null
   private ownerEpoch: string | null = null
@@ -184,12 +178,6 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     return () => this.roomListeners.delete(listener)
   }
 
-  subscribeSpeaking(listener: (userIds: ReadonlySet<string>) => void) {
-    this.speakingListeners.add(listener)
-    listener(new Set(this.snapshotValue.speakingUserIds))
-    return () => this.speakingListeners.delete(listener)
-  }
-
   async dispose() {
     if (this.disposed) return
     this.disposed = true
@@ -198,7 +186,6 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
     this.channel?.close()
     this.snapshotListeners.clear()
     this.roomListeners.clear()
-    this.speakingListeners.clear()
   }
 
   private async acquireOwnership() {
@@ -294,10 +281,6 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
         if (this.ownedClient !== client) return
         this.roomValue = room
         for (const listener of this.roomListeners) listener(room)
-      }),
-      client.subscribeSpeaking((userIds) => {
-        if (this.ownedClient !== client) return
-        for (const listener of this.speakingListeners) listener(userIds)
       }),
     ]
   }
@@ -407,8 +390,6 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
   private publishLocalSnapshot(snapshot: VoiceSnapshot) {
     this.snapshotValue = snapshot
     for (const listener of this.snapshotListeners) listener(snapshot)
-    const speaking = new Set(snapshot.speakingUserIds)
-    for (const listener of this.speakingListeners) listener(speaking)
   }
 }
 

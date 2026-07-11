@@ -89,6 +89,14 @@ Electron is pinned to 43.1.0 because this cutover relies on its typed
 `sharedTexture` import API; Electron 35 cannot provide the GPU bridge contract
 and is not ABI-compatible with this native distribution.
 
+Speaking Activity is owned by the RTC Engine adapter rather than the renderer.
+The web adapter derives it from the processed local microphone and decoded
+remote microphone tracks; the native adapter derives local activity from the
+Microphone Pipeline gate and remote activity from native decoded PCM before
+publishing the canonical identity set. `ActiveSpeakersChanged` from LiveKit is
+not a competing UI source, because merging a delayed server event with local
+activity would resurrect stale green indicators.
+
 ### Microphone and control semantics
 
 The Microphone Pipeline is opened once and survives mute and channel moves. A

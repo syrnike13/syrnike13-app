@@ -29,7 +29,6 @@ import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import { VoiceTabOwner } from '#/features/voice/voice-tab-owner'
 import { createWebVoiceAuthorityAdapter } from '#/features/voice/web-voice-authority-adapter'
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
-import { mergeSpeakingUserIds } from '#/features/voice/voice-speaking-users'
 import {
   nativeVideoRegistry,
   type NativeVideoRegistryTrack,
@@ -96,7 +95,6 @@ type VoiceClient = {
   subscribe(listener: (snapshot: VoiceSnapshot) => void): () => void
   room(): Room | null
   subscribeRoom(listener: (room: Room | null) => void): () => void
-  subscribeSpeaking(listener: (ids: ReadonlySet<string>) => void): () => void
   dispose(): Promise<void> | void
 }
 
@@ -138,10 +136,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(INITIAL_SNAPSHOT)
   const [room, setRoom] = useState<Room | null>(null)
   const [roomRevision, setRoomRevision] = useState(0)
-  const [engineSpeakingUserIds, setEngineSpeakingUserIds] = useState<ReadonlySet<string>>(
-    new Set(),
-  )
-  const [nativeSelfSpeaking, setNativeSelfSpeaking] = useState(false)
   const [stageMediaFilters, setStageMediaFiltersState] = useState(
     readStageMediaFilters,
   )
@@ -174,17 +168,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     setRoom(client.room())
     const unsubscribeSnapshot = client.subscribe(setSnapshot)
     const unsubscribeRoom = client.subscribeRoom(setRoom)
-    const unsubscribeSpeaking = client.subscribeSpeaking((ids) => {
-      setEngineSpeakingUserIds(
-        new Set([...ids].map(baseVoiceIdentity).filter(Boolean)),
-      )
-    })
     syncPreferences(client)
 
     return () => {
       unsubscribeSnapshot()
       unsubscribeRoom()
-      unsubscribeSpeaking()
       if (clientRef.current === client) clientRef.current = null
       void client.dispose()
     }
@@ -225,43 +213,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [desktop])
 
-  useEffect(() => {
-    if (!desktop) return
-    setEngineSpeakingUserIds(
-      new Set(snapshot.speakingUserIds.map(baseVoiceIdentity).filter(Boolean)),
-    )
-  }, [desktop, snapshot.speakingUserIds])
-
-  useEffect(() => {
-    if (
-      !desktop ||
-      snapshot.connection !== 'connected' ||
-      snapshot.microphone.state !== 'running' ||
-      snapshot.effectiveMuted
-    ) {
-      setNativeSelfSpeaking(false)
-      return
-    }
-    return desktop.media.onMicrophoneMetrics((metrics) => {
-      setNativeSelfSpeaking(metrics.open)
-    })
-  }, [
-    desktop,
-    snapshot.connection,
-    snapshot.effectiveMuted,
-    snapshot.microphone.state,
-  ])
-
   const speakingUserIds = useMemo(
-    () =>
-      desktop
-        ? mergeSpeakingUserIds({
-            remoteUserIds: engineSpeakingUserIds,
-            selfUserId: auth.user?._id ?? null,
-            selfSpeaking: nativeSelfSpeaking,
-          })
-        : engineSpeakingUserIds,
-    [auth.user?._id, desktop, engineSpeakingUserIds, nativeSelfSpeaking],
+    () => new Set(snapshot.speakingUserIds.map(baseVoiceIdentity).filter(Boolean)),
+    [snapshot.speakingUserIds],
   )
 
   useEffect(() => {
@@ -691,10 +645,6 @@ function createDesktopBridgeUnavailableVoiceClient(): VoiceClient {
       listener(null)
       return () => undefined
     },
-    subscribeSpeaking(listener) {
-      listener(new Set())
-      return () => undefined
-    },
     dispose() { listeners.clear() },
   }
 }
@@ -723,7 +673,6 @@ function createBrowserVoiceClient(getCurrentUserId: () => string | null): VoiceC
     subscribe: (listener) => director.subscribe(listener),
     room: () => engine.room(),
     subscribeRoom: (listener) => engine.subscribeRoom(listener),
-    subscribeSpeaking: (listener) => engine.subscribeSpeaking(listener),
     async dispose() {
       await director.dispose()
       await engine.dispose()
@@ -762,10 +711,6 @@ function createDesktopVoiceClient(
     room: () => null,
     subscribeRoom(listener) {
       listener(null)
-      return () => undefined
-    },
-    subscribeSpeaking(listener) {
-      listener(new Set())
       return () => undefined
     },
     dispose() {

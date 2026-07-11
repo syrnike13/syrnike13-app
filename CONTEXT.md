@@ -104,6 +104,19 @@ its desired quality. Remote audio is always subscribed; remote video is
 subscribed and decoded only while demanded.
 _Avoid_: Video membership, renderer RTC, auto-subscribe state
 
+**Speaking Activity**:
+The set of canonical user identities whose audible microphone activity is open
+for the current RTC Engine connection. It is derived at the receiving client
+from the processed local microphone or decoded remote microphone PCM; screen
+audio and muted output never contribute.
+_Avoid_: Server active-speaker list, volume meter, transport event
+
+**Voice Activity Detector**:
+The stateful policy that turns normalized audio level frames into Speaking
+Activity with a shared threshold and release hold. Audio capture, decoding,
+gain, and platform-specific delivery remain outside the policy.
+_Avoid_: Microphone Pipeline, audio renderer, LiveKit room detector
+
 ## Failure and recovery
 
 **Voice Recovery**:

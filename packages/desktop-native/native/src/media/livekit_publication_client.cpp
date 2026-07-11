@@ -74,6 +74,8 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
       post_(std::move(post)),
       audio_output_([this](std::string message, std::string device_id) {
         postOutputFailure(std::move(message), std::move(device_id));
+      }, [this](std::vector<std::string> identities) {
+        postSpeakingActivity(std::move(identities));
       }),
       remote_video_(electronMainPid(), post_) {
     remote_video_.updateIdentity(session_id_, generation_);
@@ -182,12 +184,13 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
     }
   }
 
-  void onActiveSpeakersChanged(
-    livekit::Room&,
-    const livekit::ActiveSpeakersChangedEvent& event
-  ) override {
-    CallbackGuard callback(*this);
-    if (!callback || kind_ != "voice") return;
+  void postSpeakingActivity(std::vector<std::string> identities) {
+    // RemoteAudioOutput is stopped and its workers are joined before the
+    // delegate enters shutdown, so this callback cannot outlive the delegate.
+    // Do not acquire callback_mutex_ here: audio callbacks can be emitted
+    // reentrantly from onTrackSubscribed/onTrackUnsubscribed, which already
+    // hold CallbackGuard.
+    if (kind_ != "voice") return;
     MediaCommand command;
     command.type = "__voiceActiveSpeakers";
     {
@@ -195,12 +198,7 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
       command.session_id = session_id_;
       command.generation = generation_;
     }
-    command.participant_identities.reserve(event.speakers.size());
-    for (const auto* participant : event.speakers) {
-      if (participant && !participant->identity().empty()) {
-        command.participant_identities.push_back(participant->identity());
-      }
-    }
+    command.participant_identities = std::move(identities);
     post_(std::move(command));
   }
 

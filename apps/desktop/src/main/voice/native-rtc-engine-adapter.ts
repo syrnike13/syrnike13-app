@@ -38,6 +38,9 @@ type ActiveVoiceConnection = {
   appliedMicrophoneMuted: boolean | null
   screenStarted: boolean
   cameraStarted: boolean
+  selfSpeaking: boolean
+  remoteSpeakingUserIds: Set<string>
+  speakingUserIds: Set<string>
 }
 
 export class NativeRtcEngineAdapter implements RtcEngineAdapter {
@@ -98,6 +101,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       appliedMicrophoneMuted: null,
       screenStarted: false,
       cameraStarted: false,
+      selfSpeaking: false,
+      remoteSpeakingUserIds: new Set(),
+      speakingUserIds: new Set(),
     }
     this.active = active
 
@@ -130,6 +136,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     this.voiceGeneration += 1
     this.mediaRevision += 1
     if (!active) return
+    active.selfSpeaking = false
+    active.remoteSpeakingUserIds.clear()
+    active.speakingUserIds.clear()
 
     await Promise.allSettled([
       active.microphoneGeneration !== null
@@ -351,6 +360,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       this.assertCurrent(active)
       active.microphoneReady = true
       active.appliedMicrophoneMuted = desired.effectiveMuted
+      this.updateSelfSpeaking(active, false)
       this.emitMedia(active, 'microphone', {
         state: desired.effectiveMuted ? 'muted' : 'running',
       })
@@ -472,6 +482,7 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       )
       this.assertCurrent(active)
       active.appliedMicrophoneMuted = desired.effectiveMuted
+      this.updateSelfSpeaking(active, false)
       this.emitMedia(active, 'microphone', {
         state: desired.effectiveMuted ? 'muted' : 'running',
       })
@@ -729,12 +740,24 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     }
     if (event.type === 'activeSpeakers') {
       if (event.generation !== active.voiceGeneration) return
-      this.emit({
-        type: 'speakingChanged',
-        participantIdentities: event.participantIdentities,
-        operationId: active.lease.operationId,
-        connectionEpoch: active.lease.connectionEpoch,
-      })
+      active.remoteSpeakingUserIds = new Set(
+        event.participantIdentities.map(normalizeSpeakingIdentity),
+      )
+      this.emitSpeaking(active)
+      return
+    }
+    if (event.type === 'microphoneMetrics') {
+      if (!active.voiceReady || !active.microphoneReady) return
+      const desired = this.desired
+      this.updateSelfSpeaking(
+        active,
+        Boolean(
+          event.metrics.open &&
+          desired &&
+          !desired.effectiveMuted &&
+          active.appliedMicrophoneMuted === false,
+        ),
+      )
       return
     }
     if (event.type === 'sessionLifecycle') {
@@ -845,6 +868,27 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     for (const listener of this.listeners) listener(event)
   }
 
+  private updateSelfSpeaking(active: ActiveVoiceConnection, speaking: boolean) {
+    if (active.selfSpeaking === speaking) return
+    active.selfSpeaking = speaking
+    this.emitSpeaking(active)
+  }
+
+  private emitSpeaking(active: ActiveVoiceConnection) {
+    const next = new Set(active.remoteSpeakingUserIds)
+    if (active.selfSpeaking) {
+      next.add(normalizeSpeakingIdentity(active.lease.credential.participantIdentity))
+    }
+    if (sameStringSet(active.speakingUserIds, next)) return
+    active.speakingUserIds = next
+    this.emit({
+      type: 'speakingChanged',
+      participantIdentities: [...next],
+      operationId: active.lease.operationId,
+      connectionEpoch: active.lease.connectionEpoch,
+    })
+  }
+
   private assertCurrent(active: ActiveVoiceConnection) {
     if (this.active !== active) throw abortError()
   }
@@ -860,6 +904,21 @@ function microphoneConfig(desired: VoiceMediaDesiredState) {
     voiceGateThresholdDb: desired.voiceGateThresholdDb,
     voiceGateAutoThreshold: desired.voiceGateAutoThreshold,
   }
+}
+
+function normalizeSpeakingIdentity(identity: string) {
+  const parts = identity.split('|')
+  return parts.length === 6 && parts[0] === 'voice:v1'
+    ? parts[5] ?? identity
+    : identity
+}
+
+function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  if (left.size !== right.size) return false
+  for (const value of left) {
+    if (!right.has(value)) return false
+  }
+  return true
 }
 
 function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal) {

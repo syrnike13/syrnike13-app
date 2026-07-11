@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cmath>
 #include <deque>
 #include <mutex>
 #include <stdexcept>
@@ -23,6 +24,7 @@
 
 #include "audio_devices.hpp"
 #include "../common/diagnostic_log.hpp"
+#include "voice_activity_detector.hpp"
 
 using Microsoft::WRL::ComPtr;
 
@@ -30,7 +32,6 @@ namespace syrnike::desktop_native::media {
 namespace {
 constexpr std::size_t kMaxQueuedSamplesPerTrack = 48'000; // one second at 48 kHz
 constexpr std::size_t kStreamFrameCapacity = 20;
-
 using diagnostics::DiagnosticField;
 
 void logRemoteAudio(
@@ -48,6 +49,7 @@ struct TrackState {
   std::string user_id;
   bool stream_source = false;
   float gain = 1.0F;
+  VoiceActivityDetector activity;
 };
 
 }  // namespace
@@ -93,8 +95,11 @@ float resolveRemoteAudioGain(
 
 class RemoteAudioOutput::Implementation {
  public:
-  explicit Implementation(FailureHandler on_failure)
-    : on_failure_(std::move(on_failure)) {}
+  Implementation(
+    FailureHandler on_failure,
+    SpeakingActivityHandler on_speaking_activity
+  ) : on_failure_(std::move(on_failure)),
+      on_speaking_activity_(std::move(on_speaking_activity)) {}
   ~Implementation() { stop(); }
 
   void addTrack(std::string sid, std::string identity, bool stream,
@@ -131,22 +136,52 @@ class RemoteAudioOutput::Implementation {
         const auto& frame = event.frame;
         const auto channels = std::max(1, frame.numChannels());
         const auto& input = frame.data();
+        std::vector<std::string> speakers;
+        bool speakers_changed = false;
+        std::uint64_t activity_revision = 0;
         {
           std::lock_guard lock(mutex_);
           if (stopping_) break;
+          double squared_sum = 0.0;
+          std::size_t mono_samples = 0;
           for (std::size_t index = 0; index + channels <= input.size(); index += channels) {
             float mixed = 0.0F;
             for (int channel = 0; channel < channels; ++channel) {
               mixed += static_cast<float>(input[index + static_cast<std::size_t>(channel)]);
             }
-            state_ptr->samples.push_back(
-              mixed / (32768.0F * static_cast<float>(channels))
-            );
+            const auto sample = mixed / (32768.0F * static_cast<float>(channels));
+            state_ptr->samples.push_back(sample);
+            squared_sum += static_cast<double>(sample) * static_cast<double>(sample);
+            ++mono_samples;
           }
           while (state_ptr->samples.size() > kMaxQueuedSamplesPerTrack) {
             state_ptr->samples.pop_front();
           }
+          const auto output_gain = state_ptr->gain * volume_;
+          if (
+            !state_ptr->stream_source &&
+            !deafened_ &&
+            output_gain > 0.0F &&
+            mono_samples != 0
+          ) {
+            const auto rms = static_cast<float>(std::sqrt(
+              squared_sum / static_cast<double>(mono_samples)
+            )) * output_gain;
+            const auto changed = state_ptr->activity.updateRms(
+              rms,
+              true,
+              std::chrono::steady_clock::now()
+            );
+            if (changed) {
+              speakers = activeSpeakerIdentitiesLocked();
+              speakers_changed = true;
+              activity_revision = ++activity_revision_;
+            }
+          }
           ready_.notify_one();
+        }
+        if (speakers_changed) {
+          notifySpeakingActivity(std::move(speakers), activity_revision);
         }
       }
       logRemoteAudio("remote_audio_stream_ended");
@@ -155,23 +190,43 @@ class RemoteAudioOutput::Implementation {
 
   void removeTrack(const std::string& sid) {
     std::unique_ptr<TrackState> removed;
+    std::vector<std::string> speakers;
+    bool speakers_changed = false;
+    std::uint64_t activity_revision = 0;
     {
       std::lock_guard lock(mutex_);
       auto found = tracks_.find(sid);
       if (found == tracks_.end()) return;
       removed = std::move(found->second);
       tracks_.erase(found);
+      if (removed->activity.reset()) {
+        speakers = activeSpeakerIdentitiesLocked();
+        speakers_changed = true;
+        activity_revision = ++activity_revision_;
+      }
     }
     removed->worker.request_stop();
     removed->stream->close();
     if (removed->worker.joinable()) removed->worker.join();
+    if (speakers_changed) {
+      notifySpeakingActivity(std::move(speakers), activity_revision);
+    }
     logRemoteAudio("remote_audio_track_removed");
   }
 
   void setDeafened(bool value) {
-    std::lock_guard lock(mutex_);
-    deafened_ = value;
-    if (value) for (auto& [_, track] : tracks_) track->samples.clear();
+    bool speakers_changed = false;
+    std::uint64_t activity_revision = 0;
+    {
+      std::lock_guard lock(mutex_);
+      deafened_ = value;
+      if (value) for (auto& [_, track] : tracks_) {
+        track->samples.clear();
+        speakers_changed = track->activity.reset() || speakers_changed;
+      }
+      if (speakers_changed) activity_revision = ++activity_revision_;
+    }
+    if (speakers_changed) notifySpeakingActivity({}, activity_revision);
   }
 
   void setOutputDevice(std::string value) {
@@ -189,35 +244,106 @@ class RemoteAudioOutput::Implementation {
   }
 
   void setVolume(float value) {
-    std::lock_guard lock(mutex_);
-    volume_ = std::clamp(value, 0.0F, 3.0F);
+    std::vector<std::string> speakers;
+    bool speakers_changed = false;
+    std::uint64_t activity_revision = 0;
+    {
+      std::lock_guard lock(mutex_);
+      volume_ = std::clamp(value, 0.0F, 3.0F);
+      if (volume_ <= 0.0F) {
+        for (auto& [_, track] : tracks_) {
+          speakers_changed = track->activity.reset() || speakers_changed;
+        }
+      }
+      if (speakers_changed) {
+        activity_revision = ++activity_revision_;
+        speakers = activeSpeakerIdentitiesLocked();
+      }
+    }
+    if (speakers_changed) {
+      notifySpeakingActivity(std::move(speakers), activity_revision);
+    }
   }
 
   void configure(RemoteAudioSettings settings) {
-    std::lock_guard lock(mutex_);
-    if (settings.revision <= settings_.revision) return;
-    settings_ = std::move(settings);
-    for (auto& [_, track] : tracks_) applyGain(*track);
+    std::vector<std::string> speakers;
+    bool speakers_changed = false;
+    std::uint64_t activity_revision = 0;
+    {
+      std::lock_guard lock(mutex_);
+      if (settings.revision <= settings_.revision) return;
+      settings_ = std::move(settings);
+      for (auto& [_, track] : tracks_) {
+        applyGain(*track);
+        if (track->gain <= 0.0F) {
+          speakers_changed = track->activity.reset() || speakers_changed;
+        }
+      }
+      if (speakers_changed) {
+        activity_revision = ++activity_revision_;
+        speakers = activeSpeakerIdentitiesLocked();
+      }
+    }
+    if (speakers_changed) {
+      notifySpeakingActivity(std::move(speakers), activity_revision);
+    }
   }
 
   void stop() {
     std::vector<std::unique_ptr<TrackState>> removed;
+    bool speakers_changed = false;
+    std::uint64_t activity_revision = 0;
     {
       std::lock_guard lock(mutex_);
       if (stopping_) return;
       stopping_ = true;
-      for (auto& [_, track] : tracks_) removed.push_back(std::move(track));
+      for (auto& [_, track] : tracks_) {
+        speakers_changed = track->activity.reset() || speakers_changed;
+        removed.push_back(std::move(track));
+      }
       tracks_.clear();
+      if (speakers_changed) activity_revision = ++activity_revision_;
     }
     for (auto& track : removed) {
       track->worker.request_stop();
       track->stream->close();
     }
     for (auto& track : removed) if (track->worker.joinable()) track->worker.join();
+    if (speakers_changed) notifySpeakingActivity({}, activity_revision);
     stopRenderer();
   }
 
  private:
+  std::vector<std::string> activeSpeakerIdentitiesLocked() const {
+    std::vector<std::string> identities;
+    identities.reserve(tracks_.size());
+    for (const auto& [_, track] : tracks_) {
+      if (
+        track->activity.speaking() &&
+        !track->stream_source &&
+        !track->user_id.empty()
+      ) {
+        identities.push_back(track->user_id);
+      }
+    }
+    std::sort(identities.begin(), identities.end());
+    identities.erase(std::unique(identities.begin(), identities.end()), identities.end());
+    return identities;
+  }
+
+  void notifySpeakingActivity(
+    std::vector<std::string> identities,
+    std::uint64_t revision
+  ) {
+    if (!on_speaking_activity_) return;
+    std::lock_guard callback_lock(activity_callback_mutex_);
+    {
+      std::lock_guard state_lock(mutex_);
+      if (revision != activity_revision_) return;
+    }
+    on_speaking_activity_(std::move(identities));
+  }
+
   void startRenderer() {
     renderer_running_.store(true);
     logRemoteAudio("remote_audio_renderer_start_requested");
@@ -292,6 +418,27 @@ class RemoteAudioOutput::Implementation {
             throw std::runtime_error("release render buffer failed");
           }
         }
+        std::vector<std::string> speaking_identities;
+        bool speaking_changed = false;
+        std::uint64_t speaking_revision = 0;
+        {
+          std::lock_guard lock(mutex_);
+          const auto now = std::chrono::steady_clock::now();
+          for (auto& [_, track] : tracks_) {
+            if (track->stream_source) continue;
+            const auto enabled = !deafened_ && track->gain * volume_ > 0.0F;
+            const auto changed = enabled
+              ? track->activity.updateRms(0.0F, true, now)
+              : track->activity.reset();
+            if (!changed) continue;
+            speaking_identities = activeSpeakerIdentitiesLocked();
+            speaking_changed = true;
+            speaking_revision = ++activity_revision_;
+          }
+        }
+        if (speaking_changed) {
+          notifySpeakingActivity(std::move(speaking_identities), speaking_revision);
+        }
         std::unique_lock lock(mutex_);
         ready_.wait_for(lock, std::chrono::milliseconds(2));
       }
@@ -323,6 +470,7 @@ class RemoteAudioOutput::Implementation {
   }
 
   std::mutex mutex_;
+  std::mutex activity_callback_mutex_;
   std::condition_variable ready_;
   std::unordered_map<std::string, std::unique_ptr<TrackState>> tracks_;
   std::string output_device_id_ = "default";
@@ -333,10 +481,17 @@ class RemoteAudioOutput::Implementation {
   std::jthread renderer_;
   RemoteAudioSettings settings_;
   FailureHandler on_failure_;
+  SpeakingActivityHandler on_speaking_activity_;
+  std::uint64_t activity_revision_ = 0;
 };
 
-RemoteAudioOutput::RemoteAudioOutput(FailureHandler on_failure)
-  : implementation_(std::make_unique<Implementation>(std::move(on_failure))) {}
+RemoteAudioOutput::RemoteAudioOutput(
+  FailureHandler on_failure,
+  SpeakingActivityHandler on_speaking_activity
+) : implementation_(std::make_unique<Implementation>(
+      std::move(on_failure),
+      std::move(on_speaking_activity)
+    )) {}
 RemoteAudioOutput::~RemoteAudioOutput() = default;
 void RemoteAudioOutput::addTrack(std::string sid, std::string identity, bool stream, std::shared_ptr<livekit::Track> track) { implementation_->addTrack(std::move(sid), std::move(identity), stream, std::move(track)); }
 void RemoteAudioOutput::removeTrack(const std::string& sid) { implementation_->removeTrack(sid); }

@@ -40,6 +40,7 @@ export type VoiceEngineEvent =
     }>
   | Readonly<{
       type: 'speakingChanged'
+      /** Canonical user identities whose audible microphone activity is open. */
       participantIdentities: readonly string[]
       operationId: string
       connectionEpoch: string

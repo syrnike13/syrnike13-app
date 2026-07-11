@@ -2,9 +2,9 @@ import {
   rmsFromFloatTimeDomain,
   rmsToDb,
 } from '#/features/voice/voice-gate-level'
-
-const CLIENT_SPEAKING_THRESHOLD_DB = -58
-const CLIENT_SPEAKING_CLOSE_HOLD_MS = 180
+import {
+  advanceSpeakingPolicy,
+} from '#/features/voice/speaking-activity-policy'
 
 type AudioContextConstructor = typeof AudioContext
 
@@ -135,34 +135,18 @@ export class LocalSpeakingDetector {
   #analyze() {
     const entry = this.#entry
     if (!entry) return
-    const speaking = this.#entrySpeaking(entry, performance.now())
-    this.#setSpeaking(speaking)
-  }
-
-  #entrySpeaking(entry: LocalSpeakingDetectorEntry, now: number) {
-    if (
-      !this.#enabled ||
-      entry.track.muted ||
-      entry.track.readyState !== 'live'
-    ) {
-      entry.quietSince = null
-      return false
-    }
-
     entry.analyserNode.getFloatTimeDomainData(entry.analyserSamples)
-    const levelDb = rmsToDb(rmsFromFloatTimeDomain(entry.analyserSamples))
-    if (levelDb >= CLIENT_SPEAKING_THRESHOLD_DB) {
-      entry.quietSince = null
-      return true
-    }
-
-    if (!entry.speaking) {
-      entry.quietSince = null
-      return false
-    }
-
-    entry.quietSince ??= now
-    return now - entry.quietSince < CLIENT_SPEAKING_CLOSE_HOLD_MS
+    const next = advanceSpeakingPolicy({
+      state: entry,
+      levelDb: rmsToDb(rmsFromFloatTimeDomain(entry.analyserSamples)),
+      enabled:
+        this.#enabled &&
+        !entry.track.muted &&
+        entry.track.readyState === 'live',
+      now: performance.now(),
+    })
+    entry.quietSince = next.quietSince
+    this.#setSpeaking(next.speaking)
   }
 
   #setSpeaking(speaking: boolean) {

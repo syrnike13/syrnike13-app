@@ -31,6 +31,10 @@ import {
   type RemoteAudioMixer,
   type RemoteAudioSource,
 } from '#/features/voice/remote-audio-mixer'
+import {
+  createLocalSpeakingDetector,
+  type LocalSpeakingDetector,
+} from '#/features/voice/local-speaking-detector'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 
 type ActiveBrowserVoice = {
@@ -48,6 +52,10 @@ type ActiveBrowserVoice = {
   appliedOutputDeviceId: string | null
   outputRecovering: boolean
   audioMixer: RemoteAudioMixer
+  localSpeakingDetector: LocalSpeakingDetector
+  localSpeaking: boolean
+  remoteSpeakingUserIds: Set<string>
+  speakingUserIds: Set<string>
   remoteAudioDecoderSinks: Map<
     string,
     { track: Track; element: HTMLAudioElement }
@@ -69,9 +77,6 @@ type ScopedVoiceEngineEvent =
 export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   private readonly listeners = new Set<(event: VoiceEngineEvent) => void>()
   private readonly roomListeners = new Set<(room: Room | null) => void>()
-  private readonly speakingListeners = new Set<
-    (userIds: ReadonlySet<string>) => void
-  >()
   private active: ActiveBrowserVoice | null = null
   private desired: VoiceMediaDesiredState | null = null
   private mediaRevision = 0
@@ -95,9 +100,34 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     this.desired = desired
     const room = new Room(createVoiceRoomOptions())
     let active!: ActiveBrowserVoice
+    const publishSpeaking = () => {
+      if (this.active !== active) return
+      const next = new Set(active.remoteSpeakingUserIds)
+      if (active.localSpeaking) {
+        next.add(baseVoiceIdentity(active.lease.credential.participantIdentity))
+      }
+      if (sameStringSet(active.speakingUserIds, next)) return
+      active.speakingUserIds = next
+      this.emitFor(active, {
+        type: 'speakingChanged',
+        participantIdentities: [...next],
+      })
+    }
+    const localSpeakingDetector = createLocalSpeakingDetector({
+      onSpeakingChange: (speaking) => {
+        if (this.active !== active) return
+        active.localSpeaking = speaking
+        publishSpeaking()
+      },
+    })
     const audioMixer = createRemoteAudioMixer({
       onOutputError: (error) => {
         if (this.active === active) void this.handleOutputFailure(active, error)
+      },
+      onSpeakingUserIdsChange: (userIds) => {
+        if (this.active !== active) return
+        active.remoteSpeakingUserIds = new Set(userIds)
+        publishSpeaking()
       },
     })
     active = {
@@ -115,6 +145,10 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       appliedOutputDeviceId: null,
       outputRecovering: false,
       audioMixer,
+      localSpeakingDetector,
+      localSpeaking: false,
+      remoteSpeakingUserIds: new Set(),
+      speakingUserIds: new Set(),
       remoteAudioDecoderSinks: new Map(),
       unsubscribeListenerSettings: () => undefined,
     }
@@ -203,12 +237,6 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     return () => this.roomListeners.delete(listener)
   }
 
-  subscribeSpeaking(listener: (userIds: ReadonlySet<string>) => void) {
-    this.speakingListeners.add(listener)
-    listener(new Set())
-    return () => this.speakingListeners.delete(listener)
-  }
-
   room() {
     return this.active?.room ?? null
   }
@@ -219,7 +247,6 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     await this.disconnect('shutdown')
     this.listeners.clear()
     this.roomListeners.clear()
-    this.speakingListeners.clear()
   }
 
   private attachRoomEvents(active: ActiveBrowserVoice) {
@@ -317,17 +344,6 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         this.removeRemoteAudioDecoderSink(active, publication.trackSid, track)
       },
     )
-    room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-      if (this.active !== active) return
-      const userIds = new Set(
-        speakers.map((participant) => participant.identity).filter(Boolean),
-      )
-      this.emitFor(active, {
-        type: 'speakingChanged',
-        participantIdentities: [...userIds],
-      })
-      for (const listener of this.speakingListeners) listener(userIds)
-    })
   }
 
   private requestMediaReconcile() {
@@ -442,6 +458,8 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         })
         active.appliedMicrophoneKey = microphoneKey
       }
+
+      this.syncLocalSpeaking(active, desired)
     } catch (error) {
       if (this.active === active) {
         this.emitMediaFailure(active, 'microphone', error)
@@ -627,11 +645,29 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
 
   private clearRemoteAudio(active: ActiveBrowserVoice) {
     active.unsubscribeListenerSettings()
+    active.localSpeakingDetector.dispose()
     for (const trackSid of [...active.remoteAudioDecoderSinks.keys()]) {
       this.removeRemoteAudioDecoderSink(active, trackSid)
     }
     active.audioMixer.dispose()
-    for (const listener of this.speakingListeners) listener(new Set())
+  }
+
+  private syncLocalSpeaking(
+    active: ActiveBrowserVoice,
+    desired: VoiceMediaDesiredState,
+  ) {
+    const publication = active.room.localParticipant.getTrackPublication?.(
+      Track.Source.Microphone,
+    )
+    const audioTrack = publication?.audioTrack as LocalAudioTrackWithProcessor | undefined
+    const track = localMicMediaStreamTrack(audioTrack)
+    active.localSpeakingDetector.setTrack(track)
+    active.localSpeakingDetector.setEnabled(
+      Boolean(track && !desired.effectiveMuted),
+    )
+    if (!track || desired.effectiveMuted) {
+      active.localSpeaking = false
+    }
   }
 
   private replaceRemoteAudioDecoderSink(
@@ -678,6 +714,29 @@ function remoteAudioSource(
   publication: RemoteTrackPublication,
 ): RemoteAudioSource {
   return publication.source === Track.Source.ScreenShareAudio ? 'stream' : 'mic'
+}
+
+type LocalAudioTrackWithProcessor = {
+  mediaStreamTrack?: MediaStreamTrack
+  getProcessor?: () => {
+    name?: string
+    processedTrack?: MediaStreamTrack
+  } | undefined
+}
+
+function localMicMediaStreamTrack(
+  track: LocalAudioTrackWithProcessor | undefined,
+) {
+  const processor = track?.getProcessor?.()
+  return processor?.processedTrack ?? track?.mediaStreamTrack ?? null
+}
+
+function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  if (left.size !== right.size) return false
+  for (const value of left) {
+    if (!right.has(value)) return false
+  }
+  return true
 }
 
 function browserScreenShareOptions(desired: VoiceMediaDesiredState) {

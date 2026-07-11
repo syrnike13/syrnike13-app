@@ -129,6 +129,7 @@ add_library(syrnike_media_core STATIC
   src/media/screen_capture_priority.cpp
   src/media/screen_video_capture.cpp
   src/media/voice_gate.cpp
+  src/media/voice_activity_detector.cpp
   src/media/voice_actor.cpp
 )
 syrnike_native_target(syrnike_media_core)
@@ -216,6 +217,13 @@ syrnike_native_target(syrnike-native-media-processing-tests)
 target_link_libraries(syrnike-native-media-processing-tests PRIVATE syrnike_media_core)
 syrnike_copy_livekit_runtime(syrnike-native-media-processing-tests)
 add_test(NAME syrnike-native-media-processing-tests COMMAND syrnike-native-media-processing-tests)
+
+add_executable(syrnike-native-voice-activity-tests
+  tests/voice_activity_detector_test.cpp
+  src/media/voice_activity_detector.cpp
+)
+syrnike_native_target(syrnike-native-voice-activity-tests)
+add_test(NAME syrnike-native-voice-activity-tests COMMAND syrnike-native-voice-activity-tests)
 
 add_executable(syrnike-native-media-actor-lifecycle-tests
   tests/media_actor_lifecycle_test.cpp
