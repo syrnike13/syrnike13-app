@@ -307,16 +307,23 @@ jobs:
           done
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
           curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null
+      - name: Verify RTP probe is enabled
+        run: |
+          set -euo pipefail
+          PROBE_ENABLED="$(ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && docker compose exec -T livekit sh -c 'printf %s \"\$SYRNIKE_RTP_HEADER_PROBE\"'" \
+            | tr -d '\r\n')"
+          test "$PROBE_ENABLED" = "true"
       - name: Capture sanitized RTP headers
         run: |
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && timeout 180 docker compose logs --follow --since 2s --no-color --no-log-prefix livekit || test \$? -eq 124" \
+            "cd '$DEPLOY_PATH' && timeout 120 docker compose logs --follow --since 2s --no-color --no-log-prefix livekit || test \$? -eq 124" \
             | python3 -c '
           import json
           import sys
 
           allowed = {
-              "ts", "level", "msg", "probeIndex", "ssrc", "sequenceNumber",
+              "ts", "level", "msg", "message", "probeIndex", "ssrc", "sequenceNumber",
               "timestamp", "extendedSequenceNumber", "extendedTimestamp",
               "payloadType", "payloadBytes", "marker", "outOfOrder", "buffered",
               "queueDelayUs", "sourceSSRC", "sourceSequenceNumber",
@@ -326,11 +333,13 @@ jobs:
               "opusConfig", "opusStereo", "opusFrameCode", "opusFrameCount",
           }
           for line in sys.stdin:
+              if "syrnike rtp header probe" not in line:
+                  continue
               try:
-                  value = json.loads(line)
+                  value = json.loads(line[line.find("{"):])
               except json.JSONDecodeError:
                   continue
-              if value.get("msg") not in {
+              if (value.get("msg") or value.get("message")) not in {
                   "syrnike rtp header probe ingress",
                   "syrnike rtp header probe egress",
               }:
