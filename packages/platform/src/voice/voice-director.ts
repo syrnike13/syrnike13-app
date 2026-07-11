@@ -219,6 +219,7 @@ export class VoiceDirector {
 
   async shutdown(reason: 'app_exit' | 'sleep' | 'logout') {
     if (this.disposed) return
+    this.resetCameraAndScreenForIntentChange(null)
     this.desiredChannelId = null
     this.desiredRevision += 1
     this.recoveryRequested = false
@@ -252,6 +253,7 @@ export class VoiceDirector {
   }
 
   private setIntent(channelId: string | null, recovery: boolean) {
+    this.resetCameraAndScreenForIntentChange(channelId)
     this.desiredChannelId = channelId
     if (channelId === null) this.desiredRecipients = undefined
     this.recoveryRequested = recovery
@@ -447,10 +449,21 @@ export class VoiceDirector {
 
   private async disconnectCurrent(cause: VoiceDisconnectCause) {
     const lease = this.activeLease
-    if (!lease) return
+    if (!lease) {
+      if (cause === 'leave' || cause === 'move') {
+        this.clearCameraAndScreenIntent()
+      }
+      return
+    }
     this.transitionInProgress = true
     this.activeLease = null
     this.activeCommitted = false
+    if (cause === 'leave' || cause === 'move') {
+      // The adapter owns physical teardown. Clearing desired state here keeps
+      // the next Voice Session from replaying camera or screen while avoiding
+      // a competing media reconcile against the Room being disconnected.
+      this.clearCameraAndScreenIntent()
+    }
     try {
       await this.engine.disconnect(cause)
     } catch {
@@ -568,9 +581,7 @@ export class VoiceDirector {
     if (membershipMatchesLease(incoming.membership, lease)) return
     if (incoming.authorityVersion <= lease.authorityVersion) return
 
-    this.desiredChannelId = null
-    this.recoveryRequested = false
-    this.bumpIntentRevision()
+    this.setIntent(null, false)
   }
 
   private handleForcedMove(
@@ -601,9 +612,58 @@ export class VoiceDirector {
 
     this.forcedLease = lease
     this.desiredRecipients = undefined
-    this.desiredChannelId = lease.channelId
-    this.recoveryRequested = false
-    this.bumpIntentRevision()
+    this.setIntent(lease.channelId, false)
+  }
+
+  private resetCameraAndScreenForIntentChange(
+    nextChannelId: string | null,
+  ) {
+    if (
+      this.desiredChannelId === null ||
+      this.desiredChannelId === nextChannelId
+    ) {
+      return
+    }
+    this.clearCameraAndScreenIntent()
+  }
+
+  private clearCameraAndScreenIntent() {
+    const desiredChanged =
+      this.desiredMedia.cameraEnabled ||
+      this.desiredMedia.screenEnabled ||
+      this.desiredMedia.screenAudioEnabled ||
+      this.desiredMedia.screenSourceId !== undefined ||
+      this.desiredMedia.screenWidth !== undefined ||
+      this.desiredMedia.screenHeight !== undefined ||
+      this.desiredMedia.screenFps !== undefined ||
+      this.desiredMedia.screenBitrate !== undefined ||
+      this.desiredMedia.screenAudioBitrate !== undefined
+    if (desiredChanged) {
+      this.desiredMedia = {
+        ...this.desiredMedia,
+        cameraEnabled: false,
+        screenEnabled: false,
+        screenSourceId: undefined,
+        screenAudioEnabled: false,
+        screenWidth: undefined,
+        screenHeight: undefined,
+        screenFps: undefined,
+        screenBitrate: undefined,
+        screenAudioBitrate: undefined,
+      }
+    }
+
+    if (
+      this.snapshotValue.camera.state !== 'off' ||
+      this.snapshotValue.screen.state !== 'off' ||
+      this.snapshotValue.screenAudio.state !== 'off'
+    ) {
+      this.updateSnapshot({
+        camera: createInactiveMediaSnapshot(),
+        screen: createInactiveMediaSnapshot(),
+        screenAudio: createInactiveMediaSnapshot(),
+      })
+    }
   }
 
   private handleEngineEvent(event: VoiceEngineEvent) {

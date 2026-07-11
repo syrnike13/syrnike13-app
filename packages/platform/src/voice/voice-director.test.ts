@@ -109,6 +109,7 @@ class FakeAuthority implements VoiceAuthorityAdapter {
 
 class FakeEngine implements RtcEngineAdapter {
   readonly connected: VoiceLease[] = []
+  readonly connectDesired: VoiceMediaDesiredState[] = []
   readonly disconnected: VoiceDisconnectCause[] = []
   readonly desired: VoiceMediaDesiredState[] = []
   readonly retriedMedia: VoiceMediaKind[] = []
@@ -138,6 +139,7 @@ class FakeEngine implements RtcEngineAdapter {
     signal: AbortSignal,
   ) {
     this.connected.push(lease)
+    this.connectDesired.push(desired)
     this.desired.push(desired)
     const failure = this.failedChannels.get(lease.channelId)
     if (failure) throw failure
@@ -271,6 +273,84 @@ describe('VoiceDirector', () => {
     ])
   })
 
+  it('ends camera and screen intent on explicit leave before the next join', async () => {
+    const harness = createHarness()
+    const lease = await connect(harness, 'A')
+    harness.director.dispatch({
+      type: 'setCamera',
+      enabled: true,
+      deviceId: 'camera-a',
+    })
+    harness.director.dispatch({
+      type: 'setScreen',
+      enabled: true,
+      sourceId: 'screen-a',
+      audioEnabled: true,
+      width: 1_920,
+      height: 1_080,
+      fps: 60,
+      bitrate: 6_000_000,
+      audioBitrate: 128_000,
+    })
+    for (const kind of ['camera', 'screen', 'screen_audio'] as const) {
+      harness.engine.emit({
+        type: 'mediaState',
+        kind,
+        media: { state: 'running' },
+        operationId: lease.operationId,
+        connectionEpoch: lease.connectionEpoch,
+      })
+    }
+
+    harness.director.dispatch({ type: 'leave' })
+    await harness.director.waitForIdle()
+
+    expect(harness.director.snapshot()).toMatchObject({
+      connection: 'disconnected',
+      camera: { state: 'off' },
+      screen: { state: 'off' },
+      screenAudio: { state: 'off' },
+    })
+
+    await connect(harness, 'B')
+    expect(harness.engine.connectDesired.at(-1)).toMatchObject({
+      cameraEnabled: false,
+      cameraDeviceId: 'camera-a',
+      screenEnabled: false,
+      screenAudioEnabled: false,
+    })
+    expect(harness.engine.connectDesired.at(-1)?.screenSourceId).toBeUndefined()
+  })
+
+  it('ends camera and screen intent when moving to another channel', async () => {
+    const harness = createHarness()
+    await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setCamera', enabled: true })
+    harness.director.dispatch({
+      type: 'setScreen',
+      enabled: true,
+      sourceId: 'screen-a',
+      audioEnabled: true,
+    })
+
+    harness.director.dispatch({ type: 'join', channelId: 'B' })
+    await waitUntil(() =>
+      harness.engine.connected.some((lease) => lease.channelId === 'B'),
+    )
+
+    expect(harness.engine.disconnected).toContain('move')
+    expect(harness.engine.connectDesired.at(-1)).toMatchObject({
+      cameraEnabled: false,
+      screenEnabled: false,
+      screenAudioEnabled: false,
+    })
+    expect(harness.engine.connectDesired.at(-1)?.screenSourceId).toBeUndefined()
+
+    const destination = harness.engine.connected.at(-1)!
+    harness.authority.commit(destination)
+    await harness.director.waitForIdle()
+  })
+
   it('makes the latest A to B to A intent win over a blocked B connect', async () => {
     const harness = createHarness()
     await connect(harness, 'A')
@@ -311,6 +391,13 @@ describe('VoiceDirector', () => {
   it('uses the supplied authoritative lease for an exact forced move', async () => {
     const harness = createHarness()
     const original = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setCamera', enabled: true })
+    harness.director.dispatch({
+      type: 'setScreen',
+      enabled: true,
+      sourceId: 'screen-a',
+      audioEnabled: true,
+    })
     const forcedLease: VoiceLease = {
       channelId: 'B',
       rtcEngine: original.rtcEngine,
@@ -330,6 +417,11 @@ describe('VoiceDirector', () => {
 
     expect(harness.authority.reservations).toHaveLength(1)
     expect(harness.engine.disconnected).toContain('move')
+    expect(harness.engine.connectDesired.at(-1)).toMatchObject({
+      cameraEnabled: false,
+      screenEnabled: false,
+      screenAudioEnabled: false,
+    })
     expect(harness.director.snapshot()).toMatchObject({
       connection: 'connecting',
       intentChannelId: 'B',
@@ -555,6 +647,46 @@ describe('VoiceDirector', () => {
     })
   })
 
+  it('preserves camera and screen intent during Voice Recovery', async () => {
+    const harness = createHarness({ recoveryDelaysMs: [0, 0, 0] })
+    const original = await connect(harness, 'A')
+    harness.director.dispatch({
+      type: 'setCamera',
+      enabled: true,
+      deviceId: 'camera-a',
+    })
+    harness.director.dispatch({
+      type: 'setScreen',
+      enabled: true,
+      sourceId: 'screen-a',
+      audioEnabled: true,
+    })
+
+    harness.engine.emit({
+      type: 'terminalFailure',
+      operationId: original.operationId,
+      connectionEpoch: original.connectionEpoch,
+      failure: {
+        code: 'runtime_lost',
+        message: 'Media runtime exited',
+        retryable: true,
+      },
+    })
+
+    await waitUntil(() => harness.engine.connected.length === 2)
+    expect(harness.engine.disconnected).toContain('recovery')
+    expect(harness.engine.connectDesired.at(-1)).toMatchObject({
+      cameraEnabled: true,
+      cameraDeviceId: 'camera-a',
+      screenEnabled: true,
+      screenSourceId: 'screen-a',
+      screenAudioEnabled: true,
+    })
+
+    harness.authority.commit(harness.engine.connected.at(-1)!)
+    await harness.director.waitForIdle()
+  })
+
   it('does not reconnect Room when one media track fails', async () => {
     const harness = createHarness()
     const lease = await connect(harness, 'A')
@@ -586,6 +718,13 @@ describe('VoiceDirector', () => {
   it('clears intent on sleep and never restores it automatically', async () => {
     const harness = createHarness()
     const lease = await connect(harness, 'A')
+    harness.director.dispatch({ type: 'setCamera', enabled: true })
+    harness.director.dispatch({
+      type: 'setScreen',
+      enabled: true,
+      sourceId: 'screen-a',
+      audioEnabled: true,
+    })
 
     await harness.director.shutdown('sleep')
 
@@ -593,6 +732,9 @@ describe('VoiceDirector', () => {
       connection: 'disconnected',
       intentChannelId: null,
       membershipChannelId: null,
+      camera: { state: 'off' },
+      screen: { state: 'off' },
+      screenAudio: { state: 'off' },
     })
     expect(harness.authority.cancellations).toContainEqual({
       rtcEngine: lease.rtcEngine,

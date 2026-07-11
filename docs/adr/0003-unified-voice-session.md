@@ -61,6 +61,11 @@ Microphone Pipeline remains alive, but a voice gap is accepted. If destination
 join fails, the client remains disconnected with a manual Retry; it does not
 return to the old channel automatically.
 
+Camera and screen publication intent belongs to one Voice Session. Explicit
+leave and every channel move clear camera, screen video, screen audio, and the
+selected screen source before another Room can connect. Voice Recovery within
+the same Voice Intent preserves and republishes those Media Tracks.
+
 A newer Voice Intent immediately invalidates unfinished older generations.
 Late credentials, callbacks, and snapshots may not mutate the current Voice
 Session. Cooperative native cancellation has a two-second deadline; a stuck

@@ -73,6 +73,8 @@ _Avoid_: Sync store contents, gateway connected event, participant delta
 An independently controlled microphone, camera, screen video, or screen-audio
 publication inside the RTC Engine's single participant. Track failure never
 changes Voice Membership.
+Camera and screen intent ends with an explicit leave or channel move; Voice
+Recovery within the same Voice Intent preserves it.
 _Avoid_: Media session, native participant, sidecar room
 
 **Microphone Pipeline**:
