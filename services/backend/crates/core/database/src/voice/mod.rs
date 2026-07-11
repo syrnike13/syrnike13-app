@@ -656,6 +656,9 @@ pub async fn publish_authoritative_voice_snapshot(user_id: &str) -> Result<u64> 
                 )
             })
             .unwrap_or((None, None, None, None, None, None));
+    // Authority versions are monotonic only within one user's stream. Publishing
+    // this on the public user topic lets voice peers observe unrelated clocks
+    // and causes them to reject their own later membership commit as stale.
     EventV1::VoiceAuthoritySnapshot {
         version,
         operation_id,
@@ -665,7 +668,7 @@ pub async fn publish_authoritative_voice_snapshot(user_id: &str) -> Result<u64> 
         connection_epoch,
         state,
     }
-    .p(user_id.to_string())
+    .private(user_id.to_string())
     .await;
     Ok(version)
 }
