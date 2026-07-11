@@ -29,6 +29,7 @@ import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 import { VoiceTabOwner } from '#/features/voice/voice-tab-owner'
 import { createWebVoiceAuthorityAdapter } from '#/features/voice/web-voice-authority-adapter'
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
+import { mergeSpeakingUserIds } from '#/features/voice/voice-speaking-users'
 import {
   nativeVideoRegistry,
   type NativeVideoRegistryTrack,
@@ -79,6 +80,14 @@ import type {
   VoiceStageMediaPublication,
 } from '#/features/voice/voice-context'
 import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
+import {
+  appendRtcDebugSample,
+  collectVoiceRtcDebugSnapshot,
+  deriveRtcRates,
+  type RtcDebugSnapshot,
+  type RtcDebugStageMediaItem,
+} from '#/features/voice/voice-rtc-debug'
+import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
 import { playUiSound } from '#/features/sounds/sound-player'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
@@ -130,9 +139,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(INITIAL_SNAPSHOT)
   const [room, setRoom] = useState<Room | null>(null)
   const [roomRevision, setRoomRevision] = useState(0)
-  const [speakingUserIds, setSpeakingUserIds] = useState<ReadonlySet<string>>(
+  const [engineSpeakingUserIds, setEngineSpeakingUserIds] = useState<ReadonlySet<string>>(
     new Set(),
   )
+  const [nativeSelfSpeaking, setNativeSelfSpeaking] = useState(false)
   const [stageMediaFilters, setStageMediaFiltersState] = useState(
     readStageMediaFilters,
   )
@@ -140,6 +150,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [stageFocusNonce, setStageFocusNonce] = useState(0)
   const [stageFullscreen, setStageFullscreen] = useState(false)
   const [rtcDebugEnabled, setRtcDebugEnabled] = useState(false)
+  const [rtcDebugSnapshot, setRtcDebugSnapshot] =
+    useState<RtcDebugSnapshot | null>(null)
+  const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
+  const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
+  const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
 
@@ -161,7 +176,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const unsubscribeSnapshot = client.subscribe(setSnapshot)
     const unsubscribeRoom = client.subscribeRoom(setRoom)
     const unsubscribeSpeaking = client.subscribeSpeaking((ids) => {
-      setSpeakingUserIds(
+      setEngineSpeakingUserIds(
         new Set([...ids].map(baseVoiceIdentity).filter(Boolean)),
       )
     })
@@ -213,10 +228,42 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!desktop) return
-    setSpeakingUserIds(
+    setEngineSpeakingUserIds(
       new Set(snapshot.speakingUserIds.map(baseVoiceIdentity).filter(Boolean)),
     )
   }, [desktop, snapshot.speakingUserIds])
+
+  useEffect(() => {
+    if (
+      !desktop ||
+      snapshot.connection !== 'connected' ||
+      snapshot.microphone.state !== 'running' ||
+      snapshot.effectiveMuted
+    ) {
+      setNativeSelfSpeaking(false)
+      return
+    }
+    return desktop.media.onMicrophoneMetrics((metrics) => {
+      setNativeSelfSpeaking(metrics.open)
+    })
+  }, [
+    desktop,
+    snapshot.connection,
+    snapshot.effectiveMuted,
+    snapshot.microphone.state,
+  ])
+
+  const speakingUserIds = useMemo(
+    () =>
+      desktop
+        ? mergeSpeakingUserIds({
+            remoteUserIds: engineSpeakingUserIds,
+            selfUserId: auth.user?._id ?? null,
+            selfSpeaking: nativeSelfSpeaking,
+          })
+        : engineSpeakingUserIds,
+    [auth.user?._id, desktop, engineSpeakingUserIds, nativeSelfSpeaking],
+  )
 
   useEffect(() => {
     if (!room) return
@@ -427,6 +474,55 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     stageMediaFilters,
     status,
   ])
+  stageMediaItemsRef.current = stageMediaItems
+
+  useEffect(() => {
+    if (snapshot.connection !== 'connected' || !room) {
+      rtcDebugSnapshotRef.current = null
+      setRtcDebugSnapshot(null)
+      setRtcDebugHistory([])
+      return
+    }
+    if (!rtcDebugEnabled) return
+
+    let active = true
+    let sampling = false
+
+    const sample = async () => {
+      if (sampling) return
+      sampling = true
+      try {
+        const current = await collectVoiceRtcDebugSnapshot(
+          room,
+          stageMediaItemsRef.current as RtcDebugStageMediaItem[],
+        )
+        if (!active) return
+        const previous = rtcDebugSnapshotRef.current
+        const next: RtcDebugSnapshot = previous
+          ? { ...current, rates: deriveRtcRates(previous, current) }
+          : current
+        rtcDebugSnapshotRef.current = next
+        setRtcDebugSnapshot(next)
+        setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
+        logVoiceDebugAgent({
+          hypothesis: 'native-publisher-browser-receive-boundary',
+          event: 'rtc-debug-snapshot',
+          transport: next.transport,
+          inboundAudio: next.inbound.filter((stream) => stream.kind === 'audio'),
+          outboundAudio: next.outbound.filter((stream) => stream.kind === 'audio'),
+        })
+      } finally {
+        sampling = false
+      }
+    }
+
+    void sample()
+    const interval = window.setInterval(() => void sample(), 1_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [room, rtcDebugEnabled, snapshot.connection])
 
   const setStageMediaFilters = useCallback<
     VoiceStageContextValue['setStageMediaFilters']
@@ -548,10 +644,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       voicePingHistory: [],
       rtcDebugEnabled,
       setRtcDebugEnabled,
-      rtcDebugSnapshot: null,
-      rtcDebugHistory: [],
+      rtcDebugSnapshot,
+      rtcDebugHistory,
     }),
-    [rtcDebugEnabled],
+    [rtcDebugEnabled, rtcDebugHistory, rtcDebugSnapshot],
   )
 
   return (

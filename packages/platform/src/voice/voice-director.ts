@@ -294,6 +294,7 @@ export class VoiceDirector {
       this.updateSnapshot({
         connection: 'disconnected',
         membershipChannelId: null,
+        speakingUserIds: [],
         operationId: undefined,
         connectionEpoch: undefined,
         retryAttempt: undefined,
@@ -393,6 +394,7 @@ export class VoiceDirector {
     this.activeCommitted = false
     this.updateSnapshot({
       connection: recovery ? 'recovering' : 'connecting',
+      speakingUserIds: [],
       operationId,
       connectionEpoch,
       retryAttempt: recovery ? attempt : undefined,
@@ -640,6 +642,7 @@ export class VoiceDirector {
       this.updateSnapshot({
         connection: 'recovering',
         membershipChannelId: null,
+        speakingUserIds: [],
         retryAttempt: 0,
         failure: event.failure,
       })

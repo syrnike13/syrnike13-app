@@ -11,7 +11,13 @@ const VOICE_DEBUG_AGENT_ENDPOINT =
 export function logVoiceDebugAgent(payload: VoiceDebugAgentPayload) {
   if (!import.meta.env.DEV) return
   if (import.meta.env.MODE === 'test') return
-  if (env.VITE_VOICE_DEBUG_AGENT !== 'true') return
+  // The dedicated RTC diagnostics route is itself an explicit local debug
+  // action. Allow it to report to the loopback-only collector without making
+  // every dev session opt in globally.
+  if (
+    env.VITE_VOICE_DEBUG_AGENT !== 'true' &&
+    globalThis.location?.pathname !== '/app/voice-debug'
+  ) return
 
   // #region debug log
   void fetch(VOICE_DEBUG_AGENT_ENDPOINT, {

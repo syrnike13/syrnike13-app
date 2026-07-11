@@ -81,6 +81,28 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('NativeMediaController retained tools', () => {
+  it('forwards microphone levels without requiring self-monitoring', () => {
+    const harness = createHarness()
+    const listener = vi.fn()
+    harness.controller.subscribe(listener)
+
+    harness.event({
+      type: 'microphoneMetrics',
+      sequence: 1,
+      metrics: { inputDb: -18, thresholdDb: -28, open: true },
+    })
+
+    expect(listener).toHaveBeenCalledWith({
+      type: 'microphoneMetrics',
+      event: { inputDb: -18, thresholdDb: -28, open: true },
+    })
+    expect(
+      harness.request.mock.calls.some(
+        ([command]) => command.type === 'startPreview',
+      ),
+    ).toBe(false)
+  })
+
   it('coalesces preview start and lets the actor warm its shared pipeline', async () => {
     const harness = createHarness()
     const first = harness.controller.startMicrophonePreview()

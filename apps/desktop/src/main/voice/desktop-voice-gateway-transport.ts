@@ -154,9 +154,7 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
     }
     if (event.type === 'Pong') return
 
-    this.log('control_event', {
-      eventType: typeof event.type === 'string' ? event.type : 'unknown',
-    })
+    this.log('control_event', diagnosticEventFields(event))
 
     this.acknowledgeReliable(event)
     for (const listener of this.eventListeners) listener(event)
@@ -305,4 +303,32 @@ export class DesktopVoiceGatewayTransport implements VoiceGatewayTransport {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function diagnosticEventFields(event: Record<string, unknown>) {
+  const request = isRecord(event.request) ? event.request : null
+  return {
+    eventType: typeof event.type === 'string' ? event.type : 'unknown',
+    version: finiteDiagnosticInteger(event.version),
+    authorityVersion: finiteDiagnosticInteger(event.authority_version),
+    operationId: diagnosticString(event.operation_id),
+    channelId: diagnosticString(event.channel_id ?? event.id),
+    rtcEngine: diagnosticString(event.rtc_engine),
+    clientInstanceId: diagnosticString(event.client_instance_id),
+    connectionEpoch: diagnosticString(event.connection_epoch),
+    requestMode: diagnosticString(request?.mode),
+    requestOperationId: diagnosticString(request?.operation_id),
+  }
+}
+
+function diagnosticString(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 512
+    ? value
+    : undefined
+}
+
+function finiteDiagnosticInteger(value: unknown) {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined
 }

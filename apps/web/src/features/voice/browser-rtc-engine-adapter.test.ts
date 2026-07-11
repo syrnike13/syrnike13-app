@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VoiceLease, VoiceMediaDesiredState } from '@syrnike13/platform'
 
@@ -15,8 +17,22 @@ const livekit = vi.hoisted(() => {
     }
     emit(event: string, ...args: unknown[]): void
   }> = []
-  return { rooms }
+  return {
+    rooms,
+    connectPromise: null as Promise<void> | null,
+  }
 })
+
+const remoteAudioMixers = vi.hoisted(() => ({
+  instances: [] as Array<{
+    addTrack: ReturnType<typeof vi.fn>
+    removeTrack: ReturnType<typeof vi.fn>
+    removeMediaStreamTrack: ReturnType<typeof vi.fn>
+    applyVolumes: ReturnType<typeof vi.fn>
+    setOutputDevice: ReturnType<typeof vi.fn>
+    dispose: ReturnType<typeof vi.fn>
+  }>,
+}))
 
 vi.mock('livekit-client', () => {
   class MockRoom {
@@ -25,7 +41,9 @@ vi.mock('livekit-client', () => {
       unmute: vi.fn(async () => undefined),
     }
     readonly handlers = new Map<string, Set<(...args: unknown[]) => void>>()
-    readonly connect = vi.fn(async () => undefined)
+    readonly connect = vi.fn(
+      () => livekit.connectPromise ?? Promise.resolve(),
+    )
     readonly disconnect = vi.fn(async () => undefined)
     readonly switchActiveDevice = vi.fn(async () => undefined)
     readonly localParticipant = {
@@ -87,6 +105,21 @@ vi.mock('./voice-mic-processing', () => ({
   applyMicProcessing: vi.fn(async () => undefined),
 }))
 
+vi.mock('./remote-audio-mixer', () => ({
+  createRemoteAudioMixer: () => {
+    const mixer = {
+      addTrack: vi.fn(() => true),
+      removeTrack: vi.fn(),
+      removeMediaStreamTrack: vi.fn(),
+      applyVolumes: vi.fn(async () => undefined),
+      setOutputDevice: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    }
+    remoteAudioMixers.instances.push(mixer)
+    return mixer
+  },
+}))
+
 import { BrowserRtcEngineAdapter } from './browser-rtc-engine-adapter'
 import { applyMicProcessing } from './voice-mic-processing'
 
@@ -141,8 +174,13 @@ async function waitUntil(predicate: () => boolean) {
 
 describe('BrowserRtcEngineAdapter', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllMocks()
     livekit.rooms.length = 0
+    livekit.connectPromise = null
+    remoteAudioMixers.instances.length = 0
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
   })
 
   it('keeps one Room and does not restart camera or screen for a mute update', async () => {
@@ -170,6 +208,35 @@ describe('BrowserRtcEngineAdapter', () => {
     expect(room.localParticipant.setCameraEnabled).toHaveBeenCalledTimes(1)
     expect(room.localParticipant.setScreenShareEnabled).toHaveBeenCalledTimes(1)
     expect(room.disconnect).not.toHaveBeenCalled()
+    await adapter.dispose()
+  })
+
+  it('does not block camera, screen, or output while microphone permission is pending', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    const initial = desired({
+      cameraEnabled: true,
+      screenEnabled: true,
+      screenAudioEnabled: true,
+    })
+    const connecting = adapter.connect(
+      lease,
+      initial,
+      new AbortController().signal,
+    )
+    const room = livekit.rooms[0]
+    room.localParticipant.setMicrophoneEnabled.mockReturnValue(
+      new Promise(() => undefined),
+    )
+
+    await connecting
+    await waitUntil(
+      () =>
+        room.localParticipant.setCameraEnabled.mock.calls.length === 1 &&
+        room.localParticipant.setScreenShareEnabled.mock.calls.length === 1 &&
+        remoteAudioMixers.instances[0].setOutputDevice.mock.calls.length === 1,
+    )
+
+    expect(room.localParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(1)
     await adapter.dispose()
   })
 
@@ -258,5 +325,182 @@ describe('BrowserRtcEngineAdapter', () => {
       },
     })
     await adapter.dispose()
+  })
+
+  it('keeps exactly one silent LiveKit decoder sink per remote audio track', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    const mixer = remoteAudioMixers.instances[0]
+    const element = document.createElement('audio')
+    const track = {
+      kind: 'audio',
+      mediaStreamTrack: { id: 'remote-track' },
+      attach: vi.fn(() => element),
+      detach: vi.fn((target?: HTMLAudioElement) =>
+        target ? target : ([] as HTMLAudioElement[]),
+      ),
+    }
+    const publication = {
+      trackSid: 'TR_remote',
+      source: 'microphone',
+    }
+    const participant = { identity: 'remote-user' }
+
+    room.emit('trackSubscribed', track, publication, participant)
+
+    expect(track.attach).toHaveBeenCalledTimes(1)
+    expect(element.dataset.syrnikeRemoteAudioDecoder).toBe('TR_remote')
+    expect(element.autoplay).toBe(true)
+    expect(element.muted).toBe(true)
+    expect(element.volume).toBe(0)
+    expect(element.isConnected).toBe(true)
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+    expect(mixer.addTrack).toHaveBeenCalledWith({
+      trackId: 'TR_remote',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: track.mediaStreamTrack,
+    })
+
+    room.emit('trackUnsubscribed', track, publication, participant)
+
+    expect(track.detach).toHaveBeenLastCalledWith(element)
+    expect(mixer.removeTrack).toHaveBeenCalledWith('TR_remote')
+    expect(element.srcObject).toBeNull()
+    expect(element.isConnected).toBe(false)
+    await adapter.dispose()
+  })
+
+  it('replaces a duplicate subscription without leaking decoder elements', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    const firstElement = document.createElement('audio')
+    const secondElement = document.createElement('audio')
+    const firstTrack = {
+      kind: 'audio',
+      mediaStreamTrack: { id: 'remote-track-a' },
+      attach: vi.fn(() => firstElement),
+      detach: vi.fn((target?: HTMLAudioElement) =>
+        target ? target : ([] as HTMLAudioElement[]),
+      ),
+    }
+    const secondTrack = {
+      kind: 'audio',
+      mediaStreamTrack: { id: 'remote-track-b' },
+      attach: vi.fn(() => secondElement),
+      detach: vi.fn((target?: HTMLAudioElement) =>
+        target ? target : ([] as HTMLAudioElement[]),
+      ),
+    }
+    const publication = {
+      trackSid: 'TR_remote',
+      source: 'microphone',
+    }
+    const participant = { identity: 'remote-user' }
+
+    room.emit('trackSubscribed', firstTrack, publication, participant)
+    room.emit('trackSubscribed', secondTrack, publication, participant)
+    room.emit('trackUnsubscribed', firstTrack, publication, participant)
+
+    expect(firstTrack.detach).toHaveBeenLastCalledWith(firstElement)
+    expect(firstElement.isConnected).toBe(false)
+    expect(secondElement.isConnected).toBe(true)
+    expect(
+      document.querySelectorAll('[data-syrnike-remote-audio-decoder="TR_remote"]'),
+    ).toHaveLength(1)
+
+    await adapter.dispose()
+    expect(secondTrack.detach).toHaveBeenLastCalledWith(secondElement)
+    expect(secondElement.isConnected).toBe(false)
+  })
+
+  it('does not attach a decoder sink when the remote media track is missing', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    const track = {
+      kind: 'audio',
+      attach: vi.fn(() => document.createElement('audio')),
+      detach: vi.fn(() => [] as HTMLAudioElement[]),
+    }
+
+    room.emit(
+      'trackSubscribed',
+      track,
+      { trackSid: 'TR_missing', source: 'microphone' },
+      { identity: 'remote-user' },
+    )
+
+    expect(track.attach).not.toHaveBeenCalled()
+    expect(
+      document.querySelector('[data-syrnike-remote-audio-decoder="TR_missing"]'),
+    ).toBeNull()
+    await adapter.dispose()
+  })
+
+  it('routes screen-share audio through the independent stream volume channel', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    const mixer = remoteAudioMixers.instances[0]
+    const element = document.createElement('audio')
+    const track = {
+      kind: 'audio',
+      mediaStreamTrack: { id: 'remote-screen-audio' },
+      attach: vi.fn(() => element),
+      detach: vi.fn((target?: HTMLAudioElement) =>
+        target ? target : ([] as HTMLAudioElement[]),
+      ),
+    }
+
+    room.emit(
+      'trackSubscribed',
+      track,
+      { trackSid: 'TR_screen_audio', source: 'screen_share_audio' },
+      { identity: 'remote-user' },
+    )
+
+    expect(mixer.addTrack).toHaveBeenCalledWith({
+      trackId: 'TR_screen_audio',
+      userId: 'remote-user',
+      source: 'stream',
+      mediaStreamTrack: track.mediaStreamTrack,
+    })
+    await adapter.dispose()
+  })
+
+  it('cleans a subscribed decoder sink when connection is aborted', async () => {
+    livekit.connectPromise = new Promise(() => undefined)
+    const adapter = new BrowserRtcEngineAdapter()
+    const controller = new AbortController()
+    const connecting = adapter.connect(lease, desired(), controller.signal)
+    const room = livekit.rooms[0]
+    const mixer = remoteAudioMixers.instances[0]
+    const element = document.createElement('audio')
+    const track = {
+      kind: 'audio',
+      mediaStreamTrack: { id: 'remote-during-connect' },
+      attach: vi.fn(() => element),
+      detach: vi.fn((target?: HTMLAudioElement) =>
+        target ? target : ([] as HTMLAudioElement[]),
+      ),
+    }
+
+    room.emit(
+      'trackSubscribed',
+      track,
+      { trackSid: 'TR_during_connect', source: 'microphone' },
+      { identity: 'remote-user' },
+    )
+    expect(element.isConnected).toBe(true)
+
+    controller.abort()
+    await expect(connecting).rejects.toMatchObject({ name: 'AbortError' })
+
+    expect(track.detach).toHaveBeenLastCalledWith(element)
+    expect(element.isConnected).toBe(false)
+    expect(mixer.dispose).toHaveBeenCalledTimes(1)
   })
 })

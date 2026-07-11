@@ -48,6 +48,7 @@ type NativeRuntimeAddon = {
     commit?: string
     napi?: string
     livekit?: string
+    diagnosticsEnabled?: boolean
   }
 }
 
@@ -99,6 +100,7 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   diagnosticLog?.log('utility_startup', {
     pid: process.pid,
     runtimeKind,
+    nativeLogConfigured: Boolean(process.env.SYRNIKE_NATIVE_MEDIA_LOG_PATH),
   })
 
   const nativeModulePath = process.env.SYRNIKE_NATIVE_MODULE_PATH
@@ -187,6 +189,9 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   let info: ReturnType<NonNullable<NativeRuntimeAddon['getRuntimeInfo']>> = {}
   try {
     info = addon.getRuntimeInfo?.() ?? {}
+    diagnosticLog?.log('addon_runtime_info', {
+      nativeDiagnosticsEnabled: info.diagnosticsEnabled === true,
+    })
   } catch {
     diagnosticLog?.log('addon_info_failed')
     postIncompatibleReady(parentPort, runtimeKind)

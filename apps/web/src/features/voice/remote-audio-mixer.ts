@@ -122,6 +122,7 @@ export class RemoteAudioMixer {
   #speakingUserIds = new Set<string>()
   #speakingFrame: number | null = null
   #outputDeviceId: string | undefined
+  #outputRetryArmed = false
   #disposed = false
   readonly #onSpeakingUserIdsChange:
     | ((userIds: ReadonlySet<string>) => void)
@@ -287,6 +288,7 @@ export class RemoteAudioMixer {
     this.#outputElement?.remove()
     this.#outputElement = null
     this.#outputNode = null
+    this.#disarmOutputRetry()
     void this.#context?.close().catch(() => {})
     this.#context = null
   }
@@ -349,10 +351,31 @@ export class RemoteAudioMixer {
     try {
       await context.resume()
       await element.play()
+      this.#disarmOutputRetry()
     } catch (error) {
+      this.#armOutputRetry()
       this.#reportOutputError(error)
       throw error
     }
+  }
+
+  #armOutputRetry() {
+    if (this.#disposed || this.#outputRetryArmed) return
+    this.#outputRetryArmed = true
+    document.addEventListener('pointerdown', this.#retryOutputFromGesture, true)
+    document.addEventListener('keydown', this.#retryOutputFromGesture, true)
+  }
+
+  #disarmOutputRetry() {
+    if (!this.#outputRetryArmed) return
+    this.#outputRetryArmed = false
+    document.removeEventListener('pointerdown', this.#retryOutputFromGesture, true)
+    document.removeEventListener('keydown', this.#retryOutputFromGesture, true)
+  }
+
+  #retryOutputFromGesture = () => {
+    this.#disarmOutputRetry()
+    void this.#startOutput().catch(() => undefined)
   }
 
   #reportOutputError(error: unknown) {

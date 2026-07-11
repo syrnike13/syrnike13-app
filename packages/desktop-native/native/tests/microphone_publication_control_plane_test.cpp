@@ -510,6 +510,7 @@ int main() try {
         auto privacy_livekit =
             std::make_shared<DeterministicFakeLiveKitPublicationClient>();
         std::size_t attached_sources = 0;
+        std::size_t privacy_mute_applications = 0;
         bool latest_applied_mute = false;
         MicrophonePublicationController privacy_controller(
             privacy_emitter,
@@ -522,7 +523,10 @@ int main() try {
             [&](const auto &) { attached_sources += 1; },
             [&](const auto &) { attached_sources -= 1; },
             [] { return true; }, privacy_livekit,
-            [&](const auto &, bool muted) { latest_applied_mute = muted; });
+            [&](const auto &, bool muted) {
+              latest_applied_mute = muted;
+              privacy_mute_applications += 1;
+            });
 
         privacy_desired.advance("mic-privacy", 1);
         auto initial = connectCommand("privacy-initial", "mic-privacy", 1);
@@ -536,7 +540,8 @@ int main() try {
                 "initial privacy microphone did not promote");
         require(attached_sources == 1,
                 "promoted microphone source was not attached");
-
+        require(privacy_mute_applications == 1 && !latest_applied_mute,
+                "initial unmuted state was not applied to the published track");
         privacy_livekit->setBlocked(
             DeterministicFakeLiveKitPublicationClient::Operation::Publish,
             true);
@@ -578,6 +583,8 @@ int main() try {
                 "candidate did not promote after old-generation mute");
         require(latest_applied_mute,
                 "old-generation logical mute was lost during promotion");
+        require(privacy_mute_applications == 2,
+                "candidate mute state was not applied exactly once at promotion");
         require(attached_sources == 1,
                 "promotion left more than one PCM sink attached");
 
@@ -591,6 +598,8 @@ int main() try {
         privacy_controller.disconnect(privacy_disconnect, false);
         privacy_controller.handleWorkerCommand(
             privacy_deferred.waitTake("__microphoneRetireDone"));
+        require(privacy_livekit->unpublishedPublicationSids().size() == 2,
+                "shared Room retained a microphone publication after retirement");
         privacy_controller.shutdown();
       }
     }

@@ -8,6 +8,7 @@ export function mergeSpeakingUserIds({
   selfSpeaking: boolean
 }) {
   const next = new Set(remoteUserIds)
+  if (selfUserId) next.delete(selfUserId)
   if (selfUserId && selfSpeaking) {
     next.add(selfUserId)
   }

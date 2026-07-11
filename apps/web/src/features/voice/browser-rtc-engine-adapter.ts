@@ -48,6 +48,10 @@ type ActiveBrowserVoice = {
   appliedOutputDeviceId: string | null
   outputRecovering: boolean
   audioMixer: RemoteAudioMixer
+  remoteAudioDecoderSinks: Map<
+    string,
+    { track: Track; element: HTMLAudioElement }
+  >
   unsubscribeListenerSettings: () => void
 }
 
@@ -111,6 +115,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       appliedOutputDeviceId: null,
       outputRecovering: false,
       audioMixer,
+      remoteAudioDecoderSinks: new Map(),
       unsubscribeListenerSettings: () => undefined,
     }
     active.unsubscribeListenerSettings = voiceListenerStore.subscribe(() => {
@@ -135,8 +140,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     } catch (error) {
       if (this.active === active) this.active = null
       active.intentionalDisconnect = true
-      active.unsubscribeListenerSettings()
-      active.audioMixer.dispose()
+      this.clearRemoteAudio(active)
       room.removeAllListeners()
       await room.disconnect().catch(() => undefined)
       this.emitRoom(null)
@@ -248,7 +252,6 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         participant: RemoteParticipant,
       ) => {
         if (this.active !== active || track.kind !== Track.Kind.Audio) return
-        track.detach().forEach((element) => element.remove())
         const mediaStreamTrack = (
           track as typeof track & { mediaStreamTrack?: MediaStreamTrack }
         ).mediaStreamTrack
@@ -260,6 +263,16 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
           )
           return
         }
+        try {
+          this.replaceRemoteAudioDecoderSink(
+            active,
+            publication.trackSid,
+            track,
+          )
+        } catch (error) {
+          this.emitMediaFailure(active, 'output', error)
+          return
+        }
         const added = active.audioMixer.addTrack({
           trackId: publication.trackSid,
           userId: baseVoiceIdentity(participant.identity),
@@ -267,6 +280,11 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
           mediaStreamTrack,
         })
         if (!added) {
+          this.removeRemoteAudioDecoderSink(
+            active,
+            publication.trackSid,
+            track,
+          )
           this.emitMediaFailure(
             active,
             'output',
@@ -286,6 +304,9 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     room.on(
       RoomEvent.TrackUnsubscribed,
       (track, publication: RemoteTrackPublication) => {
+        if (this.active !== active) return
+        const sink = active.remoteAudioDecoderSinks.get(publication.trackSid)
+        if (!sink || sink.track !== track) return
         active.audioMixer.removeTrack(publication.trackSid)
         const mediaStreamTrack = (
           track as typeof track & { mediaStreamTrack?: MediaStreamTrack }
@@ -293,7 +314,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
         if (mediaStreamTrack) {
           active.audioMixer.removeMediaStreamTrack(mediaStreamTrack)
         }
-        track.detach().forEach((detached) => detached.remove())
+        this.removeRemoteAudioDecoderSink(active, publication.trackSid, track)
       },
     )
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
@@ -606,8 +627,46 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
 
   private clearRemoteAudio(active: ActiveBrowserVoice) {
     active.unsubscribeListenerSettings()
+    for (const trackSid of [...active.remoteAudioDecoderSinks.keys()]) {
+      this.removeRemoteAudioDecoderSink(active, trackSid)
+    }
     active.audioMixer.dispose()
     for (const listener of this.speakingListeners) listener(new Set())
+  }
+
+  private replaceRemoteAudioDecoderSink(
+    active: ActiveBrowserVoice,
+    trackSid: string,
+    track: Track,
+  ) {
+    this.removeRemoteAudioDecoderSink(active, trackSid)
+    track.detach().forEach((element) => element.remove())
+
+    const element = track.attach() as HTMLAudioElement
+    element.dataset.syrnikeRemoteAudioDecoder = trackSid
+    element.autoplay = true
+    element.muted = true
+    element.volume = 0
+    element.style.display = 'none'
+    document.body.appendChild(element)
+    active.remoteAudioDecoderSinks.set(trackSid, { track, element })
+
+    void element.play().catch(() => undefined)
+  }
+
+  private removeRemoteAudioDecoderSink(
+    active: ActiveBrowserVoice,
+    trackSid: string,
+    expectedTrack?: Track,
+  ) {
+    const sink = active.remoteAudioDecoderSinks.get(trackSid)
+    if (!sink) return
+    if (expectedTrack && sink.track !== expectedTrack) return
+    active.remoteAudioDecoderSinks.delete(trackSid)
+    const detached = sink.track.detach(sink.element)
+    detached.pause()
+    detached.srcObject = null
+    detached.remove()
   }
 
   private assertCurrent(active: ActiveBrowserVoice) {

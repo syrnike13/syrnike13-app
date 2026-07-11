@@ -200,6 +200,10 @@ function safeErrorMessage(error: unknown) {
 }
 
 function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
+  // DesktopVoiceService publishes its initial snapshot during module loading,
+  // before Electron paths are available. Do not cache that early attempt as a
+  // permanent diagnostics failure for the rest of the process lifetime.
+  if (!app.isReady()) return null
   if (nativeMediaDiagnostics !== undefined) return nativeMediaDiagnostics
   if (
     process.platform !== 'win32' ||

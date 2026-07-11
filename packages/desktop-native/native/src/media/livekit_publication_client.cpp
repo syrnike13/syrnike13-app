@@ -188,6 +188,11 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   ) override {
     CallbackGuard callback(*this);
     if (!callback || kind_ != "voice") return;
+    logDelegate(
+      kind_,
+      "active_speakers_changed",
+      {{"speakerCount", static_cast<std::uint64_t>(event.speakers.size())}}
+    );
     MediaCommand command;
     command.type = "__voiceActiveSpeakers";
     {

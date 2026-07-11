@@ -274,6 +274,10 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("livekit", "1.3.0");
   result.Set("commit", SYRNIKE_NATIVE_COMMIT);
+  result.Set(
+    "diagnosticsEnabled",
+    diagnostics::DiagnosticLog::instance().enabled()
+  );
   auto capabilities = Napi::Array::New(info.Env(), 6);
   capabilities.Set(uint32_t{0}, "microphone");
   capabilities.Set(uint32_t{1}, "screen");

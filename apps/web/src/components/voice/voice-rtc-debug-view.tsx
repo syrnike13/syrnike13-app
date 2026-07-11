@@ -337,6 +337,12 @@ function RtpStreamCard({
       <MetricRow label="Jitter" value={formatRtcValue(stream.jitter)} />
       <MetricRow label="Quality Limitation Reason" value={stream.qualityLimitationReason ?? '—'} />
       <MetricRow label="Audio Level" value={formatRtcValue(stream.audioLevel)} />
+      <MetricRow label="Total Audio Energy" value={formatRtcValue(stream.totalAudioEnergy)} />
+      <MetricRow label="Samples Duration" value={formatRtcValue(stream.totalSamplesDuration)} />
+      <MetricRow label="Samples Received" value={formatRtcInteger(stream.totalSamplesReceived)} />
+      <MetricRow label="Concealed Samples" value={formatRtcInteger(stream.concealedSamples)} />
+      <MetricRow label="Silent Concealed Samples" value={formatRtcInteger(stream.silentConcealedSamples)} />
+      <MetricRow label="Jitter Buffer Emitted" value={formatRtcInteger(stream.jitterBufferEmittedCount)} />
     </MetricGroup>
   )
 }

@@ -281,6 +281,52 @@ describe('voice rtc debug', () => {
     })
   })
 
+  it('preserves audio receive and concealment counters needed to diagnose silence', async () => {
+    const snapshot = await collectVoiceRtcDebugSnapshot(
+      roomWithStats([
+        {
+          id: 'codec-opus',
+          type: 'codec',
+          mimeType: 'audio/opus',
+          payloadType: 111,
+          clockRate: 48_000,
+          channels: 2,
+        },
+        {
+          id: 'in-audio',
+          type: 'inbound-rtp',
+          kind: 'audio',
+          codecId: 'codec-opus',
+          bytesReceived: 24_000,
+          packetsReceived: 100,
+          audioLevel: 0,
+          totalAudioEnergy: 0,
+          totalSamplesDuration: 1,
+          totalSamplesReceived: 48_000,
+          concealedSamples: 480,
+          silentConcealedSamples: 240,
+          jitterBufferEmittedCount: 47_520,
+        },
+      ]),
+      [],
+      1_000,
+    )
+
+    expect(snapshot.inbound[0]).toMatchObject({
+      kind: 'audio',
+      codec: 'opus (111)',
+      bytesReceived: 24_000,
+      packetsReceived: 100,
+      audioLevel: 0,
+      totalAudioEnergy: 0,
+      totalSamplesDuration: 1,
+      totalSamplesReceived: 48_000,
+      concealedSamples: 480,
+      silentConcealedSamples: 240,
+      jitterBufferEmittedCount: 47_520,
+    })
+  })
+
   it('sums transport counters from publisher and subscriber peer connections', async () => {
     const snapshot = await collectVoiceRtcDebugSnapshot(
       roomWithPublisherAndSubscriberStats({
@@ -317,6 +363,48 @@ describe('voice rtc debug', () => {
     expect(snapshot.transport.bytesReceived).toBe(6_000)
     expect(snapshot.transport.packetsSent).toBe(40)
     expect(snapshot.transport.packetsReceived).toBe(60)
+  })
+
+  it('returns partial stats when one peer connection never resolves', async () => {
+    const room = {
+      engine: {
+        pcManager: {
+          publisher: {
+            pc: { getStats: () => new Promise<RTCStatsReport>(() => undefined) },
+          },
+          subscriber: {
+            pc: {
+              getStats: () => Promise.resolve(statsReport([
+                {
+                  id: 'in-audio',
+                  type: 'inbound-rtp',
+                  kind: 'audio',
+                  packetsReceived: 25,
+                  bytesReceived: 4_000,
+                  totalAudioEnergy: 0.5,
+                },
+              ])),
+            },
+          },
+        },
+      },
+    }
+
+    const snapshot = await collectVoiceRtcDebugSnapshot(
+      room,
+      [],
+      1_000,
+      5,
+    )
+
+    expect(snapshot.inbound).toContainEqual(
+      expect.objectContaining({
+        pcRole: 'subscriber',
+        packetsReceived: 25,
+        bytesReceived: 4_000,
+        totalAudioEnergy: 0.5,
+      }),
+    )
   })
 
   it('drops invalid quality limitation durations from RTC stats', async () => {

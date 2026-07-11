@@ -179,7 +179,6 @@ export class NativeMediaController {
 
   private handleRuntimeEvent(event: MediaRuntimeEvent) {
     if (event.type === 'microphoneMetrics') {
-      if (!this.preview) return
       this.emit({ type: 'microphoneMetrics', event: event.metrics })
       return
     }

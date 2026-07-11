@@ -15,7 +15,7 @@ describe('mergeSpeakingUserIds', () => {
 
   it('removes only self when self stops speaking', () => {
     const merged = mergeSpeakingUserIds({
-      remoteUserIds: new Set(['remote-user']),
+      remoteUserIds: new Set(['self-user', 'remote-user']),
       selfUserId: 'self-user',
       selfSpeaking: false,
     })

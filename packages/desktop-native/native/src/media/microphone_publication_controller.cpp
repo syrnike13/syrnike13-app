@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <future>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -96,9 +99,12 @@ struct MicrophonePublicationController::PublishedRoom {
   std::string session_id;
   std::uint64_t generation = 0;
   std::string participant_identity;
+  std::string publication_sid;
   std::unique_ptr<LiveKitRoomSession> room;
   std::shared_ptr<livekit::AudioSource> source;
   std::shared_ptr<livekit::LocalAudioTrack> track;
+  // Destroyed first so no diagnostics callback can outlive the track/room.
+  std::jthread diagnostics_worker;
 };
 
 struct MicrophonePublicationController::AttemptState {
@@ -118,6 +124,7 @@ struct MicrophonePublicationController::AttemptState {
   bool stale = false;
   bool outcome_emitted = false;
   bool sink_attached = false;
+  std::string publication_sid;
   std::string error;
 };
 
@@ -154,7 +161,11 @@ class MicrophonePublicationController::Implementation {
         apply_mute_(std::move(apply_mute)) {
     if (!apply_mute_) {
       apply_mute_ = [](const auto &track, bool muted) {
-        if (track && muted) track->mute();
+        if (!track) return;
+        if (muted)
+          track->mute();
+        else
+          track->unmute();
       };
     }
   }
@@ -202,7 +213,8 @@ class MicrophonePublicationController::Implementation {
     attempt->pipeline = pipeline;
     attempt->desired_muted = command.muted;
     attempt->source = std::make_shared<livekit::AudioSource>(
-        syrnike::voice::kSampleRate, syrnike::voice::kChannels);
+        syrnike::voice::kSampleRate,
+        syrnike::voice::kChannels);
     candidate_ = attempt;
 
     emitter_.emit(lifecycle(command, "starting", "livekit_connecting"));
@@ -394,9 +406,11 @@ class MicrophonePublicationController::Implementation {
 
  private:
   void runAttempt(const std::shared_ptr<AttemptState> &attempt) {
+    std::unique_ptr<LiveKitRoomSession> candidate_room;
+    std::string candidate_publication_sid;
     try {
       const auto connect_started_at = LiveKitConnectPolicy::Clock::now();
-      auto room = livekit_client_->createMicrophoneSession(
+      candidate_room = livekit_client_->createMicrophoneSession(
           attempt->command.session_id, attempt->command.generation, post_);
       const auto connect_timeout =
           LiveKitConnectPolicy::remainingConnectTimeout(
@@ -406,16 +420,16 @@ class MicrophonePublicationController::Implementation {
             "LiveKit microphone preparation exceeded its deadline");
       }
       auto options = LiveKitConnectPolicy::roomOptions(connect_timeout);
-      if (!room->connect(attempt->command.livekit_url,
-                         attempt->command.livekit_token, options)) {
+      if (!candidate_room->connect(attempt->command.livekit_url,
+                                   attempt->command.livekit_token, options)) {
         throw std::runtime_error("LiveKit microphone connect returned false");
       }
       const auto post_connect_wait =
           LiveKitConnectPolicy::remainingPostConnectWait(
               connect_started_at, LiveKitConnectPolicy::Clock::now());
-      if (!room->isConnected() &&
+      if (!candidate_room->isConnected() &&
           (post_connect_wait <= std::chrono::milliseconds(0) ||
-           !room->waitConnected(post_connect_wait))) {
+           !candidate_room->waitConnected(post_connect_wait))) {
         throw std::runtime_error("LiveKit microphone connection timed out");
       }
       if (!isCurrentCandidate(attempt)) {
@@ -428,12 +442,16 @@ class MicrophonePublicationController::Implementation {
       publish_options.audio_encoding = audio_encoding;
       publish_options.dtx = true;
       publish_options.source = livekit::TrackSource::SOURCE_MICROPHONE;
-      const auto publication_sid =
-          room->publishAudioTrack(track, publish_options);
-      if (publication_sid.empty()) {
+      candidate_publication_sid =
+          candidate_room->publishAudioTrack(track, publish_options);
+      if (candidate_publication_sid.empty()) {
         throw std::runtime_error(
             "LiveKit microphone publication was not acknowledged");
       }
+      logPublication(
+          "publish_acknowledged",
+          {{"sessionId", attempt->command.session_id},
+           {"generation", attempt->command.generation}});
       if (!capture_healthy_()) {
         throw std::runtime_error(
             "microphone capture pipeline is not healthy at commit");
@@ -443,8 +461,9 @@ class MicrophonePublicationController::Implementation {
       }
       {
         std::lock_guard lock(attempt->mutex);
-        attempt->room = std::move(room);
+        attempt->room = std::move(candidate_room);
         attempt->track = std::move(track);
+        attempt->publication_sid = std::move(candidate_publication_sid);
         attempt->succeeded = true;
       }
       attempt->finished.store(true, std::memory_order_release);
@@ -460,10 +479,16 @@ class MicrophonePublicationController::Implementation {
         attempt->error = error.what();
         attempt->succeeded = false;
       }
-      if (attempt->room) attempt->room->markIntentionalDisconnect();
-      if (attempt->room) {
+      if (candidate_room && !candidate_publication_sid.empty()) {
         try {
-          attempt->room->disconnect();
+          candidate_room->unpublishTrack(candidate_publication_sid);
+        } catch (...) {
+        }
+      }
+      if (candidate_room) candidate_room->markIntentionalDisconnect();
+      if (candidate_room) {
+        try {
+          candidate_room->disconnect();
         } catch (...) {
         }
       }
@@ -573,6 +598,11 @@ class MicrophonePublicationController::Implementation {
 
     add_sink_(attempt->source);
     attempt->sink_attached = true;
+    logPublication(
+        "committed",
+        {{"sessionId", session_id},
+         {"generation", generation},
+         {"muted", desired_muted}});
 
     if (!is_current_(session_id, generation)) {
       removeAttemptSink(attempt);
@@ -594,6 +624,7 @@ class MicrophonePublicationController::Implementation {
 
     auto previous = std::move(committed_);
     committed_ = std::move(next);
+    startTrackDiagnostics(*committed_);
     muted_ = desired_muted;
     emitter_.emit(startedReply(attempt->command, attempt->pipeline));
     RuntimeEvent started = startedReply(attempt->command, attempt->pipeline);
@@ -746,6 +777,7 @@ class MicrophonePublicationController::Implementation {
     room->session_id = attempt->command.session_id;
     room->generation = attempt->command.generation;
     room->participant_identity = attempt->command.participant_identity;
+    room->publication_sid = std::move(attempt->publication_sid);
     room->source = std::move(attempt->source);
     room->track = std::move(attempt->track);
     room->room = std::move(attempt->room);
@@ -753,8 +785,26 @@ class MicrophonePublicationController::Implementation {
   }
 
   static void disconnectRoomBlocking(PublishedRoom &room) {
+    if (room.diagnostics_worker.joinable()) {
+      room.diagnostics_worker.request_stop();
+      room.diagnostics_worker.join();
+    }
     if (room.room) room.room->markIntentionalDisconnect();
     if (room.room) {
+      if (!room.publication_sid.empty()) {
+        try {
+          room.room->unpublishTrack(room.publication_sid);
+          logPublication(
+              "unpublished",
+              {{"sessionId", room.session_id},
+               {"generation", room.generation}});
+        } catch (...) {
+          logPublication(
+              "unpublish_failed",
+              {{"sessionId", room.session_id},
+               {"generation", room.generation}});
+        }
+      }
       try {
         room.room->disconnect();
       } catch (...) {
@@ -762,10 +812,136 @@ class MicrophonePublicationController::Implementation {
     }
   }
 
+  static void startTrackDiagnostics(PublishedRoom &room) {
+    if (!diagnostics::DiagnosticLog::instance().enabled() || !room.track) return;
+    const auto track = room.track;
+    const auto session_id = room.session_id;
+    const auto generation = room.generation;
+    room.diagnostics_worker = std::jthread(
+        [track, session_id, generation](std::stop_token stop) {
+          while (!stop.stop_requested()) {
+            try {
+              auto pending = track->getStats();
+              if (pending.wait_for(std::chrono::seconds(1)) !=
+                  std::future_status::ready) {
+                logPublication(
+                    "outbound_stats_timeout",
+                    {{"sessionId", session_id}, {"generation", generation}});
+              } else {
+                const auto stats = pending.get();
+                std::uint64_t packets_sent = 0;
+                std::uint64_t bytes_sent = 0;
+                double target_bitrate = 0.0;
+                double audio_level = 0.0;
+                double total_audio_energy = 0.0;
+                double total_samples_duration = 0.0;
+                std::uint64_t total_samples_captured = 0;
+                std::uint32_t outbound_ssrc = 0;
+                std::string outbound_codec_id;
+                std::uint32_t outbound_payload_type = 0;
+                std::uint32_t outbound_clock_rate = 0;
+                std::uint32_t outbound_channels = 0;
+                std::string outbound_mime_type;
+                std::string outbound_fmtp;
+                bool has_outbound = false;
+                bool has_source = false;
+                for (const auto &entry : stats) {
+                  std::visit(
+                      [&](const auto &value) {
+                        using Value = std::decay_t<decltype(value)>;
+                        if constexpr (std::is_same_v<
+                                          Value, livekit::RtcOutboundRtpStats>) {
+                          if (value.stream.kind != "audio") return;
+                          has_outbound = true;
+                          packets_sent += value.sent.packets_sent;
+                          bytes_sent += value.sent.bytes_sent;
+                          outbound_ssrc = value.stream.ssrc;
+                          outbound_codec_id = value.stream.codec_id;
+                          target_bitrate = std::max(
+                              target_bitrate, value.outbound.target_bitrate);
+                        } else if constexpr (std::is_same_v<
+                                               Value,
+                                               livekit::RtcMediaSourceStats>) {
+                          if (value.source.kind != "audio") return;
+                          has_source = true;
+                          audio_level = std::max(
+                              audio_level, value.audio.audio_level);
+                          total_audio_energy = std::max(
+                              total_audio_energy,
+                              value.audio.total_audio_energy);
+                          total_samples_duration = std::max(
+                              total_samples_duration,
+                              value.audio.total_samples_duration);
+                          total_samples_captured = std::max(
+                              total_samples_captured,
+                              value.audio.total_samples_captured);
+                        }
+                      },
+                      entry.stats);
+                }
+                for (const auto &entry : stats) {
+                  std::visit(
+                      [&](const auto &value) {
+                        using Value = std::decay_t<decltype(value)>;
+                        if constexpr (std::is_same_v<Value,
+                                                     livekit::RtcCodecStats>) {
+                          if (value.rtc.id != outbound_codec_id) return;
+                          outbound_payload_type = value.codec.payload_type;
+                          outbound_clock_rate = value.codec.clock_rate;
+                          outbound_channels = value.codec.channels;
+                          outbound_mime_type = value.codec.mime_type;
+                          outbound_fmtp = value.codec.sdp_fmtp_line;
+                        }
+                      },
+                      entry.stats);
+                }
+                logPublication(
+                    "outbound_stats",
+                    {{"sessionId", session_id},
+                     {"generation", generation},
+                     {"hasOutbound", has_outbound},
+                     {"packetsSent", packets_sent},
+                     {"bytesSent", bytes_sent},
+                     {"ssrc", static_cast<std::uint64_t>(outbound_ssrc)},
+                     {"codecId", outbound_codec_id},
+                     {"payloadType", static_cast<std::uint64_t>(outbound_payload_type)},
+                     {"clockRate", static_cast<std::uint64_t>(outbound_clock_rate)},
+                     {"channels", static_cast<std::uint64_t>(outbound_channels)},
+                     {"mimeType", outbound_mime_type},
+                     {"sdpFmtpLine", outbound_fmtp},
+                     {"targetBitrate", target_bitrate},
+                     {"hasSource", has_source},
+                     {"audioLevel", audio_level},
+                     {"totalAudioEnergy", total_audio_energy},
+                     {"totalSamplesDuration", total_samples_duration},
+                     {"totalSamplesCaptured", total_samples_captured}});
+              }
+            } catch (const std::exception &error) {
+              logPublication(
+                  "outbound_stats_failed",
+                  {{"sessionId", session_id},
+                   {"generation", generation},
+                   {"message", error.what()}});
+            }
+
+            for (int elapsed = 0;
+                 elapsed < 10 && !stop.stop_requested(); ++elapsed) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+          }
+        });
+  }
+
   static void disconnectAttemptBlocking(
       const std::shared_ptr<AttemptState> &attempt) {
     if (!attempt || !attempt->room) return;
     attempt->room->markIntentionalDisconnect();
+    if (!attempt->publication_sid.empty()) {
+      try {
+        attempt->room->unpublishTrack(attempt->publication_sid);
+      } catch (...) {
+      }
+    }
     try {
       attempt->room->disconnect();
     } catch (...) {

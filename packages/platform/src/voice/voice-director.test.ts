@@ -500,6 +500,10 @@ describe('VoiceDirector', () => {
       'voice-remote-a',
     ])
     expect(harness.engine.connected).toHaveLength(1)
+
+    harness.director.dispatch({ type: 'leave' })
+    await harness.director.waitForIdle()
+    expect(harness.director.snapshot().speakingUserIds).toEqual([])
   })
 
   it('does not tear down RTC merely because control transport is unavailable', async () => {
