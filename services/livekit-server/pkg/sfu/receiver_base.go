@@ -1003,8 +1003,9 @@ func (r *ReceiverBase) forwardRTP(
 		dequeuedAt := mono.UnixNano()
 		if r.Kind() == webrtc.RTPCodecTypeAudio {
 			if probeIndex, ok := takeRTPHeaderProbe(&r.rtpHeaderProbeCount); ok {
-				r.params.Logger.Infow(
+				r.params.Logger.Warnw(
 					"syrnike rtp header probe ingress",
+					nil,
 					"probeIndex", probeIndex,
 					"ssrc", extPkt.Packet.SSRC,
 					"sequenceNumber", extPkt.Packet.SequenceNumber,

@@ -1160,8 +1160,9 @@ func (d *DownTrack) WriteRTP(extPkt *buffer.ExtPacket, layer int32) int32 {
 	if d.kind == webrtc.RTPCodecTypeAudio {
 		if probeIndex, ok := takeRTPHeaderProbe(&d.rtpHeaderProbeCount); ok {
 			opusProbe := inspectOpusTOC(payload)
-			d.params.Logger.Infow(
+			d.params.Logger.Warnw(
 				"syrnike rtp header probe egress",
+				nil,
 				"probeIndex", probeIndex,
 				"sourceSSRC", extPkt.Packet.SSRC,
 				"sourceSequenceNumber", extPkt.Packet.SequenceNumber,
