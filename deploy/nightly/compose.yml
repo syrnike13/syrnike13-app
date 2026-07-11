@@ -218,6 +218,8 @@ services:
   livekit:
     image: ghcr.io/syrnike13/app-livekit-server:nightly
     logging: *json-log-rotation
+    environment:
+      SYRNIKE_RTP_HEADER_PROBE: "true"
     depends_on:
       redis:
         condition: service_started

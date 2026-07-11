@@ -228,6 +228,7 @@ type ReceiverBase struct {
 	forwardersGeneration atomic.Uint32
 	forwardersWaitGroup  *sync.WaitGroup
 	restartInProgress    bool
+	rtpHeaderProbeCount  atomic.Uint32
 
 	isClosed atomic.Bool
 }
@@ -1000,6 +1001,25 @@ func (r *ReceiverBase) forwardRTP(
 			continue
 		}
 		dequeuedAt := mono.UnixNano()
+		if r.Kind() == webrtc.RTPCodecTypeAudio {
+			if probeIndex, ok := takeRTPHeaderProbe(&r.rtpHeaderProbeCount); ok {
+				r.params.Logger.Infow(
+					"syrnike rtp header probe ingress",
+					"probeIndex", probeIndex,
+					"ssrc", extPkt.Packet.SSRC,
+					"sequenceNumber", extPkt.Packet.SequenceNumber,
+					"timestamp", extPkt.Packet.Timestamp,
+					"extendedSequenceNumber", extPkt.ExtSequenceNumber,
+					"extendedTimestamp", extPkt.ExtTimestamp,
+					"payloadType", extPkt.Packet.PayloadType,
+					"payloadBytes", len(extPkt.Packet.Payload),
+					"marker", extPkt.Packet.Marker,
+					"outOfOrder", extPkt.IsOutOfOrder,
+					"buffered", extPkt.IsBuffered,
+					"queueDelayUs", (dequeuedAt-extPkt.Arrival)/int64(time.Microsecond),
+				)
+			}
+		}
 
 		if extPkt.Packet.PayloadType != uint8(r.params.Codec.PayloadType) {
 			// drop packets as we don't support codec fallback directly

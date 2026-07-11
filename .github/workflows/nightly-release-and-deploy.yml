@@ -307,6 +307,43 @@ jobs:
           done
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
           curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null
+      - name: Capture sanitized RTP headers
+        run: |
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && timeout 180 docker compose logs --follow --since 2s --no-color --no-log-prefix livekit || test \$? -eq 124" \
+            | python3 -c '
+          import json
+          import sys
+
+          allowed = {
+              "ts", "level", "msg", "probeIndex", "ssrc", "sequenceNumber",
+              "timestamp", "extendedSequenceNumber", "extendedTimestamp",
+              "payloadType", "payloadBytes", "marker", "outOfOrder", "buffered",
+              "queueDelayUs", "sourceSSRC", "sourceSequenceNumber",
+              "sourceTimestamp", "sourcePayloadType", "sourcePayloadBytes",
+              "egressSSRC", "egressSequenceNumber", "egressTimestamp",
+              "egressPayloadType", "egressPayloadBytes", "opusTOCValid",
+              "opusConfig", "opusStereo", "opusFrameCode", "opusFrameCount",
+          }
+          for line in sys.stdin:
+              try:
+                  value = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if value.get("msg") not in {
+                  "syrnike rtp header probe ingress",
+                  "syrnike rtp header probe egress",
+              }:
+                  continue
+              print(json.dumps({key: value[key] for key in allowed if key in value}, separators=(",", ":")))
+          ' | tee nightly-rtp-headers.jsonl
+      - name: Upload sanitized RTP headers
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-rtp-headers-${{ github.sha }}
+          path: nightly-rtp-headers.jsonl
+          if-no-files-found: warn
+          retention-days: 1
 
   desktop:
     name: Build nightly desktop packages
