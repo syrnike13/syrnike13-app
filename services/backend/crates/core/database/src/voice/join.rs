@@ -510,7 +510,9 @@ fn voice_session_for_join_request(
         rtc_engine,
         client_instance_id: client_instance_id.to_string(),
         connection_epoch: connection_epoch.to_string(),
-        self_mute,
+        // Self-deafen also disables the microphone, matching Discord's
+        // user-facing semantics and keeping public voice state truthful.
+        self_mute: self_mute || self_deaf,
         self_deaf,
         created_at,
         expires_at: created_at
@@ -576,5 +578,30 @@ mod tests {
             session.expires_at,
             created_at.checked_add(Duration::seconds(120)).unwrap()
         );
+    }
+
+    #[test]
+    fn voice_session_for_join_request_mutes_when_self_deafened() {
+        let channel = UserVoiceChannel {
+            id: "voice-a".to_string(),
+            server_id: None,
+        };
+
+        let session = voice_session_for_join_request(
+            "op-a",
+            "user-a",
+            &channel,
+            "node-a",
+            VoiceRtcEngine::Web,
+            "client-a",
+            "epoch-a",
+            false,
+            true,
+            Timestamp::UNIX_EPOCH,
+        )
+        .expect("session");
+
+        assert!(session.self_mute);
+        assert!(session.self_deaf);
     }
 }

@@ -12,7 +12,7 @@ export function createConnectingLocalVoiceState(
   return {
     id: userId,
     joined_at: Date.now(),
-    self_mute: !options.micEnabled,
+    self_mute: !options.micEnabled || options.deafened,
     self_deaf: options.deafened,
     server_muted: false,
     server_deafened: false,

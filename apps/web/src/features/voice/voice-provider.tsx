@@ -317,11 +317,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [dispatchVoice])
 
   const toggleMic = useCallback(() => {
+    if (snapshot.userDeafened) {
+      voicePreferenceStore.setDeafened(false)
+      void dispatchVoice({ type: 'setUserDeafened', deafened: false })
+      playUiSound('voice.undeafen')
+      return
+    }
     const enabled = snapshot.userMuted
     voicePreferenceStore.setMicEnabled(enabled)
     void dispatchVoice({ type: 'setUserMuted', muted: !enabled })
     playUiSound(enabled ? 'voice.unmute' : 'voice.mute')
-  }, [dispatchVoice, snapshot.userMuted])
+  }, [dispatchVoice, snapshot.userDeafened, snapshot.userMuted])
 
   const toggleDeafen = useCallback(() => {
     const deafened = !snapshot.userDeafened

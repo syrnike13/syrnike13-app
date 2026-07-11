@@ -90,6 +90,8 @@ _Avoid_: Native publisher, microphone room, screen room
 **User Mute**:
 The mute choice represented by the user's button. Administrative, deafen,
 push-to-talk, and lock-screen restrictions never overwrite it.
+Self-deafen is transported to the voice authority as both self-mute and
+self-deaf, while this underlying choice is restored when deafen is cleared.
 _Avoid_: Effective mute, track mute, server mute
 
 **Effective Mute**:

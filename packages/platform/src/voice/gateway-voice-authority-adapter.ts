@@ -123,7 +123,10 @@ export class GatewayVoiceAuthorityAdapter implements VoiceAuthorityAdapter {
           nonce,
           request: authorityClaim('join', request),
           channelId: request.channelId,
-          userMuted: request.media.userMuted,
+          // Self-deafen also publishes self-mute. The desired state keeps
+          // the user's mute preference separately so it can be restored when
+          // deafen is cleared.
+          userMuted: request.media.userMuted || request.media.userDeafened,
           userDeafened: request.media.userDeafened,
           node: metadata?.node,
           recipients: metadata?.recipients ?? request.recipients,
@@ -153,7 +156,7 @@ export class GatewayVoiceAuthorityAdapter implements VoiceAuthorityAdapter {
       {
         request: authorityClaim('update_flags', input),
         channelId: input.channelId,
-        userMuted: input.userMuted,
+        userMuted: input.userMuted || input.userDeafened,
         userDeafened: input.userDeafened,
         suppressCallNotifications: true,
       },

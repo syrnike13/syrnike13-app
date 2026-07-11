@@ -605,7 +605,9 @@ pub async fn update_client_voice_flags(
         }
 
         let mut next = previous.clone();
-        next.self_mute = self_mute;
+        // Self-deafen is a combined mute+deafen action. Keep the persisted
+        // public state aligned with the media actually sent by the client.
+        next.self_mute = self_mute || self_deaf;
         next.self_deaf = self_deaf;
         next.version += 1;
         if save_current_voice_session(&previous, &next).await? {

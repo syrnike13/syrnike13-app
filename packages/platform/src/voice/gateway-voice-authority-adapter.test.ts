@@ -125,6 +125,32 @@ describe('GatewayVoiceAuthorityAdapter', () => {
     adapter.dispose()
   })
 
+  it('publishes self-mute together with self-deafen', async () => {
+    const transport = new FakeTransport()
+    const adapter = new GatewayVoiceAuthorityAdapter({ transport })
+    const pending = adapter.reserve(
+      {
+        ...reservation,
+        media: {
+          ...reservation.media,
+          userMuted: false,
+          userDeafened: true,
+          effectiveMuted: true,
+        },
+      },
+      new AbortController().signal,
+    )
+    await Promise.resolve()
+
+    expect(transport.sent.at(-1)?.message).toMatchObject({
+      self_mute: true,
+      self_deaf: true,
+    })
+
+    adapter.dispose()
+    await expect(pending).rejects.toThrow('disposed')
+  })
+
   it('emits only complete, versioned authoritative membership snapshots', () => {
     const transport = new FakeTransport()
     const adapter = new GatewayVoiceAuthorityAdapter({ transport })
@@ -174,6 +200,10 @@ describe('GatewayVoiceAuthorityAdapter', () => {
       userDeafened: true,
     })
     const flagMessage = transport.sent.at(-1)!.message
+    expect(flagMessage).toMatchObject({
+      self_mute: true,
+      self_deaf: true,
+    })
     transport.event({
       type: 'VoiceStateAck',
       nonce: flagMessage.nonce,

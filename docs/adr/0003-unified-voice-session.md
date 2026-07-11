@@ -109,6 +109,9 @@ Effective Mute is computed independently from User Mute. Deafen also mutes the
 microphone while preserving the previous User Mute. Server mute/deafen and
 lock-screen privacy mute do not change user buttons. Voice activity and
 push-to-talk share this same desired-state calculation.
+The authority wire represents self-deafen as both `self_mute` and `self_deaf`;
+clearing self-deafen restores the preserved User Mute value. While self-deafened,
+the microphone button is an undeafen shortcut rather than a separate mute toggle.
 
 Input changes use candidate WASAPI/DSP pipelines and atomically swap only after
 healthy PCM is observed. If an input or output device disappears, the Native

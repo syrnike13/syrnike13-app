@@ -286,6 +286,14 @@ export class DesktopVoiceService {
     }
     if (phase !== 'pressed') return
     if (action === 'toggle-mic') {
+      if (snapshot.userDeafened) {
+        this.runtime.director.dispatch({
+          type: 'setUserDeafened',
+          deafened: false,
+        })
+        this.persistPreference({ deafened: false })
+        return
+      }
       const micEnabled = snapshot.userMuted
       this.runtime.director.dispatch({
         type: 'setUserMuted',
