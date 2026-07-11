@@ -10,7 +10,6 @@ import {
   rmsFromFloatTimeDomain,
   rmsToDb,
 } from '#/features/voice/voice-gate-level'
-import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
 
 const CLIENT_SPEAKING_THRESHOLD_DB = -58
 const CLIENT_SPEAKING_CLOSE_HOLD_MS = 180
@@ -157,32 +156,6 @@ export class RemoteAudioMixer {
     this.removeTrack(track.trackId)
 
     const stream = new MediaStream([track.mediaStreamTrack])
-    const audioSettings = track.mediaStreamTrack.getSettings?.() ?? {}
-    const audioSettingsWithLatency = audioSettings as MediaTrackSettings & {
-      latency?: number
-    }
-    logVoiceDebugAgent({
-      hypothesis: 'H4-audio-frame-gaps',
-      event: 'remote-audio-track-add',
-      source: track.source,
-      contextState: context.state,
-      contextSampleRate: context.sampleRate,
-      contextBaseLatency: context.baseLatency,
-      contextOutputLatency: (context as AudioContext & {
-        outputLatency?: number
-      }).outputLatency,
-      trackReadyState: track.mediaStreamTrack.readyState,
-      trackMuted: track.mediaStreamTrack.muted,
-      trackSettings: {
-        sampleRate: audioSettings.sampleRate,
-        channelCount: audioSettings.channelCount,
-        latency: audioSettingsWithLatency.latency,
-        echoCancellation: audioSettings.echoCancellation,
-        noiseSuppression: audioSettings.noiseSuppression,
-        autoGainControl: audioSettings.autoGainControl,
-      },
-    })
-
     try {
       const sourceNode = context.createMediaStreamSource(stream)
       const gainNode = context.createGain()

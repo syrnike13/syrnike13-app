@@ -1,7 +1,6 @@
 import type { Room } from 'livekit-client'
 
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
-import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
 import {
   screenShareCaptureOptions,
   type ScreenShareCaptureLimits,
@@ -85,22 +84,7 @@ async function applyScreenShareSenderBitrate(
 
   try {
     await sender.setParameters(params)
-    logVoiceDebugAgent({
-      hypothesis: 'H5-browser-sender-tuning-miss',
-      event: 'browser-screen-sender-tuned',
-      maxBitrate,
-      minBitrate: screenShareBitrateFloor(maxBitrate),
-      maxFramerate: encoding.maxFramerate,
-      trackSettings: mediaStreamTrack.getSettings(),
-    })
   } catch {
-    logVoiceDebugAgent({
-      hypothesis: 'H5-browser-sender-tuning-miss',
-      event: 'browser-screen-sender-tune-failed',
-      maxBitrate,
-      maxFramerate: encoding.maxFramerate,
-      trackSettings: mediaStreamTrack.getSettings(),
-    })
     // Sender may not be negotiated yet; caller can retry briefly.
   }
 }
@@ -119,11 +103,6 @@ async function waitForScreenShareSender(
       .find((candidate) => candidate.track?.id === mediaStreamTrack.id)
 
     if (sender) {
-      logVoiceDebugAgent({
-        hypothesis: 'H5-browser-sender-tuning-miss',
-        event: 'browser-screen-sender-found',
-        attempt,
-      })
       await applyScreenShareSenderBitrate(room, mediaStreamTrack, encoding)
       return
     }
@@ -132,12 +111,6 @@ async function waitForScreenShareSender(
       window.setTimeout(resolve, 50)
     })
   }
-  logVoiceDebugAgent({
-    hypothesis: 'H5-browser-sender-tuning-miss',
-    event: 'browser-screen-sender-missed',
-    attempts: 5,
-    trackSettings: mediaStreamTrack.getSettings(),
-  })
 }
 
 export async function tuneScreenShareAfterPublish(

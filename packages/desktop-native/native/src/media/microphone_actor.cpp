@@ -532,14 +532,6 @@ class MicrophoneActor::Implementation {
       raw_frame.reserve(syrnike::voice::kSamplesPer10Ms);
       std::vector<std::int16_t> silent_reference(syrnike::voice::kSamplesPer10Ms, 0);
       MicrophoneMetricsCadence metrics_cadence(std::chrono::steady_clock::now());
-      auto data_plane_window_started = std::chrono::steady_clock::now();
-      std::uint64_t processed_frames = 0;
-      std::uint64_t signal_frames = 0;
-      std::uint64_t gate_open_frames = 0;
-      std::uint64_t sink_writes = 0;
-      std::uint64_t slow_sink_writes = 0;
-      double latest_input_db = -60.0;
-      double latest_output_peak = 0.0;
 
       while (capture_running_.load()) {
         UINT32 packet_frames = 0;
@@ -573,11 +565,6 @@ class MicrophoneActor::Implementation {
             reference_ptr = reference ? &*reference : &silent_reference;
           }
           auto processed = processor.processFrame(raw_frame, active_config, reference_ptr);
-          processed_frames += 1;
-          if (processed.output_peak > 0.001F) signal_frames += 1;
-          if (processed.gate_metrics.open) gate_open_frames += 1;
-          latest_input_db = processed.gate_metrics.input_db;
-          latest_output_peak = processed.output_peak;
           const auto preview = previewTarget();
           if (preview.consumer) {
             preview.consumer(processed.pcm);
@@ -593,15 +580,7 @@ class MicrophoneActor::Implementation {
               syrnike::voice::kChannels,
               syrnike::voice::kSamplesPer10Ms
             );
-            const auto sink_write_started = std::chrono::steady_clock::now();
             active_sinks[sink_index]->captureFrame(frame);
-            sink_writes += 1;
-            if (
-              std::chrono::steady_clock::now() - sink_write_started >=
-              std::chrono::milliseconds(20)
-            ) {
-              slow_sink_writes += 1;
-            }
           }
           const auto now = std::chrono::steady_clock::now();
           if (metrics_cadence.shouldEmit(now)) {
@@ -611,28 +590,6 @@ class MicrophoneActor::Implementation {
             event.threshold_db = processed.gate_metrics.threshold_db;
             event.gate_open = processed.gate_metrics.open;
             emitter_.emit(std::move(event));
-          }
-          if (now - data_plane_window_started >= std::chrono::seconds(1)) {
-            logMicrophone(
-              "microphone_data_plane",
-              {
-                {"processedFrames", processed_frames},
-                {"signalFrames", signal_frames},
-                {"gateOpenFrames", gate_open_frames},
-                {"sinkWrites", sink_writes},
-                {"slowSinkWrites", slow_sink_writes},
-                {"sinkCount", static_cast<std::uint64_t>(active_sinks.size())},
-                {"previewActive", static_cast<bool>(preview.consumer)},
-                {"latestInputDb", latest_input_db},
-                {"latestOutputPeak", latest_output_peak}
-              }
-            );
-            data_plane_window_started = now;
-            processed_frames = 0;
-            signal_frames = 0;
-            gate_open_frames = 0;
-            sink_writes = 0;
-            slow_sink_writes = 0;
           }
           raw_frame.clear();
         }

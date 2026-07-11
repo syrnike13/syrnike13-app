@@ -130,9 +130,10 @@ committed publication. Preview lifecycle не может подменять publ
 
 ## Поправка 2026-07-10 — декларативный seam и bounded native attempts
 
-Файловая диагностика включается автоматически только в development (в
-packaged build — явно), редактирует token/URL/identity/device/source/window/path
-и удаляет локальные run-директории старше 7 дней.
+Файловая диагностика по умолчанию выключена во всех сборках и включается только
+через `SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS=1`. Она редактирует
+token/URL/identity/device/source/window/path и удаляет локальные run-директории
+старше 7 дней.
 
 Императивные renderer calls (`start/reconnect/mute/stop session`) заменены на:
 

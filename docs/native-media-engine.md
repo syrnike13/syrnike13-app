@@ -167,10 +167,10 @@ causes a fresh Director join to A.
 
 ## Failure, Retry and Recovery
 
-Detailed Electron/utility/native diagnostics are enabled automatically only in
-development (or explicitly for a packaged build), redact tokens, URLs,
-identities, device/source/window data and paths, and remove local run directories
-older than seven days.
+Detailed Electron/utility/native diagnostics are disabled by default in every
+build and enabled only with `SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS=1`. They redact
+tokens, URLs, identities, device/source/window data and paths, and remove local
+run directories older than seven days.
 
 A query timeout rejects that request and may use the relevant actor-specific
 liveness probe; it is not by itself evidence that the utility host died. A

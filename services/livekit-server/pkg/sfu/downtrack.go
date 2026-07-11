@@ -394,7 +394,6 @@ type DownTrack struct {
 	streamAllocatorLock     sync.RWMutex
 	streamAllocatorListener DownTrackStreamAllocatorListener
 	probeClusterId          atomic.Uint32
-	rtpHeaderProbeCount     atomic.Uint32
 
 	playoutDelay *PlayoutDelayController
 
@@ -1156,33 +1155,6 @@ func (d *DownTrack) WriteRTP(extPkt *buffer.ExtPacket, layer int32) int32 {
 		}
 	}
 	d.addDummyExtensions(hdr)
-
-	if d.kind == webrtc.RTPCodecTypeAudio {
-		if probeIndex, ok := takeRTPHeaderProbe(&d.rtpHeaderProbeCount); ok {
-			opusProbe := inspectOpusTOC(payload)
-			d.params.Logger.Warnw(
-				"syrnike rtp header probe egress",
-				nil,
-				"probeIndex", probeIndex,
-				"sourceSSRC", extPkt.Packet.SSRC,
-				"sourceSequenceNumber", extPkt.Packet.SequenceNumber,
-				"sourceTimestamp", extPkt.Packet.Timestamp,
-				"sourcePayloadType", extPkt.Packet.PayloadType,
-				"sourcePayloadBytes", len(extPkt.Packet.Payload),
-				"egressSSRC", hdr.SSRC,
-				"egressSequenceNumber", hdr.SequenceNumber,
-				"egressTimestamp", hdr.Timestamp,
-				"egressPayloadType", hdr.PayloadType,
-				"egressPayloadBytes", len(payload),
-				"marker", hdr.Marker,
-				"opusTOCValid", opusProbe.valid,
-				"opusConfig", opusProbe.config,
-				"opusStereo", opusProbe.stereo,
-				"opusFrameCode", opusProbe.frameCode,
-				"opusFrameCount", opusProbe.frameCount,
-			)
-		}
-	}
 
 	if d.sequencer != nil {
 		d.sequencer.push(

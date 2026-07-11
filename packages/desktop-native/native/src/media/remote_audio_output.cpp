@@ -9,7 +9,6 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <cmath>
 #include <deque>
 #include <mutex>
 #include <stdexcept>
@@ -128,20 +127,10 @@ class RemoteAudioOutput::Implementation {
     );
     state_ptr->worker = std::jthread([this, state_ptr](std::stop_token token) {
       livekit::AudioFrameEvent event;
-      auto window_started = std::chrono::steady_clock::now();
-      std::uint64_t frame_count = 0;
-      std::uint64_t sample_count = 0;
-      double peak = 0.0;
       while (!token.stop_requested() && state_ptr->stream->read(event)) {
         const auto& frame = event.frame;
         const auto channels = std::max(1, frame.numChannels());
         const auto& input = frame.data();
-        frame_count += 1;
-        sample_count += input.size() / static_cast<std::size_t>(channels);
-        for (const auto sample : input) {
-          peak = std::max(peak, std::abs(static_cast<double>(sample)) / 32768.0);
-        }
-        std::size_t queued_samples = 0;
         {
           std::lock_guard lock(mutex_);
           if (stopping_) break;
@@ -157,24 +146,7 @@ class RemoteAudioOutput::Implementation {
           while (state_ptr->samples.size() > kMaxQueuedSamplesPerTrack) {
             state_ptr->samples.pop_front();
           }
-          queued_samples = state_ptr->samples.size();
           ready_.notify_one();
-        }
-        const auto now = std::chrono::steady_clock::now();
-        if (now - window_started >= std::chrono::seconds(1)) {
-          logRemoteAudio(
-            "remote_audio_decoded",
-            {
-              {"frameCount", frame_count},
-              {"sampleCount", sample_count},
-              {"queuedSamples", static_cast<std::uint64_t>(queued_samples)},
-              {"peak", peak}
-            }
-          );
-          window_started = now;
-          frame_count = 0;
-          sample_count = 0;
-          peak = 0.0;
         }
       }
       logRemoteAudio("remote_audio_stream_ended");
@@ -286,10 +258,6 @@ class RemoteAudioOutput::Implementation {
         "remote_audio_renderer_started",
         {{"capacityFrames", static_cast<std::uint64_t>(capacity)}}
       );
-      auto window_started = std::chrono::steady_clock::now();
-      std::uint64_t rendered_samples = 0;
-      std::uint64_t nonzero_samples = 0;
-      double rendered_peak = 0.0;
       while (!token.stop_requested() && renderer_running_.load()) {
         UINT32 padding = 0;
         if (FAILED(client->GetCurrentPadding(&padding))) {
@@ -315,41 +283,14 @@ class RemoteAudioOutput::Implementation {
                 }
               }
               samples[index] = std::clamp(sample * volume_, -1.0F, 1.0F);
-              rendered_peak = std::max(
-                rendered_peak,
-                std::abs(static_cast<double>(samples[index]))
-              );
-              if (std::abs(samples[index]) > 0.00001F) nonzero_samples += 1;
             }
           }
-          rendered_samples += count;
           if (FAILED(render_client->ReleaseBuffer(
                 count,
                 deafened ? AUDCLNT_BUFFERFLAGS_SILENT : 0
               ))) {
             throw std::runtime_error("release render buffer failed");
           }
-        }
-        const auto now = std::chrono::steady_clock::now();
-        if (now - window_started >= std::chrono::seconds(1)) {
-          std::size_t track_count = 0;
-          {
-            std::lock_guard lock(mutex_);
-            track_count = tracks_.size();
-          }
-          logRemoteAudio(
-            "remote_audio_rendered",
-            {
-              {"trackCount", static_cast<std::uint64_t>(track_count)},
-              {"renderedSamples", rendered_samples},
-              {"nonzeroSamples", nonzero_samples},
-              {"peak", rendered_peak}
-            }
-          );
-          window_started = now;
-          rendered_samples = 0;
-          nonzero_samples = 0;
-          rendered_peak = 0.0;
         }
         std::unique_lock lock(mutex_);
         ready_.wait_for(lock, std::chrono::milliseconds(2));

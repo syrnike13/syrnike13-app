@@ -2,11 +2,9 @@
 
 #include <algorithm>
 #include <chrono>
-#include <future>
 #include <stdexcept>
 #include <string_view>
 #include <thread>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -103,8 +101,6 @@ struct MicrophonePublicationController::PublishedRoom {
   std::unique_ptr<LiveKitRoomSession> room;
   std::shared_ptr<livekit::AudioSource> source;
   std::shared_ptr<livekit::LocalAudioTrack> track;
-  // Destroyed first so no diagnostics callback can outlive the track/room.
-  std::jthread diagnostics_worker;
 };
 
 struct MicrophonePublicationController::AttemptState {
@@ -624,7 +620,6 @@ class MicrophonePublicationController::Implementation {
 
     auto previous = std::move(committed_);
     committed_ = std::move(next);
-    startTrackDiagnostics(*committed_);
     muted_ = desired_muted;
     emitter_.emit(startedReply(attempt->command, attempt->pipeline));
     RuntimeEvent started = startedReply(attempt->command, attempt->pipeline);
@@ -785,10 +780,6 @@ class MicrophonePublicationController::Implementation {
   }
 
   static void disconnectRoomBlocking(PublishedRoom &room) {
-    if (room.diagnostics_worker.joinable()) {
-      room.diagnostics_worker.request_stop();
-      room.diagnostics_worker.join();
-    }
     if (room.room) room.room->markIntentionalDisconnect();
     if (room.room) {
       if (!room.publication_sid.empty()) {
@@ -810,126 +801,6 @@ class MicrophonePublicationController::Implementation {
       } catch (...) {
       }
     }
-  }
-
-  static void startTrackDiagnostics(PublishedRoom &room) {
-    if (!diagnostics::DiagnosticLog::instance().enabled() || !room.track) return;
-    const auto track = room.track;
-    const auto session_id = room.session_id;
-    const auto generation = room.generation;
-    room.diagnostics_worker = std::jthread(
-        [track, session_id, generation](std::stop_token stop) {
-          while (!stop.stop_requested()) {
-            try {
-              auto pending = track->getStats();
-              if (pending.wait_for(std::chrono::seconds(1)) !=
-                  std::future_status::ready) {
-                logPublication(
-                    "outbound_stats_timeout",
-                    {{"sessionId", session_id}, {"generation", generation}});
-              } else {
-                const auto stats = pending.get();
-                std::uint64_t packets_sent = 0;
-                std::uint64_t bytes_sent = 0;
-                double target_bitrate = 0.0;
-                double audio_level = 0.0;
-                double total_audio_energy = 0.0;
-                double total_samples_duration = 0.0;
-                std::uint64_t total_samples_captured = 0;
-                std::uint32_t outbound_ssrc = 0;
-                std::string outbound_codec_id;
-                std::uint32_t outbound_payload_type = 0;
-                std::uint32_t outbound_clock_rate = 0;
-                std::uint32_t outbound_channels = 0;
-                std::string outbound_mime_type;
-                std::string outbound_fmtp;
-                bool has_outbound = false;
-                bool has_source = false;
-                for (const auto &entry : stats) {
-                  std::visit(
-                      [&](const auto &value) {
-                        using Value = std::decay_t<decltype(value)>;
-                        if constexpr (std::is_same_v<
-                                          Value, livekit::RtcOutboundRtpStats>) {
-                          if (value.stream.kind != "audio") return;
-                          has_outbound = true;
-                          packets_sent += value.sent.packets_sent;
-                          bytes_sent += value.sent.bytes_sent;
-                          outbound_ssrc = value.stream.ssrc;
-                          outbound_codec_id = value.stream.codec_id;
-                          target_bitrate = std::max(
-                              target_bitrate, value.outbound.target_bitrate);
-                        } else if constexpr (std::is_same_v<
-                                               Value,
-                                               livekit::RtcMediaSourceStats>) {
-                          if (value.source.kind != "audio") return;
-                          has_source = true;
-                          audio_level = std::max(
-                              audio_level, value.audio.audio_level);
-                          total_audio_energy = std::max(
-                              total_audio_energy,
-                              value.audio.total_audio_energy);
-                          total_samples_duration = std::max(
-                              total_samples_duration,
-                              value.audio.total_samples_duration);
-                          total_samples_captured = std::max(
-                              total_samples_captured,
-                              value.audio.total_samples_captured);
-                        }
-                      },
-                      entry.stats);
-                }
-                for (const auto &entry : stats) {
-                  std::visit(
-                      [&](const auto &value) {
-                        using Value = std::decay_t<decltype(value)>;
-                        if constexpr (std::is_same_v<Value,
-                                                     livekit::RtcCodecStats>) {
-                          if (value.rtc.id != outbound_codec_id) return;
-                          outbound_payload_type = value.codec.payload_type;
-                          outbound_clock_rate = value.codec.clock_rate;
-                          outbound_channels = value.codec.channels;
-                          outbound_mime_type = value.codec.mime_type;
-                          outbound_fmtp = value.codec.sdp_fmtp_line;
-                        }
-                      },
-                      entry.stats);
-                }
-                logPublication(
-                    "outbound_stats",
-                    {{"sessionId", session_id},
-                     {"generation", generation},
-                     {"hasOutbound", has_outbound},
-                     {"packetsSent", packets_sent},
-                     {"bytesSent", bytes_sent},
-                     {"ssrc", static_cast<std::uint64_t>(outbound_ssrc)},
-                     {"codecId", outbound_codec_id},
-                     {"payloadType", static_cast<std::uint64_t>(outbound_payload_type)},
-                     {"clockRate", static_cast<std::uint64_t>(outbound_clock_rate)},
-                     {"channels", static_cast<std::uint64_t>(outbound_channels)},
-                     {"mimeType", outbound_mime_type},
-                     {"sdpFmtpLine", outbound_fmtp},
-                     {"targetBitrate", target_bitrate},
-                     {"hasSource", has_source},
-                     {"audioLevel", audio_level},
-                     {"totalAudioEnergy", total_audio_energy},
-                     {"totalSamplesDuration", total_samples_duration},
-                     {"totalSamplesCaptured", total_samples_captured}});
-              }
-            } catch (const std::exception &error) {
-              logPublication(
-                  "outbound_stats_failed",
-                  {{"sessionId", session_id},
-                   {"generation", generation},
-                   {"message", error.what()}});
-            }
-
-            for (int elapsed = 0;
-                 elapsed < 10 && !stop.stop_requested(); ++elapsed) {
-              std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-          }
-        });
   }
 
   static void disconnectAttemptBlocking(

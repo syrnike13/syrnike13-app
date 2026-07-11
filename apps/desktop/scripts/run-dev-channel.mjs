@@ -22,7 +22,6 @@ if (!channel) {
 const env = {
   ...process.env,
   SYRNIKE_DESKTOP_CHANNEL: channel.desktopChannel,
-  SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS: '1',
 }
 
 if (process.env.SYRNIKE_DESKTOP_DEV_DRY_RUN === '1') {

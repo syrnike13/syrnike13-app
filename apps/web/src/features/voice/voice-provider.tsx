@@ -87,7 +87,6 @@ import {
   type RtcDebugSnapshot,
   type RtcDebugStageMediaItem,
 } from '#/features/voice/voice-rtc-debug'
-import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
 import { playUiSound } from '#/features/sounds/sound-player'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
@@ -504,13 +503,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         rtcDebugSnapshotRef.current = next
         setRtcDebugSnapshot(next)
         setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
-        logVoiceDebugAgent({
-          hypothesis: 'native-publisher-browser-receive-boundary',
-          event: 'rtc-debug-snapshot',
-          transport: next.transport,
-          inboundAudio: next.inbound.filter((stream) => stream.kind === 'audio'),
-          outboundAudio: next.outbound.filter((stream) => stream.kind === 'audio'),
-        })
       } finally {
         sampling = false
       }

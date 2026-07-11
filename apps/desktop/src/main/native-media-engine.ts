@@ -207,7 +207,7 @@ function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {
   if (nativeMediaDiagnostics !== undefined) return nativeMediaDiagnostics
   if (
     process.platform !== 'win32' ||
-    (app.isPackaged && process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS !== '1')
+    process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS !== '1'
   ) {
     nativeMediaDiagnostics = null
     return null
