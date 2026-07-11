@@ -83,6 +83,26 @@ inline std::string nestedStringField(
   return nested.IsObject() ? stringField(nested.As<Napi::Object>(), value_key) : std::string{};
 }
 
+template <typename T, typename Parse>
+inline std::unordered_map<std::string, T> settingsMap(
+  const Napi::Object& settings, const char* key, Parse parse
+) {
+  std::unordered_map<std::string, T> result;
+  const auto value = settings.Get(key);
+  if (!value.IsObject() || value.IsArray()) throw std::invalid_argument(std::string(key) + " is required");
+  const auto object = value.As<Napi::Object>();
+  const auto names = object.GetPropertyNames();
+  if (names.Length() > 512) throw std::invalid_argument(std::string(key) + " has too many entries");
+  for (std::uint32_t index = 0; index < names.Length(); ++index) {
+    const auto name = names.Get(index);
+    if (!name.IsString()) throw std::invalid_argument(std::string(key) + " has invalid id");
+    auto id = name.As<Napi::String>().Utf8Value();
+    if (id.empty() || id.size() > 512) throw std::invalid_argument(std::string(key) + " has invalid id");
+    result.emplace(std::move(id), parse(object.Get(name)));
+  }
+  return result;
+}
+
 inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   MediaCommand command;
   command.type = stringField(object, "type");
@@ -102,10 +122,14 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
     command.has_revision = true;
   }
   command.device_id = stringField(settings, "deviceId");
+  if (command.device_id.empty()) command.device_id = stringField(object, "deviceId");
+  command.device_kind = stringField(object, "kind");
   command.source_id = stringField(settings, "sourceId");
   command.livekit_url = nestedStringField(settings, "livekit", "url");
   command.livekit_token = nestedStringField(settings, "livekit", "token");
   command.participant_identity = nestedStringField(settings, "livekit", "participantIdentity");
+  command.track_id = stringField(object, "trackId");
+  command.frame_sequence = uint64Field(object, "sequence");
   command.width = intField(settings, "width", command.width);
   command.height = intField(settings, "height", command.height);
   command.fps = intField(settings, "fps", command.fps);
@@ -122,19 +146,45 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   command.noise_suppression = boolField(settings, "noiseSuppression", true);
   command.echo_cancellation = boolField(settings, "echoCancellation", true);
   command.input_volume = floatField(settings, "inputVolume", 1.0f);
+  command.output_volume = floatField(object, "volume", 1.0f);
   command.voice_gate_enabled = boolField(settings, "voiceGateEnabled", true);
   command.voice_gate_threshold_db = floatField(settings, "voiceGateThresholdDb", -28.0f);
   command.voice_gate_auto_threshold = boolField(settings, "voiceGateAutoThreshold", true);
   command.muted = boolField(object, "muted", false);
+  command.deafened = boolField(object, "deafened", false);
   command.has_noise_suppression = hasField(settings, "noiseSuppression");
   command.has_echo_cancellation = hasField(settings, "echoCancellation");
   command.has_input_volume = hasField(settings, "inputVolume");
+  command.has_output_volume = hasField(object, "volume");
   command.has_voice_gate_enabled = hasField(settings, "voiceGateEnabled");
   command.has_voice_gate_threshold_db = hasField(settings, "voiceGateThresholdDb");
   command.has_voice_gate_auto_threshold = hasField(settings, "voiceGateAutoThreshold");
   command.has_muted = hasField(object, "muted");
+  command.has_deafened = hasField(object, "deafened");
   command.force = boolField(object, "force", false);
+  command.demanded = boolField(object, "demanded", true);
   command.terminal = boolField(object, "terminal", false);
+  if (command.type == "configureRemoteAudio") {
+    const auto remote_value = object.Get("settings");
+    if (!remote_value.IsObject()) throw std::invalid_argument("settings is required");
+    const auto remote = remote_value.As<Napi::Object>();
+    command.revision = uint64Field(remote, "revision");
+    command.has_revision = hasField(remote, "revision");
+    const auto volume = [](const Napi::Value& value) {
+      if (!value.IsNumber()) throw std::invalid_argument("volume must be a number");
+      const auto number = value.As<Napi::Number>().DoubleValue();
+      if (!std::isfinite(number) || number < 0.0 || number > 3.0) throw std::invalid_argument("volume is out of range");
+      return static_cast<float>(number);
+    };
+    const auto muted = [](const Napi::Value& value) {
+      if (!value.IsBoolean()) throw std::invalid_argument("mute must be boolean");
+      return value.As<Napi::Boolean>().Value();
+    };
+    command.user_volumes = settingsMap<float>(remote, "userVolumes", volume);
+    command.user_mutes = settingsMap<bool>(remote, "userMutes", muted);
+    command.stream_volumes = settingsMap<float>(remote, "streamVolumes", volume);
+    command.stream_mutes = settingsMap<bool>(remote, "streamMutes", muted);
+  }
   if (options_value.IsObject()) {
     command.muted = boolField(settings, "muted", command.muted);
     command.has_muted = command.has_muted || hasField(settings, "muted");
@@ -145,6 +195,10 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   if (command.request_id.size() > 256) throw std::invalid_argument("requestId is too long");
   if (command.session_id.size() > 256) throw std::invalid_argument("sessionId is too long");
   if (command.device_id.size() > 2'048) throw std::invalid_argument("deviceId is too long");
+  if (!command.device_kind.empty() && command.device_kind != "audioinput" &&
+      command.device_kind != "audiooutput" && command.device_kind != "videoinput") {
+    throw std::invalid_argument("unsupported device kind");
+  }
   if (command.source_id.size() > 2'048) throw std::invalid_argument("sourceId is too long");
   if (command.livekit_url.size() > 2'048) throw std::invalid_argument("LiveKit URL is too long");
   if (command.livekit_token.size() > 32'768) throw std::invalid_argument("LiveKit token is too long");
@@ -166,6 +220,10 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   if (!std::isfinite(command.input_volume) ||
       command.input_volume < 0.0f || command.input_volume > 4.0f) {
     throw std::invalid_argument("inputVolume is out of range");
+  }
+  if (!std::isfinite(command.output_volume) ||
+      command.output_volume < 0.0f || command.output_volume > 3.0f) {
+    throw std::invalid_argument("output volume is out of range");
   }
   if (!std::isfinite(command.voice_gate_threshold_db) ||
       command.voice_gate_threshold_db < -100.0f ||

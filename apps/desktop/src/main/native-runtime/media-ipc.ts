@@ -1,15 +1,11 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC,
-  assertLocalMediaIntent,
   type DesktopDisplayMediaRequest,
   type DesktopDisplayMediaSource,
-  type LocalMediaIntent,
-  type NativeMicrophonePipelineConfig,
 } from '@syrnike13/platform'
 
 import type { NativeMediaController } from './native-media-controller'
-import type { NativeMediaReconciler } from './native-media-reconciler'
 
 const NATIVE_PICKER_TIMEOUT_MS = 120_000
 
@@ -48,7 +44,6 @@ export function clearPendingNativePicker() {
 export function registerNativeMediaIpc(
   getWindow: () => BrowserWindow | null,
   controller: NativeMediaController,
-  reconciler: NativeMediaReconciler,
 ) {
   if (registered) return
   registered = true
@@ -57,55 +52,25 @@ export function registerNativeMediaIpc(
     const win = getWindow()
     if (!win || win.isDestroyed()) return
     switch (message.type) {
-      case 'stats':
-        win.webContents.send(IPC.mediaStats, message.event)
-        return
       case 'microphoneMetrics':
         win.webContents.send(IPC.mediaMicrophoneMetrics, message.event)
         return
       case 'microphonePreviewState':
         win.webContents.send(IPC.mediaMicrophonePreviewState, message.event)
         return
-      case 'state':
-      case 'streamEnded':
-      case 'streamError':
-      case 'runtimeLost':
-      case 'executionTerminal':
-      case 'operationMetric':
-        return
     }
   })
 
-  reconciler.subscribe((event) => {
-    const win = getWindow()
-    if (!win || win.isDestroyed()) return
-    win.webContents.send(IPC.mediaLocalMediaState, event)
-  })
-
   ipcMain.handle(
-    IPC.mediaApplyLocalMediaIntent,
-    async (event, intent: LocalMediaIntent) => {
-      assertTrusted(event, getWindow, 'apply local media intent')
-      assertLocalMediaIntent(intent)
-      return reconciler.applyIntent(intent)
-    },
-  )
-
-  ipcMain.handle(
-    IPC.mediaConfigureMicrophonePipeline,
+    IPC.mediaListDevices,
     async (
       event,
-      config: NativeMicrophonePipelineConfig,
+      kind: 'audioinput' | 'audiooutput' | 'videoinput',
     ) => {
-      assertTrusted(event, getWindow, 'configure')
-      return controller.configureMicrophonePipeline(config)
-    },
-  )
-
-  ipcMain.handle(IPC.mediaListDevices, async (event, kind: 'audioinput') => {
     if (!isTrustedSender(event, getWindow)) return []
     return controller.listDevices(kind)
-  })
+    },
+  )
 
   ipcMain.handle(
     IPC.mediaStartMicrophonePreview,
@@ -123,10 +88,13 @@ export function registerNativeMediaIpc(
     },
   )
 
-  ipcMain.handle(IPC.mediaGetState, async (event) => {
-    if (!isTrustedSender(event, getWindow)) return unavailableState(controller)
-    return controller.getState()
-  })
+  ipcMain.handle(
+    IPC.mediaSetRemoteVideoDemand,
+    async (event, sessionId: string, generation: number, trackId: string, demanded: boolean) => {
+      assertTrusted(event, getWindow, 'remote video demand')
+      return controller.setRemoteVideoDemand(sessionId, generation, trackId, demanded)
+    },
+  )
 
   ipcMain.handle(
     IPC.mediaOpenDisplayPicker,
@@ -136,14 +104,7 @@ export function registerNativeMediaIpc(
       if (!win || win.isDestroyed()) {
         throw new Error('Desktop window is not available')
       }
-      if (!controller.getState().engine.capabilities.screen) {
-        await controller.start()
-      }
-      const runtimeState = controller.getState()
-      if (
-        !runtimeState.engine.runtime.available ||
-        !runtimeState.engine.capabilities.screen
-      ) {
+      if (!(await controller.supportsNativeScreenCapture())) {
         throw new Error('Native screen capture is not available')
       }
 
@@ -172,24 +133,5 @@ function assertTrusted(
 ) {
   if (!isTrustedSender(event, getWindow)) {
     throw new Error(`Untrusted media runtime ${action} request`)
-  }
-}
-
-function unavailableState(controller: NativeMediaController) {
-  const state = controller.getState()
-  return {
-    status: 'idle' as const,
-    engine: {
-      ...state.engine,
-      available: false,
-      runtime: {
-        ...state.engine.runtime,
-        available: false,
-        status: 'stopped' as const,
-        pid: undefined,
-      },
-      activeSessions: [],
-      lastError: null,
-    },
   }
 }

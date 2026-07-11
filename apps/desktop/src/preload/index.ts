@@ -1,8 +1,7 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, sharedTexture } from 'electron'
 import {
   IPC,
-  isLocalMediaObservedStateEvent,
-  parseLocalMediaIntentAcceptanceResult,
+  isVoiceSnapshot,
 } from '@syrnike13/platform'
 
 import type {
@@ -21,17 +20,39 @@ import type {
   HotkeyActivationEvent,
   HotkeyAction,
   HotkeyBinding,
-  LocalMediaIntent,
-  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
-  NativeMediaState,
-  NativeMediaStatsEvent,
-  NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
   NativeInputEvent,
   SyrnikeDesktopApi,
+  VoiceCommand,
+  VoiceSnapshot,
 } from '@syrnike13/platform'
+
+const NATIVE_VIDEO_FRAME_MESSAGE = 'syrnike-native-video-frame'
+
+sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadata) => {
+  let frame: VideoFrame | null = null
+  try {
+    frame = importedSharedTexture.getVideoFrame()
+    window.postMessage(
+      { type: NATIVE_VIDEO_FRAME_MESSAGE, metadata, frame },
+      window.location.origin,
+      [frame],
+    )
+    frame = null
+  } finally {
+    frame?.close()
+    importedSharedTexture.release()
+  }
+})
+
+ipcRenderer.on('syrnike-desktop:media:remote-video-track-removed', (_event, metadata) => {
+  window.postMessage(
+    { type: 'syrnike-native-video-track-removed', metadata },
+    window.location.origin,
+  )
+})
 
 function resolveDesktopOs(): DesktopOs {
   switch (process.platform) {
@@ -96,6 +117,21 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
   tray: {
     setVoiceState(state: DesktopTrayVoiceState) {
       return ipcRenderer.invoke(IPC.traySetVoiceState, state)
+    },
+  },
+  voice: {
+    dispatch(command: VoiceCommand) {
+      return ipcRenderer.invoke(IPC.voiceDispatch, command) as Promise<VoiceSnapshot>
+    },
+    getSnapshot() {
+      return ipcRenderer.invoke(IPC.voiceGetSnapshot) as Promise<VoiceSnapshot>
+    },
+    onSnapshot(handler: (snapshot: VoiceSnapshot) => void) {
+      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        if (isVoiceSnapshot(payload)) handler(payload)
+      }
+      ipcRenderer.on(IPC.voiceSnapshotChanged, listener)
+      return () => ipcRenderer.removeListener(IPC.voiceSnapshotChanged, listener)
     },
   },
   auth: {
@@ -232,7 +268,7 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         audioRequested,
       ) as Promise<DesktopDisplayMediaRequest>
     },
-    listDevices(kind: 'audioinput') {
+    listDevices(kind: 'audioinput' | 'audiooutput' | 'videoinput') {
       return ipcRenderer.invoke(
         IPC.mediaListDevices,
         kind,
@@ -243,6 +279,15 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
     },
     stopMicrophonePreview() {
       return ipcRenderer.invoke(IPC.mediaStopMicrophonePreview)
+    },
+    setRemoteVideoDemand(sessionId, generation, trackId, demanded) {
+      return ipcRenderer.invoke(
+        IPC.mediaSetRemoteVideoDemand,
+        sessionId,
+        generation,
+        trackId,
+        demanded,
+      )
     },
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void) {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
@@ -264,31 +309,6 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         ipcRenderer.removeListener(IPC.mediaDisplayPickerResolved, listener)
       }
     },
-    async applyLocalMediaIntent(intent: LocalMediaIntent) {
-      const result = await ipcRenderer.invoke(
-        IPC.mediaApplyLocalMediaIntent,
-        intent,
-      )
-      return parseLocalMediaIntentAcceptanceResult(result)
-    },
-    configureMicrophonePipeline(config: NativeMicrophonePipelineConfig) {
-      return ipcRenderer.invoke(
-        IPC.mediaConfigureMicrophonePipeline,
-        config,
-      )
-    },
-    getState() {
-      return ipcRenderer.invoke(IPC.mediaGetState) as Promise<NativeMediaState>
-    },
-    onStats(handler: (event: NativeMediaStatsEvent) => void) {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isNativeMediaStatsEvent(payload)) handler(payload)
-      }
-      ipcRenderer.on(IPC.mediaStats, listener)
-      return () => {
-        ipcRenderer.removeListener(IPC.mediaStats, listener)
-      }
-    },
     onMicrophoneMetrics(handler: (event: NativeMicrophoneMetricsEvent) => void) {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
         if (isNativeMicrophoneMetricsEvent(payload)) handler(payload)
@@ -307,17 +327,6 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ipcRenderer.on(IPC.mediaMicrophonePreviewState, listener)
       return () => {
         ipcRenderer.removeListener(IPC.mediaMicrophonePreviewState, listener)
-      }
-    },
-    onLocalMediaState(
-      handler: (event: LocalMediaObservedStateEvent) => void,
-    ) {
-      const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
-        if (isLocalMediaObservedStateEvent(payload)) handler(payload)
-      }
-      ipcRenderer.on(IPC.mediaLocalMediaState, listener)
-      return () => {
-        ipcRenderer.removeListener(IPC.mediaLocalMediaState, listener)
       }
     },
   },
@@ -441,17 +450,6 @@ function isDesktopOverlaySnapshot(
         typeof item.deafened === 'boolean'
       )
     })
-  )
-}
-
-function isNativeMediaStatsEvent(value: unknown): value is NativeMediaStatsEvent {
-  if (!value || typeof value !== 'object') return false
-  const event = value as NativeMediaStatsEvent
-  return (
-    typeof event.sessionId === 'string' &&
-    event.methods !== null &&
-    typeof event.methods === 'object' &&
-    !Array.isArray(event.methods)
   )
 }
 

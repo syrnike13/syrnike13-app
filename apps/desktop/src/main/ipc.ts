@@ -9,6 +9,7 @@ import {
   type DesktopTrayVoiceState,
   type DesktopWindowPreferences,
   type HotkeyBinding,
+  isVoiceCommand,
 } from '@syrnike13/platform'
 
 import {
@@ -33,7 +34,6 @@ import {
 import {
   desktopLocalSettingsDefaults,
   loadDesktopLocalSettings,
-  updateDesktopLocalSettings,
 } from './desktop-local-settings'
 import { registerNativeMediaRuntimeIpc } from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
@@ -45,6 +45,10 @@ import {
   setDesktopOverlaySettings,
   setDesktopOverlaySnapshot,
 } from './overlay-manager'
+import {
+  broadcastDesktopVoiceSnapshot,
+  desktopVoiceService,
+} from './voice/desktop-voice-service'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -55,7 +59,9 @@ export function registerDesktopIpc(
     setCloseToTray: (closeToTray: boolean) => Promise<DesktopWindowPreferences>
     setOpenAtLogin: (openAtLogin: boolean) => Promise<DesktopWindowPreferences>
     setTrayVoiceState: (state: DesktopTrayVoiceState) => void
-    onLocalSettingsUpdated?: (settings: DesktopLocalSettings) => void
+    updateLocalSettings: (
+      patch: DesktopLocalSettingsPatch,
+    ) => Promise<DesktopLocalSettings>
     showWindow: () => void
     localSettingsPath: string
     localSettingsDefaults?: ReturnType<typeof desktopLocalSettingsDefaults>
@@ -65,6 +71,12 @@ export function registerDesktopIpc(
   initializeHotkeys(getWindow)
   registerDisplayMediaIpc(getWindow)
   registerNativeMediaRuntimeIpc(getWindow)
+  const unsubscribeVoice = desktopVoiceService.subscribe((snapshot) => {
+    broadcastDesktopVoiceSnapshot(getWindow, IPC.voiceSnapshotChanged, snapshot)
+  })
+  void loadDesktopSession(options.sessionPath).then((session) => {
+    desktopVoiceService.configureSession(session)
+  })
 
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),
@@ -142,13 +154,25 @@ export function registerDesktopIpc(
     loadDesktopSession(options.sessionPath),
   )
 
-  ipcMain.handle(IPC.authSaveSession, (_event, session: DesktopStoredSession) =>
-    saveDesktopSession(options.sessionPath, session),
+  ipcMain.handle(
+    IPC.authSaveSession,
+    async (_event, session: DesktopStoredSession) => {
+      await saveDesktopSession(options.sessionPath, session)
+      desktopVoiceService.configureSession(session)
+    },
   )
 
-  ipcMain.handle(IPC.authClearSession, () =>
-    clearDesktopSession(options.sessionPath),
-  )
+  ipcMain.handle(IPC.authClearSession, async () => {
+    desktopVoiceService.configureSession(null)
+    await clearDesktopSession(options.sessionPath)
+  })
+
+  ipcMain.handle(IPC.voiceGetSnapshot, () => desktopVoiceService.snapshot())
+
+  ipcMain.handle(IPC.voiceDispatch, (_event, command: unknown) => {
+    if (!isVoiceCommand(command)) throw new Error('Invalid voice command')
+    return desktopVoiceService.dispatch(command)
+  })
 
   ipcMain.handle(IPC.settingsLoad, () =>
     loadDesktopLocalSettings(
@@ -158,13 +182,8 @@ export function registerDesktopIpc(
   )
 
   ipcMain.handle(IPC.settingsUpdate, async (_event, patch: DesktopLocalSettingsPatch) => {
-    const settings = await updateDesktopLocalSettings(
-      options.localSettingsPath,
-      patch,
-      options.localSettingsDefaults,
-    )
+    const settings = await options.updateLocalSettings(patch)
     setDesktopOverlaySettings(settings.overlay)
-    options.onLocalSettingsUpdated?.(settings)
     return settings
   })
 
@@ -214,6 +233,7 @@ export function registerDesktopIpc(
 
   return () => {
     lastActivity = null
+    unsubscribeVoice()
   }
 }
 

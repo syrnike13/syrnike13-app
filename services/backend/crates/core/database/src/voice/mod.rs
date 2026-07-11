@@ -24,16 +24,24 @@ pub mod call_lifecycle;
 mod join;
 mod session;
 mod voice_client;
+pub use crate::events::client::{VoiceRtcCredential, VoiceRtcEngine};
 pub use join::*;
 pub use session::*;
 pub use voice_client::VoiceClient;
 
-const DESKTOP_NATIVE_IDENTITY_SUFFIX: &str = ":desktop-native";
-const BROWSER_VOICE_IDENTITY_SUFFIX: &str = ":browser";
+const VOICE_IDENTITY_PREFIX: &str = "voice:v1|";
 const MIN_CALL_NOTIFICATION_RECIPIENTS_TTL_SECONDS: usize = 120;
 const VOICE_SESSION_MUTATION_RETRY_LIMIT: usize = 8;
-pub const BROWSER_VOICE_OPERATION_ID_ATTRIBUTE: &str = "voice_operation_id";
 pub const VOICE_OPERATION_ID_PREFIX: &str = "voice-op-";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceParticipantClaims<'a> {
+    pub user_id: &'a str,
+    pub rtc_engine: VoiceRtcEngine,
+    pub client_instance_id: &'a str,
+    pub operation_id: &'a str,
+    pub connection_epoch: &'a str,
+}
 
 pub fn is_valid_voice_operation_id(operation_id: &str) -> bool {
     let Some(uuid) = operation_id.strip_prefix(VOICE_OPERATION_ID_PREFIX) else {
@@ -42,92 +50,48 @@ pub fn is_valid_voice_operation_id(operation_id: &str) -> bool {
     uuid.len() == 36 && uuid::Uuid::try_parse(uuid).is_ok()
 }
 
-pub fn browser_voice_operation_id(participant: &ParticipantInfo) -> Option<String> {
-    let operation_id = if let Some(operation_id) = participant
-        .attributes
-        .get(BROWSER_VOICE_OPERATION_ID_ATTRIBUTE)
+pub fn voice_participant_identity(
+    user_id: &str,
+    rtc_engine: VoiceRtcEngine,
+    client_instance_id: &str,
+    operation_id: &str,
+    connection_epoch: &str,
+) -> String {
+    format!("{VOICE_IDENTITY_PREFIX}{rtc_engine}|{client_instance_id}|{connection_epoch}|{operation_id}|{user_id}")
+}
+
+pub fn voice_participant_claims(identity: &str) -> Option<VoiceParticipantClaims<'_>> {
+    let mut fields = identity.strip_prefix(VOICE_IDENTITY_PREFIX)?.split('|');
+    let rtc_engine = fields.next()?.parse().ok()?;
+    let client_instance_id = fields.next()?;
+    let connection_epoch = fields.next()?;
+    let operation_id = fields.next()?;
+    let user_id = fields.next()?;
+    if fields.next().is_some()
+        || user_id.is_empty()
+        || client_instance_id.is_empty()
+        || connection_epoch.is_empty()
+        || !is_valid_voice_operation_id(operation_id)
     {
-        operation_id.clone()
-    } else {
-        let metadata = participant.metadata.trim();
-        if metadata.is_empty() {
-            return None;
-        }
-        serde_json::from_str::<serde_json::Value>(metadata)
-            .ok()?
-            .get(BROWSER_VOICE_OPERATION_ID_ATTRIBUTE)?
-            .as_str()?
-            .to_string()
-    };
-    (is_valid_voice_operation_id(&operation_id)
-        && browser_voice_operation_id_from_identity(&participant.identity)
-            == Some(operation_id.as_str()))
-    .then_some(operation_id)
+        return None;
+    }
+    Some(VoiceParticipantClaims {
+        user_id,
+        rtc_engine,
+        client_instance_id,
+        operation_id,
+        connection_epoch,
+    })
 }
 
 fn same_voice_channel(left: &UserVoiceChannel, right: &UserVoiceChannel) -> bool {
     left.id == right.id
 }
 
-pub fn desktop_native_voice_identity(
-    user_id: &str,
-    media_kind: &str,
-    operation_id: &str,
-) -> String {
-    format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}:{operation_id}:{media_kind}")
-}
-
-pub fn browser_voice_identity(user_id: &str, operation_id: &str) -> String {
-    format!("{user_id}{BROWSER_VOICE_IDENTITY_SUFFIX}:{operation_id}")
-}
-
-pub fn desktop_native_voice_identities(user_id: &str, operation_id: &str) -> [String; 3] {
-    [
-        desktop_native_voice_identity(user_id, "microphone", operation_id),
-        desktop_native_voice_identity(user_id, "screen", operation_id),
-        desktop_native_voice_identity(user_id, "camera", operation_id),
-    ]
-}
-
 pub fn base_voice_identity(identity: &str) -> &str {
-    [
-        identity.find(DESKTOP_NATIVE_IDENTITY_SUFFIX),
-        identity.find(BROWSER_VOICE_IDENTITY_SUFFIX),
-    ]
-    .into_iter()
-    .flatten()
-    .min()
-    .map(|suffix_index| &identity[..suffix_index])
-    .unwrap_or(identity)
-}
-
-pub fn is_desktop_native_voice_identity(identity: &str) -> bool {
-    identity.contains(DESKTOP_NATIVE_IDENTITY_SUFFIX)
-}
-
-pub fn browser_voice_operation_id_from_identity(identity: &str) -> Option<&str> {
-    let suffix_index = identity.find(BROWSER_VOICE_IDENTITY_SUFFIX)?;
-    let operation_id =
-        identity[suffix_index + BROWSER_VOICE_IDENTITY_SUFFIX.len()..].strip_prefix(':')?;
-    is_valid_voice_operation_id(operation_id).then_some(operation_id)
-}
-
-pub fn desktop_native_voice_operation_id(identity: &str) -> Option<&str> {
-    let suffix_index = identity.find(DESKTOP_NATIVE_IDENTITY_SUFFIX)?;
-    let rest = identity[suffix_index + DESKTOP_NATIVE_IDENTITY_SUFFIX.len()..].strip_prefix(':')?;
-    let (operation_id, media_kind) = rest.rsplit_once(':')?;
-    if operation_id.is_empty() || media_kind.is_empty() {
-        return None;
-    }
-    Some(operation_id)
-}
-
-fn native_voice_operation_is_current(identity: &str, current_operation_id: Option<&str>) -> bool {
-    desktop_native_voice_operation_id(identity)
-        .zip(current_operation_id)
-        .is_some_and(|(identity_operation_id, current_operation_id)| {
-            identity_operation_id == current_operation_id
-        })
+    voice_participant_claims(identity)
+        .map(|claims| claims.user_id)
+        .unwrap_or(identity)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,36 +127,27 @@ pub fn voice_participant_reconciliation_with_current_operations(
     prepared_users: &[String],
 ) -> VoiceParticipantReconciliation {
     let mut livekit_members = Vec::new();
-    let mut livekit_browser_participants = Vec::new();
-    let mut livekit_native_participants = Vec::new();
     let mut stale_livekit_participants = Vec::new();
     for participant in livekit_participants {
-        if is_desktop_native_voice_identity(&participant.identity) {
-            let state = participant_info::State::try_from(participant.state)
-                .unwrap_or(participant_info::State::Disconnected);
-            if state != participant_info::State::Disconnected {
-                livekit_native_participants.push(participant.identity.clone());
-            }
-            continue;
-        }
         let state = participant_info::State::try_from(participant.state)
             .unwrap_or(participant_info::State::Disconnected);
         if state == participant_info::State::Disconnected {
             continue;
         }
-        let user_id = base_voice_identity(&participant.identity).to_string();
-        livekit_browser_participants.push((user_id.clone(), participant.identity.clone()));
-        let allowed_operations = current_operations
-            .iter()
-            .filter(|(candidate_user_id, _)| candidate_user_id == &user_id)
-            .map(|(_, operation_id)| operation_id.as_str())
-            .collect::<Vec<_>>();
-        if !allowed_operations.is_empty()
-            && browser_voice_operation_id(participant)
-                .as_deref()
-                .is_none_or(|operation_id| !allowed_operations.contains(&operation_id))
-        {
+        let Some(claims) = voice_participant_claims(&participant.identity) else {
             stale_livekit_participants.push(participant.identity.clone());
+            continue;
+        };
+        let user_id = claims.user_id.to_string();
+        let operation_matches = current_operations.is_empty()
+            || current_operations
+                .iter()
+                .any(|(candidate_user_id, operation_id)| {
+                    candidate_user_id == &user_id && operation_id == claims.operation_id
+                });
+        if !operation_matches {
+            stale_livekit_participants.push(participant.identity.clone());
+            continue;
         }
         if !livekit_members.contains(&user_id) {
             livekit_members.push(user_id);
@@ -205,35 +160,8 @@ pub fn voice_participant_reconciliation_with_current_operations(
         .cloned()
         .collect();
 
-    stale_livekit_participants.extend(
-        livekit_browser_participants
-            .iter()
-            .filter(|(user_id, _)| {
-                !redis_members.contains(user_id) && !prepared_users.contains(user_id)
-            })
-            .map(|(_, identity)| identity.clone()),
-    );
     stale_livekit_participants.sort_unstable();
     stale_livekit_participants.dedup();
-
-    for identity in livekit_native_participants {
-        let base_user_id = base_voice_identity(&identity).to_string();
-        let native_operation_id = desktop_native_voice_operation_id(&identity);
-        if native_operation_id.is_some_and(|native| {
-            current_operations
-                .iter()
-                .any(|(user_id, operation_id)| user_id == &base_user_id && operation_id == native)
-        }) {
-            continue;
-        }
-
-        if !redis_members.contains(&base_user_id) || !livekit_members.contains(&base_user_id) {
-            stale_livekit_participants.push(identity);
-            continue;
-        }
-
-        stale_livekit_participants.push(identity);
-    }
 
     VoiceParticipantReconciliation {
         livekit_members,
@@ -298,49 +226,6 @@ pub async fn is_in_voice_channel(user_id: &str, channel: &UserVoiceChannel) -> R
         .is_some_and(|session| same_voice_channel(&session.channel, channel)))
 }
 
-pub async fn retain_current_voice_operation_id(
-    _voice_client: &VoiceClient,
-    channel: &UserVoiceChannel,
-    user_id: &str,
-    expected_current_operation_id: &str,
-    operation_id: &str,
-) -> Result<()> {
-    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
-        let authority = get_voice_authority_snapshot(user_id).await?;
-        let current_reservation = authority.reservation;
-        let Some(session) = authority.session else {
-            return Err(create_error!(NotConnected));
-        };
-
-        if !same_voice_channel(&session.channel, channel)
-            || session.state != VoiceSessionState::Active
-        {
-            return Err(create_error!(NotConnected));
-        }
-        if session.operation_id != operation_id {
-            return Err(create_error!(InvalidOperation));
-        }
-
-        let Some(reservation) = current_reservation else {
-            if confirm_retained_voice_session(&session, expected_current_operation_id).await? {
-                return Ok(());
-            }
-            continue;
-        };
-        if reservation.operation_id != expected_current_operation_id
-            || reservation.expected_finalized_operation_id.as_deref() != Some(operation_id)
-        {
-            return Err(create_error!(InvalidOperation));
-        }
-
-        if retain_active_voice_session_from_reservation(&reservation, &session).await? {
-            return Ok(());
-        }
-    }
-
-    Err(create_error!(InvalidOperation))
-}
-
 pub async fn get_current_voice_operation_id(
     channel: &UserVoiceChannel,
     user_id: &str,
@@ -374,22 +259,25 @@ pub async fn get_current_voice_authority(user_id: &str) -> Result<Option<(String
         .map(|session| (session.operation_id, session.channel.id)))
 }
 
-pub async fn native_voice_participant_matches_current_operation(
+pub async fn voice_participant_matches_current_authority(
     channel: &UserVoiceChannel,
     user_id: &str,
     participant_identity: &str,
 ) -> Result<bool> {
-    if desktop_native_voice_operation_id(participant_identity).is_none() {
+    let Some(claims) = voice_participant_claims(participant_identity) else {
+        return Ok(false);
+    };
+    if claims.user_id != user_id {
         return Ok(false);
     }
 
     let authority = get_voice_authority_snapshot(user_id).await?;
     if let Some(reservation) = authority.reservation {
         if same_voice_channel(&reservation.channel, channel)
-            && native_voice_operation_is_current(
-                participant_identity,
-                Some(reservation.operation_id.as_str()),
-            )
+            && claims.operation_id == reservation.operation_id
+            && claims.rtc_engine == reservation.rtc_engine
+            && claims.client_instance_id == reservation.client_instance_id
+            && claims.connection_epoch == reservation.connection_epoch
         {
             return Ok(true);
         }
@@ -401,10 +289,10 @@ pub async fn native_voice_participant_matches_current_operation(
 
     if same_voice_channel(&session.channel, channel)
         && session.state == VoiceSessionState::Active
-        && native_voice_operation_is_current(
-            participant_identity,
-            Some(session.operation_id.as_str()),
-        )
+        && claims.operation_id == session.operation_id
+        && claims.rtc_engine == session.rtc_engine
+        && claims.client_instance_id == session.client_instance_id
+        && claims.connection_epoch == session.connection_epoch
     {
         return Ok(true);
     }
@@ -735,6 +623,58 @@ pub async fn publish_voice_state_snapshot(channel_id: &str, state: &UserVoiceSta
     }
     .p(channel_id.to_string())
     .await;
+}
+
+pub async fn publish_authoritative_voice_snapshot(user_id: &str) -> Result<u64> {
+    let version: u64 = get_connection()
+        .await?
+        .incr(voice_authority_version_key(user_id), 1_u64)
+        .await
+        .to_internal_error()?;
+    let authority = get_voice_authority_snapshot(user_id).await?;
+    let current = authoritative_voice_membership(&authority).map(|session| {
+        let state = session.voice_state(Timestamp::UNIX_EPOCH);
+        (
+            session.operation_id.clone(),
+            session.channel.id.clone(),
+            session.rtc_engine,
+            session.client_instance_id.clone(),
+            session.connection_epoch.clone(),
+            Some(state),
+        )
+    });
+    let (operation_id, channel_id, rtc_engine, client_instance_id, connection_epoch, state) =
+        current
+            .map(|(op, channel, engine, client, epoch, state)| {
+                (
+                    Some(op),
+                    Some(channel),
+                    Some(engine),
+                    Some(client),
+                    Some(epoch),
+                    state,
+                )
+            })
+            .unwrap_or((None, None, None, None, None, None));
+    EventV1::VoiceAuthoritySnapshot {
+        version,
+        operation_id,
+        channel_id,
+        rtc_engine,
+        client_instance_id,
+        connection_epoch,
+        state,
+    }
+    .p(user_id.to_string())
+    .await;
+    Ok(version)
+}
+
+fn authoritative_voice_membership(authority: &VoiceAuthoritySnapshot) -> Option<&VoiceSession> {
+    authority
+        .session
+        .as_ref()
+        .filter(|session| session.state == VoiceSessionState::Active)
 }
 
 pub async fn update_voice_state(
@@ -1095,7 +1035,13 @@ pub async fn sync_user_voice_permissions(
         voice_client
             .update_permissions(
                 node,
-                &browser_voice_identity(&user.id, &active_session.operation_id),
+                &voice_participant_identity(
+                    &user.id,
+                    active_session.rtc_engine,
+                    &active_session.client_instance_id,
+                    &active_session.operation_id,
+                    &active_session.connection_epoch,
+                ),
                 channel_id,
                 ParticipantPermission {
                     can_subscribe: can_listen,
@@ -1339,13 +1285,13 @@ fn voice_cleanup_matches_participant(
     cleanup: &VoiceTransportCleanup,
     participant: &ParticipantInfo,
 ) -> bool {
-    if is_desktop_native_voice_identity(&participant.identity) {
-        return base_voice_identity(&participant.identity) == cleanup.user_id.as_str()
-            && desktop_native_voice_operation_id(&participant.identity)
-                == Some(cleanup.operation_id.as_str());
-    }
-    base_voice_identity(&participant.identity) == cleanup.user_id.as_str()
-        && browser_voice_operation_id(participant).as_deref() == Some(cleanup.operation_id.as_str())
+    voice_participant_claims(&participant.identity).is_some_and(|claims| {
+        claims.user_id == cleanup.user_id
+            && claims.operation_id == cleanup.operation_id
+            && claims.rtc_engine == cleanup.rtc_engine
+            && claims.client_instance_id == cleanup.client_instance_id
+            && claims.connection_epoch == cleanup.connection_epoch
+    })
 }
 
 pub async fn cancel_current_pending_voice_join(user_id: &str) -> Result<bool> {
@@ -1558,79 +1504,63 @@ mod tests {
     }
 
     #[test]
-    fn desktop_native_voice_identity_maps_to_base_user() {
-        assert_eq!(
-            super::desktop_native_voice_identity("user-a", "microphone", "op-join"),
-            "user-a:desktop-native:op-join:microphone"
+    fn voice_identity_round_trips_all_authority_claims() {
+        let operation = "voice-op-550e8400-e29b-41d4-a716-446655440000";
+        let identity = super::voice_participant_identity(
+            "user-a",
+            super::VoiceRtcEngine::WindowsNative,
+            "client-a",
+            operation,
+            "epoch-a",
         );
-        assert_eq!(
-            super::desktop_native_voice_identities("user-a", "op-join"),
-            [
-                "user-a:desktop-native:op-join:microphone".to_string(),
-                "user-a:desktop-native:op-join:screen".to_string(),
-                "user-a:desktop-native:op-join:camera".to_string()
-            ]
-        );
-        assert_eq!(
-            super::base_voice_identity("user-a:desktop-native:op-join:microphone"),
-            "user-a"
-        );
-        assert_eq!(
-            super::base_voice_identity("user-a:desktop-native"),
-            "user-a"
-        );
-        assert_eq!(super::base_voice_identity("user-a"), "user-a");
-        assert!(super::is_desktop_native_voice_identity(
-            "user-a:desktop-native:op-join:screen"
-        ));
-        assert!(super::is_desktop_native_voice_identity(
-            "user-a:desktop-native"
-        ));
-        assert!(!super::is_desktop_native_voice_identity("user-a"));
-        assert_eq!(
-            super::desktop_native_voice_operation_id("user-a:desktop-native:op-join:screen"),
-            Some("op-join")
-        );
-        assert_eq!(
-            super::desktop_native_voice_operation_id("user-a:desktop-native:screen"),
-            None
-        );
-        let browser_operation = "voice-op-550e8400-e29b-41d4-a716-446655440000";
-        assert_eq!(
-            super::browser_voice_identity("user-a", browser_operation),
-            format!("user-a:browser:{browser_operation}")
-        );
-        assert_eq!(
-            super::base_voice_identity(&super::browser_voice_identity("user-a", browser_operation)),
-            "user-a"
-        );
-        assert_eq!(
-            super::browser_voice_operation_id_from_identity(&super::browser_voice_identity(
-                "user-a",
-                browser_operation
-            )),
-            Some(browser_operation)
-        );
+        let claims = super::voice_participant_claims(&identity).expect("valid claims");
+        assert_eq!(claims.user_id, "user-a");
+        assert_eq!(claims.rtc_engine, super::VoiceRtcEngine::WindowsNative);
+        assert_eq!(claims.client_instance_id, "client-a");
+        assert_eq!(claims.operation_id, operation);
+        assert_eq!(claims.connection_epoch, "epoch-a");
+        assert_eq!(super::base_voice_identity(&identity), "user-a");
+        assert!(super::voice_participant_claims("user-a:desktop-native:old:screen").is_none());
     }
 
     #[test]
-    fn native_voice_operation_match_requires_current_operation() {
-        assert!(super::native_voice_operation_is_current(
-            "user-a:desktop-native:op-new:screen",
-            Some("op-new")
-        ));
-        assert!(!super::native_voice_operation_is_current(
-            "user-a:desktop-native:op-old:screen",
-            Some("op-new")
-        ));
-        assert!(!super::native_voice_operation_is_current(
-            "user-a:desktop-native:screen",
-            Some("op-new")
-        ));
-        assert!(!super::native_voice_operation_is_current(
-            "user-a:desktop-native:op-new:screen",
-            None
-        ));
+    fn authoritative_snapshot_never_projects_a_reservation_as_membership() {
+        let mut session = super::VoiceSession::new_awaiting_join(super::VoiceSessionCreate {
+            operation_id: "voice-op-550e8400-e29b-41d4-a716-446655440000".to_string(),
+            user_id: "user-a".to_string(),
+            channel: super::UserVoiceChannel {
+                id: "voice-a".to_string(),
+                server_id: None,
+            },
+            node: "node-a".to_string(),
+            rtc_engine: super::VoiceRtcEngine::Web,
+            client_instance_id: "client-a".to_string(),
+            connection_epoch: "epoch-a".to_string(),
+            self_mute: false,
+            self_deaf: false,
+            created_at: Timestamp::UNIX_EPOCH,
+            expires_at: Timestamp::UNIX_EPOCH + Duration::seconds(120),
+        });
+        let reservation = super::VoiceReservation::from_pending_session(&session, None, None);
+        let pending = super::VoiceAuthoritySnapshot {
+            version: 1,
+            reservation: Some(reservation),
+            session: None,
+        };
+        assert!(super::authoritative_voice_membership(&pending).is_none());
+
+        assert_eq!(
+            session.mark_livekit_joined("room-a", "participant-a", Timestamp::UNIX_EPOCH),
+            super::VoiceSessionTransition::Applied
+        );
+        let committed = super::VoiceAuthoritySnapshot {
+            version: 2,
+            reservation: None,
+            session: Some(session),
+        };
+        let membership =
+            super::authoritative_voice_membership(&committed).expect("active membership");
+        assert_eq!(membership.connection_epoch, "epoch-a");
     }
 
     #[test]
@@ -1705,9 +1635,7 @@ mod tests {
         );
     }
 
-    #[ignore]
-    #[async_std::test]
-    async fn retained_restore_keeps_signed_operation_and_clears_pending_reservation() {
+    /* retained-source tests removed by the break-before-make voice authority cutover.
         let user_id = "user-retained";
         let active_channel = super::UserVoiceChannel {
             id: "voice-retained".to_string(),
@@ -1905,5 +1833,5 @@ mod tests {
                 .map(|reservation| reservation.operation_id),
             Some("op-pending".to_string())
         );
-    }
+    } */
 }

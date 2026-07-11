@@ -123,6 +123,51 @@ int main() try {
     throw std::runtime_error("connect failure release returned true");
   }
 
+  // The target runtime owns one voice Room. Track sessions reuse it and may
+  // retire independently without disconnecting the shared participant.
+  auto shared_client = std::make_shared<DeterministicFakeLiveKitPublicationClient>();
+  if (!shared_client->connectVoice(
+        "voice-op",
+        1,
+        "wss://example.invalid",
+        "shared-token",
+        noop_post
+      )) {
+    throw std::runtime_error("shared voice Room did not connect");
+  }
+  auto shared_microphone = shared_client->createMicrophoneSession("mic", 1, noop_post);
+  auto shared_screen = shared_client->createScreenSession("screen", 1, noop_post);
+  if (!shared_microphone->connect(
+        "wss://example.invalid",
+        "shared-token",
+        livekit::RoomOptions{}
+      ) ||
+      !shared_screen->connect(
+        "wss://example.invalid",
+        "shared-token",
+        livekit::RoomOptions{}
+      )) {
+    throw std::runtime_error("track session did not reuse shared voice Room");
+  }
+  shared_microphone->disconnect();
+  shared_screen->disconnect();
+  if (!shared_client->isVoiceConnected()) {
+    throw std::runtime_error("track retirement disconnected shared voice Room");
+  }
+  // Receive-side controls are properties of the existing Room lease. They
+  // must not reconnect or retire the participant.
+  shared_client->setVoiceDeafened(true);
+  shared_client->setVoiceOutputDevice("communications-output");
+  shared_client->setVoiceDeafened(false);
+  if (!shared_client->isVoiceConnected()) {
+    throw std::runtime_error("output/deafen update disconnected shared voice Room");
+  }
+  shared_client->disconnectVoice();
+  for (int attempt = 0; attempt < 32; ++attempt) shared_client->disconnectVoice();
+  if (shared_client->isVoiceConnected()) {
+    throw std::runtime_error("explicit voice disconnect left shared Room connected");
+  }
+
   return 0;
 } catch (const std::exception& error) {
   std::cerr << error.what() << '\n';

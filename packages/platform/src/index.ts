@@ -1,10 +1,5 @@
 export type {
   LiveKitNativePublisherCredentials,
-  LocalMediaIntent,
-  LocalMediaIntentAcceptanceResult,
-  LocalMediaIntentMicrophone,
-  LocalMediaIntentScreen,
-  LocalMediaObservedStateEvent,
   NativeMediaAudioMode,
   NativeMediaScreenAudioMode,
   NativeMediaEncoderBackend,
@@ -39,19 +34,10 @@ export type {
 } from './media'
 export {
   assertLiveKitNativePublisherCredentials,
-  assertLocalMediaIntent,
-  assertLocalMediaIntentAcceptanceResult,
-  assertLocalMediaObservedStateEvent,
   assertScreenSourceSpec,
   isLiveKitNativePublisherCredentials,
-  isLocalMediaIntent,
-  isLocalMediaIntentAcceptanceResult,
-  isLocalMediaObservedStateEvent,
   isScreenSourceSpec,
   parseLiveKitNativePublisherCredentials,
-  parseLocalMediaIntent,
-  parseLocalMediaIntentAcceptanceResult,
-  parseLocalMediaObservedStateEvent,
   parseScreenSourceSpec,
 } from './media'
 export type {
@@ -136,3 +122,48 @@ export {
   type DesktopVoiceSettingsPatch,
   type SoundAuthorPackId,
 } from './settings'
+export type {
+  VoiceAuthorityAdapter,
+  VoiceAuthorityEvent,
+  VoiceCancellation,
+  VoiceReservationRequest,
+  VoiceSelfStateUpdate,
+} from './voice/voice-authority'
+export {
+  GatewayVoiceAuthorityAdapter,
+  type GatewayVoiceAuthorityAdapterOptions,
+  type VoiceGatewayTransport,
+  type VoiceGatewayTransportState,
+} from './voice/gateway-voice-authority-adapter'
+export type {
+  RtcEngineAdapter,
+  VoiceDisconnectCause,
+  VoiceEngineEvent,
+} from './voice/voice-engine'
+export { VoiceDirector, type VoiceDirectorOptions } from './voice/voice-director'
+export type {
+  AuthoritativeVoiceSnapshot,
+  VoiceCommand,
+  VoiceConnectionState,
+  VoiceCredential,
+  VoiceFailure,
+  VoiceInputMode,
+  VoiceLease,
+  VoiceMediaDesiredState,
+  VoiceMediaError,
+  VoiceMediaKind,
+  VoiceMediaSnapshot,
+  VoiceMediaState,
+  VoiceMembership,
+  VoiceRtcEngine,
+  VoiceRemoteAudioSettings,
+  VoiceSnapshot,
+} from './voice/voice-types'
+export {
+  computeEffectiveMuted,
+  createInactiveMediaSnapshot,
+  createInitialVoiceMediaDesiredState,
+  isVoiceCommand,
+  isVoiceRemoteAudioSettings,
+  isVoiceSnapshot,
+} from './voice/voice-types'

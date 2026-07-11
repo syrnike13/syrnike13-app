@@ -1,16 +1,34 @@
-const DESKTOP_NATIVE_IDENTITY_SUFFIX = ':desktop-native'
-const BROWSER_VOICE_IDENTITY_SUFFIX = ':browser'
+const VOICE_IDENTITY_PREFIX = 'voice:v1|'
+
+export type ParsedVoiceIdentity = Readonly<{
+  rtcEngine: 'web' | 'windows_native'
+  clientInstanceId: string
+  connectionEpoch: string
+  operationId: string
+  userId: string
+}>
+
+export function parseVoiceIdentity(identity: string): ParsedVoiceIdentity | null {
+  if (!identity.startsWith(VOICE_IDENTITY_PREFIX)) return null
+  const parts = identity.split('|')
+  if (parts.length !== 6 || parts[0] !== 'voice:v1') return null
+  const rtcEngine = parts[1]
+  if (rtcEngine !== 'web' && rtcEngine !== 'windows_native') return null
+  const [clientInstanceId, connectionEpoch, operationId, userId] = parts.slice(2)
+  if (!clientInstanceId || !connectionEpoch || !operationId || !userId) return null
+  return {
+    rtcEngine,
+    clientInstanceId,
+    connectionEpoch,
+    operationId,
+    userId,
+  }
+}
 
 export function baseVoiceIdentity(identity: string) {
-  const suffixIndex = [
-    identity.indexOf(DESKTOP_NATIVE_IDENTITY_SUFFIX),
-    identity.indexOf(BROWSER_VOICE_IDENTITY_SUFFIX),
-  ]
-    .filter((index) => index >= 0)
-    .reduce((lowest, index) => Math.min(lowest, index), identity.length)
-  return suffixIndex >= 0 ? identity.slice(0, suffixIndex) : identity
+  return parseVoiceIdentity(identity)?.userId ?? identity
 }
 
 export function isDesktopNativeVoiceIdentity(identity: string) {
-  return identity.includes(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+  return parseVoiceIdentity(identity)?.rtcEngine === 'windows_native'
 }

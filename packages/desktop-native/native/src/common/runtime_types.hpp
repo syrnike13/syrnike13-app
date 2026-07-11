@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace syrnike::desktop_native {
 
@@ -82,6 +83,7 @@ struct RuntimeEvent {
   std::optional<NativeError> error;
   std::vector<DeviceInfo> devices;
   std::vector<DisplaySourceInfo> sources;
+  std::vector<std::string> participant_identities;
   std::optional<InputEvent> input;
   std::optional<ForegroundWindow> foreground_window;
   double input_db = -120.0;
@@ -109,6 +111,12 @@ struct RuntimeEvent {
   std::uint64_t method_wgc = 0;
   std::uint64_t method_dxgi = 0;
   std::uint64_t method_gdi_blt = 0;
+  std::string track_id;
+  std::string participant_identity;
+  std::string video_source;
+  std::uint64_t frame_sequence = 0;
+  std::uint64_t timestamp_us = 0;
+  std::uint64_t nt_handle = 0;
 };
 
 struct MediaCommand {
@@ -118,6 +126,7 @@ struct MediaCommand {
   std::uint64_t generation = 0;
   std::uint64_t revision = 0;
   std::string device_id;
+  std::string device_kind;
   std::string source_id;
   std::string livekit_url;
   std::string livekit_token;
@@ -133,24 +142,39 @@ struct MediaCommand {
   bool noise_suppression = true;
   bool echo_cancellation = true;
   float input_volume = 1.0f;
+  float output_volume = 1.0f;
   bool voice_gate_enabled = true;
   float voice_gate_threshold_db = -28.0f;
   bool voice_gate_auto_threshold = true;
   bool muted = false;
+  bool deafened = false;
   bool has_noise_suppression = false;
   bool has_echo_cancellation = false;
   bool has_input_volume = false;
+  bool has_output_volume = false;
   bool has_voice_gate_enabled = false;
   bool has_voice_gate_threshold_db = false;
   bool has_voice_gate_auto_threshold = false;
   bool has_muted = false;
+  bool has_deafened = false;
   bool has_revision = false;
   bool force = false;
+  bool demanded = true;
   bool terminal = false;
   std::string internal_message;
+  std::vector<std::string> participant_identities;
+  std::unordered_map<std::string, float> user_volumes;
+  std::unordered_map<std::string, bool> user_mutes;
+  std::unordered_map<std::string, float> stream_volumes;
+  std::unordered_map<std::string, bool> stream_mutes;
   std::uint64_t internal_epoch = 0;
   std::uint64_t internal_enqueued_steady_ms = 0;
   std::uint32_t internal_queue_depth = 0;
+  std::string track_id;
+  std::string video_source;
+  std::uint64_t frame_sequence = 0;
+  std::uint64_t timestamp_us = 0;
+  std::uint64_t nt_handle = 0;
 };
 
 struct HooksCommand {

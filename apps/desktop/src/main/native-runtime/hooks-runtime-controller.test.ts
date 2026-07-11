@@ -28,6 +28,26 @@ function supervisorStub() {
 }
 
 describe('HooksRuntimeController', () => {
+  it('restarts and replays each hooks runtime independently', async () => {
+    const hotkey = supervisorStub()
+    const overlay = supervisorStub()
+    const controller = new HooksRuntimeController(hotkey.supervisor, overlay.supervisor)
+    vi.spyOn(controller, 'isAvailable').mockReturnValue(true)
+    await controller.startHotkeys(vi.fn())
+    await controller.startOverlay(vi.fn())
+    hotkey.request.mockClear()
+    overlay.request.mockClear()
+
+    hotkey.state({ status: 'ready', restartCount: 1 })
+    await vi.waitFor(() => expect(hotkey.request).toHaveBeenCalledWith({ type: 'startHotkeys' }, 5_000))
+    expect(overlay.request).not.toHaveBeenCalled()
+
+    hotkey.request.mockClear()
+    overlay.state({ status: 'ready', restartCount: 1 })
+    await vi.waitFor(() => expect(overlay.request).toHaveBeenCalledWith({ type: 'startOverlay' }, 5_000))
+    expect(hotkey.request).not.toHaveBeenCalled()
+  })
+
   it('allows retry after an initial start failure', async () => {
     const stub = supervisorStub()
     stub.request.mockRejectedValueOnce(new Error('failed'))

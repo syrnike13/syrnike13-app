@@ -575,7 +575,7 @@ class MicrophoneActor::Implementation {
             active_sinks[sink_index]->captureFrame(frame);
           }
           const auto now = std::chrono::steady_clock::now();
-          if (metrics_cadence.shouldEmit(now)) {
+          if (preview.consumer && metrics_cadence.shouldEmit(now)) {
             RuntimeEvent event;
             event.type = "microphoneMetrics";
             event.input_db = processed.gate_metrics.input_db;

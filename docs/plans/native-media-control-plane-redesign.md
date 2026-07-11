@@ -1,6 +1,6 @@
 # Native media control plane redesign
 
-- **Status:** Accepted; implementation/hardening in progress
+- **Status:** Superseded by `voice-runtime-rewrite.md`
 - **Date:** 2026-07-10
 - **Updated:** 2026-07-10 after reservation/retain and bounded-actor cutover
 - **Scope:** voice operation ownership, native microphone/screen publication,

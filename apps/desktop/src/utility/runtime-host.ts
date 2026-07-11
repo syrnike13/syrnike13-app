@@ -39,9 +39,8 @@ type NativeRuntimeAddon = {
   createMediaRuntime?: (
     emit: (event: Record<string, unknown>) => void,
   ) => NativeRuntimeInstance
-  createHooksRuntime?: (
-    emit: (event: Record<string, unknown>) => void,
-  ) => NativeRuntimeInstance
+  createHotkeyRuntime?: (emit: (event: Record<string, unknown>) => void) => NativeRuntimeInstance
+  createOverlayRuntime?: (emit: (event: Record<string, unknown>) => void) => NativeRuntimeInstance
   getRuntimeInfo?: () => {
     runtime?: string
     contractVersion?: number
@@ -53,8 +52,9 @@ type NativeRuntimeAddon = {
 }
 
 const REQUIRED_CAPABILITIES: Record<NativeRuntimeKind, readonly string[]> = {
-  media: ['microphone', 'screen', 'screenAudio', 'preview', 'queries'],
-  hooks: ['hotkeys', 'overlay'],
+  media: ['microphone', 'screen', 'screenAudio', 'preview', 'queries', 'remoteVideo'],
+  hotkey: ['hotkeys'],
+  overlay: ['overlay'],
 }
 
 function isNativeReplyEvent(
@@ -103,8 +103,7 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
 
   const nativeModulePath = process.env.SYRNIKE_NATIVE_MODULE_PATH
   const nativeRoot = process.env.SYRNIKE_NATIVE_ROOT
-  const expectedModuleName =
-    runtimeKind === 'media' ? 'syrnike_media.node' : 'syrnike_hooks.node'
+  const expectedModuleName = `syrnike_${runtimeKind}.node`
   if (
     !nativeModulePath ||
     !nativeRoot ||
@@ -194,10 +193,11 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
     await diagnosticLog?.close()
     return
   }
-  const factory =
-    runtimeKind === 'media'
-      ? addon.createMediaRuntime
-      : addon.createHooksRuntime
+  const factory = runtimeKind === 'media'
+    ? addon.createMediaRuntime
+    : runtimeKind === 'hotkey'
+      ? addon.createHotkeyRuntime
+      : addon.createOverlayRuntime
 
   let runtime: NativeRuntimeInstance | null = null
   let shutdownRequestId: string | null = null
@@ -267,7 +267,7 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
   }
 
   const actualRuntime =
-    info.runtime === 'media' || info.runtime === 'hooks'
+    info.runtime === 'media' || info.runtime === 'hotkey' || info.runtime === 'overlay'
       ? info.runtime
       : 'invalid'
   const reportedContractVersion = Number.isSafeInteger(info.contractVersion)

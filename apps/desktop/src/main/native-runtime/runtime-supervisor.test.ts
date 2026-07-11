@@ -17,8 +17,8 @@ import type {
 const READY: NativeRuntimeReady = {
   type: 'ready',
   contractVersion: NATIVE_RUNTIME_CONTRACT_VERSION,
-  runtime: 'hooks',
-  capabilities: ['hotkeys', 'overlay'],
+  runtime: 'hotkey',
+  capabilities: ['hotkeys'],
   build: {},
 }
 
@@ -97,7 +97,7 @@ describe('NativeRuntimeSupervisor', () => {
   it('handshakes and correlates typed replies', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
     })
 
@@ -120,7 +120,7 @@ describe('NativeRuntimeSupervisor', () => {
     const scheduled: Array<{ callback(): void; delayMs: number }> = []
     let now = 0
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => {
         const adapter = new FakeAdapter()
         adapters.push(adapter)
@@ -162,7 +162,7 @@ describe('NativeRuntimeSupervisor', () => {
   it('drops duplicate event sequences and isolates listener failures', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
     })
     const stateListener = vi.fn()
@@ -213,7 +213,7 @@ describe('NativeRuntimeSupervisor', () => {
     adapter.startError = new Error('load failed')
     const scheduled: Array<() => void> = []
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
       schedule: (callback) => {
         scheduled.push(callback)
@@ -232,7 +232,7 @@ describe('NativeRuntimeSupervisor', () => {
     const adapters: FakeAdapter[] = []
     const scheduled: Array<() => void> = []
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => {
         const adapter = new FakeAdapter()
         adapters.push(adapter)
@@ -278,7 +278,7 @@ describe('NativeRuntimeSupervisor', () => {
   it('rejects a mismatched contract without a restart loop', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
     })
     const start = supervisor.start()
@@ -290,7 +290,7 @@ describe('NativeRuntimeSupervisor', () => {
   it('rejects an addon with missing runtime identity without starting workers', async () => {
     const adapters: FakeAdapter[] = []
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => {
         const adapter = new FakeAdapter()
         adapters.push(adapter)
@@ -325,7 +325,7 @@ describe('NativeRuntimeSupervisor', () => {
     const scheduled: Array<() => void> = []
     vi.useFakeTimers()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
       probeTimeoutMs: 10,
       schedule: (callback) => {
@@ -361,7 +361,7 @@ describe('NativeRuntimeSupervisor', () => {
     vi.useRealTimers()
   })
 
-  it('preserves session context on a timed-out media request', async () => {
+  it('preserves session context and probes the actor without recycling voice', async () => {
     const adapter = new FakeAdapter()
     const diagnostics: Array<Record<string, unknown>> = []
     const supervisor = new NativeRuntimeSupervisor({
@@ -403,14 +403,19 @@ describe('NativeRuntimeSupervisor', () => {
         durationMs: expect.any(Number),
       }),
     )
-    expect(adapter.killed).toBe(true)
+    expect(adapter.requests.map((request) => request.command.type)).toContain(
+      'probeMicrophoneActor',
+    )
+    expect(adapter.killed).toBe(false)
+    adapter.replyByType('probeMicrophoneActor', { state: 'available' })
+    expect(supervisor.getSnapshot().status).toBe('ready')
   })
 
   it('recycles only after the lane probe also times out and then rejects collateral work', async () => {
     const adapter = new FakeAdapter()
     vi.useFakeTimers()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
       probeTimeoutMs: 10,
       schedule: () => 1 as unknown as ReturnType<typeof setTimeout>,
@@ -546,7 +551,7 @@ describe('NativeRuntimeSupervisor', () => {
     const restarts: Array<() => void> = []
     vi.useFakeTimers()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => {
         const adapter = new FakeAdapter()
         adapters.push(adapter)
@@ -590,7 +595,7 @@ describe('NativeRuntimeSupervisor', () => {
     const adapter = new FakeAdapter()
     const scheduled: Array<() => void> = []
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
       schedule: (callback) => {
         scheduled.push(callback)
@@ -613,7 +618,7 @@ describe('NativeRuntimeSupervisor', () => {
   it('rejects an in-progress handshake during shutdown', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
     })
     const start = supervisor.start()
@@ -630,7 +635,7 @@ describe('NativeRuntimeSupervisor', () => {
   it('allows a ready utility host to exit after graceful native shutdown', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
-      runtime: 'hooks',
+      runtime: 'hotkey',
       createAdapter: () => adapter,
     })
     const start = supervisor.start()

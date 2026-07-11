@@ -13,6 +13,7 @@ namespace syrnike::desktop_native::media {
 
 Microsoft::WRL::ComPtr<IMMDevice> captureDevice(const std::string& device_id);
 Microsoft::WRL::ComPtr<IMMDevice> renderDevice();
+Microsoft::WRL::ComPtr<IMMDevice> renderDevice(const std::string& device_id);
 std::vector<DeviceInfo> listAudioDevices();
 WAVEFORMATEX desiredCaptureFormat();
 WAVEFORMATEX desiredRenderFormat();

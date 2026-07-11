@@ -70,7 +70,8 @@ function createSmokeContext(overrides = {}) {
 
 async function runSmokeSuite(context) {
   await smokeRuntime(context, 'media', 'media-host.cjs', 'syrnike_media.node')
-  await smokeRuntime(context, 'hooks', 'hooks-host.cjs', 'syrnike_hooks.node')
+  await smokeRuntime(context, 'hotkey', 'hotkey-host.cjs', 'syrnike_hotkey.node')
+  await smokeRuntime(context, 'overlay', 'overlay-host.cjs', 'syrnike_overlay.node')
   await smokeRuntime(
     context,
     'media',
@@ -193,7 +194,9 @@ function smokeRuntime(context, runtime, hostName, addonName, injectCrash = false
           command:
             runtime === 'media'
               ? { type: 'stopPreview' }
-              : { type: 'stopHotkeys' },
+              : runtime === 'hotkey'
+                ? { type: 'stopHotkeys' }
+                : { type: 'stopOverlay' },
         })
         return
       }
@@ -321,9 +324,8 @@ function describeError(error) {
 }
 
 function requiredCapabilities(runtime) {
-  return runtime === 'media'
-    ? ['microphone', 'screen', 'screenAudio', 'preview', 'queries']
-    : ['hotkeys', 'overlay']
+  if (runtime === 'media') return ['microphone', 'screen', 'screenAudio', 'preview', 'queries']
+  return runtime === 'hotkey' ? ['hotkeys'] : ['overlay']
 }
 
 if (process.versions.electron && process.type === 'browser') {

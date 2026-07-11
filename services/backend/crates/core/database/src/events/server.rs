@@ -5,31 +5,41 @@ use super::client::Ping;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum VoiceStateUpdateRequest {
-    Disconnect,
+    RequestSnapshot,
+    UpdateFlags {
+        operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
+    },
+    Disconnect {
+        operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
+    },
     Join {
         operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
     },
     RefreshCredentials {
         operation_id: String,
-    },
-    ReplaceOperation {
-        operation_id: String,
-        expected_current_operation_id: String,
-    },
-    RetainFinalized {
-        operation_id: String,
-        expected_current_operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
     },
 }
 
 impl VoiceStateUpdateRequest {
     pub fn operation_id(&self) -> Option<&str> {
         match self {
-            Self::Disconnect => None,
-            Self::Join { operation_id }
-            | Self::RefreshCredentials { operation_id }
-            | Self::ReplaceOperation { operation_id, .. }
-            | Self::RetainFinalized { operation_id, .. } => Some(operation_id.as_str()),
+            Self::RequestSnapshot => None,
+            Self::UpdateFlags { operation_id, .. }
+            | Self::Disconnect { operation_id, .. }
+            | Self::Join { operation_id, .. }
+            | Self::RefreshCredentials { operation_id, .. } => Some(operation_id.as_str()),
         }
     }
 }
@@ -81,7 +91,10 @@ mod tests {
             "node": "node-1",
             "request": {
                 "mode": "refresh_credentials",
-                "operation_id": "op-join"
+                "operation_id": "op-join",
+                "rtc_engine": "web",
+                "client_instance_id": "client-1",
+                "connection_epoch": "epoch-1"
             }
         }))
         .expect("voice state update deserializes");
@@ -93,64 +106,10 @@ mod tests {
         assert_eq!(
             request,
             VoiceStateUpdateRequest::RefreshCredentials {
-                operation_id: "op-join".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn voice_state_update_deserializes_replace_request_with_expected_current_operation() {
-        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
-            "type": "VoiceStateUpdate",
-            "nonce": "nonce-2",
-            "channel_id": "channel-1",
-            "self_mute": true,
-            "self_deaf": false,
-            "request": {
-                "mode": "replace_operation",
-                "operation_id": "op-next",
-                "expected_current_operation_id": "op-current"
-            }
-        }))
-        .expect("voice state update deserializes");
-
-        let ClientMessage::VoiceStateUpdate { request, .. } = message else {
-            panic!("expected VoiceStateUpdate");
-        };
-
-        assert_eq!(
-            request,
-            VoiceStateUpdateRequest::ReplaceOperation {
-                operation_id: "op-next".to_string(),
-                expected_current_operation_id: "op-current".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn voice_state_update_deserializes_retain_finalized_request() {
-        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
-            "type": "VoiceStateUpdate",
-            "nonce": "nonce-3",
-            "channel_id": "channel-a",
-            "self_mute": false,
-            "self_deaf": false,
-            "request": {
-                "mode": "retain_finalized",
-                "operation_id": "op-a",
-                "expected_current_operation_id": "op-b"
-            }
-        }))
-        .expect("retain finalized request deserializes");
-
-        let ClientMessage::VoiceStateUpdate { request, .. } = message else {
-            panic!("expected VoiceStateUpdate");
-        };
-        assert_eq!(
-            request,
-            VoiceStateUpdateRequest::RetainFinalized {
-                operation_id: "op-a".to_string(),
-                expected_current_operation_id: "op-b".to_string(),
+                operation_id: "op-join".to_string(),
+                rtc_engine: "web".to_string(),
+                client_instance_id: "client-1".to_string(),
+                connection_epoch: "epoch-1".to_string(),
             }
         );
     }

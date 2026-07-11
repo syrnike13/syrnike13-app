@@ -65,7 +65,8 @@ export default defineConfig([
   {
     entry: {
       'media-host': 'src/utility/media-host.ts',
-      'hooks-host': 'src/utility/hooks-host.ts',
+      'hotkey-host': 'src/utility/hotkey-host.ts',
+      'overlay-host': 'src/utility/overlay-host.ts',
     },
     outDir: 'out/utility',
     format: ['cjs'],

@@ -29,7 +29,7 @@ Module._load = originalLoad
 const manifest = {
   appVersion: '0.0.0-test',
   releaseChannel: 'test',
-  contractVersion: 2,
+  contractVersion: 3,
   liveKitVersion: '1.2.3-test',
   commitSha: 'abc123',
   napiVersion: 8,

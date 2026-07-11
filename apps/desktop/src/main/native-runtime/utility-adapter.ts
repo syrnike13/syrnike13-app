@@ -89,6 +89,9 @@ export class ElectronUtilityAdapter implements NativeRuntimeAdapter {
       nativeRoot: path.dirname(this.options.nativeModulePath),
       SYRNIKE_NATIVE_RUNTIME_KIND: this.options.runtime,
       SYRNIKE_NATIVE_MODULE_PATH: this.options.nativeModulePath,
+      // Remote video NT handles are process-local. Native duplicates them into
+      // this PID before they cross the utility-process message boundary.
+      SYRNIKE_ELECTRON_MAIN_PID: String(process.pid),
       ...(diagnosticSession
         ? {
             SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID: diagnosticSession.runId,
@@ -235,8 +238,8 @@ function nativeUtilityEnvironment(
 }
 
 export function resolveNativeRuntimePaths(runtime: NativeRuntimeKind) {
-  const utilityFilename = runtime === 'media' ? 'media-host.cjs' : 'hooks-host.cjs'
-  const nativeFilename = runtime === 'media' ? 'syrnike_media.node' : 'syrnike_hooks.node'
+  const utilityFilename = `${runtime}-host.cjs`
+  const nativeFilename = `syrnike_${runtime}.node`
   const utilityEntryPath = path.resolve(
     app.getAppPath(),
     'out',

@@ -110,26 +110,36 @@ add_library(syrnike_media_core STATIC
   src/common/diagnostic_log.cpp
   src/media/audio_devices.cpp
   src/media/audio_processing.cpp
+  src/media/camera_actor.cpp
+  src/media/camera_capture.cpp
   src/media/display_sources.cpp
   src/media/livekit_publication_client.cpp
   src/media/media_runtime.cpp
+  src/media/media_runtime_support.cpp
   src/media/microphone_actor.cpp
   src/media/microphone_audio_processor.cpp
   src/media/microphone_publication_controller.cpp
   src/media/microphone_echo_reference.cpp
   src/media/preview_actor.cpp
+  src/media/remote_audio_output.cpp
+  src/media/remote_video_bridge.cpp
   src/media/screen_actor.cpp
   src/media/screen_publication_controller.cpp
   src/media/screen_audio_capture.cpp
   src/media/screen_capture_priority.cpp
   src/media/screen_video_capture.cpp
   src/media/voice_gate.cpp
+  src/media/voice_actor.cpp
 )
 syrnike_native_target(syrnike_media_core)
 target_link_libraries(syrnike_media_core PUBLIC
   LiveKit::livekit
   avrt
   Mmdevapi
+  mf
+  mfplat
+  mfreadwrite
+  mfuuid
   ole32
   d3d11
   dwmapi
@@ -166,24 +176,27 @@ if(MSVC)
   target_link_options(syrnike_media PRIVATE /DELAYLOAD:node.exe /DELAYLOAD:livekit.dll)
 endif()
 
-add_library(syrnike_hooks MODULE
-  ${CMAKE_JS_SRC}
-  src/common/node_event_sink.cpp
-  src/hooks/hooks_addon.cpp
-)
-set_target_properties(syrnike_hooks PROPERTIES PREFIX "" SUFFIX ".node")
-syrnike_native_target(syrnike_hooks)
-target_include_directories(syrnike_hooks SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
-target_compile_definitions(syrnike_hooks PRIVATE
-  NAPI_CPP_EXCEPTIONS
-  NAPI_VERSION=${NAPI_VERSION}
-  SYRNIKE_NATIVE_COMMIT="${SYRNIKE_NATIVE_COMMIT}"
-)
-target_link_libraries(syrnike_hooks PRIVATE ${CMAKE_JS_LIB} syrnike_hooks_core)
-if(MSVC)
-  target_link_libraries(syrnike_hooks PRIVATE delayimp)
-  target_link_options(syrnike_hooks PRIVATE /DELAYLOAD:node.exe)
-endif()
+foreach(HOOK_RUNTIME hotkey overlay)
+  add_library(syrnike_${HOOK_RUNTIME} MODULE
+    ${CMAKE_JS_SRC}
+    src/common/node_event_sink.cpp
+    src/hooks/hooks_addon.cpp
+  )
+  set_target_properties(syrnike_${HOOK_RUNTIME} PROPERTIES PREFIX "" SUFFIX ".node")
+  syrnike_native_target(syrnike_${HOOK_RUNTIME})
+  target_include_directories(syrnike_${HOOK_RUNTIME} SYSTEM PRIVATE ${CMAKE_JS_INC} "${NODE_ADDON_API_DIR}")
+  target_compile_definitions(syrnike_${HOOK_RUNTIME} PRIVATE
+    NAPI_CPP_EXCEPTIONS
+    NAPI_VERSION=${NAPI_VERSION}
+    SYRNIKE_NATIVE_COMMIT="${SYRNIKE_NATIVE_COMMIT}"
+    SYRNIKE_HOOK_RUNTIME_${HOOK_RUNTIME}=1
+  )
+  target_link_libraries(syrnike_${HOOK_RUNTIME} PRIVATE ${CMAKE_JS_LIB} syrnike_hooks_core)
+  if(MSVC)
+    target_link_libraries(syrnike_${HOOK_RUNTIME} PRIVATE delayimp)
+    target_link_options(syrnike_${HOOK_RUNTIME} PRIVATE /DELAYLOAD:node.exe)
+  endif()
+endforeach()
 
 enable_testing()
 add_executable(syrnike-native-runtime-core-tests
@@ -277,6 +290,39 @@ syrnike_copy_livekit_runtime(syrnike-native-screen-publication-control-plane-tes
 add_test(
   NAME syrnike-native-screen-publication-control-plane-tests
   COMMAND syrnike-native-screen-publication-control-plane-tests
+)
+
+add_executable(syrnike-native-camera-actor-lifecycle-tests
+  tests/camera_actor_lifecycle_test.cpp
+)
+syrnike_native_target(syrnike-native-camera-actor-lifecycle-tests)
+target_link_libraries(syrnike-native-camera-actor-lifecycle-tests PRIVATE syrnike_media_core)
+syrnike_copy_livekit_runtime(syrnike-native-camera-actor-lifecycle-tests)
+add_test(
+  NAME syrnike-native-camera-actor-lifecycle-tests
+  COMMAND syrnike-native-camera-actor-lifecycle-tests
+)
+
+add_executable(syrnike-native-voice-actor-lifecycle-tests
+  tests/voice_actor_lifecycle_test.cpp
+)
+syrnike_native_target(syrnike-native-voice-actor-lifecycle-tests)
+target_link_libraries(syrnike-native-voice-actor-lifecycle-tests PRIVATE syrnike_media_core)
+syrnike_copy_livekit_runtime(syrnike-native-voice-actor-lifecycle-tests)
+add_test(
+  NAME syrnike-native-voice-actor-lifecycle-tests
+  COMMAND syrnike-native-voice-actor-lifecycle-tests
+)
+
+add_executable(syrnike-native-remote-audio-output-failure-tests
+  tests/remote_audio_output_failure_test.cpp
+)
+syrnike_native_target(syrnike-native-remote-audio-output-failure-tests)
+target_link_libraries(syrnike-native-remote-audio-output-failure-tests PRIVATE syrnike_media_core)
+syrnike_copy_livekit_runtime(syrnike-native-remote-audio-output-failure-tests)
+add_test(
+  NAME syrnike-native-remote-audio-output-failure-tests
+  COMMAND syrnike-native-remote-audio-output-failure-tests
 )
 
 add_executable(syrnike-native-hooks-runtime-lifecycle-tests

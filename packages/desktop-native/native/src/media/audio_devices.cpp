@@ -103,6 +103,23 @@ ComPtr<IMMDevice> renderDevice() {
   return defaultDevice(eRender);
 }
 
+ComPtr<IMMDevice> renderDevice(const std::string& device_id) {
+  if (device_id.empty() || device_id == "default") return renderDevice();
+  const int length = MultiByteToWideChar(
+    CP_UTF8, 0, device_id.data(), static_cast<int>(device_id.size()), nullptr, 0
+  );
+  if (length <= 0) throw std::runtime_error("invalid audio output device id");
+  std::wstring wide(static_cast<std::size_t>(length), L'\0');
+  MultiByteToWideChar(
+    CP_UTF8, 0, device_id.data(), static_cast<int>(device_id.size()), wide.data(), length
+  );
+  ComPtr<IMMDevice> device;
+  if (FAILED(enumerator()->GetDevice(wide.c_str(), &device))) {
+    throw std::runtime_error("selected audio output is unavailable");
+  }
+  return device;
+}
+
 std::vector<DeviceInfo> listAudioDevices() {
   std::vector<DeviceInfo> result;
   std::string default_capture;

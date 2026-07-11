@@ -1,9 +1,11 @@
 # ADR-0001 — VoiceIntentDirector: единый авторитет голосового интента
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0003
 - **Date:** 2026-06-29
 - **Amended:** 2026-07-10 — prepared reservation/finalize и декларативный
   local-media seam
+- **Superseded:** 2026-07-11 — ADR-0003 сохраняет единственного владельца
+  Voice Intent, но заменяет browser-anchor, retained Room и make-before-break.
 - **Supersedes:** неформальная модель, размазанная по
   `voice-session-machine.ts`, `voice-session-controller.ts`, `voice-join.ts`,
   `voice-provider.tsx`, `voice-gateway.ts`, `voice-local-event-guard.ts`,

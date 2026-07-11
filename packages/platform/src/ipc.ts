@@ -42,17 +42,14 @@ export const IPC = {
   mediaListDevices: 'syrnike-desktop:media:list-devices',
   mediaStartMicrophonePreview: 'syrnike-desktop:media:start-microphone-preview',
   mediaStopMicrophonePreview: 'syrnike-desktop:media:stop-microphone-preview',
-  mediaApplyLocalMediaIntent:
-    'syrnike-desktop:media:apply-local-media-intent',
-  mediaConfigureMicrophonePipeline:
-    'syrnike-desktop:media:configure-microphone-pipeline',
-  mediaGetState: 'syrnike-desktop:media:get-state',
-  mediaStats: 'syrnike-desktop:media:stats',
   mediaMicrophoneMetrics: 'syrnike-desktop:media:microphone-metrics',
   mediaMicrophonePreviewState:
     'syrnike-desktop:media:microphone-preview-state',
-  mediaLocalMediaState: 'syrnike-desktop:media:local-media-state',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
+  mediaSetRemoteVideoDemand: 'syrnike-desktop:media:set-remote-video-demand',
+  voiceDispatch: 'syrnike-desktop:voice:dispatch',
+  voiceGetSnapshot: 'syrnike-desktop:voice:get-snapshot',
+  voiceSnapshotChanged: 'syrnike-desktop:voice:snapshot-changed',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

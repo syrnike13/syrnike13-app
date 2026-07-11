@@ -38,7 +38,8 @@ if (requireWindowsSigning && missingAzureSigningFields.length > 0) {
 
 const nativeFiles = [
   'syrnike_media.node',
-  'syrnike_hooks.node',
+  'syrnike_hotkey.node',
+  'syrnike_overlay.node',
   'livekit.dll',
   'livekit_ffi.dll',
   'native-manifest.json',

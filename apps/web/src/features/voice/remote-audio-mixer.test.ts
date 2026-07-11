@@ -223,6 +223,26 @@ describe('RemoteAudioMixer', () => {
     ])
   })
 
+  it('surfaces output playback failures instead of reporting silent success', async () => {
+    const failures: Error[] = []
+    mixer.dispose()
+    vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValue(
+      new Error('autoplay denied'),
+    )
+    mixer = createRemoteAudioMixer({
+      onOutputError: (error) => failures.push(error),
+    })
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    await expect(mixer.applyVolumes(false)).rejects.toThrow('autoplay denied')
+    expect(failures.some((error) => error.message === 'autoplay denied')).toBe(true)
+  })
+
   it('sets participant volume zero to gain zero', () => {
     const track = createTrack()
     voiceListenerStore.setUserVolume('remote-user', 0)

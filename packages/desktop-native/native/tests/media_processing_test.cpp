@@ -10,6 +10,7 @@
 #include "media/microphone_audio_processor.hpp"
 #include "media/microphone_echo_reference.hpp"
 #include "media/microphone_metrics_cadence.hpp"
+#include "media/remote_audio_output.hpp"
 #include "media/runtime_config.hpp"
 #include "media/voice_gate.hpp"
 
@@ -108,6 +109,37 @@ int main() try {
   require(
     delayed_metrics_cadence.shouldEmit(cadence_started_at + std::chrono::milliseconds(150)),
     "microphone metrics did not resume their 20Hz cadence"
+  );
+
+  using syrnike::desktop_native::media::RemoteAudioSettings;
+  using syrnike::desktop_native::media::normalizeRemoteAudioIdentity;
+  using syrnike::desktop_native::media::resolveRemoteAudioGain;
+  const auto encoded_identity =
+    "voice:v1|windows_native|client-a|epoch-a|voice-op-a|user-a";
+  require(
+    normalizeRemoteAudioIdentity(encoded_identity) == "user-a",
+    "native remote audio identity differs from the renderer base identity"
+  );
+  const auto malformed_identity = "voice:v1|windows_native|user-a";
+  require(
+    normalizeRemoteAudioIdentity(malformed_identity) == malformed_identity,
+    "malformed native identity did not preserve its full fallback key"
+  );
+  RemoteAudioSettings remote_audio;
+  remote_audio.user_volumes["user-a"] = 0.4F;
+  remote_audio.stream_volumes["user-a"] = 1.7F;
+  require(
+    std::abs(resolveRemoteAudioGain(remote_audio, encoded_identity, false) - 0.4F) < 0.001F,
+    "participant microphone volume did not reach the native mixer"
+  );
+  require(
+    std::abs(resolveRemoteAudioGain(remote_audio, encoded_identity, true) - 1.7F) < 0.001F,
+    "participant stream volume did not stay independent from microphone volume"
+  );
+  remote_audio.stream_mutes["user-a"] = true;
+  require(
+    resolveRemoteAudioGain(remote_audio, encoded_identity, true) == 0.0F,
+    "participant stream mute did not override its native gain"
   );
 
   syrnike::voice::MicrophoneEchoReferenceBuffer reference(2);

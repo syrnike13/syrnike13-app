@@ -10,12 +10,14 @@ import type {
   NativeMediaStatsEvent,
   NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
+  VoiceRemoteAudioSettings,
 } from '@syrnike13/platform'
+import { isVoiceRemoteAudioSettings } from '@syrnike13/platform'
 
-export const NATIVE_RUNTIME_CONTRACT_VERSION = 2
+export const NATIVE_RUNTIME_CONTRACT_VERSION = 3
 export const NATIVE_RUNTIME_MAX_PENDING_REQUESTS = 256
 
-export type NativeRuntimeKind = 'media' | 'hooks'
+export type NativeRuntimeKind = 'media' | 'hotkey' | 'overlay'
 
 export type NativeRuntimeBuild = {
   commit?: string
@@ -77,6 +79,29 @@ type SessionCommandBase = {
 }
 
 export type MediaRuntimeCommand =
+  | ({
+      type: 'connectVoice'
+      options: {
+        livekit: {
+          url: string
+          token: string
+          participantIdentity: string
+        }
+      }
+    } & SessionCommandBase)
+  | ({ type: 'disconnectVoice' } & SessionCommandBase)
+  | ({ type: 'configureRemoteAudio'; settings: VoiceRemoteAudioSettings } &
+      SessionCommandBase)
+  | ({ type: 'releaseRemoteVideoFrame'; trackId: string; sequence: number } &
+      SessionCommandBase)
+  | ({ type: 'setRemoteVideoDemand'; trackId: string; demanded: boolean } &
+      SessionCommandBase)
+  | ({
+      type: 'configureVoiceOutput'
+      deafened: boolean
+      deviceId?: string
+      volume?: number
+    } & SessionCommandBase)
   | {
       type: 'warmMicrophone'
       generation: number
@@ -84,7 +109,7 @@ export type MediaRuntimeCommand =
     }
   | {
       type: 'listDevices'
-      kind: 'audioinput'
+      kind: 'audioinput' | 'audiooutput' | 'videoinput'
     }
   | {
       type: 'listDisplaySources'
@@ -112,6 +137,22 @@ export type MediaRuntimeCommand =
       excludeProcessId: number
     } & SessionCommandBase)
   | ({ type: 'disconnectMicrophone' } & SessionCommandBase)
+  | ({
+      type: 'connectCamera'
+      options: {
+        deviceId?: string
+        width?: number
+        height?: number
+        fps?: number
+        bitrate?: number
+        livekit: {
+          url: string
+          token: string
+          participantIdentity: string
+        }
+      }
+    } & SessionCommandBase)
+  | ({ type: 'disconnectCamera' } & SessionCommandBase)
   | ({ type: 'invalidateMicrophone' } & SessionCommandBase)
   | ({ type: 'stopScreenCapture' } & SessionCommandBase)
   | {
@@ -162,7 +203,11 @@ export type OverlayForegroundWindow = {
 }
 
 export type MediaRuntimeEvent =
-  | ({ type: 'sessionLifecycle'; state: NativeMediaStateEvent } & SessionEventBase)
+  | ({
+      type: 'sessionLifecycle'
+      kind?: 'voice' | 'microphone' | 'screen' | 'camera' | 'output'
+      state: NativeMediaStateEvent
+    } & SessionEventBase)
   | ({ type: 'sessionStarted'; session: NativeMediaSession } & SessionEventBase)
   | ({ type: 'sessionStopped'; reason?: string } & SessionEventBase)
   | ({ type: 'stats'; stats: NativeMediaStatsEvent } & SessionEventBase)
@@ -174,6 +219,24 @@ export type MediaRuntimeEvent =
   | ({ type: 'displaySourceList'; sources: DesktopDisplayMediaSource[] } &
       RuntimeEventBase)
   | ({ type: 'screenCaptureEnded'; reason: string; message?: string } &
+      SessionEventBase)
+  | ({ type: 'voiceTerminal'; error: NativeRuntimeError } & SessionEventBase)
+  | ({ type: 'cameraTerminal'; error: NativeRuntimeError } & SessionEventBase)
+  | ({ type: 'activeSpeakers'; participantIdentities: string[] } &
+      SessionEventBase)
+  | ({
+      type: 'remoteVideoFrame'
+      trackId: string
+      participantIdentity: string
+      source: 'camera' | 'screen'
+      frameSequence: number
+      timestampUs: number
+      width: number
+      height: number
+      ntHandle: Uint8Array
+    } & SessionEventBase)
+  | ({ type: 'remoteVideoTrackRemoved'; trackId: string } & SessionEventBase)
+  | ({ type: 'remoteVideoFailed'; trackId: string; source?: 'camera' | 'screen' } &
       SessionEventBase)
   | ({ type: 'runtimeError'; error: NativeRuntimeError } & RuntimeEventBase)
 
@@ -280,6 +343,18 @@ function isMicrophoneStartOptions(
     (value.audioBitrate === undefined || isIntegerInRange(value.audioBitrate, 6_000, 512_000)) &&
     (value.muted === undefined || typeof value.muted === 'boolean') &&
     isLiveKitCredentials(value.livekit)
+  )
+}
+
+function isCameraStartOptions(value: unknown) {
+  if (!isRecord(value) || !isLiveKitCredentials(value.livekit)) return false
+  return (
+    (value.deviceId === undefined || isNonEmptyString(value.deviceId, 2_048)) &&
+    (value.width === undefined || isIntegerInRange(value.width, 16, 7_680)) &&
+    (value.height === undefined || isIntegerInRange(value.height, 16, 4_320)) &&
+    (value.fps === undefined || isIntegerInRange(value.fps, 1, 240)) &&
+    (value.bitrate === undefined ||
+      isIntegerInRange(value.bitrate, 32_000, 100_000_000))
   )
 }
 
@@ -447,6 +522,29 @@ function isNativeMediaStats(value: unknown, sessionId: string) {
 export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCommand {
   if (!isRecord(value) || !isNonEmptyString(value.type, 128)) return false
   switch (value.type) {
+    case 'connectVoice':
+      return (
+        isSessionCommand(value) &&
+        isRecord(value.options) &&
+        isLiveKitCredentials(value.options.livekit)
+      )
+    case 'disconnectVoice':
+      return isSessionCommand(value)
+    case 'configureRemoteAudio':
+      return isSessionCommand(value) && isVoiceRemoteAudioSettings(value.settings)
+    case 'releaseRemoteVideoFrame':
+      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
+        isSequence(value.sequence)
+    case 'setRemoteVideoDemand':
+      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
+        typeof value.demanded === 'boolean'
+    case 'configureVoiceOutput':
+      return (
+        isSessionCommand(value) &&
+        typeof value.deafened === 'boolean' &&
+        (value.volume === undefined || isFiniteNumber(value.volume, 0, 3)) &&
+        (value.deviceId === undefined || isNonEmptyString(value.deviceId, 2_048))
+      )
     case 'warmMicrophone':
       return (
         Number.isSafeInteger(value.generation) &&
@@ -454,7 +552,11 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
         isMicrophonePipelineConfig(value.config)
       )
     case 'listDevices':
-      return value.kind === 'audioinput'
+      return (
+        value.kind === 'audioinput' ||
+        value.kind === 'audiooutput' ||
+        value.kind === 'videoinput'
+      )
     case 'listDisplaySources':
       return value.selfWindowHwnd === undefined || isUnsignedIntegerString(value.selfWindowHwnd)
     case 'startPreview':
@@ -495,6 +597,10 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
     case 'invalidateMicrophone':
     case 'stopScreenCapture':
       return isSessionCommand(value)
+    case 'connectCamera':
+      return isSessionCommand(value) && isCameraStartOptions(value.options)
+    case 'disconnectCamera':
+      return isSessionCommand(value)
     case 'configureMicrophone':
       return (
         Number.isSafeInteger(value.revision) &&
@@ -531,7 +637,8 @@ export function isNativeRuntimeReady(value: unknown): value is NativeRuntimeRead
   if (!isRecord(value) || value.type !== 'ready') return false
   if (
     value.runtime !== 'media' &&
-    value.runtime !== 'hooks' &&
+    value.runtime !== 'hotkey' &&
+    value.runtime !== 'overlay' &&
     value.runtime !== 'invalid'
   ) {
     return false
@@ -605,6 +712,16 @@ export function isNativeRuntimeEvent(
       (value.generation === undefined || value.generation === value.error.generation)
     )
   }
+  if (value.type === 'voiceTerminal' || value.type === 'cameraTerminal') {
+    return (
+      isRuntimeError(value.error) &&
+      isNonEmptyString(value.sessionId, 256) &&
+      Number.isSafeInteger(value.generation) &&
+      Number(value.generation) >= 0 &&
+      value.error.sessionId === value.sessionId &&
+      value.error.generation === value.generation
+    )
+  }
   if (value.type === 'deviceList') {
     return (
       Array.isArray(value.devices) &&
@@ -612,7 +729,9 @@ export function isNativeRuntimeEvent(
         (device) =>
           isRecord(device) &&
           isNonEmptyString(device.deviceId, 2_048) &&
-          device.kind === 'audioinput' &&
+          (device.kind === 'audioinput' ||
+            device.kind === 'audiooutput' ||
+            device.kind === 'videoinput') &&
           typeof device.label === 'string' &&
           device.label.length <= 4_096,
       )
@@ -653,7 +772,15 @@ export function isNativeRuntimeEvent(
 
   switch (value.type) {
     case 'sessionLifecycle':
-      return isNativeMediaStateEvent(value.state, value.sessionId)
+      return (
+        (value.kind === undefined ||
+          value.kind === 'voice' ||
+          value.kind === 'microphone' ||
+          value.kind === 'screen' ||
+          value.kind === 'camera' ||
+          value.kind === 'output') &&
+        isNativeMediaStateEvent(value.state, value.sessionId)
+      )
     case 'sessionStarted':
       return (
         isNativeMediaSession(value.session) &&
@@ -669,6 +796,29 @@ export function isNativeRuntimeEvent(
         value.preview.sessionId === value.sessionId &&
         isNonEmptyString(value.preview.sessionId, 256)
       )
+    case 'activeSpeakers':
+      return (
+        Array.isArray(value.participantIdentities) &&
+        value.participantIdentities.length <= 512 &&
+        value.participantIdentities.every((identity) =>
+          isNonEmptyString(identity, 512),
+        )
+      )
+    case 'remoteVideoFrame':
+      return (
+        isNonEmptyString(value.trackId, 512) &&
+        typeof value.participantIdentity === 'string' && value.participantIdentity.length <= 512 &&
+        (value.source === 'camera' || value.source === 'screen') &&
+        isSequence(value.frameSequence) && isSequence(value.timestampUs) &&
+        isIntegerInRange(value.width, 1, 7680) &&
+        isIntegerInRange(value.height, 1, 4320) &&
+        value.ntHandle instanceof Uint8Array && value.ntHandle.byteLength === 8
+      )
+    case 'remoteVideoTrackRemoved':
+      return isNonEmptyString(value.trackId, 512)
+    case 'remoteVideoFailed':
+      return isNonEmptyString(value.trackId, 512) &&
+        (value.source === undefined || value.source === 'camera' || value.source === 'screen')
     case 'screenCaptureEnded':
       return (
         isNonEmptyString(value.reason, 256) &&

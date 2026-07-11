@@ -60,9 +60,9 @@ describe('native microphone processing boundary', () => {
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
+      voice: { dispatch: vi.fn(async () => undefined) },
       media: {
         startMicrophonePreview,
-        configureMicrophonePipeline: vi.fn(async () => {}),
         stopMicrophonePreview: vi.fn(async () => {}),
         onMicrophoneMetrics: vi.fn(() => () => {}),
         onMicrophonePreviewState: vi.fn(() => () => {}),
@@ -90,7 +90,7 @@ describe('native microphone processing boundary', () => {
   it('configures native preview gate and input gain without restarting preview', async () => {
     vi.useFakeTimers()
     const startMicrophonePreview = vi.fn(async () => {})
-    const configureMicrophonePipeline = vi.fn(async () => {})
+    const voiceDispatch = vi.fn(async () => undefined)
     const stopMicrophonePreview = vi.fn(async () => {})
     const unsubscribeMetrics = vi.fn()
     const microphoneMetricsHandlerRef: {
@@ -102,9 +102,9 @@ describe('native microphone processing boundary', () => {
     } = {}
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
+      voice: { dispatch: voiceDispatch },
       media: {
         startMicrophonePreview,
-        configureMicrophonePipeline,
         stopMicrophonePreview,
         onMicrophoneMetrics: vi.fn((handler) => {
           microphoneMetricsHandlerRef.current = handler
@@ -158,8 +158,9 @@ describe('native microphone processing boundary', () => {
     expect(startMicrophonePreview).toHaveBeenCalledTimes(1)
     expect(startMicrophonePreview).toHaveBeenCalledWith()
     expect(stopMicrophonePreview).not.toHaveBeenCalled()
-    expect(configureMicrophonePipeline).toHaveBeenCalledTimes(1)
-    expect(configureMicrophonePipeline).toHaveBeenNthCalledWith(1, {
+    expect(voiceDispatch).toHaveBeenCalledTimes(1)
+    expect(voiceDispatch).toHaveBeenNthCalledWith(1, {
+      type: 'configureMicrophone',
       deviceId: 'mic-1',
       noiseSuppression: true,
       echoCancellation: true,
@@ -182,8 +183,9 @@ describe('native microphone processing boundary', () => {
 
     await vi.advanceTimersByTimeAsync(1)
 
-    expect(configureMicrophonePipeline).toHaveBeenCalledTimes(2)
-    expect(configureMicrophonePipeline).toHaveBeenLastCalledWith({
+    expect(voiceDispatch).toHaveBeenCalledTimes(2)
+    expect(voiceDispatch).toHaveBeenLastCalledWith({
+      type: 'configureMicrophone',
       deviceId: 'mic-1',
       noiseSuppression: false,
       echoCancellation: true,
@@ -210,8 +212,8 @@ describe('native microphone processing boundary', () => {
       | undefined
     vi.mocked(getSyrnikeDesktop).mockReturnValue({
       platform: { os: 'win32' },
+      voice: { dispatch: vi.fn(async () => undefined) },
       media: {
-        configureMicrophonePipeline: vi.fn(async () => {}),
         startMicrophonePreview: vi.fn(async () => {}),
         stopMicrophonePreview,
         onMicrophoneMetrics: vi.fn(() => unsubscribeMetrics),

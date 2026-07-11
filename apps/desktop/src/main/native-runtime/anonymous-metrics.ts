@@ -1,6 +1,5 @@
 import { app } from 'electron'
 
-import type { NativeMediaController } from './native-media-controller'
 import type {
   NativeRuntimeSupervisor,
   NativeRuntimeSupervisorSnapshot,
@@ -16,7 +15,7 @@ const MAX_DURATION_MS = 60_000
 const MAX_COALESCED_SAMPLES = 1_000
 const MAX_BATCH_SAMPLES = 1_000
 
-export type NativeMetricRuntime = 'media' | 'hooks'
+export type NativeMetricRuntime = 'media' | 'hotkey' | 'overlay'
 export type NativeMetricSessionKind = 'none' | 'microphone' | 'screen'
 export type NativeMetricCounterName =
   | 'runtime_started'
@@ -296,32 +295,6 @@ export function attachNativeRuntimeMetrics(
       reporter.increment('runtime_degraded', runtime)
     }
     previous = snapshot.status
-  })
-}
-
-export function attachNativeMediaSessionMetrics(
-  controller: NativeMediaController,
-  reporter: AnonymousNativeMetricsReporter = anonymousNativeMetricsReporter,
-) {
-  return controller.subscribe((event) => {
-    if (event.type !== 'operationMetric' || event.operation !== 'sessionStart') {
-      return
-    }
-    reporter.increment(
-      event.outcome === 'succeeded'
-        ? 'session_start_succeeded'
-        : event.outcome === 'cancelled'
-          ? 'session_start_cancelled'
-          : 'session_start_failed',
-      'media',
-      event.kind,
-    )
-    reporter.observe(
-      'session_start_ms',
-      event.durationMs,
-      'media',
-      event.kind,
-    )
   })
 }
 

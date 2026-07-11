@@ -16,6 +16,7 @@
 #include <livekit/local_video_track.h>
 
 #include "../common/runtime_types.hpp"
+#include "remote_audio_output.hpp"
 
 namespace syrnike::desktop_native::media {
 
@@ -50,6 +51,22 @@ class LiveKitPublicationClient {
 
   virtual ~LiveKitPublicationClient() = default;
 
+  virtual bool connectVoice(
+    std::string session_id,
+    std::uint64_t generation,
+    const std::string& livekit_url,
+    const std::string& livekit_token,
+    InternalPost post
+  ) = 0;
+  virtual bool isVoiceConnected() const = 0;
+  virtual void setVoiceDeafened(bool deafened) = 0;
+  virtual void setVoiceOutputDevice(std::string device_id) = 0;
+  virtual void setVoiceOutputVolume(float volume) = 0;
+  virtual void configureRemoteAudio(RemoteAudioSettings settings) = 0;
+  virtual void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) = 0;
+  virtual void setRemoteVideoDemand(std::string track_id, bool demanded) = 0;
+  virtual void disconnectVoice() = 0;
+
   virtual std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
     const std::shared_ptr<livekit::AudioSource>& source
   ) = 0;
@@ -60,6 +77,11 @@ class LiveKitPublicationClient {
     InternalPost post
   ) = 0;
   virtual std::unique_ptr<LiveKitRoomSession> createScreenSession(
+    std::string session_id,
+    std::uint64_t generation,
+    InternalPost post
+  ) = 0;
+  virtual std::unique_ptr<LiveKitRoomSession> createCameraSession(
     std::string session_id,
     std::uint64_t generation,
     InternalPost post
@@ -85,6 +107,22 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
 
   DeterministicFakeLiveKitPublicationClient() = default;
 
+  bool connectVoice(
+    std::string session_id,
+    std::uint64_t generation,
+    const std::string& livekit_url,
+    const std::string& livekit_token,
+    InternalPost post
+  ) override;
+  bool isVoiceConnected() const override;
+  void setVoiceDeafened(bool deafened) override;
+  void setVoiceOutputDevice(std::string device_id) override;
+  void setVoiceOutputVolume(float volume) override;
+  void configureRemoteAudio(RemoteAudioSettings settings) override;
+  void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) override;
+  void setRemoteVideoDemand(std::string track_id, bool demanded) override;
+  void disconnectVoice() override;
+
   std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
     const std::shared_ptr<livekit::AudioSource>& source
   ) override;
@@ -95,6 +133,11 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
     InternalPost post
   ) override;
   std::unique_ptr<LiveKitRoomSession> createScreenSession(
+    std::string session_id,
+    std::uint64_t generation,
+    InternalPost post
+  ) override;
+  std::unique_ptr<LiveKitRoomSession> createCameraSession(
     std::string session_id,
     std::uint64_t generation,
     InternalPost post
@@ -129,6 +172,10 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
   GateState unpublish_;
   GateState disconnect_;
   std::vector<std::string> unpublished_publication_sids_;
+  std::size_t voice_connect_pending_ = 0;
+  bool voice_connected_ = false;
+  bool voice_deafened_ = false;
+  std::string voice_output_device_id_ = "default";
 };
 
 }  // namespace syrnike::desktop_native::media

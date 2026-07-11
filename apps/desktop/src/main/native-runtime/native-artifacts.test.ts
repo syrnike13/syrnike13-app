@@ -11,13 +11,14 @@ const roots: string[] = []
 const binaries = [
   'livekit.dll',
   'livekit_ffi.dll',
-  'syrnike_hooks.node',
+  'syrnike_hotkey.node',
+  'syrnike_overlay.node',
   'syrnike_media.node',
 ]
 const expected = {
   appVersion: '0.5.1',
   commitSha: 'a'.repeat(40),
-  contractVersion: 2,
+  contractVersion: 3,
   electronVersion: '35.7.5',
   minimumNapiVersion: 10,
   liveKitVersion: '1.3.0',
@@ -44,7 +45,7 @@ async function distribution() {
     path.join(root, 'native-manifest.json'),
     JSON.stringify({
       schemaVersion: 1,
-      contractVersion: 2,
+      contractVersion: 3,
       platform: 'win32',
       arch: 'x64',
       appVersion: '0.5.1',
@@ -63,7 +64,7 @@ describe('native artifact integrity', () => {
   it('accepts only the pinned DLL distribution', async () => {
     const root = await distribution()
     expect(verifyNativeArtifactDistribution(root, expected)).toMatchObject({
-      contractVersion: 2,
+      contractVersion: 3,
       liveKitVersion: '1.3.0',
     })
   })

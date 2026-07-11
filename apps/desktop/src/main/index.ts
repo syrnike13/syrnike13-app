@@ -9,7 +9,11 @@ import {
   Tray,
   type MenuItemConstructorOptions,
 } from 'electron'
-import type { DesktopLocalSettings, DesktopOverlaySettings } from '@syrnike13/platform'
+import type {
+  DesktopLocalSettings,
+  DesktopLocalSettingsPatch,
+  DesktopOverlaySettings,
+} from '@syrnike13/platform'
 import type { DesktopTrayVoiceState } from '@syrnike13/platform'
 
 import {
@@ -58,6 +62,7 @@ import {
   pruneExpiredNativeCrashDumps,
 } from './desktop-observability'
 import { anonymousNativeMetricsReporter } from './native-runtime/anonymous-metrics'
+import { desktopVoiceService } from './voice/desktop-voice-service'
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null
@@ -66,6 +71,7 @@ let quitting = false
 let desktopIpcRegistered = false
 let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
 let desktopLocalSettings: DesktopLocalSettings = desktopLocalSettingsDefaults()
+let desktopLocalSettingsWrite: Promise<void> = Promise.resolve()
 let creatingApp: Promise<void> | null = null
 let trayVoiceState: DesktopTrayVoiceState = 'default'
 let shutdownPromise: Promise<void> | null = null
@@ -155,10 +161,28 @@ async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
 
 function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
   desktopLocalSettings = settings
+  desktopVoiceService.applyPreferences(settings.voice)
   anonymousNativeMetricsReporter.configure({
     enabled: settings.observability.anonymousNativeMetrics,
     endpoint: app.isPackaged ? __DESKTOP_NATIVE_METRICS_ENDPOINT__ : '',
   })
+}
+
+function patchDesktopLocalSettings(patch: DesktopLocalSettingsPatch) {
+  const operation = desktopLocalSettingsWrite.then(async () => {
+    const settings = await updateDesktopLocalSettings(
+      desktopLocalSettingsPath(),
+      patch,
+      desktopLocalSettingsDefaults(),
+    )
+    applyDesktopLocalSettings(settings)
+    return settings
+  })
+  desktopLocalSettingsWrite = operation.then(
+    () => undefined,
+    () => undefined,
+  )
+  return operation
 }
 
 async function ensureAppCreated() {
@@ -287,7 +311,7 @@ async function createApp() {
       setCloseToTray,
       setOpenAtLogin,
       setTrayVoiceState,
-      onLocalSettingsUpdated: applyDesktopLocalSettings,
+      updateLocalSettings: patchDesktopLocalSettings,
       showWindow: showMainWindow,
       localSettingsPath: desktopLocalSettingsPath(),
       localSettingsDefaults: desktopLocalSettingsDefaults(),
@@ -338,6 +362,7 @@ function setupSingleInstance() {
 async function disposeAppResources() {
   const server = embeddedServer
   embeddedServer = null
+  await desktopVoiceService.dispose()
   await Promise.allSettled([
     Promise.resolve().then(() => disposeDesktopAutoUpdate()),
     Promise.resolve().then(async () => {
@@ -398,6 +423,9 @@ if (setupSingleInstance()) {
       desktopLocalSettingsPath(),
       desktopLocalSettingsDefaults(),
     )
+    desktopVoiceService.setPreferencePersistence(async (voice) => {
+      await patchDesktopLocalSettings({ voice })
+    })
     applyDesktopLocalSettings(desktopLocalSettings)
     initializeDesktopObservability({
       nativeCrashReportsEnabled:
@@ -408,6 +436,7 @@ if (setupSingleInstance()) {
     })
     applyLoginItemSettings(desktopPreferences.openAtLogin)
     startNativeMediaRuntime()
+    desktopVoiceService.startSystemLifecycle()
     if (initialDeepLinkRoute) {
       void navigateToDeepLink(initialDeepLinkRoute).catch(reportStartupFailure)
     } else {

@@ -1,5 +1,9 @@
 # ПЛАН: VoiceIntentDirector — иммутабельная архитектура голосового интента
 
+> **Status:** Superseded by `voice-runtime-rewrite.md`. This plan preserves the
+> historical browser-anchor/make-before-break design and must not guide new
+> implementation.
+
 > Цель: UX уровня Discord. Две боли: (1) `VOICE_SERVER_UPDATE` ломается при
 > быстром переключении каналов; (2) move нестабилен в desktop.
 > Принцип: LiveKit и broadcast-коммит — единственный авторитет присутствия;

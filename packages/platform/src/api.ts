@@ -1,19 +1,14 @@
 import type {
-  LocalMediaIntent,
-  LocalMediaIntentAcceptanceResult,
-  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
-  NativeMicrophonePipelineConfig,
   NativeMicrophoneMetricsEvent,
   NativeMicrophonePreviewStateEvent,
-  NativeMediaState,
-  NativeMediaStatsEvent,
 } from './media'
 import type {
   DesktopOverlaySnapshot,
   DesktopOverlayState,
 } from './overlay'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
+import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -153,11 +148,6 @@ export type DesktopDisplayMediaSelection = {
 export type {
   NativeMediaEncoderBackend,
   LiveKitNativePublisherCredentials,
-  LocalMediaIntent,
-  LocalMediaIntentAcceptanceResult,
-  LocalMediaIntentMicrophone,
-  LocalMediaIntentScreen,
-  LocalMediaObservedStateEvent,
   NativeMediaDeviceInfo,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
@@ -165,8 +155,6 @@ export type {
   NativeMediaLiveKitCredentials,
   NativeMicrophonePipelineConfig,
   NativeMicrophonePreviewStateEvent,
-  NativeMediaState,
-  NativeMediaStatsEvent,
   NativeMediaTarget,
   ScreenSourceSpec,
 } from './media'
@@ -198,6 +186,11 @@ export interface SyrnikeDesktopApi {
   }
   tray: {
     setVoiceState(state: DesktopTrayVoiceState): Promise<void>
+  }
+  voice: {
+    dispatch(command: VoiceCommand): Promise<VoiceSnapshot>
+    getSnapshot(): Promise<VoiceSnapshot>
+    onSnapshot(handler: (snapshot: VoiceSnapshot) => void): () => void
   }
   auth: {
     loadSession(): Promise<DesktopStoredSession | null>
@@ -241,27 +234,26 @@ export interface SyrnikeDesktopApi {
     ): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
-    listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
-    configureMicrophonePipeline(config: NativeMicrophonePipelineConfig): Promise<void>
+    listDevices(
+      kind: 'audioinput' | 'audiooutput' | 'videoinput',
+    ): Promise<NativeMediaDeviceInfo[]>
     startMicrophonePreview(): Promise<void>
     stopMicrophonePreview(): Promise<void>
+    setRemoteVideoDemand(
+      sessionId: string,
+      generation: number,
+      trackId: string,
+      demanded: boolean,
+    ): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,
     ): () => void
-    applyLocalMediaIntent(
-      intent: LocalMediaIntent,
-    ): Promise<LocalMediaIntentAcceptanceResult>
-    getState(): Promise<NativeMediaState>
-    onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
     onMicrophoneMetrics(
       handler: (event: NativeMicrophoneMetricsEvent) => void,
     ): () => void
     onMicrophonePreviewState(
       handler: (event: NativeMicrophonePreviewStateEvent) => void,
-    ): () => void
-    onLocalMediaState(
-      handler: (event: LocalMediaObservedStateEvent) => void,
     ): () => void
   }
 }

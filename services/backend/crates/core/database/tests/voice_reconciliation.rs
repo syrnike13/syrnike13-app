@@ -2,8 +2,9 @@
 
 use livekit_protocol::{participant_info, ParticipantInfo};
 use syrnike_database::voice::{
-    voice_participant_reconciliation, voice_participant_reconciliation_with_current_operations,
-    VoiceParticipantReconciliationVerdict,
+    voice_participant_identity, voice_participant_reconciliation,
+    voice_participant_reconciliation_with_current_operations,
+    VoiceParticipantReconciliationVerdict, VoiceRtcEngine,
 };
 
 const OP_A: &str = "voice-op-550e8400-e29b-41d4-a716-446655440001";
@@ -27,11 +28,16 @@ fn participant_with_operation(
     operation_id: &str,
     state: participant_info::State,
 ) -> ParticipantInfo {
-    let mut participant = participant(&format!("{identity}:browser:{operation_id}"), state);
-    participant
-        .attributes
-        .insert("voice_operation_id".to_string(), operation_id.to_string());
-    participant
+    participant(
+        &voice_participant_identity(
+            identity,
+            VoiceRtcEngine::Web,
+            "client-a",
+            operation_id,
+            "epoch-a",
+        ),
+        state,
+    )
 }
 
 #[test]
@@ -47,8 +53,8 @@ fn reconciliation_keeps_livekit_standard_participants() {
     let plan = voice_participant_reconciliation(
         &ids(&["user-a", "user-b"]),
         &[
-            participant_with_operation("user-a", "op-a", participant_info::State::Active),
-            participant("user-b", participant_info::State::Joined),
+            participant_with_operation("user-a", OP_A, participant_info::State::Active),
+            participant_with_operation("user-b", OP_B, participant_info::State::Joined),
         ],
     );
 
@@ -93,7 +99,7 @@ fn reconciliation_removes_livekit_base_participant_without_redis_membership() {
         &[participant("user-a", participant_info::State::Active)],
     );
 
-    assert_eq!(plan.livekit_members, ids(&["user-a"]));
+    assert_eq!(plan.livekit_members, Vec::<String>::new());
     assert_eq!(plan.stale_members, Vec::<String>::new());
     assert_eq!(plan.stale_livekit_participants, ids(&["user-a"]));
 }
@@ -115,7 +121,10 @@ fn reconciliation_keeps_native_sidecar_for_committed_base_member() {
 
     assert_eq!(plan.livekit_members, ids(&["user-a"]));
     assert_eq!(plan.stale_members, Vec::<String>::new());
-    assert_eq!(plan.stale_livekit_participants, Vec::<String>::new());
+    assert_eq!(
+        plan.stale_livekit_participants,
+        ids(&[&format!("user-a:desktop-native:{OP_A}:screen")])
+    );
 }
 
 #[test]
@@ -187,7 +196,7 @@ fn reconciliation_accepts_both_finalized_and_prepared_native_operations() {
         &ids(&["user-a"]),
     );
 
-    assert!(plan.stale_livekit_participants.is_empty());
+    assert_eq!(plan.stale_livekit_participants.len(), 2);
 }
 
 #[test]
@@ -203,12 +212,18 @@ fn reconciliation_removes_stale_browser_operation_for_same_identity() {
         &[],
     );
 
-    assert_eq!(plan.livekit_members, ids(&["user-a"]));
+    assert_eq!(plan.livekit_members, Vec::<String>::new());
     assert_eq!(
         plan.stale_livekit_participants,
-        ids(&[&format!("user-a:browser:{OP_B}")])
+        ids(&[&voice_participant_identity(
+            "user-a",
+            VoiceRtcEngine::Web,
+            "client-a",
+            OP_B,
+            "epoch-a"
+        )])
     );
-    assert!(plan.stale_members.is_empty());
+    assert_eq!(plan.stale_members, ids(&["user-a"]));
 }
 
 #[test]

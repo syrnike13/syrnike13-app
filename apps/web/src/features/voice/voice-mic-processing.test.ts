@@ -10,6 +10,18 @@ function participantWithAudioTrack(audioTrack: unknown) {
   }
 }
 
+function processingPreferences() {
+  const prefs = voicePreferenceStore.getState()
+  return {
+    echoCancellation: prefs.echoCancellation,
+    noiseSuppression: prefs.noiseSuppression,
+    inputVolume: prefs.inputVolume,
+    voiceGateEnabled: prefs.voiceGateEnabled,
+    voiceGateThresholdDb: prefs.voiceGateThresholdDb,
+    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
+  }
+}
+
 describe('applyMicProcessing', () => {
   beforeEach(() => {
     voicePreferenceStore.setVoiceGateEnabled(true)
@@ -27,7 +39,10 @@ describe('applyMicProcessing', () => {
       setProcessor: vi.fn(async (_processor: unknown) => {}),
     }
 
-    await applyMicProcessing(participantWithAudioTrack(audioTrack) as never)
+    await applyMicProcessing(
+      participantWithAudioTrack(audioTrack) as never,
+      processingPreferences(),
+    )
 
     expect(audioTrack.setProcessor).toHaveBeenCalledTimes(1)
     const appliedProcessor = audioTrack.setProcessor.mock.calls[0]?.[0] as
@@ -55,7 +70,10 @@ describe('applyMicProcessing', () => {
       setProcessor: vi.fn(async () => {}),
     }
 
-    await applyMicProcessing(participantWithAudioTrack(audioTrack) as never)
+    await applyMicProcessing(
+      participantWithAudioTrack(audioTrack) as never,
+      processingPreferences(),
+    )
 
     expect(audioTrack.setProcessor).toHaveBeenCalledTimes(1)
   })
@@ -73,7 +91,10 @@ describe('applyMicProcessing', () => {
     }
 
     await expect(
-      applyMicProcessing(participantWithAudioTrack(audioTrack) as never),
+      applyMicProcessing(
+        participantWithAudioTrack(audioTrack) as never,
+        processingPreferences(),
+      ),
     ).resolves.toBeUndefined()
 
     expect(audioTrack.setProcessor).toHaveBeenCalledTimes(1)

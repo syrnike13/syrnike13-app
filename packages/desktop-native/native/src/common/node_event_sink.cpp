@@ -115,6 +115,16 @@ Napi::Object eventResultToObject(Napi::Env env, const RuntimeEvent& event) {
   setIfPresent(result, "captureMethod", event.capture_method);
   if (!event.devices.empty()) result.Set("devices", devicesToArray(env, event.devices));
   if (!event.sources.empty()) result.Set("sources", sourcesToArray(env, event.sources));
+  if (event.type == "activeSpeakers" || !event.participant_identities.empty()) {
+    auto participants = Napi::Array::New(env, event.participant_identities.size());
+    for (std::size_t index = 0; index < event.participant_identities.size(); ++index) {
+      participants.Set(
+        static_cast<std::uint32_t>(index),
+        event.participant_identities[index]
+      );
+    }
+    result.Set("participantIdentities", participants);
+  }
   if (event.width > 0) result.Set("width", event.width);
   if (event.height > 0) result.Set("height", event.height);
   if (event.fps > 0) result.Set("fps", event.fps);
@@ -157,6 +167,7 @@ Napi::Object lifecycleStateToObject(Napi::Env env, const RuntimeEvent& event) {
   state.Set("status", event.status == "stopped" ? "idle" : event.status);
   state.Set("sessionId", event.session_id);
   setIfPresent(state, "message", event.detail);
+  setIfPresent(state, "deviceId", event.device_id);
   if (event.width > 0) state.Set("width", event.width);
   if (event.height > 0) state.Set("height", event.height);
   if (event.fps > 0) state.Set("fps", event.fps);
@@ -193,6 +204,8 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
   result.Set("type", event.type);
   result.Set("sequence", jsNumber(env, event.sequence));
   setIfPresent(result, "requestId", event.request_id);
+  setIfPresent(result, "kind", event.kind);
+  setIfPresent(result, "trackId", event.track_id);
 
   if (event.type == "reply") {
     result.Set("ok", event.ok);
@@ -221,6 +234,23 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
 
   setIfPresent(result, "sessionId", event.session_id);
   if (!event.session_id.empty()) result.Set("generation", jsNumber(env, event.generation));
+  if (event.type == "remoteVideoFrame") {
+    result.Set("participantIdentity", event.participant_identity);
+    result.Set("source", event.video_source);
+    result.Set("frameSequence", jsNumber(env, event.frame_sequence));
+    result.Set("timestampUs", jsNumber(env, event.timestamp_us));
+    result.Set("width", event.width);
+    result.Set("height", event.height);
+    const auto handle = event.nt_handle;
+    result.Set(
+      "ntHandle",
+      Napi::Buffer<std::uint8_t>::Copy(
+        env,
+        reinterpret_cast<const std::uint8_t*>(&handle),
+        sizeof(handle)
+      )
+    );
+  }
   if (event.error) result.Set("error", errorToObject(env, *event.error));
   if (event.type == "sessionLifecycle") {
     result.Set("state", lifecycleStateToObject(env, event));
@@ -247,6 +277,16 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
   }
   if (!event.devices.empty()) result.Set("devices", devicesToArray(env, event.devices));
   if (!event.sources.empty()) result.Set("sources", sourcesToArray(env, event.sources));
+  if (event.type == "activeSpeakers" || !event.participant_identities.empty()) {
+    auto participants = Napi::Array::New(env, event.participant_identities.size());
+    for (std::size_t index = 0; index < event.participant_identities.size(); ++index) {
+      participants.Set(
+        static_cast<std::uint32_t>(index),
+        event.participant_identities[index]
+      );
+    }
+    result.Set("participantIdentities", participants);
+  }
   if (event.type == "screenCaptureEnded") {
     result.Set("reason", event.reason);
     setIfPresent(result, "message", event.detail);

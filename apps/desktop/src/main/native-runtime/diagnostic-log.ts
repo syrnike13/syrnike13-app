@@ -167,7 +167,7 @@ export async function pruneNativeDiagnosticSessions(
     entries
       .filter(
         (entry) =>
-          entry.isDirectory() && /^native-(?:media|hooks)-/.test(entry.name),
+          entry.isDirectory() && /^native-(?:media|hotkey|overlay)-/.test(entry.name),
       )
       .map(async (entry) => {
         const directory = path.join(rootDir, entry.name)

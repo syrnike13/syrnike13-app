@@ -2,24 +2,27 @@ use std::collections::HashSet;
 
 use iso8601_timestamp::{Duration, Timestamp};
 use syrnike_database::{
-    events::client::EventV1,
+    events::client::{
+        EventV1, VoiceAuthorityLease, VoiceAuthorityMembershipClaim, VoiceRtcCredential,
+    },
     util::{
         permissions::{perms, DatabasePermissionQuery},
         reference::Reference,
     },
     voice::{
-        browser_voice_identity, cancel_current_pending_voice_join_in_server, create_voice_session,
-        get_channel_node, get_current_voice_operation_id, get_user_voice_channel_in_server,
-        get_voice_state, remove_user_from_voice_channel, set_channel_node,
-        set_user_moved_from_voice, set_user_moved_to_voice, sync_user_voice_permissions,
-        UserVoiceChannel, VoiceClient, VoiceSession, VoiceSessionCreate,
-        BROWSER_VOICE_OPERATION_ID_ATTRIBUTE, VOICE_OPERATION_ID_PREFIX, VOICE_SESSION_TTL_SECONDS,
+        cancel_current_pending_voice_join_in_server, create_voice_session, get_channel_node,
+        get_current_voice_operation_id, get_current_voice_session,
+        get_user_voice_channel_in_server, get_voice_state, remove_user_from_voice_channel,
+        set_channel_node, set_user_moved_from_voice, set_user_moved_to_voice,
+        sync_user_voice_permissions, voice_participant_identity, UserVoiceChannel, VoiceClient,
+        VoiceSession, VoiceSessionCreate, VOICE_OPERATION_ID_PREFIX, VOICE_SESSION_TTL_SECONDS,
     },
     Database, File, PartialMember, User,
 };
 use syrnike_models::v0::{self, FieldsMember};
 
 use rocket::{form::validate::Contains, serde::json::Json, State};
+use syrnike_config::config;
 use syrnike_permissions::{
     calculate_channel_permissions, calculate_server_permissions, ChannelPermission,
 };
@@ -261,29 +264,42 @@ pub async fn edit(
                 get_current_voice_operation_id(&old_user_voice_channel, &target_user.id)
                     .await?
                     .ok_or_else(|| create_error!(NotConnected))?;
+            let previous_session = get_current_voice_session(&target_user.id)
+                .await?
+                .ok_or_else(|| create_error!(NotConnected))?;
+            let connection_epoch = Uuid::new_v4().to_string();
             let mut query = perms(db, &target_user).channel(&new_voice_channel);
             let permissions = calculate_channel_permissions(&mut query).await;
 
             voice_client
                 .create_room(&new_node, &new_voice_channel)
                 .await?;
+            let identity = voice_participant_identity(
+                &target_user.id,
+                previous_session.rtc_engine,
+                &previous_session.client_instance_id,
+                &operation_id,
+                &connection_epoch,
+            );
             let token = voice_client
-                .create_token_for_identity_with_attributes(
+                .create_token_for_identity(
                     &new_node,
                     db,
                     &target_user,
-                    &browser_voice_identity(&target_user.id, &operation_id),
+                    &identity,
                     permissions,
                     &new_voice_channel,
-                    [(BROWSER_VOICE_OPERATION_ID_ATTRIBUTE, operation_id.clone())],
                 )
                 .await?;
             let created_at = Timestamp::now_utc();
             create_voice_session(&VoiceSession::new_awaiting_join(VoiceSessionCreate {
-                operation_id,
+                operation_id: operation_id.clone(),
                 user_id: target_user.id.clone(),
                 channel: new_user_voice_channel.clone(),
                 node: new_node.clone(),
+                rtc_engine: previous_session.rtc_engine,
+                client_instance_id: previous_session.client_instance_id.clone(),
+                connection_epoch: connection_epoch.clone(),
                 self_mute,
                 self_deaf,
                 created_at,
@@ -293,23 +309,64 @@ pub async fn edit(
             }))
             .await?;
 
+            let authority_version =
+                syrnike_database::voice::get_voice_authority_snapshot(&target_user.id)
+                    .await?
+                    .version;
+            let url = config()
+                .await
+                .hosts
+                .livekit
+                .get(&new_node)
+                .cloned()
+                .ok_or_else(|| create_error!(UnknownNode))?;
+
+            EventV1::VoiceAuthorityMove {
+                from: VoiceAuthorityMembershipClaim {
+                    operation_id: previous_session.operation_id.clone(),
+                    channel_id: channel.clone(),
+                    rtc_engine: previous_session.rtc_engine,
+                    client_instance_id: previous_session.client_instance_id.clone(),
+                    connection_epoch: previous_session.connection_epoch.clone(),
+                },
+                lease: VoiceAuthorityLease {
+                    operation_id: operation_id.clone(),
+                    authority_version,
+                    channel_id: new_voice_channel.id().to_string(),
+                    node: new_node.clone(),
+                    url,
+                    credential: VoiceRtcCredential {
+                        rtc_engine: previous_session.rtc_engine,
+                        client_instance_id: previous_session.client_instance_id.clone(),
+                        connection_epoch: connection_epoch.clone(),
+                        token,
+                        identity,
+                    },
+                },
+            }
+            .private(target_user.id.clone())
+            .await;
+
+            // Let the exact move directive reach the owning client before the
+            // old participant is forcibly removed. The client still performs
+            // break-before-make; removal is an administrative enforcement
+            // fallback for an unresponsive or non-compliant client.
+            async_std::task::sleep(std::time::Duration::from_millis(500)).await;
+
             let _ = async_std::future::timeout(
                 std::time::Duration::from_secs(2),
                 voice_client.remove_user(
                     &old_node,
-                    &browser_voice_identity(&target_user.id, &previous_operation_id),
+                    &voice_participant_identity(
+                        &target_user.id,
+                        previous_session.rtc_engine,
+                        &previous_session.client_instance_id,
+                        &previous_operation_id,
+                        &previous_session.connection_epoch,
+                    ),
                     &channel,
                 ),
             )
-            .await;
-
-            EventV1::UserMoveVoiceChannel {
-                node: new_node,
-                from: channel,
-                to: new_voice_channel.id().to_string(),
-                token,
-            }
-            .private(target_user.id.clone())
             .await;
         };
     } else if can_publish.is_some()

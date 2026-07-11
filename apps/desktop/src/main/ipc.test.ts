@@ -36,7 +36,7 @@ vi.mock('./hotkeys', () => ({
 
 vi.mock('./desktop-session', () => ({
   clearDesktopSession: vi.fn(),
-  loadDesktopSession: vi.fn(() => null),
+  loadDesktopSession: vi.fn(async () => null),
   saveDesktopSession: vi.fn(),
 }))
 
@@ -47,6 +47,16 @@ vi.mock('./desktop-local-settings', () => ({
 }))
 
 vi.mock('./native-media-engine', () => ({
+  createNativeRtcEngineAdapter: vi.fn(() => ({
+    connect: vi.fn(async () => undefined),
+    disconnect: vi.fn(async () => undefined),
+    updateDesiredMedia: vi.fn(),
+    retryMedia: vi.fn(),
+    subscribe: vi.fn(() => () => undefined),
+    prewarmMicrophone: vi.fn(async () => undefined),
+    dispose: vi.fn(),
+  })),
+  logNativeVoiceDiagnostic: vi.fn(),
   registerNativeMediaRuntimeIpc: vi.fn(),
 }))
 
@@ -85,6 +95,7 @@ describe('registerDesktopIpc', () => {
       setCloseToTray: vi.fn(),
       setOpenAtLogin: vi.fn(),
       setTrayVoiceState: vi.fn(),
+      updateLocalSettings: vi.fn(async () => ({} as never)),
       showWindow: vi.fn(),
       localSettingsPath: 'local-settings.json',
       sessionPath: 'session.json',
@@ -102,21 +113,20 @@ describe('registerDesktopIpc', () => {
   it('persists observability preferences through the typed settings seam', async () => {
     const { IPC } = await import('@syrnike13/platform')
     const { registerDesktopIpc } = await import('./ipc')
-    const onLocalSettingsUpdated = vi.fn()
     const saved = {
       observability: {
         anonymousNativeMetrics: false,
         nativeCrashReports: true,
       },
     }
-    updateDesktopLocalSettingsMock.mockResolvedValueOnce(saved)
+    const updateLocalSettings = vi.fn(async () => saved as never)
 
     registerDesktopIpc(() => null, {
       getWindowPreferences: () => ({ closeToTray: false, openAtLogin: false }),
       setCloseToTray: vi.fn(),
       setOpenAtLogin: vi.fn(),
       setTrayVoiceState: vi.fn(),
-      onLocalSettingsUpdated,
+      updateLocalSettings,
       showWindow: vi.fn(),
       localSettingsPath: 'local-settings.json',
       sessionPath: 'session.json',
@@ -132,11 +142,6 @@ describe('registerDesktopIpc', () => {
       },
     }
     await expect(registration?.[1]({}, patch)).resolves.toBe(saved)
-    expect(updateDesktopLocalSettingsMock).toHaveBeenCalledWith(
-      'local-settings.json',
-      patch,
-      undefined,
-    )
-    expect(onLocalSettingsUpdated).toHaveBeenCalledWith(saved)
+    expect(updateLocalSettings).toHaveBeenCalledWith(patch)
   })
 })

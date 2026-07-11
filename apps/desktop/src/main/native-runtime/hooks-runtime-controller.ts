@@ -1,64 +1,62 @@
 import type { NativeInputEvent } from '@syrnike13/platform'
 
-import type {
-  HooksRuntimeCommand,
-  HooksRuntimeEvent,
-  OverlayForegroundWindow,
-} from './contract'
-import {
-  NativeRuntimeRequestError,
-  NativeRuntimeSupervisor,
-} from './runtime-supervisor'
+import type { HooksRuntimeCommand, HooksRuntimeEvent, OverlayForegroundWindow } from './contract'
+import { NativeRuntimeRequestError, NativeRuntimeSupervisor } from './runtime-supervisor'
 import type { NativeRuntimeSupervisorSnapshot } from './runtime-supervisor'
-import {
-  createElectronUtilityAdapterFactory,
-  nativeRuntimeAvailable,
-} from './utility-adapter'
+import { createElectronUtilityAdapterFactory, nativeRuntimeAvailable } from './utility-adapter'
 import { attachNativeRuntimeMetrics } from './anonymous-metrics'
 
-const HOOKS_REQUEST_TIMEOUT_MS = 5_000
+const REQUEST_TIMEOUT_MS = 5_000
 
 export class HooksRuntimeController {
   private readonly inputListeners = new Set<(event: NativeInputEvent) => void>()
-  private readonly overlayListeners = new Set<
-    (window: OverlayForegroundWindow | null) => void
-  >()
-  private readonly stateListeners = new Set<
-    (snapshot: NativeRuntimeSupervisorSnapshot) => void
-  >()
+  private readonly overlayListeners = new Set<(window: OverlayForegroundWindow | null) => void>()
+  private readonly stateListeners = new Set<(snapshot: NativeRuntimeSupervisorSnapshot) => void>()
   private wantsHotkeys = false
   private wantsOverlay = false
-  private lastRestoredRestartCount = 0
+  private hotkeyRestored = 0
+  private overlayRestored = 0
   private disposed = false
 
-  constructor(private readonly supervisor: NativeRuntimeSupervisor) {
-    supervisor.onEvent((event) => this.handleEvent(event as HooksRuntimeEvent))
+  constructor(
+    private readonly hotkeySupervisor: NativeRuntimeSupervisor,
+    private readonly overlaySupervisor: NativeRuntimeSupervisor = hotkeySupervisor,
+  ) {
+    hotkeySupervisor.onEvent((event) => this.handleHotkeyEvent(event as HooksRuntimeEvent))
+    overlaySupervisor.onEvent((event) => this.handleOverlayEvent(event as HooksRuntimeEvent))
+    if (overlaySupervisor === hotkeySupervisor) this.observe(hotkeySupervisor, 'both')
+    else { this.observe(hotkeySupervisor, 'hotkey'); this.observe(overlaySupervisor, 'overlay') }
+  }
+
+  private observe(supervisor: NativeRuntimeSupervisor, kind: 'hotkey' | 'overlay' | 'both') {
     supervisor.onStateChange((snapshot) => {
       for (const listener of this.stateListeners) listener(snapshot)
-      if (
-        snapshot.status === 'ready' &&
-        snapshot.restartCount > this.lastRestoredRestartCount
-      ) {
-        this.lastRestoredRestartCount = snapshot.restartCount
-        void this.restoreDesiredState()
+      if (snapshot.status === 'ready') {
+        const restored = kind === 'overlay' ? this.overlayRestored : this.hotkeyRestored
+        if (snapshot.restartCount > restored) {
+          if (kind !== 'overlay') this.hotkeyRestored = snapshot.restartCount
+          if (kind !== 'hotkey') this.overlayRestored = snapshot.restartCount
+          if (kind === 'both') void Promise.all([this.restore('hotkey'), this.restore('overlay')])
+          else void this.restore(kind)
+        }
       }
-      if (snapshot.status === 'recovering' || snapshot.status === 'degraded') {
+      if (kind !== 'hotkey' && (snapshot.status === 'recovering' || snapshot.status === 'degraded')) {
         for (const listener of this.overlayListeners) listener(null)
       }
     })
   }
 
-  isAvailable() {
-    return nativeRuntimeAvailable('hooks')
-  }
-
+  isAvailable() { return nativeRuntimeAvailable('hotkey') && nativeRuntimeAvailable('overlay') }
   getStatus() {
-    return this.supervisor.getSnapshot().status
+    const hotkey = this.hotkeySupervisor.getSnapshot().status
+    const overlay = this.overlaySupervisor.getSnapshot().status
+    if (hotkey === 'degraded' || overlay === 'degraded') return 'degraded'
+    if (hotkey === 'recovering' || overlay === 'recovering') return 'recovering'
+    if (hotkey === 'starting' || overlay === 'starting') return 'starting'
+    return hotkey === 'ready' && overlay === 'ready' ? 'ready' : 'stopped'
   }
-
   onStateChange(listener: (snapshot: NativeRuntimeSupervisorSnapshot) => void) {
-    this.stateListeners.add(listener)
-    return () => this.stateListeners.delete(listener)
+    this.stateListeners.add(listener); return () => this.stateListeners.delete(listener)
   }
 
   async startHotkeys(listener: (event: NativeInputEvent) => void) {
@@ -66,111 +64,60 @@ export class HooksRuntimeController {
     this.inputListeners.add(listener)
     if (this.wantsHotkeys) return
     this.wantsHotkeys = true
-    try {
-      await this.request({ type: 'startHotkeys' })
-    } catch (error) {
-      if (!isRetryableRuntimeLoss(error)) {
-        this.wantsHotkeys = false
-        this.inputListeners.delete(listener)
-      }
-      throw error
-    }
+    try { await this.request('hotkey', { type: 'startHotkeys' }) }
+    catch (error) { if (!isRetryableRuntimeLoss(error)) { this.wantsHotkeys = false; this.inputListeners.delete(listener) }; throw error }
   }
-
   async stopHotkeys(listener?: (event: NativeInputEvent) => void) {
-    if (listener) this.inputListeners.delete(listener)
-    else this.inputListeners.clear()
-    if (this.inputListeners.size > 0 || !this.wantsHotkeys) return
+    if (listener) this.inputListeners.delete(listener); else this.inputListeners.clear()
+    if (this.inputListeners.size || !this.wantsHotkeys) return
     this.wantsHotkeys = false
-    await this.request({ type: 'stopHotkeys' }).catch(() => undefined)
+    await this.request('hotkey', { type: 'stopHotkeys' }).catch(() => undefined)
   }
-
-  async startOverlay(
-    listener: (window: OverlayForegroundWindow | null) => void,
-  ) {
+  async startOverlay(listener: (window: OverlayForegroundWindow | null) => void) {
     if (this.disposed) throw new Error('Native hooks controller is disposed')
     this.overlayListeners.add(listener)
     if (this.wantsOverlay) return
     this.wantsOverlay = true
-    try {
-      await this.request({ type: 'startOverlay' })
-    } catch (error) {
-      if (!isRetryableRuntimeLoss(error)) {
-        this.wantsOverlay = false
-        this.overlayListeners.delete(listener)
-      }
-      throw error
-    }
+    try { await this.request('overlay', { type: 'startOverlay' }) }
+    catch (error) { if (!isRetryableRuntimeLoss(error)) { this.wantsOverlay = false; this.overlayListeners.delete(listener) }; throw error }
   }
-
-  async stopOverlay(
-    listener?: (window: OverlayForegroundWindow | null) => void,
-  ) {
-    if (listener) this.overlayListeners.delete(listener)
-    else this.overlayListeners.clear()
-    if (this.overlayListeners.size > 0 || !this.wantsOverlay) return
+  async stopOverlay(listener?: (window: OverlayForegroundWindow | null) => void) {
+    if (listener) this.overlayListeners.delete(listener); else this.overlayListeners.clear()
+    if (this.overlayListeners.size || !this.wantsOverlay) return
     this.wantsOverlay = false
-    await this.request({ type: 'stopOverlay' }).catch(() => undefined)
+    await this.request('overlay', { type: 'stopOverlay' }).catch(() => undefined)
   }
-
   async dispose() {
     if (this.disposed) return
-    this.disposed = true
-    this.wantsHotkeys = false
-    this.wantsOverlay = false
-    this.inputListeners.clear()
-    this.overlayListeners.clear()
-    this.stateListeners.clear()
-    await this.supervisor.shutdown()
+    this.disposed = true; this.inputListeners.clear(); this.overlayListeners.clear(); this.stateListeners.clear()
+    await Promise.all([this.hotkeySupervisor.shutdown(), this.overlaySupervisor === this.hotkeySupervisor ? undefined : this.overlaySupervisor.shutdown()])
   }
-
-  private request(command: HooksRuntimeCommand) {
-    if (this.disposed) {
-      return Promise.reject(new Error('Native hooks controller is disposed'))
-    }
-    if (!this.isAvailable()) {
-      return Promise.reject(new Error('Native hooks runtime is not available'))
-    }
-    return this.supervisor.request(command, HOOKS_REQUEST_TIMEOUT_MS)
+  private request(kind: 'hotkey' | 'overlay', command: HooksRuntimeCommand) {
+    if (this.disposed) return Promise.reject(new Error('Native hooks controller is disposed'))
+    if (!this.isAvailable()) return Promise.reject(new Error(`Native ${kind} runtime is not available`))
+    return (kind === 'hotkey' ? this.hotkeySupervisor : this.overlaySupervisor).request(command, REQUEST_TIMEOUT_MS)
   }
-
-  private handleEvent(event: HooksRuntimeEvent) {
-    switch (event.type) {
-      case 'input':
-        for (const listener of this.inputListeners) listener(event.input)
-        return
-      case 'foregroundWindow':
-        for (const listener of this.overlayListeners) listener(event.window)
-        return
-      case 'runtimeError':
-        console.warn('[native-hooks]', event.error.code, event.error.message)
-        return
-    }
+  private handleHotkeyEvent(event: HooksRuntimeEvent) {
+    if (event.type === 'input') for (const listener of this.inputListeners) listener(event.input)
+    else if (event.type === 'runtimeError') console.warn('[native-hotkey]', event.error.code, event.error.message)
   }
-
-  private async restoreDesiredState() {
-    const commands: HooksRuntimeCommand[] = []
-    if (this.wantsHotkeys) commands.push({ type: 'startHotkeys' })
-    if (this.wantsOverlay) commands.push({ type: 'startOverlay' })
-    await Promise.all(commands.map((command) => this.request(command).catch(() => undefined)))
+  private handleOverlayEvent(event: HooksRuntimeEvent) {
+    if (event.type === 'foregroundWindow') for (const listener of this.overlayListeners) listener(event.window)
+    else if (event.type === 'runtimeError') console.warn('[native-overlay]', event.error.code, event.error.message)
+  }
+  private async restore(kind: 'hotkey' | 'overlay') {
+    if (kind === 'hotkey' && this.wantsHotkeys) await this.request(kind, { type: 'startHotkeys' }).catch(() => undefined)
+    if (kind === 'overlay' && this.wantsOverlay) await this.request(kind, { type: 'startOverlay' }).catch(() => undefined)
   }
 }
 
-const hooksSupervisor = new NativeRuntimeSupervisor({
-  runtime: 'hooks',
-  createAdapter: createElectronUtilityAdapterFactory('hooks'),
-})
-
-attachNativeRuntimeMetrics(hooksSupervisor, 'hooks')
-
-export const hooksRuntimeController = new HooksRuntimeController(hooksSupervisor)
+const hotkeySupervisor = new NativeRuntimeSupervisor({ runtime: 'hotkey', createAdapter: createElectronUtilityAdapterFactory('hotkey') })
+const overlaySupervisor = new NativeRuntimeSupervisor({ runtime: 'overlay', createAdapter: createElectronUtilityAdapterFactory('overlay') })
+attachNativeRuntimeMetrics(hotkeySupervisor, 'hotkey')
+attachNativeRuntimeMetrics(overlaySupervisor, 'overlay')
+export const hooksRuntimeController = new HooksRuntimeController(hotkeySupervisor, overlaySupervisor)
 
 function isRetryableRuntimeLoss(error: unknown) {
-  return (
-    error instanceof NativeRuntimeRequestError &&
-    error.detail.retryable &&
-    (error.detail.code === 'runtime_lost' ||
-      error.detail.code === 'request_timeout' ||
-      error.detail.code === 'handshake_failed')
-  )
+  return error instanceof NativeRuntimeRequestError && error.detail.retryable &&
+    ['runtime_lost', 'request_timeout', 'handshake_failed'].includes(error.detail.code)
 }

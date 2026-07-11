@@ -23,6 +23,10 @@ pub fn voice_current_key(user_id: &str) -> String {
     format!("voice_current:{user_id}")
 }
 
+pub fn voice_authority_version_key(user_id: &str) -> String {
+    format!("voice_authority_version:{user_id}")
+}
+
 pub fn voice_reservation_key(operation_id: &str) -> String {
     format!("voice_reservation:{operation_id}")
 }
@@ -33,13 +37,6 @@ pub fn voice_reservation_current_key(user_id: &str) -> String {
 
 pub fn voice_channel_reservations_key(channel_id: &str) -> String {
     format!("voice_channel_reservations:{channel_id}")
-}
-
-pub fn voice_retain_receipt_key(
-    retained_operation_id: &str,
-    canceled_operation_id: &str,
-) -> String {
-    format!("voice_retain_receipt:{retained_operation_id}:{canceled_operation_id}")
 }
 
 pub fn voice_channel_members_key(channel_id: &str) -> String {
@@ -271,54 +268,6 @@ redis.call('SETEX', KEYS[6], tonumber(ARGV[4]), ARGV[3])
 return 1
 "#;
 
-const RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION: &str = r#"
-if redis.call('GET', KEYS[1]) ~= ARGV[1] then
-  return 0
-end
-
-if redis.call('GET', KEYS[2]) ~= ARGV[2] then
-  return 0
-end
-
-if redis.call('GET', KEYS[3]) ~= ARGV[3] then
-  return 0
-end
-
-if redis.call('GET', KEYS[4]) ~= ARGV[4] then
-  return 0
-end
-
-redis.call('DEL', KEYS[1])
-redis.call('SETEX', KEYS[5], tonumber(ARGV[5]), ARGV[3])
-redis.call('SADD', KEYS[6], ARGV[1])
-redis.call('SETEX', KEYS[8], tonumber(ARGV[8]), ARGV[9])
-redis.call('SREM', KEYS[7], ARGV[7])
-redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
-redis.call('EXPIRE', KEYS[3], tonumber(ARGV[5]))
-redis.call('EXPIRE', KEYS[4], tonumber(ARGV[5]))
-return 1
-"#;
-
-const CONFIRM_RETAINED_VOICE_SESSION: &str = r#"
-if redis.call('GET', KEYS[1]) ~= false then
-  return 0
-end
-
-if redis.call('GET', KEYS[2]) ~= ARGV[1] then
-  return 0
-end
-
-if redis.call('GET', KEYS[3]) ~= ARGV[2] then
-  return 0
-end
-
-if redis.call('GET', KEYS[4]) ~= ARGV[3] then
-  return 0
-end
-
-return 1
-"#;
-
 const REFRESH_ACTIVE_VOICE_SESSION_PROJECTION: &str = r#"
 if redis.call('GET', KEYS[1]) ~= ARGV[3] then
   return 0
@@ -395,6 +344,9 @@ pub struct VoiceReservation {
     pub user_id: String,
     pub channel: UserVoiceChannel,
     pub node: String,
+    pub rtc_engine: super::VoiceRtcEngine,
+    pub client_instance_id: String,
+    pub connection_epoch: String,
     pub expected_current_operation_id: Option<String>,
     pub expected_finalized_operation_id: Option<String>,
     pub state: VoiceReservationState,
@@ -414,6 +366,9 @@ pub struct VoiceSession {
     pub user_id: String,
     pub channel: UserVoiceChannel,
     pub node: String,
+    pub rtc_engine: super::VoiceRtcEngine,
+    pub client_instance_id: String,
+    pub connection_epoch: String,
     pub room_sid: Option<String>,
     pub participant_sid: Option<String>,
     pub state: VoiceSessionState,
@@ -437,6 +392,9 @@ pub struct VoiceTransportCleanup {
     pub user_id: String,
     pub channel: UserVoiceChannel,
     pub node: String,
+    pub rtc_engine: super::VoiceRtcEngine,
+    pub client_instance_id: String,
+    pub connection_epoch: String,
 }
 
 pub struct VoiceSessionCreate {
@@ -444,6 +402,9 @@ pub struct VoiceSessionCreate {
     pub user_id: String,
     pub channel: UserVoiceChannel,
     pub node: String,
+    pub rtc_engine: super::VoiceRtcEngine,
+    pub client_instance_id: String,
+    pub connection_epoch: String,
     pub self_mute: bool,
     pub self_deaf: bool,
     pub created_at: Timestamp,
@@ -473,6 +434,7 @@ pub enum VoiceSessionCommitResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceAuthoritySnapshot {
+    pub version: u64,
     pub reservation: Option<VoiceReservation>,
     pub session: Option<VoiceSession>,
 }
@@ -488,6 +450,9 @@ impl VoiceReservation {
             user_id: session.user_id.clone(),
             channel: session.channel.clone(),
             node: session.node.clone(),
+            rtc_engine: session.rtc_engine,
+            client_instance_id: session.client_instance_id.clone(),
+            connection_epoch: session.connection_epoch.clone(),
             expected_current_operation_id,
             expected_finalized_operation_id,
             state: VoiceReservationState::Prepared,
@@ -508,6 +473,9 @@ impl VoiceReservation {
             user_id: self.user_id.clone(),
             channel: self.channel.clone(),
             node: self.node.clone(),
+            rtc_engine: self.rtc_engine,
+            client_instance_id: self.client_instance_id.clone(),
+            connection_epoch: self.connection_epoch.clone(),
             room_sid: None,
             participant_sid: None,
             state: VoiceSessionState::AwaitingLivekitJoin,
@@ -555,6 +523,9 @@ impl From<&VoiceReservation> for VoiceTransportCleanup {
             user_id: reservation.user_id.clone(),
             channel: reservation.channel.clone(),
             node: reservation.node.clone(),
+            rtc_engine: reservation.rtc_engine,
+            client_instance_id: reservation.client_instance_id.clone(),
+            connection_epoch: reservation.connection_epoch.clone(),
         }
     }
 }
@@ -566,6 +537,9 @@ impl From<&VoiceSession> for VoiceTransportCleanup {
             user_id: session.user_id.clone(),
             channel: session.channel.clone(),
             node: session.node.clone(),
+            rtc_engine: session.rtc_engine,
+            client_instance_id: session.client_instance_id.clone(),
+            connection_epoch: session.connection_epoch.clone(),
         }
     }
 }
@@ -578,6 +552,9 @@ impl VoiceSession {
             user_id: input.user_id,
             channel: input.channel,
             node: input.node,
+            rtc_engine: input.rtc_engine,
+            client_instance_id: input.client_instance_id,
+            connection_epoch: input.connection_epoch,
             room_sid: None,
             participant_sid: None,
             state: VoiceSessionState::AwaitingLivekitJoin,
@@ -786,8 +763,9 @@ pub async fn create_voice_session_if_current(
                 if current.user_id != session.user_id
                     || current.channel != session.channel
                     || current.node != session.node
-                    || current.expected_current_operation_id.as_deref()
-                        != expected_current_operation_id
+                    || current.rtc_engine != session.rtc_engine
+                    || current.client_instance_id != session.client_instance_id
+                    || current.connection_epoch != session.connection_epoch
                 {
                     return Ok(false);
                 }
@@ -822,13 +800,18 @@ pub async fn create_voice_session_if_current(
                     .as_ref()
                     .map(|session| session.operation_id.clone())
             });
+        let effective_expected_current_operation_id = idempotent_reservation
+            .and_then(|current| current.expected_current_operation_id.clone())
+            .or_else(|| expected_current_operation_id.map(ToString::to_string));
         let mut reservation = VoiceReservation::from_pending_session(
             session,
-            expected_current_operation_id.map(ToString::to_string),
+            effective_expected_current_operation_id.clone(),
             expected_finalized_operation_id,
         );
         if let Some(current) = idempotent_reservation {
             reservation.created_at = current.created_at;
+            reservation.self_mute = current.self_mute;
+            reservation.self_deaf = current.self_deaf;
             reservation.screensharing = current.screensharing;
             reservation.camera = current.camera;
         }
@@ -877,7 +860,11 @@ pub async fn create_voice_session_if_current(
                 .arg(raw_reservation)
                 .arg(VOICE_SESSION_TTL_SECONDS)
                 .arg(&reservation.operation_id)
-                .arg(expected_current_operation_id.unwrap_or_default())
+                .arg(
+                    effective_expected_current_operation_id
+                        .as_deref()
+                        .unwrap_or_default(),
+                )
                 .arg(
                     reservation
                         .expected_finalized_operation_id
@@ -973,71 +960,6 @@ pub async fn save_current_voice_reservation(
     Ok(saved == 1)
 }
 
-pub async fn retain_active_voice_session_from_reservation(
-    reservation: &VoiceReservation,
-    active_session: &VoiceSession,
-) -> Result<bool> {
-    if reservation.expected_finalized_operation_id.as_deref()
-        != Some(active_session.operation_id.as_str())
-    {
-        return Ok(false);
-    }
-
-    let reservation_raw = serde_json::to_string(reservation).to_internal_error()?;
-    let active_raw = serde_json::to_string(active_session).to_internal_error()?;
-    let cleanup_raw =
-        serde_json::to_string(&VoiceTransportCleanup::from(reservation)).to_internal_error()?;
-    let retained: i64 = run_eval(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION, 8, |command| {
-        command
-            .arg(voice_reservation_current_key(&reservation.user_id))
-            .arg(voice_reservation_key(&reservation.operation_id))
-            .arg(voice_current_key(&active_session.user_id))
-            .arg(voice_session_key(&active_session.operation_id))
-            .arg(voice_retain_receipt_key(
-                &active_session.operation_id,
-                &reservation.operation_id,
-            ))
-            .arg(voice_transport_cleanups_key())
-            .arg(voice_channel_reservations_key(&reservation.channel.id))
-            .arg(voice_transport_cleanup_key(&reservation.operation_id))
-            .arg(&reservation.operation_id)
-            .arg(reservation_raw)
-            .arg(&active_session.operation_id)
-            .arg(active_raw)
-            .arg(VOICE_SESSION_TTL_SECONDS)
-            .arg(&reservation.channel.id)
-            .arg(&reservation.user_id)
-            .arg(VOICE_TRANSPORT_CLEANUP_TTL_SECONDS)
-            .arg(cleanup_raw);
-    })
-    .await?;
-
-    Ok(retained == 1)
-}
-
-pub async fn confirm_retained_voice_session(
-    active_session: &VoiceSession,
-    expected_canceled_operation_id: &str,
-) -> Result<bool> {
-    let active_raw = serde_json::to_string(active_session).to_internal_error()?;
-    let retained: i64 = run_eval(CONFIRM_RETAINED_VOICE_SESSION, 4, |command| {
-        command
-            .arg(voice_reservation_current_key(&active_session.user_id))
-            .arg(voice_current_key(&active_session.user_id))
-            .arg(voice_session_key(&active_session.operation_id))
-            .arg(voice_retain_receipt_key(
-                &active_session.operation_id,
-                expected_canceled_operation_id,
-            ))
-            .arg(&active_session.operation_id)
-            .arg(active_raw)
-            .arg(&active_session.operation_id);
-    })
-    .await?;
-
-    Ok(retained == 1)
-}
-
 pub async fn get_voice_session(operation_id: &str) -> Result<Option<VoiceSession>> {
     super::get_connection()
         .await?
@@ -1083,7 +1005,14 @@ pub async fn get_voice_authority_snapshot(user_id: &str) -> Result<VoiceAuthorit
         })
         .await?;
 
+    let version: u64 = super::get_connection()
+        .await?
+        .get::<_, Option<u64>>(voice_authority_version_key(user_id))
+        .await
+        .to_internal_error()?
+        .unwrap_or(0);
     Ok(VoiceAuthoritySnapshot {
+        version,
         reservation: (!reservation_raw.is_empty())
             .then(|| serde_json::from_str(&reservation_raw).to_internal_error())
             .transpose()?,
@@ -1457,6 +1386,9 @@ mod tests {
             user_id: "user-a".to_string(),
             channel: channel(),
             node: "node-a".to_string(),
+            rtc_engine: super::super::VoiceRtcEngine::Web,
+            client_instance_id: "client-a".to_string(),
+            connection_epoch: "epoch-a".to_string(),
             self_mute: true,
             self_deaf: false,
             created_at: Timestamp::UNIX_EPOCH,
@@ -1584,38 +1516,11 @@ mod tests {
     }
 
     #[test]
-    fn retain_script_requires_current_reservation_and_active_session() {
-        assert!(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION
-            .contains("if redis.call('GET', KEYS[1]) ~= ARGV[1] then"));
-        assert!(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION
-            .contains("if redis.call('GET', KEYS[2]) ~= ARGV[2] then"));
-        assert!(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION
-            .contains("if redis.call('GET', KEYS[3]) ~= ARGV[3] then"));
-        assert!(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION
-            .contains("if redis.call('GET', KEYS[4]) ~= ARGV[4] then"));
-        assert!(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION.contains("redis.call('DEL', KEYS[1])"));
-        assert!(
-            !RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION.contains("redis.call('DEL', KEYS[2])")
-        );
-        assert!(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION
-            .contains("redis.call('SETEX', KEYS[5], tonumber(ARGV[5]), ARGV[3])"));
-        assert!(
-            CONFIRM_RETAINED_VOICE_SESSION.contains("if redis.call('GET', KEYS[1]) ~= false then")
-        );
-        assert!(CONFIRM_RETAINED_VOICE_SESSION
-            .contains("if redis.call('GET', KEYS[2]) ~= ARGV[1] then"));
-        assert!(CONFIRM_RETAINED_VOICE_SESSION
-            .contains("if redis.call('GET', KEYS[4]) ~= ARGV[3] then"));
-    }
-
-    #[test]
     fn every_terminal_authority_transition_enqueues_exact_transport_cleanup() {
         assert!(DELETE_VOICE_RESERVATION
             .contains("redis.call('SETEX', KEYS[5], tonumber(ARGV[5]), ARGV[6])"));
         assert!(DELETE_CURRENT_VOICE_SESSION
             .contains("redis.call('SETEX', KEYS[6], tonumber(ARGV[4]), ARGV[3])"));
-        assert!(RETAIN_ACTIVE_VOICE_SESSION_FROM_RESERVATION
-            .contains("redis.call('SETEX', KEYS[8], tonumber(ARGV[8]), ARGV[9])"));
     }
 
     #[test]
@@ -1683,6 +1588,21 @@ mod tests {
         assert!(create_voice_session_if_current(&next, Some("op-current"))
             .await
             .expect("prepare next"));
+
+        // A reliable replay derives the current control operation as op-next,
+        // while the original reservation was based on op-current. The exact
+        // immutable tuple makes this an idempotent replay rather than an ABA
+        // mismatch or a mutation of the stored predecessor claim.
+        assert!(create_voice_session_if_current(&next, Some("op-next"))
+            .await
+            .expect("replay next"));
+        assert_eq!(
+            get_current_voice_reservation(user_id)
+                .await
+                .expect("replayed reservation")
+                .and_then(|reservation| reservation.expected_current_operation_id),
+            Some("op-current".to_string())
+        );
 
         let mut newer = awaiting_session();
         newer.operation_id = "op-newer".to_string();

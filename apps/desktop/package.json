@@ -34,7 +34,7 @@
     "@sentry/cli": "^3.6.0",
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.2",
-    "electron": "^35.7.5",
+    "electron": "43.1.0",
     "electron-builder": "^25.1.8",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",

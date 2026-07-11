@@ -4,10 +4,6 @@ import { app, type BrowserWindow } from 'electron'
 
 import { NativeMediaController } from './native-runtime/native-media-controller'
 import {
-  NativeMediaReconciler,
-  createNativeMediaControllerExecutionAdapter,
-} from './native-runtime/native-media-reconciler'
-import {
   clearPendingNativePicker,
   getPendingNativePicker,
   registerNativeMediaIpc,
@@ -27,12 +23,13 @@ import {
   type NativeDiagnosticLog,
   type NativeDiagnosticSession,
 } from './native-runtime/diagnostic-log'
-import {
-  attachNativeMediaSessionMetrics,
-  attachNativeRuntimeMetrics,
-} from './native-runtime/anonymous-metrics'
+import { attachNativeRuntimeMetrics } from './native-runtime/anonymous-metrics'
+import { NativeRtcEngineAdapter } from './voice/native-rtc-engine-adapter'
+import { NativeSharedTextureBridge } from './native-video/shared-texture-bridge'
 
 let getWindowRef: (() => BrowserWindow | null) | null = null
+let videoBridge: NativeSharedTextureBridge | null = null
+let stopVideoEvents: (() => void) | null = null
 
 type NativeMediaDiagnostics = {
   session: NativeDiagnosticSession
@@ -71,28 +68,7 @@ const controller = new NativeMediaController({
   diagnostics: diagnosticSink,
 })
 
-const reconciler = new NativeMediaReconciler({
-  execution: createNativeMediaControllerExecutionAdapter(controller),
-})
-
-const stopRuntimeRecoveryObserver = supervisor.onStateChange((snapshot) => {
-  if (snapshot.status === 'recovering') {
-    reconciler.observeRuntimeUnavailable(snapshot.restartCount, 'recovering')
-  }
-  if (snapshot.status === 'degraded') {
-    reconciler.observeRuntimeUnavailable(snapshot.restartCount, 'degraded')
-  }
-  if (snapshot.status === 'ready' && snapshot.restartCount > 0) {
-    reconciler.recoverAfterRuntimeRestart(snapshot.restartCount)
-  }
-})
-
-const stopExecutionTerminalObserver = controller.subscribe((event) => {
-  reconciler.observeExecutionEvent(event)
-})
-
 attachNativeRuntimeMetrics(supervisor, 'media')
-attachNativeMediaSessionMetrics(controller)
 
 export type { PendingNativePicker }
 export {
@@ -105,11 +81,69 @@ export function getNativeMediaController() {
   return controller
 }
 
+export function createNativeRtcEngineAdapter() {
+  return new NativeRtcEngineAdapter(supervisor)
+}
+
+export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
+  try {
+    ensureNativeMediaDiagnostics()?.log.log(`desktop_voice.${event}`, data)
+  } catch {
+    // Voice diagnostics must never change control-plane or RTC behavior.
+  }
+}
+
 export function registerNativeMediaRuntimeIpc(
   getWindow: () => BrowserWindow | null,
 ) {
   getWindowRef = getWindow
-  registerNativeMediaIpc(getWindow, controller, reconciler)
+  videoBridge ??= new NativeSharedTextureBridge({
+    getWindow,
+    release: (frame) => {
+      const runtime = supervisor.getSnapshot()
+      if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
+      void supervisor.request({
+        type: 'releaseRemoteVideoFrame',
+        sessionId: frame.sessionId,
+        generation: frame.generation,
+        trackId: frame.trackId,
+        sequence: frame.sequence,
+      }, 2_000).catch(() => undefined)
+    },
+  })
+  stopVideoEvents ??= supervisor.onEvent((event) => {
+    if (event.type === 'remoteVideoFrame') {
+      void videoBridge?.deliver({
+        sessionId: event.sessionId,
+        generation: event.generation,
+        trackId: event.trackId,
+        participantIdentity: event.participantIdentity,
+        source: event.source,
+        sequence: event.frameSequence,
+        width: event.width,
+        height: event.height,
+        timestampUs: event.timestampUs,
+        runtimeEpoch: supervisor.getSnapshot().restartCount,
+        ntHandle: Buffer.from(event.ntHandle),
+      })
+      return
+    }
+    if (event.type === 'remoteVideoTrackRemoved' || event.type === 'remoteVideoFailed') {
+      videoBridge?.removeTrack(event.sessionId, event.generation, event.trackId)
+      const window = getWindow()
+      if (window && !window.isDestroyed()) {
+        window.webContents.send('syrnike-desktop:media:remote-video-track-removed', {
+          trackId: event.trackId,
+          sessionId: event.sessionId,
+          generation: event.generation,
+        })
+      }
+    }
+  })
+  const window = getWindow()
+  window?.webContents.on('did-start-navigation', () => videoBridge?.rendererReloaded())
+  window?.webContents.on('render-process-gone', () => videoBridge?.rendererReloaded())
+  registerNativeMediaIpc(getWindow, controller)
 }
 
 export function startNativeMediaRuntime() {
@@ -120,7 +154,6 @@ export function startNativeMediaRuntime() {
   })
   void controller
     .start()
-    .then(() => controller.prewarmMicrophone())
     .catch((error) => {
       diagnostics?.log.log('native_media_bootstrap_failed', {
         message: safeErrorMessage(error),
@@ -132,9 +165,10 @@ export async function disposeNativeMediaRuntime() {
   const diagnostics = nativeMediaDiagnostics ?? null
   diagnostics?.log.log('native_media_dispose_requested')
   try {
-    stopRuntimeRecoveryObserver()
-    stopExecutionTerminalObserver()
-    reconciler.dispose()
+    stopVideoEvents?.()
+    stopVideoEvents = null
+    videoBridge?.dispose()
+    videoBridge = null
     await controller.dispose()
     diagnostics?.log.log('native_media_dispose_completed')
   } catch (error) {

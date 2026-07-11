@@ -66,7 +66,14 @@ type NativeRuntimeRequestContext = {
   generation?: number
 }
 
-type NativeRuntimeLane = 'microphone' | 'screen' | 'query' | 'hooks'
+type NativeRuntimeLane =
+  | 'voice'
+  | 'microphone'
+  | 'screen'
+  | 'camera'
+  | 'query'
+  | 'hotkey'
+  | 'overlay'
 
 function requestContext(
   command: NativeRuntimeCommand,
@@ -962,6 +969,11 @@ export class NativeRuntimeSupervisor {
 
 function requestLane(command: NativeRuntimeCommand): NativeRuntimeLane | undefined {
   switch (command.type) {
+    case 'connectVoice':
+    case 'disconnectVoice':
+    case 'configureRemoteAudio':
+    case 'configureVoiceOutput':
+      return 'voice'
     case 'warmMicrophone':
     case 'startPreview':
     case 'stopPreview':
@@ -978,6 +990,9 @@ function requestLane(command: NativeRuntimeCommand): NativeRuntimeLane | undefin
     case 'disconnectScreen':
     case 'probeScreenActor':
       return 'screen'
+    case 'connectCamera':
+    case 'disconnectCamera':
+      return 'camera'
     case 'listDevices':
     case 'listDisplaySources':
     case 'probeQueryWorker':
@@ -987,7 +1002,7 @@ function requestLane(command: NativeRuntimeCommand): NativeRuntimeLane | undefin
     case 'startOverlay':
     case 'stopOverlay':
     case 'probeHooksRuntime':
-      return 'hooks'
+      return command.type === 'startHotkeys' || command.type === 'stopHotkeys' ? 'hotkey' : 'overlay'
     case 'shutdown':
       return undefined
   }
@@ -995,18 +1010,8 @@ function requestLane(command: NativeRuntimeCommand): NativeRuntimeLane | undefin
 
 function hasUncertainMutationOutcome(command: NativeRuntimeCommand) {
   switch (command.type) {
-    case 'warmMicrophone':
-    case 'startPreview':
-    case 'stopPreview':
-    case 'connectMicrophone':
-    case 'disconnectMicrophone':
-    case 'invalidateMicrophone':
-    case 'configureMicrophone':
-    case 'setMicrophoneMuted':
-    case 'connectScreen':
-    case 'startScreenCapture':
-    case 'stopScreenCapture':
-    case 'disconnectScreen':
+    case 'connectVoice':
+    case 'disconnectVoice':
       return true
     default:
       return false
@@ -1036,7 +1041,7 @@ function probeCommand(
     if (lane === 'query') return { type: 'probeQueryWorker' }
     return null
   }
-  if (lane === 'hooks') {
+  if (lane === 'hotkey' || lane === 'overlay') {
     return { type: 'probeHooksRuntime' }
   }
   return null

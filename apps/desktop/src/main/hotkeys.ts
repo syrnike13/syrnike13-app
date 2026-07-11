@@ -25,6 +25,14 @@ let recording = false
 let getWindowRef: (() => BrowserWindow | null) | null = null
 let unsubscribeRuntimeState: (() => void) | null = null
 const hotkeyState = new HotkeyState()
+const activationListeners = new Set<(event: HotkeyActivationEvent) => void>()
+
+export function subscribeHotkeyActivations(
+  listener: (event: HotkeyActivationEvent) => void,
+) {
+  activationListeners.add(listener)
+  return () => activationListeners.delete(listener)
+}
 
 export function initializeHotkeys(getWindow: () => BrowserWindow | null) {
   getWindowRef = getWindow
@@ -123,6 +131,7 @@ function validateBindings(nextBindings: HotkeyBinding[]) {
 }
 
 function emitHotkeyPressed(event: HotkeyActivationEvent) {
+  for (const listener of activationListeners) listener(event)
   const webContents = getWindowRef?.()?.webContents
   if (!canSendToRenderer(webContents)) return
   webContents.send(IPC.hotkeysPressed, event)

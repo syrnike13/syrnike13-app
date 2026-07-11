@@ -64,7 +64,7 @@ describe('anonymous native metrics reporter', () => {
       enabled: true,
       endpoint: 'https://syrnike13.ru/api/telemetry/native',
     })
-    reporter.increment('runtime_ready', 'hooks')
+    reporter.increment('runtime_ready', 'hotkey')
     reporter.configure({ enabled: false, endpoint: '' })
     await reporter.flush()
     expect(fetchMock).not.toHaveBeenCalled()

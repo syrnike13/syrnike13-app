@@ -5,7 +5,8 @@ import path from 'node:path'
 const NATIVE_BINARY_NAMES = [
   'livekit.dll',
   'livekit_ffi.dll',
-  'syrnike_hooks.node',
+  'syrnike_hotkey.node',
+  'syrnike_overlay.node',
   'syrnike_media.node',
 ] as const
 

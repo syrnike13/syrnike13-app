@@ -9,7 +9,8 @@ const EXPECTED_FILES = [
   'livekit.dll',
   'livekit_ffi.dll',
   'native-manifest.json',
-  'syrnike_hooks.node',
+  'syrnike_hotkey.node',
+  'syrnike_overlay.node',
   'syrnike_media.node',
 ]
 
@@ -38,7 +39,8 @@ if (actualFiles.some((entry) => !entry.isFile())) {
 }
 
 const actualNames = actualFiles.map((entry) => entry.name).sort()
-if (JSON.stringify(actualNames) !== JSON.stringify(EXPECTED_FILES)) {
+const expectedNames = [...EXPECTED_FILES].sort()
+if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
   throw new Error(
     `Unexpected native package contents. Expected ${EXPECTED_FILES.join(', ')}, got ${actualNames.join(', ')}`,
   )
@@ -63,7 +65,7 @@ const expectedElectronVersion = desktopRequire('electron/package.json').version
 const expectedCommitSha = process.env.GITHUB_SHA || gitCommitSha()
 if (
   manifest.schemaVersion !== 1 ||
-  manifest.contractVersion !== 2 ||
+  manifest.contractVersion !== 3 ||
   manifest.platform !== 'win32' ||
   manifest.arch !== 'x64' ||
   manifest.appVersion !== expectedAppVersion ||

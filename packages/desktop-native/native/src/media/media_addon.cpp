@@ -269,17 +269,18 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   result.Set("platform", "win32");
   result.Set("available", true);
   result.Set("runtime", "media");
-  result.Set("contractVersion", 2);
+  result.Set("contractVersion", 3);
   result.Set("pid", GetCurrentProcessId());
   result.Set("napi", std::to_string(NAPI_VERSION));
   result.Set("livekit", "1.3.0");
   result.Set("commit", SYRNIKE_NATIVE_COMMIT);
-  auto capabilities = Napi::Array::New(info.Env(), 5);
+  auto capabilities = Napi::Array::New(info.Env(), 6);
   capabilities.Set(uint32_t{0}, "microphone");
   capabilities.Set(uint32_t{1}, "screen");
   capabilities.Set(uint32_t{2}, "screenAudio");
   capabilities.Set(uint32_t{3}, "preview");
   capabilities.Set(uint32_t{4}, "queries");
+  capabilities.Set(uint32_t{5}, "remoteVideo");
   result.Set("capabilities", capabilities);
   return result;
 }

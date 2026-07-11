@@ -1,9 +1,11 @@
 # ADR-0002 — Windows native runtime: DLL в изолированных utility hosts
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0003
 - **Date:** 2026-07-10
 - **Implementation amendment:** 2026-07-10 — declarative media reconciliation
   and actor-liveness semantics
+- **Superseded:** 2026-07-11 — ADR-0003 сохраняет DLL utility isolation, но
+  вводит одну native Room и три независимых host fault domains.
 - **Related:** ADR-0001 (`VoiceIntentDirector` остаётся единственным владельцем
   voice intent)
 

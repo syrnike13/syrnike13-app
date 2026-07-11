@@ -1,7 +1,5 @@
 #include "media_runtime.hpp"
 
-#include <livekit/livekit.h>
-
 #include <windows.h>
 
 #include <atomic>
@@ -17,13 +15,17 @@
 #include <utility>
 
 #include "audio_devices.hpp"
+#include "camera_actor.hpp"
+#include "camera_capture.hpp"
 #include "../common/diagnostic_log.hpp"
 #include "microphone_actor.hpp"
 #include "display_sources.hpp"
 #include "generation_fence.hpp"
+#include "media_runtime_support.hpp"
 #include "screen_actor.hpp"
 #include "screen_video_capture.hpp"
 #include "preview_actor.hpp"
+#include "voice_actor.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -41,83 +43,6 @@ void logRuntime(
   auto& logger = diagnostics::DiagnosticLog::instance();
   if (!logger.enabled()) return;
   logger.write(event, fields);
-}
-
-class LiveKitLease {
- public:
-  LiveKitLease() {
-    logRuntime("media_runtime_livekit_initialize_start");
-    if (!livekit::initialize(livekit::LogLevel::Off)) {
-      logRuntime("media_runtime_livekit_initialize_failed");
-      throw std::runtime_error("LiveKit initialization failed");
-    }
-    auto& logger = diagnostics::DiagnosticLog::instance();
-    if (logger.enabled()) {
-      livekit::setLogLevel(livekit::LogLevel::Trace);
-      livekit::setLogCallback([](
-        livekit::LogLevel level,
-        const std::string& logger_name,
-        const std::string& message
-      ) {
-        diagnostics::DiagnosticLog::instance().write(
-          "media_runtime_livekit_trace",
-          {
-            {"logger", logger_name},
-            {"level", static_cast<std::uint64_t>(level)},
-            {"message", message}
-          }
-        );
-      });
-    }
-    logRuntime("media_runtime_livekit_initialize_ok");
-  }
-  ~LiveKitLease() {
-    logRuntime("media_runtime_livekit_shutdown_start");
-    if (diagnostics::DiagnosticLog::instance().enabled()) livekit::setLogCallback({});
-    livekit::shutdown();
-    logRuntime("media_runtime_livekit_shutdown_done");
-  }
-
-  LiveKitLease(const LiveKitLease&) = delete;
-  LiveKitLease& operator=(const LiveKitLease&) = delete;
-};
-
-RuntimeEvent reply(const MediaCommand& command) {
-  RuntimeEvent event;
-  event.type = "reply";
-  event.request_id = command.request_id;
-  event.session_id = command.session_id;
-  event.generation = command.generation;
-  event.ok = true;
-  return event;
-}
-
-RuntimeEvent failedReply(const MediaCommand& command, NativeError error) {
-  auto event = reply(command);
-  event.ok = false;
-  event.error = std::move(error);
-  return event;
-}
-
-RuntimeEvent lifecycle(
-  const MediaCommand& command,
-  const char* kind,
-  const char* status,
-  std::string detail = {}
-) {
-  RuntimeEvent event;
-  event.type = "sessionLifecycle";
-  event.request_id = command.request_id;
-  event.session_id = command.session_id;
-  event.generation = command.generation;
-  event.kind = kind;
-  event.status = status;
-  event.detail = std::move(detail);
-  return event;
-}
-
-std::string warmKey(const MediaCommand& command) {
-  return command.session_id.empty() ? "__pipeline__" : command.session_id;
 }
 
 }  // namespace
@@ -155,7 +80,20 @@ class MediaRuntime::Implementation {
           std::move(commit)
         );
       }, std::move(screen_now)),
+      camera_(emitter_, [this](MediaCommand command) {
+        if (camera_commands_.tryPush(std::move(command))) return true;
+        if (shutting_down_.load()) return false;
+        std::terminate();
+      }, [this](const std::string& session_id, std::uint64_t generation) {
+        return desired_camera_.isCurrent(session_id, generation);
+      }, livekit_client_),
       preview_(emitter_),
+      voice_(emitter_, [this](MediaCommand command) {
+        if (voice_commands_.tryPush(std::move(command))) return true;
+        return shutting_down_.load();
+      }, [this](const std::string& session_id, std::uint64_t generation) {
+        return desired_voice_.isCurrent(session_id, generation);
+      }, livekit_client_),
       worker_([this] { run(); }) {
     logRuntime("media_runtime_constructed");
   }
@@ -223,7 +161,16 @@ class MediaRuntime::Implementation {
     std::pair<std::string, std::uint64_t> previous_desired_microphone;
     std::pair<std::string, std::uint64_t> previous_warm_microphone;
     std::pair<std::string, std::uint64_t> previous_desired_screen;
+    std::pair<std::string, std::uint64_t> previous_desired_camera;
+    std::pair<std::string, std::uint64_t> previous_desired_voice;
     bool generation_accepted = true;
+    if (type == "connectVoice" || type == "disconnectVoice") {
+      previous_desired_voice = desired_voice_.current();
+      generation_accepted = desired_voice_.advance(
+        command.session_id,
+        command.generation
+      );
+    }
     if (
       type == "connectMicrophone" ||
       type == "disconnectMicrophone"
@@ -250,6 +197,10 @@ class MediaRuntime::Implementation {
         command.session_id,
         command.generation
       );
+    }
+    if (type == "connectCamera" || type == "disconnectCamera") {
+      previous_desired_camera = desired_camera_.current();
+      generation_accepted = desired_camera_.advance(command.session_id, command.generation);
     }
     if (!generation_accepted) {
       pending_commands_.fetch_sub(1, std::memory_order_relaxed);
@@ -280,6 +231,25 @@ class MediaRuntime::Implementation {
       if (accepted) queue_depth = control_commands_.size();
     }
     else if (
+      type == "connectVoice" || type == "disconnectVoice" ||
+      type == "configureRemoteAudio" ||
+      type == "configureVoiceOutput" ||
+      type == "__voiceConnectCompleted" ||
+      type == "__voiceOutputFailed" ||
+      type == "__voiceActiveSpeakers" ||
+      type == "__remoteVideoFrame" ||
+      type == "__remoteVideoTrackRemoved" ||
+      type == "__remoteVideoFailed" ||
+      type == "releaseRemoteVideoFrame" ||
+      type == "setRemoteVideoDemand" ||
+      type == "__voiceTerminal"
+    ) {
+      command.internal_enqueued_steady_ms = enqueue_started_at;
+      command.internal_queue_depth = static_cast<std::uint32_t>(voice_commands_.size() + 1);
+      accepted = voice_commands_.tryPush(std::move(command));
+      if (accepted) queue_depth = voice_commands_.size();
+    }
+    else if (
       type == "__microphoneTerminal" ||
       type == "__microphoneAttemptReady" ||
       type == "__microphoneAttemptFailed" ||
@@ -308,6 +278,14 @@ class MediaRuntime::Implementation {
       command.internal_queue_depth = static_cast<std::uint32_t>(screen_commands_.size() + 1);
       accepted = screen_commands_.tryPush(std::move(command));
       if (accepted) queue_depth = screen_commands_.size();
+    } else if (
+      type == "__cameraTerminal" || type == "connectCamera" ||
+      type == "disconnectCamera"
+    ) {
+      command.internal_enqueued_steady_ms = enqueue_started_at;
+      command.internal_queue_depth = static_cast<std::uint32_t>(camera_commands_.size() + 1);
+      accepted = camera_commands_.tryPush(std::move(command));
+      if (accepted) queue_depth = camera_commands_.size();
     } else {
       command.internal_enqueued_steady_ms = enqueue_started_at;
       command.internal_queue_depth = static_cast<std::uint32_t>(query_commands_.size() + 1);
@@ -327,6 +305,14 @@ class MediaRuntime::Implementation {
     );
     if (!accepted) {
       pending_commands_.fetch_sub(1, std::memory_order_relaxed);
+      if (type == "connectVoice" || type == "disconnectVoice") {
+        desired_voice_.restoreIfCurrent(
+          command_session_id,
+          command_generation,
+          previous_desired_voice.first,
+          previous_desired_voice.second
+        );
+      }
       if (
         type == "connectMicrophone" ||
         type == "disconnectMicrophone"
@@ -357,6 +343,12 @@ class MediaRuntime::Implementation {
           previous_desired_screen.second
         );
       }
+      if (type == "connectCamera" || type == "disconnectCamera") {
+        desired_camera_.restoreIfCurrent(
+          command_session_id, command_generation,
+          previous_desired_camera.first, previous_desired_camera.second
+        );
+      }
     }
     return accepted;
   }
@@ -367,6 +359,8 @@ class MediaRuntime::Implementation {
     desired_microphone_.advance("__shutdown__", UINT64_MAX);
     desired_microphone_warm_.advance("__shutdown__", UINT64_MAX);
     desired_screen_.advance("__shutdown__", UINT64_MAX);
+    desired_camera_.advance("__shutdown__", UINT64_MAX);
+    desired_voice_.advance("__shutdown__", UINT64_MAX);
     control_commands_.close();
   }
 
@@ -491,6 +485,151 @@ class MediaRuntime::Implementation {
     unknown(command);
   }
 
+  void handleVoice(const MediaCommand& command) {
+    if (command.type == "__voiceConnectCompleted") {
+      voice_.handleWorkerCommand(command);
+      return;
+    }
+    if (command.type == "__voiceOutputFailed") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      RuntimeEvent event;
+      event.type = "sessionLifecycle";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.kind = "output";
+      if (!command.device_id.empty() && command.device_id != "default") {
+        livekit_client_->setVoiceOutputDevice("default");
+        event.status = "running";
+        event.device_id = "default";
+        event.detail = "Selected audio output is unavailable; using system default";
+      } else {
+        event.status = "error";
+        event.detail = command.internal_message.empty()
+          ? "Remote audio renderer failed"
+          : command.internal_message;
+      }
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__remoteVideoFrame") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
+        livekit_client_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
+        return;
+      }
+      RuntimeEvent event;
+      event.type = "remoteVideoFrame";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.participant_identity = command.participant_identity;
+      event.video_source = command.video_source;
+      event.frame_sequence = command.frame_sequence;
+      event.timestamp_us = command.timestamp_us;
+      event.nt_handle = command.nt_handle;
+      event.width = command.width;
+      event.height = command.height;
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__remoteVideoTrackRemoved" || command.type == "__remoteVideoFailed") {
+      RuntimeEvent event;
+      event.type = command.type == "__remoteVideoFailed"
+        ? "remoteVideoFailed" : "remoteVideoTrackRemoved";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.video_source = command.video_source;
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "releaseRemoteVideoFrame") {
+      livekit_client_->releaseRemoteVideoFrame(command.track_id, command.frame_sequence);
+      emitter_.emit(reply(command));
+      return;
+    }
+    if (command.type == "setRemoteVideoDemand") {
+      livekit_client_->setRemoteVideoDemand(command.track_id, command.demanded);
+      emitter_.emit(reply(command));
+      return;
+    }
+    if (command.type == "__voiceTerminal") {
+      RuntimeEvent event;
+      event.type = "voiceTerminal";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.kind = "voice";
+      event.status = "error";
+      event.error = NativeError{
+        "rtc_terminal",
+        command.internal_message.empty()
+          ? "LiveKit voice connection terminated"
+          : command.internal_message,
+        "connectVoice",
+        true,
+        command.session_id,
+        command.generation,
+      };
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__voiceActiveSpeakers") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      RuntimeEvent event;
+      event.type = "activeSpeakers";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.kind = "voice";
+      event.participant_identities = command.participant_identities;
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "connectVoice") {
+      voice_.connect(command);
+      return;
+    }
+    if (command.type == "disconnectVoice") {
+      voice_.disconnect(command);
+      return;
+    }
+    if (command.type == "configureVoiceOutput") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
+        throw std::runtime_error("stale voice output generation");
+      }
+      if (!command.has_deafened) {
+        throw std::invalid_argument("deafened is required");
+      }
+      livekit_client_->setVoiceDeafened(command.deafened);
+      livekit_client_->setVoiceOutputDevice(command.device_id);
+      if (command.has_output_volume) {
+        livekit_client_->setVoiceOutputVolume(command.output_volume);
+      }
+      emitter_.emit(reply(command));
+      emitter_.emit(lifecycle(
+        command,
+        "output",
+        "running",
+        command.deafened ? "deafened" : "audible"
+      ));
+      return;
+    }
+    if (command.type == "configureRemoteAudio") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
+        throw std::runtime_error("stale remote audio generation");
+      }
+      if (!command.has_revision) throw std::invalid_argument("revision is required");
+      livekit_client_->configureRemoteAudio(RemoteAudioSettings{
+        command.revision,
+        command.user_volumes,
+        command.user_mutes,
+        command.stream_volumes,
+        command.stream_mutes,
+      });
+      emitter_.emit(reply(command));
+      return;
+    }
+    unknown(command);
+  }
+
   void handleScreen(const MediaCommand& command) {
     if (command.type == "__screenTerminal") {
       screen_.handleTerminal(command);
@@ -531,14 +670,40 @@ class MediaRuntime::Implementation {
     unknown(command);
   }
 
+  void handleCamera(const MediaCommand& command) {
+    if (command.type == "__cameraTerminal") {
+      camera_.handleTerminal(command);
+      return;
+    }
+    if (command.type == "connectCamera") {
+      emitter_.emit(lifecycle(command, "camera", "starting", "capture_starting"));
+      camera_.connect(command);
+      return;
+    }
+    if (command.type == "disconnectCamera") {
+      camera_.disconnect(command);
+      emitter_.emit(reply(command));
+      return;
+    }
+    unknown(command);
+  }
+
   void handleQuery(const MediaCommand& command) {
     if (command.type == "listDevices") {
       auto result = reply(command);
       result.kind = "devices";
       result.devices = listAudioDevices();
-      std::erase_if(result.devices, [](const DeviceInfo& device) {
-        return device.kind != "audioinput";
-      });
+      auto cameras = listCameraDevices();
+      result.devices.insert(
+        result.devices.end(),
+        std::make_move_iterator(cameras.begin()),
+        std::make_move_iterator(cameras.end())
+      );
+      if (!command.device_kind.empty()) {
+        std::erase_if(result.devices, [&](const DeviceInfo& device) {
+          return device.kind != command.device_kind;
+        });
+      }
       emitter_.emit(std::move(result));
       return;
     }
@@ -668,11 +833,15 @@ class MediaRuntime::Implementation {
   }
 
   void closeWorkerQueues() {
+    desired_voice_.advance("__shutdown__", UINT64_MAX);
     desired_microphone_.advance("__shutdown__", UINT64_MAX);
     desired_microphone_warm_.advance("__shutdown__", UINT64_MAX);
     desired_screen_.advance("__shutdown__", UINT64_MAX);
+    desired_camera_.advance("__shutdown__", UINT64_MAX);
+    voice_commands_.closeAndDiscard();
     microphone_commands_.closeAndDiscard();
     screen_commands_.closeAndDiscard();
+    camera_commands_.closeAndDiscard();
     query_commands_.closeAndDiscard();
   }
 
@@ -687,10 +856,17 @@ class MediaRuntime::Implementation {
     std::optional<LiveKitLease> livekit;
     std::thread microphone_worker;
     std::thread screen_worker;
+    std::thread camera_worker;
     std::thread query_worker;
+    std::thread voice_worker;
     bool startup_ready = false;
     try {
       livekit.emplace();
+      voice_worker = std::thread([this] {
+        commandLoop("voice", voice_commands_, [this](const auto& command) {
+          handleVoice(command);
+        });
+      });
       microphone_worker = std::thread([this] {
         commandLoop("microphone", microphone_commands_, [this](const auto& command) {
           handleMicrophone(command);
@@ -699,6 +875,11 @@ class MediaRuntime::Implementation {
       screen_worker = std::thread([this] {
         commandLoop("screen", screen_commands_, [this](const auto& command) {
           handleScreen(command);
+        });
+      });
+      camera_worker = std::thread([this] {
+        commandLoop("camera", camera_commands_, [this](const auto& command) {
+          handleCamera(command);
         });
       });
       query_worker = std::thread([this] {
@@ -715,8 +896,10 @@ class MediaRuntime::Implementation {
       }
       shutting_down_.store(true);
       closeWorkerQueues();
+      joinIfRunning(voice_worker);
       joinIfRunning(microphone_worker);
       joinIfRunning(screen_worker);
+      joinIfRunning(camera_worker);
       joinIfRunning(query_worker);
       if (!preview_session_id_.empty()) {
         microphone_.clearPreviewConsumer(preview_session_id_, preview_generation_);
@@ -724,6 +907,8 @@ class MediaRuntime::Implementation {
       preview_.shutdown();
       microphone_.shutdown();
       screen_.shutdown();
+      camera_.shutdown();
+      voice_.shutdown();
       if (shutdown_command && shutdown_command->type == "shutdown") {
         emitter_.emit(reply(*shutdown_command));
       }
@@ -731,8 +916,10 @@ class MediaRuntime::Implementation {
     } catch (const std::exception& error) {
       shutting_down_.store(true);
       closeWorkerQueues();
+      joinIfRunning(voice_worker);
       joinIfRunning(microphone_worker);
       joinIfRunning(screen_worker);
+      joinIfRunning(camera_worker);
       joinIfRunning(query_worker);
       if (!preview_session_id_.empty()) {
         microphone_.clearPreviewConsumer(preview_session_id_, preview_generation_);
@@ -740,6 +927,8 @@ class MediaRuntime::Implementation {
       try { preview_.shutdown(); } catch (...) {}
       try { microphone_.shutdown(); } catch (...) {}
       try { screen_.shutdown(); } catch (...) {}
+      try { camera_.shutdown(); } catch (...) {}
+      try { voice_.shutdown(); } catch (...) {}
       livekit.reset();
       if (!startup_ready) {
         markStartupFailed(error.what());
@@ -760,14 +949,20 @@ class MediaRuntime::Implementation {
 
   SequencedEmitter emitter_;
   std::shared_ptr<LiveKitPublicationClient> livekit_client_ = createRealLiveKitPublicationClient();
+  GenerationFence desired_voice_;
   GenerationFence desired_microphone_;
   GenerationFence desired_microphone_warm_;
   MicrophoneActor microphone_;
   GenerationFence desired_screen_;
   ScreenActor screen_;
+  GenerationFence desired_camera_;
+  CameraActor camera_;
   PreviewActor preview_;
+  VoiceActor voice_;
+  BoundedQueue<MediaCommand, 256> voice_commands_;
   BoundedQueue<MediaCommand, 256> microphone_commands_;
   BoundedQueue<MediaCommand, 256> screen_commands_;
+  BoundedQueue<MediaCommand, 256> camera_commands_;
   BoundedQueue<MediaCommand, 256> query_commands_;
   BoundedQueue<MediaCommand, 4> control_commands_;
   std::atomic_bool shutting_down_{false};

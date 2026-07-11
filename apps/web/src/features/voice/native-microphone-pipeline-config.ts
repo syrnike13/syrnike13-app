@@ -18,7 +18,16 @@ async function configureNativeMicrophonePipelineNow(
 ) {
   const desktop = getSyrnikeDesktop()
   if (!desktop) return
-  await desktop.media.configureMicrophonePipeline(config)
+  await desktop.voice.dispatch({
+    type: 'configureMicrophone',
+    deviceId: config.deviceId ?? undefined,
+    noiseSuppression: config.noiseSuppression,
+    echoCancellation: config.echoCancellation,
+    inputVolume: config.inputVolume,
+    voiceGateEnabled: config.voiceGateEnabled,
+    voiceGateThresholdDb: config.voiceGateThresholdDb,
+    voiceGateAutoThreshold: config.voiceGateAutoThreshold,
+  })
 }
 
 export function configureNativeMicrophonePipeline(
