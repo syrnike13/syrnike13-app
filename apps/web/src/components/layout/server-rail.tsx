@@ -49,7 +49,13 @@ function ServerInitial({ name }: { name: string }) {
  *
  * Различие только в навигации и формуле «активности», вёрстка общая.
  */
-export function ServerRail({ variant }: { variant: ServerRailVariant }) {
+export function ServerRail({
+  variant,
+  reserveUserPanelSpace = true,
+}: {
+  variant: ServerRailVariant
+  reserveUserPanelSpace?: boolean
+}) {
   const auth = useAuth()
   const { capabilities } = usePlatform()
   const ready = useSyncStore((s) => s.ready)
@@ -76,6 +82,9 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
     (variant === 'desktop' || !selectedServerId)
 
   const railPaddingClass = capabilities.customWindowChrome ? 'pb-3' : 'py-3'
+  const railBottomReserveStyle = reserveUserPanelSpace
+    ? { paddingBottom: USER_PANEL_RESERVE_PX }
+    : undefined
 
   if (!ready) {
     return (
@@ -85,7 +94,7 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
           railPaddingClass,
           shellNavSurface,
         )}
-        style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
+        style={railBottomReserveStyle}
       >
         <div className={cn(railIconButtonClass, 'animate-pulse bg-muted')} />
       </div>
@@ -99,7 +108,7 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
         railPaddingClass,
         shellNavSurface,
       )}
-      style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
+      style={railBottomReserveStyle}
     >
       <Button
         size="icon"

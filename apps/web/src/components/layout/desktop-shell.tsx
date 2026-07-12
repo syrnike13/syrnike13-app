@@ -3,10 +3,9 @@ import { useEffect } from 'react'
 
 import { ConnectionStatusBanner } from '#/components/layout/connection-status-banner'
 import { HomeSidebar } from '#/components/home/home-sidebar'
-import { AppMainFrame } from '#/components/layout/app-main-frame'
 import { ChannelSidebar } from '#/components/layout/channel-sidebar'
-import { LeftSidebarStack } from '#/components/layout/left-sidebar-stack'
-import { ServerRail } from '#/components/layout/server-rail'
+import { ShellContentFrame } from '#/components/layout/shell-content-frame'
+import { ShellNavColumn } from '#/components/layout/shell-nav-column'
 import { ShellTitleBar } from '#/components/layout/shell-title-bar'
 import { UserPanel } from '#/components/layout/user-panel'
 import { IncomingVoiceCallOverlay } from '#/components/voice/incoming-voice-call-overlay'
@@ -97,20 +96,17 @@ export function DesktopShell() {
       <ConnectionStatusBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
-        <ServerRail variant="desktop" />
-
         <div
           className={cn(
-            'flex min-h-0 min-w-0 flex-1 flex-col gap-2 ',
-            !capabilities.customWindowChrome && '',
+            'flex min-h-0 min-w-0 flex-1 items-stretch'
           )}
         >
-          <AppMainFrame sidebar={<LeftSidebarStack>{sidebar}</LeftSidebarStack>}>
+          <ShellNavColumn sidebar={sidebar} overlay={<UserPanel />} />
+          <ShellContentFrame>
             <Outlet />
-          </AppMainFrame>
+          </ShellContentFrame>
         </div>
 
-        <UserPanel />
         <IncomingVoiceCallOverlay activeChannelId={activeChannelId} />
       </div>
 

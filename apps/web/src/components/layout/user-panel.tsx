@@ -24,9 +24,7 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { userStatusSubtitle } from '#/lib/presence'
-import { USER_PANEL_SPAN_WIDTH } from '#/components/layout/left-sidebar-stack'
 import {
-  FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_HEIGHT_CLASS,
   floatingBarShellClass,
 } from '#/components/layout/shell-chrome'
@@ -76,18 +74,11 @@ export function UserPanel() {
   return (
     <div
       className={cn(
-        'pointer-events-none absolute left-2 z-50',
-        FLOATING_BAR_BOTTOM_CLASS,
+        'pointer-events-auto flex w-full flex-col overflow-hidden',
+        floatingBarShellClass,
+        'bg-secondary text-secondary-foreground',
       )}
-      style={{ width: USER_PANEL_SPAN_WIDTH }}
     >
-      <div
-        className={cn(
-          'pointer-events-auto flex w-full flex-col overflow-hidden',
-          floatingBarShellClass,
-          'bg-secondary text-secondary-foreground',
-        )}
-      >
         {inVoiceSession ? (
           <>
             <VoiceScreenShareStrip />
@@ -201,7 +192,6 @@ export function UserPanel() {
           open={globalProfileOpen}
           onOpenChange={setGlobalProfileOpen}
         />
-      </div>
     </div>
   )
 }

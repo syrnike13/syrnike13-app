@@ -11,14 +11,22 @@ import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 type HomeSidebarProps = {
   activeChannelId?: string
+  reserveUserPanelSpace?: boolean
 }
 
-export function HomeSidebar({ activeChannelId }: HomeSidebarProps) {
+export function HomeSidebar({
+  activeChannelId,
+  reserveUserPanelSpace = true,
+}: HomeSidebarProps) {
   const prefix = useAppRoutePrefix()
   return (
     <aside
       className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
-      style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
+      style={
+        reserveUserPanelSpace
+          ? { paddingBottom: USER_PANEL_RESERVE_PX }
+          : undefined
+      }
     >
       <div className={`space-y-2 border-b p-2 ${shellDivider}`}>
         <CommandPaletteTrigger />
