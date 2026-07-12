@@ -1,3 +1,12 @@
+use std::{
+    collections::HashSet,
+    future::Future,
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+
 use crate::{
     AMQP, Database, RemovalIntention, User, VoiceCallEndReason,
     events::client::EventV1,
@@ -15,15 +24,193 @@ use crate::{
         },
         clear_call_notification_recipients, create_voice_session_if_current,
         delete_channel_voice_state, finish_voice_call_started_system_message, get_channel_node,
+        get_current_voice_reservation, get_current_voice_session, get_user_voice_channel_in_server,
         get_voice_channel_members, get_voice_participant_reconciliation, is_in_voice_channel,
         raise_if_in_voice, remove_user_from_voice_channel, set_call_notification_recipients,
         set_channel_node, voice_participant_identity,
     },
 };
 use iso8601_timestamp::{Duration, Timestamp};
+use redis_kiss::{
+    AsyncCommands,
+    redis::{ExistenceCheck, SetExpiry, SetOptions, cmd},
+};
 use syrnike_config::config;
 use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_result::{Result, ToSyrnikeError, create_error};
+
+const TEMPORARY_VOICE_MEMBER_LOCK_TTL_SECONDS: usize = 120;
+const TEMPORARY_VOICE_MEMBER_LOCK_RETRY_LIMIT: usize = 200;
+const TEMPORARY_VOICE_MEMBER_LOCK_RETRY_DELAY_MS: u64 = 10;
+const TEMPORARY_VOICE_MEMBER_LOCK_RENEW_INTERVAL_SECONDS: u64 = 30;
+const RENEW_TEMPORARY_VOICE_MEMBER_LOCK: &str = r#"
+local key = KEYS[1]
+local token = ARGV[1]
+local ttl = ARGV[2]
+
+if redis.call('GET', key) == token then
+    return redis.call('EXPIRE', key, ttl)
+end
+
+return 0
+"#;
+const RELEASE_TEMPORARY_VOICE_MEMBER_LOCK: &str = r#"
+local key = KEYS[1]
+local token = ARGV[1]
+
+if redis.call('GET', key) == token then
+    return redis.call('DEL', key)
+end
+
+return 0
+"#;
+
+static REFERENCE_TEMPORARY_VOICE_USER_LOCKS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+struct ReferenceTemporaryVoiceUserLock {
+    user_id: String,
+}
+
+impl Drop for ReferenceTemporaryVoiceUserLock {
+    fn drop(&mut self) {
+        REFERENCE_TEMPORARY_VOICE_USER_LOCKS
+            .get_or_init(|| Mutex::new(HashSet::new()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&self.user_id);
+    }
+}
+
+struct TemporaryVoiceLockRenewalGuard {
+    stopped: Arc<AtomicBool>,
+}
+
+impl Drop for TemporaryVoiceLockRenewalGuard {
+    fn drop(&mut self) {
+        self.stopped.store(true, Ordering::Release);
+    }
+}
+
+pub async fn with_temporary_voice_user_lock<T, F, Fut>(
+    db: &Database,
+    user_id: &str,
+    operation: F,
+) -> Result<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    if matches!(db, Database::Reference(_)) {
+        for _ in 0..TEMPORARY_VOICE_MEMBER_LOCK_RETRY_LIMIT {
+            let acquired = REFERENCE_TEMPORARY_VOICE_USER_LOCKS
+                .get_or_init(|| Mutex::new(HashSet::new()))
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(user_id.to_string());
+            if acquired {
+                let _guard = ReferenceTemporaryVoiceUserLock {
+                    user_id: user_id.to_string(),
+                };
+                return operation().await;
+            }
+            async_std::task::sleep(std::time::Duration::from_millis(
+                TEMPORARY_VOICE_MEMBER_LOCK_RETRY_DELAY_MS,
+            ))
+            .await;
+        }
+        return Err(create_error!(InternalError));
+    }
+
+    let key = format!("temporary_voice_member_lock:{user_id}");
+    let token = uuid::Uuid::new_v4().to_string();
+    let mut acquired = false;
+    let mut connection = super::get_connection().await?.into_inner();
+
+    for _ in 0..TEMPORARY_VOICE_MEMBER_LOCK_RETRY_LIMIT {
+        let set_result: Option<String> = connection
+            .set_options(
+                &key,
+                &token,
+                SetOptions::default()
+                    .conditional_set(ExistenceCheck::NX)
+                    .with_expiration(SetExpiry::EX(TEMPORARY_VOICE_MEMBER_LOCK_TTL_SECONDS)),
+            )
+            .await
+            .to_internal_error()?;
+        if set_result.is_some() {
+            acquired = true;
+            break;
+        }
+
+        async_std::task::sleep(std::time::Duration::from_millis(
+            TEMPORARY_VOICE_MEMBER_LOCK_RETRY_DELAY_MS,
+        ))
+        .await;
+    }
+    drop(connection);
+
+    if !acquired {
+        return Err(create_error!(InternalError));
+    }
+
+    let stop_renewal = Arc::new(AtomicBool::new(false));
+    let renewal_guard = TemporaryVoiceLockRenewalGuard {
+        stopped: Arc::clone(&stop_renewal),
+    };
+    let renewal_stopped = Arc::clone(&stop_renewal);
+    let renewal_key = key.clone();
+    let renewal_token = token.clone();
+    async_std::task::spawn(async move {
+        while !renewal_stopped.load(Ordering::Acquire) {
+            async_std::task::sleep(std::time::Duration::from_secs(
+                TEMPORARY_VOICE_MEMBER_LOCK_RENEW_INTERVAL_SECONDS,
+            ))
+            .await;
+            if renewal_stopped.load(Ordering::Acquire) {
+                break;
+            }
+
+            let renewal_result: Result<i64> = async {
+                cmd("EVAL")
+                    .arg(RENEW_TEMPORARY_VOICE_MEMBER_LOCK)
+                    .arg(1)
+                    .arg(&renewal_key)
+                    .arg(&renewal_token)
+                    .arg(TEMPORARY_VOICE_MEMBER_LOCK_TTL_SECONDS)
+                    .query_async::<_, i64>(&mut super::get_connection().await?.into_inner())
+                    .await
+                    .to_internal_error()
+            }
+            .await;
+            match renewal_result {
+                Ok(1) => {}
+                Ok(_) => break,
+                Err(error) => {
+                    syrnike_config::capture_internal_error!(&error);
+                }
+            }
+        }
+    });
+
+    let result = operation().await;
+    drop(renewal_guard);
+    let release_result: Result<i64> = async {
+        cmd("EVAL")
+            .arg(RELEASE_TEMPORARY_VOICE_MEMBER_LOCK)
+            .arg(1)
+            .arg(&key)
+            .arg(&token)
+            .query_async::<_, i64>(&mut super::get_connection().await?.into_inner())
+            .await
+            .to_internal_error()
+    }
+    .await;
+    if let Err(error) = release_result {
+        syrnike_config::capture_internal_error!(&error);
+    }
+
+    result
+}
 
 /// LiveKit credentials returned to the client after a successful voice join request.
 #[derive(Debug, Clone)]
@@ -85,6 +272,11 @@ pub async fn join_voice_channel(
     current_permissions.throw_if_lacking_channel_permission(ChannelPermission::Connect)?;
 
     let user_voice_channel = UserVoiceChannel::from_channel(&channel);
+    let temporary_server_id = permissions
+        .member_ref()
+        .as_ref()
+        .filter(|member| member.temporary)
+        .and_then(|_| user_voice_channel.server_id.clone());
 
     let mut current_voice_members = get_voice_channel_members(&user_voice_channel).await?;
     if should_reject_voice_join_for_capacity(
@@ -162,9 +354,31 @@ pub async fn join_voice_channel(
         options.self_deaf,
         Timestamp::now_utc(),
     )?;
-    if !create_voice_session_if_current(&session, options.expected_current_operation_id.as_deref())
+    let (session_created, current_permissions) = if let Some(server_id) = temporary_server_id {
+        with_temporary_voice_user_lock(db, &user.id, || async {
+            db.fetch_member(&server_id, &user.id).await?;
+            let mut locked_permissions = perms(db, user).channel(&channel);
+            let locked_permissions = calculate_channel_permissions(&mut locked_permissions).await;
+            locked_permissions.throw_if_lacking_channel_permission(ChannelPermission::Connect)?;
+            let created = create_voice_session_if_current(
+                &session,
+                options.expected_current_operation_id.as_deref(),
+            )
+            .await?;
+            Ok((created, locked_permissions))
+        })
         .await?
-    {
+    } else {
+        (
+            create_voice_session_if_current(
+                &session,
+                options.expected_current_operation_id.as_deref(),
+            )
+            .await?,
+            current_permissions,
+        )
+    };
+    if !session_created {
         return Err(create_error!(InvalidOperation));
     }
     let room = match voice_client.create_room(&node, &channel).await {
@@ -240,6 +454,51 @@ pub async fn remove_user_from_voice_channel_with_call_cleanup(
     channel: &UserVoiceChannel,
     user_id: &str,
 ) -> Result<()> {
+    let disconnected_at = Timestamp::now_utc();
+    let temporary_server_id = if let Some(server_id) = channel.server_id.as_deref() {
+        db.fetch_member(server_id, user_id)
+            .await
+            .map(|member| member.temporary)
+            .unwrap_or(false)
+            .then(|| server_id.to_string())
+    } else {
+        None
+    };
+
+    if temporary_server_id.is_some() {
+        return with_temporary_voice_user_lock(db, user_id, || async {
+            remove_user_from_voice_channel_with_call_cleanup_locked(
+                db,
+                amqp,
+                channel,
+                user_id,
+                true,
+                disconnected_at,
+            )
+            .await
+        })
+        .await;
+    }
+
+    remove_user_from_voice_channel_with_call_cleanup_locked(
+        db,
+        amqp,
+        channel,
+        user_id,
+        false,
+        disconnected_at,
+    )
+    .await
+}
+
+async fn remove_user_from_voice_channel_with_call_cleanup_locked(
+    db: &Database,
+    amqp: &AMQP,
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    cleanup_temporary_member: bool,
+    disconnected_at: Timestamp,
+) -> Result<()> {
     if !is_in_voice_channel(user_id, channel).await? {
         return Ok(());
     }
@@ -247,7 +506,18 @@ pub async fn remove_user_from_voice_channel_with_call_cleanup(
     remove_user_from_voice_channel(channel, user_id).await?;
 
     cleanup_removed_voice_member_call(db, amqp, channel).await?;
-    remove_temporary_server_member_after_voice_disconnect(db, channel, user_id).await
+    if cleanup_temporary_member {
+        if let Some(server_id) = channel.server_id.as_deref() {
+            remove_temporary_server_member_after_voice_disconnect_locked(
+                db,
+                server_id,
+                user_id,
+                disconnected_at,
+            )
+            .await?;
+        }
+    }
+    Ok(())
 }
 
 pub async fn cleanup_committed_voice_member_removal(
@@ -267,8 +537,18 @@ pub async fn reconcile_voice_channel_members_with_call_cleanup(
     let reconciliation = match get_voice_participant_reconciliation(voice_client, channel).await? {
         VoiceParticipantReconciliationVerdict::Ready(reconciliation) => reconciliation,
         VoiceParticipantReconciliationVerdict::DeadRoom { stale_members } => {
-            delete_channel_voice_state(channel, &stale_members).await?;
+            let disconnected_at = Timestamp::now_utc();
+            let deleted_sessions = delete_channel_voice_state(channel, &stale_members).await?;
             cleanup_removed_voice_member_call(db, amqp, channel).await?;
+            for (user_id, _) in deleted_sessions {
+                remove_temporary_server_member_after_voice_disconnect(
+                    db,
+                    channel,
+                    &user_id,
+                    disconnected_at,
+                )
+                .await?;
+            }
             return Ok(Some(VoiceParticipantReconciliation {
                 livekit_members: Vec::new(),
                 stale_members,
@@ -303,6 +583,7 @@ pub async fn remove_temporary_server_member_after_voice_disconnect(
     db: &Database,
     channel: &UserVoiceChannel,
     user_id: &str,
+    disconnected_at: Timestamp,
 ) -> Result<()> {
     let Some(server_id) = channel.server_id.as_ref() else {
         return Ok(());
@@ -311,8 +592,60 @@ pub async fn remove_temporary_server_member_after_voice_disconnect(
     let Ok(member) = db.fetch_member(server_id, user_id).await else {
         return Ok(());
     };
-
     if !member.temporary || !member.roles.is_empty() {
+        return Ok(());
+    }
+
+    with_temporary_voice_user_lock(db, user_id, || async {
+        remove_temporary_server_member_after_voice_disconnect_locked(
+            db,
+            server_id,
+            user_id,
+            disconnected_at,
+        )
+        .await
+    })
+    .await
+}
+
+/// Completes temporary membership cleanup while the caller holds
+/// [`with_temporary_voice_user_lock`] for this user.
+pub async fn remove_temporary_server_member_after_voice_disconnect_locked(
+    db: &Database,
+    server_id: &str,
+    user_id: &str,
+    disconnected_at: Timestamp,
+) -> Result<()> {
+    if get_user_voice_channel_in_server(user_id, server_id)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    if get_current_voice_reservation(user_id)
+        .await?
+        .is_some_and(|reservation| reservation.channel.server_id.as_deref() == Some(server_id))
+    {
+        return Ok(());
+    }
+
+    remove_temporary_server_member_if_eligible(db, server_id, user_id, disconnected_at).await
+}
+
+async fn remove_temporary_server_member_if_eligible(
+    db: &Database,
+    server_id: &str,
+    user_id: &str,
+    disconnected_at: Timestamp,
+) -> Result<()> {
+    let Ok(member) = db.fetch_member(server_id, user_id).await else {
+        return Ok(());
+    };
+    if !member.temporary || !member.roles.is_empty() {
+        return Ok(());
+    }
+    if member.joined_at >= disconnected_at {
         return Ok(());
     }
 
@@ -471,6 +804,12 @@ pub async fn refresh_voice_credentials(
     let mut permissions = perms(db, user).channel(&channel);
     let current_permissions = calculate_channel_permissions(&mut permissions).await;
     current_permissions.throw_if_lacking_channel_permission(ChannelPermission::Connect)?;
+    let user_voice_channel = UserVoiceChannel::from_channel(&channel);
+    let temporary_server_id = permissions
+        .member_ref()
+        .as_ref()
+        .filter(|member| member.temporary)
+        .and_then(|_| user_voice_channel.server_id.clone());
 
     let node = get_channel_node(channel.id())
         .await?
@@ -491,9 +830,33 @@ pub async fn refresh_voice_credentials(
         operation_id,
         connection_epoch,
     );
-    let token = voice_client
-        .create_token_for_identity(&node, db, user, &identity, current_permissions, &channel)
-        .await?;
+    let token = if let Some(server_id) = temporary_server_id {
+        with_temporary_voice_user_lock(db, &user.id, || async {
+            db.fetch_member(&server_id, &user.id).await?;
+            let mut locked_permissions = perms(db, user).channel(&channel);
+            let locked_permissions = calculate_channel_permissions(&mut locked_permissions).await;
+            locked_permissions.throw_if_lacking_channel_permission(ChannelPermission::Connect)?;
+            let session = get_current_voice_session(&user.id)
+                .await?
+                .ok_or_else(|| create_error!(NotConnected))?;
+            if session.operation_id != operation_id
+                || session.channel != user_voice_channel
+                || session.rtc_engine != rtc_engine
+                || session.client_instance_id != client_instance_id
+                || session.connection_epoch != connection_epoch
+            {
+                return Err(create_error!(InvalidOperation));
+            }
+            voice_client
+                .create_token_for_identity(&node, db, user, &identity, locked_permissions, &channel)
+                .await
+        })
+        .await?
+    } else {
+        voice_client
+            .create_token_for_identity(&node, db, user, &identity, current_permissions, &channel)
+            .await?
+    };
 
     Ok(VoiceJoinCredentials {
         channel_id: channel.id().to_string(),
@@ -577,7 +940,7 @@ mod tests {
     }
 
     #[async_std::test]
-    async fn temporary_member_without_roles_is_removed_after_voice_disconnect() {
+    async fn authorized_cleanup_removes_old_but_preserves_recreated_temporary_member() {
         let db = DatabaseInfo::Reference
             .connect()
             .await
@@ -611,18 +974,33 @@ mod tests {
 
         assert!(member.temporary);
 
-        super::remove_temporary_server_member_after_voice_disconnect(
+        super::remove_temporary_server_member_if_eligible(
             &db,
-            &super::UserVoiceChannel {
-                id: "voice-channel".to_string(),
-                server_id: Some(server.id.clone()),
-            },
+            &server.id,
             &user.id,
+            Timestamp::now_utc(),
         )
         .await
         .expect("temporary member cleanup");
 
         assert!(db.fetch_member(&server.id, &user.id).await.is_err());
+
+        let stale_disconnect_at = Timestamp::now_utc();
+        async_std::task::sleep(std::time::Duration::from_millis(1)).await;
+        Member::create(&db, &server, &user, None, true)
+            .await
+            .expect("temporary member recreated");
+
+        super::remove_temporary_server_member_if_eligible(
+            &db,
+            &server.id,
+            &user.id,
+            stale_disconnect_at,
+        )
+        .await
+        .expect("stale cleanup ignored");
+
+        assert!(db.fetch_member(&server.id, &user.id).await.is_ok());
     }
 
     #[test]

@@ -15,9 +15,10 @@ use syrnike_database::{
         VoiceSession, VoiceSessionCreate, cancel_current_pending_voice_join_in_server,
         create_voice_session, get_channel_node, get_current_voice_operation_id,
         get_current_voice_session, get_user_voice_channel_in_server, get_voice_state,
-        remove_temporary_server_member_after_voice_disconnect, remove_user_from_voice_channel,
-        set_channel_node, set_user_moved_from_voice, set_user_moved_to_voice,
-        sync_user_voice_permissions, voice_participant_identity,
+        remove_temporary_server_member_after_voice_disconnect_locked,
+        remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
+        set_user_moved_to_voice, sync_user_voice_permissions, voice_participant_identity,
+        with_temporary_voice_user_lock,
     },
 };
 use syrnike_models::v0::{self, FieldsMember};
@@ -42,6 +43,34 @@ fn changes_voice_permissions(data: &v0::DataMemberEdit) -> bool {
         || data.remove.contains(&FieldsMember::Timeout)
         || data.remove.contains(&FieldsMember::CanPublish)
         || data.remove.contains(&FieldsMember::CanReceive)
+}
+
+async fn disconnect_member_from_voice(
+    db: &Database,
+    server_id: &str,
+    user_id: &str,
+    cleanup_temporary_member: bool,
+) -> Result<()> {
+    let disconnected_at = Timestamp::now_utc();
+    cancel_current_pending_voice_join_in_server(user_id, server_id).await?;
+    let active_channel = get_user_voice_channel_in_server(user_id, server_id).await?;
+    if let Some(channel) = active_channel {
+        let voice_channel = UserVoiceChannel {
+            id: channel,
+            server_id: Some(server_id.to_string()),
+        };
+        remove_user_from_voice_channel(&voice_channel, user_id).await?;
+    }
+    if cleanup_temporary_member {
+        remove_temporary_server_member_after_voice_disconnect_locked(
+            db,
+            server_id,
+            user_id,
+            disconnected_at,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// # Edit Member
@@ -303,7 +332,9 @@ pub async fn edit(
 
     let should_sync_voice_permissions = changes_voice_permissions(&data);
 
-    let mutation_result: Result<_> = async {
+    let was_temporary_member = member.temporary;
+    let serialize_temporary_membership = was_temporary_member;
+    let mutation = || async {
         // Apply edits to the member object
         let v0::DataMemberEdit {
             nickname,
@@ -521,34 +552,20 @@ pub async fn edit(
         };
 
         if remove.contains(&FieldsMember::VoiceChannel) {
-            cancel_current_pending_voice_join_in_server(&target_user.id, &server.id).await?;
-            if let Some(channel) =
-                get_user_voice_channel_in_server(&target_user.id, &server.id).await?
-            {
-                remove_user_from_voice_channel(
-                    &UserVoiceChannel {
-                        id: channel.clone(),
-                        server_id: Some(server.id.clone()),
-                    },
-                    &target_user.id,
-                )
-                .await?;
-                let voice_channel = UserVoiceChannel {
-                    id: channel,
-                    server_id: Some(server.id.clone()),
-                };
-                remove_temporary_server_member_after_voice_disconnect(
-                    db,
-                    &voice_channel,
-                    &target_user.id,
-                )
-                .await?;
+            if was_temporary_member {
+                disconnect_member_from_voice(db, &server.id, &target_user.id, true).await?;
+            } else {
+                disconnect_member_from_voice(db, &server.id, &target_user.id, false).await?;
             };
         }
 
         Ok(member)
-    }
-    .await;
+    };
+    let mutation_result: Result<_> = if serialize_temporary_membership {
+        with_temporary_voice_user_lock(db, &target_user.id, mutation).await
+    } else {
+        mutation().await
+    };
 
     let member = match mutation_result {
         Ok(member) => member,

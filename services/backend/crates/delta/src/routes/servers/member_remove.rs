@@ -6,6 +6,7 @@ use syrnike_database::{
     voice::{
         UserVoiceChannel, cancel_current_pending_voice_join_in_server,
         get_user_voice_channel_in_server, remove_user_from_voice_channel,
+        with_temporary_voice_user_lock,
     },
 };
 use syrnike_models::v0;
@@ -75,35 +76,32 @@ pub async fn kick(
     )
     .await?;
 
-    if let Err(error) = member
-        .remove(db, &server, RemovalIntention::Kick, false)
-        .await
-    {
-        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-    }
-
-    if let Err(error) = cancel_current_pending_voice_join_in_server(member_id.id, &server.id).await
-    {
-        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-    }
-    let voice_channel = match get_user_voice_channel_in_server(member_id.id, &server.id).await {
-        Ok(channel) => channel,
-        Err(error) => {
-            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-        }
-    };
-    if let Some(channel_id) = voice_channel {
-        if let Err(error) = remove_user_from_voice_channel(
-            &UserVoiceChannel {
-                id: channel_id,
-                server_id: Some(server.id.clone()),
-            },
-            member_id.id,
-        )
-        .await
+    let was_temporary_member = member.temporary;
+    let remove_member = || async {
+        member
+            .remove(db, &server, RemovalIntention::Kick, false)
+            .await?;
+        cancel_current_pending_voice_join_in_server(member_id.id, &server.id).await?;
+        if let Some(channel_id) = get_user_voice_channel_in_server(member_id.id, &server.id).await?
         {
-            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+            remove_user_from_voice_channel(
+                &UserVoiceChannel {
+                    id: channel_id,
+                    server_id: Some(server.id.clone()),
+                },
+                member_id.id,
+            )
+            .await?;
         }
+        Ok(())
+    };
+    let removal_result = if was_temporary_member {
+        with_temporary_voice_user_lock(db, member_id.id, remove_member).await
+    } else {
+        remove_member().await
+    };
+    if let Err(error) = removal_result {
+        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
     }
 
     audit.mark_succeeded(db).await?;

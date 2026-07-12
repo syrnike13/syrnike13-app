@@ -1,17 +1,17 @@
-use rocket::{serde::json::Json, State};
+use rocket::{State, serde::json::Json};
 use syrnike_database::{
-    util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{
-        delete_voice_channel, get_voice_channel_members,
-        remove_temporary_server_member_after_voice_disconnect, sync_voice_permissions,
-        UserVoiceChannel, VoiceClient,
-    },
     Channel, Database, File, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget,
     SystemMessage, User,
+    iso8601_timestamp::Timestamp,
+    util::{permissions::DatabasePermissionQuery, reference::Reference},
+    voice::{
+        UserVoiceChannel, VoiceClient, delete_voice_channel, get_voice_channel_members,
+        remove_temporary_server_member_after_voice_disconnect, sync_voice_permissions,
+    },
 };
 use syrnike_models::v0;
-use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
-use syrnike_result::{create_error, Result};
+use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
+use syrnike_result::{Result, create_error};
 use validator::Validate;
 
 use super::OptionalAmqp;
@@ -442,6 +442,7 @@ pub async fn edit(
 
     if channel.voice().is_none() && had_voice_before_update {
         let voice_channel = UserVoiceChannel::from_channel(&channel);
+        let disconnected_at = Timestamp::now_utc();
         let connected_voice_members = match get_voice_channel_members(&voice_channel)
             .await
             .map(|members| members.unwrap_or_default())
@@ -469,6 +470,7 @@ pub async fn edit(
                 db,
                 &voice_channel,
                 &member_id,
+                disconnected_at,
             )
             .await
             {
@@ -514,15 +516,15 @@ mod tests {
     use std::collections::HashMap;
 
     use authifier::{
-        models::{Account, EmailVerification, Session},
         Authifier,
+        models::{Account, EmailVerification, Session},
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use serde_json::json;
     use syrnike_database::{
-        fixture, voice::VoiceClient, Database, DatabaseInfo, ServerAuditLogAction,
-        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
+        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
+        ServerAuditLogTarget, fixture, voice::VoiceClient,
     };
     use syrnike_models::v0;
     use syrnike_permissions::ChannelPermission;

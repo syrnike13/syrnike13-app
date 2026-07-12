@@ -575,8 +575,13 @@ pub async fn ingress(
             .await?;
 
             if !is_move {
-                remove_temporary_server_member_after_voice_disconnect(db, &channel, user_id)
-                    .await?;
+                remove_temporary_server_member_after_voice_disconnect(
+                    db,
+                    &channel,
+                    user_id,
+                    finished_at,
+                )
+                .await?;
             }
         }
         // Audio/video track was started/stopped/unmuted/muted
@@ -681,7 +686,10 @@ pub async fn ingress(
                         .await?;
 
                         remove_temporary_server_member_after_voice_disconnect(
-                            db, &channel, user_id,
+                            db,
+                            &channel,
+                            user_id,
+                            finished_at,
                         )
                         .await?;
                     }
@@ -729,6 +737,11 @@ pub async fn ingress(
                 return Ok(EmptyResponse);
             };
 
+            let deleted_user_ids = deleted_sessions
+                .iter()
+                .map(|(user_id, _)| user_id.clone())
+                .collect::<Vec<_>>();
+
             for (user_id, operation_id) in deleted_sessions {
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
@@ -751,9 +764,14 @@ pub async fn ingress(
             )
             .await?;
 
-            for user_id in &members {
-                remove_temporary_server_member_after_voice_disconnect(db, &channel, user_id)
-                    .await?;
+            for user_id in &deleted_user_ids {
+                remove_temporary_server_member_after_voice_disconnect(
+                    db,
+                    &channel,
+                    user_id,
+                    finished_at,
+                )
+                .await?;
             }
         }
         _ => {}

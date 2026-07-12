@@ -1,12 +1,12 @@
 use rocket::State;
 use syrnike_database::{
+    Database, RemovalIntention, User,
     util::reference::Reference,
     voice::{
-        cancel_current_pending_voice_join_in_server, delete_voice_channel,
-        get_user_voice_channel_in_server, remove_user_from_voice_channel, UserVoiceChannel,
-        VoiceClient,
+        UserVoiceChannel, VoiceClient, cancel_current_pending_voice_join_in_server,
+        delete_voice_channel, get_user_voice_channel_in_server, remove_user_from_voice_channel,
+        with_temporary_voice_user_lock,
     },
-    Database, RemovalIntention, User,
 };
 use syrnike_models::v0;
 use syrnike_result::Result;
@@ -42,26 +42,35 @@ pub async fn delete(
 
         server.delete(db).await
     } else {
-        if let Some(channel_id) = get_user_voice_channel_in_server(&user.id, &server.id).await? {
-            remove_user_from_voice_channel(
-                &UserVoiceChannel {
-                    id: channel_id,
-                    server_id: Some(server.id.clone()),
-                },
-                &user.id,
-            )
-            .await?;
-        };
-        cancel_current_pending_voice_join_in_server(&user.id, &server.id).await?;
+        let was_temporary_member = member.temporary;
+        let leave_server = || async {
+            if let Some(channel_id) = get_user_voice_channel_in_server(&user.id, &server.id).await?
+            {
+                remove_user_from_voice_channel(
+                    &UserVoiceChannel {
+                        id: channel_id,
+                        server_id: Some(server.id.clone()),
+                    },
+                    &user.id,
+                )
+                .await?;
+            };
+            cancel_current_pending_voice_join_in_server(&user.id, &server.id).await?;
 
-        member
-            .remove(
-                db,
-                &server,
-                RemovalIntention::Leave,
-                options.leave_silently.unwrap_or_default(),
-            )
-            .await
+            member
+                .remove(
+                    db,
+                    &server,
+                    RemovalIntention::Leave,
+                    options.leave_silently.unwrap_or_default(),
+                )
+                .await
+        };
+        if was_temporary_member {
+            with_temporary_voice_user_lock(db, &user.id, leave_server).await
+        } else {
+            leave_server().await
+        }
     }
     .map(|_| EmptyResponse)
 }

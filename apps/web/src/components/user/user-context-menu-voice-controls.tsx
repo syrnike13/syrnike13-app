@@ -135,7 +135,14 @@ export function UserContextMenuVoiceControls({
         targetMember._id.user,
         data,
       )
-      syncStore.upsertMembers([updated])
+      const mayBeRemovedTemporaryMember =
+        updated.temporary === true && updated.roles.length === 0
+      const memberStillPresent =
+        syncStore.getState().members[`${server._id}:${targetMember._id.user}`] !==
+        undefined
+      if (!mayBeRemovedTemporaryMember || memberStillPresent) {
+        syncStore.upsertMembers([updated])
+      }
       if (data.remove?.includes('VoiceChannel') && voiceChannelId) {
         syncStore.removeVoiceParticipant(voiceChannelId, targetMember._id.user)
       }

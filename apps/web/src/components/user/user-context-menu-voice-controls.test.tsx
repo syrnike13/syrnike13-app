@@ -312,6 +312,85 @@ describe('UserContextMenuVoiceControls server moderation', () => {
     ).toBeUndefined()
   })
 
+  it('does not restore a temporary member removed before disconnect responds', async () => {
+    const temporaryMember = {
+      ...makeMember(TARGET_USER_ID, []),
+      temporary: true,
+    }
+    syncStore.upsertMembers([temporaryMember])
+    mocks.editServerMember.mockImplementation(async () => {
+      syncStore.removeServerMember('server-1', TARGET_USER_ID)
+      return temporaryMember
+    })
+
+    renderControls(temporaryMember)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Отключить от голосового канала' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.editServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        TARGET_USER_ID,
+        { remove: ['VoiceChannel'] },
+      )
+    })
+    expect(
+      syncStore.getState().members[`server-1:${TARGET_USER_ID}`],
+    ).toBeUndefined()
+  })
+
+  it('does not restore a temporary member removed before moderation responds', async () => {
+    const temporaryMember = {
+      ...makeMember(TARGET_USER_ID, []),
+      temporary: true,
+    }
+    const updatedMember = { ...temporaryMember, can_publish: false }
+    syncStore.upsertMembers([temporaryMember])
+    mocks.editServerMember.mockImplementation(async () => {
+      syncStore.removeServerMember('server-1', TARGET_USER_ID)
+      return updatedMember
+    })
+
+    renderControls(temporaryMember)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отключить микрофон' }))
+
+    await waitFor(() => {
+      expect(mocks.editServerMember).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        TARGET_USER_ID,
+        { can_publish: false },
+      )
+    })
+    expect(
+      syncStore.getState().members[`server-1:${TARGET_USER_ID}`],
+    ).toBeUndefined()
+  })
+
+  it('updates a temporary member that still exists when moderation responds', async () => {
+    const temporaryMember = {
+      ...makeMember(TARGET_USER_ID, []),
+      temporary: true,
+    }
+    const updatedMember = { ...temporaryMember, can_publish: false }
+    syncStore.upsertMembers([temporaryMember])
+    mocks.editServerMember.mockResolvedValue(updatedMember)
+
+    renderControls(temporaryMember)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отключить микрофон' }))
+
+    await waitFor(() => {
+      expect(
+        syncStore.getState().members[`server-1:${TARGET_USER_ID}`]?.can_publish,
+      ).toBe(false)
+    })
+  })
+
   it('moves a voice participant to another voice channel', async () => {
     mocks.editServerMember.mockResolvedValue(
       makeMember(TARGET_USER_ID, ['member']),

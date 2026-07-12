@@ -6,6 +6,7 @@ use syrnike_database::{
     voice::{
         UserVoiceChannel, cancel_current_pending_voice_join_in_server,
         get_user_voice_channel_in_server, remove_user_from_voice_channel,
+        with_temporary_voice_user_lock,
     },
 };
 use syrnike_models::v0;
@@ -84,57 +85,50 @@ pub async fn ban(
     )
     .await?;
 
-    if let Some(member) = member {
-        if let Err(error) = member
-            .remove(db, &server, RemovalIntention::Ban, false)
-            .await
-        {
-            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-        }
+    let was_temporary_member = member.as_ref().is_some_and(|member| member.temporary);
+    let apply_ban = || async {
+        if let Some(member) = member {
+            member
+                .remove(db, &server, RemovalIntention::Ban, false)
+                .await?;
 
-        // If the member is in a voice channel while banned kick them from the voice channel
-        if let Err(error) = cancel_current_pending_voice_join_in_server(target.id, &server.id).await
-        {
-            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-        }
-        let voice_channel = match get_user_voice_channel_in_server(target.id, &server.id).await {
-            Ok(channel) => channel,
-            Err(error) => {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-            }
-        };
-        if let Some(channel_id) = voice_channel {
-            if let Err(error) = remove_user_from_voice_channel(
-                &UserVoiceChannel {
-                    id: channel_id,
-                    server_id: Some(server.id.clone()),
-                },
-                target.id,
-            )
-            .await
+            // If the member is in a voice channel while banned kick them from the voice channel
+            cancel_current_pending_voice_join_in_server(target.id, &server.id).await?;
+            if let Some(channel_id) =
+                get_user_voice_channel_in_server(target.id, &server.id).await?
             {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+                remove_user_from_voice_channel(
+                    &UserVoiceChannel {
+                        id: channel_id,
+                        server_id: Some(server.id.clone()),
+                    },
+                    target.id,
+                )
+                .await?;
             }
         }
-    }
-    // We do this outside the member check so we can sweep hit-and-run spammers who already left.
-    if let Some(seconds) = data.delete_message_seconds {
-        if seconds > 0 {
-            let threshold_time = SystemTime::now() - Duration::from_secs(seconds as u64);
+        // We do this outside the member check so we can sweep hit-and-run spammers who already left.
+        if let Some(seconds) = data.delete_message_seconds {
+            if seconds > 0 {
+                let threshold_time = SystemTime::now() - Duration::from_secs(seconds as u64);
 
-            if let Err(error) = Message::bulk_delete_by_author_since(
-                db,
-                &server.channels,
-                target.id,
-                threshold_time,
-            )
-            .await
-            {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+                Message::bulk_delete_by_author_since(
+                    db,
+                    &server.channels,
+                    target.id,
+                    threshold_time,
+                )
+                .await?;
             }
         }
-    }
-    let ban = match ServerBan::create(db, &server, target.id, data.reason).await {
+        ServerBan::create(db, &server, target.id, data.reason).await
+    };
+    let ban_result = if was_temporary_member {
+        with_temporary_voice_user_lock(db, target.id, apply_ban).await
+    } else {
+        apply_ban().await
+    };
+    let ban = match ban_result {
         Ok(ban) => ban,
         Err(error) => return audit_mutation::mark_failed_and_return(db, &mut audit, error).await,
     };

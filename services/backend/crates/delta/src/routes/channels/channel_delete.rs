@@ -1,22 +1,23 @@
 use rocket::State;
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
+    Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User,
+    iso8601_timestamp::Timestamp,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{
-        delete_voice_channel, get_voice_channel_members,
-        remove_temporary_server_member_after_voice_disconnect, UserVoiceChannel, VoiceClient,
+        UserVoiceChannel, VoiceClient, delete_voice_channel, get_voice_channel_members,
+        remove_temporary_server_member_after_voice_disconnect,
     },
-    Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
-use syrnike_result::{create_error, Result};
+use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
+use syrnike_result::{Result, create_error};
 
+use super::OptionalAmqp;
 use super::voice_call_cleanup::{
     delete_group_voice_call, remove_group_member_from_voice_call,
     stop_ringing_for_removed_group_member,
 };
-use super::OptionalAmqp;
 use crate::routes::servers::audit_mutation;
 
 /// # Close Channel
@@ -84,6 +85,7 @@ pub async fn delete(
             let server_id = channel.server().expect("server channel").to_string();
             let channel_id = channel.id().to_string();
             let had_voice = channel.voice().is_some();
+            let disconnected_at = Timestamp::now_utc();
             let voice_channel = UserVoiceChannel::from_channel(&channel);
             let connected_voice_members = if had_voice {
                 get_voice_channel_members(&voice_channel)
@@ -122,6 +124,7 @@ pub async fn delete(
                         db,
                         &voice_channel,
                         &member_id,
+                        disconnected_at,
                     )
                     .await
                     {
@@ -148,15 +151,15 @@ mod test {
 
     use crate::{rocket, util::test::TestHarness};
     use authifier::{
-        models::{Account, EmailVerification, Session},
         Authifier,
+        models::{Account, EmailVerification, Session},
     };
     use rocket::http::{Header, Status};
     use rocket::local::asynchronous::Client;
-    use syrnike_database::{events::client::EventV1, Channel};
+    use syrnike_database::{Channel, events::client::EventV1};
     use syrnike_database::{
-        fixture, voice::VoiceClient, Database, DatabaseInfo, ServerAuditLogAction,
-        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
+        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
+        ServerAuditLogTarget, fixture, voice::VoiceClient,
     };
     use syrnike_models::v0::DataCreateGroup;
     use ulid::Ulid;

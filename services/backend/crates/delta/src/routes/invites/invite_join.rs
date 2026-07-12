@@ -1,6 +1,7 @@
 use rocket::{State, serde::json::Json};
 use syrnike_database::{
     AMQP, Channel, Database, Invite, Member, User, audit_timestamp, util::reference::Reference,
+    voice::with_temporary_voice_user_lock,
 };
 use syrnike_models::v0::{self, InviteJoinResponse};
 use syrnike_result::{Result, create_error};
@@ -70,7 +71,12 @@ async fn join_server_invite(
     temporary: bool,
 ) -> Result<InviteJoinResponse> {
     let server = db.fetch_server(server_id).await?;
-    let (member, channels) = Member::create(db, &server, user, None, temporary).await?;
+    let create_member = || Member::create(db, &server, user, None, temporary);
+    let (member, channels) = if temporary {
+        with_temporary_voice_user_lock(db, &user.id, create_member).await?
+    } else {
+        create_member().await?
+    };
 
     Ok(InviteJoinResponse::Server {
         channels: channels.into_iter().map(|c| c.into()).collect(),

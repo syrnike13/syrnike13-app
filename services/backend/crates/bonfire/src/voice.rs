@@ -1,20 +1,21 @@
 use async_std::sync::Mutex;
 use futures::SinkExt;
 use syrnike_database::{
+    AMQP, Database, User,
     events::client::{EventV1, GatewayErrorRequest, GatewayErrorScope},
     events::server::VoiceStateUpdateRequest,
+    iso8601_timestamp::Timestamp,
     util::reference::Reference,
     voice::{
-        delete_current_voice_reservation, get_current_voice_authority,
-        get_current_voice_operation_id, get_current_voice_session, get_user_voice_channels,
-        get_voice_authority_snapshot, is_valid_voice_operation_id, join_voice_channel,
-        publish_authoritative_voice_snapshot, publish_voice_state_snapshot,
-        refresh_voice_credentials, remove_user_from_voice_channel_with_call_cleanup,
-        update_client_voice_flags, VoiceClient, VoiceJoinOptions, VoiceRtcEngine,
+        VoiceClient, VoiceJoinOptions, VoiceRtcEngine, delete_current_voice_reservation,
+        get_current_voice_authority, get_current_voice_operation_id, get_current_voice_session,
+        get_user_voice_channels, get_voice_authority_snapshot, is_valid_voice_operation_id,
+        join_voice_channel, publish_authoritative_voice_snapshot, publish_voice_state_snapshot,
+        refresh_voice_credentials, remove_temporary_server_member_after_voice_disconnect,
+        remove_user_from_voice_channel_with_call_cleanup, update_client_voice_flags,
     },
-    Database, User, AMQP,
 };
-use syrnike_result::{create_error, Result};
+use syrnike_result::{Result, create_error};
 
 use crate::{config::ProtocolConfiguration, websocket::WsWriter};
 
@@ -137,6 +138,7 @@ pub async fn handle_voice_state_update(
         connection_epoch,
     } = &request
     {
+        let disconnected_at = Timestamp::now_utc();
         let engine: VoiceRtcEngine = rtc_engine
             .parse()
             .map_err(|_| create_error!(InvalidOperation))?;
@@ -150,6 +152,13 @@ pub async fn handle_voice_state_update(
             {
                 return Err(create_error!(InvalidOperation));
             }
+            remove_temporary_server_member_after_voice_disconnect(
+                db,
+                &reservation.channel,
+                &user.id,
+                disconnected_at,
+            )
+            .await?;
         } else if let Some(session) = authority.session {
             if session.operation_id != *operation_id
                 || session.rtc_engine != engine
