@@ -41,6 +41,11 @@ import {
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { VoiceMicSplitControl } from '#/components/voice/voice-mic-split-control'
+import {
+  splitControlDangerChevronClass,
+  splitControlDangerMainClass,
+  splitControlDangerStandaloneClass,
+} from '#/components/voice/voice-split-control'
 import { voiceStagePopoverSettingsClass } from '#/components/voice/voice-stage-popover-styles'
 import { cn } from '#/lib/utils'
 
@@ -74,11 +79,9 @@ const stageControlNeutralChevronGroupHoverClass =
   'group-hover/media:bg-white/[0.06] group-hover/media:text-white'
 
 /** Мьют: яркая красная иконка, полупрозрачный красный фон. */
-const stageControlDangerMainClass =
-  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/30 group-hover/media:text-destructive'
+const stageControlDangerMainClass = splitControlDangerMainClass
 
-const stageControlDangerChevronClass =
-  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
+const stageControlDangerChevronClass = splitControlDangerChevronClass
 
 /** Камера включена. */
 const stageControlSuccessMainClass =
@@ -91,8 +94,7 @@ const stageControlHighlightClass =
   'bg-white/15 text-white hover:bg-white/20'
 
 /** Отдельные кнопки в средней группе (не split media). */
-const stageControlDangerStandaloneClass =
-  'bg-destructive/20 text-destructive hover:bg-destructive/30 hover:text-destructive'
+const stageControlDangerStandaloneClass = splitControlDangerStandaloneClass
 
 function stageIconButtonClass({
   danger,
@@ -465,7 +467,7 @@ function VoiceStageMobileDrawerControlBar({
           aria-label={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
           className={cn(
             sideButtonClass,
-            micMuted && 'bg-destructive/20 text-destructive',
+            micMuted && 'bg-destructive/20 text-destructive-soft',
           )}
           onClick={onToggleMic}
         >
@@ -614,7 +616,7 @@ function MobileDrawerIconButton({
         onClick={disabled ? undefined : onClick}
         className={cn(
           'flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors',
-          danger && 'bg-destructive/20 text-destructive',
+          danger && 'bg-destructive/20 text-destructive-soft',
           success && 'bg-chart-3/20 text-chart-3',
           highlight && !danger && !success && 'bg-white/15 text-white',
           !danger && !success && !highlight && 'bg-muted hover:bg-accent',

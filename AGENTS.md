@@ -85,7 +85,7 @@ Use the narrower package/service command when a task touches only one area.
 | Статичные non-color tokens | `apps/web/src/styles.css` (`--radius`, шрифты, тени) — **без** цветовых `--primary`, `--background` и т.п. |
 | Brand-locked (всегда из темы **СЫРНИКИ**) | `BRAND_LOCKED_THEME_TOKEN_KEYS` в `theme-tokens.ts` |
 
-**Семантика (ориентир):** успех / голос / online → `chart-3`; предупреждение / idle → `chart-2`; фокус → `chart-5`; опасность → `destructive`; бренд-акцент → `primary`. Presence: `apps/web/src/lib/presence.ts`.
+**Семантика (ориентир):** успех / голос / online → `chart-3`; предупреждение / idle → `chart-2`; фокус → `chart-5`; опасность → `destructive`; soft-danger (мьют и tinted danger) → `destructive-soft` + `bg-destructive/…`; бренд-акцент → `primary`. Presence: `apps/web/src/lib/presence.ts`.
 
 **Допустимые исключения:**
 
