@@ -10,6 +10,7 @@ import {
   getThemeById,
   getThemeTokens,
   resolveThemeVariant,
+  themePreviewColors,
 } from '#/features/appearance/theme-registry'
 
 const OKLCH_PATTERN = /^(oklch\([^)]+\)|rgb\([^)]+\))$/
@@ -114,5 +115,13 @@ describe('theme registry', () => {
       expect(tokens[key]).toBe(syrnikeLight[key])
     }
     expect(tokens.background).toBe(getThemeById('lug').variants.light!.background)
+  })
+
+  it('uses catalog palette colors in theme picker previews (not brand-locked)', () => {
+    const lug = themePreviewColors(getThemeById('lug'), 'dark')
+    const iskra = themePreviewColors(getThemeById('iskra'), 'dark')
+    expect(lug.primary).toBe(getThemeById('lug').variants.dark!.primary)
+    expect(iskra.primary).toBe(getThemeById('iskra').variants.dark!.primary)
+    expect(lug.primary).not.toBe(iskra.primary)
   })
 })

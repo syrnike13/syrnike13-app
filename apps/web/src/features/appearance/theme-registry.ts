@@ -97,6 +97,7 @@ export function getThemeTokens(
   return applyBrandLockedThemeTokens(theme.variants[variant]!, variant)
 }
 
+/** Цвета превью в каталоге тем — из палитры темы, без brand-lock (чтобы палитры различались). */
 export function themePreviewColors(
   theme: ThemeDefinition,
   variant: ThemeVariant,
@@ -105,20 +106,16 @@ export function themePreviewColors(
   if (!tokens) {
     const fallback = getAvailableVariants(theme)[0]
     const fallbackTokens = fallback ? theme.variants[fallback] : null
-    const resolved = fallbackTokens
-      ? applyBrandLockedThemeTokens(fallbackTokens, fallback)
-      : null
     return {
-      background: resolved?.background ?? 'oklch(0.3 0 0)',
-      primary: resolved?.primary ?? syrnikeBaseTokens(variant).primary,
-      sidebar: resolved?.sidebar ?? 'oklch(0.25 0 0)',
+      background: fallbackTokens?.background ?? 'oklch(0.3 0 0)',
+      primary: fallbackTokens?.primary ?? syrnikeBaseTokens(variant).primary,
+      sidebar: fallbackTokens?.sidebar ?? 'oklch(0.25 0 0)',
     }
   }
-  const resolved = applyBrandLockedThemeTokens(tokens, variant)
   return {
-    background: resolved.background,
-    primary: resolved.primary,
-    sidebar: resolved.sidebar,
+    background: tokens.background,
+    primary: tokens.primary,
+    sidebar: tokens.sidebar,
   }
 }
 
