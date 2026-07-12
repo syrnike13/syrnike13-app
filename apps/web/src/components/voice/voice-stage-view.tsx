@@ -766,7 +766,7 @@ function VoiceStageWaitingCall({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-      <div className="rounded-full ring-2 ring-[#23a559] ring-offset-2 ring-offset-black">
+      <div className="rounded-full ring-2 ring-chart-3 ring-offset-2 ring-offset-background">
         <UserAvatar
           user={counterpart}
           className="size-28 sm:size-32 md:size-36"

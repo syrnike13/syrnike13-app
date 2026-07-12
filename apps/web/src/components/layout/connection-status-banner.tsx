@@ -22,7 +22,7 @@ export function ConnectionStatusBanner() {
       className={cn(
         'flex shrink-0 items-center justify-center gap-2 border-b px-3 py-1.5 text-xs',
         reconnecting
-          ? 'border-amber-500/20 bg-amber-500/10 text-amber-100'
+          ? 'border-chart-2/20 bg-chart-2/10 text-chart-2'
           : 'border-destructive/20 bg-destructive/10 text-destructive-foreground',
       )}
       role="status"

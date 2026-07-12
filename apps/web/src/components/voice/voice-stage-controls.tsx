@@ -62,7 +62,7 @@ type VoiceStageControlsProps = {
 }
 
 const stageControlGroupClass =
-  'flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#1e1f22] p-1.5'
+  'flex items-center gap-0.5 rounded-lg border border-white/10 bg-card p-1.5'
 
 const stageControlIconClass =
   'flex h-9 min-w-12 shrink-0 items-center justify-center px-2 text-white/80 transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-50'
@@ -75,24 +75,24 @@ const stageControlNeutralChevronGroupHoverClass =
 
 /** Мьют: яркая красная иконка, полупрозрачный красный фон. */
 const stageControlDangerMainClass =
-  'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/30 group-hover/media:text-[#ff6b6b]'
+  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/30 group-hover/media:text-destructive'
 
 const stageControlDangerChevronClass =
-  'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/12 group-hover/media:text-[#ff6b6b]'
+  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
 
 /** Камера включена. */
 const stageControlSuccessMainClass =
-  'bg-[#23a559]/20 text-[#3dd16f] group-hover/media:bg-[#23a559]/30 group-hover/media:text-[#4ade80]'
+  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/30 group-hover/media:text-chart-3'
 
 const stageControlSuccessChevronClass =
-  'bg-[#23a559]/20 text-[#3dd16f] group-hover/media:bg-[#23a559]/12 group-hover/media:text-[#4ade80]'
+  'bg-chart-3/20 text-chart-3 group-hover/media:bg-chart-3/12 group-hover/media:text-chart-3'
 
 const stageControlHighlightClass =
   'bg-white/15 text-white hover:bg-white/20'
 
 /** Отдельные кнопки в средней группе (не split media). */
 const stageControlDangerStandaloneClass =
-  'bg-[#ed4245]/20 text-[#ff5c5c] hover:bg-[#ed4245]/30 hover:text-[#ff6b6b]'
+  'bg-destructive/20 text-destructive hover:bg-destructive/30 hover:text-destructive'
 
 function stageIconButtonClass({
   danger,
@@ -442,15 +442,15 @@ function VoiceStageMobileDrawerControlBar({
   onJoin: () => void
 }) {
   const barClass =
-    'flex w-full min-w-0 items-center gap-2 rounded-2xl bg-[#111214]/95 p-2 shadow-lg ring-1 ring-white/10'
+    'flex w-full min-w-0 items-center gap-2 rounded-2xl bg-background/95 p-2 shadow-lg ring-1 ring-white/10'
   const sideButtonClass =
-    'flex size-11 shrink-0 items-center justify-center rounded-full bg-[#2b2d31] text-white transition-colors hover:bg-[#35373c] disabled:opacity-50'
+    'flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-primary-foreground transition-colors hover:bg-accent disabled:opacity-50'
 
   if (!inCall && !connecting) {
     const joinButton = (
       <Button
         type="button"
-        className="h-11 min-w-0 flex-1 rounded-full bg-[#23a559] px-4 text-sm font-semibold text-white hover:bg-[#1a9d4f]"
+        className="h-11 min-w-0 flex-1 rounded-full bg-chart-3 px-4 text-sm font-semibold text-primary-foreground hover:bg-chart-3/90"
         onClick={onJoin}
       >
         {joinLabel}
@@ -465,7 +465,7 @@ function VoiceStageMobileDrawerControlBar({
           aria-label={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
           className={cn(
             sideButtonClass,
-            micMuted && 'bg-[#ed4245]/20 text-[#ff6b6b]',
+            micMuted && 'bg-destructive/20 text-destructive',
           )}
           onClick={onToggleMic}
         >
@@ -567,7 +567,7 @@ function VoiceStageMobileDrawerControlBar({
             title="Отключиться"
             disabled={connecting}
             onClick={onLeave}
-            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#ed4245] text-white transition-colors hover:bg-[#d84040] disabled:opacity-50"
+            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
           >
             <PhoneOffIcon className="size-5" />
           </button>
@@ -614,10 +614,10 @@ function MobileDrawerIconButton({
         onClick={disabled ? undefined : onClick}
         className={cn(
           'flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors',
-          danger && 'bg-[#ed4245]/20 text-[#ff6b6b]',
-          success && 'bg-[#23a559]/20 text-[#4ade80]',
+          danger && 'bg-destructive/20 text-destructive',
+          success && 'bg-chart-3/20 text-chart-3',
           highlight && !danger && !success && 'bg-white/15 text-white',
-          !danger && !success && !highlight && 'bg-[#2b2d31] hover:bg-[#35373c]',
+          !danger && !success && !highlight && 'bg-muted hover:bg-accent',
           disabled && 'opacity-50',
         )}
       >
@@ -709,7 +709,7 @@ function VoiceStageOverlayControlBar({
         title="Отключиться"
         disabled={connecting}
         onClick={onLeave}
-        className="flex min-w-[3.75rem] shrink-0 items-center justify-center rounded-lg bg-[#ed4245] px-3 text-white transition-colors hover:bg-[#d84040] disabled:opacity-50"
+        className="flex min-w-[3.75rem] shrink-0 items-center justify-center rounded-lg bg-destructive px-3 text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
       >
         <PhoneOffIcon className="size-5" />
       </button>
@@ -832,7 +832,7 @@ function LegacyControlBar({
     <TooltipProvider delayDuration={300}>
     <div
       className={cn(
-        'flex items-center gap-1 rounded-full bg-[#232428] p-1.5 shadow-lg ring-1 ring-white/10',
+        'flex items-center gap-1 rounded-full bg-muted p-1.5 shadow-lg ring-1 ring-white/10',
         compact && 'p-0.5',
       )}
     >
@@ -893,7 +893,7 @@ function LegacyControlBar({
         size="icon"
         variant="ghost"
         className={cn(
-          'rounded-full bg-[#ed4245] text-white hover:bg-[#c03537] hover:text-white',
+          'rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:text-destructive-foreground',
           compact ? 'size-8' : 'size-11',
         )}
         title="Отключиться"

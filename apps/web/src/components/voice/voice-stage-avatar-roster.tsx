@@ -76,7 +76,7 @@ export function VoiceStageAvatarRoster({
               <div
                 className={cn(
                   'relative rounded-full transition-[box-shadow]',
-                  speaking && 'ring-2 ring-[#23a559] ring-offset-2 ring-offset-black',
+                  speaking && 'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
                 )}
               >
                 <UserAvatar

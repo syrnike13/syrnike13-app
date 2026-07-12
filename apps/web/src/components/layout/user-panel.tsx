@@ -128,7 +128,7 @@ export function UserPanel() {
                           gatewayConnected
                             ? 'text-muted-foreground'
                             : gatewayReconnecting
-                              ? 'text-amber-400/90'
+                              ? 'text-chart-2/90'
                               : 'text-destructive/80',
                         )}
                       >

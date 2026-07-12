@@ -73,7 +73,7 @@ export function ShellHistoryNavButtons({
         <ChevronRightIcon className="size-4" />
       </button>
       {isNightly ? (
-        <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-yellow-500/40 bg-yellow-500/10 px-1.5 text-[10px] font-medium leading-none text-yellow-800 dark:border-yellow-300/35 dark:bg-yellow-300/10 dark:text-yellow-200">
+        <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-chart-2/40 bg-chart-2/10 px-1.5 text-[10px] font-medium leading-none text-chart-2">
           nightly
         </span>
       ) : null}

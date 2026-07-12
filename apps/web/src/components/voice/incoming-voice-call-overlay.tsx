@@ -125,7 +125,7 @@ export function IncomingVoiceCallOverlay({
         <Button
           type="button"
           size="sm"
-          className="flex-1 bg-emerald-600 text-white hover:bg-emerald-600/90"
+          className="flex-1 bg-chart-3 text-primary-foreground hover:bg-chart-3/90"
           onClick={() => {
             void voice
               .join(call.channelId)

@@ -2,9 +2,13 @@ import type { AppearanceSettings } from '@syrnike13/platform'
 import { DEFAULT_THEME_ID } from '@syrnike13/platform'
 
 import { THEME_CATALOG, type ThemeDefinition, type ThemeVariant } from '#/features/appearance/theme-catalog-data'
-import { THEME_TOKEN_KEYS, type ThemeTokens } from '#/features/appearance/theme-tokens'
+import {
+  BRAND_LOCKED_THEME_TOKEN_KEYS,
+  THEME_TOKEN_KEYS,
+  type ThemeTokens,
+} from '#/features/appearance/theme-tokens'
 
-export { THEME_CATALOG, THEME_TOKEN_KEYS }
+export { BRAND_LOCKED_THEME_TOKEN_KEYS, THEME_CATALOG, THEME_TOKEN_KEYS }
 export type { ThemeDefinition, ThemeTokens, ThemeVariant }
 
 export type ThemePreviewColors = {
@@ -68,13 +72,29 @@ export function resolveThemeVariant(
   return resolveSystemVariant(prefersDark, theme)
 }
 
+function syrnikeBaseTokens(variant: ThemeVariant): ThemeTokens {
+  return getThemeById(DEFAULT_THEME_ID).variants[variant]!
+}
+
+export function applyBrandLockedThemeTokens(
+  tokens: ThemeTokens,
+  variant: ThemeVariant,
+): ThemeTokens {
+  const base = syrnikeBaseTokens(variant)
+  const resolved = { ...tokens }
+  for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
+    resolved[key] = base[key]
+  }
+  return resolved
+}
+
 export function getThemeTokens(
   settings: AppearanceSettings,
   prefersDark = false,
 ): ThemeTokens {
   const theme = getThemeById(settings.themeId)
   const variant = resolveThemeVariant(settings, prefersDark)
-  return theme.variants[variant]!
+  return applyBrandLockedThemeTokens(theme.variants[variant]!, variant)
 }
 
 export function themePreviewColors(
@@ -85,16 +105,20 @@ export function themePreviewColors(
   if (!tokens) {
     const fallback = getAvailableVariants(theme)[0]
     const fallbackTokens = fallback ? theme.variants[fallback] : null
+    const resolved = fallbackTokens
+      ? applyBrandLockedThemeTokens(fallbackTokens, fallback)
+      : null
     return {
-      background: fallbackTokens?.background ?? 'oklch(0.3 0 0)',
-      primary: fallbackTokens?.primary ?? 'oklch(0.6 0.2 280)',
-      sidebar: fallbackTokens?.sidebar ?? 'oklch(0.25 0 0)',
+      background: resolved?.background ?? 'oklch(0.3 0 0)',
+      primary: resolved?.primary ?? syrnikeBaseTokens(variant).primary,
+      sidebar: resolved?.sidebar ?? 'oklch(0.25 0 0)',
     }
   }
+  const resolved = applyBrandLockedThemeTokens(tokens, variant)
   return {
-    background: tokens.background,
-    primary: tokens.primary,
-    sidebar: tokens.sidebar,
+    background: resolved.background,
+    primary: resolved.primary,
+    sidebar: resolved.sidebar,
   }
 }
 

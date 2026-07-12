@@ -57,6 +57,45 @@ pnpm livekit:check
 
 Use the narrower package/service command when a task touches only one area.
 
+## UI colors and theming
+
+Правило для **всего клиентского UI** монорепо: `apps/web`, `apps/desktop` (основной интерфейс — тот же web-клиент в Electron), shared UI в `packages/*`. Бэкенд и инфра без UI на это правило не распространяются.
+
+Цвета интерфейса **не хардкодить** в компонентах, стилях и inline-атрибутах.
+
+**Запрещено в UI-коде:**
+
+- литералы `#hex`, `oklch(...)`, `rgb(...)` / `hsl(...)` для оформления;
+- Tailwind palette вроде `bg-emerald-600`, `text-amber-400`, `border-red-500`;
+- arbitrary colors вроде `bg-[#23a559]`, `ring-[#ed4245]`, `style={{ color: '#fff' }}`.
+
+**Используй семантические токены** (shadcn/Tailwind в web; в desktop — те же CSS vars, т.к. рендерится `apps/web`):
+
+- `bg-primary`, `text-primary-foreground`, `bg-destructive`, `ring-ring`;
+- `bg-chart-1` … `bg-chart-5`, `text-chart-3` и т.п.;
+- поверхности: `background`, `foreground`, `card`, `muted`, `accent`, `border`, `sidebar`.
+
+**Источники правды (web / desktop UI):**
+
+| Что | Где |
+|-----|-----|
+| Палитры тем (light/dark) | `apps/web/src/features/appearance/theme-catalog-data.ts` |
+| Runtime-применение | `applyThemeToDocument()` → CSS vars на `:root` |
+| Fallback до JS | `getDefaultThemeCss()` в `__root.tsx` |
+| Статичные non-color tokens | `apps/web/src/styles.css` (`--radius`, шрифты, тени) — **без** цветовых `--primary`, `--background` и т.п. |
+| Brand-locked (всегда из темы **СЫРНИКИ**) | `BRAND_LOCKED_THEME_TOKEN_KEYS` в `theme-tokens.ts` |
+
+**Семантика (ориентир):** успех / голос / online → `chart-3`; предупреждение / idle → `chart-2`; фокус → `chart-5`; опасность → `destructive`; бренд-акцент → `primary`. Presence: `apps/web/src/lib/presence.ts`.
+
+**Допустимые исключения:**
+
+- цвета ролей/серверов из API и палитра выбора цвета роли (`role-colour-picker.tsx`);
+- декоративные градиенты (`avatar-tile-palette.ts`);
+- `<meta theme-color>` и аналогичные meta/fallback hex;
+- нативная оболочка desktop без themed DOM: прозрачность оверлея (`#00000000`), `backgroundColor` окна до загрузки web — не семантические цвета интерфейса.
+
+Подробнее: `.cursor/rules/ui-theming.mdc`.
+
 ### Windows backend checks
 
 - On Windows, do not spend time installing or repairing the backend Rust/OpenSSL/Docker toolchain just to satisfy `pnpm backend:check`. This workspace may not have OpenSSL/vcpkg/Docker configured.

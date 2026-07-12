@@ -24,7 +24,7 @@ export function VoiceOnAirBadge({
   return (
     <span
       className={cn(
-        'inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-[#ed4245] px-1.5 text-[9px] font-bold leading-none tracking-wide text-white',
+        'inline-flex h-4 shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-[9px] font-bold leading-none tracking-wide text-destructive-foreground',
         onDoubleClick && 'cursor-pointer select-none',
         className,
       )}
@@ -67,7 +67,7 @@ export function VoiceAvatarStatusBadge({
       className={cn(
         'absolute right-0 bottom-0 z-10 flex items-center justify-center rounded-full ring-2 ring-black',
         compact ? 'size-5' : 'size-6 sm:size-7',
-        serverRestricted ? 'bg-[#faa61a]' : 'bg-[#ed4245]',
+        serverRestricted ? 'bg-chart-2' : 'bg-destructive',
         className,
       )}
       aria-label={label}
@@ -109,7 +109,7 @@ export function VoiceParticipantIcons({
     <span className={cn('flex shrink-0 items-center gap-0.5', className)}>
       {listenerMuted ? (
         <MicOffIcon
-          className="size-3.5 text-[#ed4245]"
+          className="size-3.5 text-destructive"
           aria-label="Вы заглушили этого участника"
         />
       ) : null}
@@ -117,7 +117,7 @@ export function VoiceParticipantIcons({
         <MicOffIcon
           className={cn(
             'size-3.5',
-            serverMuted ? 'text-[#faa61a]' : 'text-white',
+            serverMuted ? 'text-chart-2' : 'text-primary-foreground',
           )}
           aria-hidden
         />
@@ -126,7 +126,7 @@ export function VoiceParticipantIcons({
         <HeadphoneOffIcon
           className={cn(
             'size-3.5',
-            serverDeafened ? 'text-[#faa61a]' : 'text-muted-foreground',
+            serverDeafened ? 'text-chart-2' : 'text-muted-foreground',
           )}
           aria-hidden
         />

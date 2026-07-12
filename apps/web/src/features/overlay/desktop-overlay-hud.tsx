@@ -29,7 +29,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                 className={cn(
                   'size-8',
                   participant.speaking &&
-                    'ring-2 ring-[#23a559] ring-offset-2 ring-offset-[#111318]',
+                    'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
                 )}
               >
                 {participant.avatarUrl ? (
@@ -42,7 +42,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                     draggable={false}
                   />
                 ) : null}
-                <AvatarFallback className="bg-[#5865f2] text-xs font-bold text-white">
+                <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">
                   {initials(participant.displayName)}
                 </AvatarFallback>
               </Avatar>

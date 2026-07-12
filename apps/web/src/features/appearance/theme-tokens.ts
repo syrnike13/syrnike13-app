@@ -39,6 +39,22 @@ export const THEME_TOKEN_KEYS = [
 export type ThemeTokenKey = (typeof THEME_TOKEN_KEYS)[number]
 export type ThemeTokens = Record<ThemeTokenKey, string>
 
+/** Не меняются при смене темы — всегда из палитры СЫРНИКИ (light/dark). */
+export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
+  'primary',
+  'primary-foreground',
+  'destructive',
+  'destructive-foreground',
+  'ring',
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
+  'chart-5',
+] as const satisfies readonly ThemeTokenKey[]
+
+export type BrandLockedThemeTokenKey = (typeof BRAND_LOCKED_THEME_TOKEN_KEYS)[number]
+
 export type ThemeSemanticPalette = {
   background: string
   foreground: string

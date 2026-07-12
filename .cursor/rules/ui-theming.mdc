@@ -1,0 +1,41 @@
+---
+description: Запрет хардкода цветов и правила тем во всём клиентском UI монорепо
+alwaysApply: true
+---
+
+# UI colors and theming
+
+Применяется к клиентскому UI: `apps/web`, `apps/desktop` (web в Electron), UI в `packages/*`.
+
+## Запрет хардкода
+
+Не использовать в UI: `#hex`, `oklch(...)`, `rgb`/`hsl` литералы, `bg-emerald-*`, `text-amber-*`, `bg-[#...]`, inline `style` с цветами.
+
+Использовать семантические токены: `primary`, `destructive`, `chart-1`…`chart-5`, `background`, `foreground`, `card`, `muted`, `accent`, `border`, `ring`, `sidebar`.
+
+## Источники правды (web)
+
+| Слой | Файл |
+|------|------|
+| Палитры тем | `apps/web/src/features/appearance/theme-catalog-data.ts` |
+| Runtime | `applyThemeToDocument()` / `getThemeTokens()` |
+| Fallback до JS | `getDefaultThemeCss()` в `__root.tsx` |
+| Статичные non-color | `apps/web/src/styles.css` (`--radius`, шрифты, тени) |
+| Brand-locked (СЫРНИКИ) | `BRAND_LOCKED_THEME_TOKEN_KEYS` в `theme-tokens.ts` |
+
+Не добавлять цветовые `--primary`, `--background` и т.п. в `styles.css` — их перезаписывает runtime темы.
+
+## Семантика
+
+- успех / голос / online → `chart-3`
+- предупреждение / idle → `chart-2`
+- фокус → `chart-5`
+- опасность → `destructive`
+- бренд → `primary`
+- presence → `apps/web/src/lib/presence.ts`
+
+## Исключения
+
+- цвета ролей/серверов из API, `role-colour-picker.tsx`, `avatar-tile-palette.ts`
+- meta/fallback hex (`theme-color`)
+- desktop native shell: прозрачный оверлей, `backgroundColor` окна до загрузки web
