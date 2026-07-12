@@ -7,6 +7,10 @@ import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import {
+  consumeVoiceChannelChatOpenRequest,
+  subscribeVoiceChannelChatOpen,
+} from '#/features/voice/voice-channel-chat-intent'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
@@ -51,8 +55,21 @@ export function MobileVoiceChannelDrawer() {
   useEffect(() => {
     if (!open) {
       setChatOpen(false)
+      return
     }
-  }, [open])
+    if (channelId && consumeVoiceChannelChatOpenRequest(channelId)) {
+      setChatOpen(true)
+    }
+  }, [channelId, open])
+
+  useEffect(() => {
+    if (!channelId) return
+    return subscribeVoiceChannelChatOpen((requestedChannelId) => {
+      if (requestedChannelId !== channelId) return
+      consumeVoiceChannelChatOpenRequest(channelId)
+      setChatOpen(true)
+    })
+  }, [channelId])
 
   const title =
     channel && auth.user

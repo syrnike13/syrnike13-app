@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { syncStore } from '#/features/sync/sync-store'
+import * as voiceChannelChatIntent from '#/features/voice/voice-channel-chat-intent'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -180,6 +181,43 @@ describe('ChannelSidebarItem voice navigation', () => {
     expect(mocks.openVoiceChannelDrawer).toHaveBeenCalledWith('voice-main')
     expect(mocks.navigate).not.toHaveBeenCalled()
     expect(mocks.join).not.toHaveBeenCalled()
+  })
+
+  it('opens voice channel chat from the sidebar action button', () => {
+    const requestOpen = vi.spyOn(
+      voiceChannelChatIntent,
+      'requestVoiceChannelChatOpen',
+    )
+
+    renderVoiceItem('text-general')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть чат' }))
+
+    expect(requestOpen).toHaveBeenCalledWith('voice-main')
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: '/app/c/$channelId',
+      params: { channelId: 'voice-main' },
+      search: { m: undefined },
+    })
+    expect(mocks.join).not.toHaveBeenCalled()
+
+    requestOpen.mockRestore()
+  })
+
+  it('opens voice channel chat without navigating when already active', () => {
+    const requestOpen = vi.spyOn(
+      voiceChannelChatIntent,
+      'requestVoiceChannelChatOpen',
+    )
+
+    renderVoiceItem('voice-main')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть чат' }))
+
+    expect(requestOpen).toHaveBeenCalledWith('voice-main')
+    expect(mocks.navigate).not.toHaveBeenCalled()
+
+    requestOpen.mockRestore()
   })
 
   it('keeps modifier-click navigation native', () => {
