@@ -36,9 +36,7 @@ import {
   runtimeChannelName,
   serverChannelServerId,
 } from '#/lib/channel-voice'
-import {
-  floatingComposerShellClass,
-} from '#/components/layout/shell-chrome'
+import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
 import { cn } from '#/lib/utils'
 
 const composerIconClass =
@@ -375,113 +373,45 @@ export function MessageComposer({
 
   const hasComposerHeader = showReplyBanner || isEditing
 
-  const composerBody = (
-    <div
-      className={cn(
-        'relative flex flex-col',
-        floating ? 'pointer-events-auto gap-2' : 'gap-2 border-t border-border bg-card p-3 text-card-foreground',
-      )}
-      onDragEnter={(event) => {
-        event.preventDefault()
-        if (!isEditing) setDragActive(true)
-      }}
-      onDragOver={(event) => {
-        event.preventDefault()
-      }}
-      onDragLeave={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget as Node)) return
-        setDragActive(false)
-      }}
-      onDrop={handleDrop}
-    >
-      {dragActive ? (
-        <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-card/90 text-sm font-medium text-primary">
-          Отпустите файлы для вложения
-        </p>
+  const composerChrome = (
+    <>
+      {showReplyBanner && replyTo ? (
+        <ComposerReplyBanner
+          message={replyTo}
+          users={users}
+          authorColor={replyAuthorColor}
+          mentionEnabled={replyMention}
+          onMentionToggle={setReplyMention}
+          onClear={() => onCancelAction?.()}
+        />
       ) : null}
-      {files.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {files.map((pending) => (
-            <div
-              key={pending.id}
-              className="relative flex items-center gap-2 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground"
-            >
-              {pending.previewUrl ? (
-                <FxImage
-                  src={pending.previewUrl}
-                  rounded="md"
-                  wrapperClassName="size-10 shrink-0"
-                  className="size-10"
-                />
-              ) : (
-                <span className="max-w-32 truncate">{pending.file.name}</span>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                onClick={() => removeFile(pending.id)}
-              >
-                <XIcon className="size-3" />
-              </Button>
-            </div>
-          ))}
+
+      {isEditing && editingMessage ? (
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[13px] text-muted-foreground">
+          <span>Редактирование сообщения</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0 rounded-full hover:bg-foreground/10"
+            onClick={onCancelAction}
+            aria-label="Отменить редактирование"
+          >
+            <XIcon className="size-3.5" />
+          </Button>
         </div>
       ) : null}
 
       <div
-        data-composer-chrome
+        ref={composerInputRowRef}
         className={cn(
-          'flex flex-col transition-colors',
-          floating && floatingComposerShellClass,
-          !floating &&
-            hasComposerHeader &&
-            'overflow-hidden rounded-lg border border-border bg-accent text-foreground',
-          !floating &&
-            !hasComposerHeader &&
-            'min-h-11 rounded-lg border border-border bg-accent py-1 text-foreground',
-          dragActive && 'ring-2 ring-primary/40',
-          (disabled || sending) && 'opacity-60',
+          'flex items-end gap-0.5 px-1 pb-2',
+          floating && 'min-h-14',
+          !floating && hasComposerHeader && 'min-h-14',
+          !floating && !hasComposerHeader && 'min-h-11',
+          hasComposerHeader && 'border-t border-foreground/10',
         )}
       >
-        {showReplyBanner && replyTo ? (
-          <ComposerReplyBanner
-            message={replyTo}
-            users={users}
-            authorColor={replyAuthorColor}
-            mentionEnabled={replyMention}
-            onMentionToggle={setReplyMention}
-            onClear={() => onCancelAction?.()}
-          />
-        ) : null}
-
-        {isEditing && editingMessage ? (
-          <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[13px] text-muted-foreground">
-            <span>Редактирование сообщения</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 rounded-full hover:bg-foreground/10"
-              onClick={onCancelAction}
-              aria-label="Отменить редактирование"
-            >
-              <XIcon className="size-3.5" />
-            </Button>
-          </div>
-        ) : null}
-
-        <div
-          ref={composerInputRowRef}
-          className={cn(
-            'flex items-end gap-0.5 px-1 pb-2',
-            floating && 'min-h-14',
-            !floating && hasComposerHeader && 'min-h-14',
-            !floating && !hasComposerHeader && 'min-h-11',
-            hasComposerHeader && 'border-t border-foreground/10',
-          )}
-        >
         {!isEditing ? (
           <label
             className={cn(
@@ -569,8 +499,93 @@ export function MessageComposer({
             </span>
           ) : null}
         </div>
-        </div>
       </div>
+    </>
+  )
+
+  const composerBody = (
+    <div
+      className={cn(
+        'relative flex flex-col',
+        floating
+          ? 'pointer-events-auto gap-2'
+          : 'gap-2 border-t border-border bg-card p-3 text-card-foreground',
+      )}
+      onDragEnter={(event) => {
+        event.preventDefault()
+        if (!isEditing) setDragActive(true)
+      }}
+      onDragOver={(event) => {
+        event.preventDefault()
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return
+        setDragActive(false)
+      }}
+      onDrop={handleDrop}
+    >
+      {dragActive ? (
+        <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-card/90 text-sm font-medium text-primary">
+          Отпустите файлы для вложения
+        </p>
+      ) : null}
+      {files.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {files.map((pending) => (
+            <div
+              key={pending.id}
+              className="relative flex items-center gap-2 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground"
+            >
+              {pending.previewUrl ? (
+                <FxImage
+                  src={pending.previewUrl}
+                  rounded="md"
+                  wrapperClassName="size-10 shrink-0"
+                  className="size-10"
+                />
+              ) : (
+                <span className="max-w-32 truncate">{pending.file.name}</span>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6"
+                onClick={() => removeFile(pending.id)}
+              >
+                <XIcon className="size-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {floating ? (
+        <FloatingBarShell
+          data-composer-chrome
+          className={cn(
+            dragActive && 'ring-2 ring-primary/40',
+            (disabled || sending) && 'opacity-60',
+          )}
+          surfaceClassName="flex flex-col transition-colors"
+        >
+          {composerChrome}
+        </FloatingBarShell>
+      ) : (
+        <div
+          data-composer-chrome
+          className={cn(
+            'flex flex-col transition-colors',
+            hasComposerHeader
+              ? 'overflow-hidden rounded-lg border border-border bg-accent text-foreground'
+              : 'min-h-11 rounded-lg border border-border bg-accent py-1 text-foreground',
+            dragActive && 'ring-2 ring-primary/40',
+            (disabled || sending) && 'opacity-60',
+          )}
+        >
+          {composerChrome}
+        </div>
+      )}
     </div>
   )
 

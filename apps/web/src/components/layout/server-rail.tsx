@@ -4,6 +4,7 @@ import type { Server } from '@syrnike13/api-types'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { ScrollArea } from '#/components/ui/scroll-area'
+import { Squircle } from '#/components/ui/squircle'
 import { CreateServerDialog } from '#/components/servers/create-server-dialog'
 import { PeopleRailSection } from '#/components/layout/people-rail-section'
 import { RailIconButton } from '#/components/layout/rail-icon-button'
@@ -20,6 +21,7 @@ import {
   railColumnInsetClass,
   railIconButtonClass,
   railIconIdleClass,
+  railIconSquircleProps,
   railServerScrollAreaClass,
   railServerScrollContentClass,
   shellNavSurface,
@@ -87,16 +89,19 @@ export function ServerRail({
 
   if (!ready) {
     return (
-      <div
-        className={cn(
-          'flex h-full w-14 shrink-0 flex-col items-center',
-          railPaddingClass,
-          shellNavSurface,
-        )}
-        style={railBottomReserveStyle}
-      >
-        <div className={cn(railIconButtonClass, 'animate-pulse bg-muted')} />
-      </div>
+        <div
+          className={cn(
+            'flex h-full w-14 shrink-0 flex-col items-center',
+            railPaddingClass,
+            shellNavSurface,
+          )}
+          style={railBottomReserveStyle}
+        >
+          <Squircle
+            {...railIconSquircleProps}
+            className={cn(railIconButtonClass, 'animate-pulse bg-muted')}
+          />
+        </div>
     )
   }
 
@@ -156,7 +161,8 @@ export function ServerRail({
               />
             ))}
             {servers.length === 0 ? (
-              <div
+              <Squircle
+                {...railIconSquircleProps}
                 className={cn(
                   railIconButtonClass,
                   railIconIdleClass,
@@ -165,7 +171,7 @@ export function ServerRail({
                 title="Нет серверов"
               >
                 <HashIcon className="size-4" />
-              </div>
+              </Squircle>
             ) : null}
 
             <CreateServerDialog />

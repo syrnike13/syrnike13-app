@@ -6,9 +6,11 @@ import { toast } from 'sonner'
 import {
   railIconButtonClass,
   railIconIdleClass,
+  railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 import { Button } from '#/components/ui/button'
+import { Squircle } from '#/components/ui/squircle'
 import {
   Dialog,
   DialogContent,
@@ -136,15 +138,17 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className={cn(railIconButtonClass, railIconIdleClass)}
-            title="Создать сервер"
-          >
-            <PlusIcon />
-          </Button>
+          <Squircle asChild {...railIconSquircleProps}>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={cn(railIconButtonClass, railIconIdleClass)}
+              title="Создать сервер"
+            >
+              <PlusIcon />
+            </Button>
+          </Squircle>
         )}
       </DialogTrigger>
       <DialogContent>

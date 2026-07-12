@@ -24,10 +24,8 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { userStatusSubtitle } from '#/lib/presence'
-import {
-  FLOATING_BAR_HEIGHT_CLASS,
-  floatingBarShellClass,
-} from '#/components/layout/shell-chrome'
+import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
+import { FLOATING_BAR_HEIGHT_CLASS } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 const gatewayLabels = {
@@ -72,13 +70,7 @@ export function UserPanel() {
     : gatewayLabels[auth.gatewayState]
 
   return (
-    <div
-      className={cn(
-        'pointer-events-auto flex w-full flex-col overflow-hidden',
-        floatingBarShellClass,
-        'bg-secondary text-secondary-foreground',
-      )}
-    >
+    <FloatingBarShell className="pointer-events-auto" surfaceClassName="flex flex-col">
         {inVoiceSession ? (
           <>
             <VoiceScreenShareStrip />
@@ -192,6 +184,6 @@ export function UserPanel() {
           open={globalProfileOpen}
           onOpenChange={setGlobalProfileOpen}
         />
-    </div>
+    </FloatingBarShell>
   )
 }

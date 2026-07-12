@@ -13,6 +13,7 @@ import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bo
 import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
 import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
+import { SquircleNoScript } from '#/components/ui/squircle'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
 import { AgentationDevtools } from '#/integrations/agentation-devtools'
@@ -170,6 +171,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <SquircleNoScript />
         {children}
         <Scripts />
       </body>

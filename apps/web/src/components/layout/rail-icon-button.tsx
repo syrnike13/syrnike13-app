@@ -5,8 +5,10 @@ import {
   railIconButtonClass,
   railIconIdleClass,
   railIconItemRowClass,
+  railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
 import { Button } from '#/components/ui/button'
+import { Squircle } from '#/components/ui/squircle'
 import { cn } from '#/lib/utils'
 
 /**
@@ -75,17 +77,19 @@ export function RailIconButton({
         active={active}
         unread={unread}
       />
-      <Button
-        size="icon"
-        variant={active ? 'default' : 'ghost'}
-        className={cn(railIconButtonClass, !active && railIconIdleClass)}
-        title={title}
-        asChild
-      >
-        <Link className={className} {...linkProps}>
-          {children}
-        </Link>
-      </Button>
+      <Squircle asChild {...railIconSquircleProps}>
+        <Button
+          size="icon"
+          variant={active ? 'default' : 'ghost'}
+          className={cn(railIconButtonClass, !active && railIconIdleClass)}
+          title={title}
+          asChild
+        >
+          <Link className={className} {...linkProps}>
+            {children}
+          </Link>
+        </Button>
+      </Squircle>
     </div>
   )
 }
