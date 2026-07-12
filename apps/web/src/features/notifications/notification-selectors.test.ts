@@ -95,7 +95,7 @@ describe('notification selectors', () => {
     })
   })
 
-  it('counts incoming friend requests and unread personal chats for home', () => {
+  it('counts only incoming friend requests for home (unread DMs live in people rail)', () => {
     const syncState = state({
       users: {
         [CURRENT_USER_ID]: user(CURRENT_USER_ID, 'User'),
@@ -122,7 +122,7 @@ describe('notification selectors', () => {
     })
 
     expect(selectHomeNotificationBadge(syncState, CURRENT_USER_ID)).toEqual({
-      count: 3,
+      count: 2,
       hasUnread: true,
       urgent: false,
     })

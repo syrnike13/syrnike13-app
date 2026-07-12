@@ -6,6 +6,7 @@ import { NotificationBadge } from '#/components/notifications/notification-badge
 import { Button } from '#/components/ui/button'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { CreateServerDialog } from '#/components/servers/create-server-dialog'
+import { PeopleRailSection } from '#/components/layout/people-rail-section'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   selectHomeNotificationBadge,
@@ -121,6 +122,13 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
           </span>
         </Link>
       </Button>
+
+      <div className="flex w-full flex-col items-center gap-2 overflow-visible px-1">
+        <PeopleRailSection
+          variant={variant}
+          activeChannelId={activeChannelId}
+        />
+      </div>
 
       <ScrollArea className="min-h-0 w-full flex-1 px-2">
         <div className="flex flex-col items-center gap-2">

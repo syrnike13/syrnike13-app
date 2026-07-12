@@ -10,6 +10,7 @@ import {
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
 import { ThemeColorMeta } from '#/components/appearance/theme-color-meta'
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bootstrap'
+import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
 import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
@@ -164,6 +165,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="ru" suppressHydrationWarning>
       <head>
         <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
+        <style dangerouslySetInnerHTML={{ __html: getDefaultThemeCss() }} />
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP_SCRIPT }} />
         <HeadContent />
       </head>

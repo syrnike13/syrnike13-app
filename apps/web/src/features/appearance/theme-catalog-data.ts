@@ -53,7 +53,7 @@ const SYRNIKE_DARK: ThemeSemanticPalette = {
   mutedForeground: 'oklch(0.7230 0.0087 278.5820)',
   accent: 'oklch(0.4074 0.0134 280.1154)',
   accentForeground: 'oklch(1.0000 0 0)',
-  destructive: 'oklch(0.8004 0.1141 23.1850)',
+  destructive: 'oklch(63.7% 0.237 25.331)',
   destructiveForeground: 'oklch(1.0000 0 0)',
   border: 'oklch(0.3690 0.0103 278.3345)',
   input: 'oklch(0.3066 0.0108 278.2166)',

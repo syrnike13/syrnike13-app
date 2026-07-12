@@ -1,6 +1,5 @@
 import type { Channel } from '@syrnike13/api-types'
 
-import { isDmChannel, isTextChannel } from '#/features/sync/channel-label'
 import {
   isChannelUnread,
   listServerChannels,
@@ -32,15 +31,6 @@ function isUnreadChannel(state: SyncState, channel: Channel) {
   return isChannelUnread(channel, state.unreads[channel._id])
 }
 
-function countUnreadPersonalChannels(state: SyncState) {
-  return Object.values(state.channels).filter(
-    (channel) =>
-      isDmChannel(channel) &&
-      isTextChannel(channel) &&
-      isUnreadChannel(state, channel),
-  ).length
-}
-
 export function selectFriendRequestNotificationBadge(
   state: SyncState,
   currentUserId?: string,
@@ -54,12 +44,9 @@ export function selectHomeNotificationBadge(
   state: SyncState,
   currentUserId?: string,
 ): NotificationBadgeState {
-  const incomingFriendRequests = selectFriendRequestNotificationBadge(
-    state,
-    currentUserId,
-  ).count
-
-  return badge(incomingFriendRequests + countUnreadPersonalChannels(state))
+  // Unread DM/Group показываются аватарами в ServerRail (PeopleRailSection),
+  // на Home остаётся только счётчик входящих заявок в друзья.
+  return selectFriendRequestNotificationBadge(state, currentUserId)
 }
 
 export function selectServerNotificationBadge(

@@ -18,11 +18,14 @@ import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { usernameSchema } from '#/features/auth/schemas'
 import { postLoginPath } from '#/lib/auth-post-login-path'
-import { loadSession } from '#/lib/session'
+import { loadPersistedSession } from '#/lib/session'
 
 export const Route = createFileRoute('/login/onboard')({
-  beforeLoad: () => {
-    if (typeof window !== 'undefined' && !loadSession()) {
+  beforeLoad: async () => {
+    if (
+      typeof window !== 'undefined' &&
+      !(await loadPersistedSession())
+    ) {
       throw redirect({ to: '/login' })
     }
   },

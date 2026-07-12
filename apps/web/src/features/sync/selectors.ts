@@ -11,6 +11,7 @@ import type {
 import { getChannelLabel, isDmChannel, isTextChannel } from './channel-label'
 import {
   isIncomingVoiceCall,
+  isOutgoingVoiceCall,
   isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from './voice-call-utils'
@@ -101,7 +102,7 @@ function isCurrentUserInChannelVoice(
   )
 }
 
-function hasIncomingVoiceCall(
+function hasRelevantVoiceCall(
   state: SyncState,
   channelId: string,
   currentUserId?: string,
@@ -115,7 +116,10 @@ function hasIncomingVoiceCall(
     return false
   }
 
-  return isIncomingVoiceCall(call, currentUserId)
+  return (
+    isIncomingVoiceCall(call, currentUserId) ||
+    isOutgoingVoiceCall(call, currentUserId)
+  )
 }
 
 export function shouldShowDmChannelInRail(
@@ -126,7 +130,7 @@ export function shouldShowDmChannelInRail(
   return (
     isChannelUnread(channel, state.unreads[channel._id]) ||
     isCurrentUserInChannelVoice(state, channel._id, currentUserId) ||
-    hasIncomingVoiceCall(state, channel._id, currentUserId)
+    hasRelevantVoiceCall(state, channel._id, currentUserId)
   )
 }
 
