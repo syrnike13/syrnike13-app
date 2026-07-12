@@ -12,7 +12,7 @@ export function createConnectingLocalVoiceState(
   return {
     id: userId,
     joined_at: Date.now(),
-    self_mute: !options.micEnabled,
+    self_mute: !options.micEnabled || options.deafened,
     self_deaf: options.deafened,
     server_muted: false,
     server_deafened: false,
@@ -24,8 +24,8 @@ export function createConnectingLocalVoiceState(
 
 export function isVoiceLocalUserId(
   userId: string,
-  authUserId?: string,
-  liveKitIdentity?: string,
+  authUserId: string | null = null,
+  liveKitIdentity: string | null = null,
 ) {
   if (authUserId && userId === authUserId) return true
   return Boolean(liveKitIdentity && userId === liveKitIdentity)

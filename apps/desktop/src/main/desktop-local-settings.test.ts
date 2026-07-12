@@ -108,4 +108,22 @@ describe('desktop local settings', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('persists observability opt-in without changing privacy defaults', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      const next = await updateDesktopLocalSettings(filePath, {
+        observability: { nativeCrashReports: true },
+      })
+
+      expect(next.observability).toEqual({
+        anonymousNativeMetrics: true,
+        nativeCrashReports: true,
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

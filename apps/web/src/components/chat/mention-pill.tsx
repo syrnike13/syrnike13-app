@@ -21,8 +21,9 @@ export function MentionPill({
     <span
       style={colourStyle}
       className={cn(
-        'inline rounded-sm px-0.5 font-medium',
+        'inline rounded-sm px-0.5 font-medium transition-colors',
         !nameColour && defaultMentionClassName,
+        nameColour && 'hover:[background-color:var(--mention-bg-hover)]',
         className,
       )}
     >
@@ -39,13 +40,6 @@ export function MassMentionPill({
   className?: string
 }) {
   return (
-    <span
-      className={cn(
-        'inline rounded-sm bg-primary/15 px-0.5 font-medium text-primary',
-        className,
-      )}
-    >
-      {label}
-    </span>
+    <span className={cn(defaultMentionClassName, className)}>{label}</span>
   )
 }

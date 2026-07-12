@@ -1,11 +1,11 @@
 use std::{
     io::{Cursor, Read, Write},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use axum::{
     extract::{DefaultBodyLimit, Path, State},
-    http::{header, Method},
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
@@ -14,12 +14,11 @@ use axum_typed_multipart::{FieldData, TryFromMultipart, TypedMultipart};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
+use syrnike_config::Files;
 use syrnike_config::{config, report_internal_error};
-use syrnike_database::{iso8601_timestamp::Timestamp, Database, FileHash, Metadata, User};
-use syrnike_files::{
-    create_thumbnail, decode_image, fetch_from_s3, is_animated, upload_to_s3,
-    AUTHENTICATION_TAG_SIZE_BYTES,
-};
+use syrnike_database::{iso8601_timestamp::Timestamp, FileHash, Metadata, User};
+use syrnike_files::FileStorageRepository;
+use syrnike_files::{create_thumbnail, decode_image, is_animated, AUTHENTICATION_TAG_SIZE_BYTES};
 use syrnike_result::{create_error, Error, Result, ToSyrnikeError};
 use tempfile::NamedTempFile;
 use tokio::time::Instant;
@@ -78,17 +77,134 @@ lazy_static! {
         .max_capacity(2 * 1024 * 1024 * 1024) // Cache up to 2GiB in memory
         .time_to_live(Duration::from_secs(5 * 60)) // For up to 5 minutes
         .build();
+    /// Temporary cache for generated previews. This avoids re-decoding and re-encoding the same
+    /// immutable media on repeated backend hits without storing derived files permanently in S3.
+    static ref PREVIEW_CACHE: moka::future::Cache<String, Vec<u8>> = moka::future::Cache::builder()
+        .weigher(|_key, value: &Vec<u8>| -> u32 {
+            std::mem::size_of::<Vec<u8>>() as u32 + value.len().try_into().unwrap_or(u32::MAX)
+        })
+        .max_capacity(512 * 1024 * 1024)
+        .time_to_live(Duration::from_secs(60 * 60))
+        .build();
 }
 
 /// Retrieve hash information and file data by given hash
-async fn retrieve_file_by_hash(hash: &FileHash) -> Result<Vec<u8>> {
+async fn retrieve_file_by_hash(state: &AppState, hash: &FileHash) -> Result<Vec<u8>> {
     if let Some(data) = S3_CACHE.get(&hash.id).await {
         data
     } else {
-        let data = fetch_from_s3(&hash.bucket_id, &hash.path, &hash.iv).await;
-        S3_CACHE.insert(hash.id.to_owned(), data.clone()).await;
+        let data = report_internal_error!(
+            state
+                .storage
+                .fetch_and_decrypt_file(&hash.bucket_id, &hash.path, &hash.iv)
+                .await
+        );
+        if should_cache_s3_result(&data) {
+            S3_CACHE.insert(hash.id.to_owned(), data.clone()).await;
+        }
         data
     }
+}
+
+fn should_cache_s3_result(data: &Result<Vec<u8>>) -> bool {
+    data.is_ok()
+}
+
+#[derive(Clone, Copy)]
+struct PreviewVariant {
+    max_size: [usize; 2],
+    webp_quality_bits: u32,
+}
+
+fn preview_variant(files: &Files, tag: &str) -> PreviewVariant {
+    PreviewVariant {
+        max_size: *files.preview.get(tag).expect("preview size"),
+        webp_quality_bits: files.webp_quality.to_bits(),
+    }
+}
+
+fn preview_cache_key(hash: &FileHash, tag: &str, variant: PreviewVariant) -> String {
+    let [width, height] = variant.max_size;
+
+    format!(
+        "preview:{tag}:{width}x{height}:{:08x}:{}",
+        variant.webp_quality_bits, hash.processed_hash
+    )
+}
+
+fn preview_etag(hash: &FileHash, tag: &str, variant: PreviewVariant) -> String {
+    let [width, height] = variant.max_size;
+
+    format!(
+        "\"syrnike-preview-{tag}-{width}x{height}-{:08x}-{}\"",
+        variant.webp_quality_bits, hash.processed_hash
+    )
+}
+
+fn original_etag(hash: &FileHash) -> String {
+    format!("\"syrnike-original-{}\"", hash.processed_hash)
+}
+
+fn last_modified(hash: &FileHash) -> String {
+    httpdate::fmt_http_date(SystemTime::from(hash.created_at))
+}
+
+fn if_none_match_matches(value: &str, etag: &str) -> bool {
+    value.split(',').any(|candidate| {
+        let candidate = candidate.trim();
+        candidate == "*" || candidate.trim_start_matches("W/") == etag.trim_start_matches("W/")
+    })
+}
+
+fn if_modified_since_matches(value: &str, last_modified: &str) -> bool {
+    let Ok(requested) = httpdate::parse_http_date(value) else {
+        return false;
+    };
+    let Ok(current) = httpdate::parse_http_date(last_modified) else {
+        return false;
+    };
+
+    requested >= current
+}
+
+fn cache_validator_matches(headers: &HeaderMap, etag: &str, last_modified: &str) -> bool {
+    if let Some(value) = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+    {
+        return if_none_match_matches(value, etag);
+    }
+
+    headers
+        .get(header::IF_MODIFIED_SINCE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| if_modified_since_matches(value, last_modified))
+}
+
+fn insert_cache_headers(headers: &mut HeaderMap, etag: &str, last_modified: &str) {
+    headers.insert(
+        header::ETAG,
+        HeaderValue::from_str(etag).expect("generated etag is a valid header"),
+    );
+    headers.insert(
+        header::LAST_MODIFIED,
+        HeaderValue::from_str(last_modified).expect("generated date is a valid header"),
+    );
+}
+
+fn not_modified_response(etag: &str, last_modified: &str) -> Response {
+    let mut response = (
+        StatusCode::NOT_MODIFIED,
+        [(header::CACHE_CONTROL, CACHE_CONTROL)],
+    )
+        .into_response();
+    insert_cache_headers(response.headers_mut(), etag, last_modified);
+    response
+}
+
+fn with_cache_validators(mut response: Response, etag: &str, last_modified: &str) -> Response {
+    insert_cache_headers(response.headers_mut(), etag, last_modified);
+    response
 }
 
 /// Successful root response
@@ -220,11 +336,12 @@ pub struct UploadResponse {
     )
 )]
 async fn upload_file(
-    State(db): State<Database>,
+    State(state): State<AppState>,
     user: User,
     Path(tag): Path<Tag>,
     TypedMultipart(UploadPayload { mut file }): TypedMultipart<UploadPayload>,
 ) -> Result<Json<UploadResponse>> {
+    let db = &state.database;
     // Fetch configuration
     let config = config().await;
 
@@ -304,7 +421,7 @@ async fn upload_file(
         .await
     {
         if !file_hash.iv.is_empty() {
-            if retrieve_file_by_hash(&file_hash).await.is_ok() {
+            if retrieve_file_by_hash(&state, &file_hash).await.is_ok() {
                 let tag: &'static str = tag.into();
                 db.insert_attachment(&file_hash.into_file(
                     id.clone(),
@@ -374,7 +491,12 @@ async fn upload_file(
 
     // Upload the file to S3 and commit nonce to database
     let upload_start = Instant::now();
-    let nonce = upload_to_s3(&file_hash.bucket_id, &file_hash.id, &buf).await?;
+    let nonce = report_internal_error!(
+        state
+            .storage
+            .encrypt_and_upload_file(&file_hash.bucket_id, &file_hash.id, &buf)
+            .await
+    )?;
     db.set_attachment_hash_nonce(&file_hash.id, &nonce).await?;
     S3_CACHE
         .insert(file_hash.id.to_owned(), Ok(buf.clone()))
@@ -427,9 +549,12 @@ pub static CACHE_CONTROL: &str = "public, max-age=604800, immutable";
     ),
 )]
 async fn fetch_preview(
-    State(db): State<Database>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Path((tag, file_id)): Path<(Tag, String)>,
 ) -> Result<Response> {
+    let db = &state.database;
+    let files_config = config().await.files;
     let tag_str: &'static str = tag.clone().into();
     let file = db.fetch_attachment(tag_str, &file_id).await?;
 
@@ -444,6 +569,13 @@ async fn fetch_preview(
     }
 
     let hash = file.as_hash(&db).await?;
+    let variant = preview_variant(&files_config, tag_str);
+    let etag = preview_etag(&hash, tag_str, variant);
+    let last_modified = last_modified(&hash);
+
+    if cache_validator_matches(&headers, &etag, &last_modified) {
+        return Ok(not_modified_response(&etag, &last_modified));
+    }
 
     let mut data = None;
 
@@ -454,7 +586,7 @@ async fn fetch_preview(
             ..
         } => *value,
         Metadata::Image { animated: None, .. } => {
-            let file_data = retrieve_file_by_hash(&hash).await?;
+            let file_data = retrieve_file_by_hash(&state, &hash).await?;
 
             let mut named_file = NamedTempFile::new().to_internal_error()?;
             named_file.write(&file_data).to_internal_error()?;
@@ -476,18 +608,39 @@ async fn fetch_preview(
     {
         let safe_filename = encode_component(&file.filename);
 
-        return Ok((
-            [(header::CACHE_CONTROL, CACHE_CONTROL)],
-            Redirect::permanent(&format!("/{tag_str}/{file_id}/{safe_filename}")),
-        )
-            .into_response());
+        return Ok(with_cache_validators(
+            (
+                [(header::CACHE_CONTROL, CACHE_CONTROL)],
+                Redirect::permanent(&format!("/{tag_str}/{file_id}/{safe_filename}")),
+            )
+                .into_response(),
+            &etag,
+            &last_modified,
+        ));
+    }
+
+    let cache_key = preview_cache_key(&hash, tag_str, variant);
+    if let Some(data) = PREVIEW_CACHE.get(&cache_key).await {
+        return Ok(with_cache_validators(
+            (
+                [
+                    (header::CONTENT_TYPE, "image/webp"),
+                    (header::CONTENT_DISPOSITION, "inline"),
+                    (header::CACHE_CONTROL, CACHE_CONTROL),
+                ],
+                data,
+            )
+                .into_response(),
+            &etag,
+            &last_modified,
+        ));
     }
 
     // Original image data
     let data = if let Some(data) = data {
         data
     } else {
-        retrieve_file_by_hash(&hash).await?
+        retrieve_file_by_hash(&state, &hash).await?
     };
 
     // Read image and create thumbnail
@@ -496,16 +649,21 @@ async fn fetch_preview(
         tag_str,
     )
     .await;
+    PREVIEW_CACHE.insert(cache_key, data.clone()).await;
 
-    Ok((
-        [
-            (header::CONTENT_TYPE, "image/webp"),
-            (header::CONTENT_DISPOSITION, "inline"),
-            (header::CACHE_CONTROL, CACHE_CONTROL),
-        ],
-        data,
-    )
-        .into_response())
+    Ok(with_cache_validators(
+        (
+            [
+                (header::CONTENT_TYPE, "image/webp"),
+                (header::CONTENT_DISPOSITION, "inline"),
+                (header::CACHE_CONTROL, CACHE_CONTROL),
+            ],
+            data,
+        )
+            .into_response(),
+        &etag,
+        &last_modified,
+    ))
 }
 
 /// Fetch original file
@@ -528,9 +686,11 @@ async fn fetch_preview(
     ),
 )]
 async fn fetch_file(
-    State(db): State<Database>,
+    State(state): State<AppState>,
+    headers: HeaderMap,
     Path((tag, file_id, file_name)): Path<(Tag, String, String)>,
 ) -> Result<Response> {
+    let db = &state.database;
     let tag_str: &'static str = tag.clone().into();
     let file = db.fetch_attachment(tag_str, &file_id).await?;
 
@@ -560,27 +720,42 @@ async fn fetch_file(
     }
 
     let hash = file.as_hash(&db).await?;
+    let etag = original_etag(&hash);
+    let last_modified = last_modified(&hash);
+
+    if cache_validator_matches(&headers, &etag, &last_modified) {
+        return Ok(not_modified_response(&etag, &last_modified));
+    }
+
     let content_disposition = original_content_disposition(&tag, &hash.content_type);
-    retrieve_file_by_hash(&hash).await.map(|data| {
-        (
-            [
-                (header::CONTENT_TYPE, hash.content_type),
-                (header::CONTENT_DISPOSITION, content_disposition.to_owned()),
-                (header::CACHE_CONTROL, CACHE_CONTROL.to_owned()),
-            ],
-            data,
+    retrieve_file_by_hash(&state, &hash).await.map(|data| {
+        with_cache_validators(
+            (
+                [
+                    (header::CONTENT_TYPE, hash.content_type),
+                    (header::CONTENT_DISPOSITION, content_disposition.to_owned()),
+                    (header::CACHE_CONTROL, CACHE_CONTROL.to_owned()),
+                ],
+                data,
+            )
+                .into_response(),
+            &etag,
+            &last_modified,
         )
-            .into_response()
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        effective_upload_size_limit, original_content_disposition, validate_badge_upload, Tag,
-        BADGE_UPLOAD_SIZE_LIMIT, CACHE_CONTROL, PROFILE_GIF_UPLOAD_SIZE_LIMIT,
+        cache_validator_matches, effective_upload_size_limit, original_content_disposition,
+        original_etag, preview_cache_key, preview_etag, should_cache_s3_result,
+        validate_badge_upload, PreviewVariant, Tag, BADGE_UPLOAD_SIZE_LIMIT, CACHE_CONTROL,
+        PROFILE_GIF_UPLOAD_SIZE_LIMIT,
     };
+    use axum::http::{header, HeaderMap, HeaderValue};
     use syrnike_database::Metadata;
+    use syrnike_database::{iso8601_timestamp::Timestamp, FileHash};
 
     #[test]
     fn gif_avatars_and_backgrounds_use_profile_gif_upload_limit() {
@@ -683,5 +858,174 @@ mod tests {
     #[test]
     fn media_cache_control_keeps_immutable_files_fresh() {
         assert_eq!(CACHE_CONTROL, "public, max-age=604800, immutable");
+    }
+
+    #[test]
+    fn s3_cache_keeps_successful_reads_only() {
+        let ok: syrnike_result::Result<Vec<u8>> = Ok(vec![1, 2, 3]);
+        let err: syrnike_result::Result<Vec<u8>> =
+            Err(syrnike_result::create_error!(InternalError));
+
+        assert!(should_cache_s3_result(&ok));
+        assert!(!should_cache_s3_result(&err));
+    }
+
+    fn image_hash() -> FileHash {
+        FileHash {
+            id: "original-sha".to_owned(),
+            processed_hash: "processed-sha".to_owned(),
+            created_at: Timestamp::UNIX_EPOCH,
+            bucket_id: "bucket".to_owned(),
+            path: "path".to_owned(),
+            iv: "iv".to_owned(),
+            metadata: Metadata::Image {
+                width: 128,
+                height: 128,
+                thumbhash: None,
+                animated: Some(false),
+            },
+            content_type: "image/png".to_owned(),
+            size: 123,
+        }
+    }
+
+    #[test]
+    fn preview_cache_key_is_temporary_cache_only_and_tag_specific() {
+        let hash = image_hash();
+
+        assert_eq!(
+            preview_cache_key(
+                &hash,
+                "avatars",
+                PreviewVariant {
+                    max_size: [256, 256],
+                    webp_quality_bits: 80.0_f32.to_bits(),
+                },
+            ),
+            "preview:avatars:256x256:42a00000:processed-sha"
+        );
+        assert_ne!(
+            preview_cache_key(
+                &hash,
+                "avatars",
+                PreviewVariant {
+                    max_size: [256, 256],
+                    webp_quality_bits: 80.0_f32.to_bits(),
+                },
+            ),
+            preview_cache_key(
+                &hash,
+                "backgrounds",
+                PreviewVariant {
+                    max_size: [1280, 720],
+                    webp_quality_bits: 80.0_f32.to_bits(),
+                },
+            )
+        );
+    }
+
+    #[test]
+    fn media_etags_are_stable_and_distinguish_preview_from_original() {
+        let hash = image_hash();
+
+        assert_eq!(
+            preview_etag(
+                &hash,
+                "avatars",
+                PreviewVariant {
+                    max_size: [256, 256],
+                    webp_quality_bits: 80.0_f32.to_bits(),
+                },
+            ),
+            "\"syrnike-preview-avatars-256x256-42a00000-processed-sha\""
+        );
+        assert_eq!(original_etag(&hash), "\"syrnike-original-processed-sha\"");
+        assert_ne!(
+            preview_etag(
+                &hash,
+                "avatars",
+                PreviewVariant {
+                    max_size: [256, 256],
+                    webp_quality_bits: 80.0_f32.to_bits(),
+                },
+            ),
+            original_etag(&hash)
+        );
+    }
+
+    #[test]
+    fn preview_validators_change_when_preview_settings_change() {
+        let hash = image_hash();
+        let default_variant = PreviewVariant {
+            max_size: [256, 256],
+            webp_quality_bits: 80.0_f32.to_bits(),
+        };
+        let resized_variant = PreviewVariant {
+            max_size: [512, 512],
+            webp_quality_bits: 80.0_f32.to_bits(),
+        };
+        let quality_variant = PreviewVariant {
+            max_size: [256, 256],
+            webp_quality_bits: 90.0_f32.to_bits(),
+        };
+
+        assert_ne!(
+            preview_cache_key(&hash, "avatars", default_variant),
+            preview_cache_key(&hash, "avatars", resized_variant),
+        );
+        assert_ne!(
+            preview_cache_key(&hash, "avatars", default_variant),
+            preview_cache_key(&hash, "avatars", quality_variant),
+        );
+        assert_ne!(
+            preview_etag(&hash, "avatars", default_variant),
+            preview_etag(&hash, "avatars", resized_variant),
+        );
+    }
+
+    #[test]
+    fn cache_validator_matches_current_etag() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::IF_NONE_MATCH,
+            HeaderValue::from_static("\"syrnike-preview-avatars-processed-sha\""),
+        );
+
+        assert!(cache_validator_matches(
+            &headers,
+            "\"syrnike-preview-avatars-processed-sha\"",
+            "Thu, 01 Jan 1970 00:00:00 GMT",
+        ));
+    }
+
+    #[test]
+    fn cache_validator_ignores_last_modified_when_etag_misses() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::IF_NONE_MATCH, HeaderValue::from_static("\"old\""));
+        headers.insert(
+            header::IF_MODIFIED_SINCE,
+            HeaderValue::from_static("Thu, 01 Jan 1970 00:00:00 GMT"),
+        );
+
+        assert!(!cache_validator_matches(
+            &headers,
+            "\"syrnike-preview-avatars-processed-sha\"",
+            "Thu, 01 Jan 1970 00:00:00 GMT",
+        ));
+    }
+
+    #[test]
+    fn cache_validator_matches_last_modified_when_etag_is_absent() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::IF_MODIFIED_SINCE,
+            HeaderValue::from_static("Thu, 01 Jan 1970 00:00:00 GMT"),
+        );
+
+        assert!(cache_validator_matches(
+            &headers,
+            "\"syrnike-preview-avatars-processed-sha\"",
+            "Thu, 01 Jan 1970 00:00:00 GMT",
+        ));
     }
 }

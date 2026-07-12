@@ -130,6 +130,10 @@ pub struct UserLimits {
     pub video_resolution: [i64; 2],
     /// min/max aspect ratios
     pub video_aspect_ratio: [f64; 2],
+    /// max screen share resolution (width, height)
+    pub screen_share_resolution: [i64; 2],
+    /// max screen share video bitrate
+    pub screen_share_bitrate: i64,
     pub file_upload_size_limits: HashMap<String, usize>,
 }
 
@@ -148,6 +152,11 @@ impl UserLimits {
                 fl.video_aspect_ratio[0] as f64,
                 fl.video_aspect_ratio[1] as f64,
             ],
+            screen_share_resolution: [
+                fl.screen_share_resolution[0] as i64,
+                fl.screen_share_resolution[1] as i64,
+            ],
+            screen_share_bitrate: fl.screen_share_bitrate as i64,
             file_upload_size_limits: fl.file_upload_size_limit,
         }
     }

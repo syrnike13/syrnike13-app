@@ -194,7 +194,7 @@ function VoiceCallSystemCard({
         <div
           className={cn(
             'flex size-10 items-center justify-center',
-            successfulCall ? 'text-[#23a559]' : 'text-muted-foreground',
+            successfulCall ? 'text-chart-3' : 'text-muted-foreground',
           )}
           aria-label={successfulCall ? 'Успешный звонок' : 'Неуспешный звонок'}
         >
@@ -357,7 +357,7 @@ export function MessageRow({
         highlighted && 'bg-primary/10 hover:bg-primary/15',
         mentionsCurrentUser &&
           !highlighted &&
-          'bg-amber-400/10 hover:bg-amber-400/15',
+          'bg-chart-2/10 hover:bg-chart-2/15',
       )}
     >
       {compact ? (

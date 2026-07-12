@@ -42,22 +42,14 @@ export const IPC = {
   mediaListDevices: 'syrnike-desktop:media:list-devices',
   mediaStartMicrophonePreview: 'syrnike-desktop:media:start-microphone-preview',
   mediaStopMicrophonePreview: 'syrnike-desktop:media:stop-microphone-preview',
-  mediaPrepareScreenSession: 'syrnike-desktop:media:prepare-screen-session',
-  mediaDisconnectPreparedScreenSession:
-    'syrnike-desktop:media:disconnect-prepared-screen-session',
-  mediaStartSession: 'syrnike-desktop:media:start-session',
-  mediaConfigureMicrophoneRuntime:
-    'syrnike-desktop:media:configure-microphone-runtime',
-  mediaSetMicrophoneMuted: 'syrnike-desktop:media:set-microphone-muted',
-  mediaStopSession: 'syrnike-desktop:media:stop-session',
-  mediaGetState: 'syrnike-desktop:media:get-state',
-  mediaStats: 'syrnike-desktop:media:stats',
   mediaMicrophoneMetrics: 'syrnike-desktop:media:microphone-metrics',
-  mediaStateChanged: 'syrnike-desktop:media:state-changed',
+  mediaMicrophonePreviewState:
+    'syrnike-desktop:media:microphone-preview-state',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
-  mediaStreamEnded: 'syrnike-desktop:media:stream-ended',
-  mediaStreamError: 'syrnike-desktop:media:stream-error',
-  mediaEngineLost: 'syrnike-desktop:media:engine-lost',
+  mediaSetRemoteVideoDemand: 'syrnike-desktop:media:set-remote-video-demand',
+  voiceDispatch: 'syrnike-desktop:voice:dispatch',
+  voiceGetSnapshot: 'syrnike-desktop:voice:get-snapshot',
+  voiceSnapshotChanged: 'syrnike-desktop:voice:snapshot-changed',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

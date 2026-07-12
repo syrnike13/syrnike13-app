@@ -2,8 +2,9 @@ use rocket::State;
 use syrnike_database::{
     util::reference::Reference,
     voice::{
-        delete_voice_channel, get_user_voice_channel_in_server, remove_user_from_voice_channel,
-        UserVoiceChannel, VoiceClient,
+        cancel_current_pending_voice_join_in_server, delete_voice_channel,
+        get_user_voice_channel_in_server, remove_user_from_voice_channel, UserVoiceChannel,
+        VoiceClient,
     },
     Database, RemovalIntention, User,
 };
@@ -43,7 +44,6 @@ pub async fn delete(
     } else {
         if let Some(channel_id) = get_user_voice_channel_in_server(&user.id, &server.id).await? {
             remove_user_from_voice_channel(
-                voice_client,
                 &UserVoiceChannel {
                     id: channel_id,
                     server_id: Some(server.id.clone()),
@@ -52,6 +52,7 @@ pub async fn delete(
             )
             .await?;
         };
+        cancel_current_pending_voice_join_in_server(&user.id, &server.id).await?;
 
         member
             .remove(

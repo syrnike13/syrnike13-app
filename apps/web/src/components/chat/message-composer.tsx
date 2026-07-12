@@ -18,7 +18,10 @@ import { Button } from '#/components/ui/button'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import { uploadAttachment } from '#/features/api/media-api'
 import type { Channel, User } from '@syrnike13/api-types'
+import { memberDisplayColour } from '#/features/sync/member-list-groups'
+import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
+import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
@@ -33,10 +36,7 @@ import {
   runtimeChannelName,
   serverChannelServerId,
 } from '#/lib/channel-voice'
-import {
-  FLOATING_BAR_HEIGHT_CLASS,
-  floatingComposerShellClass,
-} from '#/components/layout/shell-chrome'
+import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
 import { cn } from '#/lib/utils'
 
 const composerIconClass =
@@ -44,8 +44,6 @@ const composerIconClass =
 
 const composerIconHoverClass = (floating: boolean) =>
   floating ? 'hover:bg-muted' : 'hover:bg-secondary'
-
-const emptyMentionItems = () => []
 
 function composerPlaceholder(
   channel: Channel | undefined,
@@ -146,6 +144,12 @@ export function MessageComposer({
     setReplyMention(true)
     requestAnimationFrame(() => composerRef.current?.focus())
   }, [editingMessage?._id, replyTo?._id])
+
+  const mentionable = useMemo(
+    () => getMentionableUsers(channel, users, members, auth.user?._id),
+    [auth.user?._id, channel, members, users],
+  )
+
   const formatContext = useMemo(
     () => ({
       users,
@@ -166,6 +170,75 @@ export function MessageComposer({
       serverId,
       users,
     ],
+  )
+
+  const buildMentionItems = useMemo(
+    () =>
+      (query: string): MentionSuggestionItem[] => {
+        const q = query.toLowerCase()
+        const items: MentionSuggestionItem[] = []
+        const isTextChannel = channel?.channel_type === 'TextChannel'
+
+        if (isTextChannel) {
+          if (!q || 'everyone'.startsWith(q)) {
+            items.push({
+              kind: 'everyone',
+              label: '@everyone',
+              description: 'все в канале',
+            })
+          }
+          if (!q || 'online'.startsWith(q)) {
+            items.push({
+              kind: 'online',
+              label: '@online',
+              description: 'кто в сети',
+            })
+          }
+        }
+
+        const filteredUsers = q
+          ? mentionable
+              .filter((user) => {
+                const member = serverId
+                  ? members[`${serverId}:${user._id}`]
+                  : undefined
+                const serverName =
+                  member?.nickname?.trim() ||
+                  user.display_name ||
+                  user.username
+                return (
+                  user.username.toLowerCase().includes(q) ||
+                  user.display_name?.toLowerCase().includes(q) ||
+                  serverName.toLowerCase().includes(q)
+                )
+              })
+              .slice(0, 8)
+          : mentionable.slice(0, 8)
+
+        for (const user of filteredUsers) {
+          const member =
+            serverId && members[`${serverId}:${user._id}`]
+              ? members[`${serverId}:${user._id}`]
+              : undefined
+          const serverName =
+            member?.nickname?.trim() || user.display_name || user.username
+
+          items.push({
+            kind: 'user',
+            id: user._id,
+            user,
+            serverName,
+            username: user.username,
+            nameColour:
+              server && member
+                ? memberDisplayColour(server, member)
+                : undefined,
+          })
+        }
+
+        return items
+      },
+    [channel?.channel_type, members, mentionable, server, serverId],
   )
 
   function appendFiles(fileList: FileList | File[]) {
@@ -301,11 +374,143 @@ export function MessageComposer({
 
   const hasComposerHeader = showReplyBanner || isEditing
 
+  const composerChrome = (
+    <>
+      {showReplyBanner && replyTo ? (
+        <ComposerReplyBanner
+          message={replyTo}
+          users={users}
+          authorColor={replyAuthorColor}
+          mentionEnabled={replyMention}
+          onMentionToggle={setReplyMention}
+          onClear={() => onCancelAction?.()}
+        />
+      ) : null}
+
+      {isEditing && editingMessage ? (
+        <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[13px] text-muted-foreground">
+          <span>Редактирование сообщения</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0 rounded-full hover:bg-foreground/10"
+            onClick={onCancelAction}
+            aria-label="Отменить редактирование"
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        </div>
+      ) : null}
+
+      <div
+        ref={composerInputRowRef}
+        className={cn(
+          'flex items-end gap-0.5 px-1 pb-2',
+          floating && 'min-h-14',
+          !floating && hasComposerHeader && 'min-h-14',
+          !floating && !hasComposerHeader && 'min-h-11',
+          hasComposerHeader && 'border-t border-foreground/10',
+        )}
+      >
+        {!isEditing ? (
+          <label
+            className={cn(
+              composerIconClass,
+              composerIconHoverClass(floating),
+              'mb-1 cursor-pointer',
+              (disabled || sending) && 'pointer-events-none',
+            )}
+            title="Вложение"
+          >
+            <input
+              type="file"
+              multiple
+              className="sr-only"
+              disabled={disabled || sending}
+              onChange={handleFilesSelected}
+            />
+            <PlusIcon className="size-5" />
+          </label>
+        ) : null}
+
+        <ComposerEditor
+          ref={composerRef}
+          value={value}
+          disabled={disabled || sending}
+          placeholder={placeholder}
+          formatContext={formatContext}
+          mentionItems={buildMentionItems}
+          menuAnchorRef={composerInputRowRef}
+          menuSurfaceClassName={
+            floating
+              ? 'bg-secondary text-secondary-foreground'
+              : 'bg-accent text-foreground'
+          }
+          className="min-w-0 flex-1"
+          editorClassName={
+            floating ? 'text-secondary-foreground' : 'text-foreground'
+          }
+          onValueChange={(nextValue) => {
+            if (nextValue !== value) {
+              onTyping?.()
+            }
+            setValue(nextValue)
+          }}
+          onPasteFiles={
+            !isEditing
+              ? (fileList) => {
+                  appendFiles(fileList)
+                }
+              : undefined
+          }
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              onCancelAction?.()
+              return
+            }
+            if (event.key === 'Enter' && !event.shiftKey) {
+              void submit()
+            }
+          }}
+        />
+
+        <div className="mb-1 flex shrink-0 items-center">
+          {!isEditing ? (
+            <ComposerEmojiPicker
+              serverId={serverId}
+              disabled={disabled || sending}
+              onInsert={insertAtCaret}
+              triggerClassName={cn(
+                composerIconClass,
+                composerIconHoverClass(floating),
+              )}
+            />
+          ) : null}
+          {sending ? (
+            <span
+              className={cn(
+                composerIconClass,
+                composerIconHoverClass(floating),
+                'pointer-events-none',
+              )}
+              aria-hidden
+            >
+              <Loader2Icon className="size-4 animate-spin" />
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </>
+  )
+
   const composerBody = (
     <div
       className={cn(
         'relative flex flex-col',
-        floating ? 'pointer-events-auto gap-2' : 'gap-2 border-t border-border bg-card p-3 text-card-foreground',
+        floating
+          ? 'pointer-events-auto gap-2'
+          : 'gap-2 border-t border-border bg-card p-3 text-card-foreground',
       )}
       onDragEnter={(event) => {
         event.preventDefault()
@@ -356,148 +561,32 @@ export function MessageComposer({
         </div>
       ) : null}
 
-      <div
-        data-composer-chrome
-        className={cn(
-          'flex flex-col transition-colors',
-          floating && floatingComposerShellClass,
-          !floating &&
-            hasComposerHeader &&
-            'overflow-hidden rounded-lg border border-border bg-accent text-foreground',
-          !floating &&
-            !hasComposerHeader &&
-            'min-h-11 rounded-lg border border-border bg-accent py-1 text-foreground',
-          dragActive && 'ring-2 ring-primary/40',
-          (disabled || sending) && 'opacity-60',
-        )}
-      >
-        {showReplyBanner && replyTo ? (
-          <ComposerReplyBanner
-            message={replyTo}
-            users={users}
-            authorColor={replyAuthorColor}
-            mentionEnabled={replyMention}
-            onMentionToggle={setReplyMention}
-            onClear={() => onCancelAction?.()}
-          />
-        ) : null}
-
-        {isEditing && editingMessage ? (
-          <div className="flex h-8 shrink-0 items-center justify-between gap-2 px-3 text-[13px] text-muted-foreground">
-            <span>Редактирование сообщения</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-6 shrink-0 rounded-full hover:bg-foreground/10"
-              onClick={onCancelAction}
-              aria-label="Отменить редактирование"
-            >
-              <XIcon className="size-3.5" />
-            </Button>
-          </div>
-        ) : null}
-
-        <div
-          ref={composerInputRowRef}
+      {floating ? (
+        <FloatingBarShell
+          data-composer-chrome
           className={cn(
-            'flex items-center gap-0.5 px-1',
-            floating && FLOATING_BAR_HEIGHT_CLASS,
-            !floating && hasComposerHeader && FLOATING_BAR_HEIGHT_CLASS,
-            !floating && !hasComposerHeader && 'min-h-11 py-1',
-            hasComposerHeader &&
-              'border-t border-foreground/10',
+            dragActive && 'ring-2 ring-primary/40',
+            (disabled || sending) && 'opacity-60',
+          )}
+          surfaceClassName="flex flex-col transition-colors"
+        >
+          {composerChrome}
+        </FloatingBarShell>
+      ) : (
+        <div
+          data-composer-chrome
+          className={cn(
+            'flex flex-col transition-colors',
+            hasComposerHeader
+              ? 'overflow-hidden rounded-lg border border-border bg-accent text-foreground'
+              : 'min-h-11 rounded-lg border border-border bg-accent py-1 text-foreground',
+            dragActive && 'ring-2 ring-primary/40',
+            (disabled || sending) && 'opacity-60',
           )}
         >
-        {!isEditing ? (
-          <label
-            className={cn(
-              composerIconClass,
-              composerIconHoverClass(floating),
-              'cursor-pointer',
-              (disabled || sending) && 'pointer-events-none',
-            )}
-            title="Вложение"
-          >
-            <input
-              type="file"
-              multiple
-              className="sr-only"
-              disabled={disabled || sending}
-              onChange={handleFilesSelected}
-            />
-            <PlusIcon className="size-5" />
-          </label>
-        ) : null}
-
-        <ComposerEditor
-          ref={composerRef}
-          value={value}
-          disabled={disabled || sending}
-          placeholder={placeholder}
-          formatContext={formatContext}
-          mentionItems={emptyMentionItems}
-          menuAnchorRef={composerInputRowRef}
-          menuSurfaceClassName={
-            floating
-              ? 'bg-secondary text-secondary-foreground'
-              : 'bg-accent text-foreground'
-          }
-          className={floating ? 'min-h-0' : 'min-h-9'}
-          editorClassName={
-            floating ? 'text-secondary-foreground' : 'text-foreground'
-          }
-          onValueChange={(nextValue) => {
-            if (nextValue !== value) {
-              onTyping?.()
-            }
-            setValue(nextValue)
-          }}
-          onPasteFiles={
-            !isEditing
-              ? (fileList) => {
-                  appendFiles(fileList)
-                }
-              : undefined
-          }
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              onCancelAction?.()
-              return
-            }
-            if (event.key === 'Enter' && !event.shiftKey) {
-              void submit()
-            }
-          }}
-        />
-
-        <div className="flex shrink-0 items-center">
-          {!isEditing ? (
-            <ComposerEmojiPicker
-              serverId={serverId}
-              disabled={disabled || sending}
-              onInsert={insertAtCaret}
-              triggerClassName={cn(
-                composerIconClass,
-                composerIconHoverClass(floating),
-              )}
-            />
-          ) : null}
-          {sending ? (
-            <span
-              className={cn(
-                composerIconClass,
-                composerIconHoverClass(floating),
-                'pointer-events-none',
-              )}
-              aria-hidden
-            >
-              <Loader2Icon className="size-4 animate-spin" />
-            </span>
-          ) : null}
+          {composerChrome}
         </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 

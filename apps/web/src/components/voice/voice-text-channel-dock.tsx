@@ -11,7 +11,7 @@ import {
   useChannelVoiceParticipantsWithLocalOverride,
 } from '#/features/sync/voice-selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
@@ -23,7 +23,7 @@ type VoiceTextChannelDockProps = {
 
 export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const prefix = useAppRoutePrefix()
   const [expanded, setExpanded] = useState(false)
   const users = useSyncStore((s) => s.users)
@@ -46,9 +46,9 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   if (participants.length === 0) return null
 
   return (
-    <div className="shrink-0 border-b border-shell-divider bg-[#1e1f22]/90">
+    <div className="shrink-0 border-b border-shell-divider bg-card/90">
       <div className="flex items-center gap-2 px-3 py-2">
-        <Volume2BoldIcon className="size-4 shrink-0 text-[#23a559]" />
+        <Volume2BoldIcon className="size-4 shrink-0 text-chart-3" />
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
           Голос · {participants.length}{' '}
           {participants.length === 1 ? 'участник' : 'участника'}
@@ -87,7 +87,10 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
           )}
         >
           {participants.slice(0, 4).map((participant) => {
-            const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id)
+            const isSelf = isVoiceLocalUserId(
+              participant.id,
+              auth.user?._id ?? null,
+            )
             const user =
               users[participant.id] ?? (isSelf ? auth.user ?? undefined : undefined)
             return (

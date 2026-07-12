@@ -76,8 +76,7 @@ pub async fn delete(
                 delete_group_voice_call(db, voice_client, amqp, &channel).await?;
             } else {
                 stop_ringing_for_removed_group_member(amqp, channel.id(), &user.id).await?;
-                remove_group_member_from_voice_call(db, voice_client, amqp, &channel, &user.id)
-                    .await?;
+                remove_group_member_from_voice_call(db, amqp, &channel, &user.id).await?;
             }
         }
         Channel::TextChannel { .. } => {

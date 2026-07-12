@@ -9,7 +9,7 @@ use crate::{
     Database, Server,
 };
 use iso8601_timestamp::{Duration, Timestamp};
-use livekit_protocol::ParticipantPermission;
+use livekit_protocol::{participant_info, ParticipantInfo, ParticipantPermission, TrackSource};
 use redis_kiss::{
     get_connection as _get_connection,
     redis::{cmd, FromRedisValue, Pipeline, RedisError, RedisWrite, ToRedisArgs, Value},
@@ -22,246 +22,152 @@ use syrnike_result::{create_error, Result, ToSyrnikeError};
 
 pub mod call_lifecycle;
 mod join;
+mod session;
 mod voice_client;
+pub use crate::events::client::{VoiceRtcCredential, VoiceRtcEngine};
 pub use join::*;
+pub use session::*;
 pub use voice_client::VoiceClient;
 
-/// Client join intent stored until LiveKit `participant_joined` webhook confirms membership.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VoiceJoinIntent {
-    pub channel: UserVoiceChannel,
-    pub operation_id: Option<String>,
-    pub self_mute: bool,
-    pub self_deaf: bool,
-}
-
-const DESKTOP_NATIVE_IDENTITY_SUFFIX: &str = ":desktop-native";
-const VOICE_JOIN_INTENT_TTL_SECONDS: usize = 120;
+const VOICE_IDENTITY_PREFIX: &str = "voice:v1|";
 const MIN_CALL_NOTIFICATION_RECIPIENTS_TTL_SECONDS: usize = 120;
-const VOICE_MOVE_MARKER_TTL_SECONDS: usize = 10;
+const VOICE_SESSION_MUTATION_RETRY_LIMIT: usize = 8;
+pub const VOICE_OPERATION_ID_PREFIX: &str = "voice-op-";
 
-const COMMIT_VOICE_JOIN: &str = r#"
-local user_id = ARGV[1]
-local target_channel_id = ARGV[2]
-local target_server_id = ARGV[3]
-local target_channel = ARGV[4]
-local joined_at_ms = ARGV[5]
-local session_id = ARGV[6]
-local room_id = ARGV[7]
-local moved_ttl = tonumber(ARGV[8])
-local user_channels_key = 'vc:' .. user_id
-
-local function stale()
-  return {0, 0, 0, 0, 0, 0, 0, 1, '', {}}
-end
-
-local function parse_channel(value)
-  local separator = string.find(value, '-', 1, true)
-  if separator then
-    return string.sub(value, 1, separator - 1), string.sub(value, separator + 1)
-  end
-  return value, ''
-end
-
-local function unique_key(channel_id, server_id)
-  if server_id ~= nil and server_id ~= '' then
-    return user_id .. ':' .. server_id
-  end
-  return user_id .. ':' .. channel_id
-end
-
-local function bool_to_number(value)
-  if value == nil or value == false then
-    return 0
-  end
-  if value == true or value == 1 or value == '1' or value == 'true' then
-    return 1
-  end
-  return 0
-end
-
-local intent_raw = redis.call('GET', KEYS[1])
-local intent = nil
-if intent_raw then
-  local ok
-  ok, intent = pcall(cjson.decode, intent_raw)
-  if not ok or type(intent) ~= 'table' or type(intent.channel) ~= 'table' then
-    return stale()
-  end
-  local intent_server_id = intent.channel.server_id
-  if type(intent_server_id) ~= 'string' then
-    intent_server_id = ''
-  end
-  if intent.channel.id ~= target_channel_id or intent_server_id ~= target_server_id then
-    return stale()
-  end
-else
-  if redis.call('SISMEMBER', user_channels_key, target_channel) == 0 then
-    return stale()
-  end
-end
-
-local target_unique_key = unique_key(target_channel_id, target_server_id)
-local existing_joined_at = redis.call('GET', 'joined_at:' .. target_unique_key)
-local pending_track_state = existing_joined_at == false
-
-local existing_self_mute = redis.call('GET', 'self_mute:' .. target_unique_key)
-local existing_self_deaf = redis.call('GET', 'self_deaf:' .. target_unique_key)
-local existing_server_muted = redis.call('GET', 'server_muted:' .. target_unique_key)
-local existing_server_deafened = redis.call('GET', 'server_deafened:' .. target_unique_key)
-local existing_screensharing = redis.call('GET', 'screensharing:' .. target_unique_key)
-local existing_camera = redis.call('GET', 'camera:' .. target_unique_key)
-local existing_version = redis.call('GET', 'version:' .. target_unique_key)
-
-local self_mute
-local self_deaf
-local operation_id = ''
-if intent ~= nil and type(intent.operation_id) == 'string' then
-  operation_id = intent.operation_id
-end
-if pending_track_state then
-  if intent ~= nil and intent.self_mute ~= nil then
-    self_mute = bool_to_number(intent.self_mute)
-  else
-    self_mute = bool_to_number(existing_self_mute)
-  end
-  if intent ~= nil and intent.self_deaf ~= nil then
-    self_deaf = bool_to_number(intent.self_deaf)
-  else
-    self_deaf = bool_to_number(existing_self_deaf)
-  end
-else
-  self_mute = bool_to_number(existing_self_mute)
-  self_deaf = bool_to_number(existing_self_deaf)
-end
-
-local server_muted = bool_to_number(existing_server_muted)
-local server_deafened = bool_to_number(existing_server_deafened)
-local screensharing = pending_track_state and 0 or bool_to_number(existing_screensharing)
-local camera = pending_track_state and 0 or bool_to_number(existing_camera)
-local version = pending_track_state and 1 or tonumber(existing_version) or 1
-
-local previous_channels = redis.call('SMEMBERS', user_channels_key)
-local moved_from = {}
-local first_previous = nil
-for _, previous in ipairs(previous_channels) do
-  if previous ~= target_channel then
-    local previous_channel_id, previous_server_id = parse_channel(previous)
-    local previous_unique_key = unique_key(previous_channel_id, previous_server_id)
-    table.insert(moved_from, previous)
-    if first_previous == nil then
-      first_previous = previous
-    end
-
-    redis.call('SREM', 'vc_members:' .. previous_channel_id, user_id)
-    redis.call('SREM', user_channels_key, previous)
-    redis.call(
-      'DEL',
-      'joined_at:' .. previous_unique_key,
-      'self_mute:' .. previous_unique_key,
-      'self_deaf:' .. previous_unique_key,
-      'server_muted:' .. previous_unique_key,
-      'server_deafened:' .. previous_unique_key,
-      'screensharing:' .. previous_unique_key,
-      'camera:' .. previous_unique_key,
-      'version:' .. previous_unique_key,
-      'session:' .. previous_unique_key,
-      previous_unique_key
-    )
-    redis.call('SETEX', 'moved_from:' .. user_id .. ':' .. previous_channel_id, moved_ttl, target_channel)
-  end
-end
-
-if first_previous ~= nil then
-  redis.call('SETEX', 'moved_to:' .. user_id .. ':' .. target_channel_id, moved_ttl, first_previous)
-end
-
-redis.call('SADD', 'vc_members:' .. target_channel_id, user_id)
-redis.call('SADD', user_channels_key, target_channel)
-redis.call('SET', target_unique_key, target_channel_id)
-redis.call('SET', 'joined_at:' .. target_unique_key, joined_at_ms)
-redis.call('SET', 'self_mute:' .. target_unique_key, self_mute)
-redis.call('SET', 'self_deaf:' .. target_unique_key, self_deaf)
-redis.call('SET', 'server_muted:' .. target_unique_key, server_muted)
-redis.call('SET', 'server_deafened:' .. target_unique_key, server_deafened)
-redis.call('SET', 'screensharing:' .. target_unique_key, screensharing)
-redis.call('SET', 'camera:' .. target_unique_key, camera)
-redis.call('SET', 'version:' .. target_unique_key, version)
-if session_id ~= '' then
-  redis.call('SET', 'session:' .. target_unique_key, session_id)
-end
-if room_id ~= '' then
-  redis.call('SET', 'room_session:' .. target_channel_id, room_id)
-end
-if intent_raw then
-  redis.call('DEL', KEYS[1])
-end
-
-return {1, self_mute, self_deaf, server_muted, server_deafened, screensharing, camera, version, operation_id, moved_from}
-"#;
-
-const DELETE_VOICE_STATE_IF_SESSION: &str = r#"
-local current_session = redis.call('GET', KEYS[1])
-if current_session ~= ARGV[1] then
-  return 0
-end
-
-local user_id = ARGV[2]
-local channel_id = ARGV[3]
-local channel = ARGV[4]
-local unique_key = ARGV[5]
-
-redis.call('SREM', 'vc_members:' .. channel_id, user_id)
-redis.call('SREM', 'vc:' .. user_id, channel)
-redis.call(
-  'DEL',
-  'joined_at:' .. unique_key,
-  'self_mute:' .. unique_key,
-  'self_deaf:' .. unique_key,
-  'server_muted:' .. unique_key,
-  'server_deafened:' .. unique_key,
-  'screensharing:' .. unique_key,
-  'camera:' .. unique_key,
-  'version:' .. unique_key,
-  KEYS[1],
-  unique_key
-)
-
-return 1
-"#;
-
-pub fn desktop_native_voice_identity(user_id: &str, media_kind: &str) -> String {
-    format!("{user_id}{DESKTOP_NATIVE_IDENTITY_SUFFIX}:{media_kind}")
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceParticipantClaims<'a> {
+    pub user_id: &'a str,
+    pub rtc_engine: VoiceRtcEngine,
+    pub client_instance_id: &'a str,
+    pub operation_id: &'a str,
+    pub connection_epoch: &'a str,
 }
 
-pub fn desktop_native_voice_identities(user_id: &str) -> [String; 3] {
-    [
-        desktop_native_voice_identity(user_id, "microphone"),
-        desktop_native_voice_identity(user_id, "screen"),
-        desktop_native_voice_identity(user_id, "camera"),
-    ]
+pub fn is_valid_voice_operation_id(operation_id: &str) -> bool {
+    let Some(uuid) = operation_id.strip_prefix(VOICE_OPERATION_ID_PREFIX) else {
+        return false;
+    };
+    uuid.len() == 36 && uuid::Uuid::try_parse(uuid).is_ok()
+}
+
+pub fn voice_participant_identity(
+    user_id: &str,
+    rtc_engine: VoiceRtcEngine,
+    client_instance_id: &str,
+    operation_id: &str,
+    connection_epoch: &str,
+) -> String {
+    format!("{VOICE_IDENTITY_PREFIX}{rtc_engine}|{client_instance_id}|{connection_epoch}|{operation_id}|{user_id}")
+}
+
+pub fn voice_participant_claims(identity: &str) -> Option<VoiceParticipantClaims<'_>> {
+    let mut fields = identity.strip_prefix(VOICE_IDENTITY_PREFIX)?.split('|');
+    let rtc_engine = fields.next()?.parse().ok()?;
+    let client_instance_id = fields.next()?;
+    let connection_epoch = fields.next()?;
+    let operation_id = fields.next()?;
+    let user_id = fields.next()?;
+    if fields.next().is_some()
+        || user_id.is_empty()
+        || client_instance_id.is_empty()
+        || connection_epoch.is_empty()
+        || !is_valid_voice_operation_id(operation_id)
+    {
+        return None;
+    }
+    Some(VoiceParticipantClaims {
+        user_id,
+        rtc_engine,
+        client_instance_id,
+        operation_id,
+        connection_epoch,
+    })
+}
+
+fn same_voice_channel(left: &UserVoiceChannel, right: &UserVoiceChannel) -> bool {
+    left.id == right.id
 }
 
 pub fn base_voice_identity(identity: &str) -> &str {
-    identity
-        .find(DESKTOP_NATIVE_IDENTITY_SUFFIX)
-        .map(|suffix_index| &identity[..suffix_index])
+    voice_participant_claims(identity)
+        .map(|claims| claims.user_id)
         .unwrap_or(identity)
 }
 
-pub fn is_desktop_native_voice_identity(identity: &str) -> bool {
-    identity.contains(DESKTOP_NATIVE_IDENTITY_SUFFIX)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceParticipantReconciliation {
+    pub livekit_members: Vec<String>,
+    pub stale_members: Vec<String>,
+    pub stale_livekit_participants: Vec<String>,
 }
 
-fn voice_transport_identities(user_id: &str) -> Vec<String> {
-    let mut identities = Vec::with_capacity(4);
-    identities.push(user_id.to_string());
-    identities.extend(desktop_native_voice_identities(user_id));
-    identities
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VoiceParticipantReconciliationVerdict {
+    Ready(VoiceParticipantReconciliation),
+    DeadRoom { stale_members: Vec<String> },
+    SkipTransient,
 }
 
-fn redis_bool(value: i64) -> bool {
-    value != 0
+pub fn voice_participant_reconciliation(
+    redis_members: &[String],
+    livekit_participants: &[ParticipantInfo],
+) -> VoiceParticipantReconciliation {
+    voice_participant_reconciliation_with_current_operations(
+        redis_members,
+        livekit_participants,
+        &[],
+        &[],
+    )
+}
+
+pub fn voice_participant_reconciliation_with_current_operations(
+    redis_members: &[String],
+    livekit_participants: &[ParticipantInfo],
+    current_operations: &[(String, String)],
+    prepared_users: &[String],
+) -> VoiceParticipantReconciliation {
+    let mut livekit_members = Vec::new();
+    let mut stale_livekit_participants = Vec::new();
+    for participant in livekit_participants {
+        let state = participant_info::State::try_from(participant.state)
+            .unwrap_or(participant_info::State::Disconnected);
+        if state == participant_info::State::Disconnected {
+            continue;
+        }
+        let Some(claims) = voice_participant_claims(&participant.identity) else {
+            stale_livekit_participants.push(participant.identity.clone());
+            continue;
+        };
+        let user_id = claims.user_id.to_string();
+        let operation_matches = current_operations.is_empty()
+            || current_operations
+                .iter()
+                .any(|(candidate_user_id, operation_id)| {
+                    candidate_user_id == &user_id && operation_id == claims.operation_id
+                });
+        if !operation_matches {
+            stale_livekit_participants.push(participant.identity.clone());
+            continue;
+        }
+        if !livekit_members.contains(&user_id) {
+            livekit_members.push(user_id);
+        }
+    }
+
+    let stale_members = redis_members
+        .iter()
+        .filter(|user_id| !livekit_members.contains(user_id) && !prepared_users.contains(user_id))
+        .cloned()
+        .collect();
+
+    stale_livekit_participants.sort_unstable();
+    stale_livekit_participants.dedup();
+
+    VoiceParticipantReconciliation {
+        livekit_members,
+        stale_members,
+        stale_livekit_participants,
+    }
 }
 
 async fn get_connection() -> Result<Conn> {
@@ -270,34 +176,31 @@ async fn get_connection() -> Result<Conn> {
         .map_err(|_| create_error!(InternalError))
 }
 
-pub async fn raise_if_in_voice(user: &User, channel: &UserVoiceChannel) -> Result<()> {
-    let mut conn = get_connection().await?;
-
-    if user.bot.is_some() {
-        // bots can be in as many voice channels as it wants so we just check if its already connected to the one its trying to connect to
-        if conn
-            .sismember(format!("vc:{}", &user.id), channel)
-            .await
-            .to_internal_error()?
-        {
-            return Err(create_error!(AlreadyConnected));
-        };
-    } else if conn
-        .scard::<_, u32>(format!("vc:{}", &user.id)) // check if the current vc set is empty
-        .await
-        .to_internal_error()?
-        > 0
-    {
+pub async fn raise_if_in_voice(user: &User, _channel: &UserVoiceChannel) -> Result<()> {
+    if get_current_voice_session(&user.id).await?.is_some() {
         return Err(create_error!(AlreadyConnected));
-    };
+    }
+
+    if get_current_voice_reservation(&user.id).await?.is_some() {
+        return Err(create_error!(AlreadyConnected));
+    }
 
     Ok(())
 }
 
 pub async fn set_channel_node(channel_id: &str, node: &str) -> Result<()> {
+    cmd("SET")
+        .arg(voice_channel_node_key(channel_id))
+        .arg(node)
+        .query_async::<_, ()>(&mut get_connection().await?.into_inner())
+        .await
+        .to_internal_error()
+}
+
+pub async fn clear_channel_node(channel_id: &str) -> Result<()> {
     get_connection()
         .await?
-        .set(format!("node:{channel_id}"), node)
+        .del(voice_channel_node_key(channel_id))
         .await
         .to_internal_error()
 }
@@ -305,91 +208,96 @@ pub async fn set_channel_node(channel_id: &str, node: &str) -> Result<()> {
 pub async fn get_channel_node(channel_id: &str) -> Result<Option<String>> {
     get_connection()
         .await?
-        .get(format!("node:{channel_id}"))
-        .await
-        .to_internal_error()
-}
-
-pub async fn delete_channel_node(channel_id: &str) -> Result<()> {
-    get_connection()
-        .await?
-        .del(format!("node:{channel_id}"))
+        .get(voice_channel_node_key(channel_id))
         .await
         .to_internal_error()
 }
 
 pub async fn get_user_voice_channels(user_id: &str) -> Result<Vec<UserVoiceChannel>> {
-    get_connection()
-        .await?
-        .smembers(format!("vc:{user_id}"))
-        .await
-        .to_internal_error()
+    match get_active_voice_session_for_user(user_id).await? {
+        Some(session) => Ok(vec![session.channel]),
+        _ => Ok(Vec::new()),
+    }
 }
 
-pub async fn set_user_voice_join_intent(
-    user_id: &str,
+pub async fn is_in_voice_channel(user_id: &str, channel: &UserVoiceChannel) -> Result<bool> {
+    Ok(get_active_voice_session_for_user(user_id)
+        .await?
+        .is_some_and(|session| same_voice_channel(&session.channel, channel)))
+}
+
+pub async fn get_current_voice_operation_id(
     channel: &UserVoiceChannel,
-    operation_id: Option<&str>,
-    self_mute: bool,
-    self_deaf: bool,
-) -> Result<()> {
-    let intent = VoiceJoinIntent {
-        channel: channel.clone(),
-        operation_id: operation_id.map(ToString::to_string),
-        self_mute,
-        self_deaf,
+    user_id: &str,
+) -> Result<Option<String>> {
+    let authority = get_voice_authority_snapshot(user_id).await?;
+    if let Some(reservation) = authority.reservation {
+        if same_voice_channel(&reservation.channel, channel) {
+            return Ok(Some(reservation.operation_id));
+        }
+    }
+
+    if let Some(session) = authority.session {
+        if same_voice_channel(&session.channel, channel)
+            && session.state == VoiceSessionState::Active
+        {
+            return Ok(Some(session.operation_id));
+        }
+    }
+
+    Ok(None)
+}
+
+pub async fn get_current_voice_authority(user_id: &str) -> Result<Option<(String, String)>> {
+    let authority = get_voice_authority_snapshot(user_id).await?;
+    if let Some(reservation) = authority.reservation {
+        return Ok(Some((reservation.operation_id, reservation.channel.id)));
+    }
+    Ok(authority
+        .session
+        .filter(|session| session.state == VoiceSessionState::Active)
+        .map(|session| (session.operation_id, session.channel.id)))
+}
+
+pub async fn voice_participant_matches_current_authority(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    participant_identity: &str,
+) -> Result<bool> {
+    let Some(claims) = voice_participant_claims(participant_identity) else {
+        return Ok(false);
+    };
+    if claims.user_id != user_id {
+        return Ok(false);
+    }
+
+    let authority = get_voice_authority_snapshot(user_id).await?;
+    if let Some(reservation) = authority.reservation {
+        if same_voice_channel(&reservation.channel, channel)
+            && claims.operation_id == reservation.operation_id
+            && claims.rtc_engine == reservation.rtc_engine
+            && claims.client_instance_id == reservation.client_instance_id
+            && claims.connection_epoch == reservation.connection_epoch
+        {
+            return Ok(true);
+        }
+    }
+
+    let Some(session) = authority.session else {
+        return Ok(false);
     };
 
-    get_connection()
-        .await?
-        .set_ex(
-            format!("voice_join_intent:{user_id}"),
-            intent,
-            VOICE_JOIN_INTENT_TTL_SECONDS,
-        )
-        .await
-        .to_internal_error()
-}
-
-pub async fn get_user_voice_join_intent(user_id: &str) -> Result<Option<VoiceJoinIntent>> {
-    get_connection()
-        .await?
-        .get(format!("voice_join_intent:{user_id}"))
-        .await
-        .to_internal_error()
-}
-
-pub async fn user_voice_join_intent_matches(
-    user_id: &str,
-    channel: &UserVoiceChannel,
-) -> Result<bool> {
-    let latest = get_user_voice_join_intent(user_id).await?;
-
-    match latest {
-        Some(latest) => Ok(latest.channel == *channel),
-        None => is_in_voice_channel(user_id, channel).await,
-    }
-}
-
-pub async fn clear_user_voice_join_intent_if_matches(
-    user_id: &str,
-    channel: &UserVoiceChannel,
-) -> Result<()> {
-    let key = format!("voice_join_intent:{user_id}");
-    let latest = get_user_voice_join_intent(user_id).await?;
-
-    if latest
-        .as_ref()
-        .is_some_and(|latest| latest.channel == *channel)
+    if same_voice_channel(&session.channel, channel)
+        && session.state == VoiceSessionState::Active
+        && claims.operation_id == session.operation_id
+        && claims.rtc_engine == session.rtc_engine
+        && claims.client_instance_id == session.client_instance_id
+        && claims.connection_epoch == session.connection_epoch
     {
-        get_connection()
-            .await?
-            .del::<_, ()>(key)
-            .await
-            .to_internal_error()?;
+        return Ok(true);
     }
 
-    Ok(())
+    Ok(false)
 }
 
 pub async fn set_user_moved_from_voice(
@@ -443,35 +351,14 @@ pub async fn get_user_moved_to_voice(
         .to_internal_error()
 }
 
-pub async fn is_in_voice_channel(user_id: &str, channel: &UserVoiceChannel) -> Result<bool> {
-    get_connection()
-        .await?
-        .sismember(format!("vc:{user_id}"), channel)
-        .await
-        .to_internal_error()
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VoiceJoinCommitResult {
-    Committed {
-        operation_id: Option<String>,
-        voice_state: UserVoiceState,
-        previous_channels: Vec<UserVoiceChannel>,
-    },
-    StaleIntent,
-}
-
-type VoiceJoinCommitScriptResponse = (i64, i64, i64, i64, i64, i64, i64, u64, String, Vec<String>);
-
 pub async fn get_user_voice_channel_in_server(
     user_id: &str,
     server_id: &str,
 ) -> Result<Option<String>> {
-    let mut conn = get_connection().await?;
-
-    let unique_key = format!("{user_id}:{server_id}");
-
-    conn.get(&unique_key).await.to_internal_error()
+    Ok(get_active_voice_session_for_user(user_id)
+        .await?
+        .filter(|session| session.channel.server_id.as_deref() == Some(server_id))
+        .map(|session| session.channel.id))
 }
 
 pub fn get_allowed_sources(
@@ -491,322 +378,122 @@ pub fn get_allowed_sources(
     allowed_sources
 }
 
-pub async fn create_voice_state(
+pub async fn delete_voice_state(
     channel: &UserVoiceChannel,
     user_id: &str,
-    joined_at: Timestamp,
-    session_id: Option<&str>,
-    room_id: Option<&str>,
-) -> Result<UserVoiceState> {
-    let unique_key = voice_state_unique_key(channel, user_id);
-
-    let join_intent = get_user_voice_join_intent(user_id).await?;
-
-    let mut conn = get_connection().await?;
-    let (
-        existing_joined_at,
-        self_mute,
-        self_deaf,
-        server_muted,
-        server_deafened,
-        screensharing,
-        camera,
-        version,
-    ): (
-        Option<i64>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<u64>,
-    ) = conn
-        .mget(&[
-            format!("joined_at:{unique_key}"),
-            format!("self_mute:{unique_key}"),
-            format!("self_deaf:{unique_key}"),
-            format!("server_muted:{unique_key}"),
-            format!("server_deafened:{unique_key}"),
-            format!("screensharing:{unique_key}"),
-            format!("camera:{unique_key}"),
-            format!("version:{unique_key}"),
-        ])
-        .await
-        .to_internal_error()?;
-
-    let pending_track_state = existing_joined_at.is_none();
-    let intent_flags = join_intent
-        .as_ref()
-        .filter(|intent| intent.channel == *channel)
-        .map(|intent| (intent.self_mute, intent.self_deaf));
-
-    // Join intent is only authoritative for the first tracked join; repeated
-    // LiveKit joins preserve the persisted flags and version to avoid races.
-    let voice_state = UserVoiceState {
-        joined_at,
-        id: user_id.to_string(),
-        self_mute: if pending_track_state {
-            intent_flags
-                .map(|(mute, _)| mute)
-                .or(self_mute)
-                .unwrap_or(false)
-        } else {
-            self_mute.unwrap_or(false)
-        },
-        self_deaf: if pending_track_state {
-            intent_flags
-                .map(|(_, deaf)| deaf)
-                .or(self_deaf)
-                .unwrap_or(false)
-        } else {
-            self_deaf.unwrap_or(false)
-        },
-        server_muted: server_muted.unwrap_or(false),
-        server_deafened: server_deafened.unwrap_or(false),
-        screensharing: if pending_track_state {
-            false
-        } else {
-            screensharing.unwrap_or(false)
-        },
-        camera: if pending_track_state {
-            false
-        } else {
-            camera.unwrap_or(false)
-        },
-        version: if pending_track_state {
-            1
-        } else {
-            version.unwrap_or(1)
-        },
+) -> Result<Option<String>> {
+    let Some(mut session) = get_current_voice_session(user_id).await? else {
+        return Ok(None);
     };
 
-    let mut pipeline = Pipeline::new();
-    pipeline
-        .sadd(format!("vc_members:{}", &channel.id), user_id)
-        .sadd(format!("vc:{user_id}"), channel)
-        .set(&unique_key, &channel.id)
-        .set(
-            format!("joined_at:{unique_key}"),
-            joined_at
-                .duration_since(Timestamp::UNIX_EPOCH)
-                .whole_milliseconds() as i64,
-        )
-        .set(format!("self_mute:{unique_key}"), voice_state.self_mute)
-        .set(format!("self_deaf:{unique_key}"), voice_state.self_deaf)
-        .set(
-            format!("server_muted:{unique_key}"),
-            voice_state.server_muted,
-        )
-        .set(
-            format!("server_deafened:{unique_key}"),
-            voice_state.server_deafened,
-        )
-        .set(
-            format!("screensharing:{unique_key}"),
-            voice_state.screensharing,
-        )
-        .set(format!("camera:{unique_key}"), voice_state.camera)
-        .set(format!("version:{unique_key}"), voice_state.version);
-
-    if let Some(session_id) = session_id.filter(|session_id| !session_id.is_empty()) {
-        pipeline.set(voice_session_key(&unique_key), session_id);
+    if !same_voice_channel(&session.channel, channel) || session.state != VoiceSessionState::Active
+    {
+        return Ok(None);
     }
 
-    if let Some(room_id) = room_id.filter(|room_id| !room_id.is_empty()) {
-        pipeline.set(voice_room_session_key(&channel.id), room_id);
-    }
-
-    pipeline
-        .query_async::<_, ()>(&mut conn.into_inner())
-        .await
-        .to_internal_error()?;
-
-    Ok(voice_state)
-}
-
-pub async fn commit_voice_join(
-    channel: &UserVoiceChannel,
-    user_id: &str,
-    joined_at: Timestamp,
-    session_id: &str,
-    room_id: &str,
-) -> Result<VoiceJoinCommitResult> {
-    let joined_at_ms = joined_at
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .whole_milliseconds() as i64;
-    let mut conn = get_connection().await?.into_inner();
-    let response: VoiceJoinCommitScriptResponse = cmd("EVAL")
-        .arg(COMMIT_VOICE_JOIN)
-        .arg(1)
-        .arg(format!("voice_join_intent:{user_id}"))
-        .arg(user_id)
-        .arg(&channel.id)
-        .arg(channel.server_id.as_deref().unwrap_or(""))
-        .arg(channel.to_string())
-        .arg(joined_at_ms)
-        .arg(session_id)
-        .arg(room_id)
-        .arg(VOICE_MOVE_MARKER_TTL_SECONDS)
-        .query_async(&mut conn)
-        .await
-        .to_internal_error()?;
-
-    Ok(voice_join_commit_result_from_script(
-        user_id, joined_at, response,
-    ))
-}
-
-fn voice_join_commit_result_from_script(
-    user_id: &str,
-    joined_at: Timestamp,
-    response: VoiceJoinCommitScriptResponse,
-) -> VoiceJoinCommitResult {
-    let (
-        applied,
-        self_mute,
-        self_deaf,
-        server_muted,
-        server_deafened,
-        screensharing,
-        camera,
-        version,
-        operation_id,
-        previous_channels,
-    ) = response;
-
-    if applied != 1 {
-        return VoiceJoinCommitResult::StaleIntent;
-    }
-
-    VoiceJoinCommitResult::Committed {
-        operation_id: (!operation_id.is_empty()).then_some(operation_id),
-        voice_state: UserVoiceState {
-            joined_at,
-            id: user_id.to_string(),
-            self_mute: redis_bool(self_mute),
-            self_deaf: redis_bool(self_deaf),
-            server_muted: redis_bool(server_muted),
-            server_deafened: redis_bool(server_deafened),
-            screensharing: redis_bool(screensharing),
-            camera: redis_bool(camera),
-            version,
-        },
-        previous_channels: previous_channels
-            .into_iter()
-            .map(UserVoiceChannel::from_string)
-            .collect(),
-    }
-}
-
-pub async fn delete_voice_state(channel: &UserVoiceChannel, user_id: &str) -> Result<()> {
-    let unique_key = voice_state_unique_key(channel, user_id);
-
-    Pipeline::new()
-        .srem(format!("vc_members:{}", &channel.id), user_id)
-        .srem(format!("vc:{user_id}"), channel)
-        .del(&[
-            format!("joined_at:{unique_key}"),
-            format!("self_mute:{unique_key}"),
-            format!("self_deaf:{unique_key}"),
-            format!("server_muted:{unique_key}"),
-            format!("server_deafened:{unique_key}"),
-            format!("screensharing:{unique_key}"),
-            format!("camera:{unique_key}"),
-            format!("version:{unique_key}"),
-            voice_session_key(&unique_key),
-            unique_key.clone(),
-        ])
-        .query_async::<_, ()>(&mut get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
-
-    clear_user_voice_join_intent_if_matches(user_id, channel).await
+    session.state = VoiceSessionState::Ended;
+    session.updated_at = Timestamp::now_utc();
+    let operation_id = session.operation_id.clone();
+    Ok(delete_current_voice_session(&session)
+        .await?
+        .then_some(operation_id))
 }
 
 pub async fn delete_voice_state_for_session(
     channel: &UserVoiceChannel,
     user_id: &str,
     session_id: &str,
-) -> Result<bool> {
-    let unique_key = voice_state_unique_key(channel, user_id);
-    let deleted: i64 = cmd("EVAL")
-        .arg(DELETE_VOICE_STATE_IF_SESSION)
-        .arg(1)
-        .arg(voice_session_key(&unique_key))
-        .arg(session_id)
-        .arg(user_id)
-        .arg(&channel.id)
-        .arg(channel.to_string())
-        .arg(unique_key)
-        .query_async(&mut get_connection().await?.into_inner())
-        .await
-        .to_internal_error()?;
+) -> Result<Option<String>> {
+    let Some(mut session) = get_current_voice_session(user_id).await? else {
+        return Ok(None);
+    };
 
-    Ok(deleted == 1)
+    if !same_voice_channel(&session.channel, channel) {
+        return Ok(None);
+    }
+
+    if session.state != VoiceSessionState::Active
+        || session.participant_sid.as_deref() != Some(session_id)
+    {
+        return Ok(None);
+    }
+
+    let operation_id = session.operation_id.clone();
+    if session.mark_participant_left(session_id, Timestamp::now_utc())
+        != VoiceSessionTransition::Applied
+    {
+        return Ok(None);
+    }
+    let deleted = delete_current_voice_session(&session).await?;
+    if !deleted {
+        log::debug!(
+            "Voice session {operation_id} for user {user_id} was not deleted because it is no longer current."
+        );
+    }
+
+    Ok(deleted.then_some(operation_id))
 }
 
 pub async fn delete_channel_voice_state(
     channel: &UserVoiceChannel,
     user_ids: &[String],
-) -> Result<()> {
-    let parent_id = channel.server_id.as_ref().unwrap_or(&channel.id);
-
+) -> Result<Vec<(String, String)>> {
     let mut pipeline = Pipeline::new();
-    pipeline.del(format!("vc_members:{}", &channel.id));
-    pipeline.del(format!("node:{}", &channel.id));
+    let mut deleted_sessions = Vec::new();
+    pipeline.del(voice_channel_members_key(&channel.id));
+    pipeline.del(voice_channel_node_key(&channel.id));
     pipeline.del(voice_room_session_key(&channel.id));
+    pipeline.del(voice_channel_reservations_key(&channel.id));
+    pipeline.srem(voice_active_channels_key(), &channel.id);
 
     for user_id in user_ids {
-        let unique_key = format!("{user_id}:{parent_id}");
-
-        pipeline.srem(format!("vc:{user_id}"), channel).del(&[
-            format!("joined_at:{unique_key}"),
-            format!("self_mute:{unique_key}"),
-            format!("self_deaf:{unique_key}"),
-            format!("server_muted:{unique_key}"),
-            format!("server_deafened:{unique_key}"),
-            format!("screensharing:{unique_key}"),
-            format!("camera:{unique_key}"),
-            format!("version:{unique_key}"),
-            voice_session_key(&unique_key),
-            unique_key.clone(),
-        ]);
+        if let Some(mut session) = get_current_voice_session(user_id).await? {
+            if same_voice_channel(&session.channel, channel) {
+                let operation_id = session.operation_id.clone();
+                session.state = VoiceSessionState::Ended;
+                session.updated_at = Timestamp::now_utc();
+                if delete_current_voice_session(&session).await? {
+                    pipeline.del(voice_session_key(&operation_id));
+                    deleted_sessions.push((user_id.clone(), operation_id));
+                }
+            }
+        }
     }
 
     pipeline
-        .query_async(&mut get_connection().await?.into_inner())
+        .query_async::<_, ()>(&mut get_connection().await?.into_inner())
         .await
-        .to_internal_error()
+        .to_internal_error()?;
+    Ok(deleted_sessions)
 }
 
 pub async fn delete_channel_voice_state_for_room(
     channel: &UserVoiceChannel,
     user_ids: &[String],
     room_id: &str,
-) -> Result<bool> {
-    if !voice_room_session_matches(channel, room_id).await? {
-        return Ok(false);
-    }
-
-    delete_channel_voice_state(channel, user_ids).await?;
-    Ok(true)
-}
-
-pub async fn update_voice_state_tracks(
-    channel: &UserVoiceChannel,
-    user_id: &str,
-    added: bool,
-    track: i32,
-) -> Result<Option<UserVoiceState>> {
-    let partial = partial_voice_state_for_track(added, track);
-    if partial == PartialUserVoiceState::default() {
+) -> Result<Option<Vec<(String, String)>>> {
+    if !delete_voice_channel_projection_for_room(channel, room_id).await? {
         return Ok(None);
     }
 
-    update_voice_state(channel, user_id, &partial).await?;
-    bump_voice_state_version(channel, user_id).await?;
-    get_voice_state(channel, user_id).await
+    let mut deleted_sessions = Vec::new();
+    for user_id in user_ids {
+        let Some(mut session) = get_current_voice_session(user_id).await? else {
+            continue;
+        };
+        if same_voice_channel(&session.channel, channel)
+            && session.state == VoiceSessionState::Active
+            && session.room_sid.as_deref() == Some(room_id)
+        {
+            session.state = VoiceSessionState::Ended;
+            session.updated_at = Timestamp::now_utc();
+            let operation_id = session.operation_id.clone();
+            if delete_current_voice_session(&session).await? {
+                deleted_sessions.push((user_id.clone(), operation_id));
+            }
+        }
+    }
+    Ok(Some(deleted_sessions))
 }
 
 pub async fn update_voice_state_tracks_for_session(
@@ -816,60 +503,119 @@ pub async fn update_voice_state_tracks_for_session(
     track: i32,
     session_id: &str,
 ) -> Result<Option<UserVoiceState>> {
-    if !voice_session_matches(channel, user_id, session_id).await? {
-        return Ok(None);
+    update_voice_state_tracks_matching(channel, user_id, added, track, |session| {
+        voice_session_is_current(session.participant_sid.as_deref(), session_id)
+    })
+    .await
+}
+
+pub async fn update_voice_state_tracks_for_operation(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    added: bool,
+    track: i32,
+    operation_id: &str,
+) -> Result<Option<UserVoiceState>> {
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_reservation(user_id).await? else {
+            break;
+        };
+        if previous.operation_id != operation_id || !same_voice_channel(&previous.channel, channel)
+        {
+            break;
+        }
+
+        let mut next = previous.clone();
+        if next.set_track_state(added, track) != VoiceSessionTransition::Applied {
+            return Ok(None);
+        }
+        if save_current_voice_reservation(&previous, &next).await? {
+            return Ok(None);
+        }
     }
 
-    update_voice_state_tracks(channel, user_id, added, track).await
+    update_voice_state_tracks_matching(channel, user_id, added, track, |session| {
+        session.operation_id == operation_id
+    })
+    .await
+}
+
+async fn update_voice_state_tracks_matching(
+    channel: &UserVoiceChannel,
+    user_id: &str,
+    added: bool,
+    track: i32,
+    matches_session: impl Fn(&VoiceSession) -> bool,
+) -> Result<Option<UserVoiceState>> {
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_session(user_id).await? else {
+            return Ok(None);
+        };
+        if !same_voice_channel(&previous.channel, channel)
+            || previous.state != VoiceSessionState::Active
+            || !matches_session(&previous)
+        {
+            return Ok(None);
+        }
+
+        let mut next = previous.clone();
+        if next.set_track_state(added, track) != VoiceSessionTransition::Applied {
+            return Ok(None);
+        }
+
+        if save_current_voice_session(&previous, &next).await? {
+            return Ok(Some(next.voice_state(Timestamp::UNIX_EPOCH)));
+        }
+    }
+
+    Ok(None)
 }
 
 fn partial_voice_state_for_track(added: bool, track: i32) -> PartialUserVoiceState {
-    match track {
-        /* TrackSource::Unknown */ 0 => PartialUserVoiceState::default(),
-        /* TrackSource::Camera */
-        1 => PartialUserVoiceState {
+    match TrackSource::try_from(track) {
+        Ok(TrackSource::Camera) => PartialUserVoiceState {
             camera: Some(added),
             ..Default::default()
         },
-        /* TrackSource::Microphone */
-        2 => PartialUserVoiceState::default(),
-        /* TrackSource::ScreenShare */
-        3 => PartialUserVoiceState {
+        Ok(TrackSource::ScreenShare) => PartialUserVoiceState {
             screensharing: Some(added),
             ..Default::default()
         },
-        /* TrackSource::ScreenShareAudio */
-        4 => PartialUserVoiceState::default(),
-        _ => unreachable!(),
+        Ok(TrackSource::Unknown | TrackSource::Microphone | TrackSource::ScreenShareAudio)
+        | Err(_) => PartialUserVoiceState::default(),
     }
 }
 
 pub async fn update_client_voice_flags(
     channel: &UserVoiceChannel,
     user_id: &str,
+    operation_id: &str,
     self_mute: bool,
     self_deaf: bool,
 ) -> Result<UserVoiceState> {
-    let unique_key = voice_state_unique_key(channel, user_id);
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_session(user_id).await? else {
+            return Err(create_error!(NotConnected));
+        };
+        if !same_voice_channel(&previous.channel, channel)
+            || previous.operation_id != operation_id
+            || previous.state != VoiceSessionState::Active
+        {
+            return Err(create_error!(NotConnected));
+        }
 
-    get_voice_state(channel, user_id)
-        .await?
-        .ok_or_else(|| create_error!(NotConnected))?;
+        let mut next = previous.clone();
+        // Self-deafen is a combined mute+deafen action. Keep the persisted
+        // public state aligned with the media actually sent by the client.
+        next.self_mute = self_mute || self_deaf;
+        next.self_deaf = self_deaf;
+        next.version += 1;
+        if save_current_voice_session(&previous, &next).await? {
+            return Ok(next.voice_state(Timestamp::UNIX_EPOCH));
+        }
+    }
 
-    let mut pipeline = Pipeline::new();
-    let mut conn = get_connection().await?.into_inner();
-    pipeline
-        .atomic()
-        .set(format!("self_mute:{unique_key}"), self_mute)
-        .set(format!("self_deaf:{unique_key}"), self_deaf)
-        .incr(format!("version:{unique_key}"), 1)
-        .query_async::<_, ()>(&mut conn)
-        .await
-        .to_internal_error()?;
-
-    get_voice_state(channel, user_id)
-        .await?
-        .ok_or_else(|| create_error!(InternalError))
+    Err(create_error!(NotConnected))
 }
 
 pub async fn publish_voice_state_snapshot(channel_id: &str, state: &UserVoiceState) {
@@ -881,183 +627,290 @@ pub async fn publish_voice_state_snapshot(channel_id: &str, state: &UserVoiceSta
     .await;
 }
 
+pub async fn publish_authoritative_voice_snapshot(user_id: &str) -> Result<u64> {
+    let version: u64 = get_connection()
+        .await?
+        .incr(voice_authority_version_key(user_id), 1_u64)
+        .await
+        .to_internal_error()?;
+    let authority = get_voice_authority_snapshot(user_id).await?;
+    let current = authoritative_voice_membership(&authority).map(|session| {
+        let state = session.voice_state(Timestamp::UNIX_EPOCH);
+        (
+            session.operation_id.clone(),
+            session.channel.id.clone(),
+            session.rtc_engine,
+            session.client_instance_id.clone(),
+            session.connection_epoch.clone(),
+            Some(state),
+        )
+    });
+    let (operation_id, channel_id, rtc_engine, client_instance_id, connection_epoch, state) =
+        current
+            .map(|(op, channel, engine, client, epoch, state)| {
+                (
+                    Some(op),
+                    Some(channel),
+                    Some(engine),
+                    Some(client),
+                    Some(epoch),
+                    state,
+                )
+            })
+            .unwrap_or((None, None, None, None, None, None));
+    // Authority versions are monotonic only within one user's stream. Publishing
+    // this on the public user topic lets voice peers observe unrelated clocks
+    // and causes them to reject their own later membership commit as stale.
+    EventV1::VoiceAuthoritySnapshot {
+        version,
+        operation_id,
+        channel_id,
+        rtc_engine,
+        client_instance_id,
+        connection_epoch,
+        state,
+    }
+    .private(user_id.to_string())
+    .await;
+    Ok(version)
+}
+
+fn authoritative_voice_membership(authority: &VoiceAuthoritySnapshot) -> Option<&VoiceSession> {
+    authority
+        .session
+        .as_ref()
+        .filter(|session| session.state == VoiceSessionState::Active)
+}
+
 pub async fn update_voice_state(
     channel: &UserVoiceChannel,
     user_id: &str,
     partial: &PartialUserVoiceState,
-) -> Result<()> {
-    let unique_key = voice_state_unique_key(channel, user_id);
+) -> Result<bool> {
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_session(user_id).await? else {
+            return Ok(false);
+        };
+        if !same_voice_channel(&previous.channel, channel)
+            || previous.state != VoiceSessionState::Active
+        {
+            return Ok(false);
+        }
 
-    let mut pipeline = Pipeline::new();
+        let mut next = previous.clone();
+        if let Some(camera) = partial.camera {
+            next.camera = camera;
+        }
+        if let Some(self_mute) = partial.self_mute {
+            next.self_mute = self_mute;
+        }
+        if let Some(self_deaf) = partial.self_deaf {
+            next.self_deaf = self_deaf;
+        }
+        if let Some(server_muted) = partial.server_muted {
+            next.server_muted = server_muted;
+        }
+        if let Some(server_deafened) = partial.server_deafened {
+            next.server_deafened = server_deafened;
+        }
+        if let Some(screensharing) = partial.screensharing {
+            next.screensharing = screensharing;
+        }
 
-    if let Some(camera) = &partial.camera {
-        pipeline.set(format!("camera:{unique_key}"), camera);
-    };
-
-    if let Some(self_mute) = &partial.self_mute {
-        pipeline.set(format!("self_mute:{unique_key}"), self_mute);
+        if next == previous {
+            return Ok(false);
+        }
+        next.version += 1;
+        if save_current_voice_session(&previous, &next).await? {
+            return Ok(true);
+        }
     }
 
-    if let Some(self_deaf) = &partial.self_deaf {
-        pipeline.set(format!("self_deaf:{unique_key}"), self_deaf);
-    }
-
-    if let Some(server_muted) = &partial.server_muted {
-        pipeline.set(format!("server_muted:{unique_key}"), server_muted);
-    }
-
-    if let Some(server_deafened) = &partial.server_deafened {
-        pipeline.set(format!("server_deafened:{unique_key}"), server_deafened);
-    }
-
-    if let Some(screensharing) = &partial.screensharing {
-        pipeline.set(format!("screensharing:{unique_key}"), screensharing);
-    }
-
-    pipeline
-        .query_async(&mut get_connection().await?.into_inner())
-        .await
-        .to_internal_error()
-}
-
-async fn bump_voice_state_version(channel: &UserVoiceChannel, user_id: &str) -> Result<u64> {
-    let unique_key = voice_state_unique_key(channel, user_id);
-    let version_key = format!("version:{unique_key}");
-
-    get_connection()
-        .await?
-        .incr::<_, _, u64>(&version_key, 1)
-        .await
-        .to_internal_error()
+    Ok(false)
 }
 
 pub async fn get_voice_channel_members(channel: &UserVoiceChannel) -> Result<Option<Vec<String>>> {
     get_connection()
         .await?
-        .smembers::<_, Option<Vec<String>>>(format!("vc_members:{}", &channel.id))
+        .smembers::<_, Option<Vec<String>>>(voice_channel_members_key(&channel.id))
         .await
         .to_internal_error()
         .map(|opt| opt.and_then(|v| if v.is_empty() { None } else { Some(v) }))
+}
+
+fn consistent_voice_node<'a>(mut nodes: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    let node = nodes.next()?;
+    nodes.all(|candidate| candidate == node).then_some(node)
+}
+
+fn voice_session_is_within_transient_grace(expires_at: Timestamp, now: Timestamp) -> bool {
+    expires_at > now
+}
+
+async fn refresh_current_voice_session_projections(sessions: &[VoiceSession]) -> Result<()> {
+    for session in sessions {
+        refresh_current_voice_session_projection(session).await?;
+    }
+    Ok(())
+}
+
+async fn refresh_current_voice_session_projection(session: &VoiceSession) -> Result<()> {
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(previous) = get_current_voice_session(&session.user_id).await? else {
+            return Ok(());
+        };
+        if previous.operation_id != session.operation_id
+            || previous.state != VoiceSessionState::Active
+            || !same_voice_channel(&previous.channel, &session.channel)
+        {
+            return Ok(());
+        }
+
+        let now = Timestamp::now_utc();
+        if !voice_session_is_within_transient_grace(previous.expires_at, now) {
+            return Ok(());
+        }
+        let mut next = previous.clone();
+        next.expires_at = now
+            .checked_add(Duration::seconds(VOICE_SESSION_TTL_SECONDS as i64))
+            .ok_or_else(|| create_error!(InternalError))?;
+        if refresh_active_voice_session_projection_ttl(&previous, &next).await? {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
+pub async fn get_voice_participant_reconciliation(
+    voice_client: &VoiceClient,
+    channel: &UserVoiceChannel,
+) -> Result<VoiceParticipantReconciliationVerdict> {
+    let redis_members = get_voice_channel_members(channel)
+        .await?
+        .unwrap_or_default();
+    let mut current_sessions = Vec::new();
+    for user_id in &redis_members {
+        if let Some(session) = get_current_voice_session(user_id).await? {
+            if same_voice_channel(&session.channel, channel)
+                && session.state == VoiceSessionState::Active
+            {
+                current_sessions.push(session);
+            }
+        }
+    }
+    let mut current_operations = current_sessions
+        .iter()
+        .map(|session| (session.user_id.clone(), session.operation_id.clone()))
+        .collect::<Vec<_>>();
+    let mut prepared_users = Vec::new();
+    for session in &current_sessions {
+        if let Some(reservation) = get_current_voice_reservation(&session.user_id).await? {
+            if reservation.expected_finalized_operation_id.as_deref()
+                == Some(session.operation_id.as_str())
+            {
+                prepared_users.push(session.user_id.clone());
+            }
+        }
+    }
+    for reservation in get_current_voice_reservations_for_channel(channel).await? {
+        if !prepared_users.contains(&reservation.user_id) {
+            prepared_users.push(reservation.user_id.clone());
+        }
+        if !current_operations.iter().any(|(user_id, operation_id)| {
+            user_id == &reservation.user_id && operation_id == &reservation.operation_id
+        }) {
+            current_operations.push((reservation.user_id, reservation.operation_id));
+        }
+    }
+    let node = match get_channel_node(&channel.id).await? {
+        Some(node) => node,
+        None => {
+            let Some(node) =
+                consistent_voice_node(current_sessions.iter().map(|session| session.node.as_str()))
+            else {
+                log::warn!(
+                    "Skipping voice reconciliation for channel {} because no consistent voice node is recorded",
+                    channel.id
+                );
+                return Ok(VoiceParticipantReconciliationVerdict::SkipTransient);
+            };
+            let node = node.to_owned();
+            log::warn!(
+                "Using the active voice session to probe the missing node projection for channel {}",
+                channel.id
+            );
+            node
+        }
+    };
+
+    let livekit_participants = match voice_client
+        .list_room_participants(&node, &channel.id)
+        .await
+    {
+        Ok(Some(participants)) => participants,
+        Ok(None) => {
+            return Ok(VoiceParticipantReconciliationVerdict::DeadRoom {
+                stale_members: redis_members,
+            });
+        }
+        Err(error) => {
+            log::warn!(
+                "Skipping voice reconciliation for channel {} on node {node}: {error}",
+                channel.id
+            );
+            refresh_current_voice_session_projections(&current_sessions).await?;
+            return Ok(VoiceParticipantReconciliationVerdict::SkipTransient);
+        }
+    };
+
+    for participant in &livekit_participants {
+        let user_id = base_voice_identity(&participant.identity);
+        if let Some(reservation) = get_current_voice_reservation(user_id).await? {
+            if same_voice_channel(&reservation.channel, channel) {
+                if !prepared_users.contains(&reservation.user_id) {
+                    prepared_users.push(reservation.user_id.clone());
+                }
+                if !current_operations
+                    .iter()
+                    .any(|(existing_user, existing_operation)| {
+                        existing_user == &reservation.user_id
+                            && existing_operation == &reservation.operation_id
+                    })
+                {
+                    current_operations.push((reservation.user_id, reservation.operation_id));
+                }
+            }
+        }
+    }
+
+    let reconciliation = voice_participant_reconciliation_with_current_operations(
+        &redis_members,
+        &livekit_participants,
+        &current_operations,
+        &prepared_users,
+    );
+
+    for session in &current_sessions {
+        if reconciliation.livekit_members.contains(&session.user_id) {
+            refresh_current_voice_session_projection(session).await?;
+        }
+    }
+
+    Ok(VoiceParticipantReconciliationVerdict::Ready(reconciliation))
 }
 
 pub async fn get_voice_state(
     channel: &UserVoiceChannel,
     user_id: &str,
 ) -> Result<Option<UserVoiceState>> {
-    let unique_key = voice_state_unique_key(channel, user_id);
-
-    let (
-        joined_at,
-        self_mute,
-        self_deaf,
-        server_muted,
-        server_deafened,
-        screensharing,
-        camera,
-        version,
-    ): (
-        Option<i64>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<u64>,
-    ) = get_connection()
+    Ok(get_active_voice_session_for_user(user_id)
         .await?
-        .mget(&[
-            format!("joined_at:{unique_key}"),
-            format!("self_mute:{unique_key}"),
-            format!("self_deaf:{unique_key}"),
-            format!("server_muted:{unique_key}"),
-            format!("server_deafened:{unique_key}"),
-            format!("screensharing:{unique_key}"),
-            format!("camera:{unique_key}"),
-            format!("version:{unique_key}"),
-        ])
-        .await
-        .to_internal_error()?;
-
-    match (
-        joined_at,
-        self_mute,
-        self_deaf,
-        server_muted,
-        server_deafened,
-        screensharing,
-        camera,
-        version,
-    ) {
-        (
-            Some(joined_at),
-            Some(self_mute),
-            Some(self_deaf),
-            server_muted,
-            server_deafened,
-            Some(screensharing),
-            Some(camera),
-            version,
-        ) => Ok(Some(v0::UserVoiceState {
-            joined_at: Timestamp::UNIX_EPOCH
-                .checked_add(Duration::milliseconds(joined_at))
-                .unwrap(),
-            id: user_id.to_string(),
-            self_mute,
-            self_deaf,
-            server_muted: server_muted.unwrap_or(false),
-            server_deafened: server_deafened.unwrap_or(false),
-            screensharing,
-            camera,
-            version: version.unwrap_or(1),
-        })),
-        _ => Ok(None),
-    }
-}
-
-fn voice_state_unique_key(channel: &UserVoiceChannel, user_id: &str) -> String {
-    format!(
-        "{}:{}",
-        user_id,
-        channel.server_id.as_ref().unwrap_or(&channel.id)
-    )
-}
-
-fn voice_session_key(unique_key: &str) -> String {
-    format!("session:{unique_key}")
-}
-
-fn voice_room_session_key(channel_id: &str) -> String {
-    format!("room_session:{channel_id}")
-}
-
-async fn voice_session_matches(
-    channel: &UserVoiceChannel,
-    user_id: &str,
-    session_id: &str,
-) -> Result<bool> {
-    let unique_key = voice_state_unique_key(channel, user_id);
-    let current: Option<String> = get_connection()
-        .await?
-        .get(voice_session_key(&unique_key))
-        .await
-        .to_internal_error()?;
-
-    Ok(voice_session_is_current(current.as_deref(), session_id))
+        .filter(|session| same_voice_channel(&session.channel, channel))
+        .map(|session| session.voice_state(Timestamp::UNIX_EPOCH)))
 }
 
 fn voice_session_is_current(current: Option<&str>, session_id: &str) -> bool {
     current.is_some_and(|current| current == session_id)
-}
-
-async fn voice_room_session_matches(channel: &UserVoiceChannel, room_id: &str) -> Result<bool> {
-    let current: Option<String> = get_connection()
-        .await?
-        .get(voice_room_session_key(&channel.id))
-        .await
-        .to_internal_error()?;
-
-    Ok(current.as_deref().is_none_or(|current| current == room_id))
 }
 
 pub async fn get_channel_voice_state(
@@ -1074,7 +927,7 @@ pub async fn get_channel_voice_state(
             } else {
                 log::info!("Voice state not found but member in voice channel members, removing.");
 
-                delete_voice_state(channel, &user_id).await?;
+                let _ = delete_voice_state(channel, &user_id).await?;
             }
         }
 
@@ -1088,18 +941,6 @@ pub async fn get_channel_voice_state(
     } else {
         Ok(None)
     }
-}
-
-pub async fn move_user(user: &str, from_channel_id: &str, to_channel_id: &str) -> Result<()> {
-    get_connection()
-        .await?
-        .smove(
-            format!("vc_members:{from_channel_id}"),
-            format!("vc_members:{to_channel_id}"),
-            user,
-        )
-        .await
-        .to_internal_error()
 }
 
 pub async fn sync_voice_permissions(
@@ -1161,9 +1002,13 @@ pub async fn sync_user_voice_permissions(
     }) {
         let user_voice_channel = UserVoiceChannel::from_channel(channel);
 
-        let Some(voice_state) = get_voice_state(&user_voice_channel, &user.id).await? else {
+        let Some(active_session) = get_active_voice_session_for_user(&user.id).await? else {
             return Ok(());
         };
+        if !same_voice_channel(&active_session.channel, &user_voice_channel) {
+            return Ok(());
+        }
+        let voice_state = active_session.voice_state(Timestamp::UNIX_EPOCH);
 
         let mut query = DatabasePermissionQuery::new(db, user)
             .channel(channel)
@@ -1194,12 +1039,18 @@ pub async fn sync_user_voice_permissions(
         update_event.server_deafened =
             (voice_state.server_deafened != !can_listen).then_some(!can_listen);
 
-        update_voice_state(&user_voice_channel, &user.id, &update_event).await?;
+        let updated = update_voice_state(&user_voice_channel, &user.id, &update_event).await?;
 
         voice_client
             .update_permissions(
                 node,
-                user,
+                &voice_participant_identity(
+                    &user.id,
+                    active_session.rtc_engine,
+                    &active_session.client_instance_id,
+                    &active_session.operation_id,
+                    &active_session.connection_epoch,
+                ),
                 channel_id,
                 ParticipantPermission {
                     can_subscribe: can_listen,
@@ -1210,9 +1061,7 @@ pub async fn sync_user_voice_permissions(
             )
             .await?;
 
-        if update_event != before {
-            bump_voice_state_version(&user_voice_channel, &user.id).await?;
-
+        if updated && update_event != before {
             if let Some(state) = get_voice_state(&user_voice_channel, &user.id).await? {
                 publish_voice_state_snapshot(channel_id, &state).await;
             }
@@ -1317,6 +1166,7 @@ fn voice_call_finished_system_partial(
 pub async fn set_call_notification_recipients(
     channel_id: &str,
     user_id: &str,
+    operation_id: &str,
     recipients: &[String],
 ) -> Result<()> {
     let ttl_seconds = std::cmp::max(
@@ -1334,7 +1184,7 @@ pub async fn set_call_notification_recipients(
     get_connection()
         .await?
         .set_ex(
-            format!("call_notification_recipients:{channel_id}-{user_id}"),
+            format!("call_notification_recipients:{channel_id}:{user_id}:{operation_id}"),
             recipients,
             ttl_seconds,
         )
@@ -1345,11 +1195,12 @@ pub async fn set_call_notification_recipients(
 pub async fn get_call_notification_recipients(
     channel_id: &str,
     user_id: &str,
+    operation_id: &str,
 ) -> Result<Option<Vec<String>>> {
     let raw: Option<String> = get_connection()
         .await?
-        .get_del(format!(
-            "call_notification_recipients:{channel_id}-{user_id}"
+        .get(format!(
+            "call_notification_recipients:{channel_id}:{user_id}:{operation_id}"
         ))
         .await
         .to_internal_error()?;
@@ -1358,54 +1209,159 @@ pub async fn get_call_notification_recipients(
         .transpose()
 }
 
-pub async fn remove_user_from_voice_channels(
-    voice_client: &VoiceClient,
+pub async fn clear_call_notification_recipients(
+    channel_id: &str,
     user_id: &str,
+    operation_id: &str,
 ) -> Result<()> {
-    for channel in get_user_voice_channels(user_id).await? {
-        remove_user_from_voice_channel(voice_client, &channel, user_id).await?;
-    }
-
-    Ok(())
+    get_connection()
+        .await?
+        .del(format!(
+            "call_notification_recipients:{channel_id}:{user_id}:{operation_id}"
+        ))
+        .await
+        .to_internal_error()
 }
 
 pub async fn remove_user_from_voice_channel(
-    voice_client: &VoiceClient,
     channel: &UserVoiceChannel,
     user_id: &str,
 ) -> Result<()> {
-    remove_user_voice_transport(voice_client, channel, user_id).await?;
-    delete_voice_state(channel, user_id).await?;
-    EventV1::VoiceChannelLeave {
-        id: channel.id.clone(),
-        user: user_id.to_string(),
+    cancel_current_pending_voice_join(user_id).await?;
+    if let Some(operation_id) = delete_voice_state(channel, user_id).await? {
+        EventV1::VoiceChannelLeave {
+            id: channel.id.clone(),
+            user: user_id.to_string(),
+            operation_id: Some(operation_id),
+        }
+        .p(channel.id.clone())
+        .await;
     }
-    .p(channel.id.clone())
-    .await;
 
     Ok(())
 }
 
-pub async fn remove_user_voice_transport(
-    voice_client: &VoiceClient,
-    channel: &UserVoiceChannel,
-    user_id: &str,
-) -> Result<()> {
-    if let Some(node) = get_channel_node(&channel.id).await? {
-        for identity in voice_transport_identities(user_id) {
-            let _ = voice_client
-                .remove_user(&node, &identity, &channel.id)
-                .await;
+pub async fn reconcile_pending_voice_transport_cleanups(voice_client: &VoiceClient) -> Result<()> {
+    for cleanup in list_voice_transport_cleanups().await? {
+        let participants = match async_std::future::timeout(
+            std::time::Duration::from_secs(2),
+            voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
+        )
+        .await
+        {
+            Ok(Ok(Some(participants))) => participants,
+            Ok(Ok(None)) => {
+                complete_voice_transport_cleanup(&cleanup).await?;
+                continue;
+            }
+            Ok(Err(_)) | Err(_) => continue,
+        };
+
+        let identities = participants
+            .iter()
+            .filter(|participant| voice_cleanup_matches_participant(&cleanup, participant))
+            .map(|participant| participant.identity.clone())
+            .collect::<Vec<_>>();
+        for identity in identities {
+            let _ = async_std::future::timeout(
+                std::time::Duration::from_secs(2),
+                voice_client.remove_user(&cleanup.node, &identity, &cleanup.channel.id),
+            )
+            .await;
+        }
+
+        let remaining = match async_std::future::timeout(
+            std::time::Duration::from_secs(2),
+            voice_client.list_room_participants(&cleanup.node, &cleanup.channel.id),
+        )
+        .await
+        {
+            Ok(Ok(Some(participants))) => participants,
+            Ok(Ok(None)) => Vec::new(),
+            Ok(Err(_)) | Err(_) => continue,
+        };
+        if !remaining
+            .iter()
+            .any(|participant| voice_cleanup_matches_participant(&cleanup, participant))
+        {
+            complete_voice_transport_cleanup(&cleanup).await?;
+        }
+    }
+    Ok(())
+}
+
+fn voice_cleanup_matches_participant(
+    cleanup: &VoiceTransportCleanup,
+    participant: &ParticipantInfo,
+) -> bool {
+    voice_participant_claims(&participant.identity).is_some_and(|claims| {
+        claims.user_id == cleanup.user_id
+            && claims.operation_id == cleanup.operation_id
+            && claims.rtc_engine == cleanup.rtc_engine
+            && claims.client_instance_id == cleanup.client_instance_id
+            && claims.connection_epoch == cleanup.connection_epoch
+    })
+}
+
+pub async fn cancel_current_pending_voice_join(user_id: &str) -> Result<bool> {
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(reservation) = get_current_voice_reservation(user_id).await? else {
+            return Ok(false);
+        };
+        if delete_current_voice_reservation(&reservation).await? {
+            return Ok(true);
         }
     }
 
-    Ok(())
+    Err(create_error!(InvalidOperation))
+}
+
+pub async fn cancel_current_pending_voice_join_in_server(
+    user_id: &str,
+    server_id: &str,
+) -> Result<bool> {
+    for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+        let Some(reservation) = get_current_voice_reservation(user_id).await? else {
+            return Ok(false);
+        };
+        if reservation.channel.server_id.as_deref() != Some(server_id) {
+            return Ok(false);
+        }
+        if delete_current_voice_reservation(&reservation).await? {
+            return Ok(true);
+        }
+    }
+
+    Err(create_error!(InvalidOperation))
 }
 
 pub async fn delete_voice_channel(
     voice_client: &VoiceClient,
     channel: &UserVoiceChannel,
 ) -> Result<()> {
+    for reservation in get_current_voice_reservations_for_channel(channel).await? {
+        let mut current = reservation;
+        let mut canceled = false;
+        for _ in 0..VOICE_SESSION_MUTATION_RETRY_LIMIT {
+            if delete_current_voice_reservation(&current).await? {
+                canceled = true;
+                break;
+            }
+            let Some(next) = get_current_voice_reservation(&current.user_id).await? else {
+                canceled = true;
+                break;
+            };
+            if !same_voice_channel(&next.channel, channel) {
+                canceled = true;
+                break;
+            }
+            current = next;
+        }
+        if !canceled {
+            return Err(create_error!(InvalidOperation));
+        }
+    }
+
     if let Some(node) = get_channel_node(&channel.id).await? {
         let _ = voice_client.delete_room(&node, &channel.id).await;
     }
@@ -1413,12 +1369,13 @@ pub async fn delete_voice_channel(
     let users = get_voice_channel_members(channel)
         .await?
         .unwrap_or_default();
-    delete_channel_voice_state(channel, &users).await?;
+    let deleted_sessions = delete_channel_voice_state(channel, &users).await?;
 
-    for user_id in users {
+    for (user_id, operation_id) in deleted_sessions {
         EventV1::VoiceChannelLeave {
             id: channel.id.clone(),
             user: user_id,
+            operation_id: Some(operation_id),
         }
         .p(channel.id.clone())
         .await;
@@ -1482,36 +1439,47 @@ impl FromRedisValue for UserVoiceChannel {
     }
 }
 
-impl ToRedisArgs for VoiceJoinIntent {
-    fn write_redis_args<W: ?Sized + RedisWrite>(&self, out: &mut W) {
-        out.write_arg(
-            serde_json::to_string(self)
-                .expect("VoiceJoinIntent serializes to JSON")
-                .as_bytes(),
-        );
-    }
-}
-
-impl FromRedisValue for VoiceJoinIntent {
-    fn from_redis_value(v: &Value) -> Result<Self, RedisError> {
-        let raw = String::from_redis_value(v)?;
-        serde_json::from_str(&raw).map_err(|error| {
-            RedisError::from((
-                redis_kiss::redis::ErrorKind::TypeError,
-                "VoiceJoinIntent",
-                error.to_string(),
-            ))
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::partial_voice_state_for_track;
     use crate::{SystemMessage, VoiceCallEndReason};
-    use iso8601_timestamp::Timestamp;
+    use iso8601_timestamp::{Duration, Timestamp};
     use std::collections::HashMap;
     use syrnike_models::v0::PartialUserVoiceState;
+
+    #[test]
+    fn consistent_voice_node_requires_one_shared_node() {
+        assert_eq!(
+            super::consistent_voice_node(std::iter::empty::<&str>()),
+            None
+        );
+        assert_eq!(
+            super::consistent_voice_node(["node-a", "node-a"].into_iter()),
+            Some("node-a")
+        );
+        assert_eq!(
+            super::consistent_voice_node(["node-a", "node-b"].into_iter()),
+            None
+        );
+    }
+
+    #[test]
+    fn transient_projection_refresh_has_a_fixed_session_deadline() {
+        let now = Timestamp::UNIX_EPOCH + Duration::seconds(60);
+
+        assert!(super::voice_session_is_within_transient_grace(
+            Timestamp::UNIX_EPOCH + Duration::seconds(61),
+            now,
+        ));
+        assert!(!super::voice_session_is_within_transient_grace(
+            Timestamp::UNIX_EPOCH + Duration::seconds(60),
+            now,
+        ));
+        assert!(!super::voice_session_is_within_transient_grace(
+            Timestamp::UNIX_EPOCH + Duration::seconds(59),
+            now,
+        ));
+    }
 
     #[test]
     fn screen_share_video_updates_streaming_state() {
@@ -1545,48 +1513,63 @@ mod tests {
     }
 
     #[test]
-    fn desktop_native_voice_identity_maps_to_base_user() {
-        assert_eq!(
-            super::desktop_native_voice_identity("user-a", "microphone"),
-            "user-a:desktop-native:microphone"
+    fn voice_identity_round_trips_all_authority_claims() {
+        let operation = "voice-op-550e8400-e29b-41d4-a716-446655440000";
+        let identity = super::voice_participant_identity(
+            "user-a",
+            super::VoiceRtcEngine::WindowsNative,
+            "client-a",
+            operation,
+            "epoch-a",
         );
-        assert_eq!(
-            super::desktop_native_voice_identities("user-a"),
-            [
-                "user-a:desktop-native:microphone".to_string(),
-                "user-a:desktop-native:screen".to_string(),
-                "user-a:desktop-native:camera".to_string()
-            ]
-        );
-        assert_eq!(
-            super::base_voice_identity("user-a:desktop-native:microphone"),
-            "user-a"
-        );
-        assert_eq!(
-            super::base_voice_identity("user-a:desktop-native"),
-            "user-a"
-        );
-        assert_eq!(super::base_voice_identity("user-a"), "user-a");
-        assert!(super::is_desktop_native_voice_identity(
-            "user-a:desktop-native:screen"
-        ));
-        assert!(super::is_desktop_native_voice_identity(
-            "user-a:desktop-native"
-        ));
-        assert!(!super::is_desktop_native_voice_identity("user-a"));
+        let claims = super::voice_participant_claims(&identity).expect("valid claims");
+        assert_eq!(claims.user_id, "user-a");
+        assert_eq!(claims.rtc_engine, super::VoiceRtcEngine::WindowsNative);
+        assert_eq!(claims.client_instance_id, "client-a");
+        assert_eq!(claims.operation_id, operation);
+        assert_eq!(claims.connection_epoch, "epoch-a");
+        assert_eq!(super::base_voice_identity(&identity), "user-a");
+        assert!(super::voice_participant_claims("user-a:desktop-native:old:screen").is_none());
     }
 
     #[test]
-    fn voice_transport_identities_include_base_and_desktop_native_participants() {
+    fn authoritative_snapshot_never_projects_a_reservation_as_membership() {
+        let mut session = super::VoiceSession::new_awaiting_join(super::VoiceSessionCreate {
+            operation_id: "voice-op-550e8400-e29b-41d4-a716-446655440000".to_string(),
+            user_id: "user-a".to_string(),
+            channel: super::UserVoiceChannel {
+                id: "voice-a".to_string(),
+                server_id: None,
+            },
+            node: "node-a".to_string(),
+            rtc_engine: super::VoiceRtcEngine::Web,
+            client_instance_id: "client-a".to_string(),
+            connection_epoch: "epoch-a".to_string(),
+            self_mute: false,
+            self_deaf: false,
+            created_at: Timestamp::UNIX_EPOCH,
+            expires_at: Timestamp::UNIX_EPOCH + Duration::seconds(120),
+        });
+        let reservation = super::VoiceReservation::from_pending_session(&session, None, None);
+        let pending = super::VoiceAuthoritySnapshot {
+            version: 1,
+            reservation: Some(reservation),
+            session: None,
+        };
+        assert!(super::authoritative_voice_membership(&pending).is_none());
+
         assert_eq!(
-            super::voice_transport_identities("user-a"),
-            vec![
-                "user-a".to_string(),
-                "user-a:desktop-native:microphone".to_string(),
-                "user-a:desktop-native:screen".to_string(),
-                "user-a:desktop-native:camera".to_string(),
-            ]
+            session.mark_livekit_joined("room-a", "participant-a", Timestamp::UNIX_EPOCH),
+            super::VoiceSessionTransition::Applied
         );
+        let committed = super::VoiceAuthoritySnapshot {
+            version: 2,
+            reservation: None,
+            session: Some(session),
+        };
+        let membership =
+            super::authoritative_voice_membership(&committed).expect("active membership");
+        assert_eq!(membership.connection_epoch, "epoch-a");
     }
 
     #[test]
@@ -1600,35 +1583,6 @@ mod tests {
             "session-old",
         ));
         assert!(!super::voice_session_is_current(None, "session-old"));
-    }
-
-    #[test]
-    fn direct_message_voice_intent_serializes_without_null_server_id() {
-        let intent = super::VoiceJoinIntent {
-            channel: super::UserVoiceChannel {
-                id: "dm-channel".to_string(),
-                server_id: None,
-            },
-            operation_id: Some("op-dm".to_string()),
-            self_mute: true,
-            self_deaf: false,
-        };
-
-        let value = serde_json::to_value(&intent).expect("serialize intent");
-
-        assert_eq!(
-            value["channel"],
-            serde_json::json!({
-                "id": "dm-channel",
-            })
-        );
-    }
-
-    #[test]
-    fn voice_join_commit_script_normalizes_json_null_server_id() {
-        assert!(super::COMMIT_VOICE_JOIN.contains(
-            "local intent_server_id = intent.channel.server_id\n  if type(intent_server_id) ~= 'string' then\n    intent_server_id = ''\n  end",
-        ));
     }
 
     #[test]
@@ -1666,6 +1620,7 @@ mod tests {
         );
     }
 
+    #[ignore = "requires Redis"]
     #[async_std::test]
     async fn delete_voice_channel_clears_channel_metadata_without_members() {
         let channel = super::UserVoiceChannel {
@@ -1689,72 +1644,203 @@ mod tests {
         );
     }
 
-    #[test]
-    fn voice_join_commit_result_maps_lua_response_to_state_and_previous_channels() {
-        let result = super::voice_join_commit_result_from_script(
-            "user-a",
-            Timestamp::UNIX_EPOCH,
-            (
-                1,
-                1,
-                0,
-                0,
-                1,
-                0,
-                1,
-                7,
-                "op-join".to_string(),
-                vec!["old-channel-server-a".into()],
-            ),
-        );
-
-        let super::VoiceJoinCommitResult::Committed {
-            operation_id,
-            voice_state,
-            previous_channels,
-        } = result
-        else {
-            panic!("applied Lua response should commit");
+    /* retained-source tests removed by the break-before-make voice authority cutover.
+        let user_id = "user-retained";
+        let active_channel = super::UserVoiceChannel {
+            id: "voice-retained".to_string(),
+            server_id: Some("server-a".to_string()),
         };
+        let pending_channel = super::UserVoiceChannel {
+            id: "voice-pending".to_string(),
+            server_id: Some("server-a".to_string()),
+        };
+        let joined_at = Timestamp::UNIX_EPOCH + Duration::seconds(1);
+        let now = Timestamp::UNIX_EPOCH + Duration::seconds(2);
 
-        assert_eq!(operation_id, Some("op-join".to_string()));
-        assert_eq!(voice_state.id, "user-a");
-        assert_eq!(voice_state.self_mute, true);
-        assert_eq!(voice_state.self_deaf, false);
-        assert_eq!(voice_state.server_muted, false);
-        assert_eq!(voice_state.server_deafened, true);
-        assert_eq!(voice_state.screensharing, false);
-        assert_eq!(voice_state.camera, true);
-        assert_eq!(voice_state.version, 7);
+        let mut conn = super::get_connection()
+            .await
+            .expect("redis connection")
+            .into_inner();
+        let _: () = redis_kiss::redis::pipe()
+            .del(super::voice_current_key(user_id))
+            .del(super::voice_reservation_current_key(user_id))
+            .del(super::voice_session_key("op-active"))
+            .del(super::voice_session_key("op-restored"))
+            .del(super::voice_reservation_key("op-pending"))
+            .query_async(&mut conn)
+            .await
+            .expect("cleanup");
+
+        let active = super::VoiceSession {
+            operation_id: "op-active".to_string(),
+            replaces_operation_id: None,
+            user_id: user_id.to_string(),
+            channel: active_channel.clone(),
+            node: "node-a".to_string(),
+            room_sid: Some("room-a".to_string()),
+            participant_sid: Some("participant-a".to_string()),
+            state: super::VoiceSessionState::Active,
+            self_mute: true,
+            self_deaf: false,
+            server_muted: false,
+            server_deafened: false,
+            screensharing: true,
+            camera: false,
+            version: 7,
+            joined_at: Some(joined_at),
+            created_at: Timestamp::UNIX_EPOCH,
+            updated_at: joined_at,
+            expires_at: now + Duration::seconds(120),
+            failure_reason: None,
+        };
+        assert!(super::create_voice_session_if_current(&active, None)
+            .await
+            .expect("prepare active"));
+        assert!(super::save_current_voice_session(&active, &active)
+            .await
+            .expect("save active"));
+
+        let pending = super::VoiceSession::new_awaiting_join(super::VoiceSessionCreate {
+            operation_id: "op-pending".to_string(),
+            user_id: user_id.to_string(),
+            channel: pending_channel,
+            node: "node-b".to_string(),
+            self_mute: false,
+            self_deaf: false,
+            created_at: now,
+            expires_at: now + Duration::seconds(120),
+        });
+        assert!(
+            super::create_voice_session_if_current(&pending, Some("op-active"))
+                .await
+                .expect("prepare pending replacement")
+        );
+
+        super::retain_current_voice_operation_id(
+            &super::VoiceClient::new(HashMap::new()),
+            &active_channel,
+            user_id,
+            "op-pending",
+            "op-active",
+        )
+        .await
+        .expect("retained restore");
+
+        let current = super::get_current_voice_session(user_id)
+            .await
+            .expect("current")
+            .expect("active session");
+        assert_eq!(current.operation_id, "op-active");
+        assert_eq!(current.room_sid.as_deref(), Some("room-a"));
+        assert_eq!(current.participant_sid.as_deref(), Some("participant-a"));
+        assert_eq!(current.version, 7);
         assert_eq!(
-            previous_channels,
-            vec![super::UserVoiceChannel {
-                id: "old".to_string(),
-                server_id: Some("channel-server-a".to_string()),
-            }]
+            super::get_current_voice_reservation(user_id)
+                .await
+                .expect("current reservation"),
+            None
         );
     }
 
-    #[test]
-    fn voice_join_commit_result_treats_unapplied_lua_response_as_stale_intent() {
-        assert_eq!(
-            super::voice_join_commit_result_from_script(
-                "user-a",
-                Timestamp::UNIX_EPOCH,
-                (
-                    0,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    9,
-                    "op-stale".to_string(),
-                    vec!["old-channel".into()],
-                ),
-            ),
-            super::VoiceJoinCommitResult::StaleIntent,
+    #[ignore]
+    #[async_std::test]
+    async fn retained_restore_rejects_stale_expected_reservation_operation() {
+        let user_id = "user-retained-stale";
+        let active_channel = super::UserVoiceChannel {
+            id: "voice-retained-stale".to_string(),
+            server_id: Some("server-a".to_string()),
+        };
+        let pending_channel = super::UserVoiceChannel {
+            id: "voice-pending-stale".to_string(),
+            server_id: Some("server-a".to_string()),
+        };
+        let now = Timestamp::UNIX_EPOCH + Duration::seconds(2);
+
+        let mut conn = super::get_connection()
+            .await
+            .expect("redis connection")
+            .into_inner();
+        let _: () = redis_kiss::redis::pipe()
+            .del(super::voice_current_key(user_id))
+            .del(super::voice_reservation_current_key(user_id))
+            .del(super::voice_session_key("op-active"))
+            .del(super::voice_reservation_key("op-pending"))
+            .query_async(&mut conn)
+            .await
+            .expect("cleanup");
+
+        let active = super::VoiceSession {
+            operation_id: "op-active".to_string(),
+            replaces_operation_id: None,
+            user_id: user_id.to_string(),
+            channel: active_channel.clone(),
+            node: "node-a".to_string(),
+            room_sid: Some("room-a".to_string()),
+            participant_sid: Some("participant-a".to_string()),
+            state: super::VoiceSessionState::Active,
+            self_mute: true,
+            self_deaf: false,
+            server_muted: false,
+            server_deafened: false,
+            screensharing: true,
+            camera: false,
+            version: 7,
+            joined_at: Some(now),
+            created_at: Timestamp::UNIX_EPOCH,
+            updated_at: now,
+            expires_at: now + Duration::seconds(120),
+            failure_reason: None,
+        };
+        assert!(super::create_voice_session_if_current(&active, None)
+            .await
+            .expect("prepare active"));
+        assert!(super::save_current_voice_session(&active, &active)
+            .await
+            .expect("save active"));
+
+        let pending = super::VoiceSession::new_awaiting_join(super::VoiceSessionCreate {
+            operation_id: "op-pending".to_string(),
+            user_id: user_id.to_string(),
+            channel: pending_channel,
+            node: "node-b".to_string(),
+            self_mute: false,
+            self_deaf: false,
+            created_at: now,
+            expires_at: now + Duration::seconds(120),
+        });
+        assert!(
+            super::create_voice_session_if_current(&pending, Some("op-active"))
+                .await
+                .expect("prepare pending replacement")
         );
-    }
+
+        let error = super::retain_current_voice_operation_id(
+            &super::VoiceClient::new(HashMap::new()),
+            &active_channel,
+            user_id,
+            "op-stale",
+            "op-active",
+        )
+        .await
+        .expect_err("stale expected reservation must fail");
+
+        assert!(matches!(
+            error.error_type,
+            syrnike_result::ErrorType::InvalidOperation
+        ));
+        assert_eq!(
+            super::get_current_voice_session(user_id)
+                .await
+                .expect("current session")
+                .map(|session| session.operation_id),
+            Some("op-active".to_string())
+        );
+        assert_eq!(
+            super::get_current_voice_reservation(user_id)
+                .await
+                .expect("current reservation")
+                .map(|reservation| reservation.operation_id),
+            Some("op-pending".to_string())
+        );
+    } */
 }

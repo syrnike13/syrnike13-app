@@ -41,6 +41,8 @@ describe('sound pack catalog', () => {
       'call.ended',
       'screen_share.started',
       'screen_share.stopped',
+      'screen_share.viewer_join',
+      'screen_share.viewer_leave',
     ])
 
     expect(

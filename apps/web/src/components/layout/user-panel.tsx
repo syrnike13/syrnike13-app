@@ -20,15 +20,12 @@ import {
 } from '#/components/ui/popover'
 import { useAuth } from '#/features/auth/auth-context'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
 import { userStatusSubtitle } from '#/lib/presence'
-import { USER_PANEL_SPAN_WIDTH } from '#/components/layout/left-sidebar-stack'
-import {
-  FLOATING_BAR_BOTTOM_CLASS,
-  FLOATING_BAR_HEIGHT_CLASS,
-  floatingBarShellClass,
-} from '#/components/layout/shell-chrome'
+import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
+import { FLOATING_BAR_HEIGHT_CLASS } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 
 const gatewayLabels = {
@@ -45,47 +42,35 @@ const userPanelControlButtonClass =
 export function UserPanel() {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceStage = useVoiceStage()
   const [menuOpen, setMenuOpen] = useState(false)
   const [globalProfileOpen, setGlobalProfileOpen] = useState(false)
   const user = auth.user
   if (!user) return null
-  if (voice.stageFullscreen) return null
+  if (voiceStage.stageFullscreen) return null
 
   const displayName = user.display_name ?? user.username
   const usernameLabel = `@${user.username}`
   const inVoiceSession =
-    voice.channelId != null &&
-    (voice.status === 'connected' || voice.status === 'connecting')
-  const inVoice = voice.status === 'connected'
+    voiceSession.channelId != null &&
+    (voiceSession.status === 'connected' || voiceSession.status === 'connecting')
+  const inVoice = voiceSession.status === 'connected'
   const gatewayConnected = auth.gatewayState === 'connected'
   const gatewayReconnecting = auth.gatewayState === 'reconnecting'
   const micMuted = isMicVisuallyMuted({
     inVoiceSession,
-    micEnabled: voice.micEnabled,
-    micPublishing: voice.micPublishing,
+    micEnabled: voiceSession.micEnabled,
+    micPublishing: voiceSession.micPublishing,
   })
-  const soundOff = voice.deafened
+  const soundOff = voiceSession.deafened
 
   const statusLabel = gatewayConnected
     ? userStatusSubtitle(user)
     : gatewayLabels[auth.gatewayState]
 
   return (
-    <div
-      className={cn(
-        'pointer-events-none absolute left-2 z-50',
-        FLOATING_BAR_BOTTOM_CLASS,
-      )}
-      style={{ width: USER_PANEL_SPAN_WIDTH }}
-    >
-      <div
-        className={cn(
-          'pointer-events-auto flex w-full flex-col overflow-hidden',
-          floatingBarShellClass,
-          'bg-secondary text-secondary-foreground',
-        )}
-      >
+    <FloatingBarShell className="pointer-events-auto" surfaceClassName="flex flex-col">
         {inVoiceSession ? (
           <>
             <VoiceScreenShareStrip />
@@ -126,7 +111,7 @@ export function UserPanel() {
                           gatewayConnected
                             ? 'text-muted-foreground'
                             : gatewayReconnecting
-                              ? 'text-amber-400/90'
+                              ? 'text-chart-2/90'
                               : 'text-destructive/80',
                         )}
                       >
@@ -150,17 +135,17 @@ export function UserPanel() {
                 <VoiceMicSplitControl
                   surface="panel"
                   inVoice={inVoice}
-                  connecting={voice.status === 'connecting'}
+                  connecting={voiceSession.status === 'connecting'}
                   micMuted={micMuted}
-                  onToggleMic={voice.toggleMic}
+                  onToggleMic={voiceSession.toggleMic}
                 />
 
                 <VoiceSoundSplitControl
                   surface="panel"
                   inVoice={inVoice}
-                  connecting={voice.status === 'connecting'}
+                  connecting={voiceSession.status === 'connecting'}
                   soundOff={soundOff}
-                  onToggleDeafen={voice.toggleDeafen}
+                  onToggleDeafen={voiceSession.toggleDeafen}
                 />
 
                 <Button
@@ -199,7 +184,6 @@ export function UserPanel() {
           open={globalProfileOpen}
           onOpenChange={setGlobalProfileOpen}
         />
-      </div>
-    </div>
+    </FloatingBarShell>
   )
 }

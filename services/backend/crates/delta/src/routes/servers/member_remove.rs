@@ -4,8 +4,8 @@ use syrnike_database::{
     Database, RemovalIntention, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     voice::{
-        UserVoiceChannel, VoiceClient, get_user_voice_channel_in_server,
-        remove_user_from_voice_channel,
+        UserVoiceChannel, cancel_current_pending_voice_join_in_server,
+        get_user_voice_channel_in_server, remove_user_from_voice_channel,
     },
 };
 use syrnike_models::v0;
@@ -22,7 +22,6 @@ use super::audit_mutation;
 #[delete("/<server_id>/members/<member_id>", data = "<data>")]
 pub async fn kick(
     db: &State<Database>,
-    voice_client: &State<VoiceClient>,
     user: User,
     server_id: Reference<'_>,
     member_id: Reference<'_>,
@@ -83,28 +82,29 @@ pub async fn kick(
         return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
     }
 
-    if voice_client.is_enabled() {
-        match get_user_voice_channel_in_server(member_id.id, &server.id).await {
-            Ok(Some(channel_id)) => {
-                if let Err(error) = remove_user_from_voice_channel(
-                    voice_client,
-                    &UserVoiceChannel {
-                        id: channel_id,
-                        server_id: Some(server.id.clone()),
-                    },
-                    member_id.id,
-                )
-                .await
-                {
-                    return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-                }
-            }
-            Ok(None) => {}
-            Err(error) => {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-            }
+    if let Err(error) = cancel_current_pending_voice_join_in_server(member_id.id, &server.id).await
+    {
+        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+    }
+    let voice_channel = match get_user_voice_channel_in_server(member_id.id, &server.id).await {
+        Ok(channel) => channel,
+        Err(error) => {
+            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
         }
     };
+    if let Some(channel_id) = voice_channel {
+        if let Err(error) = remove_user_from_voice_channel(
+            &UserVoiceChannel {
+                id: channel_id,
+                server_id: Some(server.id.clone()),
+            },
+            member_id.id,
+        )
+        .await
+        {
+            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+        }
+    }
 
     audit.mark_succeeded(db).await?;
 

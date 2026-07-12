@@ -3,14 +3,10 @@ export type NativeMediaFrameMethod =
   | 'wgc'
   | 'dxgi'
   | 'gdi_blt'
-  | 'gdi_print'
 
 export type NativeMediaFrameStats = Record<NativeMediaFrameMethod, number>
 
-export type NativeMediaEncoderBackend =
-  | 'media_foundation'
-  | 'webrtc'
-  | 'openh264'
+export type NativeMediaEncoderBackend = 'webrtc'
 
 /** process/system_exclude = звук демонстрации; microphone = входной голос; none = звук недоступен. */
 export type NativeMediaAudioMode =
@@ -46,7 +42,7 @@ export type NativeMediaSessionKind = 'screen' | 'microphone'
 
 export type NativeMediaDeviceInfo = {
   deviceId: string
-  kind: 'audioinput'
+  kind: 'audioinput' | 'audiooutput' | 'videoinput'
   label: string
 }
 
@@ -56,8 +52,25 @@ export type NativeMediaLiveKitCredentials = {
   participantIdentity: string
 }
 
+export type LiveKitNativePublisherCredentials = Readonly<{
+  url: string
+  token: string
+  participantIdentity: string
+}>
+
+export type ScreenSourceSpec = Readonly<{
+  sourceId: string
+  width: number
+  height: number
+  fps: number
+  bitrate: number
+  audioBitrate: number
+  audioRequested: boolean
+}>
+
 export type NativeMediaScreenSessionStartOptions = {
   kind: 'screen'
+  requestId: string
   sourceId: string
   width: number
   height: number
@@ -76,43 +89,21 @@ export type NativeMediaScreenSessionPrepareOptions = {
 
 export type NativeMediaMicrophoneSessionStartOptions = {
   kind: 'microphone'
-  deviceId?: string
-  sampleRate: 48_000
-  channels: 1
-  noiseSuppression: boolean
-  echoCancellation: boolean
-  inputVolume: number
+  requestId: string
   audioBitrate?: number
-  voiceGateEnabled?: boolean
-  voiceGateThresholdDb?: number
-  voiceGateAutoThreshold?: boolean
   muted?: boolean
   livekit: NativeMediaLiveKitCredentials
 }
 
-export type NativeMicrophoneRuntimeConfig = {
-  inputVolume?: number
-  voiceGateEnabled?: boolean
-  voiceGateThresholdDb?: number
-  voiceGateAutoThreshold?: boolean
-  noiseSuppression?: boolean
-  echoCancellation?: boolean
-}
-
-export type NativeMicrophonePreviewStartOptions = {
-  deviceId?: string
-  sampleRate: 48_000
-  channels: 1
+export type NativeMicrophonePipelineConfig = {
+  /** Explicit capture device, or null to follow the Windows default device. */
+  deviceId: string | null
   noiseSuppression: boolean
   echoCancellation: boolean
   inputVolume: number
-  voiceGateEnabled?: boolean
-  voiceGateThresholdDb?: number
-  voiceGateAutoThreshold?: boolean
-}
-
-export type NativeMicrophonePreviewSession = {
-  sessionId: string
+  voiceGateEnabled: boolean
+  voiceGateThresholdDb: number
+  voiceGateAutoThreshold: boolean
 }
 
 export type NativeMediaSessionStartOptions =
@@ -122,7 +113,6 @@ export type NativeMediaSessionStartOptions =
 export type NativeMediaScreenSession = {
   kind: 'screen'
   sessionId: string
-  port?: number
   encoder: NativeMediaEncoderBackend
   width?: number
   height?: number
@@ -130,7 +120,6 @@ export type NativeMediaScreenSession = {
   bitrate?: number
   audio?: {
     mode: NativeMediaScreenAudioMode
-    port?: number
     targetProcessId?: number
     loopbackMode?: NativeMediaLoopbackMode
   }
@@ -160,7 +149,6 @@ export type NativeMediaSessionStatus =
   | {
       status: 'running'
       sessionId: string
-      port?: number
       width?: number
       height?: number
       fps?: number
@@ -178,7 +166,6 @@ export type NativeMediaEngineCapabilities = {
 type NativeMediaEngineSessionSummaryBase = {
   sessionId: string
   status: 'starting' | 'running' | 'error'
-  port?: number
   width?: number
   height?: number
   fps?: number
@@ -190,7 +177,6 @@ export type NativeMediaScreenEngineSessionSummary =
     kind: 'screen'
     audio?: {
       mode: NativeMediaScreenAudioMode
-      port?: number
       targetProcessId?: number
       loopbackMode?: NativeMediaLoopbackMode
     }
@@ -201,7 +187,6 @@ export type NativeMediaMicrophoneEngineSessionSummary =
     kind: 'microphone'
     audio?: {
       mode: 'microphone'
-      port?: number
       sampleRate?: 48_000
       channels?: 1 | 2
       noiseSuppression?: NativeMediaNoiseSuppressionMode
@@ -215,9 +200,12 @@ export type NativeMediaEngineSessionSummary =
 
 export type NativeMediaEngineSnapshot = {
   available: boolean
-  helper: {
+  runtime: {
     available: boolean
-    running: boolean
+    status: 'stopped' | 'starting' | 'ready' | 'recovering' | 'degraded'
+    pid?: number
+    restartCount: number
+    degradedReason?: string
   }
   capabilities: NativeMediaEngineCapabilities
   activeSessions: NativeMediaEngineSessionSummary[]
@@ -256,17 +244,20 @@ export type NativeMediaStatsEvent = {
 }
 
 export type NativeMicrophoneMetricsEvent = {
-  sessionId: string
   inputDb: number
   thresholdDb: number
   open: boolean
 }
 
+export type NativeMicrophonePreviewStateEvent =
+  | { status: 'running' }
+  | { status: 'stopped' }
+  | { status: 'error'; message: string }
+
 export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   sessionId?: string
   audio?: {
     mode: NativeMediaAudioMode
-    port?: number
     sampleRate?: 48_000
     channels?: 1 | 2
     noiseSuppression?: NativeMediaNoiseSuppressionMode
@@ -276,8 +267,162 @@ export type NativeMediaStateEvent = NativeMediaSessionStatus & {
   }
 }
 
-export type NativeMediaSidecarLostEvent = {
+export type NativeMediaRuntimeLostEvent = {
   sessionId: string
-  reason: 'exit' | 'stream_error'
+  reason: 'exit' | 'stream_error' | 'circuit_open' | 'handshake_failed'
   message: string
+  recovering: boolean
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNonEmptyString(
+  value: unknown,
+  maxLength = Number.MAX_SAFE_INTEGER,
+): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maxLength
+  )
+}
+
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean'
+}
+
+function isIntegerInRange(value: unknown, minimum: number, maximum: number) {
+  return (
+    typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= minimum &&
+    value <= maximum
+  )
+}
+
+function assertObjectRecord(
+  value: unknown,
+  context: string,
+): asserts value is Record<string, unknown> {
+  if (!isObjectRecord(value)) {
+    throw new TypeError(`${context} must be an object`)
+  }
+}
+
+function assertNonEmptyString(
+  value: unknown,
+  context: string,
+  maxLength = Number.MAX_SAFE_INTEGER,
+): asserts value is string {
+  if (!isNonEmptyString(value, maxLength)) {
+    throw new TypeError(
+      `${context} must be a non-empty string no longer than ${maxLength} characters`,
+    )
+  }
+}
+
+function assertIntegerInRange(
+  value: unknown,
+  context: string,
+  minimum: number,
+  maximum: number,
+): asserts value is number {
+  if (!isIntegerInRange(value, minimum, maximum)) {
+    throw new TypeError(
+      `${context} must be an integer between ${minimum} and ${maximum}`,
+    )
+  }
+}
+
+function assertBoolean(value: unknown, context: string): asserts value is boolean {
+  if (!isBoolean(value)) {
+    throw new TypeError(`${context} must be a boolean`)
+  }
+}
+
+export function assertLiveKitNativePublisherCredentials(
+  value: unknown,
+): asserts value is LiveKitNativePublisherCredentials {
+  assertObjectRecord(value, 'LiveKitNativePublisherCredentials')
+  assertNonEmptyString(value.url, 'LiveKitNativePublisherCredentials.url', 2_048)
+  try {
+    const protocol = new URL(value.url).protocol
+    if (protocol !== 'ws:' && protocol !== 'wss:') {
+      throw new TypeError(
+        'LiveKitNativePublisherCredentials.url must use ws: or wss:',
+      )
+    }
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('must use')) {
+      throw error
+    }
+    throw new TypeError('LiveKitNativePublisherCredentials.url must be a valid URL')
+  }
+  assertNonEmptyString(
+    value.token,
+    'LiveKitNativePublisherCredentials.token',
+    32_768,
+  )
+  assertNonEmptyString(
+    value.participantIdentity,
+    'LiveKitNativePublisherCredentials.participantIdentity',
+    512,
+  )
+}
+
+export function isLiveKitNativePublisherCredentials(
+  value: unknown,
+): value is LiveKitNativePublisherCredentials {
+  try {
+    assertLiveKitNativePublisherCredentials(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function parseLiveKitNativePublisherCredentials(
+  value: unknown,
+): LiveKitNativePublisherCredentials {
+  assertLiveKitNativePublisherCredentials(value)
+  return value
+}
+
+export function assertScreenSourceSpec(
+  value: unknown,
+): asserts value is ScreenSourceSpec {
+  assertObjectRecord(value, 'ScreenSourceSpec')
+  assertNonEmptyString(value.sourceId, 'ScreenSourceSpec.sourceId', 2_048)
+  assertIntegerInRange(value.width, 'ScreenSourceSpec.width', 64, 7_680)
+  assertIntegerInRange(value.height, 'ScreenSourceSpec.height', 64, 4_320)
+  assertIntegerInRange(value.fps, 'ScreenSourceSpec.fps', 1, 240)
+  assertIntegerInRange(
+    value.bitrate,
+    'ScreenSourceSpec.bitrate',
+    32_000,
+    100_000_000,
+  )
+  assertIntegerInRange(
+    value.audioBitrate,
+    'ScreenSourceSpec.audioBitrate',
+    6_000,
+    512_000,
+  )
+  assertBoolean(value.audioRequested, 'ScreenSourceSpec.audioRequested')
+}
+
+export function isScreenSourceSpec(value: unknown): value is ScreenSourceSpec {
+  try {
+    assertScreenSourceSpec(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function parseScreenSourceSpec(value: unknown): ScreenSourceSpec {
+  assertScreenSourceSpec(value)
+  return value
 }

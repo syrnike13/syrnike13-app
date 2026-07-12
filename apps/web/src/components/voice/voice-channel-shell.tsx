@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
@@ -6,6 +6,10 @@ import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { useSyncStore } from '#/features/sync/sync-store'
+import {
+  consumeVoiceChannelChatOpenRequest,
+  subscribeVoiceChannelChatOpen,
+} from '#/features/voice/voice-channel-chat-intent'
 import {
   isServerChannel,
   isServerVoiceChannel,
@@ -25,7 +29,21 @@ export function VoiceChannelShell({
   const auth = useAuth()
   const channel = useSyncStore((s) => s.channels[channelId])
   const users = useSyncStore((s) => s.users)
-  const [chatOpen, setChatOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(() =>
+    consumeVoiceChannelChatOpenRequest(channelId),
+  )
+
+  useEffect(() => {
+    if (consumeVoiceChannelChatOpenRequest(channelId)) {
+      setChatOpen(true)
+    }
+
+    return subscribeVoiceChannelChatOpen((requestedChannelId) => {
+      if (requestedChannelId !== channelId) return
+      consumeVoiceChannelChatOpenRequest(channelId)
+      setChatOpen(true)
+    })
+  }, [channelId])
   const runtimeChannel = channel as RuntimeChannel | undefined
 
   if (!channel) {

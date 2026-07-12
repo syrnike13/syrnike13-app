@@ -2,14 +2,11 @@ import type { ReactNode } from 'react'
 
 import { cn } from '#/lib/utils'
 
-/** Высота плавающей панели аккаунта (+ полоска войса) + отступ снизу. */
+/** Высота плавающей панели аккаунта на mobile (+ отступ снизу). */
 export const USER_PANEL_RESERVE_PX = 120
 
 /** Колонка списка каналов: было w-60 (240px), w-72 — 288px. */
-export const CHANNEL_SIDEBAR_WIDTH_CLASS = 'w-72' as const
-
-/** Рельс + сайдбар; right-2 — такой же зазор, как у left-2 на обёртке. */
-export const USER_PANEL_SPAN_WIDTH = 'calc(3.5rem + 18rem - 0.5rem)'
+export const CHANNEL_SIDEBAR_WIDTH_CLASS = 'w-82' as const
 
 type LeftSidebarStackProps = {
   children: ReactNode

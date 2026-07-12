@@ -237,7 +237,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       <MessageFormatProvider value={formatContext}>
         <div
           ref={editorRootRef}
-          className={cn('relative min-h-0 min-w-0 flex-1', className)}
+          className={cn('relative min-h-9 min-w-0 flex-1', className)}
         >
           {mentionSuggestion ? (
             <MentionSuggestionMenu

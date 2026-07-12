@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react'
 
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
-function usesNativeAudioInput() {
-  return getSyrnikeDesktop()?.platform.os === 'win32'
+function usesNativeMediaDevices(kind: MediaDeviceKind) {
+  return (
+    getSyrnikeDesktop()?.platform.os === 'win32' &&
+    (kind === 'audioinput' || kind === 'audiooutput' || kind === 'videoinput')
+  )
 }
 
 export async function listMediaDevices(kind: MediaDeviceKind) {
   const desktop = getSyrnikeDesktop()
-  if (kind === 'audioinput' && desktop?.platform.os === 'win32') {
-    return desktop.media.listDevices('audioinput') as Promise<MediaDeviceInfo[]>
+  if (usesNativeMediaDevices(kind) && desktop?.platform.os === 'win32') {
+    return desktop.media.listDevices(kind) as Promise<MediaDeviceInfo[]>
   }
 
   const listed = await navigator.mediaDevices.enumerateDevices()
@@ -33,7 +36,7 @@ export function useMediaDevices(kind: MediaDeviceKind) {
     }
 
     void refresh()
-    if (kind === 'audioinput' && usesNativeAudioInput()) {
+    if (usesNativeMediaDevices(kind)) {
       const interval = window.setInterval(refresh, 2_000)
       return () => {
         active = false
@@ -53,7 +56,7 @@ export function useMediaDevices(kind: MediaDeviceKind) {
 
 export async function ensureMediaDevicePermission(kind: 'audio' | 'video') {
   if (!navigator.mediaDevices?.getUserMedia) return
-  if (kind === 'audio' && usesNativeAudioInput()) {
+  if (kind === 'audio' && usesNativeMediaDevices('audioinput')) {
     return
   }
 

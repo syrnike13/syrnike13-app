@@ -1,6 +1,5 @@
 import type { Channel } from '@syrnike13/api-types'
 
-import { isDmChannel, isTextChannel } from '#/features/sync/channel-label'
 import {
   channelUnreadMentionCount,
   isChannelUnread,
@@ -40,32 +39,6 @@ function hasChannelNotification(state: SyncState, channel: Channel) {
     channelUnreadMentionCount(unread) > 0
   )
 }
-
-function countPersonalChannelNotifications(state: SyncState) {
-  return Object.values(state.channels).reduce(
-    (summary, channel) => {
-      if (!isDmChannel(channel) || !isTextChannel(channel)) return summary
-
-      const unread = state.unreads[channel._id]
-      const mentionCount = channelUnreadMentionCount(unread)
-      if (mentionCount > 0) {
-        return {
-          count: summary.count + mentionCount,
-          urgent: true,
-        }
-      }
-
-      if (!isChannelUnread(channel, unread)) return summary
-
-      return {
-        count: summary.count + 1,
-        urgent: summary.urgent,
-      }
-    },
-    { count: 0, urgent: false },
-  )
-}
-
 export function selectFriendRequestNotificationBadge(
   state: SyncState,
   currentUserId?: string,
@@ -79,16 +52,9 @@ export function selectHomeNotificationBadge(
   state: SyncState,
   currentUserId?: string,
 ): NotificationBadgeState {
-  const incomingFriendRequests = selectFriendRequestNotificationBadge(
-    state,
-    currentUserId,
-  ).count
-  const personalChannels = countPersonalChannelNotifications(state)
-
-  return badge(
-    incomingFriendRequests + personalChannels.count,
-    personalChannels.urgent,
-  )
+  // Unread DM/Group показываются аватарами в ServerRail (PeopleRailSection),
+  // на Home остаётся только счётчик входящих заявок в друзья.
+  return selectFriendRequestNotificationBadge(state, currentUserId)
 }
 
 export function selectServerNotificationBadge(

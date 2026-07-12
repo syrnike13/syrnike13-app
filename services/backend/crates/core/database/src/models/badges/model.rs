@@ -217,7 +217,13 @@ pub fn initial_badges() -> Vec<Badge> {
         Badge::new_seed("bug_hunter", "BugHunter", 30, true, false),
         Badge::new_seed("partner", "Партнер", 40, true, false),
         Badge::new_seed("supporter", "Саппорт", 50, true, false),
-        Badge::new_seed("premium_subscriber", "Premium Subscriber", 1000, false, true),
+        Badge::new_seed(
+            "premium_subscriber",
+            "Premium Subscriber",
+            1000,
+            false,
+            true,
+        ),
         Badge::new_seed("premium_supporter", "Premium Supporter", 1010, false, true),
     ]
 }
@@ -263,7 +269,10 @@ mod tests {
             db.assign_user_badge(&assignment).await.unwrap();
             db.assign_user_badge(&assignment).await.unwrap();
 
-            assert_eq!(db.fetch_user_badge_assignments("user").await.unwrap().len(), 1);
+            assert_eq!(
+                db.fetch_user_badge_assignments("user").await.unwrap().len(),
+                1
+            );
         });
     }
 

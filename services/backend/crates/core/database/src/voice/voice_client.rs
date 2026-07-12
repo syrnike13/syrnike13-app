@@ -5,7 +5,10 @@ use crate::{
 };
 use livekit_api::{
     access_token::{AccessToken, VideoGrants},
-    services::room::{CreateRoomOptions, RoomClient as InnerRoomClient, UpdateParticipantOptions},
+    services::{
+        room::{CreateRoomOptions, RoomClient as InnerRoomClient, UpdateParticipantOptions},
+        ServiceError, TwirpError, TwirpErrorCode,
+    },
 };
 use livekit_protocol::{ParticipantInfo, ParticipantPermission, Room};
 use std::{collections::HashMap, time::Duration};
@@ -75,6 +78,33 @@ impl VoiceClient {
         permissions: PermissionValue,
         channel: &Channel,
     ) -> Result<String> {
+        self.create_token_for_identity_with_attributes(
+            node,
+            db,
+            user,
+            identity,
+            permissions,
+            channel,
+            std::iter::empty::<(String, String)>(),
+        )
+        .await
+    }
+
+    pub async fn create_token_for_identity_with_attributes<I, K, V>(
+        &self,
+        node: &str,
+        db: &Database,
+        user: &User,
+        identity: &str,
+        permissions: PermissionValue,
+        channel: &Channel,
+        attributes: I,
+    ) -> Result<String>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
         let room = self.get_node(node)?;
 
         let limits = user.limits().await;
@@ -86,6 +116,7 @@ impl VoiceClient {
             .with_metadata(
                 &serde_json::to_string(&user.clone().into(db, None).await).to_internal_error()?,
             )
+            .with_attributes(attributes)
             .with_ttl(NATIVE_VOICE_TOKEN_TTL)
             .with_grants(VideoGrants {
                 room_join: true,
@@ -126,7 +157,7 @@ impl VoiceClient {
     pub async fn update_permissions(
         &self,
         node: &str,
-        user: &User,
+        participant_identity: &str,
         channel_id: &str,
         new_permissions: ParticipantPermission,
     ) -> Result<ParticipantInfo> {
@@ -135,7 +166,7 @@ impl VoiceClient {
         room.client
             .update_participant(
                 channel_id,
-                &user.id,
+                participant_identity,
                 UpdateParticipantOptions {
                     permission: Some(new_permissions),
                     ..Default::default()
@@ -152,6 +183,29 @@ impl VoiceClient {
             .remove_participant(channel_id, user_id)
             .await
             .to_internal_error()
+    }
+
+    pub async fn list_room_participants(
+        &self,
+        node: &str,
+        channel_id: &str,
+    ) -> Result<Option<Vec<ParticipantInfo>>> {
+        let room = self.get_node(node)?;
+
+        match room.client.list_participants(channel_id).await {
+            Ok(participants) => Ok(Some(participants)),
+            Err(ServiceError::Twirp(TwirpError::Twirp(error)))
+                if error.code == TwirpErrorCode::NOT_FOUND =>
+            {
+                Ok(None)
+            }
+            Err(error) => {
+                log::warn!(
+                    "Failed to list LiveKit participants for channel {channel_id} on node {node}: {error}"
+                );
+                Err(create_error!(InternalError))
+            }
+        }
     }
 
     pub async fn delete_room(&self, node: &str, channel_id: &str) -> Result<()> {

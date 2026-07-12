@@ -1,9 +1,9 @@
-use rocket::{serde::json::Json, State};
+use rocket::{State, serde::json::Json};
 use syrnike_database::{
-    audit_timestamp, util::reference::Reference, Channel, Database, Invite, Member, User, AMQP,
+    AMQP, Channel, Database, Invite, Member, User, audit_timestamp, util::reference::Reference,
 };
 use syrnike_models::v0::{self, InviteJoinResponse};
-use syrnike_result::{create_error, Result};
+use syrnike_result::{Result, create_error};
 
 use crate::routes::voice_call_member_sync::send_active_group_voice_call_to_new_member;
 
@@ -70,10 +70,11 @@ async fn join_server_invite(
     temporary: bool,
 ) -> Result<InviteJoinResponse> {
     let server = db.fetch_server(server_id).await?;
-    let (_, channels) = Member::create(db, &server, user, None, temporary).await?;
+    let (member, channels) = Member::create(db, &server, user, None, temporary).await?;
 
     Ok(InviteJoinResponse::Server {
         channels: channels.into_iter().map(|c| c.into()).collect(),
+        member: member.into(),
         server: server.into(),
     })
 }

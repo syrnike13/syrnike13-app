@@ -223,6 +223,49 @@ describe('RemoteAudioMixer', () => {
     ])
   })
 
+  it('surfaces output playback failures instead of reporting silent success', async () => {
+    const failures: Error[] = []
+    mixer.dispose()
+    vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValue(
+      new Error('autoplay denied'),
+    )
+    mixer = createRemoteAudioMixer({
+      onOutputError: (error) => failures.push(error),
+    })
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    await expect(mixer.applyVolumes(false)).rejects.toThrow('autoplay denied')
+    expect(failures.some((error) => error.message === 'autoplay denied')).toBe(true)
+  })
+
+  it('retries blocked playback on the next user gesture', async () => {
+    vi.mocked(HTMLMediaElement.prototype.play)
+      .mockRejectedValueOnce(new Error('autoplay denied'))
+      .mockRejectedValueOnce(new Error('autoplay denied'))
+      .mockResolvedValue(undefined)
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    await expect(mixer.applyVolumes(false)).rejects.toThrow('autoplay denied')
+    const callsBeforeGesture = vi.mocked(HTMLMediaElement.prototype.play).mock.calls.length
+    document.dispatchEvent(new Event('pointerdown'))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(
+      callsBeforeGesture + 1,
+    )
+  })
+
   it('sets participant volume zero to gain zero', () => {
     const track = createTrack()
     voiceListenerStore.setUserVolume('remote-user', 0)
@@ -254,6 +297,20 @@ describe('RemoteAudioMixer', () => {
     mixer.applyVolumes(false)
 
     expect(mixer.debugSnapshot()[0]?.gain).toBe(1.6)
+  })
+
+  it('combines maximum participant and output boosts without losing headroom', () => {
+    voiceListenerStore.setUserVolume('remote-user', 3)
+
+    mixer.addTrack({
+      trackId: 'pub-mic',
+      userId: 'remote-user',
+      source: 'mic',
+      mediaStreamTrack: createTrack(),
+    })
+    mixer.applyVolumes(false, 3)
+
+    expect(mixer.debugSnapshot()[0]?.gain).toBe(9)
   })
 
   it('keeps mic and stream volumes independent', () => {

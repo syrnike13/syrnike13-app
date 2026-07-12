@@ -7,6 +7,7 @@ import {
 } from '#/components/layout/shell-chrome'
 import { useShellHistoryNav } from '#/features/navigation/use-shell-history-nav'
 import { usePlatform } from '#/platform/use-platform'
+import { config } from '#/lib/config'
 import { cn } from '#/lib/utils'
 
 const titleBarIconButtonClass =
@@ -30,6 +31,7 @@ export function ShellHistoryNavButtons({
   const isMac = layout === 'macos'
   const isWindows = layout === 'windows'
   const isFullHeight = isMac || isWindows
+  const isNightly = config.releaseChannel === 'nightly'
 
   const fullHeightButtonClass = cn(
     titleBarIconButtonClass,
@@ -70,6 +72,11 @@ export function ShellHistoryNavButtons({
       >
         <ChevronRightIcon className="size-4" />
       </button>
+      {isNightly ? (
+        <span className="ml-1 inline-flex h-5 shrink-0 items-center rounded border border-chart-2/40 bg-chart-2/10 px-1.5 text-[10px] font-medium leading-none text-chart-2">
+          nightly
+        </span>
+      ) : null}
     </div>
   )
 }

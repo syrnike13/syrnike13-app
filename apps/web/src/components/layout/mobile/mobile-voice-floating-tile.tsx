@@ -11,7 +11,9 @@ import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceMedia } from '#/features/voice/voice-media-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import {
   isVoiceConnectionReady,
   isMicVisuallyMuted,
@@ -33,12 +35,14 @@ import { cn } from '#/lib/utils'
  */
 export function MobileVoiceFloatingTile() {
   const auth = useAuth()
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceMedia = useVoiceMedia()
+  const voiceStage = useVoiceStage()
   const navigate = useNavigate()
   const { channelId: drawerChannelId, openVoiceChannelDrawer } =
     useMobileVoiceChannelDrawer()
   const channel = useSyncStore((s) =>
-    voice.channelId ? s.channels[voice.channelId] : undefined,
+    voiceSession.channelId ? s.channels[voiceSession.channelId] : undefined,
   )
   const server = useSyncStore((s) =>
     channel?.channel_type === 'TextChannel' ? s.servers[channel.server] : undefined,
@@ -46,11 +50,12 @@ export function MobileVoiceFloatingTile() {
   const users = useSyncStore((s) => s.users)
 
   const inVoiceSession =
-    voice.channelId != null &&
-    (voice.status === 'connected' || voice.status === 'connecting')
+    voiceSession.channelId != null &&
+    (voiceSession.status === 'connected' ||
+      voiceSession.status === 'connecting')
   const connected = isVoiceConnectionReady({
-    status: voice.status,
-    localVoiceReady: voice.localVoiceReady,
+    status: voiceSession.status,
+    localVoiceReady: voiceSession.localVoiceReady,
   })
 
   const {
@@ -64,7 +69,7 @@ export function MobileVoiceFloatingTile() {
     consumeSuppressedClick,
   } = useFloatingCornerAnchor(MOBILE_VOICE_TILE_CORNER_STORAGE_KEY)
 
-  if (!inVoiceSession || !voice.channelId || voice.stageFullscreen) {
+  if (!inVoiceSession || !voiceSession.channelId || voiceStage.stageFullscreen) {
     return null
   }
 
@@ -80,24 +85,24 @@ export function MobileVoiceFloatingTile() {
 
   const micMuted = isMicVisuallyMuted({
     inVoiceSession,
-    micEnabled: voice.micEnabled,
-    micPublishing: voice.micPublishing,
+    micEnabled: voiceSession.micEnabled,
+    micPublishing: voiceSession.micPublishing,
   })
-  const soundOff = voice.deafened
-  const cameraOn = voice.cameraEnabled
-  const sharingScreen = voice.screenShareEnabled
+  const soundOff = voiceSession.deafened
+  const cameraOn = voiceMedia.cameraEnabled
+  const sharingScreen = voiceMedia.screenShareEnabled
 
   const half = MOBILE_VOICE_FLOATING_TILE_SIZE_PX / 2
 
   function handleOpenDrawer() {
-    if (!voice.channelId) return
+    if (!voiceSession.channelId) return
     if (channel && isServerVoiceChannel(channel)) {
-      openVoiceChannelDrawer(voice.channelId)
+      openVoiceChannelDrawer(voiceSession.channelId)
       return
     }
     void navigate({
       to: '/m/c/$channelId',
-      params: { channelId: voice.channelId },
+      params: { channelId: voiceSession.channelId },
       search: { m: undefined },
     })
   }

@@ -13,7 +13,8 @@ import {
   isVoiceConnectionReady,
   voiceConnectionPhaseLabel,
 } from '#/features/voice/voice-mic-status'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import { serverChannelServerId } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
@@ -37,7 +38,8 @@ const VOICE_STATUS_FAILED = {
 
 export function VoiceConnectionStrip() {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
+  const voiceTelemetry = useVoiceTelemetry()
   const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) =>
     voice.channelId ? s.channels[voice.channelId] : undefined,
@@ -70,7 +72,10 @@ export function VoiceConnectionStrip() {
         ? VOICE_STATUS_CONNECTED
         : VOICE_STATUS_CONNECTING
   const statusLabel = voiceConnectionPhaseLabel(voice.connectionPhase)
-  const pingLabel = formatVoicePingLabel(voice.voicePingMs, connected)
+  const pingLabel = formatVoicePingLabel(
+    voiceTelemetry.voicePingMs,
+    connected,
+  )
 
   return (
     <div

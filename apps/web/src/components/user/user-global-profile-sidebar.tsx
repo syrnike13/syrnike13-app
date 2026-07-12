@@ -29,6 +29,7 @@ import { FloatingMenuItem } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
+import { useUserBadges } from '#/features/users/use-user-badges'
 import {
   acceptIncomingFriendRequest,
   cancelOutgoingFriendRequest,
@@ -139,6 +140,7 @@ export function UserGlobalProfileSidebar({
     animated: true,
   })
   const profileBio = profileQuery.data?.content?.trim()
+  const badges = useUserBadges(user._id, user.badges)
 
   async function removeRole(roleId: string) {
     if (!token || !actorUserId || !server || !member) return
@@ -224,7 +226,7 @@ export function UserGlobalProfileSidebar({
         <p className="truncate text-sm text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
         </p>
-        <UserBadges badges={user.badges} className="mt-2" />
+        <UserBadges badges={badges} className="mt-2" />
 
         {/* Action buttons */}
         <div className="mt-3 flex gap-1.5">

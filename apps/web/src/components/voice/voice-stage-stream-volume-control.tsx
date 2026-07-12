@@ -37,7 +37,7 @@ export function VoiceStageStreamVolumeControl({
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="rounded-lg border border-white/10 bg-[#1e1f22] px-2.5 py-3 shadow-lg">
+        <div className="rounded-lg border border-white/10 bg-card px-2.5 py-3 shadow-lg">
           <Slider
             orientation="vertical"
             className="h-28"
@@ -46,7 +46,6 @@ export function VoiceStageStreamVolumeControl({
             step={0.1}
             tooltipContent={formatUserVolumeLabel}
             tooltipSide="right"
-            tooltipClassName="z-[430]"
             value={[muted ? 0 : volume]}
             onValueChange={([next]) => {
               if (muted && next > 0) {

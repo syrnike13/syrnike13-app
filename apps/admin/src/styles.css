@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* Dark palette from apps/web (.dark) — admin is dark-only */
+:root,
+.dark {
+  --background: oklch(0.3225 0.0107 278.2517);
+  --foreground: oklch(1 0 0);
+  --surface: oklch(0.3225 0.0107 278.2517);
+  --surface-foreground: oklch(1 0 0);
+  --card: oklch(0.3502 0.0122 279.2835);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.3502 0.0122 279.2835);
+  --popover-foreground: oklch(1 0 0);
+  --primary: oklch(0.5774 0.2091 273.8504);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.3779 0.0118 285.8207);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.3066 0.0108 278.2166);
+  --muted-foreground: oklch(0.723 0.0087 278.582);
+  --accent: oklch(0.4074 0.0134 280.1154);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.8004 0.1141 23.185);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.369 0.0103 278.3345);
+  --input: oklch(0.3066 0.0108 278.2166);
+  --ring: oklch(0.5774 0.2091 273.8504);
+  --sidebar: oklch(0.2981 0.0091 276.8201);
+  --sidebar-foreground: oklch(0.6876 0.0102 279.6082);
+  --sidebar-primary: oklch(0.3804 0.0102 278.3511);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.3309 0.0087 285.9137);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.3494 0.0087 276.903);
+  --sidebar-ring: oklch(0.7151 0.1523 235.2888);
+  --success: oklch(0.9075 0.0946 165.054);
+  --warning: oklch(0.8757 0.0979 83.6546);
+  --font-sans: 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
+  --font-display: 'Space Grotesk', 'Nunito Sans', ui-sans-serif, sans-serif, system-ui;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  --radius: 0.625rem;
+  --shell-sidebar-width: 15rem;
+  --page-padding-x: 1.25rem;
+  --page-padding-y: 1.25rem;
+  --page-max-width: 56rem;
+  --scrollbar-thumb: rgb(255 255 255 / 0.22);
+  --scrollbar-thumb-hover: rgb(255 255 255 / 0.38);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer components {
+  .admin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .admin-scroll:hover,
+  .admin-scroll:focus-within {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  .admin-page-inner {
+    width: 100%;
+    max-width: var(--page-max-width);
+    margin-inline: auto;
+    padding-inline: var(--page-padding-x);
+  }
+}
+
+@keyframes admin-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.admin-enter {
+  animation: admin-enter 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes admin-dropzone-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 0%, transparent);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--primary) 45%, transparent);
+  }
+}
+
+.admin-dropzone-active {
+  animation: admin-dropzone-pulse 1.6s ease-in-out infinite;
+}

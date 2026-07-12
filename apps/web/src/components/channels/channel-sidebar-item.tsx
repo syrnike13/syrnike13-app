@@ -4,6 +4,7 @@ import {
   HashIcon,
   HeadphonesIcon,
   LinkIcon,
+  MessageSquareIcon,
   SettingsIcon,
   Trash2Icon,
   UsersIcon,
@@ -54,9 +55,10 @@ import {
 } from '#/features/sync/sync-store'
 import { VoiceChannelPreview } from '#/components/voice/voice-channel-preview'
 import { canJoinVoiceChannel } from '#/features/voice/voice-api-capability'
+import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat-intent'
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
 import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { canManageChannel, isChannelAccessRestricted } from '#/lib/permissions'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
@@ -91,7 +93,7 @@ export function ChannelSidebarItem({
   dragging = false,
 }: ChannelSidebarItemProps) {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const navigate = useNavigate()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingChannel, setDeletingChannel] = useState(false)
@@ -259,7 +261,6 @@ export function ChannelSidebarItem({
 
     const action = resolveVoiceChannelClickAction({
       clickedChannelId: channel._id,
-      currentRouteChannelId: activeChannelId,
       voiceChannelId: voice.channelId,
       voiceStatus: voice.status,
     })
@@ -271,16 +272,38 @@ export function ChannelSidebarItem({
       return
     }
 
+    if (action === 'open') {
+      void navigate({
+        to: channelRoute,
+        params: { channelId: channel._id },
+        search: { m: undefined },
+      })
+    } else {
+      void voice.join(channel._id)
+    }
+  }
+
+  function openVoiceChannelChat(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    requestVoiceChannelChatOpen(channel._id)
+
+    if (isMobile) {
+      mobileVoiceChannelDrawer?.openVoiceChannelDrawer(channel._id)
+      return
+    }
+
+    if (active) return
+
     void navigate({
       to: channelRoute,
       params: { channelId: channel._id },
       search: { m: undefined },
     })
-
-    if (action === 'join-and-open') {
-      void voice.join(channel._id)
-    }
   }
+
+  const channelActionButtonClassName =
+    'flex size-6 shrink-0 self-center items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/channel:opacity-100 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
 
   const row = (
     <div
@@ -340,7 +363,7 @@ export function ChannelSidebarItem({
           {voiceCallMarkerTitle ? (
             <span
               title={voiceCallMarkerTitle}
-              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-500"
+              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3"
             >
               <HeadphonesIcon aria-hidden="true" className="size-3.5" />
             </span>
@@ -352,19 +375,34 @@ export function ChannelSidebarItem({
             />
           ) : null}
         </Link>
-        {canManage && isServerChannel ? (
-          <button
-            type="button"
-            className="mr-1 flex size-6 shrink-0 self-center items-center justify-center rounded-sm text-muted-foreground opacity-0 transition-opacity group-hover/channel:opacity-100 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            title="Настройки канала"
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              openChannelSettings()
-            }}
-          >
-            <SettingsIcon className="size-3.5" />
-          </button>
+        {serverVoice || (canManage && isServerChannel) ? (
+          <div className="mr-1 flex shrink-0 self-center items-center gap-0.5">
+            {serverVoice ? (
+              <button
+                type="button"
+                className={channelActionButtonClassName}
+                title="Открыть чат"
+                aria-label="Открыть чат"
+                onClick={openVoiceChannelChat}
+              >
+                <MessageSquareIcon className="size-3.5" />
+              </button>
+            ) : null}
+            {canManage && isServerChannel ? (
+              <button
+                type="button"
+                className={channelActionButtonClassName}
+                title="Настройки канала"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  openChannelSettings()
+                }}
+              >
+                <SettingsIcon className="size-3.5" />
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
       {serverVoice ? <VoiceChannelPreview channelId={channel._id} /> : null}

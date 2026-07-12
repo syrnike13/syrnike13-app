@@ -1,8 +1,12 @@
 import type { DesktopOs } from '@syrnike13/platform'
 
-/** Фон колонки серверов / каналов — совпадает с рельсом. */
+/** Фон навигации: рельс, сайдбар, title bar. */
 export const shellNavSurface =
   'bg-background text-foreground' as const
+
+/** Фон основного контента (чат, канал). */
+export const shellContentSurface =
+  'bg-card text-card-foreground' as const
 
 /** Высота кастомной шапки окна под каждую ОС (px). */
 export const SHELL_TITLEBAR_HEIGHT_PX = {
@@ -56,12 +60,41 @@ export function getShellTitleBarMacosNavTopPx(
 export const shellTitleBarDragClass = 'shell-title-bar-drag' as const
 export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 
-/** Кнопки рельса: квадрат с сильным скруглением (не круг). */
-export const railIconButtonClass = 'size-10 rounded-xl' as const
+/** Кнопки рельса: фиксированный квадрат; форма — Squircle, не CSS rounded. */
+export const RAIL_ICON_SIZE_PX = 40
+/** Совпадает с прежним `rounded-xl` (`--radius-xl` ≈ 14px). */
+export const RAIL_ICON_CORNER_RADIUS_PX = 14
+export const railIconButtonClass = 'size-10' as const
+
+/**
+ * Пресет для `<Squircle {...railIconSquircleProps}>`.
+ * Размер/радиус живут здесь; smoothing — дефолт дизайн-системы.
+ */
+export const railIconSquircleProps = {
+  size: RAIL_ICON_SIZE_PX,
+  cornerRadius: RAIL_ICON_CORNER_RADIUS_PX,
+} as const
 
 /** Фон кнопок рельса: card заметнее background, hover — secondary. */
 export const railIconIdleClass =
   'bg-card text-foreground hover:bg-secondary hover:text-foreground' as const
+
+/** Горизонтальный inset колонки рельса (4px = w-1 индикатора с -left-1). */
+export const railColumnInsetClass = 'px-1' as const
+
+/**
+ * ScrollArea серверов: сдвиг влево + шире на 4px,
+ * чтобы RailActiveIndicator (-left-1) не обрезался overflow-hidden viewport.
+ */
+export const railServerScrollAreaClass =
+  '-ml-1 w-[calc(100%+0.25rem)]' as const
+
+/** Внутренний отступ контента ScrollArea — выравнивает кнопки с Home. */
+export const railServerScrollContentClass = 'pl-1' as const
+
+/** Обёртка квадратной кнопки рельса (RailIconButton). */
+export const railIconItemRowClass =
+  'group relative flex w-full justify-center' as const
 
 /** Разделители оболочки — полная непрозрачность. */
 export const shellDivider = 'border-shell-divider' as const
@@ -77,9 +110,26 @@ export const FLOATING_BAR_FIXED_HEIGHT_CLASS = 'h-14' as const
 export const FLOATING_BAR_BOTTOM_CLASS = 'bottom-2' as const
 export const FLOATING_BAR_INSET_X_CLASS = 'inset-x-2' as const
 export const FLOATING_BAR_SCROLL_PAD_CLASS = 'pb-[120px]' as const
-export const floatingBarShellClass =
-  'rounded-lg shadow-lg ring-1 ring-shell-divider' as const
 
-/** Плавающий композер: одна «таблетка» (полоска ответа + поле ввода). */
-export const floatingComposerShellClass =
-  `${floatingBarShellClass} flex flex-col overflow-hidden bg-secondary text-secondary-foreground` as const
+/**
+ * Бывший `rounded-lg` (= `--radius` / `--radius-lg` = 0.625rem ≈ 10px).
+ * Форму даёт `<FloatingBarShell>` / `<Squircle>`, не CSS radius.
+ */
+export const FLOATING_BAR_CORNER_RADIUS_PX = 10
+
+export const floatingBarSquircleProps = {
+  cornerRadius: FLOATING_BAR_CORNER_RADIUS_PX,
+} as const
+
+/**
+ * Обводка плавающих таблеток (бывший `ring-1 ring-shell-divider`).
+ * Реализуется через `Squircle` `ring`, не CSS ring.
+ */
+export const floatingBarRingProps = {
+  width: 1,
+  className: 'bg-shell-divider',
+} as const
+
+/** Поверхность плавающей таблетки без CSS-radius. */
+export const floatingBarSurfaceClass =
+  'w-full overflow-hidden bg-secondary text-secondary-foreground' as const

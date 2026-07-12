@@ -1,4 +1,4 @@
-use super::{Channel, File, Server, User};
+use super::{Channel, File, Member, Server, User};
 
 #[cfg(feature = "validator")]
 use validator::Validate;
@@ -137,6 +137,8 @@ auto_derived!(
         Server {
             /// Channels in the server
             channels: Vec<Channel>,
+            /// Member record for the joining user
+            member: Member,
             /// Server we are joining
             server: Server,
         },

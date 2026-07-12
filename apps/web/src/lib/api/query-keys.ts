@@ -7,6 +7,7 @@ export const queryKeys = {
     onboarding: (token: string) => ['auth', 'onboarding', token] as const,
   },
   users: {
+    detail: (userId: string) => ['users', userId] as const,
     profile: (userId: string) => ['users', userId, 'profile'] as const,
   },
   admin: {

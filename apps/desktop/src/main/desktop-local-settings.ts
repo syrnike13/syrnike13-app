@@ -75,6 +75,10 @@ export async function updateDesktopLocalSettings(
       ...current.sounds,
       ...normalizedPatch.sounds,
     },
+    observability: {
+      ...current.observability,
+      ...normalizedPatch.observability,
+    },
   }
   await saveDesktopLocalSettings(filePath, next)
   return next

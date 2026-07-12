@@ -1,25 +1,29 @@
 use crate::{
+    AMQP, Database, RemovalIntention, User, VoiceCallEndReason,
     events::client::EventV1,
     models::Channel,
     util::{permissions::perms, reference::Reference},
     voice::{
+        UserVoiceChannel, VOICE_SESSION_TTL_SECONDS, VoiceClient, VoiceParticipantReconciliation,
+        VoiceParticipantReconciliationVerdict, VoiceRtcCredential, VoiceRtcEngine, VoiceSession,
+        VoiceSessionCreate,
         call_lifecycle::{
-            get_channel_voice_call, mutate_channel_voice_call_if_current, voice_call_leave_effect,
-            VoiceCallLeaveEffect, VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase,
-            VoiceCallStateMutation, VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
+            GROUP_UNANSWERED_ACTIVE_SECONDS, VoiceCallLeaveEffect, VoiceCallLeavePolicy,
+            VoiceCallLeaveReason, VoiceCallPhase, VoiceCallStateMutation,
+            VoiceCallStateMutationResult, get_channel_voice_call,
+            mutate_channel_voice_call_if_current, voice_call_leave_effect,
         },
-        desktop_native_voice_identity, finish_voice_call_started_system_message, get_channel_node,
-        get_voice_channel_members, is_in_voice_channel, raise_if_in_voice,
-        remove_user_from_voice_channel, remove_user_voice_transport,
-        set_call_notification_recipients, set_channel_node, set_user_voice_join_intent,
-        UserVoiceChannel, VoiceClient,
+        clear_call_notification_recipients, create_voice_session_if_current,
+        delete_channel_voice_state, finish_voice_call_started_system_message, get_channel_node,
+        get_voice_channel_members, get_voice_participant_reconciliation, is_in_voice_channel,
+        raise_if_in_voice, remove_user_from_voice_channel, set_call_notification_recipients,
+        set_channel_node, voice_participant_identity,
     },
-    Database, RemovalIntention, User, VoiceCallEndReason, AMQP,
 };
+use iso8601_timestamp::{Duration, Timestamp};
 use syrnike_config::config;
-use syrnike_models::v0::NativeVoiceCredentials;
-use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, PermissionValue};
-use syrnike_result::{create_error, Result};
+use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
+use syrnike_result::{Result, create_error};
 
 /// LiveKit credentials returned to the client after a successful voice join request.
 #[derive(Debug, Clone)]
@@ -27,10 +31,7 @@ pub struct VoiceJoinCredentials {
     pub channel_id: String,
     pub node: String,
     pub url: String,
-    pub token: String,
-    pub native_microphone: NativeVoiceCredentials,
-    pub native_screen: NativeVoiceCredentials,
-    pub native_camera: NativeVoiceCredentials,
+    pub credential: VoiceRtcCredential,
 }
 
 /// Options for joining a voice channel through the gateway.
@@ -38,6 +39,10 @@ pub struct VoiceJoinCredentials {
 pub struct VoiceJoinOptions {
     pub node: Option<String>,
     pub operation_id: Option<String>,
+    pub expected_current_operation_id: Option<String>,
+    pub rtc_engine: Option<VoiceRtcEngine>,
+    pub client_instance_id: Option<String>,
+    pub connection_epoch: Option<String>,
     pub recipients: Option<Vec<String>>,
     pub suppress_call_notifications: bool,
     pub self_mute: bool,
@@ -47,6 +52,7 @@ pub struct VoiceJoinOptions {
 pub async fn join_voice_channel(
     db: &Database,
     voice_client: &VoiceClient,
+    amqp: &AMQP,
     user: &User,
     channel_id: &str,
     options: VoiceJoinOptions,
@@ -80,24 +86,58 @@ pub async fn join_voice_channel(
 
     let user_voice_channel = UserVoiceChannel::from_channel(&channel);
 
-    let current_voice_members = get_voice_channel_members(&user_voice_channel).await?;
+    let mut current_voice_members = get_voice_channel_members(&user_voice_channel).await?;
     if should_reject_voice_join_for_capacity(
         current_voice_members.as_deref(),
         voice_info.max_users,
         &user.id,
     ) && !current_permissions.has(ChannelPermission::ManageChannel as u64)
     {
-        return Err(create_error!(CannotJoinCall));
+        if let Some(reconciliation) = reconcile_voice_channel_members_with_call_cleanup(
+            db,
+            voice_client,
+            amqp,
+            &user_voice_channel,
+        )
+        .await?
+        {
+            if !reconciliation.stale_members.is_empty() {
+                current_voice_members = get_voice_channel_members(&user_voice_channel).await?;
+            }
+        }
+
+        if should_reject_voice_join_for_capacity(
+            current_voice_members.as_deref(),
+            voice_info.max_users,
+            &user.id,
+        ) {
+            return Err(create_error!(CannotJoinCall));
+        }
     }
 
     let existing_node = get_channel_node(channel.id()).await?;
-    let has_existing_node = existing_node.is_some();
-
     let node = existing_node
         .or(options.node)
         .ok_or_else(|| create_error!(UnknownNode))?;
 
     let config = config().await;
+    let operation_id = options
+        .operation_id
+        .as_deref()
+        .ok_or_else(|| create_error!(InvalidOperation))?;
+    let rtc_engine = options
+        .rtc_engine
+        .ok_or_else(|| create_error!(InvalidOperation))?;
+    let client_instance_id = options
+        .client_instance_id
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| create_error!(InvalidOperation))?;
+    let connection_epoch = options
+        .connection_epoch
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| create_error!(InvalidOperation))?;
 
     let node_host = config
         .hosts
@@ -109,74 +149,86 @@ pub async fn join_voice_channel(
     if user.bot.is_some() {
         raise_if_in_voice(user, &user_voice_channel).await?;
     }
-    set_user_voice_join_intent(
+
+    let session = voice_session_for_join_request(
+        operation_id,
         &user.id,
         &user_voice_channel,
-        options.operation_id.as_deref(),
+        &node,
+        rtc_engine,
+        client_instance_id,
+        connection_epoch,
         options.self_mute,
         options.self_deaf,
-    )
-    .await?;
-
-    let token = voice_client
-        .create_token_for_identity(&node, db, user, &user.id, current_permissions, &channel)
-        .await?;
-    let native_microphone = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "microphone",
-        current_permissions,
-        &channel,
-    )
-    .await?;
-    let native_screen = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "screen",
-        current_permissions,
-        &channel,
-    )
-    .await?;
-    let native_camera = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "camera",
-        current_permissions,
-        &channel,
-    )
-    .await?;
-
-    let room = voice_client.create_room(&node, &channel).await?;
-
-    if !has_existing_node {
-        set_channel_node(channel.id(), &node).await?;
+        Timestamp::now_utc(),
+    )?;
+    if !create_voice_session_if_current(&session, options.expected_current_operation_id.as_deref())
+        .await?
+    {
+        return Err(create_error!(InvalidOperation));
+    }
+    let room = match voice_client.create_room(&node, &channel).await {
+        Ok(room) => room,
+        Err(error) => {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    };
+    if let Err(error) = set_channel_node(channel.id(), &node).await {
+        clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+        return Err(error);
     }
 
     log::debug!("Created room {}", room.name);
 
     if options.suppress_call_notifications {
-        set_call_notification_recipients(channel.id(), &user.id, &[]).await?;
+        if let Err(error) =
+            set_call_notification_recipients(channel.id(), &user.id, operation_id, &[]).await
+        {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
     } else if let Some(recipients) = options
         .recipients
         .filter(|recipients| !recipients.is_empty())
     {
-        set_call_notification_recipients(channel.id(), &user.id, &recipients).await?;
+        if let Err(error) =
+            set_call_notification_recipients(channel.id(), &user.id, operation_id, &recipients)
+                .await
+        {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
     }
 
+    let identity = voice_participant_identity(
+        &user.id,
+        rtc_engine,
+        client_instance_id,
+        operation_id,
+        connection_epoch,
+    );
+    let token = match voice_client
+        .create_token_for_identity(&node, db, user, &identity, current_permissions, &channel)
+        .await
+    {
+        Ok(token) => token,
+        Err(error) => {
+            clear_failed_join_metadata(channel.id(), &user.id, operation_id).await;
+            return Err(error);
+        }
+    };
     Ok(VoiceJoinCredentials {
         channel_id: channel.id().to_string(),
         node,
         url: node_host,
-        token,
-        native_microphone,
-        native_screen,
-        native_camera,
+        credential: VoiceRtcCredential {
+            rtc_engine,
+            client_instance_id: client_instance_id.to_string(),
+            connection_epoch: connection_epoch.to_string(),
+            token,
+            identity,
+        },
     })
 }
 
@@ -184,7 +236,6 @@ const VOICE_CALL_MUTATION_RETRY_LIMIT: usize = 8;
 
 pub async fn remove_user_from_voice_channel_with_call_cleanup(
     db: &Database,
-    voice_client: &VoiceClient,
     amqp: &AMQP,
     channel: &UserVoiceChannel,
     user_id: &str,
@@ -193,7 +244,7 @@ pub async fn remove_user_from_voice_channel_with_call_cleanup(
         return Ok(());
     }
 
-    remove_user_from_voice_channel(voice_client, channel, user_id).await?;
+    remove_user_from_voice_channel(channel, user_id).await?;
 
     cleanup_removed_voice_member_call(db, amqp, channel).await?;
     remove_temporary_server_member_after_voice_disconnect(db, channel, user_id).await
@@ -201,13 +252,51 @@ pub async fn remove_user_from_voice_channel_with_call_cleanup(
 
 pub async fn cleanup_committed_voice_member_removal(
     db: &Database,
+    amqp: &AMQP,
+    session: &VoiceSession,
+) -> Result<()> {
+    cleanup_removed_voice_member_call(db, amqp, &session.channel).await
+}
+
+pub async fn reconcile_voice_channel_members_with_call_cleanup(
+    db: &Database,
     voice_client: &VoiceClient,
     amqp: &AMQP,
     channel: &UserVoiceChannel,
-    user_id: &str,
-) -> Result<()> {
-    remove_user_voice_transport(voice_client, channel, user_id).await?;
-    cleanup_removed_voice_member_call(db, amqp, channel).await
+) -> Result<Option<VoiceParticipantReconciliation>> {
+    let reconciliation = match get_voice_participant_reconciliation(voice_client, channel).await? {
+        VoiceParticipantReconciliationVerdict::Ready(reconciliation) => reconciliation,
+        VoiceParticipantReconciliationVerdict::DeadRoom { stale_members } => {
+            delete_channel_voice_state(channel, &stale_members).await?;
+            cleanup_removed_voice_member_call(db, amqp, channel).await?;
+            return Ok(Some(VoiceParticipantReconciliation {
+                livekit_members: Vec::new(),
+                stale_members,
+                stale_livekit_participants: Vec::new(),
+            }));
+        }
+        VoiceParticipantReconciliationVerdict::SkipTransient => return Ok(None),
+    };
+
+    for user_id in &reconciliation.stale_members {
+        remove_user_from_voice_channel_with_call_cleanup(db, amqp, channel, user_id).await?;
+    }
+
+    if !reconciliation.stale_livekit_participants.is_empty() {
+        if let Some(node) = get_channel_node(&channel.id).await? {
+            for identity in &reconciliation.stale_livekit_participants {
+                let _ = voice_client.remove_user(&node, identity, &channel.id).await;
+            }
+        }
+    }
+
+    Ok(Some(reconciliation))
+}
+
+async fn clear_failed_join_metadata(channel_id: &str, user_id: &str, operation_id: &str) {
+    clear_call_notification_recipients(channel_id, user_id, operation_id)
+        .await
+        .ok();
 }
 
 pub async fn remove_temporary_server_member_after_voice_disconnect(
@@ -352,6 +441,10 @@ pub async fn refresh_voice_credentials(
     voice_client: &VoiceClient,
     user: &User,
     channel_id: &str,
+    operation_id: &str,
+    rtc_engine: VoiceRtcEngine,
+    client_instance_id: &str,
+    connection_epoch: &str,
 ) -> Result<VoiceJoinCredentials> {
     if !voice_client.is_enabled() {
         return Err(create_error!(LiveKitUnavailable));
@@ -391,66 +484,29 @@ pub async fn refresh_voice_credentials(
         .ok_or_else(|| create_error!(UnknownNode))?
         .clone();
 
+    let identity = voice_participant_identity(
+        &user.id,
+        rtc_engine,
+        client_instance_id,
+        operation_id,
+        connection_epoch,
+    );
     let token = voice_client
-        .create_token_for_identity(&node, db, user, &user.id, current_permissions, &channel)
+        .create_token_for_identity(&node, db, user, &identity, current_permissions, &channel)
         .await?;
-    let native_microphone = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "microphone",
-        current_permissions,
-        &channel,
-    )
-    .await?;
-    let native_screen = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "screen",
-        current_permissions,
-        &channel,
-    )
-    .await?;
-    let native_camera = create_native_credentials(
-        voice_client,
-        &node,
-        db,
-        user,
-        "camera",
-        current_permissions,
-        &channel,
-    )
-    .await?;
 
     Ok(VoiceJoinCredentials {
         channel_id: channel.id().to_string(),
         node,
         url: node_host,
-        token,
-        native_microphone,
-        native_screen,
-        native_camera,
+        credential: VoiceRtcCredential {
+            rtc_engine,
+            client_instance_id: client_instance_id.to_string(),
+            connection_epoch: connection_epoch.to_string(),
+            token,
+            identity,
+        },
     })
-}
-
-async fn create_native_credentials(
-    voice_client: &VoiceClient,
-    node: &str,
-    db: &Database,
-    user: &User,
-    media_kind: &str,
-    current_permissions: PermissionValue,
-    channel: &Channel,
-) -> Result<NativeVoiceCredentials> {
-    let identity = desktop_native_voice_identity(&user.id, media_kind);
-    let token = voice_client
-        .create_token_for_identity(node, db, user, &identity, current_permissions, channel)
-        .await?;
-
-    Ok(NativeVoiceCredentials { token, identity })
 }
 
 fn should_reject_voice_join_for_capacity(
@@ -463,10 +519,43 @@ fn should_reject_voice_join_for_capacity(
     })
 }
 
+fn voice_session_for_join_request(
+    operation_id: &str,
+    user_id: &str,
+    channel: &UserVoiceChannel,
+    node: &str,
+    rtc_engine: VoiceRtcEngine,
+    client_instance_id: &str,
+    connection_epoch: &str,
+    self_mute: bool,
+    self_deaf: bool,
+    created_at: Timestamp,
+) -> Result<VoiceSession> {
+    Ok(VoiceSession::new_awaiting_join(VoiceSessionCreate {
+        operation_id: operation_id.to_string(),
+        user_id: user_id.to_string(),
+        channel: channel.clone(),
+        node: node.to_string(),
+        rtc_engine,
+        client_instance_id: client_instance_id.to_string(),
+        connection_epoch: connection_epoch.to_string(),
+        // Self-deafen also disables the microphone, matching Discord's
+        // user-facing semantics and keeping public voice state truthful.
+        self_mute: self_mute || self_deaf,
+        self_deaf,
+        created_at,
+        expires_at: created_at
+            .checked_add(Duration::seconds(VOICE_SESSION_TTL_SECONDS as i64))
+            .ok_or_else(|| create_error!(InternalError))?,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::should_reject_voice_join_for_capacity;
+    use super::{should_reject_voice_join_for_capacity, voice_session_for_join_request};
+    use crate::voice::{UserVoiceChannel, VoiceRtcEngine, VoiceSessionState};
     use crate::{DatabaseInfo, Member, Server, User};
+    use iso8601_timestamp::{Duration, Timestamp};
     use syrnike_models::v0::DataCreateServer;
 
     #[test]
@@ -534,5 +623,65 @@ mod tests {
         .expect("temporary member cleanup");
 
         assert!(db.fetch_member(&server.id, &user.id).await.is_err());
+    }
+
+    #[test]
+    fn voice_session_for_join_request_carries_fencing_and_preferences() {
+        let channel = UserVoiceChannel {
+            id: "voice-a".to_string(),
+            server_id: Some("server-a".to_string()),
+        };
+        let created_at = Timestamp::UNIX_EPOCH;
+
+        let session = voice_session_for_join_request(
+            "op-a",
+            "user-a",
+            &channel,
+            "node-a",
+            VoiceRtcEngine::Web,
+            "client-a",
+            "epoch-a",
+            true,
+            false,
+            created_at,
+        )
+        .expect("session");
+
+        assert_eq!(session.operation_id, "op-a");
+        assert_eq!(session.user_id, "user-a");
+        assert_eq!(session.channel, channel);
+        assert_eq!(session.node, "node-a");
+        assert_eq!(session.state, VoiceSessionState::AwaitingLivekitJoin);
+        assert_eq!(session.self_mute, true);
+        assert_eq!(session.self_deaf, false);
+        assert_eq!(
+            session.expires_at,
+            created_at.checked_add(Duration::seconds(120)).unwrap()
+        );
+    }
+
+    #[test]
+    fn voice_session_for_join_request_mutes_when_self_deafened() {
+        let channel = UserVoiceChannel {
+            id: "voice-a".to_string(),
+            server_id: None,
+        };
+
+        let session = voice_session_for_join_request(
+            "op-a",
+            "user-a",
+            &channel,
+            "node-a",
+            VoiceRtcEngine::Web,
+            "client-a",
+            "epoch-a",
+            false,
+            true,
+            Timestamp::UNIX_EPOCH,
+        )
+        .expect("session");
+
+        assert!(session.self_mute);
+        assert!(session.self_deaf);
     }
 }

@@ -9,7 +9,11 @@ import {
   Tray,
   type MenuItemConstructorOptions,
 } from 'electron'
-import type { DesktopLocalSettings, DesktopOverlaySettings } from '@syrnike13/platform'
+import type {
+  DesktopLocalSettings,
+  DesktopLocalSettingsPatch,
+  DesktopOverlaySettings,
+} from '@syrnike13/platform'
 import type { DesktopTrayVoiceState } from '@syrnike13/platform'
 
 import { installStdioPipeErrorHandlers } from './stdio-pipe-errors'
@@ -19,13 +23,14 @@ import {
 } from './auto-update'
 import { registerDesktopIpc } from './ipc'
 import { disposeHotkeys } from './hotkeys'
+import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
 import {
   configureDesktopOverlay,
   disposeDesktopOverlay,
 } from './overlay-manager'
 import {
-  disposePrewarmedNativeMediaEngineHelper,
-  prewarmNativeMediaEngineHelper,
+  disposeNativeMediaRuntime,
+  startNativeMediaRuntime,
 } from './native-media-engine'
 import { resolveWebDistRoot } from './paths'
 import { createMainWindow } from './window'
@@ -49,7 +54,16 @@ import {
   normalizeDesktopTrayVoiceState,
   TRAY_ICON_ASSET_BY_STATE,
 } from './tray-icon'
-import { DESKTOP_APP_USER_MODEL_ID } from './desktop-app-identity'
+import {
+  DESKTOP_APP_USER_MODEL_ID,
+  DESKTOP_RELEASE_METADATA,
+} from './desktop-app-identity'
+import {
+  initializeDesktopObservability,
+  pruneExpiredNativeCrashDumps,
+} from './desktop-observability'
+import { anonymousNativeMetricsReporter } from './native-runtime/anonymous-metrics'
+import { desktopVoiceService } from './voice/desktop-voice-service'
 
 installStdioPipeErrorHandlers()
 
@@ -60,8 +74,13 @@ let quitting = false
 let desktopIpcRegistered = false
 let desktopPreferences: DesktopPreferences = { ...DEFAULT_DESKTOP_PREFERENCES }
 let desktopLocalSettings: DesktopLocalSettings = desktopLocalSettingsDefaults()
+let desktopLocalSettingsWrite: Promise<void> = Promise.resolve()
 let creatingApp: Promise<void> | null = null
 let trayVoiceState: DesktopTrayVoiceState = 'default'
+let shutdownPromise: Promise<void> | null = null
+let shutdownComplete = false
+
+const APP_SHUTDOWN_TIMEOUT_MS = 5_000
 
 const isDev = !app.isPackaged
 
@@ -145,6 +164,28 @@ async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
 
 function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
   desktopLocalSettings = settings
+  desktopVoiceService.applyPreferences(settings.voice)
+  anonymousNativeMetricsReporter.configure({
+    enabled: settings.observability.anonymousNativeMetrics,
+    endpoint: app.isPackaged ? __DESKTOP_NATIVE_METRICS_ENDPOINT__ : '',
+  })
+}
+
+function patchDesktopLocalSettings(patch: DesktopLocalSettingsPatch) {
+  const operation = desktopLocalSettingsWrite.then(async () => {
+    const settings = await updateDesktopLocalSettings(
+      desktopLocalSettingsPath(),
+      patch,
+      desktopLocalSettingsDefaults(),
+    )
+    applyDesktopLocalSettings(settings)
+    return settings
+  })
+  desktopLocalSettingsWrite = operation.then(
+    () => undefined,
+    () => undefined,
+  )
+  return operation
 }
 
 async function ensureAppCreated() {
@@ -165,8 +206,10 @@ async function ensureAppCreated() {
 function reportStartupFailure(error: unknown) {
   console.error('[desktop] failed to start', error)
   const message =
-    error instanceof Error ? error.message : 'Не удалось запустить syrnike13.'
-  dialog.showErrorBox('syrnike13', message)
+    error instanceof Error
+      ? error.message
+      : `Не удалось запустить ${DESKTOP_RELEASE_METADATA.displayName}.`
+  dialog.showErrorBox(DESKTOP_RELEASE_METADATA.displayName, message)
   quitting = true
   app.quit()
 }
@@ -220,7 +263,7 @@ function updateTrayMenu() {
 
   const template: MenuItemConstructorOptions[] = [
     {
-      label: 'Открыть syrnike13',
+      label: `Открыть ${DESKTOP_RELEASE_METADATA.displayName}`,
       click: showMainWindow,
     },
     {
@@ -253,7 +296,7 @@ function updateTrayMenu() {
 function setupTray() {
   if (tray) return
   tray = new Tray(trayIcon())
-  tray.setToolTip('syrnike13')
+  tray.setToolTip(DESKTOP_RELEASE_METADATA.displayName)
   tray.on('click', showMainWindow)
   updateTrayMenu()
 }
@@ -271,7 +314,7 @@ async function createApp() {
       setCloseToTray,
       setOpenAtLogin,
       setTrayVoiceState,
-      onLocalSettingsUpdated: applyDesktopLocalSettings,
+      updateLocalSettings: patchDesktopLocalSettings,
       showWindow: showMainWindow,
       localSettingsPath: desktopLocalSettingsPath(),
       localSettingsDefaults: desktopLocalSettingsDefaults(),
@@ -319,6 +362,46 @@ function setupSingleInstance() {
   return true
 }
 
+async function disposeAppResources() {
+  const server = embeddedServer
+  embeddedServer = null
+  await desktopVoiceService.dispose()
+  await Promise.allSettled([
+    Promise.resolve().then(() => disposeDesktopAutoUpdate()),
+    Promise.resolve().then(async () => {
+      disposeHotkeys()
+      disposeDesktopOverlay()
+      await hooksRuntimeController.dispose()
+    }),
+    Promise.resolve().then(() => disposeNativeMediaRuntime()),
+    Promise.resolve().then(() => server?.close()),
+    Promise.resolve().then(() =>
+      anonymousNativeMetricsReporter.flush().finally(() => {
+        anonymousNativeMetricsReporter.dispose()
+      }),
+    ),
+    Promise.resolve().then(() => {
+      tray?.destroy()
+      tray = null
+    }),
+  ])
+}
+
+async function disposeAppResourcesWithinDeadline() {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  try {
+    await Promise.race([
+      disposeAppResources(),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, APP_SHUTDOWN_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+    anonymousNativeMetricsReporter.dispose()
+  }
+}
+
 configureChromium()
 
 if (setupSingleInstance()) {
@@ -327,7 +410,7 @@ if (setupSingleInstance()) {
     .find((value) => value !== null)
 
   if (app.isPackaged) {
-    app.setAsDefaultProtocolClient('syrnike13')
+    app.setAsDefaultProtocolClient(DESKTOP_RELEASE_METADATA.protocolScheme)
   }
 
   app.on('open-url', (event, url) => {
@@ -343,8 +426,20 @@ if (setupSingleInstance()) {
       desktopLocalSettingsPath(),
       desktopLocalSettingsDefaults(),
     )
+    desktopVoiceService.setPreferencePersistence(async (voice) => {
+      await patchDesktopLocalSettings({ voice })
+    })
+    applyDesktopLocalSettings(desktopLocalSettings)
+    initializeDesktopObservability({
+      nativeCrashReportsEnabled:
+        desktopLocalSettings.observability.nativeCrashReports,
+    })
+    void pruneExpiredNativeCrashDumps().catch(() => {
+      console.warn('[desktop] failed to prune expired native crash dumps')
+    })
     applyLoginItemSettings(desktopPreferences.openAtLogin)
-    prewarmNativeMediaEngineHelper()
+    startNativeMediaRuntime()
+    desktopVoiceService.startSystemLifecycle()
     if (initialDeepLinkRoute) {
       void navigateToDeepLink(initialDeepLinkRoute).catch(reportStartupFailure)
     } else {
@@ -365,14 +460,15 @@ if (setupSingleInstance()) {
     }
   })
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
     quitting = true
-    disposeDesktopAutoUpdate()
-    disposeHotkeys()
-    disposeDesktopOverlay()
-    disposePrewarmedNativeMediaEngineHelper()
-    tray?.destroy()
-    tray = null
-    void embeddedServer?.close()
+    if (shutdownComplete) return
+    event.preventDefault()
+    if (shutdownPromise) return
+    shutdownPromise = disposeAppResourcesWithinDeadline()
+    void shutdownPromise.finally(() => {
+      shutdownComplete = true
+      app.quit()
+    })
   })
 }

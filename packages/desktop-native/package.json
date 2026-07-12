@@ -1,0 +1,27 @@
+{
+  "name": "@syrnike13/desktop-native",
+  "version": "0.5.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs --config Release",
+    "build:debug": "node scripts/build.mjs --config Debug --no-stage",
+    "build:asan": "node scripts/build.mjs --config Debug --no-stage --asan",
+    "smoke:electron": "pnpm --filter @syrnike13/desktop exec electron ../../packages/desktop-native/scripts/smoke-utility-host.cjs",
+    "test:smoke-harness": "node --test scripts/smoke-utility-host.test.cjs",
+    "test:native": "ctest --test-dir build -C Release --output-on-failure && pnpm run test:smoke-harness",
+    "test:native:debug": "ctest --test-dir build -C Debug --output-on-failure && pnpm run test:smoke-harness",
+    "verify": "node scripts/verify-artifacts.mjs"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.9.0"
+  },
+  "devDependencies": {
+    "cmake-js": "^8.0.0"
+  },
+  "binary": {
+    "napi_versions": [
+      8
+    ]
+  }
+}

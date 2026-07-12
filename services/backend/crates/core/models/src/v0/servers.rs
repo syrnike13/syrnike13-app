@@ -1,4 +1,4 @@
-use super::{Channel, File, RE_COLOUR};
+use super::{Channel, File, Member, RE_COLOUR};
 
 use std::collections::HashMap;
 use syrnike_permissions::{Override, OverrideField};
@@ -207,6 +207,8 @@ auto_derived!(
     pub struct CreateServerLegacyResponse {
         /// Server object
         pub server: Server,
+        /// Member record for the user who created the server
+        pub member: Member,
         /// Default channels
         pub channels: Vec<Channel>,
     }

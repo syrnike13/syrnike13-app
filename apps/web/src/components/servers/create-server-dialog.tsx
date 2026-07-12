@@ -6,9 +6,11 @@ import { toast } from 'sonner'
 import {
   railIconButtonClass,
   railIconIdleClass,
+  railIconSquircleProps,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 import { Button } from '#/components/ui/button'
+import { Squircle } from '#/components/ui/squircle'
 import {
   Dialog,
   DialogContent,
@@ -56,8 +58,9 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
 
     setSaving(true)
     try {
-      const { server, channels } = await createServer(token, { name: trimmed })
+      const { server, member, channels } = await createServer(token, { name: trimmed })
       syncStore.upsertServer(server)
+      syncStore.upsertMembers([member])
       for (const channel of channels) {
         syncStore.upsertChannel(channel)
       }
@@ -98,6 +101,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
       const response = await joinInvite(token, code)
       if (isServerInviteJoin(response)) {
         syncStore.upsertServer(response.server)
+        syncStore.upsertMembers([response.member])
         for (const channel of response.channels) {
           syncStore.upsertChannel(channel)
         }
@@ -134,15 +138,17 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className={cn(railIconButtonClass, railIconIdleClass)}
-            title="Создать сервер"
-          >
-            <PlusIcon />
-          </Button>
+          <Squircle asChild {...railIconSquircleProps}>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className={cn(railIconButtonClass, railIconIdleClass)}
+              title="Создать сервер"
+            >
+              <PlusIcon />
+            </Button>
+          </Squircle>
         )}
       </DialogTrigger>
       <DialogContent>

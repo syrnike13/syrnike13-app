@@ -3,7 +3,8 @@ use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::reference::Reference,
     voice::{
-        get_user_voice_channels, remove_user_from_voice_channel_with_call_cleanup, VoiceClient,
+        cancel_current_pending_voice_join, get_user_voice_channels,
+        remove_user_from_voice_channel_with_call_cleanup,
     },
     Database, User, AMQP,
 };
@@ -16,7 +17,6 @@ use syrnike_result::{create_error, Result};
 #[delete("/<bot_id>")]
 pub async fn delete_bot(
     db: &State<Database>,
-    voice_client: &State<VoiceClient>,
     amqp: &State<AMQP>,
     user: User,
     bot_id: Reference<'_>,
@@ -29,9 +29,9 @@ pub async fn delete_bot(
     bot.delete(db).await?;
 
     for channel in get_user_voice_channels(&bot.id).await? {
-        remove_user_from_voice_channel_with_call_cleanup(db, voice_client, amqp, &channel, &bot.id)
-            .await?;
+        remove_user_from_voice_channel_with_call_cleanup(db, amqp, &channel, &bot.id).await?;
     }
+    cancel_current_pending_voice_join(&bot.id).await?;
 
     Ok(EmptyResponse)
 }

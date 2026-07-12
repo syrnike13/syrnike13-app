@@ -607,35 +607,35 @@ async fn worker(
                     }
                     ClientMessage::VoiceStateUpdate {
                         nonce,
-                        operation_id,
                         channel_id,
                         self_mute,
                         self_deaf,
                         node,
                         recipients,
                         suppress_call_notifications,
-                        refresh_credentials,
+                        request,
                     } => {
                         let ack_channel_id = channel_id.clone();
-                        let error_request = GatewayErrorRequest {
+                        let mut error_request = GatewayErrorRequest {
                             kind: GatewayRequestKind::VoiceStateUpdate,
                             nonce: nonce.clone(),
-                            operation_id: operation_id.clone(),
+                            operation_id: request.operation_id().map(ToString::to_string),
                             channel_id: ack_channel_id.clone(),
+                            authoritative_operation_id: None,
+                            authoritative_channel_id: None,
                         };
                         match crate::voice::handle_voice_state_update(
                             db,
                             crate::voice_client::get(),
                             &amqp,
                             &user,
-                            operation_id,
+                            request,
                             channel_id,
                             self_mute,
                             self_deaf,
                             node,
                             recipients,
                             suppress_call_notifications.unwrap_or(false),
-                            refresh_credentials.unwrap_or(false),
                         )
                         .await
                         {
@@ -661,6 +661,13 @@ async fn worker(
                                 .await;
                             }
                             Err(error) => {
+                                if let Ok(Some((operation_id, channel_id))) =
+                                    syrnike_database::voice::get_current_voice_authority(&user.id)
+                                        .await
+                                {
+                                    error_request.authoritative_operation_id = Some(operation_id);
+                                    error_request.authoritative_channel_id = Some(channel_id);
+                                }
                                 crate::voice::send_voice_error(
                                     write,
                                     config,

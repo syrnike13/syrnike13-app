@@ -54,8 +54,8 @@ export function PermissionStateButton({
       className={cn(
         'flex size-8 items-center justify-center rounded-md border text-xs font-semibold transition-colors',
         state === 'allow' &&
-          'border-emerald-500/40 bg-emerald-500/15 text-emerald-400',
-        state === 'deny' && 'border-red-500/40 bg-red-500/15 text-red-400',
+          'border-chart-3/40 bg-chart-3/15 text-chart-3',
+        state === 'deny' && 'border-destructive/40 bg-destructive/15 text-destructive',
         state === 'neutral' && 'border-border text-muted-foreground',
         isDisabled && 'cursor-not-allowed opacity-50',
       )}

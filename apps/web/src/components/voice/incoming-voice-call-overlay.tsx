@@ -13,7 +13,7 @@ import {
 import { declineDirectMessageCall } from '#/features/api/channels-api'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 
 type IncomingVoiceCallOverlayProps = {
   activeChannelId?: string
@@ -23,7 +23,7 @@ export function IncomingVoiceCallOverlay({
   activeChannelId,
 }: IncomingVoiceCallOverlayProps) {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const currentUserId = auth.user?._id
@@ -125,7 +125,7 @@ export function IncomingVoiceCallOverlay({
         <Button
           type="button"
           size="sm"
-          className="flex-1 bg-emerald-600 text-white hover:bg-emerald-600/90"
+          className="flex-1 bg-chart-3 text-primary-foreground hover:bg-chart-3/90"
           onClick={() => {
             void voice
               .join(call.channelId)

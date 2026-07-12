@@ -22,7 +22,7 @@ export function RtcDebugMetricChart<T>({
     return (
       <div
         className={cn(
-          'h-20 border-t border-[#292b31] bg-[#1f2025]/35',
+          'h-20 border-t border-border bg-muted/35',
           className,
         )}
       >
@@ -45,7 +45,7 @@ export function RtcDebugMetricChart<T>({
   return (
     <div
       className={cn(
-        'h-20 border-t border-[#292b31] bg-[#1f2025]/35',
+        'h-20 border-t border-border bg-muted/35',
         className,
       )}
     >
@@ -56,7 +56,7 @@ export function RtcDebugMetricChart<T>({
           </pattern>
         </defs>
         <rect width="100" height="100" fill={`url(#${gridPatternId})`} />
-        <path d={path} fill="none" stroke="#5865f2" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+        <path d={path} fill="none" stroke="var(--primary)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
       </svg>
     </div>
   )

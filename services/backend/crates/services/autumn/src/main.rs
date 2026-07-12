@@ -4,6 +4,7 @@ use axum::{middleware::from_fn_with_state, Router};
 
 use axum_macros::FromRef;
 use syrnike_database::{Database, DatabaseInfo};
+use syrnike_files::{EncryptionKey, S3Storage};
 use syrnike_ratelimits::axum as ratelimiter;
 use tokio::net::TcpListener;
 use utoipa::{
@@ -23,6 +24,7 @@ mod utils;
 #[derive(FromRef, Clone)]
 struct AppState {
     database: Database,
+    storage: S3Storage<EncryptionKey>,
     ratelimit_storage: ratelimiter::RatelimitStorage,
 }
 
@@ -79,10 +81,12 @@ async fn main() -> Result<(), std::io::Error> {
 
     // Connect to the database
     let db = DatabaseInfo::Auto.connect().await.unwrap();
+    let storage = S3Storage::from_config(EncryptionKey::from_config().await).await;
     let ratelimits = ratelimiter::RatelimitStorage::new(ratelimits::AutumnRatelimits);
 
     let state = AppState {
         database: db,
+        storage,
         ratelimit_storage: ratelimits,
     };
 

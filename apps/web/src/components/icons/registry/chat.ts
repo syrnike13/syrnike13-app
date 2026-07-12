@@ -1,6 +1,4 @@
 import {
-  RiChat1Line,
-  RiChat3Line,
   RiCheckDoubleLine,
   RiEmotionAddLine,
   RiEmotionHappyLine,
@@ -14,6 +12,7 @@ import {
   RiUnpinLine,
 } from '@remixicon/react'
 
+import { iconifyIcon } from '#/components/icons/adapters/iconify'
 import { defineIcon } from '#/components/icons/define-icon'
 
 export const ReplyIcon = defineIcon(RiReplyLine, {
@@ -56,14 +55,16 @@ export const SmileIcon = defineIcon(RiEmotionHappyLine, {
   name: 'RiEmotionHappyLine',
 })
 
-export const MessageCircleIcon = defineIcon(RiChat3Line, {
-  pack: 'remixicon',
-  name: 'RiChat3Line',
+const MajesticonsChatIcon = iconifyIcon('majesticons:chat')
+
+export const MessageCircleIcon = defineIcon(MajesticonsChatIcon, {
+  pack: 'iconify',
+  name: 'majesticons:chat',
 })
 
-export const MessageSquareIcon = defineIcon(RiChat1Line, {
-  pack: 'remixicon',
-  name: 'RiChat1Line',
+export const MessageSquareIcon = defineIcon(MajesticonsChatIcon, {
+  pack: 'iconify',
+  name: 'majesticons:chat',
 })
 
 export const MoreHorizontalIcon = defineIcon(RiMoreLine, {

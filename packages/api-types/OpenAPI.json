@@ -7554,6 +7554,8 @@
           "message_attachments",
           "message_length",
           "outgoing_friend_requests",
+          "screen_share_bitrate",
+          "screen_share_resolution",
           "servers",
           "video",
           "video_aspect_ratio",
@@ -7614,6 +7616,21 @@
             },
             "maxItems": 2,
             "minItems": 2
+          },
+          "screen_share_resolution": {
+            "description": "max screen share resolution (width, height)",
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "maxItems": 2,
+            "minItems": 2
+          },
+          "screen_share_bitrate": {
+            "description": "max screen share video bitrate",
+            "type": "integer",
+            "format": "int64"
           },
           "file_upload_size_limits": {
             "type": "object",
@@ -11880,6 +11897,7 @@
         "type": "object",
         "required": [
           "channels",
+          "member",
           "server"
         ],
         "properties": {
@@ -11888,6 +11906,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/Server"
+              }
+            ]
+          },
+          "member": {
+            "description": "Member record for the user who created the server",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Member"
               }
             ]
           },
@@ -13031,6 +13057,7 @@
             "type": "object",
             "required": [
               "channels",
+              "member",
               "server",
               "type"
             ],
@@ -13047,6 +13074,14 @@
                 "items": {
                   "$ref": "#/components/schemas/Channel"
                 }
+              },
+              "member": {
+                "description": "Member record for the joining user",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Member"
+                  }
+                ]
               },
               "server": {
                 "description": "Server we are joining",

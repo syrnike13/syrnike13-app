@@ -7,6 +7,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from '#/components/ui/avatar'
+import type { NotificationBadgeState } from '#/features/notifications/notification-selectors'
 import {
   presenceRingColorVar,
   resolvePresenceBadgeLayoutForAvatar,
@@ -26,6 +27,58 @@ function initials(name: string) {
 
 export type UserAvatarAnimationMode = 'never' | 'hover' | 'always' | 'speaking'
 
+type AvatarCornerBadgeProps = {
+  className?: string
+  fallbackClassName?: string
+  ringClassName?: string
+}
+
+type AvatarNotificationBadgeProps = AvatarCornerBadgeProps & {
+  badge: NotificationBadgeState
+  max?: number
+}
+
+export function AvatarNotificationBadge({
+  badge,
+  className,
+  fallbackClassName,
+  ringClassName = 'border-card',
+  max = 99,
+}: AvatarNotificationBadgeProps) {
+  if (!badge.hasUnread && !badge.urgent) return null
+
+  const layout = resolvePresenceBadgeLayoutForAvatar(className, fallbackClassName)
+  const countLabel =
+    badge.count > 0 ? `${badge.count} уведомлений` : 'Есть уведомления'
+  const display = badge.count > max ? `${max}+` : String(badge.count || '!')
+
+  return (
+    <span
+      aria-label={countLabel}
+      title={countLabel}
+      data-slot="avatar-badge"
+      className={cn(
+        'absolute right-0.5 bottom-0.5 z-10 grid place-items-center rounded-full select-none',
+        'border-0 font-bold tabular-nums',
+        layout.offsetClass,
+        badge.count > 9 ? 'min-w-4 px-0.5' : 'aspect-square',
+      )}
+      style={{
+        width: badge.count > 9 ? undefined : layout.sizePx,
+        minWidth: layout.sizePx,
+        height: layout.sizePx,
+        fontSize: Math.round(layout.sizePx * 0.62),
+        lineHeight: 1,
+        backgroundColor: 'var(--destructive)',
+        color: 'var(--destructive-foreground)',
+        boxShadow: `0 0 0 ${layout.ringPx}px ${presenceRingColorVar(ringClassName)}`,
+      }}
+    >
+      <span className="block translate-y-px leading-none">{display}</span>
+    </span>
+  )
+}
+
 type UserAvatarProps = {
   user?: User | null
   className?: string
@@ -33,10 +86,13 @@ type UserAvatarProps = {
   /** Прямой URL изображения (превью загрузки, анимированный GIF и т.п.) */
   imageSrc?: string | null
   showPresence?: boolean
+  notificationBadge?: NotificationBadgeState
   animated?: UserAvatarAnimationMode
   speaking?: boolean
   /** Кольцо вокруг точки статуса (фон под аватаром) */
   presenceRingClassName?: string
+  /** Кольцо вокруг бейджа уведомлений */
+  notificationRingClassName?: string
 }
 
 export function UserAvatar({
@@ -45,14 +101,20 @@ export function UserAvatar({
   fallbackClassName,
   imageSrc,
   showPresence = true,
+  notificationBadge,
   animated = 'hover',
   speaking = false,
   presenceRingClassName = 'border-card',
+  notificationRingClassName = 'border-card',
 }: UserAvatarProps) {
   const [hovered, setHovered] = useState(false)
   const [hoverAnimationRequested, setHoverAnimationRequested] = useState(false)
   const name = user?.display_name ?? user?.username ?? '?'
-  const showDot = showPresence && user && user.relationship !== 'Blocked'
+  const hasNotificationBadge = Boolean(
+    notificationBadge?.hasUnread || notificationBadge?.urgent,
+  )
+  const showDot =
+    showPresence && user && user.relationship !== 'Blocked' && !hasNotificationBadge
   const useImageSrcOverride = imageSrc != null
 
   const staticAvatarSrc = useImageSrcOverride
@@ -92,7 +154,10 @@ export function UserAvatar({
 
   return (
     <div
-      className="relative shrink-0"
+      className={cn(
+        'relative shrink-0',
+        hasNotificationBadge && 'overflow-visible',
+      )}
       onPointerEnter={
         animated === 'hover' && !useImageSrcOverride
           ? startHoverAnimation
@@ -153,6 +218,14 @@ export function UserAvatar({
             boxShadow: `0 0 0 ${presenceBadge.ringPx}px ${presenceRingColorVar(presenceRingClassName)}`,
           }}
           title={presenceDotTitle(user)}
+        />
+      ) : null}
+      {notificationBadge ? (
+        <AvatarNotificationBadge
+          badge={notificationBadge}
+          className={className}
+          fallbackClassName={fallbackClassName}
+          ringClassName={notificationRingClassName}
         />
       ) : null}
     </div>

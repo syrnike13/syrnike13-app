@@ -9,7 +9,7 @@ export type PlatformCapabilities = {
   nativeNotifications: boolean
   /** Улучшенный picker / loopback для демки экрана. */
   advancedScreenShare: boolean
-  /** Hybrid WGC/DXGI/GDI захват через desktop sidecar (Windows). */
+  /** Hybrid WGC/DXGI/GDI захват через desktop native runtime (Windows). */
   nativeScreenShare: boolean
   /** Прозрачный voice overlay поверх windowed/borderless игр (Windows). */
   desktopOverlay: boolean

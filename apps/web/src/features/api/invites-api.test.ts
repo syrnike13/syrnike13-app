@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { deleteInvite } from '#/features/api/invites-api'
+import {
+  deleteInvite,
+  isServerInviteJoin,
+} from '#/features/api/invites-api'
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
@@ -24,5 +27,22 @@ describe('invites api', () => {
       token: 'session-token',
       body: { reason: 'rotated link' },
     })
+  })
+})
+
+describe('isServerInviteJoin', () => {
+  it('rejects server invite join payloads without required server data', () => {
+    expect(isServerInviteJoin({ type: 'Server' } as never)).toBe(false)
+  })
+
+  it('accepts server invite join payloads with member and channels', () => {
+    expect(
+      isServerInviteJoin({
+        type: 'Server',
+        server: {},
+        member: {},
+        channels: [],
+      } as never),
+    ).toBe(true)
   })
 })

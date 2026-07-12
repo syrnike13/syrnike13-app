@@ -2,16 +2,17 @@ use std::collections::{HashMap, HashSet};
 
 use futures::future::join_all;
 use syrnike_database::{
+    Channel, Database, Member, Presence, RelationshipStatus, Role,
     events::client::{EventV1, ReadyPayloadFields, VoiceCall, VoiceCallPhase},
     util::permissions::DatabasePermissionQuery,
     voice::{
-        call_lifecycle::{get_channel_voice_call, VoiceCallPhase as StoredVoiceCallPhase},
-        get_channel_voice_state, UserVoiceChannel,
+        UserVoiceChannel,
+        call_lifecycle::{VoiceCallPhase as StoredVoiceCallPhase, get_channel_voice_call},
+        get_channel_voice_state,
     },
-    Channel, Database, Member, MemberCompositeKey, Presence, RelationshipStatus, Role,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{calculate_channel_permissions, ChannelPermission};
+use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
 use syrnike_presence::filter_online;
 use syrnike_result::Result;
 
@@ -96,7 +97,9 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
-    use syrnike_database::{DatabaseInfo, PartialRole, Role, Server, User};
+    use syrnike_database::{
+        DatabaseInfo, MemberCompositeKey, PartialRole, Role, Server, User,
+    };
     use syrnike_permissions::OverrideField;
 
     use super::*;
@@ -843,6 +846,7 @@ impl State {
                 id,
                 server,
                 channels,
+                member,
                 emojis: _,
                 voice_states: _,
             } => {
@@ -853,14 +857,7 @@ impl State {
                 }
 
                 self.cache.servers.insert(id.clone(), server.clone().into());
-                let member = Member {
-                    id: MemberCompositeKey {
-                        server: server.id.clone(),
-                        user: self.cache.user_id.clone(),
-                    },
-                    ..Default::default()
-                };
-                self.cache.members.insert(id.clone(), member);
+                self.cache.members.insert(id.clone(), member.clone().into());
 
                 for channel in channels {
                     self.cache

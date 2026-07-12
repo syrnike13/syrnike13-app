@@ -34,7 +34,7 @@ import {
 } from '#/features/voice/voice-preference-store'
 import { isAv1ScreenShareSupported } from '#/features/voice/voice-capture'
 import { useMicPreviewLoopback } from '#/features/voice/use-mic-preview-loopback'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceGateMeter } from '#/features/voice/use-voice-gate-meter'
 import type { VoiceGateMetrics } from '#/features/voice/voice-gate-stage'
 import {
@@ -145,7 +145,7 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
   const { capabilities } = usePlatform()
-  const { setSelfMonitoringActive } = useVoice()
+  const { setSelfMonitoringActive } = useVoiceMedia()
   const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
   const outputDevices = useMediaDevices('audiooutput')

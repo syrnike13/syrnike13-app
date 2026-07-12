@@ -20,6 +20,7 @@ export const env = createEnv({
   client: {
     VITE_APP_TITLE: z.string().min(1).default('syrnike13'),
     VITE_APP_VERSION: z.string().min(1).default(APP_VERSION),
+    VITE_RELEASE_CHANNEL: z.enum(['stable', 'nightly']).default('stable'),
     VITE_API_URL: url('https://syrnike13.ru/api'),
     VITE_WS_URL: z
       .string()

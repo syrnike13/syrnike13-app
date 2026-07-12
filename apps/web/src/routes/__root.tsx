@@ -10,10 +10,13 @@ import {
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
 import { ThemeColorMeta } from '#/components/appearance/theme-color-meta'
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bootstrap'
+import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
 import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
+import { SquircleNoScript } from '#/components/ui/squircle'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
+import { AgentationDevtools } from '#/integrations/agentation-devtools'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 
 import appCss from '../styles.css?url'
@@ -136,6 +139,7 @@ function RootComponent() {
         <ThemeColorMeta />
         <NativeScrollbarEnhancer />
         <Outlet />
+        <AgentationDevtools />
       </AppearanceProvider>
     )
   }
@@ -149,6 +153,7 @@ function RootComponent() {
             <NativeScrollbarEnhancer />
             <Outlet />
             <Toaster richColors closeButton />
+            <AgentationDevtools />
           </SyncProvider>
         </AuthProvider>
       </AppearanceProvider>
@@ -161,10 +166,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="ru" suppressHydrationWarning>
       <head>
         <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
+        <style dangerouslySetInnerHTML={{ __html: getDefaultThemeCss() }} />
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
+        <SquircleNoScript />
         {children}
         <Scripts />
       </body>

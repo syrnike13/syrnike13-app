@@ -1,7 +1,10 @@
 import type { Room } from 'livekit-client'
 
 import type { ScreenShareQualityName } from '#/features/voice/voice-preference-types'
-import { screenShareCaptureOptions } from '#/features/voice/voice-capture'
+import {
+  screenShareCaptureOptions,
+  type ScreenShareCaptureLimits,
+} from '#/features/voice/voice-capture'
 import { getVoicePeerConnectionEntries } from '#/features/voice/voice-ping'
 
 type ScreenShareEncoding = {
@@ -10,7 +13,7 @@ type ScreenShareEncoding = {
 }
 
 function screenShareBitrateFloor(maxBitrate: number) {
-  return Math.round(maxBitrate * 0.5)
+  return maxBitrate
 }
 
 export async function clampScreenShareCaptureResolution(
@@ -114,8 +117,9 @@ export async function tuneScreenShareAfterPublish(
   room: Room,
   mediaStreamTrack: MediaStreamTrack,
   quality: ScreenShareQualityName,
+  limits?: ScreenShareCaptureLimits,
 ) {
-  const capture = screenShareCaptureOptions(quality)
+  const capture = screenShareCaptureOptions(quality, limits)
   const resolution = capture.capture.resolution
 
   await clampScreenShareCaptureResolution(mediaStreamTrack, {

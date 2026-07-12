@@ -658,6 +658,13 @@ export interface components {
       video_resolution: number[];
       /** @description min/max aspect ratios */
       video_aspect_ratio: number[];
+      /** @description max screen share resolution (width, height) */
+      screen_share_resolution: number[];
+      /**
+       * Format: int64
+       * @description max screen share video bitrate
+       */
+      screen_share_bitrate: number;
       file_upload_size_limits: { [key: string]: number };
     };
     /** Legal links */
@@ -2101,6 +2108,8 @@ export interface components {
     CreateServerLegacyResponse: {
       /** @description Server object */
       server: components["schemas"]["Server"];
+      /** @description Member record for the user who created the server */
+      member: components["schemas"]["Member"];
       /** @description Default channels */
       channels: components["schemas"]["Channel"][];
     };
@@ -2548,6 +2557,8 @@ export interface components {
           type: "Server";
           /** @description Channels in the server */
           channels: components["schemas"]["Channel"][];
+          /** @description Member record for the joining user */
+          member: components["schemas"]["Member"];
           /** @description Server we are joining */
           server: components["schemas"]["Server"];
         }

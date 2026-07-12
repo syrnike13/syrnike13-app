@@ -122,15 +122,15 @@ export function UnsavedChangesBar({
     >
       <div
         className={cn(
-          'pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-white/8 bg-[#2b2d31] px-4 py-3 text-foreground shadow-md',
+          'pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-white/8 bg-muted px-4 py-3 text-foreground shadow-md',
           (showSaveAck || showResetAck) && 'justify-center',
           showResetAck && 'profile-unsaved-reset-panel',
         )}
       >
         {showSaveAck ? (
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <span className="profile-unsaved-check flex size-6 items-center justify-center rounded-full bg-[#23a559]/20">
-              <CheckIcon className="size-4 text-[#23a559]" />
+            <span className="profile-unsaved-check flex size-6 items-center justify-center rounded-full bg-chart-3/20">
+              <CheckIcon className="size-4 text-chart-3" />
             </span>
             Изменения сохранены
           </div>
@@ -158,7 +158,7 @@ export function UnsavedChangesBar({
               <button
                 type="button"
                 disabled={saving}
-                className="inline-flex min-w-[7.5rem] items-center justify-center gap-1.5 rounded bg-[#248046] px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[#1a6334] disabled:opacity-70"
+                className="inline-flex min-w-[7.5rem] items-center justify-center gap-1.5 rounded bg-chart-3 px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-chart-3/90 disabled:opacity-70"
                 onClick={() => void handleSave()}
               >
                 {saving ? (

@@ -72,8 +72,9 @@ export function screenShareAudioPublishOptions(
 export function screenShareCombinedPublishOptions(
   quality: ScreenShareQualityName,
   audioBitrateKbps = DEFAULT_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
+  limits?: ScreenShareCaptureLimits,
 ): TrackPublishOptions {
-  const capture = screenShareCaptureOptions(quality)
+  const capture = screenShareCaptureOptions(quality, limits)
   return {
     ...capture.publish,
     forceStereo: true,
@@ -122,6 +123,20 @@ export function createVoiceRoomOptions(): RoomOptions {
 }
 
 type RtpVideoCodec = 'vp8' | 'h264' | 'vp9' | 'av1'
+
+export type ScreenShareCaptureLimits = {
+  maxWidth?: number
+  maxHeight?: number
+  maxPixels?: number
+  maxFramerate?: number
+  maxBitrate?: number
+}
+
+type ScreenShareResolution = {
+  width: number
+  height: number
+  frameRate?: number
+}
 
 const AUTO_CODEC_PRIORITY = {
   low: ['vp9', 'h264', 'vp8'],
@@ -176,7 +191,72 @@ function selectScreenShareCodec(
   )
 }
 
-export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
+function finitePositiveNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined
+}
+
+function evenFloor(value: number) {
+  return Math.max(2, Math.floor(value / 2) * 2)
+}
+
+export function fitScreenShareResolutionToLimits(
+  resolution: ScreenShareResolution,
+  limits?: ScreenShareCaptureLimits,
+): ScreenShareResolution {
+  if (!limits) return resolution
+
+  const maxWidth = finitePositiveNumber(limits.maxWidth)
+  const maxHeight = finitePositiveNumber(limits.maxHeight)
+  const maxPixels = finitePositiveNumber(limits.maxPixels)
+
+  let width = resolution.width
+  let height = resolution.height
+
+  if (maxWidth != null && width > maxWidth) {
+    const scale = maxWidth / width
+    width *= scale
+    height *= scale
+  }
+
+  if (maxHeight != null && height > maxHeight) {
+    const scale = maxHeight / height
+    width *= scale
+    height *= scale
+  }
+
+  if (maxPixels != null && width * height > maxPixels) {
+    const scale = Math.sqrt(maxPixels / (width * height))
+    width *= scale
+    height *= scale
+  }
+
+  const frameRateLimit = finitePositiveNumber(limits.maxFramerate)
+  const frameRate =
+    resolution.frameRate != null && frameRateLimit != null
+      ? Math.min(resolution.frameRate, frameRateLimit)
+      : resolution.frameRate
+
+  return {
+    width: evenFloor(width),
+    height: evenFloor(height),
+    frameRate,
+  }
+}
+
+function fitScreenShareBitrateToLimits(
+  maxBitrate: number,
+  limits?: ScreenShareCaptureLimits,
+) {
+  const limit = finitePositiveNumber(limits?.maxBitrate)
+  return limit == null ? maxBitrate : Math.min(maxBitrate, limit)
+}
+
+export function screenShareCaptureOptions(
+  quality: ScreenShareQualityName,
+  limits?: ScreenShareCaptureLimits,
+) {
   const prefs = readVoicePreferences()
   const codec = selectScreenShareCodec(quality, prefs.screenShareCodec)
   const publish = (screenShareEncoding: VideoEncoding): TrackPublishOptions => ({
@@ -190,12 +270,15 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
     case 'high':
       return {
         capture: {
-          resolution: ScreenSharePresets.h1080fps30.resolution,
+          resolution: fitScreenShareResolutionToLimits(
+            ScreenSharePresets.h1080fps30.resolution,
+            limits,
+          ),
           audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'motion' as const,
         },
         publish: publish({
-          maxBitrate: 4_000_000,
+          maxBitrate: fitScreenShareBitrateToLimits(8_000_000, limits),
           maxFramerate: 30,
           priority: 'high',
         }),
@@ -203,15 +286,18 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
     case 'high60':
       return {
         capture: {
-          resolution: {
-            ...ScreenSharePresets.h1080fps30.resolution,
-            frameRate: 60,
-          },
+          resolution: fitScreenShareResolutionToLimits(
+            {
+              ...ScreenSharePresets.h1080fps30.resolution,
+              frameRate: 60,
+            },
+            limits,
+          ),
           audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'motion' as const,
         },
         publish: publish({
-          maxBitrate: 8_000_000,
+          maxBitrate: fitScreenShareBitrateToLimits(8_000_000, limits),
           maxFramerate: 60,
           priority: 'high',
         }),
@@ -219,15 +305,18 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
     case 'text':
       return {
         capture: {
-          resolution: {
-            ...ScreenSharePresets.h1080fps30.resolution,
-            frameRate: 5,
-          },
+          resolution: fitScreenShareResolutionToLimits(
+            {
+              ...ScreenSharePresets.h1080fps30.resolution,
+              frameRate: 5,
+            },
+            limits,
+          ),
           audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'text' as const,
         },
         publish: publish({
-          maxBitrate: 2_000_000,
+          maxBitrate: fitScreenShareBitrateToLimits(8_000_000, limits),
           maxFramerate: 5,
           priority: 'high',
         }),
@@ -236,12 +325,15 @@ export function screenShareCaptureOptions(quality: ScreenShareQualityName) {
     default:
       return {
         capture: {
-          resolution: ScreenSharePresets.h720fps30.resolution,
+          resolution: fitScreenShareResolutionToLimits(
+            ScreenSharePresets.h720fps30.resolution,
+            limits,
+          ),
           audio: screenShareAudioCaptureOptions(prefs.screenShareAudio),
           contentHint: 'motion' as const,
         },
         publish: publish({
-          maxBitrate: 2_500_000,
+          maxBitrate: fitScreenShareBitrateToLimits(2_500_000, limits),
           maxFramerate: 30,
           priority: 'high',
         }),

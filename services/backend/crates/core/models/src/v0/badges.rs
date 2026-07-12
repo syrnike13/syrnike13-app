@@ -26,10 +26,16 @@ auto_derived_partial!(
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub icon: Option<File>,
         /// Whether normal user-facing payloads can include this badge
-        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "crate::if_false", default))]
+        #[cfg_attr(
+            feature = "serde",
+            serde(skip_serializing_if = "crate::if_false", default)
+        )]
         pub visible: bool,
         /// Whether this badge is reserved for the premium system
-        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "crate::if_false", default))]
+        #[cfg_attr(
+            feature = "serde",
+            serde(skip_serializing_if = "crate::if_false", default)
+        )]
         pub premium: bool,
         /// Global display order
         pub display_order: i32,
@@ -70,7 +76,10 @@ auto_derived!(
     #[cfg_attr(feature = "validator", derive(Validate))]
     pub struct DataCreateBadge {
         /// Stable system slug
-        #[cfg_attr(feature = "validator", validate(length(min = 1, max = 64), regex = "RE_BADGE_SLUG"))]
+        #[cfg_attr(
+            feature = "validator",
+            validate(length(min = 1, max = 64), regex = "RE_BADGE_SLUG")
+        )]
         pub slug: String,
         /// Display name
         #[cfg_attr(feature = "validator", validate(length(min = 1, max = 64)))]
@@ -96,7 +105,10 @@ auto_derived!(
     pub struct DataEditBadge {
         /// Stable system slug
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
-        #[cfg_attr(feature = "validator", validate(length(min = 1, max = 64), regex = "RE_BADGE_SLUG"))]
+        #[cfg_attr(
+            feature = "validator",
+            validate(length(min = 1, max = 64), regex = "RE_BADGE_SLUG")
+        )]
         pub slug: Option<String>,
         /// Display name
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]

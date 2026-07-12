@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - VERSION
+      - deploy/production/**
       - .github/workflows/release-images-and-deploy.yml
   workflow_dispatch:
     inputs:
@@ -49,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       web: ${{ steps.changes.outputs.web }}
+      admin: ${{ steps.changes.outputs.admin }}
       backend: ${{ steps.changes.outputs.backend }}
       livekit: ${{ steps.changes.outputs.livekit }}
       services: ${{ steps.changes.outputs.services }}
@@ -64,17 +66,23 @@ jobs:
           set -euo pipefail
 
           backend_services="api events autumn january gifbox crond pushd voice-ingress"
-          all_services="web $backend_services livekit"
+          frontend_services="web admin"
+          all_services="$frontend_services $backend_services livekit"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -n "$REQUESTED_SERVICES" ]; then
               services="$REQUESTED_SERVICES"
               web=false
+              admin=false
               backend=false
               livekit=false
 
               if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' web '; then
                 web=true
+              fi
+
+              if printf ' %s ' "$REQUESTED_SERVICES" | grep -q ' admin '; then
+                admin=true
               fi
 
               for service in $backend_services; do
@@ -89,11 +97,13 @@ jobs:
             else
               services="$all_services"
               web=true
+              admin=true
               backend=true
               livekit=true
             fi
             {
               echo "web=$web"
+              echo "admin=$admin"
               echo "backend=$backend"
               echo "livekit=$livekit"
               echo "services=$services"
@@ -125,6 +135,7 @@ jobs:
           if [ "$publish_all" = true ]; then
             {
               echo "web=true"
+              echo "admin=true"
               echo "backend=true"
               echo "livekit=true"
               echo "services=$all_services"
@@ -134,7 +145,7 @@ jobs:
 
           backend=false
           livekit=false
-          services="web"
+          services="$frontend_services"
 
           if printf '%s\n' "$changed_files" | grep -Eq '^(services/backend/|deploy/production/|\.github/workflows/release-images-and-deploy\.yml)'; then
             backend=true
@@ -148,6 +159,7 @@ jobs:
 
           {
             echo "web=true"
+            echo "admin=true"
             echo "backend=$backend"
             echo "livekit=$livekit"
             echo "services=$services"
@@ -175,13 +187,54 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: |
-            APP_VERSION=${{ needs.version.outputs.version }}
+            VITE_APP_TITLE=syrnike13
+            VITE_RELEASE_CHANNEL=stable
+            VITE_API_URL=https://syrnike13.ru/api
+            VITE_WS_URL=wss://syrnike13.ru/ws
+            VITE_MEDIA_URL=https://syrnike13.ru/autumn
+            VITE_PROXY_URL=https://syrnike13.ru/january
+            VITE_GIFBOX_URL=https://api.gifbox.me
+            VITE_VOICE_NODE=worldwide
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
           tags: |
             ghcr.io/${{ github.repository_owner }}/app-web:latest
             ghcr.io/${{ github.repository_owner }}/app-web:${{ needs.version.outputs.version }}
             ghcr.io/${{ github.repository_owner }}/app-web:${{ needs.version.outputs.sha_tag }}
+
+  admin:
+    name: Publish admin image
+    runs-on: ubuntu-latest
+    needs:
+      - version
+      - changes
+    if: ${{ needs.changes.outputs.admin == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/admin/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            VITE_APP_TITLE=syrnike13 Admin
+            VITE_RELEASE_CHANNEL=stable
+            VITE_API_URL=https://syrnike13.ru/api
+            VITE_MEDIA_URL=https://syrnike13.ru/autumn
+            VITE_ADMIN_WEB_URL=https://admin.syrnike13.ru
+          cache-from: type=gha,scope=admin
+          cache-to: type=gha,mode=max,scope=admin
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/app-admin:latest
+            ghcr.io/${{ github.repository_owner }}/app-admin:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/app-admin:${{ needs.version.outputs.sha_tag }}
 
   backend-base:
     name: Publish backend base image
@@ -304,18 +357,20 @@ jobs:
       - changes
       - version
       - web
+      - admin
       - backend-services
       - livekit
     environment: production
     permissions:
       contents: read
       packages: read
-    if: ${{ always() && needs.changes.outputs.services != '' && needs.web.result != 'failure' && needs.web.result != 'cancelled' && needs.backend-services.result != 'failure' && needs.backend-services.result != 'cancelled' && needs.livekit.result != 'failure' && needs.livekit.result != 'cancelled' && (github.event_name == 'push' || inputs.deploy == true) }}
+    if: ${{ always() && needs.changes.outputs.services != '' && needs.web.result != 'failure' && needs.web.result != 'cancelled' && needs.admin.result != 'failure' && needs.admin.result != 'cancelled' && needs.backend-services.result != 'failure' && needs.backend-services.result != 'cancelled' && needs.livekit.result != 'failure' && needs.livekit.result != 'cancelled' && (github.event_name == 'push' || inputs.deploy == true) }}
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/opt/syrnike13' }}
       SYRNIKE_DOMAIN: ${{ vars.SYRNIKE_DOMAIN || 'syrnike13.ru' }}
+      SYRNIKE_ADMIN_DOMAIN: ${{ vars.SYRNIKE_ADMIN_DOMAIN || 'admin.syrnike13.ru' }}
       SYRNIKE_REVERSE_PROXY: ${{ vars.SYRNIKE_REVERSE_PROXY || 'false' }}
       SYRNIKE_VIDEO_ENABLED: ${{ vars.SYRNIKE_VIDEO_ENABLED || 'true' }}
       DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
@@ -329,6 +384,7 @@ jobs:
           test -n "$DEPLOY_USER"
           test -n "$DEPLOY_PATH"
           test -n "$SYRNIKE_DOMAIN"
+          test -n "$SYRNIKE_ADMIN_DOMAIN"
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -374,8 +430,9 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' && ./scripts/deploy-on-server.sh"
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' && ./scripts/deploy-on-server.sh"
       - name: Verify API
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "https://${SYRNIKE_DOMAIN}/api" >/dev/null
+          curl --fail --silent --show-error --head "https://${SYRNIKE_ADMIN_DOMAIN}/" >/dev/null

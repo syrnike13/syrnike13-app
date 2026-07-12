@@ -29,6 +29,7 @@ import { apiRequest } from '#/lib/api/client'
 
 type CreateServerResponse = {
   server: Server
+  member: Member
   channels: Channel[]
 }
 

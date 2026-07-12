@@ -54,6 +54,21 @@ describe('applyThemeToDocument', () => {
     expect(primary).toContain('oklch')
   })
 
+  it('uses syrnike brand tokens when another theme is selected', () => {
+    applyThemeToDocument({
+      ...DEFAULT_APPEARANCE_SETTINGS,
+      themeId: 'lug',
+      colorMode: 'light',
+    })
+    const style = document.documentElement.style
+    expect(style.getPropertyValue('--primary').trim()).toBe('oklch(0.5774 0.2091 273.8504)')
+    expect(style.getPropertyValue('--ring').trim()).toBe('oklch(0.5774 0.2091 273.8504)')
+    expect(style.getPropertyValue('--destructive').trim()).toBe('oklch(0.5156 0.1810 22.5393)')
+    expect(style.getPropertyValue('--destructive-soft').trim()).toBe(
+      'oklch(0.7040 0.1910 22.2160)',
+    )
+  })
+
   it('reads system preference helper without throwing', () => {
     expect(typeof readSystemPrefersDark()).toBe('boolean')
   })

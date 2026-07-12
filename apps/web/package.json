@@ -6,7 +6,10 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3000",
+    "dev": "pnpm run dev:nightly",
+    "dev:nightly": "vite dev --port 3000 --mode nightly",
+    "dev:prod": "vite dev --port 3000 --mode production",
+    "dev:local": "vite dev --port 3000 --mode localbackend",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run"
@@ -19,6 +22,7 @@
     "@hello-pangea/dnd": "^18.0.1",
     "@iconify/react": "^6.0.2",
     "@remixicon/react": "^4.9.0",
+    "@squircle-js/react": "^1.3.0",
     "@syrnike13/api-types": "workspace:*",
     "@syrnike13/platform": "workspace:*",
     "@t3-oss/env-core": "^0.13.10",
@@ -70,6 +74,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.1",
+    "agentation": "^3.0.2",
     "jsdom": "^28.1.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",

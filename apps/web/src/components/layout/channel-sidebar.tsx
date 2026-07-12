@@ -17,9 +17,13 @@ import { useSyncStore } from '#/features/sync/sync-store'
 
 type ChannelSidebarProps = {
   activeChannelId?: string
+  reserveUserPanelSpace?: boolean
 }
 
-export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
+export function ChannelSidebar({
+  activeChannelId,
+  reserveUserPanelSpace = true,
+}: ChannelSidebarProps) {
   const auth = useAuth()
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const users = useSyncStore((s) => s.users)
@@ -39,7 +43,11 @@ export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
   return (
     <aside
       className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
-      style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
+      style={
+        reserveUserPanelSpace
+          ? { paddingBottom: USER_PANEL_RESERVE_PX }
+          : undefined
+      }
     >
       <header className={cn(shellColumnHeaderClass, 'bg-background px-3')}>
         {selectedServerId ? (

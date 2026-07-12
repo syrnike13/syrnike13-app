@@ -98,6 +98,11 @@ export type RtcDebugRtpStreamSnapshot = {
   qualityLimitationDurations?: Record<string, number>
   audioLevel?: number
   totalAudioEnergy?: number
+  totalSamplesDuration?: number
+  totalSamplesReceived?: number
+  concealedSamples?: number
+  silentConcealedSamples?: number
+  jitterBufferEmittedCount?: number
   jitter?: number
   freezeCount?: number
   totalFreezesDuration?: number
@@ -186,6 +191,7 @@ export async function collectVoiceRtcDebugSnapshot(
   room: RtcDebugRoomLike,
   stageMediaItems: readonly RtcDebugStageMediaItem[],
   timestamp = Date.now(),
+  statsTimeoutMs = 1_000,
 ): Promise<RtcDebugSnapshot> {
   const snapshot: RtcDebugSnapshot = {
     timestamp,
@@ -197,8 +203,12 @@ export async function collectVoiceRtcDebugSnapshot(
 
   const entries = getVoicePeerConnectionEntries(room as Room)
 
-  for (const entry of entries) {
-    const report = await entry.pc.getStats()
+  await Promise.allSettled(entries.map(async (entry) => {
+    const report = await promiseWithTimeout(
+      entry.pc.getStats(),
+      statsTimeoutMs,
+      `RTC stats timed out for ${entry.role}`,
+    )
     const stats = rtcStatsMap(report)
     const codecs = new Map<string, RtcStatsLike>()
     const candidates = new Map<string, RtcStatsLike>()
@@ -227,13 +237,36 @@ export async function collectVoiceRtcDebugSnapshot(
         )
       }
     }
-  }
+  }))
 
   snapshot.screenShares = stageMediaItems
     .filter((item) => item.kind === 'screen')
     .map((item) => screenShareSnapshot(item))
 
   return snapshot
+}
+
+function promiseWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = globalThis.setTimeout(
+      () => reject(new Error(message)),
+      Math.max(1, timeoutMs),
+    )
+    promise.then(
+      (value) => {
+        globalThis.clearTimeout(timeout)
+        resolve(value)
+      },
+      (error) => {
+        globalThis.clearTimeout(timeout)
+        reject(error)
+      },
+    )
+  })
 }
 
 export function deriveRtcRates(
@@ -409,6 +442,11 @@ function rtpStreamSnapshot(
     qualityLimitationDurations: numberRecord(stat.qualityLimitationDurations),
     audioLevel: numberValue(stat.audioLevel),
     totalAudioEnergy: numberValue(stat.totalAudioEnergy),
+    totalSamplesDuration: numberValue(stat.totalSamplesDuration),
+    totalSamplesReceived: numberValue(stat.totalSamplesReceived),
+    concealedSamples: numberValue(stat.concealedSamples),
+    silentConcealedSamples: numberValue(stat.silentConcealedSamples),
+    jitterBufferEmittedCount: numberValue(stat.jitterBufferEmittedCount),
     jitter: numberValue(stat.jitter),
     freezeCount: numberValue(stat.freezeCount),
     totalFreezesDuration: numberValue(stat.totalFreezesDuration),
@@ -567,10 +605,7 @@ function screenShareSnapshot(
       nativeStats?.backend === 'native'
         ? nativeStats.methods.gdi_blt
         : hybridUnavailable,
-    hybridGdiPrintWindowFrames:
-      nativeStats?.backend === 'native'
-        ? nativeStats.methods.gdi_print
-        : hybridUnavailable,
+    hybridGdiPrintWindowFrames: hybridUnavailable,
     hybridGraphicsCaptureFrames:
       nativeStats?.backend === 'native' ? nativeStats.methods.wgc : hybridUnavailable,
     hybridVideohookFrames: hybridUnavailable,

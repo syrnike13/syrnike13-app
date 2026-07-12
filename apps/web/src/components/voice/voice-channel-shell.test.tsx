@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceChannelShell } from './voice-channel-shell'
 import { syncStore } from '#/features/sync/sync-store'
+import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat-intent'
 
 const CURRENT_USER_ID = 'current-user'
 const TARGET_USER_ID = 'target-user'
@@ -38,12 +39,19 @@ vi.mock('#/components/voice/voice-stage-view', () => ({
   VoiceStageView: ({
     title,
     headerTrailing,
+    chatOpen,
+    onToggleChat,
   }: {
     title: string
     headerTrailing?: ReactNode
+    chatOpen: boolean
+    onToggleChat: () => void
   }) => (
-    <div>
-      <div data-testid="voice-stage-view">{title}</div>
+    <div data-testid="voice-stage-view">
+      <span data-testid="voice-stage-title">{title}</span>
+      <button type="button" onClick={onToggleChat}>
+        {chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+      </button>
       {headerTrailing}
     </div>
   ),
@@ -133,18 +141,42 @@ describe('VoiceChannelShell', () => {
   it('renders direct message calls as a voice stage', () => {
     renderShell(directMessageChannel())
 
-    expect(screen.getByTestId('voice-stage-view').textContent).toBe('test_isa')
+    expect(screen.getByTestId('voice-stage-view').textContent).toContain(
+      'test_isa',
+    )
   })
 
   it('renders group calls as a voice stage', () => {
     renderShell(groupChannel())
 
-    expect(screen.getByTestId('voice-stage-view').textContent).toBe('Команда')
+    expect(screen.getByTestId('voice-stage-view').textContent).toContain(
+      'Команда',
+    )
+  })
+
+  it('opens the side chat panel when a chat open request arrives', () => {
+    renderShell(groupChannel())
+
+    expect(screen.queryByTestId('channel-chat-panel')).toBeNull()
+
+    act(() => {
+      requestVoiceChannelChatOpen('group-1')
+    })
+
+    expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Скрыть чат' })).toBeTruthy()
+  })
+
+  it('opens the side chat panel from a pending request on mount', () => {
+    requestVoiceChannelChatOpen('group-1')
+    renderShell(groupChannel())
+
+    expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
   })
   it('passes channel settings into server voice stage actions', () => {
     renderShell(legacyVoiceChannel())
 
-    expect(screen.getByTestId('voice-stage-view').textContent).toBe('Voice')
+    expect(screen.getByTestId('voice-stage-title').textContent).toBe('Voice')
     expect(screen.getByTestId('channel-settings-dialog').textContent).toBe(
       'voice-1',
     )

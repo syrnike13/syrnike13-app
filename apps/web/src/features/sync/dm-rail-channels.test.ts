@@ -191,6 +191,29 @@ describe('listVisibleDmRailChannels', () => {
     expect(visible.map((channel) => channel._id)).toEqual(['dm-ringing'])
   })
 
+  it('shows direct messages with an outgoing voice call for the current user', () => {
+    const outgoing = dmChannel('dm-outgoing', 'friend-a')
+    const unrelated = dmChannel('dm-idle', 'friend-b')
+
+    const visible = listVisibleDmRailChannels(
+      state([outgoing, unrelated], {
+        voiceCalls: {
+          'dm-outgoing': {
+            channelId: 'dm-outgoing',
+            initiatorId: CURRENT_USER_ID,
+            phase: 'ringing',
+            startedAt: '2026-06-12T10:00:00.000Z',
+            recipients: ['friend-a'],
+            declinedRecipients: [],
+          },
+        },
+      }),
+      CURRENT_USER_ID,
+    )
+
+    expect(visible.map((channel) => channel._id)).toEqual(['dm-outgoing'])
+  })
+
   it('hides direct messages with a dismissed incoming voice call', () => {
     const ringing = dmChannel('dm-ringing', 'friend-a')
     const call = {

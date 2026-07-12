@@ -8,11 +8,7 @@ use super::require_privileged;
 
 #[openapi(tag = "Admin")]
 #[get("/users/<query>")]
-pub async fn fetch(
-    db: &State<Database>,
-    user: User,
-    query: String,
-) -> Result<Json<v0::User>> {
+pub async fn fetch(db: &State<Database>, user: User, query: String) -> Result<Json<v0::User>> {
     require_privileged(&user)?;
 
     let target = if let Some((username, discriminator)) = query.split_once('#') {

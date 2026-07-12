@@ -55,10 +55,10 @@ type StageMediaTileProps = {
 const DEFAULT_SCREEN_ASPECT_RATIO = 16 / 9
 
 /** Нейтральный серый фон превью стрима (как в Discord), без палитры аватара. */
-const screenStreamSurfaceClass = 'absolute inset-0 bg-[#232428]'
+const screenStreamSurfaceClass = 'absolute inset-0 bg-muted'
 
 const unsubscribedStreamButtonClass =
-  'h-auto rounded-md border border-white/20 bg-[#1e1f22] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#2b2d31]'
+  'h-auto rounded-md border border-white/20 bg-card px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-muted'
 
 const screenStreamOwnerLabelClass =
   'absolute z-10 flex min-w-0 max-w-[calc(100%-1rem)] items-center gap-1 rounded bg-black/60 font-medium text-white'
@@ -214,8 +214,8 @@ export function StageMediaTile({
   }, [onStreamAspectRatioChange, panelAspectRatio, variant])
 
   const stripMediaClipClass = cn(
-    'absolute inset-0 box-border overflow-hidden rounded-md bg-[#111214]',
-    speaking && 'border-2 border-[#23a559]',
+    'absolute inset-0 box-border overflow-hidden rounded-md bg-background',
+    speaking && 'border-2 border-chart-3',
   )
 
   return (
@@ -230,11 +230,11 @@ export function StageMediaTile({
             dimmed && 'opacity-50',
             variant === 'strip'
               ? '@container aspect-video size-full shrink-0'
-              : !isScreenPlaceholder && 'bg-[#111214]',
+              : !isScreenPlaceholder && 'bg-background',
             variant === 'grid' && 'size-full',
             variant === 'focus' && 'size-full max-h-full max-w-full',
             variant === 'fullscreen' && 'size-full max-h-full max-w-full rounded-none',
-            speaking && variant !== 'strip' && 'ring-2 ring-[#23a559]',
+            speaking && variant !== 'strip' && 'ring-2 ring-chart-3',
             variant !== 'focus' && variant !== 'fullscreen' && 'hover:brightness-110',
           )}
           style={variant === 'strip' ? undefined : tileStyle}
@@ -356,7 +356,7 @@ export function StageMediaTile({
           ) : null}
         </article>
       </ContextMenuTrigger>
-      <ContextMenuContent className="z-[420] min-w-64 border-white/10 bg-[#2b2d31] text-white">
+      <ContextMenuContent className="z-[420] min-w-64 border-white/10 bg-muted text-foreground">
         <ContextMenuItem onSelect={() => onFocus(item.id)}>
           <Maximize2Icon />
           Сфокусировать

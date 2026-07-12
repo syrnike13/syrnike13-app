@@ -1,4 +1,5 @@
 import { useRef, useSyncExternalStore } from 'react'
+import type { VoiceRemoteAudioSettings } from '@syrnike13/platform'
 
 import {
   loadDesktopLocalSettings,
@@ -88,6 +89,7 @@ export async function hydrateVoiceListenerSettingsFromDesktop() {
   const settings = await loadDesktopLocalSettings()
   if (!settings || revision !== stateRevision) return
   state = normalizeVoiceListenerState(settings.voiceListener)
+  stateRevision += 1
   emit()
 }
 
@@ -104,6 +106,20 @@ export const voiceListenerStore = {
   },
 
   getState: () => state,
+
+  snapshot(revision: number): VoiceRemoteAudioSettings {
+    return {
+      revision,
+      userVolumes: boundedMap(state.userVolumes, (value) =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 3,
+      ),
+      userMutes: boundedMap(state.userMutes, (value) => typeof value === 'boolean'),
+      streamVolumes: boundedMap(state.streamVolumes, (value) =>
+        typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 3,
+      ),
+      streamMutes: boundedMap(state.streamMutes, (value) => typeof value === 'boolean'),
+    }
+  },
 
   getUserVolume(userId: string) {
     return state.userVolumes[userId] ?? DEFAULT_USER_VOLUME
@@ -166,6 +182,17 @@ export const voiceListenerStore = {
     }
     replaceState({ ...state, streamMutes })
   },
+}
+
+function boundedMap<T>(
+  values: Record<string, T>,
+  validValue: (value: T) => boolean,
+) {
+  return Object.fromEntries(
+    Object.entries(values)
+      .filter(([id, value]) => id.length > 0 && id.length <= 512 && validValue(value))
+      .slice(0, 512),
+  )
 }
 
 export function useVoiceListenerStore<T>(

@@ -3,10 +3,14 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_APPEARANCE_SETTINGS } from '@syrnike13/platform'
 
 import {
+  BRAND_LOCKED_THEME_TOKEN_KEYS,
   THEME_CATALOG,
   THEME_TOKEN_KEYS,
+  applyBrandLockedThemeTokens,
   getThemeById,
+  getThemeTokens,
   resolveThemeVariant,
+  themePreviewColors,
 } from '#/features/appearance/theme-registry'
 
 const OKLCH_PATTERN = /^(oklch\([^)]+\)|rgb\([^)]+\))$/
@@ -79,5 +83,45 @@ describe('theme registry', () => {
       'kontrast',
     ])
     expect(getThemeById('syrnike').name).toBe('Сырники')
+  })
+
+  it('keeps brand-locked tokens from syrnike for every theme', () => {
+    const syrnikeLight = getThemeById('syrnike').variants.light!
+    const syrnikeDark = getThemeById('syrnike').variants.dark!
+
+    for (const theme of THEME_CATALOG) {
+      if (theme.variants.light) {
+        const resolved = applyBrandLockedThemeTokens(theme.variants.light, 'light')
+        for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
+          expect(resolved[key], `${theme.id} light ${key}`).toBe(syrnikeLight[key])
+        }
+      }
+      if (theme.variants.dark) {
+        const resolved = applyBrandLockedThemeTokens(theme.variants.dark, 'dark')
+        for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
+          expect(resolved[key], `${theme.id} dark ${key}`).toBe(syrnikeDark[key])
+        }
+      }
+    }
+  })
+
+  it('resolves lug theme with syrnike brand tokens via getThemeTokens', () => {
+    const tokens = getThemeTokens(
+      { themeId: 'lug', colorMode: 'light' },
+      false,
+    )
+    const syrnikeLight = getThemeById('syrnike').variants.light!
+    for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
+      expect(tokens[key]).toBe(syrnikeLight[key])
+    }
+    expect(tokens.background).toBe(getThemeById('lug').variants.light!.background)
+  })
+
+  it('uses catalog palette colors in theme picker previews (not brand-locked)', () => {
+    const lug = themePreviewColors(getThemeById('lug'), 'dark')
+    const iskra = themePreviewColors(getThemeById('iskra'), 'dark')
+    expect(lug.primary).toBe(getThemeById('lug').variants.dark!.primary)
+    expect(iskra.primary).toBe(getThemeById('iskra').variants.dark!.primary)
+    expect(lug.primary).not.toBe(iskra.primary)
   })
 })

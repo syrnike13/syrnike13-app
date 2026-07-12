@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 
 import { useAppearance } from '#/features/appearance/appearance-context'
-import { getThemeById, themePreviewColors } from '#/features/appearance/theme-registry'
+import { getThemeTokens } from '#/features/appearance/theme-registry'
 
 function oklchToHex(value: string): string | null {
   const match = value.match(
@@ -39,9 +39,8 @@ export function ThemeColorMeta() {
   const { settings, resolvedVariant } = useAppearance()
 
   useEffect(() => {
-    const theme = getThemeById(settings.themeId)
-    const preview = themePreviewColors(theme, resolvedVariant)
-    const hex = oklchToHex(preview.primary) ?? '#4a3f8f'
+    const tokens = getThemeTokens(settings, resolvedVariant === 'dark')
+    const hex = oklchToHex(tokens.primary) ?? '#4a3f8f'
 
     let meta = document.querySelector('meta[name="theme-color"]')
     if (!meta) {

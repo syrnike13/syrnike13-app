@@ -49,6 +49,7 @@ bitfield = "0.13.2"
 
 # Time
 chrono = "0.4.15"
+httpdate = "1.0.3"
 iso8601-timestamp = "0.2.10"
 
 # Data Collections

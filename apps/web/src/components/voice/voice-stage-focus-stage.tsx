@@ -20,7 +20,7 @@ const focusStageFadeSlideClass =
   'transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none'
 
 const voiceStageStripToggleButtonClass =
-  'inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#1e1f22] px-2 text-sm font-medium text-white/80 shadow-sm transition-colors hover:bg-[#2b2d31] hover:text-white focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
+  'inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-card px-2 text-sm font-medium text-primary-foreground/80 shadow-sm transition-colors hover:bg-muted hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 h-7 gap-0.5'
 
 const FOCUS_STRIP_GAP_PX = 8
 const STRIP_TOGGLE_SIZE_PX = 28
@@ -157,7 +157,7 @@ export function VoiceStageFocusStage({
                         <UsersIcon className="size-3.5 shrink-0" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="top" sideOffset={8} className="z-[430]">
+                    <TooltipContent side="top" sideOffset={8}>
                       {stripCollapsed ? 'Показать участников' : 'Убрать участников'}
                     </TooltipContent>
                   </Tooltip>

@@ -12,8 +12,15 @@ permissions:
   contents: write
 
 jobs:
+  native-windows:
+    name: Verify Windows DLL runtime
+    uses: ./.github/workflows/native-media-windows.yml
+    with:
+      release_channel: stable
+
   release:
     name: Build desktop packages
+    needs: native-windows
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +32,9 @@ jobs:
           - os: ubuntu-24.04
             artifact: desktop-linux
     runs-on: ${{ matrix.os }}
+    env:
+      SYRNIKE_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
+      SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT: production
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -32,15 +42,46 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Validate stable observability configuration
+        if: runner.os == 'Windows'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
+        run: node -e "for (const key of ['SYRNIKE_DESKTOP_SENTRY_DSN','SENTRY_AUTH_TOKEN','SENTRY_ORG','SENTRY_PROJECT']) if (!process.env[key]) throw new Error('Missing stable observability setting ' + key)"
       - name: Install Linux packaging deps
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
-      - name: Build Windows native voice helper
+      - name: Build desktop and native runtime
+        run: pnpm desktop:build
+      - name: Upload Windows PDB and desktop source maps to Sentry
         if: runner.os == 'Windows'
-        run: pnpm --filter @syrnike13/desktop run build:native-voice
-      - run: pnpm desktop:package
+        run: pnpm --filter @syrnike13/desktop upload:debug-artifacts
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
+          SYRNIKE_REQUIRE_SENTRY_UPLOAD: '1'
+      - name: Package Windows desktop
+        if: runner.os == 'Windows'
+        run: pnpm --filter @syrnike13/desktop package:prepared
+      - name: Package desktop
+        if: runner.os != 'Windows'
+        run: pnpm --filter @syrnike13/desktop package:prepared
+      - name: Start desktop rollout at five percent
+        run: node tooling/scripts/set-desktop-update-stage.mjs apps/desktop/release 5 --if-present
+      - name: Retain release native symbols
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-symbols-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            packages/desktop-native/build/**/*.pdb
+            packages/desktop-native/dist/win32-x64/native-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -172,6 +213,11 @@ jobs:
             FEED_VERSION="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "version" { print $2; exit }')"
             if [ "$FEED_VERSION" != "$VERSION" ]; then
               echo "Desktop update feed ${FEED_FILE} version mismatch: expected $VERSION, got ${FEED_VERSION:-<missing>}"
+              exit 1
+            fi
+            FEED_STAGE="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "stagingPercentage" { print $2; exit }')"
+            if [ "$FEED_STAGE" != "5" ]; then
+              echo "Desktop update feed ${FEED_FILE} staging mismatch: expected 5, got ${FEED_STAGE:-<missing>}"
               exit 1
             fi
           done

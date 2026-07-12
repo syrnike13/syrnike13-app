@@ -106,7 +106,10 @@ impl AbstractBadges for ReferenceDb {
         Ok(())
     }
 
-    async fn fetch_user_badge_assignments(&self, user_id: &str) -> Result<Vec<UserBadgeAssignment>> {
+    async fn fetch_user_badge_assignments(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<UserBadgeAssignment>> {
         let assignments = self.user_badges.lock().await;
         Ok(assignments
             .values()

@@ -12,14 +12,21 @@ import {
   SYRNIKE_MIC_PROCESSOR_NAME,
   SyrnikeMicProcessor,
 } from '#/features/voice/voice-mic-processor'
-import {
-  readVoicePreferences,
-  type VoicePreferenceState,
-} from '#/features/voice/voice-preference-store'
+import type { VoiceMediaDesiredState } from '@syrnike13/platform'
+
+export type VoiceMicProcessingPreferences = Pick<
+  VoiceMediaDesiredState,
+  | 'echoCancellation'
+  | 'noiseSuppression'
+  | 'inputVolume'
+  | 'voiceGateEnabled'
+  | 'voiceGateThresholdDb'
+  | 'voiceGateAutoThreshold'
+>
 
 async function applyMicCaptureConstraints(
   audioTrack: LocalAudioTrack,
-  prefs: VoicePreferenceState,
+  prefs: VoiceMicProcessingPreferences,
 ) {
   try {
     await audioTrack.mediaStreamTrack.applyConstraints(
@@ -30,8 +37,10 @@ async function applyMicCaptureConstraints(
   }
 }
 
-export async function applyMicProcessing(participant: LocalParticipant) {
-  const prefs = readVoicePreferences()
+export async function applyMicProcessing(
+  participant: LocalParticipant,
+  prefs: VoiceMicProcessingPreferences,
+) {
   const audioTrack = participant.getTrackPublication(
     Track.Source.Microphone,
   )?.audioTrack
@@ -71,7 +80,10 @@ export async function applyMicProcessing(participant: LocalParticipant) {
   }
 }
 
-export async function refreshMicProcessing(room: Room | null) {
+export async function refreshMicProcessing(
+  room: Room | null,
+  prefs: VoiceMicProcessingPreferences,
+) {
   if (!room) return
-  await applyMicProcessing(room.localParticipant)
+  await applyMicProcessing(room.localParticipant, prefs)
 }

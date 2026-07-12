@@ -39,7 +39,9 @@ import {
   resolveStageLayoutMode,
   type VoiceStageLayoutMode,
 } from '#/features/voice/voice-stage-mode'
-import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-context'
+import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   filterStageVideoMediaItems,
@@ -105,7 +107,8 @@ export function VoiceStageView({
   headerTrailing,
 }: VoiceStageViewProps) {
   const auth = useAuth()
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceStage = useVoiceStage()
   const channelId = channel._id
   const users = useSyncStore((s) => s.users)
   const server = useSyncStore((s) =>
@@ -121,9 +124,9 @@ export function VoiceStageView({
   const storeParticipants = useSyncStore((s) =>
     getChannelVoiceParticipants(s, channelId, auth.user?._id),
   )
-  const inVoiceSession = isVoiceSessionInChannel(voice, channelId)
-  const inThisVoiceCall = voice.status === 'connected' && inVoiceSession
-  const connecting = voice.status === 'connecting' && inVoiceSession
+  const inVoiceSession = isVoiceSessionInChannel(voiceSession, channelId)
+  const inThisVoiceCall = voiceSession.status === 'connected' && inVoiceSession
+  const connecting = voiceSession.status === 'connecting' && inVoiceSession
   const isDmVoiceStage =
     channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
   const resolvedJoinLabel =
@@ -170,14 +173,14 @@ export function VoiceStageView({
     channelId,
     storeParticipants,
     inVoiceSession ? auth.user?._id : undefined,
-    inVoiceSession ? voice.micPublishing : undefined,
-    inVoiceSession ? voice.deafened : undefined,
+    inVoiceSession ? voiceSession.micPublishing : undefined,
+    inVoiceSession ? voiceSession.deafened : undefined,
   )
   const participantsById = useMemo(
     () => new Map(participants.map((participant) => [participant.id, participant])),
     [participants],
   )
-  const mediaItems = voice.stageMediaItems
+  const mediaItems = voiceStage.stageMediaItems
   const gridMediaItems = useMemo(
     () => sortStageMediaItemsForGrid(mediaItems),
     [mediaItems],
@@ -201,27 +204,30 @@ export function VoiceStageView({
     participants.length > 0
 
   useEffect(() => {
-    if (!voice.stageFocusNonce) return
-    const mediaId = voice.focusedMediaId
+    if (!voiceStage.stageFocusNonce) return
+    const mediaId = voiceStage.focusedMediaId
     if (!mediaId || !mediaIds.includes(mediaId)) return
     setRequestedMode('focus')
-  }, [mediaIds, voice.focusedMediaId, voice.stageFocusNonce])
+  }, [mediaIds, voiceStage.focusedMediaId, voiceStage.stageFocusNonce])
 
   const layoutMode = resolveStageLayoutMode({
     requestedMode,
-    focusedMediaId: voice.focusedMediaId,
+    focusedMediaId: voiceStage.focusedMediaId,
     visibleMediaIds: mediaIds,
   })
   const focusedItem =
     layoutMode === 'focus'
-      ? mediaItems.find((item) => item.id === voice.focusedMediaId) ?? null
+      ? mediaItems.find((item) => item.id === voiceStage.focusedMediaId) ?? null
       : null
   const focusedMediaHeader = useMemo(() => {
     if (!focusedItem) return null
     const kindLabel = stageMediaKindLabel(focusedItem.kind)
     if (!kindLabel) return null
 
-    const isLocal = isVoiceLocalUserId(focusedItem.userId, auth.user?._id)
+    const isLocal = isVoiceLocalUserId(
+      focusedItem.userId,
+      auth.user?._id ?? null,
+    )
     const user =
       users[focusedItem.userId] ?? (isLocal ? auth.user ?? undefined : undefined)
     const participant = participantsById.get(focusedItem.userId)
@@ -247,7 +253,7 @@ export function VoiceStageView({
   const showInviteSlot =
     canInvite &&
     layoutMode === 'grid' &&
-    !voice.stageFullscreen &&
+    !voiceStage.stageFullscreen &&
     shouldShowVoiceInviteSlot(participants.length)
 
   const focusMedia = useCallback(
@@ -255,26 +261,26 @@ export function VoiceStageView({
       const next = nextStageLayoutModeForMediaClick({
         clickedMediaId: mediaId,
         currentMode: layoutMode,
-        focusedMediaId: voice.focusedMediaId,
+        focusedMediaId: voiceStage.focusedMediaId,
       })
-      voice.setFocusedMediaId(next.focusedMediaId)
+      voiceStage.setFocusedMediaId(next.focusedMediaId)
       setRequestedMode(next.mode)
     },
-    [layoutMode, voice],
+    [layoutMode, voiceStage],
   )
 
   useEffect(() => {
-    if (!voice.stageFullscreen) return
+    if (!voiceStage.stageFullscreen) return
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        voice.toggleStageFullscreen()
+        voiceStage.toggleStageFullscreen()
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [voice.stageFullscreen, voice])
+  }, [voiceStage])
 
   const closePopout = useCallback(() => {
     const win = popoutWindowRef.current
@@ -295,8 +301,8 @@ export function VoiceStageView({
     }
     if (!canToggleStageFullscreen) return
 
-    if (voice.stageFullscreen) {
-      voice.toggleStageFullscreen()
+    if (voiceStage.stageFullscreen) {
+      voiceStage.toggleStageFullscreen()
     }
 
     const childWindow = window.open(
@@ -321,7 +327,7 @@ export function VoiceStageView({
     closePopout,
     popoutOpen,
     popoutWindow,
-    voice,
+    voiceStage,
   ])
 
   const resolveParticipantDisplayName = useCallback(
@@ -336,7 +342,7 @@ export function VoiceStageView({
         participants={options?.rosterParticipants ?? participants}
         users={users}
         currentUser={auth.user}
-        speakingUserIds={voice.speakingUserIds}
+        speakingUserIds={voiceSession.speakingUserIds}
         displayName={resolveParticipantDisplayName}
         dimmedUserId={
           connecting && auth.user?._id ? auth.user._id : undefined
@@ -352,7 +358,7 @@ export function VoiceStageView({
       participants,
       resolveParticipantDisplayName,
       users,
-      voice.speakingUserIds,
+      voiceSession.speakingUserIds,
     ],
   )
 
@@ -362,7 +368,7 @@ export function VoiceStageView({
       variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
       onStreamAspectRatioChange?: (aspectRatio: number) => void,
     ) => {
-      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id)
+      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id ?? null)
       return (
         <StageMediaTile
           key={item.id}
@@ -378,11 +384,11 @@ export function VoiceStageView({
           speaking={
             inThisVoiceCall &&
             item.kind !== 'screen' &&
-            voice.speakingUserIds.has(item.userId)
+            voiceSession.speakingUserIds.has(item.userId)
           }
           variant={variant}
           onFocus={focusMedia}
-          onSetSubscribed={voice.setStageMediaSubscribed}
+          onSetSubscribed={voiceStage.setStageMediaSubscribed}
           onStreamAspectRatioChange={onStreamAspectRatioChange}
         />
       )
@@ -394,8 +400,8 @@ export function VoiceStageView({
       inThisVoiceCall,
       participantsById,
       users,
-      voice.setStageMediaSubscribed,
-      voice.speakingUserIds,
+      voiceStage.setStageMediaSubscribed,
+      voiceSession.speakingUserIds,
     ],
   )
 
@@ -410,10 +416,10 @@ export function VoiceStageView({
         presentation === 'popout' && 'h-[100dvh] w-full',
         presentation === 'embedded' && 'h-full min-h-0 flex-1',
         presentation === 'popout' &&
-          voice.stageFullscreen &&
+          voiceStage.stageFullscreen &&
           'fixed inset-0 z-[50]',
         presentation === 'embedded' &&
-          voice.stageFullscreen &&
+          voiceStage.stageFullscreen &&
           !popoutOpen &&
           !mobileDrawer &&
           'fixed inset-0 z-[300]',
@@ -677,9 +683,9 @@ export function VoiceStageView({
                   onClick={toggleStagePopout}
                 />
                 <VoiceStageFullscreenButton
-                  active={voice.stageFullscreen}
+                  active={voiceStage.stageFullscreen}
                   disabled={!canToggleStageFullscreen}
-                  onClick={voice.toggleStageFullscreen}
+                  onClick={voiceStage.toggleStageFullscreen}
                 />
               </div>
             </div>
@@ -760,7 +766,7 @@ function VoiceStageWaitingCall({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-      <div className="rounded-full ring-2 ring-[#23a559] ring-offset-2 ring-offset-black">
+      <div className="rounded-full ring-2 ring-chart-3 ring-offset-2 ring-offset-background">
         <UserAvatar
           user={counterpart}
           className="size-28 sm:size-32 md:size-36"

@@ -21,6 +21,17 @@ export function isIncomingVoiceCall(
   )
 }
 
+export function isOutgoingVoiceCall(
+  call: VoiceCallState | undefined,
+  currentUserId: string | undefined,
+) {
+  return Boolean(
+    currentUserId &&
+      call?.phase === 'ringing' &&
+      call.initiatorId === currentUserId,
+  )
+}
+
 export function isVoiceCallDismissed(
   call: VoiceCallState | undefined,
   dismissedVoiceCallKeys: Record<string, true>,

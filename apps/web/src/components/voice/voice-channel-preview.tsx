@@ -5,7 +5,7 @@ import {
 } from '#/features/sync/voice-selectors'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { VoiceParticipantRow } from '#/components/voice/voice-participant-row'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
@@ -20,7 +20,7 @@ type VoiceChannelPreviewProps = {
 
 export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const users = useSyncStore((s) => s.users)
   const channel = useSyncStore((s) => s.channels[channelId])
   const serverId = serverChannelServerId(channel)
@@ -49,7 +49,7 @@ export function VoiceChannelPreview({ channelId }: VoiceChannelPreviewProps) {
       className={`mb-1 flex flex-col gap-0.5 ${VOICE_PREVIEW_TEXT_INSET}`}
     >
       {participants.map((participant) => {
-        const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id)
+        const isSelf = isVoiceLocalUserId(participant.id, auth.user?._id ?? null)
         const user = users[participant.id] ?? (isSelf ? auth.user ?? undefined : undefined)
         const voiceElsewhere = isSelf && !inThisChannel
         const member =

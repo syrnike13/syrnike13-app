@@ -110,7 +110,7 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
               {voiceCallMarkerTitle ? (
                 <span
                   title={voiceCallMarkerTitle}
-                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600/15 text-emerald-500"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3"
                 >
                   <HeadphonesIcon aria-hidden="true" className="size-4" />
                 </span>

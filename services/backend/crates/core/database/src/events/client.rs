@@ -6,13 +6,67 @@ use syrnike_result::Error;
 use syrnike_models::v0::{
     AppendMessage, Channel, ChannelSlowmode, ChannelUnread, ChannelVoiceState, Emoji,
     FieldsChannel, FieldsMember, FieldsMessage, FieldsRole, FieldsServer, FieldsUser,
-    FieldsWebhook, Member, MemberCompositeKey, Message, NativeVoiceCredentials, PartialChannel,
-    PartialEmoji, PartialMember, PartialMessage, PartialRole, PartialServer, PartialUser,
-    PartialWebhook, PolicyChange, RemovalIntention, Report, Server, User, UserSettings,
-    UserVoiceState, Webhook,
+    FieldsWebhook, Member, MemberCompositeKey, Message, PartialChannel, PartialEmoji,
+    PartialMember, PartialMessage, PartialRole, PartialServer, PartialUser, PartialWebhook,
+    PolicyChange, RemovalIntention, Report, Server, User, UserSettings, UserVoiceState, Webhook,
 };
 
 use crate::Database;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceRtcEngine {
+    Web,
+    WindowsNative,
+}
+
+impl std::fmt::Display for VoiceRtcEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Web => "web",
+            Self::WindowsNative => "windows_native",
+        })
+    }
+}
+
+impl std::str::FromStr for VoiceRtcEngine {
+    type Err = ();
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "web" => Ok(Self::Web),
+            "windows_native" => Ok(Self::WindowsNative),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VoiceRtcCredential {
+    pub rtc_engine: VoiceRtcEngine,
+    pub client_instance_id: String,
+    pub connection_epoch: String,
+    pub token: String,
+    pub identity: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VoiceAuthorityMembershipClaim {
+    pub operation_id: String,
+    pub channel_id: String,
+    pub rtc_engine: VoiceRtcEngine,
+    pub client_instance_id: String,
+    pub connection_epoch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VoiceAuthorityLease {
+    pub operation_id: String,
+    pub authority_version: u64,
+    pub channel_id: String,
+    pub node: String,
+    pub url: String,
+    pub credential: VoiceRtcCredential,
+}
 
 /// Ping Packet
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -48,6 +102,10 @@ pub struct GatewayErrorRequest {
     pub operation_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authoritative_operation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authoritative_channel_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -205,6 +263,7 @@ pub enum EventV1 {
         id: String,
         server: Server,
         channels: Vec<Channel>,
+        member: Member,
         emojis: Vec<Emoji>,
         voice_states: Vec<ChannelVoiceState>,
     },
@@ -391,6 +450,8 @@ pub enum EventV1 {
     VoiceChannelLeave {
         id: String,
         user: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        operation_id: Option<String>,
     },
     VoiceChannelMove {
         user: String,
@@ -430,19 +491,24 @@ pub enum EventV1 {
     },
     VoiceServerUpdate {
         operation_id: String,
+        authority_version: u64,
         channel_id: String,
         node: String,
         url: String,
-        token: String,
-        native_microphone: NativeVoiceCredentials,
-        native_screen: NativeVoiceCredentials,
-        native_camera: NativeVoiceCredentials,
+        credential: VoiceRtcCredential,
     },
-    UserMoveVoiceChannel {
-        node: String,
-        from: String,
-        to: String,
-        token: String,
+    VoiceAuthoritySnapshot {
+        version: u64,
+        operation_id: Option<String>,
+        channel_id: Option<String>,
+        rtc_engine: Option<VoiceRtcEngine>,
+        client_instance_id: Option<String>,
+        connection_epoch: Option<String>,
+        state: Option<UserVoiceState>,
+    },
+    VoiceAuthorityMove {
+        from: VoiceAuthorityMembershipClaim,
+        lease: VoiceAuthorityLease,
     },
     /// User's active slowmodes
     UserSlowmodes {
@@ -457,7 +523,15 @@ impl EventV1 {
         redis_kiss::p(channel, self).await;
 
         #[cfg(debug_assertions)]
-        info!("Publishing event to {channel}: {self:?}");
+        match &self {
+            Self::VoiceAuthorityMove { .. } => {
+                info!("Publishing VoiceAuthorityMove to {channel} [credentials redacted]")
+            }
+            Self::VoiceServerUpdate { .. } => {
+                info!("Publishing VoiceServerUpdate to {channel} [credentials redacted]")
+            }
+            _ => info!("Publishing event to {channel}: {self:?}"),
+        }
 
         #[cfg(debug_assertions)]
         if let Err(error) = redis_kiss::publish(channel, self).await {
@@ -495,18 +569,14 @@ impl EventV1 {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind};
+    use super::{
+        EventV1, GatewayErrorRequest, GatewayErrorScope, GatewayRequestKind, VoiceAuthorityLease,
+        VoiceAuthorityMembershipClaim, VoiceRtcCredential, VoiceRtcEngine,
+    };
     use iso8601_timestamp::Timestamp;
     use serde_json::json;
-    use syrnike_models::v0::{NativeVoiceCredentials, UserVoiceState};
+    use syrnike_models::v0::UserVoiceState;
     use syrnike_result::{Error, ErrorType};
-
-    fn native_credentials(kind: &str) -> NativeVoiceCredentials {
-        NativeVoiceCredentials {
-            token: format!("{kind}-token"),
-            identity: format!("user-1:desktop-native:{kind}"),
-        }
-    }
 
     fn voice_state() -> UserVoiceState {
         UserVoiceState {
@@ -535,13 +605,17 @@ mod tests {
     fn voice_server_update_serializes_operation_id() {
         let event = EventV1::VoiceServerUpdate {
             operation_id: "op-join".to_string(),
+            authority_version: 7,
             channel_id: "channel-1".to_string(),
             node: "node-1".to_string(),
             url: "wss://livekit.example".to_string(),
-            token: "browser-token".to_string(),
-            native_microphone: native_credentials("microphone"),
-            native_screen: native_credentials("screen"),
-            native_camera: native_credentials("camera"),
+            credential: VoiceRtcCredential {
+                rtc_engine: VoiceRtcEngine::Web,
+                client_instance_id: "client-1".to_string(),
+                connection_epoch: "epoch-1".to_string(),
+                token: "token".to_string(),
+                identity: "identity".to_string(),
+            },
         };
 
         let value = serde_json::to_value(event).expect("event serializes");
@@ -549,6 +623,44 @@ mod tests {
         assert_eq!(value["type"], json!("VoiceServerUpdate"));
         assert_eq!(value["operation_id"], json!("op-join"));
         assert_eq!(value["channel_id"], json!("channel-1"));
+    }
+
+    #[test]
+    fn voice_authority_move_serializes_both_exact_claims() {
+        let event = EventV1::VoiceAuthorityMove {
+            from: VoiceAuthorityMembershipClaim {
+                operation_id: "op-a".to_string(),
+                channel_id: "channel-a".to_string(),
+                rtc_engine: VoiceRtcEngine::WindowsNative,
+                client_instance_id: "client-a".to_string(),
+                connection_epoch: "epoch-a".to_string(),
+            },
+            lease: VoiceAuthorityLease {
+                operation_id: "op-b".to_string(),
+                authority_version: 12,
+                channel_id: "channel-b".to_string(),
+                node: "node-b".to_string(),
+                url: "wss://livekit.example".to_string(),
+                credential: VoiceRtcCredential {
+                    rtc_engine: VoiceRtcEngine::WindowsNative,
+                    client_instance_id: "client-a".to_string(),
+                    connection_epoch: "epoch-b".to_string(),
+                    token: "token-b".to_string(),
+                    identity: "identity-b".to_string(),
+                },
+            },
+        };
+
+        let value = serde_json::to_value(event).expect("event serializes");
+        assert_eq!(value["type"], json!("VoiceAuthorityMove"));
+        assert_eq!(value["from"]["operation_id"], json!("op-a"));
+        assert_eq!(value["from"]["connection_epoch"], json!("epoch-a"));
+        assert_eq!(value["lease"]["operation_id"], json!("op-b"));
+        assert_eq!(value["lease"]["authority_version"], json!(12));
+        assert_eq!(
+            value["lease"]["credential"]["connection_epoch"],
+            json!("epoch-b")
+        );
     }
 
     #[test]
@@ -565,6 +677,8 @@ mod tests {
                 nonce: Some("nonce-1".to_string()),
                 operation_id: Some("op-join".to_string()),
                 channel_id: Some("channel-1".to_string()),
+                authoritative_operation_id: Some("op-current".to_string()),
+                authoritative_channel_id: Some("channel-current".to_string()),
             }),
         };
 
@@ -575,6 +689,10 @@ mod tests {
         assert_eq!(value["scope"], json!("VoiceStateUpdate"));
         assert_eq!(value["request"]["kind"], json!("VoiceStateUpdate"));
         assert_eq!(value["request"]["nonce"], json!("nonce-1"));
+        assert_eq!(
+            value["request"]["authoritative_operation_id"],
+            json!("op-current")
+        );
         assert_eq!(value["request"]["operation_id"], json!("op-join"));
         assert_eq!(value["request"]["channel_id"], json!("channel-1"));
     }
