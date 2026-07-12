@@ -1,12 +1,12 @@
-use rocket::{State, serde::json::Json};
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    Database, PartialServer, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{VoiceClient, sync_voice_permissions},
+    voice::{reconcile_server_voice_permissions, VoiceClient},
+    Database, PartialServer, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{
-    ChannelPermission, DataPermissionsValue, Override, calculate_server_permissions,
+    calculate_server_permissions, ChannelPermission, DataPermissionsValue, Override,
 };
 use syrnike_result::Result;
 
@@ -76,22 +76,9 @@ pub async fn set_default_server_permissions(
         return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
     }
 
-    for channel_id in &server.channels {
-        let channel = match Reference::from_unchecked(channel_id).as_channel(db).await {
-            Ok(channel) => channel,
-            Err(error) => {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-            }
-        };
+    reconcile_server_voice_permissions(db, voice_client, &server, None).await;
 
-        if let Err(error) =
-            sync_voice_permissions(db, voice_client, &channel, Some(&server), None).await
-        {
-            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-        }
-    }
-
-    audit.mark_succeeded(db).await?;
+    audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
     Ok(Json(server.into()))
 }
@@ -106,15 +93,15 @@ mod test {
     use std::collections::HashMap;
 
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use serde_json::json;
     use syrnike_database::{
-        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
-        ServerAuditLogTarget, fixture, voice::VoiceClient,
+        fixture, voice::VoiceClient, Database, DatabaseInfo, ServerAuditLogAction,
+        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use ulid::Ulid;
 

@@ -3,6 +3,7 @@ import type {
   Channel,
   ChannelUnread,
   Emoji,
+  InviteJoinResponse,
   Member,
   Message,
   Role,
@@ -10,7 +11,17 @@ import type {
   User,
 } from '@syrnike13/api-types'
 
-import type { GatewayServerEvent, ReadyPayload, SyncState } from './types'
+import type {
+  GatewayServerEvent,
+  GroupJoinBundle,
+  ReadyPayload,
+  ServerCreateEvent,
+  ServerJoinBundle,
+  ServerMemberUpdateEvent,
+  ServerRoleUpdateEvent,
+  ServerUpdateEvent,
+  SyncState,
+} from './types'
 import type { UserVoiceState, VoiceParticipantsByChannel } from './voice-types'
 import type { VoiceCallState } from './voice-types'
 import {
@@ -161,6 +172,75 @@ function upsertRecord<T extends { _id: string }>(
 function mergeChannel(existing: Channel | undefined, patch: Partial<Channel>) {
   if (!existing) return patch as Channel
   return { ...existing, ...patch } as Channel
+}
+
+function clearServerFields(server: Server, clear: ServerUpdateEvent['clear']) {
+  const next = { ...server }
+  for (const field of clear ?? []) {
+    switch (field) {
+      case 'Description':
+        delete next.description
+        break
+      case 'Categories':
+        delete next.categories
+        break
+      case 'SystemMessages':
+        delete next.system_messages
+        break
+      case 'Icon':
+        delete next.icon
+        break
+      case 'Banner':
+        delete next.banner
+        break
+    }
+  }
+  return next
+}
+
+function clearRoleFields(role: Role, clear: ServerRoleUpdateEvent['clear']) {
+  const next = { ...role }
+  for (const field of clear ?? []) {
+    switch (field) {
+      case 'Colour':
+        delete next.colour
+        break
+      case 'Icon':
+        delete next.icon
+        break
+    }
+  }
+  return next
+}
+
+function clearMemberFields(
+  member: Member,
+  clear: ServerMemberUpdateEvent['clear'],
+) {
+  const next = { ...member }
+  for (const field of clear ?? []) {
+    switch (field) {
+      case 'Roles':
+        next.roles = []
+        break
+      case 'Nickname':
+        delete next.nickname
+        break
+      case 'Avatar':
+        delete next.avatar
+        break
+      case 'Timeout':
+        delete next.timeout
+        break
+      case 'CanReceive':
+        next.can_receive = true
+        break
+      case 'CanPublish':
+        next.can_publish = true
+        break
+    }
+  }
+  return next
 }
 
 function memberKey(member: Member) {
@@ -340,6 +420,44 @@ export const syncStore = {
       dismissedVoiceCallKeys,
       selectedServerId: state.selectedServerId,
     })
+  },
+
+  applyServerJoinBundle({
+    server,
+    member,
+    channels,
+    emojis = [],
+    voiceStates = [],
+  }: ServerJoinBundle) {
+    batchUpdates(() => {
+      setState({
+        servers: upsertRecord(state.servers, [server]),
+        members: { ...state.members, [memberKey(member)]: member },
+        channels: upsertRecord(state.channels, channels),
+        emojis: upsertRecord(state.emojis, emojis),
+      })
+      for (const voiceState of voiceStates) {
+        this.setChannelVoiceParticipants(
+          voiceState.id,
+          voiceState.participants,
+        )
+      }
+    })
+  },
+
+  applyGroupJoinBundle({ channel, users }: GroupJoinBundle) {
+    setState({
+      users: upsertRecord(state.users, users),
+      channels: upsertRecord(state.channels, [channel]),
+    })
+  },
+
+  applyInviteJoinResponse(response: InviteJoinResponse) {
+    if (response.type === 'Server') {
+      this.applyServerJoinBundle(response)
+    } else if (response.type === 'Group') {
+      this.applyGroupJoinBundle(response)
+    }
   },
 
   setChannelVoiceParticipants(
@@ -1240,30 +1358,22 @@ export const syncStore = {
         break
       }
       case 'ServerCreate': {
-        const payload = event as {
-          server?: Server
-          channels?: Channel[]
-          member?: Member
-          id?: string
-        }
-        batchUpdates(() => {
-          if (payload.server) {
-            this.upsertServer(payload.server)
-          }
-          if (payload.member) {
-            this.upsertMembers([payload.member])
-          }
-          for (const channel of payload.channels ?? []) {
-            this.upsertChannel(channel)
-          }
+        const { server, member, channels, emojis, voice_states } =
+          event as ServerCreateEvent
+        this.applyServerJoinBundle({
+          server,
+          member,
+          channels,
+          emojis,
+          voiceStates: voice_states,
         })
         break
       }
       case 'ServerUpdate': {
-        const { id, data } = event as { id: string; data: Partial<Server> }
+        const { id, data, clear } = event as ServerUpdateEvent
         const existing = state.servers[id]
         if (existing) {
-          this.upsertServer({ ...existing, ...data })
+          this.upsertServer({ ...clearServerFields(existing, clear), ...data })
         }
         break
       }
@@ -1273,19 +1383,18 @@ export const syncStore = {
         break
       }
       case 'ServerRoleUpdate': {
-        const { id, role_id, data } = event as {
-          id: string
-          role_id: string
-          data: Record<string, unknown>
-        }
+        const { id, role_id, data, clear } = event as ServerRoleUpdateEvent
         const server = state.servers[id]
         if (!server) break
-        const existing = server.roles?.[role_id]
+        const existing =
+          server.roles?.[role_id] ?? ({ _id: role_id } as Role)
         const roles = {
           ...server.roles,
-          [role_id]: existing
-            ? { ...existing, ...data }
-            : ({ _id: role_id, ...data } as Role),
+          [role_id]: {
+            ...clearRoleFields(existing, clear),
+            ...data,
+            _id: role_id,
+          },
         }
         this.upsertServer({ ...server, roles })
         break
@@ -1377,47 +1486,17 @@ export const syncStore = {
         break
       }
       case 'ServerMemberUpdate': {
-        const { id, data, clear } = event as {
-          id: { server: string; user: string }
-          data: Partial<Member>
-          clear?: string[]
-        }
+        const { id, data, clear } = event as ServerMemberUpdateEvent
         const key = `${id.server}:${id.user}`
         const existing =
           state.members[key] ??
           ({
             _id: { server: id.server, user: id.user },
           } as Member)
-
-        let member: Member = {
-          ...existing,
+        const member: Member = {
+          ...clearMemberFields(existing, clear),
           ...data,
           _id: existing._id,
-        }
-
-        for (const field of clear ?? []) {
-          switch (field) {
-            case 'Roles':
-              member = { ...member, roles: [] }
-              break
-            case 'Nickname':
-              member = { ...member, nickname: undefined }
-              break
-            case 'Avatar':
-              member = { ...member, avatar: undefined }
-              break
-            case 'Timeout':
-              member = { ...member, timeout: undefined }
-              break
-            case 'CanReceive':
-              member = { ...member, can_receive: true }
-              break
-            case 'CanPublish':
-              member = { ...member, can_publish: true }
-              break
-            default:
-              break
-          }
         }
 
         this.upsertMembers([member])

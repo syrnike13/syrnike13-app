@@ -46,9 +46,13 @@ impl<'a> Reference<'a> {
         db.fetch_channel(self.id).await
     }
 
+    pub fn is_discoverable_server_reference(&self) -> bool {
+        ulid::Ulid::from_str(self.id).is_ok()
+    }
+
     /// Fetch invite from Ref or create invite to server if discoverable
     pub async fn as_invite(&self, db: &Database) -> Result<Invite> {
-        if ulid::Ulid::from_str(self.id).is_ok() {
+        if self.is_discoverable_server_reference() {
             let server = self.as_server(db).await?;
             if !server.discoverable {
                 return Err(create_error!(NotFound));

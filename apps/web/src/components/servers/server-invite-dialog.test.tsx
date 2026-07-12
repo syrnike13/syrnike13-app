@@ -17,7 +17,6 @@ import { permissionOr } from '#/lib/permission-bits'
 
 const mocks = vi.hoisted(() => ({
   createChannelInvite: vi.fn(),
-  deleteInvite: vi.fn(),
   fetchServerInvites: vi.fn(),
   openDirectMessage: vi.fn(),
   sendChannelMessage: vi.fn(),
@@ -51,12 +50,16 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.fetchServerInvites(...args),
 }))
 
-vi.mock('#/features/api/invites-api', () => ({
-  createChannelInvite: (...args: Parameters<typeof mocks.createChannelInvite>) =>
-    mocks.createChannelInvite(...args),
-  deleteInvite: (...args: Parameters<typeof mocks.deleteInvite>) =>
-    mocks.deleteInvite(...args),
-}))
+vi.mock('#/features/api/invites-api', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('#/features/api/invites-api')
+  >()
+  return {
+    ...actual,
+    createChannelInvite: (...args: Parameters<typeof mocks.createChannelInvite>) =>
+      mocks.createChannelInvite(...args),
+  }
+})
 
 vi.mock('#/features/api/messages-api', () => ({
   sendChannelMessage: (...args: Parameters<typeof mocks.sendChannelMessage>) =>
@@ -137,7 +140,6 @@ describe('ServerInviteDialog', () => {
       } as never,
     ])
     mocks.createChannelInvite.mockResolvedValue({ _id: 'new-code' })
-    mocks.deleteInvite.mockResolvedValue(undefined)
     mocks.fetchServerInvites.mockResolvedValue([])
     mocks.openDirectMessage.mockResolvedValue({
       _id: 'dm-1',
@@ -236,6 +238,157 @@ describe('ServerInviteDialog', () => {
     expect(screen.getByText('announcements')).toBeTruthy()
   })
 
+  it('clears a stale invite code when a later load has no active invite', async () => {
+    syncStore.upsertServer({
+      ...syncStore.getState().servers['server-1'],
+      owner: 'user-1',
+    } as never)
+    mocks.fetchServerInvites.mockResolvedValueOnce([
+      {
+        type: 'Server',
+        _id: 'stale-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: 0,
+        expires_at: null,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+    ])
+
+    const { rerender } = render(
+      <ServerInviteDialog
+        serverId="server-1"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+    expect(await screen.findByText(/stale-code/)).toBeTruthy()
+
+    mocks.fetchServerInvites.mockResolvedValueOnce([])
+    rerender(
+      <ServerInviteDialog
+        serverId="server-1"
+        open={false}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    rerender(
+      <ServerInviteDialog
+        serverId="server-1"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(mocks.fetchServerInvites).toHaveBeenCalledTimes(2)
+      expect(screen.queryByText(/stale-code/)).toBeNull()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Копировать/ }))
+
+    await waitFor(() => {
+      expect(mocks.createChannelInvite).toHaveBeenCalledWith(
+        'session-token',
+        'channel-1',
+        { max_age_seconds: 604800, max_uses: 0 },
+      )
+    })
+  })
+
+  it('does not reuse expired invites', async () => {
+    syncStore.upsertServer({
+      ...syncStore.getState().servers['server-1'],
+      owner: 'user-1',
+    } as never)
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'expired-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: 0,
+        expires_at: Date.now() - 1,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+    ])
+
+    render(
+      <ServerInviteDialog
+        serverId="server-1"
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(mocks.fetchServerInvites).toHaveBeenCalled()
+      expect(screen.queryByText(/expired-code/)).toBeNull()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Копировать/ }))
+
+    await waitFor(() => {
+      expect(mocks.createChannelInvite).toHaveBeenCalled()
+    })
+  })
+
+  it('revalidates an invite before copying after it expires', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(100)
+    syncStore.upsertServer({
+      ...syncStore.getState().servers['server-1'],
+      owner: 'user-1',
+    } as never)
+    mocks.fetchServerInvites.mockResolvedValue([
+      {
+        type: 'Server',
+        _id: 'soon-expired-code',
+        server: 'server-1',
+        channel: 'channel-1',
+        creator: 'user-1',
+        created_at: 0,
+        expires_at: 200,
+        max_uses: null,
+        uses: 0,
+        revoked_at: null,
+        revoked_by: null,
+        temporary: false,
+      },
+    ])
+
+    try {
+      render(
+        <ServerInviteDialog
+          serverId="server-1"
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      expect(await screen.findByText(/soon-expired-code/)).toBeTruthy()
+
+      nowSpy.mockReturnValue(300)
+      fireEvent.click(screen.getByRole('button', { name: /Копировать/ }))
+
+      await waitFor(() => {
+        expect(mocks.createChannelInvite).toHaveBeenCalledWith(
+          'session-token',
+          'channel-1',
+          { max_age_seconds: 604800, max_uses: 0 },
+        )
+      })
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
+
   it('creates an invite with expiry and usage limit', async () => {
     render(
       <ServerInviteDialog
@@ -281,6 +434,7 @@ describe('ServerInviteDialog', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /Изменить ссылку-приглашение/ }),
     )
+    expect(screen.queryByRole('option', { name: '30 дней' })).toBeNull()
     fireEvent.change(screen.getByLabelText('Канал приглашения'), {
       target: { value: 'channel-2' },
     })
@@ -291,7 +445,7 @@ describe('ServerInviteDialog', () => {
         'session-token',
         'channel-2',
         {
-          max_age_seconds: 2592000,
+          max_age_seconds: 604800,
           max_uses: 0,
         },
       )
@@ -317,7 +471,7 @@ describe('ServerInviteDialog', () => {
         'session-token',
         'channel-1',
         {
-          max_age_seconds: 2592000,
+          max_age_seconds: 604800,
           max_uses: 0,
         },
       )

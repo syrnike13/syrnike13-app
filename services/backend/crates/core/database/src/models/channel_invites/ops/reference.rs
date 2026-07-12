@@ -50,19 +50,40 @@ impl AbstractChannelInvites for ReferenceDb {
         }
     }
 
-    async fn increment_invite_uses(&self, code: &str) -> Result<Invite> {
+    async fn consume_invite_use(&self, code: &str, now: u64) -> Result<Invite> {
         let mut invites = self.channel_invites.lock().await;
         let invite = invites
             .get_mut(code)
             .ok_or_else(|| create_error!(NotFound))?;
 
+        if invite.is_revoked() || invite.is_expired(now) || invite.is_exhausted() {
+            return Err(create_error!(InvalidInvite));
+        }
+
         match invite {
             Invite::Server { uses, .. } | Invite::Group { uses, .. } => {
-                *uses = uses.saturating_add(1);
+                *uses = uses
+                    .checked_add(1)
+                    .ok_or_else(|| create_error!(InternalError))?;
             }
         }
 
         Ok(invite.clone())
+    }
+
+    async fn release_invite_use(&self, code: &str) -> Result<()> {
+        let mut invites = self.channel_invites.lock().await;
+        let Some(invite) = invites.get_mut(code) else {
+            return Ok(());
+        };
+
+        match invite {
+            Invite::Server { uses, .. } | Invite::Group { uses, .. } => {
+                *uses = uses.saturating_sub(1);
+            }
+        }
+
+        Ok(())
     }
 
     async fn revoke_invite(&self, code: &str, revoked_at: u64, revoked_by: &str) -> Result<Invite> {
@@ -112,19 +133,70 @@ mod tests {
     }
 
     #[async_std::test]
-    async fn reference_increment_invite_uses_returns_updated_invite() {
+    async fn reference_consume_invite_use_is_atomic_at_limit() {
         let db = Database::Reference(ReferenceDb::default());
-        db.insert_invite(&invite()).await.expect("invite inserted");
+        let mut limited = invite();
+        if let Invite::Server { max_uses, .. } = &mut limited {
+            *max_uses = Some(1);
+        }
+        db.insert_invite(&limited).await.expect("invite inserted");
 
-        let invite = db
-            .increment_invite_uses("invite-1")
-            .await
-            .expect("invite incremented");
+        let results =
+            futures::future::join_all((0..32).map(|_| db.consume_invite_use("invite-1", 1_500)))
+                .await;
 
-        match invite {
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| matches!(result, Err(error) if matches!(error.error_type, syrnike_result::ErrorType::InvalidInvite)))
+                .count(),
+            31
+        );
+
+        match db.fetch_invite("invite-1").await.expect("invite fetched") {
             Invite::Server { uses, .. } => assert_eq!(uses, 1),
             _ => unreachable!("expected server invite"),
         }
+    }
+
+    #[async_std::test]
+    async fn reference_consume_invite_use_checks_lifecycle_and_release_is_guarded() {
+        let db = Database::Reference(ReferenceDb::default());
+        db.insert_invite(&invite()).await.expect("invite inserted");
+
+        let consumed = db
+            .consume_invite_use("invite-1", 1_500)
+            .await
+            .expect("invite consumed");
+        assert!(matches!(consumed, Invite::Server { uses: 1, .. }));
+
+        db.revoke_invite("invite-1", 2_000, "moderator-1")
+            .await
+            .expect("invite revoked");
+        db.release_invite_use("invite-1")
+            .await
+            .expect("invite use released");
+        db.release_invite_use("invite-1")
+            .await
+            .expect("zero use release is a no-op");
+        db.release_invite_use("missing")
+            .await
+            .expect("missing invite release is a no-op");
+
+        match db.fetch_invite("invite-1").await.expect("invite fetched") {
+            Invite::Server { uses, .. } => assert_eq!(uses, 0),
+            _ => unreachable!("expected server invite"),
+        }
+
+        let error = db
+            .consume_invite_use("invite-1", 2_001)
+            .await
+            .expect_err("revoked invite rejected");
+        assert!(matches!(
+            error.error_type,
+            syrnike_result::ErrorType::InvalidInvite
+        ));
     }
 
     #[async_std::test]

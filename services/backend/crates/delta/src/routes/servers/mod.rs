@@ -8,6 +8,7 @@ mod ban_list;
 mod ban_remove;
 mod channel_create;
 mod emoji_list;
+pub(crate) mod hierarchy_policy;
 mod invites_fetch;
 mod member_edit;
 mod member_experimental_query;

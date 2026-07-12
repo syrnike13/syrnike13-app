@@ -2,8 +2,12 @@ import type {
   Channel,
   ChannelUnread,
   Emoji,
+  FieldsMember,
+  FieldsRole,
+  FieldsServer,
   Member,
   Message,
+  Role,
   Server,
   User,
 } from '@syrnike13/api-types'
@@ -15,12 +19,57 @@ import type {
   VoiceParticipantsByChannel,
 } from './voice-types'
 
+export type ServerCreateEvent = {
+  type: 'ServerCreate'
+  id: string
+  server: Server
+  member: Member
+  channels: Channel[]
+  emojis: Emoji[]
+  voice_states: ChannelVoiceState[]
+}
+
+export type ServerUpdateEvent = {
+  type: 'ServerUpdate'
+  id: string
+  data: Partial<Server>
+  clear?: FieldsServer[]
+}
+
+export type ServerRoleUpdateEvent = {
+  type: 'ServerRoleUpdate'
+  id: string
+  role_id: string
+  data: Partial<Role>
+  clear?: FieldsRole[]
+}
+
+export type ServerMemberUpdateEvent = {
+  type: 'ServerMemberUpdate'
+  id: { server: string; user: string }
+  data: Partial<Member>
+  clear?: FieldsMember[]
+}
+
 export type GatewayServerEvent = {
   type?: string
   channel_id?: string
   state?: Partial<UserVoiceState> & { user?: string; user_id?: string }
   // Gateway events are raw JSON. Event-specific branches normalize the shape.
   [key: string]: any
+}
+
+export type ServerJoinBundle = {
+  server: Server
+  member: Member
+  channels: Channel[]
+  emojis?: Emoji[]
+  voiceStates?: ChannelVoiceState[]
+}
+
+export type GroupJoinBundle = {
+  channel: Channel
+  users: User[]
 }
 
 export type ReadyPayload = {

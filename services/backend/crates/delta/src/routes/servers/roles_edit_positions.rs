@@ -1,14 +1,14 @@
-use rocket::{State, serde::json::Json};
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    Database, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{VoiceClient, sync_voice_permissions},
+    voice::{reconcile_server_voice_permissions, VoiceClient},
+    Database, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
+use syrnike_result::{create_error, Result};
 
-use super::audit_mutation;
+use super::{audit_mutation, hierarchy_policy};
 
 /// # Edits server roles ranks
 ///
@@ -46,7 +46,7 @@ pub async fn edit_role_ranks(
     }
 
     // Don't have to check what the user can't modify if they are the server owner
-    if server.owner != user.id {
+    if !hierarchy_policy::bypasses_hierarchy(&user, &server) {
         let member_top_rank = query.get_member_rank();
 
         if server
@@ -54,11 +54,7 @@ pub async fn edit_role_ranks(
             .iter()
             // Find all roles above the member which we should not be able to reorder
             .filter(|(_, role)| {
-                if let Some(top_rank) = member_top_rank {
-                    role.rank <= top_rank
-                } else {
-                    true
-                }
+                hierarchy_policy::role_is_at_or_above_actor(member_top_rank, role.rank)
             })
             // Check if user is trying to reorder roles they can't reorder (as found previously)
             .any(|(id, _)| {
@@ -102,22 +98,9 @@ pub async fn edit_role_ranks(
         return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
     }
 
-    for channel_id in &server.channels {
-        let channel = match Reference::from_unchecked(channel_id).as_channel(db).await {
-            Ok(channel) => channel,
-            Err(error) => {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-            }
-        };
+    reconcile_server_voice_permissions(db, voice_client, &server, None).await;
 
-        if let Err(error) =
-            sync_voice_permissions(db, voice_client, &channel, Some(&server), None).await
-        {
-            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-        }
-    }
-
-    audit.mark_succeeded(db).await?;
+    audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
     Ok(Json(server.into()))
 }
@@ -132,14 +115,14 @@ mod test {
     use std::collections::HashMap;
 
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::{
-        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
-        ServerAuditLogTarget, fixture, voice::VoiceClient,
+        fixture, voice::VoiceClient, Database, DatabaseInfo, ServerAuditLogAction,
+        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use syrnike_models::v0;
     use ulid::Ulid;

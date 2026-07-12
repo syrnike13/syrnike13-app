@@ -41,10 +41,16 @@ vi.mock('#/features/api/servers-api', () => ({
     mocks.fetchServerInvites(...args),
 }))
 
-vi.mock('#/features/api/invites-api', () => ({
-  deleteInvite: (...args: Parameters<typeof mocks.deleteInvite>) =>
-    mocks.deleteInvite(...args),
-}))
+vi.mock('#/features/api/invites-api', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('#/features/api/invites-api')
+  >()
+  return {
+    ...actual,
+    deleteInvite: (...args: Parameters<typeof mocks.deleteInvite>) =>
+      mocks.deleteInvite(...args),
+  }
+})
 
 vi.mock('#/lib/clipboard', () => ({
   writeClipboardText: (...args: Parameters<typeof mocks.writeClipboardText>) =>

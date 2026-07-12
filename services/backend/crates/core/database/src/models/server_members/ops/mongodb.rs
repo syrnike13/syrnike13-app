@@ -11,45 +11,55 @@ use super::{AbstractServerMembers, ChunkedServerMembersGenerator};
 
 static COL: &str = "server_members";
 
+fn timestamp_bson(timestamp: &Timestamp) -> bson::Bson {
+    bson::to_bson(timestamp).expect("Failed to serialize timestamp")
+}
+
 #[async_trait]
 impl AbstractServerMembers for MongoDb {
     /// Insert a new server member (or use the existing member if one is found)
     async fn insert_or_merge_member(&self, member: &Member) -> Result<Option<Member>> {
-        let existing: Result<Option<Document>> = query!(
-            self,
-            find_one,
-            COL,
-            doc! {
-                "_id.server": &member.id.server,
-                "_id.user": &member.id.user,
-                "pending_deletion_at": {"$exists": true}
-            }
-        );
-        // Update the existing record if it exist, otherwise make a new record
-        if existing.is_ok_and(|x| x.is_some()) {
-            self.col::<Member>(COL)
-                .find_one_and_update(
-                    doc! {
-                        "_id.server": &member.id.server,
-                        "_id.user": &member.id.user,
+        // Restore a pending record in one operation. If cleanup removed it
+        // concurrently, the update returns None and we insert a fresh member below.
+        let existing = self
+            .col::<Member>(COL)
+            .find_one_and_update(
+                doc! {
+                    "_id.server": &member.id.server,
+                    "_id.user": &member.id.user,
+                    "pending_deletion_at": {"$exists": true},
+                },
+                doc! {
+                    "$set": {
+                        "joined_at": timestamp_bson(&member.joined_at),
+                        "temporary": member.temporary,
                     },
-                    doc! {
-                        "$set": {
-                            "joined_at": member.joined_at.duration_since(Timestamp::UNIX_EPOCH).whole_seconds(),
-                            "temporary": member.temporary,
-                        },
-                        "$unset": {
-                            "pending_deletion_at": ""
-                        }
-                    },
-                )
-                .return_document(mongodb::options::ReturnDocument::After)
-                .await
-                .map_err(|_| create_database_error!("update_one", COL))
-        } else {
-            query!(self, insert_one, COL, &member).map(|_| ())?;
-            Ok(None)
+                    "$unset": {
+                        "pending_deletion_at": ""
+                    }
+                },
+            )
+            .return_document(mongodb::options::ReturnDocument::After)
+            .await
+            .map_err(|_| create_database_error!("update_one", COL))?;
+
+        if existing.is_some() {
+            return Ok(existing);
         }
+
+        if self.col::<Member>(COL).insert_one(member).await.is_ok() {
+            return Ok(None);
+        }
+
+        if self
+            .fetch_member(&member.id.server, &member.id.user)
+            .await
+            .is_ok()
+        {
+            return Err(create_error!(AlreadyInServer));
+        }
+
+        Err(create_database_error!("insert_one", COL))
     }
 
     /// Fetch a server member by their id
@@ -110,7 +120,8 @@ impl AbstractServerMembers for MongoDb {
         let cursor = self
             .col::<Member>(COL)
             .find(doc! {
-                "_id.server": server_id
+                "_id.server": server_id,
+                "pending_deletion_at": {"$exists": false}
             })
             .session(&mut session)
             .batch_size(config.pushd.mass_mention_chunk_size as u32)
@@ -129,7 +140,8 @@ impl AbstractServerMembers for MongoDb {
             .col::<Member>(COL)
             .find(doc! {
                 "_id.server": server_id,
-                "roles": {"$in": roles}
+                "roles": {"$in": roles},
+                "pending_deletion_at": {"$exists": false}
             })
             .await
             .map_err(|_| create_database_error!("find", COL))?
@@ -166,7 +178,8 @@ impl AbstractServerMembers for MongoDb {
             .col::<Member>(COL)
             .find(doc! {
                 "_id.server": server_id,
-                "roles": {"$in": roles}
+                "roles": {"$in": roles},
+                "pending_deletion_at": {"$exists": false}
             })
             .session(&mut session)
             .batch_size(config.pushd.mass_mention_chunk_size as u32)
@@ -271,34 +284,30 @@ impl AbstractServerMembers for MongoDb {
     /// This will remove the record if the user has no pending actions (eg. timeout),
     /// otherwise will slate the record for deletion by revolt_crond once the actions expire.
     async fn soft_delete_member(&self, id: &MemberCompositeKey) -> Result<()> {
-        let member = self.fetch_member(&id.server, &id.user).await;
-        if let Ok(member) = member {
-            if member.in_timeout() {
-                self.col::<Document>(COL)
-                    .update_many(
-                        doc! {
-                            "_id.server": &id.server,
-                            "_id.user": &id.user,
-                        },
-                        doc! {
-                            "$set": {"pending_deletion_at": format!("{}", member.timeout.unwrap().format())},
-                            "$unset": {
-                                "joined_at": "",
-                                "avatar": "",
-                                "nickname": "",
-                                "roles": "",
-                                "temporary": ""
-                            }
-                        },
-                    )
-                    .await
-                    .map(|_| ())
-                    .map_err(|_| create_database_error!("update_many", COL))
-            } else {
-                self.force_delete_member(id).await
-            }
+        let member = self.fetch_member(&id.server, &id.user).await?;
+        if member.in_timeout() {
+            self.col::<Document>(COL)
+                .update_one(
+                    doc! {
+                        "_id.server": &id.server,
+                        "_id.user": &id.user,
+                    },
+                    doc! {
+                        "$set": {"pending_deletion_at": timestamp_bson(&member.timeout.unwrap())},
+                        "$unset": {
+                            "joined_at": "",
+                            "avatar": "",
+                            "nickname": "",
+                            "roles": "",
+                            "temporary": ""
+                        }
+                    },
+                )
+                .await
+                .map(|_| ())
+                .map_err(|_| create_database_error!("update_one", COL))
         } else {
-            Err(create_database_error!("fetch_member", COL))
+            self.force_delete_member(id).await
         }
     }
 
@@ -317,16 +326,15 @@ impl AbstractServerMembers for MongoDb {
     }
 
     async fn remove_dangling_members(&self) -> Result<()> {
-        let now = Timestamp::now_utc();
-        let date = bson::to_bson(&now).expect("Failed to serialize timestamp");
+        let now = timestamp_bson(&Timestamp::now_utc());
 
         self.col::<Document>(COL)
             .delete_many(doc! {
-                "pending_deletion_at": {"$lt": date}
+                "pending_deletion_at": {"$lt": now}
             })
             .await
             .map(|_| ())
-            .map_err(|_| create_database_error!("count_documents", COL))
+            .map_err(|_| create_database_error!("delete_many", COL))
     }
 }
 

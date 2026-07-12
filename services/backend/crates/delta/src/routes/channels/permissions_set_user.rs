@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
+use log::warn;
 use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{sync_voice_permissions, VoiceClient},
+    voice::{reconcile_voice_permissions, VoiceClient},
     Channel, Database, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
@@ -80,12 +81,13 @@ pub async fn set_user_permissions(
     }
 
     if let Err(error) =
-        sync_voice_permissions(db, voice_client, &new_channel, Some(server), None).await
+        reconcile_voice_permissions(db, voice_client, &new_channel, Some(server), None).await
     {
-        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+        syrnike_config::capture_internal_error!(&error);
+        warn!("Failed to reconcile voice permissions for channel {} after updating user {user_id}: {error:?}", new_channel.id());
     }
 
-    audit.mark_succeeded(db).await?;
+    audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
     Ok(Json(new_channel.into()))
 }

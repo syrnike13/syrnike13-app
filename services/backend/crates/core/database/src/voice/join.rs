@@ -37,7 +37,7 @@ use redis_kiss::{
 };
 use syrnike_config::config;
 use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
-use syrnike_result::{Result, ToSyrnikeError, create_error};
+use syrnike_result::{ErrorType, Result, ToSyrnikeError, create_error};
 
 const TEMPORARY_VOICE_MEMBER_LOCK_TTL_SECONDS: usize = 120;
 const TEMPORARY_VOICE_MEMBER_LOCK_RETRY_LIMIT: usize = 200;
@@ -589,8 +589,10 @@ pub async fn remove_temporary_server_member_after_voice_disconnect(
         return Ok(());
     };
 
-    let Ok(member) = db.fetch_member(server_id, user_id).await else {
-        return Ok(());
+    let member = match db.fetch_member(server_id, user_id).await {
+        Ok(member) => member,
+        Err(error) if matches!(error.error_type, ErrorType::NotFound) => return Ok(()),
+        Err(error) => return Err(error),
     };
     if !member.temporary || !member.roles.is_empty() {
         return Ok(());
@@ -639,8 +641,10 @@ async fn remove_temporary_server_member_if_eligible(
     user_id: &str,
     disconnected_at: Timestamp,
 ) -> Result<()> {
-    let Ok(member) = db.fetch_member(server_id, user_id).await else {
-        return Ok(());
+    let member = match db.fetch_member(server_id, user_id).await {
+        Ok(member) => member,
+        Err(error) if matches!(error.error_type, ErrorType::NotFound) => return Ok(()),
+        Err(error) => return Err(error),
     };
     if !member.temporary || !member.roles.is_empty() {
         return Ok(());
@@ -649,8 +653,10 @@ async fn remove_temporary_server_member_if_eligible(
         return Ok(());
     }
 
-    let Ok(server) = db.fetch_server(server_id).await else {
-        return Ok(());
+    let server = match db.fetch_server(server_id).await {
+        Ok(server) => server,
+        Err(error) if matches!(error.error_type, ErrorType::NotFound) => return Ok(()),
+        Err(error) => return Err(error),
     };
 
     member
@@ -882,7 +888,7 @@ fn should_reject_voice_join_for_capacity(
     })
 }
 
-fn voice_session_for_join_request(
+pub fn voice_session_for_join_request(
     operation_id: &str,
     user_id: &str,
     channel: &UserVoiceChannel,

@@ -8,7 +8,7 @@ use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
 use validator::Validate;
 
-use super::audit_mutation;
+use super::{audit_mutation, hierarchy_policy};
 
 /// # Edit Role
 ///
@@ -35,13 +35,10 @@ pub async fn edit(
         .await
         .throw_if_lacking_channel_permission(ChannelPermission::ManageRole)?;
 
-    let member_rank = query.get_member_rank().unwrap_or(i64::MIN);
+    let member_rank = query.get_member_rank();
 
     if let Some(mut role) = server.roles.remove(&role_id) {
-        // Prevent us from editing roles above us
-        if role.rank <= member_rank {
-            return Err(create_error!(NotElevated));
-        }
+        hierarchy_policy::ensure_role_below_actor(&user, &server, member_rank, role.rank)?;
 
         let v0::DataEditRole {
             name,
@@ -158,7 +155,7 @@ pub async fn edit(
             return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
         }
 
-        audit.mark_succeeded(db).await?;
+        audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
         Ok(Json(role.into()))
     } else {
@@ -180,8 +177,9 @@ mod test {
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use syrnike_database::{
-        fixture, Channel, Database, DatabaseInfo, PartialServer, ServerAuditLogAction,
-        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget, VoiceInformation,
+        fixture, Channel, Database, DatabaseInfo, PartialMember, PartialServer,
+        ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
+        VoiceInformation,
     };
     use syrnike_models::v0;
     use syrnike_permissions::OverrideField;
@@ -246,12 +244,29 @@ mod test {
     }
 
     #[rocket::async_test]
-    async fn edit_role_creates_audit_entry() {
+    async fn owner_without_roles_can_edit_role_and_creates_audit_entry() {
         let context = RoleEditTestContext::new().await;
 
         fixture!(context.db, "server_with_many_roles",
             owner user 0
             server server 4);
+
+        let mut owner_member = context
+            .db
+            .fetch_member(&server.id, &owner.id)
+            .await
+            .expect("owner member fetched");
+        owner_member
+            .update(
+                &context.db,
+                PartialMember {
+                    roles: Some(vec![]),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("owner roles cleared");
 
         let role = server
             .roles

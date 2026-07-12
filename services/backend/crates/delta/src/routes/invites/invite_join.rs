@@ -1,10 +1,11 @@
-use rocket::{State, serde::json::Json};
+use log::warn;
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    AMQP, Channel, Database, Invite, Member, User, audit_timestamp, util::reference::Reference,
-    voice::with_temporary_voice_user_lock,
+    audit_timestamp, util::reference::Reference, voice::with_temporary_voice_user_lock, Channel,
+    Database, Invite, Member, User, AMQP,
 };
 use syrnike_models::v0::{self, InviteJoinResponse};
-use syrnike_result::{Result, create_error};
+use syrnike_result::{create_error, Result};
 
 use crate::routes::voice_call_member_sync::send_active_group_voice_call_to_new_member;
 
@@ -27,41 +28,74 @@ pub async fn join(
 
     let invite = target.as_invite(db).await?;
     let now = audit_timestamp();
-    if invite.is_revoked() || invite.is_expired(now) || invite.is_exhausted() {
-        return Err(create_error!(InvalidInvite));
-    }
-    let count_invite_use = db.fetch_invite(invite.code()).await.is_ok();
+    let is_synthetic_discoverable = target.is_discoverable_server_reference();
+    let invite = if is_synthetic_discoverable {
+        if invite.is_revoked() || invite.is_expired(now) || invite.is_exhausted() {
+            return Err(create_error!(InvalidInvite));
+        }
+        invite
+    } else {
+        db.consume_invite_use(invite.code(), now).await?
+    };
 
-    let response = match &invite {
-        Invite::Server {
-            server, temporary, ..
-        } => join_server_invite(db, &user, server, *temporary).await,
-        Invite::Group {
-            channel, creator, ..
-        } => {
-            let mut channel = db.fetch_channel(channel).await?;
-            if channel.has_bot_recipient(db).await? {
-                return Err(create_error!(NotFound));
-            }
+    let response: Result<InviteJoinResponse> = async {
+        match &invite {
+            Invite::Server {
+                server, temporary, ..
+            } => join_server_invite(db, &user, server, *temporary).await,
+            Invite::Group {
+                channel, creator, ..
+            } => {
+                let mut channel = db.fetch_channel(channel).await?;
+                if channel.has_bot_recipient(db).await? {
+                    return Err(create_error!(NotFound));
+                }
 
-            channel.add_user_to_group(db, amqp, &user, creator).await?;
-            send_active_group_voice_call_to_new_member(&user.id, &channel).await?;
-            if let Channel::Group { recipients, .. } = &channel {
+                let users = if let Channel::Group { recipients, .. } = &channel {
+                    let mut joined_recipients = recipients.clone();
+                    if !joined_recipients.contains(&user.id) {
+                        joined_recipients.push(user.id.clone());
+                    }
+                    User::fetch_many_ids_as_mutuals(db, &user, &joined_recipients).await?
+                } else {
+                    unreachable!()
+                };
+
+                channel.add_user_to_group(db, amqp, &user, creator).await?;
+                if let Err(error) =
+                    send_active_group_voice_call_to_new_member(&user.id, &channel).await
+                {
+                    syrnike_config::capture_internal_error!(&error);
+                    warn!(
+                        "Failed to send active group voice call to newly joined user {}: {error:?}",
+                        user.id
+                    );
+                }
+
                 Ok(InviteJoinResponse::Group {
-                    users: User::fetch_many_ids_as_mutuals(db, &user, recipients).await?,
+                    users,
                     channel: channel.into(),
                 })
-            } else {
-                unreachable!()
             }
         }
-    }?;
-
-    if count_invite_use {
-        db.increment_invite_uses(invite.code()).await?;
     }
+    .await;
 
-    Ok(Json(response))
+    match response {
+        Ok(response) => Ok(Json(response)),
+        Err(error) => {
+            if !is_synthetic_discoverable {
+                if let Err(release_error) = db.release_invite_use(invite.code()).await {
+                    syrnike_config::capture_internal_error!(&release_error);
+                    warn!(
+                        "Failed to release invite use for {} after join error: {release_error:?}",
+                        invite.code()
+                    );
+                }
+            }
+            Err(error)
+        }
+    }
 }
 
 async fn join_server_invite(
@@ -89,7 +123,7 @@ async fn join_server_invite(
 mod test {
     use crate::util::test::TestHarness;
     use rocket::http::{ContentType, Status};
-    use syrnike_database::{DatabaseInfo, Invite, Server, User};
+    use syrnike_database::{DatabaseInfo, Invite, PartialServer, Server, User};
     use syrnike_models::v0;
 
     async fn create_server_invite(
@@ -148,6 +182,105 @@ mod test {
         )
         .await;
         assert_eq!(second_response.status(), Status::BadRequest);
+    }
+
+    #[rocket::async_test]
+    async fn concurrent_join_respects_single_use_limit() {
+        let harness = TestHarness::new().await;
+        let (_, owner_session, owner) = harness.new_user().await;
+        let (_, channels) = harness.new_server(&owner).await;
+        let channel = channels.first().expect("server channel");
+        let invite = create_server_invite(
+            &harness,
+            owner_session,
+            channel.id(),
+            serde_json::json!({ "max_uses": 1 }),
+        )
+        .await;
+        let code = invite_code(invite);
+        let (_, first_session, _) = harness.new_user().await;
+        let (_, second_session, _) = harness.new_user().await;
+
+        let first = TestHarness::with_session(
+            first_session,
+            harness.client.post(format!("/invites/{code}")),
+        );
+        let second = TestHarness::with_session(
+            second_session,
+            harness.client.post(format!("/invites/{code}")),
+        );
+        let (first, second) = futures::future::join(first, second).await;
+        let statuses = [first.status(), second.status()];
+
+        assert_eq!(
+            statuses
+                .iter()
+                .filter(|status| **status == Status::Ok)
+                .count(),
+            1
+        );
+        assert_eq!(
+            statuses
+                .iter()
+                .filter(|status| **status == Status::BadRequest)
+                .count(),
+            1
+        );
+        assert!(matches!(
+            harness
+                .db
+                .fetch_invite(&code)
+                .await
+                .expect("invite fetched"),
+            Invite::Server { uses: 1, .. }
+        ));
+    }
+
+    #[rocket::async_test]
+    async fn failed_join_releases_reserved_invite_use() {
+        let harness = TestHarness::new().await;
+        let (_, owner_session, owner) = harness.new_user().await;
+        let (_, channels) = harness.new_server(&owner).await;
+        let channel = channels.first().expect("server channel");
+        let invite = create_server_invite(
+            &harness,
+            owner_session.clone(),
+            channel.id(),
+            serde_json::json!({ "max_uses": 1 }),
+        )
+        .await;
+        let code = invite_code(invite);
+
+        let failed_response = TestHarness::with_session(
+            owner_session,
+            harness.client.post(format!("/invites/{code}")),
+        )
+        .await;
+        assert_eq!(failed_response.status(), Status::Conflict);
+        assert!(matches!(
+            harness
+                .db
+                .fetch_invite(&code)
+                .await
+                .expect("invite fetched"),
+            Invite::Server { uses: 0, .. }
+        ));
+
+        let (_, joiner_session, _) = harness.new_user().await;
+        let successful_response = TestHarness::with_session(
+            joiner_session,
+            harness.client.post(format!("/invites/{code}")),
+        )
+        .await;
+        assert_eq!(successful_response.status(), Status::Ok);
+        assert!(matches!(
+            harness
+                .db
+                .fetch_invite(&code)
+                .await
+                .expect("invite fetched"),
+            Invite::Server { uses: 1, .. }
+        ));
     }
 
     #[rocket::async_test]
@@ -214,6 +347,40 @@ mod test {
         .await;
 
         assert_eq!(join_response.status(), Status::BadRequest);
+    }
+
+    #[rocket::async_test]
+    async fn discoverable_server_join_bypasses_invite_reservation() {
+        let harness = TestHarness::new().await;
+        let (_, _, owner) = harness.new_user().await;
+        let (server, _) = harness.new_server(&owner).await;
+        harness
+            .db
+            .update_server(
+                &server.id,
+                &PartialServer {
+                    discoverable: Some(true),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .await
+            .expect("server made discoverable");
+
+        let (_, joiner_session, joiner) = harness.new_user().await;
+        let response = TestHarness::with_session(
+            joiner_session,
+            harness.client.post(format!("/invites/{}", server.id)),
+        )
+        .await;
+
+        assert_eq!(response.status(), Status::Ok);
+        harness
+            .db
+            .fetch_member(&server.id, &joiner.id)
+            .await
+            .expect("discoverable server member created");
+        assert!(harness.db.fetch_invite(&server.id).await.is_err());
     }
 
     #[rocket::async_test]

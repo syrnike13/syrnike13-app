@@ -1,7 +1,8 @@
+use log::warn;
 use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{sync_voice_permissions, VoiceClient},
+    voice::{reconcile_voice_permissions, VoiceClient},
     Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0::{self, DataDefaultChannelPermissions};
@@ -116,28 +117,25 @@ pub async fn set_default_channel_permissions(
         Some(server_id) => match Reference::from_unchecked(server_id).as_server(db).await {
             Ok(server) => Some(server),
             Err(error) => {
-                if let Some(audit) = &mut audit {
-                    return audit_mutation::mark_failed_and_return(db, audit, error).await;
-                }
-
-                return Err(error);
+                syrnike_config::capture_internal_error!(&error);
+                warn!("Failed to load server {server_id} after updating channel {} permissions: {error:?}", channel.id());
+                None
             }
         },
         None => None,
     };
 
-    if let Err(error) =
-        sync_voice_permissions(db, voice_client, &channel, server.as_ref(), None).await
-    {
-        if let Some(audit) = &mut audit {
-            return audit_mutation::mark_failed_and_return(db, audit, error).await;
+    if channel.server().is_none() || server.is_some() {
+        if let Err(error) =
+            reconcile_voice_permissions(db, voice_client, &channel, server.as_ref(), None).await
+        {
+            syrnike_config::capture_internal_error!(&error);
+            warn!("Failed to reconcile voice permissions for channel {} after committed update: {error:?}", channel.id());
         }
-
-        return Err(error);
     }
 
     if let Some(audit) = &mut audit {
-        audit.mark_succeeded(db).await?;
+        audit_mutation::mark_succeeded_after_commit(db, audit).await;
     }
 
     Ok(Json(channel.into()))

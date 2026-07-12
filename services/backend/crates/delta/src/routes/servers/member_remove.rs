@@ -104,7 +104,7 @@ pub async fn kick(
         return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
     }
 
-    audit.mark_succeeded(db).await?;
+    audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
     Ok(EmptyResponse)
 }

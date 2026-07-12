@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
+use log::warn;
 use rocket::{serde::json::Json, State};
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{sync_voice_permissions, VoiceClient},
+    voice::{reconcile_voice_permissions, VoiceClient},
     Channel, Database, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, Override};
 use syrnike_result::{create_error, Result};
 
-use crate::routes::servers::audit_mutation;
+use crate::routes::servers::{audit_mutation, hierarchy_policy};
 
 /// # Set Role Permission
 ///
@@ -40,9 +41,12 @@ pub async fn set_role_permissions(
 
     if let Some(server) = query.server_ref() {
         if let Some(role) = server.roles.get(&role_id) {
-            if role.rank <= query.get_member_rank().unwrap_or(i64::MIN) {
-                return Err(create_error!(NotElevated));
-            }
+            hierarchy_policy::ensure_role_below_actor(
+                &user,
+                server,
+                query.get_member_rank(),
+                role.rank,
+            )?;
 
             let current_value: Override = role.permissions.into();
             permissions
@@ -86,14 +90,20 @@ pub async fn set_role_permissions(
                 return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
             }
 
-            if let Err(error) =
-                sync_voice_permissions(db, voice_client, &new_channel, Some(server), Some(&role_id))
-                    .await
+            if let Err(error) = reconcile_voice_permissions(
+                db,
+                voice_client,
+                &new_channel,
+                Some(server),
+                Some(&role_id),
+            )
+            .await
             {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
+                syrnike_config::capture_internal_error!(&error);
+                warn!("Failed to reconcile voice permissions for channel {} after updating role {role_id}: {error:?}", new_channel.id());
             }
 
-            audit.mark_succeeded(db).await?;
+            audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
             Ok(Json(new_channel.into()))
         } else {

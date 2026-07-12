@@ -2,13 +2,13 @@ use rocket::State;
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{sync_voice_permissions, VoiceClient},
+    voice::{reconcile_server_voice_permissions, VoiceClient},
     Database, Role, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_permissions::{calculate_server_permissions, ChannelPermission};
 use syrnike_result::{create_error, Result};
 
-use super::audit_mutation;
+use super::{audit_mutation, hierarchy_policy};
 
 /// # Delete Role
 ///
@@ -28,16 +28,14 @@ pub async fn delete(
         .await
         .throw_if_lacking_channel_permission(ChannelPermission::ManageRole)?;
 
-    let member_rank = query.get_member_rank().unwrap_or(i64::MIN);
+    let member_rank = query.get_member_rank();
 
     let role = server
         .roles
         .remove(&role_id)
         .ok_or_else(|| create_error!(NotFound))?;
 
-    if role.rank <= member_rank {
-        return Err(create_error!(NotElevated));
-    }
+    hierarchy_policy::ensure_role_below_actor(&user, &server, member_rank, role.rank)?;
 
     let mut audit = audit_mutation::insert_pending_audit(
         db,
@@ -60,23 +58,10 @@ pub async fn delete(
     }
 
     if voice_client.is_enabled() {
-        for channel_id in &server.channels {
-            let channel = match Reference::from_unchecked(channel_id).as_channel(db).await {
-                Ok(channel) => channel,
-                Err(error) => {
-                    return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-                }
-            };
-
-            if let Err(error) =
-                sync_voice_permissions(db, voice_client, &channel, Some(&server), None).await
-            {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-            }
-        }
+        reconcile_server_voice_permissions(db, voice_client, &server, None).await;
     }
 
-    audit.mark_succeeded(db).await?;
+    audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
     Ok(EmptyResponse)
 }

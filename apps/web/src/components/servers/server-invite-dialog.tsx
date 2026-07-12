@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DataCreateInvite, Invite, User } from '@syrnike13/api-types'
 import {
   CheckIcon,
@@ -22,7 +22,10 @@ import { useAuth } from '#/features/auth/auth-context'
 import { sendChannelMessage } from '#/features/api/messages-api'
 import { fetchServerInvites } from '#/features/api/servers-api'
 import { openDirectMessage } from '#/features/api/users-api'
-import { createChannelInvite } from '#/features/api/invites-api'
+import {
+  createChannelInvite,
+  getInviteInactiveReason,
+} from '#/features/api/invites-api'
 import {
   listServerChannels,
   listUsersByRelationship,
@@ -48,7 +51,6 @@ const INVITE_MAX_AGE_OPTIONS = [
   { label: '1 час', value: '3600' },
   { label: '1 день', value: '86400' },
   { label: '7 дней', value: '604800' },
-  { label: '30 дней', value: '2592000' },
   { label: 'Без срока', value: '0' },
 ]
 
@@ -72,7 +74,7 @@ function inviteCode(invite: Invite) {
 function activeInvite(invites: Invite[], channelId?: string) {
   return invites.find((invite) => {
     if (!('_id' in invite) || !invite._id) return false
-    if ('revoked_at' in invite && invite.revoked_at) return false
+    if (getInviteInactiveReason(invite)) return false
     if (channelId && 'channel' in invite && invite.channel !== channelId) {
       return false
     }
@@ -103,9 +105,10 @@ export function ServerInviteDialog({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [invites, setInvites] = useState<Invite[]>([])
   const [activeInviteCode, setActiveInviteCode] = useState('')
-  const [maxAgeSeconds, setMaxAgeSeconds] = useState('2592000')
+  const [maxAgeSeconds, setMaxAgeSeconds] = useState('604800')
   const [maxUses, setMaxUses] = useState('0')
   const [selectedChannelId, setSelectedChannelId] = useState<string | undefined>()
+  const loadInvitesRequestRef = useRef(0)
 
   const textChannels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id).filter(
@@ -121,6 +124,7 @@ export function ServerInviteDialog({
         : [],
     [auth.user?._id, member, server, textChannels],
   )
+  const inviteChannelKey = inviteChannels.map((channel) => channel._id).join('\0')
   const defaultChannelId = inviteChannels[0]?._id
   const activeChannelId =
     selectedChannelId &&
@@ -146,32 +150,56 @@ export function ServerInviteDialog({
   const currentInviteUrl = activeInviteCode ? inviteUrl(activeInviteCode) : ''
 
   const loadInvites = useCallback(async () => {
+    const requestId = ++loadInvitesRequestRef.current
+    setActiveInviteCode('')
+    setInvites([])
     if (!token || !canManageServer) return
 
     try {
       const loadedInvites = await fetchServerInvites(token, serverId)
+      if (requestId !== loadInvitesRequestRef.current) return
       setInvites(loadedInvites)
-
-      const existing =
-        activeInvite(loadedInvites, activeChannelId) ?? activeInvite(loadedInvites)
-      if (existing) {
-        setActiveInviteCode(inviteCode(existing))
-        if ('channel' in existing) {
-          setSelectedChannelId(existing.channel)
-        }
-      }
     } catch (error) {
+      if (requestId !== loadInvitesRequestRef.current) return
       toast.error(
         error instanceof Error ? error.message : 'Не удалось загрузить',
       )
     }
-  }, [activeChannelId, canManageServer, serverId, token])
+  }, [canManageServer, serverId, token])
+
+  useEffect(() => {
+    if (!open) return
+
+    const accessibleChannelIds = new Set(inviteChannelKey.split('\0'))
+    const existing =
+      (activeChannelId ? activeInvite(invites, activeChannelId) : undefined) ??
+      (!selectedChannelId
+        ? activeInvite(
+            invites.filter(
+              (invite) =>
+                'channel' in invite && accessibleChannelIds.has(invite.channel),
+            ),
+          )
+        : undefined)
+
+    setActiveInviteCode(existing ? inviteCode(existing) : '')
+    if (
+      existing &&
+      'channel' in existing &&
+      existing.channel !== activeChannelId
+    ) {
+      setSelectedChannelId(existing.channel)
+    }
+  }, [activeChannelId, inviteChannelKey, invites, open, selectedChannelId])
 
   useEffect(() => {
     if (!open) return
     setFriendSearch('')
     setSentUserIds([])
     void loadInvites()
+    return () => {
+      loadInvitesRequestRef.current += 1
+    }
   }, [loadInvites, open])
 
   function invalidateLink() {
@@ -179,7 +207,13 @@ export function ServerInviteDialog({
   }
 
   async function ensureInviteLink() {
-    if (currentInviteUrl) return currentInviteUrl
+    const currentInvite = invites.find(
+      (invite) => inviteCode(invite) === activeInviteCode,
+    )
+    if (currentInvite && !getInviteInactiveReason(currentInvite)) {
+      return inviteUrl(activeInviteCode)
+    }
+    if (activeInviteCode) setActiveInviteCode('')
 
     if (!token || !activeChannelId) {
       throw new Error('Нет текстового канала для приглашения')

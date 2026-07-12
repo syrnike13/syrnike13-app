@@ -1,5 +1,7 @@
+use iso8601_timestamp::Timestamp;
 use syrnike_result::Result;
 
+use crate::PendingServerMember;
 use crate::ReferenceDb;
 use crate::{FieldsMember, Member, MemberCompositeKey, PartialMember};
 
@@ -10,8 +12,18 @@ impl AbstractServerMembers for ReferenceDb {
     /// Insert a new server member into the database
     async fn insert_or_merge_member(&self, member: &Member) -> Result<Option<Member>> {
         let mut server_members = self.server_members.lock().await;
+        let mut pending_server_members = self.pending_server_members.lock().await;
+
         if server_members.contains_key(&member.id) {
-            Err(create_database_error!("insert", "member"))
+            return Err(create_error!(AlreadyInServer));
+        }
+
+        if let Some(pending) = pending_server_members.remove(&member.id) {
+            let mut restored = pending.member;
+            restored.joined_at = member.joined_at;
+            restored.temporary = member.temporary;
+            server_members.insert(restored.id.clone(), restored.clone());
+            Ok(Some(restored))
         } else {
             server_members.insert(member.id.clone(), member.clone());
             Ok(None)
@@ -172,32 +184,43 @@ impl AbstractServerMembers for ReferenceDb {
     /// Soft delete a member
     async fn soft_delete_member(&self, id: &MemberCompositeKey) -> Result<()> {
         let mut server_members = self.server_members.lock().await;
+        let Some(mut member) = server_members.remove(id) else {
+            return Err(create_error!(NotFound));
+        };
 
-        let member = server_members.get_mut(id);
-        if let Some(member) = member {
-            if member.in_timeout() {
-                panic!("Soft deletion is not implemented.")
-            } else if server_members.remove(id).is_some() {
-                Ok(())
-            } else {
-                Err(create_error!(NotFound))
-            }
-        } else {
-            Err(create_error!(NotFound))
+        if member.in_timeout() {
+            let pending_deletion_at = member.timeout.expect("timed out member has a timeout");
+            member.avatar = None;
+            member.nickname = None;
+            member.roles.clear();
+            member.temporary = false;
+
+            let mut pending_server_members = self.pending_server_members.lock().await;
+            pending_server_members.insert(
+                id.clone(),
+                PendingServerMember {
+                    member,
+                    pending_deletion_at,
+                },
+            );
         }
+
+        Ok(())
     }
 
     /// Delete a server member by their id
     async fn force_delete_member(&self, id: &MemberCompositeKey) -> Result<()> {
         let mut server_members = self.server_members.lock().await;
-        if server_members.remove(id).is_some() {
-            Ok(())
-        } else {
-            Err(create_error!(NotFound))
-        }
+        let mut pending_server_members = self.pending_server_members.lock().await;
+        server_members.remove(id);
+        pending_server_members.remove(id);
+        Ok(())
     }
 
     async fn remove_dangling_members(&self) -> Result<()> {
-        todo!()
+        let now = Timestamp::now_utc();
+        let mut pending_server_members = self.pending_server_members.lock().await;
+        pending_server_members.retain(|_, member| member.pending_deletion_at >= now);
+        Ok(())
     }
 }

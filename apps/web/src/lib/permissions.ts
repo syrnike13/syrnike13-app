@@ -220,26 +220,6 @@ function canModerateServerMember(
   return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
 }
 
-function canVoiceModerateServerMember(
-  server: Server,
-  actorMember: Member | undefined,
-  actorUserId: string | undefined,
-  targetMember: Member | undefined,
-  permission: number,
-): boolean {
-  if (!actorUserId || !targetMember) return false
-  if (actorUserId === targetMember._id.user) return false
-  if (server.owner === actorUserId) return true
-
-  const serverPermissions = calculateServerPermissions(
-    server,
-    actorMember,
-    actorUserId,
-  )
-
-  return hasChannelPermission(serverPermissions, permission)
-}
-
 export function canKickServerMember(
   server: Server,
   actorMember: Member | undefined,
@@ -305,7 +285,7 @@ export function canMuteServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ): boolean {
-  return canVoiceModerateServerMember(
+  return canModerateServerMember(
     server,
     actorMember,
     actorUserId,
@@ -320,7 +300,7 @@ export function canDeafenServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ): boolean {
-  return canVoiceModerateServerMember(
+  return canModerateServerMember(
     server,
     actorMember,
     actorUserId,
@@ -335,7 +315,7 @@ export function canMoveServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ): boolean {
-  return canVoiceModerateServerMember(
+  return canModerateServerMember(
     server,
     actorMember,
     actorUserId,
@@ -424,21 +404,12 @@ export function canManageRole(
 
 export function getServerSettingsAccess(
   server: Server,
-  channels: Channel[],
   member: Member | undefined,
   userId: string | undefined,
 ): ServerSettingsAccess {
   const serverPermissions = calculateServerPermissions(server, member, userId)
   const has = (permission: number) =>
     hasChannelPermission(serverPermissions, permission)
-  const canInvite = channels.some(
-    (channel) =>
-      channel.channel_type === 'TextChannel' &&
-      hasChannelPermission(
-        calculateChannelPermissions(server, channel, member, userId),
-        ChannelPermission.InviteOthers,
-      ),
-  )
 
   return {
     overview: has(ChannelPermission.ManageServer),
@@ -481,7 +452,7 @@ export function getServerMenuPermissions(
     serverPermissions,
     ChannelPermission.ManageServer,
   )
-  const settingsAccess = getServerSettingsAccess(server, channels, member, userId)
+  const settingsAccess = getServerSettingsAccess(server, member, userId)
   const canInvite =
     canManageServer ||
     channels.some(

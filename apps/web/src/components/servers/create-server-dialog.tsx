@@ -21,7 +21,11 @@ import {
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
-import { isServerInviteJoin, joinInvite } from '#/features/api/invites-api'
+import {
+  isGroupInviteJoin,
+  isServerInviteJoin,
+  joinInvite,
+} from '#/features/api/invites-api'
 import { createServer } from '#/features/api/servers-api'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore } from '#/features/sync/sync-store'
@@ -59,11 +63,7 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     setSaving(true)
     try {
       const { server, member, channels } = await createServer(token, { name: trimmed })
-      syncStore.upsertServer(server)
-      syncStore.upsertMembers([member])
-      for (const channel of channels) {
-        syncStore.upsertChannel(channel)
-      }
+      syncStore.applyServerJoinBundle({ server, member, channels })
       syncStore.setSelectedServerId(server._id)
       handleOpenChange(false)
       toast.success(`Сервер «${server.name}» создан`)
@@ -99,12 +99,8 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
     setJoining(true)
     try {
       const response = await joinInvite(token, code)
+      syncStore.applyInviteJoinResponse(response)
       if (isServerInviteJoin(response)) {
-        syncStore.upsertServer(response.server)
-        syncStore.upsertMembers([response.member])
-        for (const channel of response.channels) {
-          syncStore.upsertChannel(channel)
-        }
         syncStore.setSelectedServerId(response.server._id)
         handleOpenChange(false)
         toast.success('Вы присоединились к серверу')
@@ -122,9 +118,18 @@ export function CreateServerDialog({ trigger }: CreateServerDialogProps) {
         return
       }
 
-      handleOpenChange(false)
-      toast.success('Приглашение принято')
-      await navigate({ to: '/app', search: { tab: 'online' } })
+      if (isGroupInviteJoin(response)) {
+        handleOpenChange(false)
+        toast.success('Приглашение принято')
+        await navigate({
+          to: `${prefix}/c/$channelId`,
+          params: { channelId: response.channel._id },
+          search: { m: undefined },
+        })
+        return
+      }
+
+      toast.error('Неизвестный тип приглашения')
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось присоединиться',

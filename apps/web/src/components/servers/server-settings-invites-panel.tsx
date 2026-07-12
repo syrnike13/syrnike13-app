@@ -18,7 +18,11 @@ import { Label } from '#/components/ui/label'
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { useAuth } from '#/features/auth/auth-context'
 import { fetchServerInvites } from '#/features/api/servers-api'
-import { deleteInvite } from '#/features/api/invites-api'
+import {
+  deleteInvite,
+  getInviteInactiveReason,
+  type InviteInactiveReason,
+} from '#/features/api/invites-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardText } from '#/lib/clipboard'
@@ -39,7 +43,7 @@ function formatInviteTimestamp(timestamp: number) {
 }
 
 function formatInviteDate(timestamp?: number | null) {
-  if (!timestamp) return 'Без срока'
+  if (timestamp == null) return 'Без срока'
   return formatInviteTimestamp(timestamp)
 }
 
@@ -48,13 +52,10 @@ function formatInviteUses(invite: Invite) {
   return `${invite.uses} / ${maxUses}`
 }
 
-function getInactiveInviteLabel(invite: Invite, now = Date.now()) {
-  if (invite.revoked_at) return 'Отозвано'
-  if (invite.expires_at && invite.expires_at <= now) return 'Истекло'
-  if (invite.max_uses && invite.max_uses > 0 && invite.uses >= invite.max_uses) {
-    return 'Использовано'
-  }
-  return null
+const INACTIVE_INVITE_LABELS: Record<InviteInactiveReason, string> = {
+  revoked: 'Отозвано',
+  expired: 'Истекло',
+  exhausted: 'Использовано',
 }
 
 export function ServerSettingsInvitesPanel({
@@ -147,9 +148,12 @@ export function ServerSettingsInvitesPanel({
       ) : (
         <ul className="space-y-2">
           {invites.map((invite) => {
-            const inactiveLabel = getInactiveInviteLabel(invite)
-            const revoked = inactiveLabel === 'Отозвано'
-            const inactive = inactiveLabel !== null
+            const inactiveReason = getInviteInactiveReason(invite)
+            const inactiveLabel = inactiveReason
+              ? INACTIVE_INVITE_LABELS[inactiveReason]
+              : null
+            const revoked = inactiveReason === 'revoked'
+            const inactive = inactiveReason !== null
             const channelLabel = `#${
               channelNamesById.get(invite.channel) ?? invite.channel
             }`

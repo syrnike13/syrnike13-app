@@ -1,14 +1,14 @@
-use rocket::{State, serde::json::Json};
+use rocket::{serde::json::Json, State};
 use syrnike_database::{
-    Database, ServerAuditLogAction, ServerAuditLogTarget, User,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{VoiceClient, sync_voice_permissions},
+    voice::{reconcile_server_voice_permissions, VoiceClient},
+    Database, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, Override, calculate_server_permissions};
-use syrnike_result::{Result, create_error};
+use syrnike_permissions::{calculate_server_permissions, ChannelPermission, Override};
+use syrnike_result::{create_error, Result};
 
-use super::audit_mutation;
+use super::{audit_mutation, hierarchy_policy};
 
 /// # Set Role Permission
 ///
@@ -38,10 +38,7 @@ pub async fn set_role_permission(
 
     permissions.throw_if_lacking_channel_permission(ChannelPermission::ManagePermissions)?;
 
-    // Prevent us from editing roles above us
-    if rank <= query.get_member_rank().unwrap_or(i64::MIN) {
-        return Err(create_error!(NotElevated));
-    }
+    hierarchy_policy::ensure_role_below_actor(&user, &server, query.get_member_rank(), rank)?;
 
     // Ensure we have access to grant these permissions forwards
     let current_value: Override = current_value.into();
@@ -73,22 +70,9 @@ pub async fn set_role_permission(
         return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
     }
 
-    for channel_id in &server.channels {
-        let channel = match Reference::from_unchecked(channel_id).as_channel(db).await {
-            Ok(channel) => channel,
-            Err(error) => {
-                return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-            }
-        };
+    reconcile_server_voice_permissions(db, voice_client, &server, Some(&role_id)).await;
 
-        if let Err(error) =
-            sync_voice_permissions(db, voice_client, &channel, Some(&server), Some(&role_id)).await
-        {
-            return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-        }
-    }
-
-    audit.mark_succeeded(db).await?;
+    audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
     Ok(Json(server.into()))
 }
@@ -103,15 +87,15 @@ mod test {
     use std::collections::HashMap;
 
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
     use serde_json::json;
     use syrnike_database::{
-        Database, DatabaseInfo, ServerAuditLogAction, ServerAuditLogQuery, ServerAuditLogStatus,
-        ServerAuditLogTarget, fixture, voice::VoiceClient,
+        fixture, voice::VoiceClient, Database, DatabaseInfo, ServerAuditLogAction,
+        ServerAuditLogQuery, ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use ulid::Ulid;
 

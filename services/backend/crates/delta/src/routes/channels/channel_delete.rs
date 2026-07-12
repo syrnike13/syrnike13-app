@@ -1,13 +1,10 @@
+use log::warn;
 use rocket::State;
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
     Channel, Database, PartialChannel, ServerAuditLogAction, ServerAuditLogTarget, User,
-    iso8601_timestamp::Timestamp,
     util::{permissions::DatabasePermissionQuery, reference::Reference},
-    voice::{
-        UserVoiceChannel, VoiceClient, delete_voice_channel, get_voice_channel_members,
-        remove_temporary_server_member_after_voice_disconnect,
-    },
+    voice::{cleanup_removed_voice_channel, UserVoiceChannel, VoiceClient},
 };
 use syrnike_models::v0;
 use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
@@ -85,15 +82,7 @@ pub async fn delete(
             let server_id = channel.server().expect("server channel").to_string();
             let channel_id = channel.id().to_string();
             let had_voice = channel.voice().is_some();
-            let disconnected_at = Timestamp::now_utc();
             let voice_channel = UserVoiceChannel::from_channel(&channel);
-            let connected_voice_members = if had_voice {
-                get_voice_channel_members(&voice_channel)
-                    .await?
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            };
             let mut audit = audit_mutation::insert_pending_audit(
                 db,
                 server_id,
@@ -115,25 +104,17 @@ pub async fn delete(
             }
 
             if had_voice {
-                if let Err(error) = delete_voice_channel(voice_client, &voice_channel).await {
-                    return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-                }
-
-                for member_id in connected_voice_members {
-                    if let Err(error) = remove_temporary_server_member_after_voice_disconnect(
-                        db,
-                        &voice_channel,
-                        &member_id,
-                        disconnected_at,
-                    )
-                    .await
-                    {
-                        return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
-                    }
+                if let Err(error) =
+                    cleanup_removed_voice_channel(db, voice_client, &voice_channel).await
+                {
+                    syrnike_config::capture_internal_error!(&error);
+                    warn!(
+                        "Failed to clean up deleted voice channel {channel_id} after committed delete: {error:?}"
+                    );
                 }
             }
 
-            audit.mark_succeeded(db).await?;
+            audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
         }
     };
 

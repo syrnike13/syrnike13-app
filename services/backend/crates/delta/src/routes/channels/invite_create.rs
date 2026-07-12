@@ -96,7 +96,7 @@ pub async fn create_invite(
             return audit_mutation::mark_failed_and_return(db, &mut audit, error).await;
         }
 
-        audit.mark_succeeded(db).await?;
+        audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
     } else {
         db.insert_invite(&invite).await?;
     }

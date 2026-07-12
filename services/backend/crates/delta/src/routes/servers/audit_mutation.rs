@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::warn;
 use serde::Serialize;
 use syrnike_database::{
     Database, ServerAuditLogAction, ServerAuditLogChange, ServerAuditLogEntry, ServerAuditLogTarget,
@@ -50,6 +51,23 @@ pub async fn mark_failed_and_return<T>(
     audit: &mut ServerAuditLogEntry,
     error: Error,
 ) -> Result<T> {
-    audit.mark_failed(db, error.to_string()).await?;
+    if let Err(audit_error) = audit.mark_failed(db, error.to_string()).await {
+        syrnike_config::capture_internal_error!(&audit_error);
+        warn!(
+            "Failed to mark audit entry {} as failed: {audit_error:?}",
+            audit.id
+        );
+    }
+
     Err(error)
+}
+
+pub async fn mark_succeeded_after_commit(db: &Database, audit: &mut ServerAuditLogEntry) {
+    if let Err(error) = audit.mark_succeeded(db).await {
+        syrnike_config::capture_internal_error!(&error);
+        warn!(
+            "Failed to mark committed audit entry {} as succeeded: {error:?}",
+            audit.id
+        );
+    }
 }

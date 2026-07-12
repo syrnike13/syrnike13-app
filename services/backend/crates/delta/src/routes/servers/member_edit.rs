@@ -1,38 +1,39 @@
 use std::collections::HashSet;
 
-use iso8601_timestamp::{Duration, Timestamp};
+use iso8601_timestamp::Timestamp;
+use log::warn;
 use syrnike_database::{
-    Database, File, PartialMember, ServerAuditLogAction, ServerAuditLogTarget, User,
     events::client::{
         EventV1, VoiceAuthorityLease, VoiceAuthorityMembershipClaim, VoiceRtcCredential,
     },
     util::{
-        permissions::{DatabasePermissionQuery, perms},
+        permissions::{perms, DatabasePermissionQuery},
         reference::Reference,
     },
     voice::{
-        UserVoiceChannel, VOICE_OPERATION_ID_PREFIX, VOICE_SESSION_TTL_SECONDS, VoiceClient,
-        VoiceSession, VoiceSessionCreate, cancel_current_pending_voice_join_in_server,
-        create_voice_session, get_channel_node, get_current_voice_operation_id,
-        get_current_voice_session, get_user_voice_channel_in_server, get_voice_state,
+        cancel_current_pending_voice_join_in_server, create_voice_session, get_channel_node,
+        get_current_voice_operation_id, get_current_voice_session,
+        get_user_voice_channel_in_server, get_voice_state,
         remove_temporary_server_member_after_voice_disconnect_locked,
         remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
         set_user_moved_to_voice, sync_user_voice_permissions, voice_participant_identity,
-        with_temporary_voice_user_lock,
+        voice_session_for_join_request, with_temporary_voice_user_lock, UserVoiceChannel,
+        VoiceClient, VOICE_OPERATION_ID_PREFIX,
     },
+    Database, File, PartialMember, ServerAuditLogAction, ServerAuditLogTarget, User,
 };
 use syrnike_models::v0::{self, FieldsMember};
 
-use rocket::{State, form::validate::Contains, serde::json::Json};
+use rocket::{form::validate::Contains, serde::json::Json, State};
 use syrnike_config::config;
 use syrnike_permissions::{
-    ChannelPermission, calculate_channel_permissions, calculate_server_permissions,
+    calculate_channel_permissions, calculate_server_permissions, ChannelPermission,
 };
-use syrnike_result::{Result, create_error};
+use syrnike_result::{create_error, Result};
 use uuid::Uuid;
 use validator::Validate;
 
-use super::audit_mutation;
+use super::{audit_mutation, hierarchy_policy};
 
 fn changes_voice_permissions(data: &v0::DataMemberEdit) -> bool {
     data.roles.is_some()
@@ -43,6 +44,18 @@ fn changes_voice_permissions(data: &v0::DataMemberEdit) -> bool {
         || data.remove.contains(&FieldsMember::Timeout)
         || data.remove.contains(&FieldsMember::CanPublish)
         || data.remove.contains(&FieldsMember::CanReceive)
+}
+
+fn changes_explicit_voice_membership(data: &v0::DataMemberEdit) -> bool {
+    data.voice_channel.is_some() || data.remove.contains(&FieldsMember::VoiceChannel)
+}
+
+fn changes_persisted_member(data: &v0::DataMemberEdit) -> bool {
+    data.nickname.is_some()
+        || data.avatar.is_some()
+        || changes_voice_permissions(data)
+        || data.remove.contains(&FieldsMember::Nickname)
+        || data.remove.contains(&FieldsMember::Avatar)
 }
 
 async fn disconnect_member_from_voice(
@@ -92,6 +105,9 @@ pub async fn edit(
             error: error.to_string()
         })
     })?;
+    if data.remove.contains(&FieldsMember::JoinedAt) {
+        return Err(create_error!(InvalidOperation));
+    }
 
     // Fetch server and member
     let server = server_id.as_server(db).await?;
@@ -149,11 +165,22 @@ pub async fn edit(
         permissions.throw_if_lacking_channel_permission(ChannelPermission::TimeoutMembers)?;
     }
 
-    if data.can_publish.is_some() {
+    let changes_voice_moderation = data.can_publish.is_some()
+        || data.remove.contains(&v0::FieldsMember::CanPublish)
+        || data.can_receive.is_some()
+        || data.remove.contains(&v0::FieldsMember::CanReceive)
+        || data.voice_channel.is_some()
+        || data.remove.contains(&v0::FieldsMember::VoiceChannel);
+
+    if changes_voice_moderation && member.id.user == user.id {
+        return Err(create_error!(InvalidOperation));
+    }
+
+    if data.can_publish.is_some() || data.remove.contains(&v0::FieldsMember::CanPublish) {
         permissions.throw_if_lacking_channel_permission(ChannelPermission::MuteMembers)?;
     }
 
-    if data.can_receive.is_some() {
+    if data.can_receive.is_some() || data.remove.contains(&v0::FieldsMember::CanReceive) {
         permissions.throw_if_lacking_channel_permission(ChannelPermission::DeafenMembers)?;
     }
 
@@ -161,7 +188,12 @@ pub async fn edit(
         return Err(create_error!(InvalidOperation));
     }
 
-    if data.voice_channel.is_some() || data.remove.contains(&FieldsMember::VoiceChannel) {
+    let explicit_voice_membership_change = changes_explicit_voice_membership(&data);
+    if explicit_voice_membership_change && changes_persisted_member(&data) {
+        return Err(create_error!(InvalidOperation));
+    }
+
+    if explicit_voice_membership_change {
         if !voice_client.is_enabled() {
             return Err(create_error!(LiveKitUnavailable));
         };
@@ -179,7 +211,7 @@ pub async fn edit(
             .await
             .map_err(|_| create_error!(UnknownChannel))?;
 
-        if channel.server().is_none_or(|v| v != member.id.server) {
+        if channel.server().is_none_or(|v| v != member.id.server) || channel.voice().is_none() {
             Err(create_error!(UnknownChannel))?
         }
 
@@ -199,23 +231,18 @@ pub async fn edit(
         None
     };
 
-    // Resolve our ranking
-    let our_ranking = query.get_member_rank().unwrap_or(i64::MIN);
+    let actor_rank = query.get_member_rank();
 
     let changes_ranked_member_fields = data.nickname.is_some()
         || data.remove.contains(&v0::FieldsMember::Nickname)
         || data.avatar.is_some()
         || data.remove.contains(&v0::FieldsMember::Avatar)
         || data.timeout.is_some()
-        || data.remove.contains(&v0::FieldsMember::Timeout);
+        || data.remove.contains(&v0::FieldsMember::Timeout)
+        || changes_voice_moderation;
 
-    // Member-level moderation still needs authority over the target. Role
-    // changes and voice moderation are checked separately by their own rules.
-    if member.id.user != user.id
-        && changes_ranked_member_fields
-        && member.get_ranking(query.server_ref().as_ref().unwrap()) <= our_ranking
-    {
-        return Err(create_error!(NotElevated));
+    if member.id.user != user.id && changes_ranked_member_fields {
+        hierarchy_policy::ensure_member_below_actor(&user, &server, actor_rank, &member)?;
     }
 
     // Check permissions against roles in diff
@@ -225,9 +252,7 @@ pub async fn edit(
 
         for role_id in new_roles.symmetric_difference(&current_roles) {
             if let Some(role) = server.roles.get(*role_id) {
-                if role.rank <= our_ranking {
-                    return Err(create_error!(NotElevated));
-                }
+                hierarchy_policy::ensure_role_below_actor(&user, &server, actor_rank, role.rank)?;
             } else {
                 return Err(create_error!(InvalidRole));
             }
@@ -235,9 +260,7 @@ pub async fn edit(
     } else if data.remove.contains(&v0::FieldsMember::Roles) {
         for role_id in &member.roles {
             if let Some(role) = server.roles.get(role_id) {
-                if role.rank <= our_ranking {
-                    return Err(create_error!(NotElevated));
-                }
+                hierarchy_policy::ensure_role_below_actor(&user, &server, actor_rank, role.rank)?;
             } else {
                 return Err(create_error!(InvalidRole));
             }
@@ -333,7 +356,6 @@ pub async fn edit(
     let should_sync_voice_permissions = changes_voice_permissions(&data);
 
     let was_temporary_member = member.temporary;
-    let serialize_temporary_membership = was_temporary_member;
     let mutation = || async {
         // Apply edits to the member object
         let v0::DataMemberEdit {
@@ -371,13 +393,15 @@ pub async fn edit(
             partial.avatar = Some(File::use_user_avatar(db, &avatar, &user.id, &user.id).await?);
         }
 
-        member
-            .update(
-                db,
-                partial,
-                remove.clone().into_iter().map(Into::into).collect(),
-            )
-            .await?;
+        if !explicit_voice_membership_change {
+            member
+                .update(
+                    db,
+                    partial,
+                    remove.clone().into_iter().map(Into::into).collect(),
+                )
+                .await?;
+        }
 
         if let Some(new_voice_channel) = new_voice_channel {
             if let Some(channel) =
@@ -452,21 +476,18 @@ pub async fn edit(
                     )
                     .await?;
                 let created_at = Timestamp::now_utc();
-                create_voice_session(&VoiceSession::new_awaiting_join(VoiceSessionCreate {
-                    operation_id: operation_id.clone(),
-                    user_id: target_user.id.clone(),
-                    channel: new_user_voice_channel.clone(),
-                    node: new_node.clone(),
-                    rtc_engine: previous_session.rtc_engine,
-                    client_instance_id: previous_session.client_instance_id.clone(),
-                    connection_epoch: connection_epoch.clone(),
+                create_voice_session(&voice_session_for_join_request(
+                    &operation_id,
+                    &target_user.id,
+                    &new_user_voice_channel,
+                    &new_node,
+                    previous_session.rtc_engine,
+                    &previous_session.client_instance_id,
+                    &connection_epoch,
                     self_mute,
                     self_deaf,
                     created_at,
-                    expires_at: created_at
-                        .checked_add(Duration::seconds(VOICE_SESSION_TTL_SECONDS as i64))
-                        .ok_or_else(|| create_error!(InternalError))?,
-                }))
+                )?)
                 .await?;
 
                 let authority_version =
@@ -530,13 +551,18 @@ pub async fn edit(
                 .await;
             };
         } else if voice_client.is_enabled() && should_sync_voice_permissions {
-            if let Some(channel) =
-                get_user_voice_channel_in_server(&target_user.id, &server.id).await?
-            {
-                let node = get_channel_node(&channel)
+            let reconciliation = async {
+                let Some(channel_id) =
+                    get_user_voice_channel_in_server(&target_user.id, &server.id).await?
+                else {
+                    return Ok(());
+                };
+                let node = get_channel_node(&channel_id)
                     .await?
                     .ok_or_else(|| create_error!(UnknownNode))?;
-                let channel = Reference::from_unchecked(&channel).as_channel(db).await?;
+                let channel = Reference::from_unchecked(&channel_id)
+                    .as_channel(db)
+                    .await?;
 
                 sync_user_voice_permissions(
                     db,
@@ -547,21 +573,27 @@ pub async fn edit(
                     Some(&server),
                     None,
                 )
-                .await?;
-            };
+                .await
+            }
+            .await;
+
+            if let Err(error) = reconciliation {
+                syrnike_config::capture_internal_error!(&error);
+                warn!(
+                    "Failed to reconcile voice permissions for user {} after committed member update: {error:?}",
+                    target_user.id
+                );
+            }
         };
 
         if remove.contains(&FieldsMember::VoiceChannel) {
-            if was_temporary_member {
-                disconnect_member_from_voice(db, &server.id, &target_user.id, true).await?;
-            } else {
-                disconnect_member_from_voice(db, &server.id, &target_user.id, false).await?;
-            };
+            disconnect_member_from_voice(db, &server.id, &target_user.id, was_temporary_member)
+                .await?;
         }
 
         Ok(member)
     };
-    let mutation_result: Result<_> = if serialize_temporary_membership {
+    let mutation_result: Result<_> = if was_temporary_member {
         with_temporary_voice_user_lock(db, &target_user.id, mutation).await
     } else {
         mutation().await
@@ -572,7 +604,7 @@ pub async fn edit(
         Err(error) => return audit_mutation::mark_failed_and_return(db, &mut audit, error).await,
     };
 
-    audit.mark_succeeded(db).await?;
+    audit_mutation::mark_succeeded_after_commit(db, &mut audit).await;
 
     Ok(Json(member.into()))
 }
@@ -587,16 +619,17 @@ mod test {
     use std::collections::HashMap;
 
     use authifier::{
-        Authifier,
         models::{Account, EmailVerification, Session},
+        Authifier,
     };
     use iso8601_timestamp::Timestamp;
     use rocket::http::{ContentType, Header, Status};
     use rocket::local::asynchronous::Client;
+    use syrnike_config::LiveKitNode;
     use syrnike_database::voice::VoiceClient;
     use syrnike_database::{
-        Database, DatabaseInfo, PartialRole, ServerAuditLogAction, ServerAuditLogQuery,
-        ServerAuditLogStatus, ServerAuditLogTarget, fixture,
+        fixture, Database, DatabaseInfo, PartialRole, ServerAuditLogAction, ServerAuditLogQuery,
+        ServerAuditLogStatus, ServerAuditLogTarget,
     };
     use syrnike_permissions::{ChannelPermission, OverrideField};
     use ulid::Ulid;
@@ -609,6 +642,25 @@ mod test {
 
     impl MemberEditTestContext {
         async fn new() -> Self {
+            Self::new_with_voice_client(VoiceClient::new(HashMap::new())).await
+        }
+
+        async fn new_with_voice_enabled() -> Self {
+            Self::new_with_voice_client(VoiceClient::new(HashMap::from([(
+                "test".to_string(),
+                LiveKitNode {
+                    url: "http://127.0.0.1:7880".to_string(),
+                    lat: 0.0,
+                    lon: 0.0,
+                    key: "test".to_string(),
+                    secret: "test".to_string(),
+                    private: false,
+                },
+            )])))
+            .await
+        }
+
+        async fn new_with_voice_client(voice_client: VoiceClient) -> Self {
             let db = DatabaseInfo::Reference
                 .connect()
                 .await
@@ -619,7 +671,7 @@ mod test {
                     .mount("/servers", super::routes_under_test())
                     .manage(authifier.clone())
                     .manage(db.clone())
-                    .manage(VoiceClient::new(HashMap::new())),
+                    .manage(voice_client),
             )
             .await
             .expect("valid rocket instance");
@@ -1017,7 +1069,7 @@ mod test {
     }
 
     #[rocket::async_test]
-    async fn member_can_voice_mute_equal_ranked_target() {
+    async fn member_cannot_voice_mute_equal_ranked_target() {
         let context = MemberEditTestContext::new().await;
 
         fixture!(context.db, "server_with_many_roles",
@@ -1077,7 +1129,7 @@ mod test {
             .dispatch()
             .await;
 
-        assert_eq!(response.status(), Status::Ok);
+        assert_eq!(response.status(), Status::Forbidden);
 
         let updated = context
             .db
@@ -1085,7 +1137,33 @@ mod test {
             .await
             .expect("member fetched");
 
-        assert!(!updated.can_publish);
+        assert!(updated.can_publish);
+    }
+
+    #[rocket::async_test]
+    async fn member_cannot_be_moved_to_text_only_channel() {
+        let context = MemberEditTestContext::new_with_voice_enabled().await;
+
+        fixture!(context.db, "server_with_many_roles",
+            owner user 0
+            target user 2
+            channel channel 3
+            server server 4);
+
+        let (_, owner_session) = context.account_from_user(owner.id.clone()).await;
+        let response = context
+            .client
+            .patch(format!("/servers/{}/members/{}", server.id, target.id))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "voice_channel": channel.id() }).to_string())
+            .header(Header::new(
+                "x-session-token",
+                owner_session.token.to_string(),
+            ))
+            .dispatch()
+            .await;
+
+        assert_eq!(response.status(), Status::NotFound);
     }
 
     #[rocket::async_test]
@@ -1220,5 +1298,28 @@ mod test {
                 remove: vec![],
             }
         ));
+    }
+
+    #[test]
+    fn explicit_voice_membership_changes_are_separate_from_member_updates() {
+        let voice_only = syrnike_models::v0::DataMemberEdit {
+            nickname: None,
+            avatar: None,
+            roles: None,
+            timeout: None,
+            can_publish: None,
+            can_receive: None,
+            voice_channel: Some("voice-channel".to_string()),
+            remove: vec![],
+        };
+        assert!(super::changes_explicit_voice_membership(&voice_only));
+        assert!(!super::changes_persisted_member(&voice_only));
+
+        let combined = syrnike_models::v0::DataMemberEdit {
+            nickname: Some("Renamed".to_string()),
+            ..voice_only
+        };
+        assert!(super::changes_explicit_voice_membership(&combined));
+        assert!(super::changes_persisted_member(&combined));
     }
 }

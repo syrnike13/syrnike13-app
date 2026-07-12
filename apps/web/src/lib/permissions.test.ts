@@ -282,7 +282,7 @@ describe('member moderation hierarchy', () => {
     expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(false)
   })
 
-  it('allows server voice moderation by permission even when the target role is higher', () => {
+  it('requires the target role to be lower for server voice moderation', () => {
     const server = makeServer({
       roles: {
         actor: makeRole({
@@ -309,9 +309,9 @@ describe('member moderation hierarchy', () => {
       roles: ['target'],
     })
 
-    expect(canMuteServerMember(server, actor, 'user-1', target)).toBe(true)
-    expect(canDeafenServerMember(server, actor, 'user-1', target)).toBe(true)
-    expect(canMoveServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canMuteServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canDeafenServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canMoveServerMember(server, actor, 'user-1', target)).toBe(false)
   })
 })
 
@@ -762,8 +762,27 @@ describe('server voice moderation permissions', () => {
   })
 
   it('does not allow voice moderation against self or the server owner', () => {
-    const server = makeServer({ owner: 'owner-1' })
-    const actor = makeMember()
+    const server = makeServer({
+      owner: 'owner-1',
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.MuteMembers,
+                ChannelPermission.DeafenMembers,
+              ),
+              ChannelPermission.MoveMembers,
+            ),
+            d: 0,
+          },
+          rank: 1,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
     const targetOwner = makeMember({
       _id: { server: 'server-1', user: 'owner-1' },
     })
@@ -809,7 +828,7 @@ describe('getServerSettingsAccess', () => {
     })
     const member = makeMember({ roles: ['role-1'] })
 
-    const access = getServerSettingsAccess(server, [], member, 'user-1')
+    const access = getServerSettingsAccess(server, member, 'user-1')
 
     expect(canOpenServerSettings(access)).toBe(true)
     expect(canViewServerSettingsTab(access, 'roles')).toBe(true)
@@ -822,7 +841,7 @@ describe('getServerSettingsAccess', () => {
     })
     const member = makeMember()
 
-    const access = getServerSettingsAccess(server, [], member, 'user-1')
+    const access = getServerSettingsAccess(server, member, 'user-1')
 
     expect(canOpenServerSettings(access)).toBe(true)
     expect(canViewServerSettingsTab(access, 'bans')).toBe(true)
@@ -843,14 +862,15 @@ describe('getServerSettingsAccess', () => {
         d: 0,
       },
     })
-
-    const access = getServerSettingsAccess(
+    const access = getServerSettingsAccess(server, member, 'user-1')
+    const menu = getServerMenuPermissions(
       server,
       [inviteChannel],
       member,
       'user-1',
     )
 
+    expect(menu.invite).toBe(true)
     expect(canOpenServerSettings(access)).toBe(false)
     expect(canViewServerSettingsTab(access, 'invites')).toBe(false)
   })
