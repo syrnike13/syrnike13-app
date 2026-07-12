@@ -16,6 +16,7 @@ import type {
 } from '@syrnike13/platform'
 import type { DesktopTrayVoiceState } from '@syrnike13/platform'
 
+import { installStdioPipeErrorHandlers } from './stdio-pipe-errors'
 import {
   disposeDesktopAutoUpdate,
   initializeDesktopAutoUpdate,
@@ -63,6 +64,8 @@ import {
 } from './desktop-observability'
 import { anonymousNativeMetricsReporter } from './native-runtime/anonymous-metrics'
 import { desktopVoiceService } from './voice/desktop-voice-service'
+
+installStdioPipeErrorHandlers()
 
 let mainWindow: BrowserWindow | null = null
 let embeddedServer: EmbeddedWebServer | null = null

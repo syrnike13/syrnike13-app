@@ -9365,6 +9365,7 @@ dependencies = [
  "rocket",
  "schemars",
  "serde",
+ "serde_json",
  "syrnike-config",
  "syrnike-permissions",
  "utoipa",

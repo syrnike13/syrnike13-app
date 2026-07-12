@@ -1,8 +1,9 @@
-export type ChannelSettingsTab = 'overview' | 'permissions'
+export type ChannelSettingsTab = 'overview' | 'permissions' | 'webhooks'
 
 export const CHANNEL_SETTINGS_TABS: ChannelSettingsTab[] = [
   'overview',
   'permissions',
+  'webhooks',
 ]
 
 export function parseChannelSettingsTab(value: unknown): ChannelSettingsTab {
@@ -18,4 +19,5 @@ export function parseChannelSettingsTab(value: unknown): ChannelSettingsTab {
 export const CHANNEL_SETTINGS_TAB_LABELS: Record<ChannelSettingsTab, string> = {
   overview: 'Обзор',
   permissions: 'Права доступа',
+  webhooks: 'Вебхуки',
 }

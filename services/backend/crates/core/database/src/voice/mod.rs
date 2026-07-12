@@ -1,5 +1,6 @@
 use std::fmt::{Display, Write};
 
+use log::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -218,6 +219,35 @@ pub async fn get_user_voice_channels(user_id: &str) -> Result<Vec<UserVoiceChann
         Some(session) => Ok(vec![session.channel]),
         _ => Ok(Vec::new()),
     }
+}
+
+pub async fn resolve_active_voice_channel(channel_id: &str) -> Result<UserVoiceChannel> {
+    let channel = UserVoiceChannel {
+        id: channel_id.to_string(),
+        server_id: None,
+    };
+
+    if let Some(reservation) = get_current_voice_reservations_for_channel(&channel)
+        .await?
+        .into_iter()
+        .next()
+    {
+        return Ok(reservation.channel);
+    }
+
+    for user_id in get_voice_channel_members(&channel)
+        .await?
+        .into_iter()
+        .flatten()
+    {
+        if let Some(session) = get_current_voice_session(&user_id).await? {
+            if session.channel.id == channel_id {
+                return Ok(session.channel);
+            }
+        }
+    }
+
+    Ok(channel)
 }
 
 pub async fn is_in_voice_channel(user_id: &str, channel: &UserVoiceChannel) -> Result<bool> {
@@ -943,15 +973,18 @@ pub async fn get_channel_voice_state(
     }
 }
 
-pub async fn sync_voice_permissions(
+pub async fn reconcile_voice_permissions(
     db: &Database,
     voice_client: &VoiceClient,
     channel: &Channel,
     server: Option<&Server>,
     role_id: Option<&str>,
 ) -> Result<()> {
-    let user_voice_channel = UserVoiceChannel::from_channel(channel);
+    if !voice_client.is_enabled() || channel.voice().is_none() {
+        return Ok(());
+    }
 
+    let user_voice_channel = UserVoiceChannel::from_channel(channel);
     let Some(node) = get_channel_node(channel.id()).await? else {
         return Ok(());
     };
@@ -961,10 +994,99 @@ pub async fn sync_voice_permissions(
         .iter()
         .flatten()
     {
-        let user = Reference::from_unchecked(user_id).as_user(db).await?;
+        let result = async {
+            let user = Reference::from_unchecked(user_id).as_user(db).await?;
+            sync_user_voice_permissions(db, voice_client, &node, &user, channel, server, role_id)
+                .await
+        }
+        .await;
 
-        sync_user_voice_permissions(db, voice_client, &node, &user, channel, server, role_id)
-            .await?;
+        if let Err(error) = result {
+            syrnike_config::capture_internal_error!(&error);
+            warn!(
+                "Failed to reconcile voice permissions for user {user_id} in channel {}: {error:?}",
+                channel.id()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn reconcile_server_voice_permissions(
+    db: &Database,
+    voice_client: &VoiceClient,
+    server: &Server,
+    role_id: Option<&str>,
+) {
+    for channel_id in &server.channels {
+        let channel = match db.fetch_channel(channel_id).await {
+            Ok(channel) => channel,
+            Err(error) => {
+                syrnike_config::capture_internal_error!(&error);
+                warn!(
+                    "Failed to load channel {channel_id} while reconciling server {} voice permissions: {error:?}",
+                    server.id
+                );
+                continue;
+            }
+        };
+
+        if let Err(error) =
+            reconcile_voice_permissions(db, voice_client, &channel, Some(server), role_id).await
+        {
+            syrnike_config::capture_internal_error!(&error);
+            warn!(
+                "Failed to reconcile voice permissions for channel {channel_id} in server {}: {error:?}",
+                server.id
+            );
+        }
+    }
+
+}
+
+pub async fn reconcile_active_voice_permissions(
+    db: &Database,
+    voice_client: &VoiceClient,
+) -> Result<()> {
+    if !voice_client.is_enabled() {
+        return Ok(());
+    }
+
+    for channel_id in list_active_voice_channel_ids().await? {
+        let channel = match db.fetch_channel(&channel_id).await {
+            Ok(channel) => channel,
+            Err(error) => {
+                syrnike_config::capture_internal_error!(&error);
+                warn!("Failed to load active voice channel {channel_id}: {error:?}");
+                continue;
+            }
+        };
+
+        if channel.voice().is_none() {
+            continue;
+        }
+
+        let server = match channel.server() {
+            Some(server_id) => match db.fetch_server(server_id).await {
+                Ok(server) => Some(server),
+                Err(error) => {
+                    syrnike_config::capture_internal_error!(&error);
+                    warn!(
+                        "Failed to load server {server_id} for active voice channel {channel_id}: {error:?}"
+                    );
+                    continue;
+                }
+            },
+            None => None,
+        };
+
+        if let Err(error) =
+            reconcile_voice_permissions(db, voice_client, &channel, server.as_ref(), None).await
+        {
+            syrnike_config::capture_internal_error!(&error);
+            warn!("Failed to reconcile active voice channel {channel_id}: {error:?}");
+        }
     }
 
     Ok(())
@@ -1237,7 +1359,10 @@ pub async fn remove_user_from_voice_channel(
     Ok(())
 }
 
-pub async fn reconcile_pending_voice_transport_cleanups(voice_client: &VoiceClient) -> Result<()> {
+pub async fn reconcile_pending_voice_transport_cleanups(
+    db: &Database,
+    voice_client: &VoiceClient,
+) -> Result<()> {
     for cleanup in list_voice_transport_cleanups().await? {
         let participants = match async_std::future::timeout(
             std::time::Duration::from_secs(2),
@@ -1247,7 +1372,15 @@ pub async fn reconcile_pending_voice_transport_cleanups(voice_client: &VoiceClie
         {
             Ok(Ok(Some(participants))) => participants,
             Ok(Ok(None)) => {
-                complete_voice_transport_cleanup(&cleanup).await?;
+                if let Err(error) =
+                    complete_voice_transport_cleanup_with_membership(db, &cleanup).await
+                {
+                    syrnike_config::capture_internal_error!(&error);
+                    warn!(
+                        "Failed to complete voice cleanup {} for user {}: {error:?}",
+                        cleanup.operation_id, cleanup.user_id
+                    );
+                }
                 continue;
             }
             Ok(Err(_)) | Err(_) => continue,
@@ -1280,9 +1413,31 @@ pub async fn reconcile_pending_voice_transport_cleanups(voice_client: &VoiceClie
             .iter()
             .any(|participant| voice_cleanup_matches_participant(&cleanup, participant))
         {
-            complete_voice_transport_cleanup(&cleanup).await?;
+            if let Err(error) = complete_voice_transport_cleanup_with_membership(db, &cleanup).await
+            {
+                syrnike_config::capture_internal_error!(&error);
+                warn!(
+                    "Failed to complete voice cleanup {} for user {}: {error:?}",
+                    cleanup.operation_id, cleanup.user_id
+                );
+            }
         }
     }
+    Ok(())
+}
+
+async fn complete_voice_transport_cleanup_with_membership(
+    db: &Database,
+    cleanup: &VoiceTransportCleanup,
+) -> Result<()> {
+    remove_temporary_server_member_after_voice_disconnect(
+        db,
+        &cleanup.channel,
+        &cleanup.user_id,
+        Timestamp::now_utc(),
+    )
+    .await?;
+    complete_voice_transport_cleanup(cleanup).await?;
     Ok(())
 }
 
@@ -1331,10 +1486,40 @@ pub async fn cancel_current_pending_voice_join_in_server(
     Err(create_error!(InvalidOperation))
 }
 
+pub async fn cleanup_removed_voice_channel(
+    db: &Database,
+    voice_client: &VoiceClient,
+    channel: &UserVoiceChannel,
+) -> Result<()> {
+    let disconnected_at = Timestamp::now_utc();
+    let connected_members = delete_voice_channel_with_members(voice_client, channel).await?;
+
+    for user_id in connected_members {
+        remove_temporary_server_member_after_voice_disconnect(
+            db,
+            channel,
+            &user_id,
+            disconnected_at,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
 pub async fn delete_voice_channel(
     voice_client: &VoiceClient,
     channel: &UserVoiceChannel,
 ) -> Result<()> {
+    delete_voice_channel_with_members(voice_client, channel)
+        .await
+        .map(|_| ())
+}
+
+async fn delete_voice_channel_with_members(
+    voice_client: &VoiceClient,
+    channel: &UserVoiceChannel,
+) -> Result<Vec<String>> {
     for reservation in get_current_voice_reservations_for_channel(channel).await? {
         let mut current = reservation;
         let mut canceled = false;
@@ -1359,7 +1544,7 @@ pub async fn delete_voice_channel(
     }
 
     if let Some(node) = get_channel_node(&channel.id).await? {
-        let _ = voice_client.delete_room(&node, &channel.id).await;
+        voice_client.delete_room(&node, &channel.id).await?;
     }
 
     let users = get_voice_channel_members(channel)
@@ -1377,7 +1562,7 @@ pub async fn delete_voice_channel(
         .await;
     }
 
-    Ok(())
+    Ok(users)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

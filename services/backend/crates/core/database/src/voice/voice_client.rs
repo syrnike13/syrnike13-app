@@ -211,9 +211,19 @@ impl VoiceClient {
     pub async fn delete_room(&self, node: &str, channel_id: &str) -> Result<()> {
         let room = self.get_node(node)?;
 
-        room.client
-            .delete_room(channel_id)
-            .await
-            .to_internal_error()
+        match room.client.delete_room(channel_id).await {
+            Ok(_) => Ok(()),
+            Err(ServiceError::Twirp(TwirpError::Twirp(error)))
+                if error.code == TwirpErrorCode::NOT_FOUND =>
+            {
+                Ok(())
+            }
+            Err(error) => {
+                log::warn!(
+                    "Failed to delete LiveKit room for channel {channel_id} on node {node}: {error}"
+                );
+                Err(create_error!(InternalError))
+            }
+        }
     }
 }

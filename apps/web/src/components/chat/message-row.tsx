@@ -1,5 +1,5 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
-import { PhoneFilledIcon, PhoneOffIcon, PinIcon } from '#/components/icons'
+import { PhoneFilledIcon, PhoneOffIcon, PinIcon, ReplyIcon } from '#/components/icons'
 import { useMemo, type ReactElement } from 'react'
 
 import {
@@ -12,6 +12,12 @@ import { InlineReplyQuote } from '#/components/chat/message-reply-preview'
 import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
 import { MessageAttachments } from '#/components/chat/message-attachments'
 import { MessageReactions } from '#/components/chat/message-reactions'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '#/components/ui/context-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
 import {
@@ -340,7 +346,7 @@ export function MessageRow({
     )
   }
 
-  return (
+  const row = (
     <article
       data-message-id={message._id}
       className={cn(
@@ -512,5 +518,19 @@ export function MessageRow({
         ) : null}
       </div>
     </article>
+  )
+
+  if (!onReply) return row
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="w-36">
+        <ContextMenuItem onSelect={() => onReply(message)}>
+          <ReplyIcon className="size-4" />
+          Ответить
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }

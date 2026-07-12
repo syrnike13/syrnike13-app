@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
+import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
@@ -9,7 +10,11 @@ import {
   consumeVoiceChannelChatOpenRequest,
   subscribeVoiceChannelChatOpen,
 } from '#/features/voice/voice-channel-chat-intent'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import {
+  isServerChannel,
+  isServerVoiceChannel,
+  type RuntimeChannel,
+} from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
 
 type VoiceChannelShellProps = {
@@ -39,6 +44,7 @@ export function VoiceChannelShell({
       setChatOpen(true)
     })
   }, [channelId])
+  const runtimeChannel = channel as RuntimeChannel | undefined
 
   if (!channel) {
     return (
@@ -49,9 +55,10 @@ export function VoiceChannelShell({
   }
 
   if (
-    !isServerVoiceChannel(channel) &&
-    channel.channel_type !== 'DirectMessage' &&
-    channel.channel_type !== 'Group'
+    !runtimeChannel ||
+    (!isServerVoiceChannel(runtimeChannel) &&
+      channel.channel_type !== 'DirectMessage' &&
+      channel.channel_type !== 'Group')
   ) {
     return null
   }
@@ -63,6 +70,11 @@ export function VoiceChannelShell({
       <VoiceStageView
         channel={channel}
         title={title}
+        headerTrailing={
+          isServerChannel(runtimeChannel) ? (
+            <ChannelSettingsDialog channel={runtimeChannel} />
+          ) : undefined
+        }
         chatOpen={chatOpen}
         onToggleChat={() => setChatOpen((open) => !open)}
       />

@@ -102,6 +102,12 @@ auto_derived!(
                 skip_serializing_if = "HashMap::<String, OverrideField>::is_empty"
             )]
             role_permissions: HashMap<String, OverrideField>,
+            /// Permissions assigned to specific members in this channel
+            #[serde(
+                default = "HashMap::<String, OverrideField>::new",
+                skip_serializing_if = "HashMap::<String, OverrideField>::is_empty"
+            )]
+            user_permissions: HashMap<String, OverrideField>,
 
             /// Whether this channel is marked as not safe for work
             #[serde(skip_serializing_if = "crate::if_false", default)]
@@ -148,6 +154,8 @@ auto_derived!(
         #[serde(skip_serializing_if = "Option::is_none")]
         pub role_permissions: Option<HashMap<String, OverrideField>>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        pub user_permissions: Option<HashMap<String, OverrideField>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub default_permissions: Option<OverrideField>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub last_message_id: Option<String>,
@@ -192,17 +200,17 @@ impl Channel {
     pub async fn create_server_channel(
         db: &Database,
         server: &mut Server,
+        id: String,
         data: v0::DataCreateServerChannel,
         update_server: bool,
     ) -> Result<Channel> {
         let config = config().await;
-        if server.channels.len() > config.features.limits.global.server_channels {
+        if server.channels.len() >= config.features.limits.global.server_channels {
             return Err(create_error!(TooManyChannels {
                 max: config.features.limits.global.server_channels,
             }));
         };
 
-        let id = ulid::Ulid::new().to_string();
         let channel = match data.channel_type {
             v0::LegacyServerChannelType::Text => Channel::TextChannel {
                 id: id.clone(),
@@ -213,6 +221,7 @@ impl Channel {
                 last_message_id: None,
                 default_permissions: None,
                 role_permissions: HashMap::new(),
+                user_permissions: HashMap::new(),
                 nsfw: data.nsfw.unwrap_or(false),
                 voice: data.voice.map(|voice| voice.into()),
                 slowmode: None,
@@ -226,6 +235,7 @@ impl Channel {
                 last_message_id: None,
                 default_permissions: None,
                 role_permissions: HashMap::new(),
+                user_permissions: HashMap::new(),
                 nsfw: data.nsfw.unwrap_or(false),
                 voice: Some(data.voice.unwrap_or_default().into()),
                 slowmode: None,
@@ -522,6 +532,43 @@ impl Channel {
         }
     }
 
+    /// Set member-specific permission on a channel
+    pub async fn set_user_permission(
+        &mut self,
+        db: &Database,
+        user_id: &str,
+        permissions: OverrideField,
+    ) -> Result<()> {
+        match self {
+            Channel::TextChannel {
+                id,
+                server,
+                user_permissions,
+                ..
+            } => {
+                db.set_channel_user_permission(id, user_id, permissions)
+                    .await?;
+
+                user_permissions.insert(user_id.to_string(), permissions);
+
+                EventV1::ChannelUpdate {
+                    id: id.clone(),
+                    data: PartialChannel {
+                        user_permissions: Some(user_permissions.clone()),
+                        ..Default::default()
+                    }
+                    .into(),
+                    clear: vec![],
+                }
+                .p(server.clone())
+                .await;
+
+                Ok(())
+            }
+            _ => Err(create_error!(InvalidOperation)),
+        }
+    }
+
     /// Update channel data
     pub async fn update(
         &mut self,
@@ -642,6 +689,7 @@ impl Channel {
                 nsfw,
                 default_permissions,
                 role_permissions,
+                user_permissions,
                 voice,
                 ..
             } => {
@@ -663,6 +711,10 @@ impl Channel {
 
                 if let Some(v) = partial.role_permissions {
                     *role_permissions = v;
+                }
+
+                if let Some(v) = partial.user_permissions {
+                    *user_permissions = v;
                 }
 
                 if let Some(v) = partial.default_permissions {

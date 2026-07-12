@@ -73,6 +73,22 @@ export function userBannerUrl(
   return animatedImageUrl(background, options)
 }
 
+export function serverIconUrl(
+  icon: File | null | undefined,
+  options?: AnimatedMediaOptions,
+) {
+  if (!icon) return null
+  return animatedImageUrl(icon, options)
+}
+
+export function serverBannerUrl(
+  banner: File | null | undefined,
+  options?: AnimatedMediaOptions,
+) {
+  if (!banner) return null
+  return animatedImageUrl(banner, options)
+}
+
 export function roleIconUrl(icon: File | null | undefined) {
   if (!icon) return null
   return attachmentPreviewUrl(icon)

@@ -332,7 +332,7 @@ describe('ServerRail', () => {
 
     expect(indicator).toBeTruthy()
     expect(indicator?.hasAttribute('data-unread')).toBe(true)
-    expect(indicator?.className).toContain('h-4')
+    expect(indicator?.className).toContain('h-2')
     expect(indicator?.className).toContain('opacity-100')
     expect(indicator?.className).not.toMatch(/transition-\[height,opacity\]/)
     expect(serverLink.querySelector('[data-slot="badge"]')).toBeNull()

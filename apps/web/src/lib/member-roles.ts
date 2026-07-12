@@ -1,33 +1,25 @@
 import type { Member, Role, Server } from '@syrnike13/api-types'
 
-import {
-  canAssignRole,
-  canEditMember,
-} from '#/lib/permissions'
-import { sortRolesByRankDesc } from '#/lib/server-permissions'
+import { canAssignRole } from '#/lib/permissions'
+import { sortRolesByHierarchy } from '#/lib/server-permissions'
 
 export function listServerRoles(server: Server | undefined): Role[] {
   if (!server?.roles) return []
-  return sortRolesByRankDesc(Object.values(server.roles))
+  return sortRolesByHierarchy(Object.values(server.roles))
 }
 
-/** Можно назначить хотя бы одну роль (устаревший критерий для «есть доступ к ролям»). */
+/** Можно назначить хотя бы одну роль. */
 export function canManageMemberRoles(
   server: Server,
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member,
 ): boolean {
-  if (!canEditMember(server, actorMember, actorUserId, targetMember)) {
+  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
     return false
   }
 
   if (server.owner === actorUserId) return true
-  if (actorUserId === targetMember._id.user) {
-    return listServerRoles(server).some((role) =>
-      canAssignRole(server, actorMember, actorUserId, role.rank ?? 0),
-    )
-  }
 
   return listServerRoles(server).some((role) =>
     canAssignRole(server, actorMember, actorUserId, role.rank ?? 0),
@@ -41,7 +33,7 @@ export function canEditAnyMemberRole(
   actorUserId: string | undefined,
   targetMember: Member,
 ): boolean {
-  if (!canEditMember(server, actorMember, actorUserId, targetMember)) {
+  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
     return false
   }
 
@@ -66,7 +58,7 @@ export function canToggleMemberRole(
   role: Role,
   enabled: boolean,
 ): boolean {
-  if (!canEditMember(server, actorMember, actorUserId, targetMember)) {
+  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
     return false
   }
 

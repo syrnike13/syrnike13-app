@@ -1,8 +1,8 @@
 use std::{collections::HashMap, hash::RandomState};
 
 use syrnike_permissions::{
-    ChannelPermission, ChannelType, Override, OverrideField, PermissionValue, ALLOW_IN_TIMEOUT,
-    DEFAULT_PERMISSION_DIRECT_MESSAGE,
+    apply_channel_role_overrides, ChannelPermission, ChannelType, Override, OverrideField,
+    PermissionValue, ALLOW_IN_TIMEOUT, DEFAULT_PERMISSION_DIRECT_MESSAGE,
 };
 
 use crate::{Channel, Database, Member, Server, User};
@@ -166,7 +166,8 @@ impl<'z> BulkDatabasePermissionQuery<'z> {
         }
     }
 
-    /// Get the ordered role overrides (from lowest to highest) for this member in this channel
+    /// Get all role overrides for this member in this channel.
+    /// Channel role overrides are resolved as a set, not by role rank.
     #[allow(dead_code)]
     async fn get_channel_role_overrides(&mut self) -> &HashMap<String, OverrideField> {
         if let Some(channel) = &self.channel {
@@ -188,20 +189,22 @@ async fn calculate_members_permissions<'a>(
 ) -> HashMap<String, PermissionValue> {
     let mut resp = HashMap::new();
 
-    let (_, channel_role_permissions, channel_default_permissions) = match query
-        .channel
-        .as_ref()
-        .expect("A channel must be assigned to calculate channel permissions")
-        .clone()
-    {
-        Channel::TextChannel {
-            id,
-            role_permissions,
-            default_permissions,
-            ..
-        } => (id, role_permissions, default_permissions),
-        _ => panic!("Calculation of member permissions must be done on a server channel"),
-    };
+    let (_, channel_role_permissions, channel_user_permissions, channel_default_permissions) =
+        match query
+            .channel
+            .as_ref()
+            .expect("A channel must be assigned to calculate channel permissions")
+            .clone()
+        {
+            Channel::TextChannel {
+                id,
+                role_permissions,
+                user_permissions,
+                default_permissions,
+                ..
+            } => (id, role_permissions, user_permissions, default_permissions),
+            _ => panic!("Calculation of member permissions must be done on a server channel"),
+        };
 
     if query.users.is_none() {
         let ids: Vec<String> = query
@@ -287,23 +290,21 @@ async fn calculate_members_permissions<'a>(
             permission.apply(defaults.into());
         }
 
-        // Get the applicable role overrides
-        let mut roles = channel_role_permissions
+        let role_overrides = channel_role_permissions
             .iter()
             .filter(|(id, _)| member.roles.contains(id))
             .filter_map(|(id, permission)| {
-                query.server.roles.get(id).map(|role| {
-                    let v: Override = (*permission).into();
-                    (role.rank, v)
-                })
+                query
+                    .server
+                    .roles
+                    .contains_key(id)
+                    .then_some((*permission).into())
             })
-            .collect::<Vec<(i64, Override)>>();
+            .collect::<Vec<Override>>();
+        apply_channel_role_overrides(&mut permission, role_overrides);
 
-        roles.sort_by(|a, b| b.0.cmp(&a.0));
-        let overrides = roles.into_iter().map(|(_, v)| v);
-
-        for role_override in overrides {
-            permission.apply(role_override)
+        if let Some(user_override) = channel_user_permissions.get(&member.id.user) {
+            permission.apply((*user_override).into());
         }
 
         resp.insert(user.id.clone(), permission);

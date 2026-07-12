@@ -52,6 +52,12 @@ export type PermissionOverride = { allow: number; deny: number }
 
 export type PermissionTriState = 'neutral' | 'allow' | 'deny'
 
+export const PERMISSION_TRI_STATE_ORDER: PermissionTriState[] = [
+  'neutral',
+  'allow',
+  'deny',
+]
+
 export type PermissionDefinition = {
   flag: number
   label: string
@@ -154,6 +160,27 @@ export function setPermissionTriState(
   return { a: allow, d: deny }
 }
 
+export function getAllowedPermissionTriStates(
+  baseline: PermissionOverrideField | null | undefined,
+  actorPermissions: number,
+  flag: number,
+): PermissionTriState[] {
+  if (hasServerPermission(actorPermissions, flag)) {
+    return PERMISSION_TRI_STATE_ORDER
+  }
+
+  const baselineState = getPermissionTriState(baseline, flag)
+  if (baselineState === 'deny') {
+    return ['deny']
+  }
+
+  if (baselineState === 'neutral') {
+    return ['neutral', 'deny']
+  }
+
+  return PERMISSION_TRI_STATE_ORDER
+}
+
 export function overrideFieldToApi(
   override: PermissionOverrideField,
 ): PermissionOverride {
@@ -201,12 +228,12 @@ export function roleColourStyle(colour: string | null | undefined) {
   return { color: normalizeRoleColour(colour) }
 }
 
-export function sortRolesByRankDesc<T extends { rank?: number | null }>(
+export function sortRolesByHierarchy<T extends { rank?: number | null }>(
   roles: T[],
 ): T[] {
-  return [...roles].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
+  return [...roles].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
 }
 
 export function roleRanksPayload(roleIdsHighestFirst: string[]): string[] {
-  return [...roleIdsHighestFirst].reverse()
+  return roleIdsHighestFirst
 }

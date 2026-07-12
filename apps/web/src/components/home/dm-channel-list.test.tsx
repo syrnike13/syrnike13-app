@@ -93,6 +93,51 @@ describe('DmChannelList', () => {
     expect(screen.queryByText('Нет личных сообщений')).toBeNull()
   })
 
+  it('shows mention counts in inactive direct message rows', () => {
+    syncStore.applyReady({
+      users: [
+        {
+          _id: 'current-user',
+          username: 'me',
+          discriminator: '0001',
+          relationship: 'User',
+          online: true,
+        },
+        {
+          _id: 'friend-1',
+          username: 'test_isa',
+          discriminator: '0002',
+          relationship: 'Friend',
+          online: false,
+        },
+      ],
+      servers: [],
+      channels: [
+        {
+          _id: 'dm-1',
+          channel_type: 'DirectMessage',
+          active: true,
+          recipients: ['current-user', 'friend-1'],
+          last_message_id: 'message-2',
+        },
+      ],
+      channel_unreads: [
+        {
+          _id: { channel: 'dm-1' },
+          last_id: 'message-2',
+          mentions: ['message-1', 'message-2'],
+        },
+      ],
+      members: [],
+      emojis: [],
+      voice_states: [],
+    } as never)
+
+    render(<DmChannelList activeChannelId="other-channel" />)
+
+    expect(screen.getByText('2')).toBeTruthy()
+  })
+
   it('renders group direct messages with a group icon', () => {
     syncStore.applyReady({
       users: [

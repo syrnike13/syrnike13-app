@@ -113,6 +113,22 @@ impl PermissionValue {
     }
 }
 
+pub fn apply_channel_role_overrides<I>(permissions: &mut PermissionValue, overrides: I)
+where
+    I: IntoIterator<Item = Override>,
+{
+    let mut allow = 0_u64;
+    let mut deny = 0_u64;
+
+    for override_value in overrides {
+        allow |= override_value.allow;
+        deny |= override_value.deny;
+    }
+
+    permissions.revoke(deny);
+    permissions.allow(allow);
+}
+
 impl From<i64> for PermissionValue {
     fn from(v: i64) -> Self {
         Self(v as u64)

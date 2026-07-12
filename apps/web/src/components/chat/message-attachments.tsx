@@ -33,7 +33,7 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
               <button
                 key={file._id}
                 type="button"
-                className="block w-fit max-w-full overflow-hidden rounded-md border text-left"
+                className="block w-fit max-w-full origin-top-left overflow-hidden rounded-md border text-left transition-transform duration-150 ease-out hover:scale-[1.015] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:scale-[0.995]"
                 onClick={() => setLightboxFile(file)}
               >
                 <FxImage
@@ -41,7 +41,7 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
                   alt={file.filename ?? 'Изображение'}
                   aspectRatio={aspectRatio ?? undefined}
                   objectFit="contain"
-                  wrapperClassName="max-h-80 cursor-zoom-in"
+                  wrapperClassName="max-h-96 cursor-zoom-in sm:max-w-[28rem]"
                 />
               </button>
             )

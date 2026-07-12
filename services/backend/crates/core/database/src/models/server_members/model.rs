@@ -15,6 +15,10 @@ fn is_true(x: &bool) -> bool {
     *x
 }
 
+fn is_false(x: &bool) -> bool {
+    !*x
+}
+
 auto_derived_partial!(
     /// Server Member
     pub struct Member {
@@ -45,6 +49,9 @@ auto_derived_partial!(
         /// Whether the member is server-wide voice deafened
         #[serde(skip_serializing_if = "is_true", default = "default_true")]
         pub can_receive: bool,
+        /// Whether the member should leave the server after disconnecting from voice unless assigned a role
+        #[serde(skip_serializing_if = "is_false", default)]
+        pub temporary: bool,
         // This value only exists in the database, not the models.
         // If it is not-None, the database layer should return None to member fetching queries.
         // pub pending_deletion_at: Option<Timestamp>
@@ -93,6 +100,7 @@ impl Default for Member {
             timeout: None,
             can_publish: true,
             can_receive: true,
+            temporary: false,
         }
     }
 }
@@ -105,6 +113,7 @@ impl Member {
         server: &Server,
         user: &User,
         channels: Option<Vec<Channel>>,
+        temporary: bool,
     ) -> Result<(Member, Vec<Channel>)> {
         if db.fetch_ban(&server.id, &user.id).await.is_ok() {
             return Err(create_error!(Banned));
@@ -119,6 +128,7 @@ impl Member {
                 server: server.id.to_string(),
                 user: user.id.to_string(),
             },
+            temporary,
             ..Default::default()
         };
 
@@ -310,6 +320,8 @@ impl Member {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration as StdDuration;
+
     use iso8601_timestamp::{Duration, Timestamp};
     use syrnike_models::v0::DataCreateServer;
 
@@ -317,11 +329,7 @@ mod tests {
 
     #[async_std::test]
     async fn muted_member_rejoin() {
-        database_test!(|db| async move {
-            match db {
-                crate::Database::Reference(_) => return,
-                crate::Database::MongoDb(_) => (),
-            }
+        database_test!(|db| Box::pin(async move {
             let owner = User::create(&db, "Server Owner".to_string(), None, None)
                 .await
                 .unwrap();
@@ -344,8 +352,10 @@ mod tests {
             .unwrap()
             .0;
 
-            Member::create(&db, &server, &owner, None).await.unwrap();
-            let mut kickable_member = Member::create(&db, &server, &kickable_user, None)
+            Member::create(&db, &server, &owner, None, false)
+                .await
+                .unwrap();
+            let mut kickable_member = Member::create(&db, &server, &kickable_user, None, false)
                 .await
                 .unwrap()
                 .0;
@@ -354,6 +364,7 @@ mod tests {
                 .update(
                     &db,
                     PartialMember {
+                        roles: Some(vec!["role".to_string()]),
                         timeout: Some(Timestamp::now_utc() + Duration::minutes(5)),
                         ..Default::default()
                     },
@@ -364,17 +375,99 @@ mod tests {
 
             assert!(kickable_member.in_timeout());
 
+            let roles = vec!["role".to_string()];
+            assert_eq!(
+                db.fetch_all_members_with_roles(&server.id, &roles)
+                    .await
+                    .unwrap()
+                    .len(),
+                1
+            );
+            let mut role_members = db
+                .fetch_all_members_with_roles_chunked(&server.id, &roles)
+                .await
+                .unwrap();
+            assert_eq!(role_members.next().await.unwrap().id, kickable_member.id);
+            assert!(role_members.next().await.is_none());
+
             kickable_member
                 .remove(&db, &server, RemovalIntention::Kick, false)
                 .await
                 .unwrap();
 
-            let kickable_member = Member::create(&db, &server, &kickable_user, None)
+            assert!(db
+                .fetch_member(&server.id, &kickable_user.id)
+                .await
+                .is_err());
+            assert_eq!(db.fetch_member_count(&server.id).await.unwrap(), 1);
+            assert!(db
+                .fetch_all_members(&server.id)
+                .await
+                .unwrap()
+                .iter()
+                .all(|member| member.id.user != kickable_user.id));
+            assert!(db
+                .fetch_all_members_with_roles(&server.id, &roles)
+                .await
+                .unwrap()
+                .is_empty());
+            let mut role_members = db
+                .fetch_all_members_with_roles_chunked(&server.id, &roles)
+                .await
+                .unwrap();
+            assert!(role_members.next().await.is_none());
+
+            let mut members = db.fetch_all_members_chunked(&server.id).await.unwrap();
+            while let Some(member) = members.next().await {
+                assert_ne!(member.id.user, kickable_user.id);
+            }
+
+            let rejoined_after = Timestamp::now_utc() - Duration::seconds(1);
+            let mut kickable_member = Member::create(&db, &server, &kickable_user, None, false)
                 .await
                 .unwrap()
                 .0;
 
-            assert!(kickable_member.in_timeout())
-        });
+            assert!(kickable_member.in_timeout());
+            assert!(kickable_member.joined_at >= rejoined_after);
+
+            kickable_member
+                .clone()
+                .remove(&db, &server, RemovalIntention::Kick, false)
+                .await
+                .unwrap();
+            db.force_delete_member(&kickable_member.id).await.unwrap();
+
+            kickable_member = Member::create(&db, &server, &kickable_user, None, false)
+                .await
+                .unwrap()
+                .0;
+            assert!(kickable_member.timeout.is_none());
+
+            kickable_member
+                .update(
+                    &db,
+                    PartialMember {
+                        timeout: Some(Timestamp::now_utc() + Duration::milliseconds(100)),
+                        ..Default::default()
+                    },
+                    vec![],
+                )
+                .await
+                .unwrap();
+            kickable_member
+                .remove(&db, &server, RemovalIntention::Kick, false)
+                .await
+                .unwrap();
+
+            async_std::task::sleep(StdDuration::from_millis(200)).await;
+            db.remove_dangling_members().await.unwrap();
+
+            let kickable_member = Member::create(&db, &server, &kickable_user, None, false)
+                .await
+                .unwrap()
+                .0;
+            assert!(kickable_member.timeout.is_none());
+        }));
     }
 }

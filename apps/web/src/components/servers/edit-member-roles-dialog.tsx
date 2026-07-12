@@ -6,6 +6,7 @@ import { MemberRolesEditor } from '#/components/servers/member-roles-editor'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
@@ -27,7 +28,10 @@ export function EditMemberRolesDialog({
   open,
   onOpenChange,
 }: EditMemberRolesDialogProps) {
-  const nickname = targetUser.display_name ?? targetUser.username
+  const nickname =
+    targetMember.nickname?.trim() ||
+    targetUser.display_name ||
+    targetUser.username
   const [query, setQuery] = useState('')
 
   useEffect(() => {
@@ -41,6 +45,9 @@ export function EditMemberRolesDialog({
           <DialogTitle className="truncate text-base leading-snug">
             Роли «{nickname}»
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Изменение ролей участника на сервере.
+          </DialogDescription>
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input

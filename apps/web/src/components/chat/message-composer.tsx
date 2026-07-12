@@ -197,19 +197,22 @@ export function MessageComposer({
         }
 
         const filteredUsers = q
-          ? mentionable.filter((user) => {
-              const member =
-                serverId ? members[`${serverId}:${user._id}`] : undefined
-              const serverName =
-                member?.nickname?.trim() ||
-                user.display_name ||
-                user.username
-              return (
-                user.username.toLowerCase().includes(q) ||
-                user.display_name?.toLowerCase().includes(q) ||
-                serverName.toLowerCase().includes(q)
-              )
-            }).slice(0, 8)
+          ? mentionable
+              .filter((user) => {
+                const member = serverId
+                  ? members[`${serverId}:${user._id}`]
+                  : undefined
+                const serverName =
+                  member?.nickname?.trim() ||
+                  user.display_name ||
+                  user.username
+                return (
+                  user.username.toLowerCase().includes(q) ||
+                  user.display_name?.toLowerCase().includes(q) ||
+                  serverName.toLowerCase().includes(q)
+                )
+              })
+              .slice(0, 8)
           : mentionable.slice(0, 8)
 
         for (const user of filteredUsers) {
@@ -218,9 +221,7 @@ export function MessageComposer({
               ? members[`${serverId}:${user._id}`]
               : undefined
           const serverName =
-            member?.nickname?.trim() ||
-            user.display_name ||
-            user.username
+            member?.nickname?.trim() || user.display_name || user.username
 
           items.push({
             kind: 'user',

@@ -1,6 +1,6 @@
 use crate::{
-    ChannelPermission, ChannelType, PermissionQuery, PermissionValue, RelationshipStatus,
-    UserPermission, ALLOW_IN_TIMEOUT, DEFAULT_PERMISSION_DIRECT_MESSAGE,
+    apply_channel_role_overrides, ChannelPermission, ChannelType, PermissionQuery, PermissionValue,
+    RelationshipStatus, UserPermission, ALLOW_IN_TIMEOUT, DEFAULT_PERMISSION_DIRECT_MESSAGE,
     DEFAULT_PERMISSION_SAVED_MESSAGES, DEFAULT_PERMISSION_VIEW_ONLY,
 };
 
@@ -125,8 +125,13 @@ pub async fn calculate_channel_permissions<P: PermissionQuery>(query: &mut P) ->
                 let mut permissions = calculate_server_permissions(query).await;
                 permissions.apply(query.get_default_channel_permissions().await);
 
-                for role_override in query.get_our_channel_role_overrides().await {
-                    permissions.apply(role_override);
+                apply_channel_role_overrides(
+                    &mut permissions,
+                    query.get_our_channel_role_overrides().await,
+                );
+
+                if let Some(user_override) = query.get_our_channel_user_override().await {
+                    permissions.apply(user_override);
                 }
 
                 if query.are_we_timed_out().await {

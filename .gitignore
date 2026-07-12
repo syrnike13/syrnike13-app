@@ -10,6 +10,8 @@ Desktop.ini
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
+.codex-runlogs/
+.codex-runs/
 .codex-run-logs/
 .tmp-*
 .tmp-bin/
@@ -74,6 +76,7 @@ secrets.env
 
 # Local runtime config
 /Syrnike.toml
+/services/backend/Syrnike.overrides.toml
 /Revolt.toml
 /Revolt.*.toml
 /Rocket.toml
@@ -84,10 +87,15 @@ secrets.env
 /data/
 /data*/
 /.data/
+/tmp/
+/output/
+/.tmp-*/
+/.tmp-*
+
+.superpowers/
+.worktrees/
 
 # Generated native helper artifacts
 /apps/desktop/native/music-presence-win/
-
-.superpowers/
 
 .playwright-mcp

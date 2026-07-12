@@ -5,12 +5,20 @@ import {
   calculateChannelPermissions,
   calculateServerPermissions,
   canBanServerMember,
+  canDeafenServerMember,
   canEditMember,
   canInviteToChannel,
   canKickServerMember,
+  canMoveServerMember,
+  canChangeMemberNickname,
+  canMuteServerMember,
+  canTimeoutServerMember,
+  canOpenServerSettings,
   canViewChannel,
+  canViewServerSettingsTab,
   getMemberRank,
   getServerMenuPermissions,
+  getServerSettingsAccess,
   hasChannelPermission,
   isChannelAccessRestricted,
 } from '#/lib/permissions'
@@ -101,6 +109,98 @@ describe('calculateServerPermissions', () => {
 })
 
 describe('calculateChannelPermissions', () => {
+  it('applies member channel overrides after role channel overrides', () => {
+    const server = makeServer({
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        }),
+      },
+    })
+    const channel = {
+      ...makeTextChannel({
+        default_permissions: {
+          a: ChannelPermission.ViewChannel,
+          d: 0,
+        },
+        role_permissions: {
+          mod: {
+            a: ChannelPermission.SendMessage,
+            d: 0,
+          },
+        },
+      }),
+      user_permissions: {
+        'user-1': {
+          a: 0,
+          d: ChannelPermission.SendMessage,
+        },
+      },
+    }
+    const member = makeMember({ roles: ['mod'] })
+
+    const permissions = calculateChannelPermissions(
+      server,
+      channel,
+      member,
+      'user-1',
+    )
+
+    expect(
+      hasChannelPermission(permissions, ChannelPermission.SendMessage),
+    ).toBe(false)
+  })
+
+  it('lets a channel role allow beat another channel role deny regardless of rank', () => {
+    const server = makeServer({
+      roles: {
+        high: makeRole({
+          _id: 'high',
+          name: 'High',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        }),
+        low: makeRole({
+          _id: 'low',
+          name: 'Low',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const channel = makeTextChannel({
+      default_permissions: {
+        a: ChannelPermission.ViewChannel,
+        d: 0,
+      },
+      role_permissions: {
+        high: {
+          a: 0,
+          d: ChannelPermission.SendMessage,
+        },
+        low: {
+          a: ChannelPermission.SendMessage,
+          d: 0,
+        },
+      },
+    })
+    const member = makeMember({ roles: ['high', 'low'] })
+
+    const permissions = calculateChannelPermissions(
+      server,
+      channel,
+      member,
+      'user-1',
+    )
+
+    expect(
+      hasChannelPermission(permissions, ChannelPermission.SendMessage),
+    ).toBe(true)
+  })
+
   it('does not let channel overrides restore disabled publish or receive permissions', () => {
     const server = makeServer({
       roles: {
@@ -146,6 +246,72 @@ describe('calculateChannelPermissions', () => {
     expect(hasChannelPermission(permissions, ChannelPermission.Listen)).toBe(
       false,
     )
+  })
+})
+
+describe('member moderation hierarchy', () => {
+  it('keeps kick, ban, and timeout locked behind target hierarchy', () => {
+    const server = makeServer({
+      roles: {
+        actor: makeRole({
+          _id: 'actor',
+          name: 'Actor',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.KickMembers,
+                ChannelPermission.BanMembers,
+              ),
+              ChannelPermission.TimeoutMembers,
+            ),
+            d: 0,
+          },
+          rank: 5,
+        }),
+        target: makeRole({ _id: 'target', name: 'Target', rank: 1 }),
+      },
+    })
+    const actor = makeMember({ roles: ['actor'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'target-1' },
+      roles: ['target'],
+    })
+
+    expect(canKickServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canBanServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
+
+  it('requires the target role to be lower for server voice moderation', () => {
+    const server = makeServer({
+      roles: {
+        actor: makeRole({
+          _id: 'actor',
+          name: 'Actor',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.MuteMembers,
+                ChannelPermission.DeafenMembers,
+              ),
+              ChannelPermission.MoveMembers,
+            ),
+            d: 0,
+          },
+          rank: 5,
+        }),
+        target: makeRole({ _id: 'target', name: 'Target', rank: 1 }),
+      },
+    })
+    const actor = makeMember({ roles: ['actor'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'target-1' },
+      roles: ['target'],
+    })
+
+    expect(canMuteServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canDeafenServerMember(server, actor, 'user-1', target)).toBe(false)
+    expect(canMoveServerMember(server, actor, 'user-1', target)).toBe(false)
   })
 })
 
@@ -429,6 +595,208 @@ describe('canBanServerMember', () => {
   })
 })
 
+describe('canChangeMemberNickname', () => {
+  it('allows nickname managers to rename lower-ranked members', () => {
+    const server = makeServer({
+      roles: {
+        manager: makeRole({
+          _id: 'manager',
+          name: 'Manager',
+          permissions: { a: ChannelPermission.ManageNicknames, d: 0 },
+          rank: 2,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['manager'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canChangeMemberNickname(server, actor, 'user-1', target)).toBe(true)
+  })
+
+  it('does not allow nickname managers to rename equal or higher-ranked members', () => {
+    const server = makeServer({
+      roles: {
+        manager: makeRole({
+          _id: 'manager',
+          name: 'Manager',
+          permissions: { a: ChannelPermission.ManageNicknames, d: 0 },
+          rank: 2,
+        }),
+        admin: makeRole({
+          _id: 'admin',
+          name: 'Admin',
+          permissions: { a: 0, d: 0 },
+          rank: 1,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['manager'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['admin'],
+    })
+
+    expect(canChangeMemberNickname(server, actor, 'user-1', target)).toBe(false)
+  })
+
+  it('allows members to change their own nickname with ChangeNickname', () => {
+    const server = makeServer({
+      roles: {
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: ChannelPermission.ChangeNickname, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['member'] })
+
+    expect(canChangeMemberNickname(server, actor, 'user-1', actor)).toBe(true)
+  })
+})
+
+describe('canTimeoutServerMember', () => {
+  it('requires timeout permission and higher role rank than the target', () => {
+    const server = makeServer({
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: { a: ChannelPermission.TimeoutMembers, d: 0 },
+          rank: 2,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canTimeoutServerMember(server, makeMember(), 'user-1', target)).toBe(
+      false,
+    )
+  })
+
+  it('does not allow timeouts against members who can timeout others', () => {
+    const server = makeServer({
+      roles: {
+        admin: makeRole({
+          _id: 'admin',
+          name: 'Admin',
+          permissions: { a: ChannelPermission.TimeoutMembers, d: 0 },
+          rank: 1,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: ChannelPermission.TimeoutMembers, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['admin'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canTimeoutServerMember(server, actor, 'user-1', target)).toBe(false)
+  })
+})
+
+describe('server voice moderation permissions', () => {
+  it('requires the matching voice moderation permission and higher role rank', () => {
+    const server = makeServer({
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.MuteMembers,
+                ChannelPermission.DeafenMembers,
+              ),
+              ChannelPermission.MoveMembers,
+            ),
+            d: 0,
+          },
+          rank: 2,
+        }),
+        member: makeRole({
+          _id: 'member',
+          name: 'Member',
+          permissions: { a: 0, d: 0 },
+          rank: 5,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'user-2' },
+      roles: ['member'],
+    })
+
+    expect(canMuteServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canDeafenServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canMoveServerMember(server, actor, 'user-1', target)).toBe(true)
+    expect(canMuteServerMember(server, target, 'user-2', actor)).toBe(false)
+  })
+
+  it('does not allow voice moderation against self or the server owner', () => {
+    const server = makeServer({
+      owner: 'owner-1',
+      roles: {
+        mod: makeRole({
+          _id: 'mod',
+          name: 'Mod',
+          permissions: {
+            a: permissionOr(
+              permissionOr(
+                ChannelPermission.MuteMembers,
+                ChannelPermission.DeafenMembers,
+              ),
+              ChannelPermission.MoveMembers,
+            ),
+            d: 0,
+          },
+          rank: 1,
+        }),
+      },
+    })
+    const actor = makeMember({ roles: ['mod'] })
+    const targetOwner = makeMember({
+      _id: { server: 'server-1', user: 'owner-1' },
+    })
+
+    expect(canMuteServerMember(server, actor, 'user-1', actor)).toBe(false)
+    expect(canDeafenServerMember(server, actor, 'user-1', targetOwner)).toBe(
+      false,
+    )
+    expect(canMoveServerMember(server, actor, 'user-1', targetOwner)).toBe(
+      false,
+    )
+  })
+})
+
 describe('getServerMenuPermissions', () => {
   it('hides admin actions for members without management permissions', () => {
     const server = makeServer()
@@ -438,9 +806,72 @@ describe('getServerMenuPermissions', () => {
     expect(permissions).toEqual({
       invite: false,
       settings: false,
+      roles: false,
+      audit: false,
       createChannel: false,
       leave: true,
       copyId: true,
     })
+  })
+})
+
+describe('getServerSettingsAccess', () => {
+  it('allows role managers to open server settings without ManageServer', () => {
+    const server = makeServer({
+      roles: {
+        'role-1': makeRole({
+          _id: 'role-1',
+          permissions: { a: ChannelPermission.ManageRole, d: 0 },
+          rank: 1,
+        }),
+      },
+    })
+    const member = makeMember({ roles: ['role-1'] })
+
+    const access = getServerSettingsAccess(server, member, 'user-1')
+
+    expect(canOpenServerSettings(access)).toBe(true)
+    expect(canViewServerSettingsTab(access, 'roles')).toBe(true)
+    expect(canViewServerSettingsTab(access, 'overview')).toBe(false)
+  })
+
+  it('allows ban managers to open the bans tab without ManageServer', () => {
+    const server = makeServer({
+      default_permissions: ChannelPermission.BanMembers,
+    })
+    const member = makeMember()
+
+    const access = getServerSettingsAccess(server, member, 'user-1')
+
+    expect(canOpenServerSettings(access)).toBe(true)
+    expect(canViewServerSettingsTab(access, 'bans')).toBe(true)
+    expect(canViewServerSettingsTab(access, 'audit')).toBe(false)
+  })
+
+  it('does not expose invite settings for channel-only invite permission', () => {
+    const server = makeServer({
+      default_permissions: ChannelPermission.ViewChannel,
+    })
+    const member = makeMember()
+    const inviteChannel = makeTextChannel({
+      default_permissions: {
+        a: permissionOr(
+          ChannelPermission.ViewChannel,
+          ChannelPermission.InviteOthers,
+        ),
+        d: 0,
+      },
+    })
+    const access = getServerSettingsAccess(server, member, 'user-1')
+    const menu = getServerMenuPermissions(
+      server,
+      [inviteChannel],
+      member,
+      'user-1',
+    )
+
+    expect(menu.invite).toBe(true)
+    expect(canOpenServerSettings(access)).toBe(false)
+    expect(canViewServerSettingsTab(access, 'invites')).toBe(false)
   })
 })

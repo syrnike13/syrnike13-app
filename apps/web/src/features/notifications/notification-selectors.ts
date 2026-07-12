@@ -1,6 +1,7 @@
 import type { Channel } from '@syrnike13/api-types'
 
 import {
+  channelUnreadMentionCount,
   isChannelUnread,
   listServerChannels,
   listUsersByRelationship,
@@ -31,6 +32,13 @@ function isUnreadChannel(state: SyncState, channel: Channel) {
   return isChannelUnread(channel, state.unreads[channel._id])
 }
 
+function hasChannelNotification(state: SyncState, channel: Channel) {
+  const unread = state.unreads[channel._id]
+  return (
+    isChannelUnread(channel, unread) ||
+    channelUnreadMentionCount(unread) > 0
+  )
+}
 export function selectFriendRequestNotificationBadge(
   state: SyncState,
   currentUserId?: string,
@@ -54,16 +62,26 @@ export function selectServerNotificationBadge(
   serverId: string,
   _currentUserId?: string,
 ): NotificationBadgeState {
-  const unreadChannels = listServerChannels(state, serverId, _currentUserId).filter(
-    (channel) => isUnreadChannel(state, channel),
-  ).length
+  const notifiedChannels = listServerChannels(
+    state,
+    serverId,
+    _currentUserId,
+  ).filter((channel) => hasChannelNotification(state, channel))
+  const mentionCount = notifiedChannels.reduce(
+    (count, channel) =>
+      count + channelUnreadMentionCount(state.unreads[channel._id]),
+    0,
+  )
 
-  return badge(unreadChannels)
+  if (mentionCount > 0) return badge(mentionCount, true)
+  return badge(notifiedChannels.length)
 }
 
 export function selectChannelNotificationBadge(
   state: SyncState,
   channel: Channel,
 ): NotificationBadgeState {
+  const mentionCount = channelUnreadMentionCount(state.unreads[channel._id])
+  if (mentionCount > 0) return badge(mentionCount, true)
   return isUnreadChannel(state, channel) ? badge(1) : EMPTY_NOTIFICATION_BADGE
 }

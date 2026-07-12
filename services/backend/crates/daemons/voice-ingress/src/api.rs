@@ -1,18 +1,19 @@
 use livekit_api::{access_token::TokenVerifier, webhooks::WebhookReceiver};
 use livekit_protocol::TrackType;
-use rocket::{post, State};
+use rocket::{State, post};
 use rocket_empty::EmptyResponse;
 use syrnike_database::{
+    AMQP, Channel, Database, VoiceCallEndReason,
     events::client::EventV1,
     iso8601_timestamp::{Duration, Timestamp},
     util::reference::Reference,
     voice::{
-        base_voice_identity,
+        RoomMetadata, UserVoiceChannel, VoiceClient, VoiceSessionCommitResult, base_voice_identity,
         call_lifecycle::{
-            get_channel_voice_call, mutate_channel_voice_call_if_current, voice_call_join_effect,
-            voice_call_leave_effect, VoiceCallJoinEffect, VoiceCallLeaveEffect,
+            GROUP_UNANSWERED_ACTIVE_SECONDS, VoiceCallJoinEffect, VoiceCallLeaveEffect,
             VoiceCallLeavePolicy, VoiceCallLeaveReason, VoiceCallPhase, VoiceCallStateMutation,
-            VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
+            VoiceCallStateMutationResult, get_channel_voice_call,
+            mutate_channel_voice_call_if_current, voice_call_join_effect, voice_call_leave_effect,
         },
         cleanup_committed_voice_member_removal, clear_call_notification_recipients,
         commit_voice_session_join, create_voice_call_started_system_message,
@@ -20,11 +21,10 @@ use syrnike_database::{
         finish_voice_call_started_system_message, get_call_notification_recipients,
         get_user_moved_from_voice, get_voice_channel_members, publish_authoritative_voice_snapshot,
         publish_voice_state_snapshot, reconcile_voice_channel_members_with_call_cleanup,
+        remove_temporary_server_member_after_voice_disconnect,
         update_voice_state_tracks_for_session, voice_participant_claims,
-        voice_participant_matches_current_authority, RoomMetadata, UserVoiceChannel, VoiceClient,
-        VoiceSessionCommitResult,
+        voice_participant_matches_current_authority,
     },
-    Channel, Database, VoiceCallEndReason, AMQP,
 };
 use syrnike_result::{Result, ToSyrnikeError};
 
@@ -539,11 +539,12 @@ pub async fn ingress(
             };
             publish_authoritative_voice_snapshot(user_id).await?;
 
-            // Dont send leave event when a user is moved
-            if get_user_moved_from_voice(channel_id, user_id)
+            let is_move = get_user_moved_from_voice(channel_id, user_id)
                 .await?
-                .is_none()
-            {
+                .is_some();
+
+            // Dont send leave event when a user is moved
+            if !is_move {
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
                     user: user_id.to_string(),
@@ -572,6 +573,16 @@ pub async fn ingress(
                 finished_at,
             )
             .await?;
+
+            if !is_move {
+                remove_temporary_server_member_after_voice_disconnect(
+                    db,
+                    &channel,
+                    user_id,
+                    finished_at,
+                )
+                .await?;
+            }
         }
         // Audio/video track was started/stopped/unmuted/muted
         "track_published" | "track_unpublished" | "track_unmuted" | "track_muted" => {
@@ -673,6 +684,14 @@ pub async fn ingress(
                             finished_at,
                         )
                         .await?;
+
+                        remove_temporary_server_member_after_voice_disconnect(
+                            db,
+                            &channel,
+                            user_id,
+                            finished_at,
+                        )
+                        .await?;
                     }
 
                     return Ok(EmptyResponse);
@@ -718,6 +737,11 @@ pub async fn ingress(
                 return Ok(EmptyResponse);
             };
 
+            let deleted_user_ids = deleted_sessions
+                .iter()
+                .map(|(user_id, _)| user_id.clone())
+                .collect::<Vec<_>>();
+
             for (user_id, operation_id) in deleted_sessions {
                 EventV1::VoiceChannelLeave {
                     id: channel_id.clone(),
@@ -739,6 +763,16 @@ pub async fn ingress(
                 finished_at,
             )
             .await?;
+
+            for user_id in &deleted_user_ids {
+                remove_temporary_server_member_after_voice_disconnect(
+                    db,
+                    &channel,
+                    user_id,
+                    finished_at,
+                )
+                .await?;
+            }
         }
         _ => {}
     };
@@ -754,7 +788,7 @@ mod tests {
     };
     use std::collections::HashMap;
     use syrnike_config::FeaturesLimits;
-    use syrnike_database::voice::{voice_participant_identity, VoiceRtcEngine};
+    use syrnike_database::voice::{VoiceRtcEngine, voice_participant_identity};
 
     #[test]
     fn empty_room_metadata_is_absent_not_invalid() {

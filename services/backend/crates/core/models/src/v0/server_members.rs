@@ -72,6 +72,12 @@ auto_derived_partial!(
         /// Whether the member is server-wide voice deafened
         #[serde(skip_serializing_if = "is_true", default = "default_true")]
         pub can_receive: bool,
+        /// Whether the member should leave the server after disconnecting from voice unless assigned a role
+        #[cfg_attr(
+            feature = "serde",
+            serde(skip_serializing_if = "crate::if_false", default)
+        )]
+        pub temporary: bool,
     },
     "PartialMember"
 );

@@ -19,4 +19,13 @@ pub trait AbstractChannelInvites: Sync + Send {
 
     /// Delete an invite by its id
     async fn delete_invite(&self, code: &str) -> Result<()>;
+
+    /// Atomically validate and reserve one invite use, returning the updated invite.
+    async fn consume_invite_use(&self, code: &str, now: u64) -> Result<Invite>;
+
+    /// Release a previously reserved invite use.
+    async fn release_invite_use(&self, code: &str) -> Result<()>;
+
+    /// Mark an invite as revoked and return the updated invite.
+    async fn revoke_invite(&self, code: &str, revoked_at: u64, revoked_by: &str) -> Result<Invite>;
 }

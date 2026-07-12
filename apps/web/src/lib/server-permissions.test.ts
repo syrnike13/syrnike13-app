@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getAllowedPermissionTriStates,
   getPermissionTriState,
   overrideFieldToApi,
   roleRanksPayload,
   setPermissionTriState,
   ServerPermission,
+  sortRolesByHierarchy,
 } from '#/lib/server-permissions'
 
 describe('server permission overrides', () => {
@@ -44,14 +46,53 @@ describe('server permission overrides', () => {
       deny: ServerPermission.SendMessage,
     })
   })
+
+  it('does not allow granting a missing permission from neutral', () => {
+    expect(getAllowedPermissionTriStates({ a: 0, d: 0 }, 0, 1)).toEqual([
+      'neutral',
+      'deny',
+    ])
+  })
+
+  it('does not allow removing a deny for a missing permission', () => {
+    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, 0, 1)).toEqual([
+      'deny',
+    ])
+  })
+
+  it('allows removing an existing allow even when the actor lacks it', () => {
+    expect(getAllowedPermissionTriStates({ a: 1, d: 0 }, 0, 1)).toEqual([
+      'neutral',
+      'allow',
+      'deny',
+    ])
+  })
+
+  it('allows all states when the actor has the permission', () => {
+    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, 1, 1)).toEqual([
+      'neutral',
+      'allow',
+      'deny',
+    ])
+  })
 })
 
 describe('roleRanksPayload', () => {
-  it('reverses highest-first ids into lowest-first ranks', () => {
-    expect(roleRanksPayload(['admin', 'mod', 'default'])).toEqual([
-      'default',
-      'mod',
-      'admin',
+  it('keeps the visible role list highest first', () => {
+    expect(
+      sortRolesByHierarchy([
+        { _id: 'bottom-role', rank: 5 },
+        { _id: 'top-role', rank: 1 },
+        { _id: 'middle-role', rank: 3 },
+      ]).map((role) => role._id),
+    ).toEqual(['top-role', 'middle-role', 'bottom-role'])
+  })
+
+  it('keeps highest-first ids because the backend assigns ranks by array index', () => {
+    expect(roleRanksPayload(['top-role', 'middle-role', 'bottom-role'])).toEqual([
+      'top-role',
+      'middle-role',
+      'bottom-role',
     ])
   })
 })

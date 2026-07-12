@@ -4,6 +4,7 @@ import {
   RiCheckLine,
   RiCheckboxBlankCircleLine,
   RiDeleteBinLine,
+  RiDownloadLine,
   RiErrorWarningLine,
   RiFolderAddLine,
   RiForbidLine,
@@ -19,6 +20,11 @@ import { defineIcon } from '#/components/icons/define-icon'
 export const Trash2Icon = defineIcon(RiDeleteBinLine, {
   pack: 'remixicon',
   name: 'RiDeleteBinLine',
+})
+
+export const DownloadIcon = defineIcon(RiDownloadLine, {
+  pack: 'remixicon',
+  name: 'RiDownloadLine',
 })
 
 export const PlusIcon = defineIcon(RiAddLine, {

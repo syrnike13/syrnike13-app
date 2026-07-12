@@ -77,6 +77,7 @@ impl<'r> Responder<'r, 'static> for Error {
             ErrorType::DatabaseError { .. } => Status::InternalServerError,
             ErrorType::InternalError => Status::InternalServerError,
             ErrorType::InvalidOperation => Status::BadRequest,
+            ErrorType::InvalidInvite => Status::BadRequest,
             ErrorType::InvalidCredentials => Status::Unauthorized,
             ErrorType::InvalidProperty => Status::BadRequest,
             ErrorType::InvalidSession => Status::Unauthorized,
