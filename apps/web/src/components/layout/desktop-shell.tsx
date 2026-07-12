@@ -92,7 +92,7 @@ export function DesktopShell() {
   )
 
   return (
-    <div className="flex h-svh flex-col bg-card text-foreground">
+    <div className="flex h-svh flex-col bg-background text-foreground">
       <ConnectionStatusBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">

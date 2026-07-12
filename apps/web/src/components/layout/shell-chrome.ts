@@ -2,11 +2,11 @@ import type { DesktopOs } from '@syrnike13/platform'
 
 /** Фон навигации: рельс, сайдбар, title bar. */
 export const shellNavSurface =
-  'bg-card text-card-foreground' as const
+  'bg-background text-foreground' as const
 
 /** Фон основного контента (чат, канал). */
 export const shellContentSurface =
-  'bg-background text-foreground' as const
+  'bg-card text-card-foreground' as const
 
 /** Высота кастомной шапки окна под каждую ОС (px). */
 export const SHELL_TITLEBAR_HEIGHT_PX = {
@@ -63,9 +63,9 @@ export const shellTitleBarNoDragClass = 'shell-title-bar-no-drag' as const
 /** Кнопки рельса: квадрат с сильным скруглением (не круг). */
 export const railIconButtonClass = 'size-10 rounded-xl' as const
 
-/** Фон кнопок рельса: background заметнее card, hover — secondary. */
+/** Фон кнопок рельса: card заметнее background, hover — secondary. */
 export const railIconIdleClass =
-  'bg-background text-foreground hover:bg-secondary hover:text-foreground' as const
+  'bg-card text-foreground hover:bg-secondary hover:text-foreground' as const
 
 /** Разделители оболочки — полная непрозрачность. */
 export const shellDivider = 'border-shell-divider' as const

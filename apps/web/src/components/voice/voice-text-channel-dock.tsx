@@ -46,7 +46,7 @@ export function VoiceTextChannelDock({ channelId }: VoiceTextChannelDockProps) {
   if (participants.length === 0) return null
 
   return (
-    <div className="shrink-0 border-b border-shell-divider bg-background/90">
+    <div className="shrink-0 border-b border-shell-divider bg-card/90">
       <div className="flex items-center gap-2 px-3 py-2">
         <Volume2BoldIcon className="size-4 shrink-0 text-chart-3" />
         <p className="min-w-0 flex-1 truncate text-sm font-medium">

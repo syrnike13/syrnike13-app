@@ -268,9 +268,9 @@ const MATRIX_DARK_COLORS: ShadcnColorVariables = {
 }
 
 const MONOLIT_LIGHT_COLORS: ShadcnColorVariables = {
-  background: 'oklch(1 0 0)',
+  background: 'oklch(0.9950 0 0)',
   foreground: 'oklch(0.1450 0 0)',
-  card: 'oklch(0.9950 0 0)',
+  card: 'oklch(1 0 0)',
   cardForeground: 'oklch(0.1450 0 0)',
   popover: 'oklch(1 0 0)',
   popoverForeground: 'oklch(0.1450 0 0)',
@@ -304,9 +304,9 @@ const MONOLIT_LIGHT_COLORS: ShadcnColorVariables = {
 }
 
 const MONOLIT_DARK_COLORS: ShadcnColorVariables = {
-  background: 'oklch(0.2050 0 0)',
+  background: 'oklch(0.1650 0 0)',
   foreground: 'oklch(0.9850 0 0)',
-  card: 'oklch(0.1650 0 0)',
+  card: 'oklch(0.2050 0 0)',
   cardForeground: 'oklch(0.9850 0 0)',
   popover: 'oklch(0.2050 0 0)',
   popoverForeground: 'oklch(0.9850 0 0)',

@@ -360,7 +360,7 @@ export function ChannelView({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {!dmInCallLayout ? (
-        <header className={cn(shellColumnHeaderClass, 'bg-background px-0')}>
+        <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
         <div
           className={cn(
             'flex min-w-0 flex-1 items-center gap-2',
