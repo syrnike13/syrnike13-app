@@ -14,6 +14,7 @@ import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
+import { AgentationDevtools } from '#/integrations/agentation-devtools'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 
 import appCss from '../styles.css?url'
@@ -136,6 +137,7 @@ function RootComponent() {
         <ThemeColorMeta />
         <NativeScrollbarEnhancer />
         <Outlet />
+        <AgentationDevtools />
       </AppearanceProvider>
     )
   }
@@ -149,6 +151,7 @@ function RootComponent() {
             <NativeScrollbarEnhancer />
             <Outlet />
             <Toaster richColors closeButton />
+            <AgentationDevtools />
           </SyncProvider>
         </AuthProvider>
       </AppearanceProvider>

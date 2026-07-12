@@ -7,7 +7,6 @@ import {
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
 import { memberDisplayColour } from '#/features/sync/member-list-groups'
 import { memberRoleEntries } from '#/features/sync/selectors'
-import { cn } from '#/lib/utils'
 
 type MessageUserMentionProps = {
   userId: string
@@ -51,10 +50,7 @@ export function MessageUserMention({
     >
       <button
         type="button"
-        className={cn(
-          'cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-          nameColour && 'hover:underline',
-        )}
+        className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         <MentionPill label={label} nameColour={nameColour} />
       </button>
