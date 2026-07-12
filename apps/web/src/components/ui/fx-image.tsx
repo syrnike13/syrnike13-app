@@ -17,6 +17,7 @@ export type FxImageProps = {
   alt?: string
   className?: string
   wrapperClassName?: string
+  wrapperAs?: 'div' | 'span'
   aspectRatio?: number
   fill?: boolean
   rounded?: FxImageRounded
@@ -31,6 +32,7 @@ export function FxImage({
   alt = '',
   className,
   wrapperClassName,
+  wrapperAs: Wrapper = 'div',
   aspectRatio,
   fill = false,
   rounded = 'none',
@@ -75,7 +77,7 @@ export function FxImage({
   }
 
   return (
-    <div
+    <Wrapper
       className={containerClassName}
       style={containerStyle}
       {...containerProps}
@@ -88,6 +90,6 @@ export function FxImage({
         loading="lazy"
         decoding="async"
       />
-    </div>
+    </Wrapper>
   )
 }

@@ -6,6 +6,7 @@ import { renderMessageContent } from '#/lib/message-markdown'
 const userId = '01KTF53K42MTGBMD6XSHVC55A4'
 const roleId = '01KTF53K42MTGBMD6XSHVC55A5'
 const channelId = '01KTF53K42MTGBMD6XSHVC55A6'
+const emojiId = '01KTF53K42MTGBMD6XSHVC55A7'
 
 describe('renderMessageContent', () => {
   it('renders user mentions instead of raw ids', () => {
@@ -57,6 +58,16 @@ describe('renderMessageContent', () => {
     expect(html).toContain('general')
     expect(html).not.toContain(roleId)
     expect(html).not.toContain(channelId)
+  })
+
+  it('renders custom emoji with an inline wrapper', () => {
+    const html = renderToStaticMarkup(
+      <>{renderMessageContent(`Привет :${emojiId}:`)}</>,
+    )
+
+    expect(html).toMatch(/<p[^>]*>.*<span/)
+    expect(html).toContain(`alt="emoji"`)
+    expect(html).not.toMatch(/<p[^>]*>.*<div/)
   })
 
   it('renders markdown headings', () => {

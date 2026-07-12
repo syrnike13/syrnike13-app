@@ -22,6 +22,7 @@ export function CustomEmoji({
       src={customEmojiImageUrl(emojiId)}
       alt={name ? `:${name}:` : 'emoji'}
       title={name ? `:${name}:` : undefined}
+      wrapperAs="span"
       wrapperClassName={cn('inline-block align-text-bottom', px, className)}
       className={px}
       draggable={false}
