@@ -284,4 +284,107 @@ describe('ServerRail', () => {
 
     expect(syncStore.getState().selectedServerId).toBeNull()
   })
+
+  it('shows a rail unread indicator instead of a badge on servers', () => {
+    syncStore.applyReady({
+      users: [
+        {
+          _id: 'current-user',
+          username: 'me',
+          discriminator: '0001',
+          relationship: 'User',
+          online: true,
+        },
+      ],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Demo',
+          owner: 'current-user',
+          channels: [],
+        },
+      ],
+      channels: [
+        {
+          _id: 'text-1',
+          channel_type: 'TextChannel',
+          server: 'server-1',
+          name: 'general',
+          last_message_id: 'message-2',
+        },
+      ],
+      members: [],
+      emojis: [],
+      channel_unreads: [
+        {
+          _id: { channel: 'text-1' },
+          last_id: 'message-1',
+        },
+      ],
+      voice_states: [],
+    } as never)
+
+    render(<ServerRail variant="desktop" />)
+
+    const serverLink = screen.getByTitle('Demo')
+    const serverRow = serverLink.closest('.group')
+    const indicator = serverRow?.querySelector('[data-slot="rail-indicator"]')
+
+    expect(indicator).toBeTruthy()
+    expect(indicator?.hasAttribute('data-unread')).toBe(true)
+    expect(indicator?.className).toContain('h-4')
+    expect(indicator?.className).toContain('opacity-100')
+    expect(indicator?.className).not.toMatch(/transition-\[height,opacity\]/)
+    expect(serverLink.querySelector('[data-slot="badge"]')).toBeNull()
+  })
+
+  it('keeps the unread rail indicator visible without hover', () => {
+    syncStore.applyReady({
+      users: [
+        {
+          _id: 'current-user',
+          username: 'me',
+          discriminator: '0001',
+          relationship: 'User',
+          online: true,
+        },
+      ],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Demo',
+          owner: 'current-user',
+          channels: [],
+        },
+      ],
+      channels: [
+        {
+          _id: 'text-1',
+          channel_type: 'TextChannel',
+          server: 'server-1',
+          name: 'general',
+          last_message_id: 'message-2',
+        },
+      ],
+      members: [],
+      emojis: [],
+      channel_unreads: [
+        {
+          _id: { channel: 'text-1' },
+          last_id: 'message-1',
+        },
+      ],
+      voice_states: [],
+    } as never)
+
+    render(<ServerRail variant="desktop" />)
+
+    const serverRow = screen.getByTitle('Demo').closest('.group')
+    const indicator = serverRow?.querySelector('[data-slot="rail-indicator"]')
+
+    fireEvent.mouseLeave(serverRow!)
+
+    expect(indicator?.className).toContain('opacity-100')
+    expect(indicator?.className).not.toContain('opacity-0')
+  })
 })

@@ -21,6 +21,7 @@ import {
   isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
+import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
 import { cn } from '#/lib/utils'
 
 type PeopleRailVariant = 'desktop' | 'mobile'
@@ -128,13 +129,7 @@ function PeopleRailButton({
         'focus-visible:ring-[3px] focus-visible:ring-ring/50',
       )}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          'absolute -left-1 top-1/2 w-1 -translate-y-1/2 rounded-r-full bg-foreground transition-[height,opacity]',
-          active ? 'h-8 opacity-100' : 'h-2 opacity-0',
-        )}
-      />
+      <RailActiveIndicator active={active} />
       {dmUser ? (
         <UserAvatar
           user={dmUser}

@@ -67,6 +67,23 @@ export const railIconButtonClass = 'size-10 rounded-xl' as const
 export const railIconIdleClass =
   'bg-card text-foreground hover:bg-secondary hover:text-foreground' as const
 
+/** Горизонтальный inset колонки рельса (4px = w-1 индикатора с -left-1). */
+export const railColumnInsetClass = 'px-1' as const
+
+/**
+ * ScrollArea серверов: сдвиг влево + шире на 4px,
+ * чтобы RailActiveIndicator (-left-1) не обрезался overflow-hidden viewport.
+ */
+export const railServerScrollAreaClass =
+  '-ml-1 w-[calc(100%+0.25rem)]' as const
+
+/** Внутренний отступ контента ScrollArea — выравнивает кнопки с Home. */
+export const railServerScrollContentClass = 'pl-1' as const
+
+/** Обёртка квадратной кнопки рельса (RailIconButton). */
+export const railIconItemRowClass =
+  'group relative flex w-full justify-center' as const
+
 /** Разделители оболочки — полная непрозрачность. */
 export const shellDivider = 'border-shell-divider' as const
 
