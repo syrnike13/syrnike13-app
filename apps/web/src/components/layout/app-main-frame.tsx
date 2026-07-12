@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { shellDivider, shellNavSurface } from '#/components/layout/shell-chrome'
+import { shellDivider, shellContentSurface, shellNavSurface } from '#/components/layout/shell-chrome'
 
 type AppMainFrameProps = {
   sidebar: ReactNode
@@ -14,7 +14,7 @@ export function AppMainFrame({ sidebar, children }: AppMainFrameProps) {
     >
       {sidebar}
       <div
-        className={`flex min-h-0 min-w-0 flex-1 flex-col border-l bg-card text-card-foreground ${shellDivider}`}
+        className={`flex min-h-0 min-w-0 flex-1 flex-col border-l ${shellContentSurface} ${shellDivider}`}
       >
         {children}
       </div>

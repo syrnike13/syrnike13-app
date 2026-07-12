@@ -93,7 +93,7 @@ export function DesktopShell() {
   )
 
   return (
-    <div className="flex h-svh flex-col bg-background text-foreground">
+    <div className="flex h-svh flex-col bg-card text-foreground">
       <ConnectionStatusBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
@@ -101,8 +101,8 @@ export function DesktopShell() {
 
         <div
           className={cn(
-            'flex min-h-0 min-w-0 flex-1 flex-col gap-2 pl-2',
-            !capabilities.customWindowChrome && 'pt-2',
+            'flex min-h-0 min-w-0 flex-1 flex-col gap-2 ',
+            !capabilities.customWindowChrome && '',
           )}
         >
           <AppMainFrame sidebar={<LeftSidebarStack>{sidebar}</LeftSidebarStack>}>

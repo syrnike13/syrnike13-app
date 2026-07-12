@@ -379,7 +379,7 @@ export function MessageComposer({
     <div
       className={cn(
         'relative flex flex-col',
-        floating ? 'pointer-events-auto gap-2' : 'gap-2 border-t border-border bg-card p-3 text-card-foreground',
+        floating ? 'pointer-events-auto gap-2' : 'gap-2 border-t border-border bg-background p-3 text-foreground',
       )}
       onDragEnter={(event) => {
         event.preventDefault()
@@ -395,7 +395,7 @@ export function MessageComposer({
       onDrop={handleDrop}
     >
       {dragActive ? (
-        <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-card/90 text-sm font-medium text-primary">
+        <p className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/90 text-sm font-medium text-primary">
           Отпустите файлы для вложения
         </p>
       ) : null}

@@ -8,6 +8,7 @@ import {
   SHELL_TITLEBAR_MACOS_NAV_BUTTON_PX,
   SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
   shellTitleBarDragClass,
+  shellNavSurface,
 } from '#/components/layout/shell-chrome'
 import {
   ShellHistoryNavButtons,
@@ -25,7 +26,7 @@ function MacShellTitleBar({ heightPx }: { heightPx: number }) {
 
   return (
     <header
-      className="relative shrink-0 overflow-visible bg-background text-foreground"
+      className={cn('relative shrink-0 overflow-visible', shellNavSurface)}
       style={{ height: heightPx }}
     >
       <ShellTitleBarDragRegion className="h-full w-full" />
@@ -57,7 +58,7 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
 
   return (
     <header
-      className="shell-title-bar-windows relative shrink-0 overflow-hidden bg-background text-foreground"
+      className={cn('shell-title-bar-windows relative shrink-0 overflow-hidden', shellNavSurface)}
       style={headerStyle}
     >
       <ShellTitleBarDragRegion className="absolute inset-0" />
@@ -74,7 +75,7 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
 function LinuxShellTitleBar({ heightPx }: { heightPx: number }) {
   return (
     <header
-      className="relative shrink-0 overflow-hidden bg-background text-foreground"
+      className={cn('relative shrink-0 overflow-hidden', shellNavSurface)}
       style={{ height: heightPx }}
     >
       <ShellTitleBarDragRegion className="absolute inset-0" />
@@ -87,7 +88,7 @@ function LinuxShellTitleBar({ heightPx }: { heightPx: number }) {
 
 function WebShellTitleBar() {
   return (
-    <header className="relative flex h-9 shrink-0 items-center bg-background px-2 text-foreground">
+    <header className={cn('relative flex h-9 shrink-0 items-center px-2', shellNavSurface)}>
       <ShellHistoryNavButtons />
     </header>
   )

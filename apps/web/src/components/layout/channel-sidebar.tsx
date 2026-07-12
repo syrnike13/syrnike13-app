@@ -41,7 +41,7 @@ export function ChannelSidebar({ activeChannelId }: ChannelSidebarProps) {
       className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
       style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
     >
-      <header className={cn(shellColumnHeaderClass, 'bg-background px-3')}>
+      <header className={cn(shellColumnHeaderClass, 'bg-card px-3')}>
         {selectedServerId ? (
           <ServerHeaderMenu
             serverId={selectedServerId}
