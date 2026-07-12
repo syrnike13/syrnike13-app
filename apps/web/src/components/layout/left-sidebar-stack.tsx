@@ -6,7 +6,7 @@ import { cn } from '#/lib/utils'
 export const USER_PANEL_RESERVE_PX = 120
 
 /** Колонка списка каналов: было w-60 (240px), w-72 — 288px. */
-export const CHANNEL_SIDEBAR_WIDTH_CLASS = 'w-72' as const
+export const CHANNEL_SIDEBAR_WIDTH_CLASS = 'w-82' as const
 
 type LeftSidebarStackProps = {
   children: ReactNode

@@ -91,7 +91,7 @@ export function ServerRail({
     return (
         <div
           className={cn(
-            'flex h-full w-14 shrink-0 flex-col items-center',
+            'flex h-full w-16 shrink-0 flex-col items-center',
             railPaddingClass,
             shellNavSurface,
           )}
@@ -108,7 +108,7 @@ export function ServerRail({
   return (
     <div
       className={cn(
-        'flex h-full w-14 shrink-0 flex-col',
+        'flex h-full w-16 shrink-0 flex-col',
         railPaddingClass,
         shellNavSurface,
       )}
