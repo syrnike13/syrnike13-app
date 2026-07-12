@@ -25,6 +25,13 @@ vi.mock('sonner', () => ({
   },
 }))
 
+vi.mock('#/components/icons', () => ({
+  HeadphonesIcon: () => <span />,
+  HeadphoneOffIcon: () => <span />,
+  MicOffIcon: () => <span />,
+  PhoneOffIcon: () => <span />,
+}))
+
 vi.mock('#/features/api/servers-api', () => ({
   editServerMember: (...args: Parameters<typeof mocks.editServerMember>) =>
     mocks.editServerMember(...args),
