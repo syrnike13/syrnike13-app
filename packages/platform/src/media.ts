@@ -1,12 +1,11 @@
 /** Метод hybrid media engine (счётчики как в Discord RTC debug). */
 export type NativeMediaFrameMethod =
-  | 'wgc'
-  | 'dxgi'
-  | 'gdi_blt'
+  | 'wgc_gpu'
+  | 'dxgi_gpu'
 
 export type NativeMediaFrameStats = Record<NativeMediaFrameMethod, number>
 
-export type NativeMediaEncoderBackend = 'webrtc'
+export type NativeMediaEncoderBackend = 'mf_h264_d3d11'
 
 /** process/system_exclude = звук демонстрации; microphone = входной голос; none = звук недоступен. */
 export type NativeMediaAudioMode =
@@ -241,6 +240,12 @@ export type NativeMediaStatsEvent = {
   videoContentWidth?: number
   videoContentHeight?: number
   captureThreadMmcss?: boolean
+  rtpStatsAvailable?: boolean
+  rtpPacketsSent?: number
+  rtpBytesSent?: number
+  rtpFramesSent?: number
+  rtpFramesEncoded?: number
+  encoderImplementation?: string
 }
 
 export type NativeMicrophoneMetricsEvent = {

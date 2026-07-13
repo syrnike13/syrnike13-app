@@ -207,8 +207,8 @@ describe('voice rtc debug', () => {
 
   it('uses native helper dimensions for local native screen share diagnostics', async () => {
     nativeMediaEngineStatsStore.setNative(
-      { wgc: 60, dxgi: 0, gdi_blt: 0 },
-      'wgc',
+      { wgc_gpu: 60, dxgi_gpu: 0 },
+      'wgc_gpu',
       {
         mode: 'process',
         loopbackMode: 'include_target_process_tree',
@@ -259,7 +259,7 @@ describe('voice rtc debug', () => {
 
     expect(snapshot.screenShares[0]).toMatchObject({
       captureBackend: 'native',
-      captureMethod: 'wgc',
+      captureMethod: 'wgc_gpu',
       captureVideoPublished: true,
       captureAudioPublished: true,
       captureWidth: 1920,

@@ -78,6 +78,8 @@ if (
   typeof manifest.electronVersion !== 'string' ||
   !Number.isSafeInteger(manifest.napiVersion) ||
   manifest.liveKitVersion !== '1.3.0' ||
+  manifest.liveKitRevision !== '7596552cdba189fd908c8daa1b55c353efd015a3' ||
+  manifest.liveKitRustRevision !== 'dad794d414fda9e8c1de83af1c0f190506a15f8f' ||
   !Array.isArray(manifest.files)
 ) {
   throw new Error('Native artifact manifest has an unsupported shape')

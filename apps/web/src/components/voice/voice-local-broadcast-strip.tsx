@@ -21,15 +21,15 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
+import { usePlatform } from '#/platform/use-platform'
+import { readDesktopScreenShareBroadcastSource } from '#/features/voice/voice-broadcast-source'
 
 function captureMethodLabel(method: string | undefined) {
   switch (method) {
-    case 'wgc':
+    case 'wgc_gpu':
       return 'WGC'
-    case 'dxgi':
+    case 'dxgi_gpu':
       return 'DXGI'
-    case 'gdi_blt':
-      return 'GDI BitBlt'
     default:
       return method
   }
@@ -95,6 +95,7 @@ function BroadcastStrip({
 function useLocalScreenShareSource() {
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
+  const { desktop } = usePlatform()
   const nativeStats = useSyncExternalStore(
     nativeMediaEngineStatsStore.subscribe,
     nativeMediaEngineStatsStore.getState,
@@ -108,14 +109,17 @@ function useLocalScreenShareSource() {
       (entry) => entry.isLocal && entry.kind === 'screen',
     )
 
-    const source = readScreenShareBroadcastSource(item?.track?.mediaStreamTrack)
-    if (nativeStats.backend !== 'native') {
+    const trackSource = readScreenShareBroadcastSource(
+      item?.track?.mediaStreamTrack,
+    )
+    if (!desktop) {
       return {
-        ...source,
-        label: `${source.label} · Браузерный`,
+        ...trackSource,
+        label: `${trackSource.label} · Браузерный`,
       }
     }
 
+    const source = readDesktopScreenShareBroadcastSource() ?? trackSource
     const methodSuffix = nativeStats.activeMethod
       ? ` · ${captureMethodLabel(nativeStats.activeMethod)}`
       : ''
@@ -123,7 +127,12 @@ function useLocalScreenShareSource() {
       ...source,
       label: `${source.label} · Нативный${methodSuffix}`,
     }
-  }, [voiceMedia.screenShareEnabled, voiceStage.stageMediaItems, nativeStats])
+  }, [
+    desktop,
+    voiceMedia.screenShareEnabled,
+    voiceStage.stageMediaItems,
+    nativeStats,
+  ])
 }
 
 function useLocalCameraSourceLabel() {

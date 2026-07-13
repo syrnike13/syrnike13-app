@@ -108,9 +108,14 @@ struct RuntimeEvent {
   std::uint32_t audio_target_process_id = 0;
   std::string noise_suppression = "disabled";
   std::string echo_cancellation = "disabled";
-  std::uint64_t method_wgc = 0;
-  std::uint64_t method_dxgi = 0;
-  std::uint64_t method_gdi_blt = 0;
+  std::uint64_t method_wgc_gpu = 0;
+  std::uint64_t method_dxgi_gpu = 0;
+  bool rtp_stats_available = false;
+  std::uint64_t rtp_packets_sent = 0;
+  std::uint64_t rtp_bytes_sent = 0;
+  std::uint64_t rtp_frames_sent = 0;
+  std::uint64_t rtp_frames_encoded = 0;
+  std::string encoder_implementation;
   std::string track_id;
   std::string participant_identity;
   std::string video_source;

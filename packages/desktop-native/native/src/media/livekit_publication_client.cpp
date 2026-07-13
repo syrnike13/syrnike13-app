@@ -940,7 +940,12 @@ void DeterministicFakeLiveKitPublicationClient::waitUntilPending(
   if (!changed_.wait_for(lock, timeout, [&] {
         return gateState(operation).pending >= count;
       })) {
-    throw std::runtime_error("timed out waiting for fake LiveKit operation");
+    const auto& state = gateState(operation);
+    throw std::runtime_error(
+      "timed out waiting for fake LiveKit operation " +
+      std::to_string(static_cast<int>(operation)) + " (pending=" +
+      std::to_string(state.pending) + ", expected=" + std::to_string(count) + ")"
+    );
   }
 }
 

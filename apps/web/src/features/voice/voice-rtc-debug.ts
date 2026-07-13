@@ -600,14 +600,11 @@ function screenShareSnapshot(
     captureBitrate:
       nativeStats?.backend === 'native' ? nativeStats.bitrate : undefined,
     hybridDxgiFrames:
-      nativeStats?.backend === 'native' ? nativeStats.methods.dxgi : hybridUnavailable,
-    hybridGdiBitBltFrames:
-      nativeStats?.backend === 'native'
-        ? nativeStats.methods.gdi_blt
-        : hybridUnavailable,
+      nativeStats?.backend === 'native' ? nativeStats.methods.dxgi_gpu : hybridUnavailable,
+    hybridGdiBitBltFrames: hybridUnavailable,
     hybridGdiPrintWindowFrames: hybridUnavailable,
     hybridGraphicsCaptureFrames:
-      nativeStats?.backend === 'native' ? nativeStats.methods.wgc : hybridUnavailable,
+      nativeStats?.backend === 'native' ? nativeStats.methods.wgc_gpu : hybridUnavailable,
     hybridVideohookFrames: hybridUnavailable,
   }
 }

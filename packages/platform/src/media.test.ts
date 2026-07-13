@@ -19,7 +19,7 @@ describe('native media support contracts', () => {
   it('keeps internal native session stats typed', () => {
     expectTypeOf<NativeMediaStatsEvent>().toMatchTypeOf<{
       sessionId: string
-      methods: { wgc: number; dxgi: number; gdi_blt: number }
+      methods: { wgc_gpu: number; dxgi_gpu: number }
     }>()
   })
 

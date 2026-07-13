@@ -215,7 +215,18 @@ int main() try {
   livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
   const auto start_b = screenCommand("startScreenCapture", "start-b", "screen-b", 5);
   require(runtime.dispatch(start_b), "runtime rejected blocked screen publish");
-  livekit->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Publish, 1);
+  try {
+    livekit->waitUntilPending(
+      DeterministicFakeLiveKitPublicationClient::Operation::Publish,
+      1
+    );
+  } catch (const std::exception&) {
+    const auto early_reply = sink->waitReply("start-b", 10ms);
+    throw std::runtime_error(
+      "screen publish failed before reaching LiveKit: " +
+      (early_reply.error ? early_reply.error->message : std::string("unknown error"))
+    );
+  }
   requireProbe(runtime, sink, "probe-publish");
 
   auto cancel_b = screenCommand("disconnectScreen", "cancel-b", "screen-b", 6);

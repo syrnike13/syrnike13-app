@@ -3,9 +3,7 @@
 #include <windows.h>
 
 #include <cstdint>
-#include <memory>
 #include <string>
-#include <vector>
 
 namespace syrnike::voice {
 
@@ -15,20 +13,6 @@ struct ScreenCaptureTarget {
   DWORD process_id = 0;
   RECT rect{};
   int screen_index = 0;
-};
-
-struct ScreenVideoFrame {
-  std::vector<uint8_t> bgra;
-  std::string method;
-};
-
-enum class ScreenCaptureFrameStatus {
-  NewFrame,
-  NoFrame,
-  RepeatedFrame,
-  RecoverableLost,
-  TargetClosed,
-  FatalError,
 };
 
 struct ScreenCaptureFrameMetrics {
@@ -44,12 +28,6 @@ struct ScreenCaptureFrameMetrics {
   long hresult = 0;
 };
 
-struct ScreenCaptureFrameResult {
-  ScreenCaptureFrameStatus status = ScreenCaptureFrameStatus::NoFrame;
-  ScreenCaptureFrameMetrics metrics;
-  std::string method;
-};
-
 ScreenCaptureTarget resolveScreenCaptureTarget(const std::string& source_id);
 void resolveScreenCaptureSize(
     const ScreenCaptureTarget& target,
@@ -57,17 +35,5 @@ void resolveScreenCaptureSize(
     uint32_t max_height,
     uint32_t& width,
     uint32_t& height);
-
-class ScreenVideoCapturer {
-public:
-  static std::unique_ptr<ScreenVideoCapturer> create(
-      const ScreenCaptureTarget& target,
-      uint32_t width,
-      uint32_t height);
-
-  virtual ~ScreenVideoCapturer() = default;
-  virtual ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) = 0;
-  virtual const char* method() const = 0;
-};
 
 }  // namespace syrnike::voice

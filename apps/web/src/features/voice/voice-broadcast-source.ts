@@ -5,6 +5,7 @@ import {
   VideoIcon,
   type AppIcon,
 } from '#/components/icons'
+import type { DesktopDisplayMediaSource } from '@syrnike13/platform'
 
 export type ScreenShareSurface = 'monitor' | 'window' | 'browser'
 
@@ -16,6 +17,8 @@ export type ScreenShareBroadcastSource = {
 type DisplaySurfaceSettings = MediaTrackSettings & {
   displaySurface?: string
 }
+
+let desktopScreenShareSource: ScreenShareBroadcastSource | null = null
 
 export function parseScreenShareSurface(
   value: string | undefined,
@@ -44,6 +47,21 @@ export function readScreenShareBroadcastSource(
   const surface = parseScreenShareSurface(settings?.displaySurface)
   const label = track?.label?.trim() || screenShareSurfaceFallbackLabel(surface)
   return { label, surface }
+}
+
+export function rememberDesktopScreenShareBroadcastSource(
+  source: Pick<DesktopDisplayMediaSource, 'name' | 'type'>,
+) {
+  const surface: ScreenShareSurface =
+    source.type === 'screen' ? 'monitor' : 'window'
+  desktopScreenShareSource = {
+    label: source.name.trim() || screenShareSurfaceFallbackLabel(surface),
+    surface,
+  }
+}
+
+export function readDesktopScreenShareBroadcastSource() {
+  return desktopScreenShareSource
 }
 
 export function screenShareBroadcastIcon(

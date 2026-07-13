@@ -1,4 +1,4 @@
-#include "screen_video_capture.hpp"
+#include "screen_video_capture_benchmark.hpp"
 
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -74,46 +74,6 @@ void copyScaledBgra(
   }
 }
 
-std::vector<RECT> monitorRects() {
-  std::vector<RECT> rects;
-  EnumDisplayMonitors(
-      nullptr,
-      nullptr,
-      [](HMONITOR monitor, HDC, LPRECT, LPARAM data) -> BOOL {
-        auto* out = reinterpret_cast<std::vector<RECT>*>(data);
-        MONITORINFOEXW info{};
-        info.cbSize = sizeof(info);
-        if (GetMonitorInfoW(monitor, &info)) {
-          out->push_back(info.rcMonitor);
-        }
-        return TRUE;
-      },
-      reinterpret_cast<LPARAM>(&rects));
-  return rects;
-}
-
-int parseIndex(const std::string& value, const std::string& prefix) {
-  if (value.rfind(prefix, 0) != 0) return 0;
-  try {
-    return std::stoi(value.substr(prefix.size()));
-  } catch (...) {
-    return 0;
-  }
-}
-
-HWND parseWindowHandle(const std::string& source_id) {
-  const bool window = source_id.rfind("window:", 0) == 0;
-  const bool game = source_id.rfind("game:", 0) == 0;
-  if (!window && !game) return nullptr;
-  try {
-    const auto raw = static_cast<uintptr_t>(
-        std::stoull(source_id.substr(window ? 7 : 5)));
-    return reinterpret_cast<HWND>(raw);
-  } catch (...) {
-    return nullptr;
-  }
-}
-
 void disableCaptureBorderIfAllowed(capture::GraphicsCaptureSession& session) {
   try {
     const auto status = capture::GraphicsCaptureAccess::RequestAccessAsync(
@@ -123,10 +83,6 @@ void disableCaptureBorderIfAllowed(capture::GraphicsCaptureSession& session) {
     }
   } catch (...) {
   }
-}
-
-uint32_t evenDimension(uint32_t value) {
-  return std::max(2u, value & ~1u);
 }
 
 ScreenCaptureFrameResult captureResult(
@@ -261,95 +217,6 @@ private:
   size_t read_slot_ = 0;
   uint32_t width_ = 0;
   uint32_t height_ = 0;
-};
-
-class GdiScreenVideoCapturer final : public ScreenVideoCapturer {
-public:
-  GdiScreenVideoCapturer(ScreenCaptureTarget target, uint32_t width, uint32_t height)
-      : target_(target), width_(width), height_(height) {}
-
-  ScreenCaptureFrameResult capture(ScreenVideoFrame& frame) override {
-    const auto started_at = std::chrono::steady_clock::now();
-    if (target_.window && (!target_.hwnd || !IsWindow(target_.hwnd))) {
-      return captureResult(ScreenCaptureFrameStatus::TargetClosed, method());
-    }
-
-    HDC source_dc = target_.window ? GetWindowDC(target_.hwnd) : GetDC(nullptr);
-    if (!source_dc) return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
-
-    HDC memory_dc = CreateCompatibleDC(source_dc);
-    if (!memory_dc) {
-      ReleaseDC(target_.window ? target_.hwnd : nullptr, source_dc);
-      return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
-    }
-
-    BITMAPINFO info{};
-    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    info.bmiHeader.biWidth = static_cast<LONG>(width_);
-    info.bmiHeader.biHeight = -static_cast<LONG>(height_);
-    info.bmiHeader.biPlanes = 1;
-    info.bmiHeader.biBitCount = 32;
-    info.bmiHeader.biCompression = BI_RGB;
-
-    void* bits = nullptr;
-    HBITMAP bitmap = CreateDIBSection(source_dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (!bitmap || !bits) {
-      DeleteDC(memory_dc);
-      ReleaseDC(target_.window ? target_.hwnd : nullptr, source_dc);
-      return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
-    }
-
-    HGDIOBJ old = SelectObject(memory_dc, bitmap);
-    const int source_width = target_.rect.right - target_.rect.left;
-    const int source_height = target_.rect.bottom - target_.rect.top;
-    SetStretchBltMode(memory_dc, HALFTONE);
-    const BOOL copied = StretchBlt(
-        memory_dc,
-        0,
-        0,
-        static_cast<int>(width_),
-        static_cast<int>(height_),
-        source_dc,
-        target_.window ? 0 : target_.rect.left,
-        target_.window ? 0 : target_.rect.top,
-        source_width,
-        source_height,
-        SRCCOPY | CAPTUREBLT);
-
-    if (copied) {
-      const size_t bytes = static_cast<size_t>(width_) * height_ * 4;
-      frame.bgra.resize(bytes);
-      std::memcpy(frame.bgra.data(), bits, bytes);
-      frame.method = method();
-    }
-
-    SelectObject(memory_dc, old);
-    DeleteObject(bitmap);
-    DeleteDC(memory_dc);
-    ReleaseDC(target_.window ? target_.hwnd : nullptr, source_dc);
-    if (copied != TRUE) {
-      return captureResult(ScreenCaptureFrameStatus::NoFrame, method());
-    }
-    ScreenCaptureFrameMetrics metrics;
-    metrics.source_width = static_cast<uint32_t>(std::max(1, source_width));
-    metrics.source_height = static_cast<uint32_t>(std::max(1, source_height));
-    metrics.content_width = metrics.source_width;
-    metrics.content_height = metrics.source_height;
-    metrics.output_width = width_;
-    metrics.output_height = height_;
-    metrics.capture_us = static_cast<int>(
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - started_at)
-            .count());
-    return captureResult(ScreenCaptureFrameStatus::NewFrame, method(), metrics);
-  }
-
-  const char* method() const override { return "gdi_blt"; }
-
-private:
-  ScreenCaptureTarget target_;
-  uint32_t width_;
-  uint32_t height_;
 };
 
 class DxgiScreenVideoCapturer final : public ScreenVideoCapturer {
@@ -668,69 +535,14 @@ private:
 
 }  // namespace
 
-ScreenCaptureTarget resolveScreenCaptureTarget(const std::string& source_id) {
-  ScreenCaptureTarget target;
-  if (source_id.rfind("window:", 0) == 0 || source_id.rfind("game:", 0) == 0) {
-    target.window = true;
-    target.hwnd = parseWindowHandle(source_id);
-    if (!target.hwnd || !IsWindow(target.hwnd) || !GetWindowRect(target.hwnd, &target.rect)) {
-      throw std::runtime_error("selected window is no longer available");
-    }
-    GetWindowThreadProcessId(target.hwnd, &target.process_id);
-    return target;
-  }
-
-  const auto rects = monitorRects();
-  const int index = parseIndex(source_id, "screen:");
-  if (index <= 0 || index > static_cast<int>(rects.size())) {
-    throw std::runtime_error("selected screen is no longer available");
-  }
-  target.screen_index = index;
-  target.rect = rects[static_cast<size_t>(index - 1)];
-  return target;
-}
-
-void resolveScreenCaptureSize(
-    const ScreenCaptureTarget& target,
-    uint32_t max_width,
-    uint32_t max_height,
-    uint32_t& width,
-    uint32_t& height) {
-  const uint32_t source_width = static_cast<uint32_t>(
-      std::max(1L, target.rect.right - target.rect.left));
-  const uint32_t source_height = static_cast<uint32_t>(
-      std::max(1L, target.rect.bottom - target.rect.top));
-  max_width = std::max(2u, max_width);
-  max_height = std::max(2u, max_height);
-
-  const double scale = std::min({
-      1.0,
-      static_cast<double>(max_width) / static_cast<double>(source_width),
-      static_cast<double>(max_height) / static_cast<double>(source_height),
-  });
-
-  width = evenDimension(static_cast<uint32_t>(
-      std::round(static_cast<double>(source_width) * scale)));
-  height = evenDimension(static_cast<uint32_t>(
-      std::round(static_cast<double>(source_height) * scale)));
-}
-
 std::unique_ptr<ScreenVideoCapturer> ScreenVideoCapturer::create(
     const ScreenCaptureTarget& target,
     uint32_t width,
     uint32_t height) {
   if (!target.window) {
-    try {
-      return std::make_unique<DxgiScreenVideoCapturer>(target, width, height);
-    } catch (...) {
-      return std::make_unique<GdiScreenVideoCapturer>(target, width, height);
-    }
+    return std::make_unique<DxgiScreenVideoCapturer>(target, width, height);
   }
-  try {
-    return std::make_unique<WgcScreenVideoCapturer>(target, width, height);
-  } catch (...) {
-    return std::make_unique<GdiScreenVideoCapturer>(target, width, height);
-  }
+  return std::make_unique<WgcScreenVideoCapturer>(target, width, height);
 }
 
 }  // namespace syrnike::voice

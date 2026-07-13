@@ -33,7 +33,7 @@ permissions:
 jobs:
   native-runtime:
     name: DLL runtime, Electron ABI, and package
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
     env:
       SYRNIKE_DESKTOP_CHANNEL: ${{ inputs.release_channel || 'stable' }}
     steps:
@@ -43,6 +43,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Set up pinned vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Debug DLL runtime
@@ -84,7 +88,7 @@ jobs:
 
   native-core-asan:
     name: Native core AddressSanitizer
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -92,6 +96,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Set up pinned vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Debug native core with AddressSanitizer

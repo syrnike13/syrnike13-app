@@ -42,6 +42,24 @@ int screenBitrate(int requested) {
   return 8'000'000;
 }
 
+std::string screenFailureCode(std::string_view message) {
+  constexpr std::string_view typed_codes[] = {
+    "gpu_capture_unavailable",
+    "gpu_encoder_unavailable",
+    "gpu_interop_unavailable",
+    "gpu_device_lost",
+    "target_closed",
+  };
+  for (const auto code : typed_codes) {
+    if (message == code ||
+        (message.starts_with(code) && message.size() > code.size() &&
+         message[code.size()] == ':')) {
+      return std::string(code);
+    }
+  }
+  return "native_command_failed";
+}
+
 }  // namespace
 
 class ScreenPublicationController::Implementation {
@@ -377,7 +395,7 @@ class ScreenPublicationController::Implementation {
     std::shared_ptr<std::atomic_bool> capture_running;
     std::thread capture_thread;
     std::thread audio_thread;
-    std::shared_ptr<livekit::VideoSource> video_source;
+    std::shared_ptr<livekit::D3D11H264VideoSource> video_source;
     std::shared_ptr<livekit::LocalVideoTrack> video_track;
     std::string video_publication_sid;
     std::shared_ptr<livekit::AudioSource> audio_source;
@@ -653,10 +671,19 @@ class ScreenPublicationController::Implementation {
     resources.description.bitrate = screenBitrate(command.bitrate);
     const auto& description = resources.description;
 
-    resources.video_source = std::make_shared<livekit::VideoSource>(
+    const auto capability = livekit::queryD3D11H264Capability();
+    if (!capability.available) {
+      throw std::runtime_error(
+        "gpu_encoder_unavailable: " + capability.reason
+      );
+    }
+    resources.video_source = livekit::createD3D11H264VideoSource(
       static_cast<int>(description.width),
       static_cast<int>(description.height)
     );
+    if (!resources.video_source) {
+      throw std::runtime_error("gpu_encoder_unavailable");
+    }
     resources.video_track = livekit::LocalVideoTrack::createLocalVideoTrack(
       "screen",
       resources.video_source
@@ -665,6 +692,8 @@ class ScreenPublicationController::Implementation {
     video_options.source = livekit::TrackSource::SOURCE_SCREENSHARE;
     video_options.stream = "screen";
     video_options.simulcast = false;
+    video_options.video_codec = livekit::VideoCodec::H264;
+    video_options.video_encoder = livekit::VideoEncoderBackend::WindowsD3D11Hardware;
     video_options.video_encoding = livekit::VideoEncodingOptions{
       static_cast<std::uint64_t>(description.bitrate),
       static_cast<double>(description.fps),
@@ -724,6 +753,7 @@ class ScreenPublicationController::Implementation {
       command,
       description,
       resources.video_source,
+      resources.video_track,
       resources.audio_source,
       resources.capture_running,
       [this, attempt] { return isCurrent(attempt); },
@@ -768,7 +798,7 @@ class ScreenPublicationController::Implementation {
         attempt->command,
         terminal_failure
           ? "screen_runtime_lost"
-          : (stale ? "stale_generation" : "native_command_failed"),
+          : (stale ? "stale_generation" : screenFailureCode(attempt->error)),
         terminal_failure
           ? (attempt->terminal_reason.empty()
               ? "screen runtime ended during publication"

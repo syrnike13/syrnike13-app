@@ -322,6 +322,164 @@ describe('NativeRtcEngineAdapter', () => {
     adapter.dispose()
   })
 
+  it('turns a current native screen terminal event into an isolated media failure', async () => {
+    const runtime = new FakeRuntime()
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      screenEnabled: true,
+      screenSourceId: 'window:42',
+      screenAudioEnabled: true,
+    }
+    await adapter.connect(lease, desired, new AbortController().signal)
+    await waitUntil(() =>
+      runtime.commands.some((command) => command.type === 'startScreenCapture'),
+    )
+    const start = runtime.commands.find(
+      (command) => command.type === 'startScreenCapture',
+    )
+    if (!start || start.type !== 'startScreenCapture') {
+      throw new Error('screen start command was not emitted')
+    }
+
+    runtime.emitEvent({
+      type: 'screenCaptureEnded',
+      sequence: 10,
+      sessionId: lease.connectionEpoch,
+      generation: start.generation,
+      reason: 'gpu_encoder_unavailable',
+      message: 'No compatible H.264 hardware encoder is available',
+    })
+
+    expect(events).toContainEqual({
+      type: 'mediaState',
+      kind: 'screen',
+      operationId: lease.operationId,
+      connectionEpoch: lease.connectionEpoch,
+      media: {
+        state: 'failed',
+        error: {
+          code: 'screen_gpu_encoder_unavailable',
+          message: 'No compatible H.264 hardware encoder is available',
+          retryable: true,
+          stage: 'screen_capture',
+        },
+      },
+    })
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'mediaState',
+        kind: 'screen_audio',
+        media: expect.objectContaining({ state: 'failed' }),
+      }),
+    )
+
+    runtime.emitEvent({
+      type: 'screenCaptureEnded',
+      sequence: 11,
+      sessionId: lease.connectionEpoch,
+      generation: start.generation,
+      reason: 'runtime_error',
+      message: 'stale duplicate',
+    })
+    expect(
+      events.filter(
+        (event) =>
+          typeof event === 'object' &&
+          event !== null &&
+          'type' in event &&
+          event.type === 'mediaState' &&
+          'kind' in event &&
+          event.kind === 'screen' &&
+          'media' in event &&
+          typeof event.media === 'object' &&
+          event.media !== null &&
+          'state' in event.media &&
+          event.media.state === 'failed',
+      ),
+    ).toHaveLength(1)
+    adapter.dispose()
+  })
+
+  it('preserves a typed hardware error when native screen startup is rejected', async () => {
+    const runtime = new FakeRuntime((command) => {
+      if (command.type !== 'startScreenCapture') return undefined
+      const error = new Error('gpu_encoder_unavailable') as Error & {
+        detail: { code: string }
+      }
+      error.detail = { code: 'gpu_encoder_unavailable' }
+      return Promise.reject(error)
+    })
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+    const desired = {
+      ...createInitialVoiceMediaDesiredState(),
+      screenEnabled: true,
+      screenSourceId: 'screen:1',
+    }
+
+    await adapter.connect(lease, desired, new AbortController().signal)
+    await waitUntil(() => events.some((event) =>
+      typeof event === 'object' && event !== null &&
+      'kind' in event && event.kind === 'screen' &&
+      'media' in event && typeof event.media === 'object' && event.media !== null &&
+      'state' in event.media && event.media.state === 'failed'))
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'mediaState',
+      kind: 'screen',
+      media: {
+        state: 'failed',
+        error: expect.objectContaining({
+          code: 'screen_gpu_encoder_unavailable',
+        }),
+      },
+    }))
+    adapter.dispose()
+  })
+
+  it('reports a closed screen target as a non-retryable startup failure', async () => {
+    const runtime = new FakeRuntime((command) => {
+      if (command.type !== 'startScreenCapture') return undefined
+      const error = new Error('target_closed') as Error & {
+        detail: { code: string }
+      }
+      error.detail = { code: 'target_closed' }
+      return Promise.reject(error)
+    })
+    const adapter = new NativeRtcEngineAdapter(runtime)
+    const events: unknown[] = []
+    adapter.subscribe((event) => events.push(event))
+
+    await adapter.connect(lease, {
+      ...createInitialVoiceMediaDesiredState(),
+      screenEnabled: true,
+      screenSourceId: 'window:1234',
+    }, new AbortController().signal)
+    await waitUntil(() => events.some((event) =>
+      typeof event === 'object' && event !== null &&
+      'kind' in event && event.kind === 'screen' &&
+      'media' in event && typeof event.media === 'object' && event.media !== null &&
+      'state' in event.media && event.media.state === 'failed'))
+
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'mediaState',
+      kind: 'screen',
+      media: {
+        state: 'failed',
+        error: expect.objectContaining({
+          code: 'screen_capture_target_closed',
+          message: 'Источник демонстрации больше недоступен',
+          retryable: false,
+        }),
+      },
+    }))
+    adapter.dispose()
+  })
+
   it('ignores stale native events from an older generation of the same epoch', async () => {
     const runtime = new FakeRuntime()
     const adapter = new NativeRtcEngineAdapter(runtime)

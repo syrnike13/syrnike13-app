@@ -738,6 +738,31 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
       })
       return
     }
+    if (event.type === 'screenCaptureEnded') {
+      if (
+        active.screenGeneration === null ||
+        event.generation !== active.screenGeneration
+      ) return
+      active.screenStarted = false
+      active.screenGeneration = null
+      active.screenSourceKey = null
+      const targetClosed = event.reason === 'target_closed'
+      const error = {
+        code: targetClosed
+          ? 'screen_capture_target_closed'
+          : `screen_${event.reason || 'capture_failed'}`,
+        message: targetClosed
+          ? 'Источник демонстрации больше недоступен'
+          : (event.message ?? 'Native screen capture stopped unexpectedly'),
+        retryable: !targetClosed,
+        stage: 'screen_capture',
+      }
+      this.emitMedia(active, 'screen', { state: 'failed', error })
+      if (this.desired?.screenAudioEnabled) {
+        this.emitMedia(active, 'screen_audio', { state: 'failed', error })
+      }
+      return
+    }
     if (event.type === 'activeSpeakers') {
       if (event.generation !== active.voiceGeneration) return
       active.remoteSpeakingUserIds = new Set(
@@ -854,12 +879,30 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
     error: unknown,
     code: string,
   ) {
+    const nativeCode =
+      error instanceof Error &&
+      'detail' in error &&
+      typeof error.detail === 'object' &&
+      error.detail !== null &&
+      'code' in error.detail &&
+      typeof error.detail.code === 'string'
+        ? error.detail.code
+        : undefined
     this.emitMedia(active, kind, {
       state: 'failed',
       error: {
-        code,
-        message: error instanceof Error ? error.message : `${kind} failed`,
-        retryable: true,
+        code: kind === 'screen' && nativeCode === 'target_closed'
+          ? 'screen_capture_target_closed'
+          : kind === 'screen' && nativeCode?.startsWith('gpu_')
+            ? `screen_${nativeCode}`
+            : code,
+        message:
+          kind === 'screen' && nativeCode === 'target_closed'
+            ? 'Источник демонстрации больше недоступен'
+            : error instanceof Error
+              ? error.message
+              : `${kind} failed`,
+        retryable: nativeCode !== 'target_closed',
       },
     })
   }

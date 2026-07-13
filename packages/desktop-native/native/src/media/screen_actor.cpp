@@ -1,5 +1,6 @@
 #include "screen_actor.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -12,11 +13,15 @@
 #include <thread>
 #include <utility>
 
+#include <livekit/d3d11_h264_video_source.h>
+
+#include <objbase.h>
+
 #include "../common/diagnostic_log.hpp"
 #include "livekit_disconnect_reason.hpp"
 #include "screen_audio_capture.hpp"
 #include "screen_capture_priority.hpp"
-#include "screen_video_capture.hpp"
+#include "screen_gpu_capture.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -35,6 +40,66 @@ void logScreen(
   if (!logger.enabled()) return;
   logger.write(event, fields);
 }
+
+std::string_view gpuCaptureReason(ScreenGpuCaptureErrorCode code) noexcept {
+  switch (code) {
+    case ScreenGpuCaptureErrorCode::DeviceLost:
+      return "gpu_device_lost";
+    case ScreenGpuCaptureErrorCode::InteropUnavailable:
+    case ScreenGpuCaptureErrorCode::FormatUnsupported:
+      return "gpu_interop_unavailable";
+    case ScreenGpuCaptureErrorCode::TargetClosed:
+      return "target_closed";
+    case ScreenGpuCaptureErrorCode::CaptureUnavailable:
+    case ScreenGpuCaptureErrorCode::DeviceUnavailable:
+      return "gpu_capture_unavailable";
+  }
+  return "gpu_capture_unavailable";
+}
+
+std::uint64_t packLuid(const LUID luid) noexcept {
+  return static_cast<std::uint64_t>(luid.LowPart) |
+    (static_cast<std::uint64_t>(static_cast<std::uint32_t>(luid.HighPart)) << 32U);
+}
+
+class ScreenTextureLease final : public livekit::D3D11TextureLease {
+ public:
+  ScreenTextureLease(
+    std::shared_ptr<ScreenGpuCapturer> capturer,
+    ScreenGpuFrame frame
+  ) : capturer_(std::move(capturer)), frame_(frame) {
+    texture_.shared_handle = reinterpret_cast<std::uintptr_t>(frame_.shared_texture_handle);
+    texture_.adapter_luid = packLuid(frame_.adapter_luid);
+    texture_.acquire_key = 1;
+    texture_.release_key = 0;
+    texture_.width = frame_.width;
+    texture_.height = frame_.height;
+  }
+
+  ~ScreenTextureLease() override {
+    if (!accepted_) release();
+  }
+
+  const livekit::D3D11SharedTexture& texture() const noexcept override {
+    return texture_;
+  }
+
+  void accepted() noexcept override { accepted_ = true; }
+
+  void release() noexcept override {
+    if (released_) return;
+    released_ = true;
+    auto capturer = std::move(capturer_);
+    if (capturer) capturer->discard(frame_);
+  }
+
+ private:
+  std::shared_ptr<ScreenGpuCapturer> capturer_;
+  ScreenGpuFrame frame_;
+  livekit::D3D11SharedTexture texture_;
+  bool accepted_ = false;
+  bool released_ = false;
+};
 
 }  // namespace
 
@@ -62,7 +127,8 @@ class ScreenActor::Implementation {
         [this](
           const MediaCommand& command,
           const ScreenPublicationDescription& description,
-          const std::shared_ptr<livekit::VideoSource>& video_source,
+          const std::shared_ptr<livekit::D3D11H264VideoSource>& video_source,
+          const std::shared_ptr<livekit::LocalVideoTrack>& video_track,
           const std::shared_ptr<livekit::AudioSource>& audio_source,
           const std::shared_ptr<std::atomic_bool>& running,
           const std::function<bool()>& is_current,
@@ -73,6 +139,7 @@ class ScreenActor::Implementation {
             command,
             description,
             video_source,
+            video_track,
             audio_source,
             running,
             is_current,
@@ -127,7 +194,20 @@ class ScreenActor::Implementation {
     ended.type = "screenCaptureEnded";
     ended.session_id = command.session_id;
     ended.generation = command.generation;
-    ended.reason = reason == "target_closed" ? "target_closed" : "runtime_error";
+    constexpr std::string_view allowed_reasons[] = {
+      "target_closed",
+      "gpu_capture_unavailable",
+      "gpu_encoder_unavailable",
+      "gpu_interop_unavailable",
+      "gpu_device_lost",
+    };
+    ended.reason = "runtime_error";
+    for (const auto allowed : allowed_reasons) {
+      if (reason == allowed) {
+        ended.reason = reason;
+        break;
+      }
+    }
     ended.detail = reason;
     emitter_.emit(std::move(ended));
     RuntimeEvent stopped;
@@ -184,18 +264,24 @@ class ScreenActor::Implementation {
   void startCaptureWorkers(
     const MediaCommand& command,
     const ScreenPublicationDescription& description,
-    const std::shared_ptr<livekit::VideoSource>& video_source,
+    const std::shared_ptr<livekit::D3D11H264VideoSource>& video_source,
+    const std::shared_ptr<livekit::LocalVideoTrack>& video_track,
     const std::shared_ptr<livekit::AudioSource>& audio_source,
     const std::shared_ptr<std::atomic_bool>& running,
     const std::function<bool()>& is_current,
     std::thread& capture_thread,
     std::thread& audio_thread
   ) {
-    auto capturer = syrnike::voice::ScreenVideoCapturer::create(
-      description.target,
-      description.width,
-      description.height
-    );
+    std::shared_ptr<ScreenGpuCapturer> capturer;
+    try {
+      capturer = ScreenGpuCapturer::create(
+        description.target,
+        description.width,
+        description.height
+      );
+    } catch (const ScreenGpuCaptureError& error) {
+      throw std::runtime_error(std::string(gpuCaptureReason(error.code())));
+    }
     if (!is_current()) throw std::runtime_error("stale screen capture generation");
     capture_thread = std::thread(
       [this,
@@ -205,6 +291,7 @@ class ScreenActor::Implementation {
        height = description.height,
        fps = description.fps,
        source = video_source,
+       track = video_track,
        running,
        capturer = std::move(capturer)]() mutable {
         captureLoop(
@@ -214,6 +301,7 @@ class ScreenActor::Implementation {
           height,
           fps,
           std::move(source),
+          std::move(track),
           std::move(running),
           std::move(capturer)
         );
@@ -285,12 +373,17 @@ class ScreenActor::Implementation {
     stats_video_frames_ = 0;
     stats_audio_frames_ = 0;
     stats_audio_packets_ = 0;
-    stats_method_wgc_ = 0;
-    stats_method_dxgi_ = 0;
-    stats_method_gdi_blt_ = 0;
+    stats_method_wgc_gpu_ = 0;
+    stats_method_dxgi_gpu_ = 0;
     stats_audio_peak_db_ = -120.0;
     stats_audio_rms_db_ = -120.0;
     stats_capture_method_.clear();
+    stats_rtp_available_ = false;
+    stats_rtp_packets_sent_ = 0;
+    stats_rtp_bytes_sent_ = 0;
+    stats_rtp_frames_sent_ = 0;
+    stats_rtp_frames_encoded_ = 0;
+    stats_encoder_implementation_.clear();
     next_stats_at_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
   }
 
@@ -311,9 +404,14 @@ class ScreenActor::Implementation {
       event.audio_peak_db = stats_audio_peak_db_;
       event.audio_rms_db = stats_audio_rms_db_;
       event.capture_method = stats_capture_method_;
-      event.method_wgc = stats_method_wgc_;
-      event.method_dxgi = stats_method_dxgi_;
-      event.method_gdi_blt = stats_method_gdi_blt_;
+      event.method_wgc_gpu = stats_method_wgc_gpu_;
+      event.method_dxgi_gpu = stats_method_dxgi_gpu_;
+      event.rtp_stats_available = stats_rtp_available_;
+      event.rtp_packets_sent = stats_rtp_packets_sent_;
+      event.rtp_bytes_sent = stats_rtp_bytes_sent_;
+      event.rtp_frames_sent = stats_rtp_frames_sent_;
+      event.rtp_frames_encoded = stats_rtp_frames_encoded_;
+      event.encoder_implementation = stats_encoder_implementation_;
       snapshot = std::move(event);
       next_stats_at_ = now + std::chrono::seconds(1);
     }
@@ -344,20 +442,100 @@ class ScreenActor::Implementation {
     std::uint64_t generation,
     std::uint64_t frames,
     const std::string& method,
-    std::uint64_t method_wgc,
-    std::uint64_t method_dxgi,
-    std::uint64_t method_gdi_blt
+    std::uint64_t method_wgc_gpu,
+    std::uint64_t method_dxgi_gpu
   ) {
     {
       std::lock_guard lock(stats_mutex_);
       if (stats_session_id_ != session_id || stats_generation_ != generation) return;
       stats_video_frames_ = frames;
       stats_capture_method_ = method;
-      stats_method_wgc_ = method_wgc;
-      stats_method_dxgi_ = method_dxgi;
-      stats_method_gdi_blt_ = method_gdi_blt;
+      stats_method_wgc_gpu_ = method_wgc_gpu;
+      stats_method_dxgi_gpu_ = method_dxgi_gpu;
     }
     emitStatsIfDue(session_id, generation);
+  }
+
+  void sampleOutboundStats(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::shared_ptr<livekit::LocalVideoTrack>& track
+  ) {
+    if (!track || !diagnostics::DiagnosticLog::instance().enabled()) return;
+    try {
+      const auto records = track->getStats().get();
+      std::uint64_t packets_sent = 0;
+      std::uint64_t bytes_sent = 0;
+      std::uint64_t frames_sent = 0;
+      std::uint64_t frames_encoded = 0;
+      double target_bitrate = 0;
+      double frames_per_second = 0;
+      std::uint64_t frame_width = 0;
+      std::uint64_t frame_height = 0;
+      std::uint64_t quality_limitation_reason = 0;
+      bool active = false;
+      std::string encoder_implementation;
+      bool available = false;
+      for (const auto& record : records) {
+        const auto* outbound = std::get_if<livekit::RtcOutboundRtpStats>(&record.stats);
+        if (!outbound) continue;
+        available = true;
+        packets_sent += outbound->sent.packets_sent;
+        bytes_sent += outbound->sent.bytes_sent;
+        frames_sent += outbound->outbound.frames_sent;
+        frames_encoded += outbound->outbound.frames_encoded;
+        target_bitrate += outbound->outbound.target_bitrate;
+        frames_per_second += outbound->outbound.frames_per_second;
+        frame_width = std::max<std::uint64_t>(
+          frame_width, outbound->outbound.frame_width);
+        frame_height = std::max<std::uint64_t>(
+          frame_height, outbound->outbound.frame_height);
+        quality_limitation_reason = std::max<std::uint64_t>(
+          quality_limitation_reason,
+          static_cast<std::uint64_t>(outbound->outbound.quality_limitation_reason));
+        active = active || outbound->outbound.active;
+        if (encoder_implementation.empty()) {
+          encoder_implementation = outbound->outbound.encoder_implementation;
+        }
+      }
+      {
+        std::lock_guard lock(stats_mutex_);
+        if (stats_session_id_ != session_id || stats_generation_ != generation) return;
+        stats_rtp_available_ = available;
+        stats_rtp_packets_sent_ = packets_sent;
+        stats_rtp_bytes_sent_ = bytes_sent;
+        stats_rtp_frames_sent_ = frames_sent;
+        stats_rtp_frames_encoded_ = frames_encoded;
+        stats_encoder_implementation_ = std::move(encoder_implementation);
+      }
+      logScreen(
+        "screen_rtp_stats",
+        {
+          {"sessionId", session_id},
+          {"generation", generation},
+          {"available", available},
+          {"packetsSent", packets_sent},
+          {"bytesSent", bytes_sent},
+          {"framesSent", frames_sent},
+          {"framesEncoded", frames_encoded},
+          {"targetBitrate", target_bitrate},
+          {"framesPerSecond", frames_per_second},
+          {"frameWidth", frame_width},
+          {"frameHeight", frame_height},
+          {"qualityLimitationReason", quality_limitation_reason},
+          {"active", active}
+        }
+      );
+    } catch (const std::exception& error) {
+      logScreen(
+        "screen_rtp_stats_error",
+        {
+          {"sessionId", session_id},
+          {"generation", generation},
+          {"message", sanitizeDiagnosticMessage(error.what())}
+        }
+      );
+    }
   }
 
   void captureLoop(
@@ -366,9 +544,10 @@ class ScreenActor::Implementation {
     std::uint32_t width,
     std::uint32_t height,
     int fps,
-    std::shared_ptr<livekit::VideoSource> source,
+    std::shared_ptr<livekit::D3D11H264VideoSource> source,
+    std::shared_ptr<livekit::LocalVideoTrack> track,
     std::shared_ptr<std::atomic_bool> running,
-    std::unique_ptr<syrnike::voice::ScreenVideoCapturer> capturer
+    std::shared_ptr<ScreenGpuCapturer> capturer
   ) {
     logScreen(
       "screen_capture_loop_start",
@@ -383,45 +562,50 @@ class ScreenActor::Implementation {
     syrnike::voice::ScreenCapturePriorityScope priority;
     const auto interval = std::chrono::microseconds(1'000'000 / fps);
     auto next_frame = std::chrono::steady_clock::now();
+    auto next_rtp_stats_at = next_frame + std::chrono::seconds(1);
     const auto started = next_frame;
     std::uint64_t frames = 0;
-    std::uint64_t method_wgc = 0;
-    std::uint64_t method_dxgi = 0;
-    std::uint64_t method_gdi_blt = 0;
+    std::uint64_t method_wgc_gpu = 0;
+    std::uint64_t method_dxgi_gpu = 0;
     std::string method = capturer->method();
-    syrnike::voice::ScreenVideoFrame captured;
+    ScreenGpuFrame captured;
+    const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool uninitialize_com = SUCCEEDED(com_result);
 
     try {
+      if (FAILED(com_result) && com_result != RPC_E_CHANGED_MODE) {
+        throw ScreenGpuCaptureError(
+          ScreenGpuCaptureErrorCode::CaptureUnavailable,
+          "screen capture COM initialization failed",
+          static_cast<long>(com_result)
+        );
+      }
       while (running->load()) {
         const auto capture = capturer->capture(captured);
-        if (!capture.method.empty()) method = capture.method;
-        if (capture.status == syrnike::voice::ScreenCaptureFrameStatus::NewFrame) {
-          livekit::VideoFrame frame(
-            static_cast<int>(width),
-            static_cast<int>(height),
-            livekit::VideoBufferType::BGRA,
-            std::move(captured.bgra)
-          );
-          const auto timestamp = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - started
-          ).count();
-          source->captureFrame(frame, timestamp);
-          ++frames;
-          if (method == "wgc") ++method_wgc;
-          else if (method == "dxgi") ++method_dxgi;
-          else if (method == "gdi_blt") ++method_gdi_blt;
+        if (capture.method && capture.method[0] != '\0') method = capture.method;
+        if (capture.status == ScreenGpuFrameStatus::NewFrame) {
+          auto lease = std::make_unique<ScreenTextureLease>(capturer, captured);
+          const auto timestamp = captured.timestamp_us != 0
+            ? static_cast<std::int64_t>(captured.timestamp_us)
+            : std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started).count();
+          if (source->capture(std::move(lease), timestamp)) {
+            ++frames;
+            if (method == "wgc_gpu") ++method_wgc_gpu;
+            else if (method == "dxgi_gpu") ++method_dxgi_gpu;
+          }
         } else if (
-          capture.status == syrnike::voice::ScreenCaptureFrameStatus::TargetClosed ||
-          capture.status == syrnike::voice::ScreenCaptureFrameStatus::FatalError
+          capture.status == ScreenGpuFrameStatus::TargetClosed ||
+          capture.status == ScreenGpuFrameStatus::FatalError
         ) {
           MediaCommand terminal;
           terminal.type = "__screenTerminal";
           terminal.session_id = session_id;
           terminal.generation = generation;
           terminal.internal_message =
-            capture.status == syrnike::voice::ScreenCaptureFrameStatus::TargetClosed
+            capture.status == ScreenGpuFrameStatus::TargetClosed
               ? "target_closed"
-              : "capture_failed";
+              : std::string(gpuCaptureReason(capture.error_code));
           running->store(false);
           logScreen(
             "screen_capture_loop_terminal",
@@ -429,7 +613,7 @@ class ScreenActor::Implementation {
               {"sessionId", session_id},
               {"generation", generation},
               {"targetClosed",
-               capture.status == syrnike::voice::ScreenCaptureFrameStatus::TargetClosed},
+               capture.status == ScreenGpuFrameStatus::TargetClosed},
               {"frames", frames}
             }
           );
@@ -438,14 +622,17 @@ class ScreenActor::Implementation {
         }
 
         const auto now = std::chrono::steady_clock::now();
+        if (now >= next_rtp_stats_at) {
+          sampleOutboundStats(session_id, generation, track);
+          next_rtp_stats_at = now + std::chrono::seconds(1);
+        }
         recordVideoStats(
           session_id,
           generation,
           frames,
           method,
-          method_wgc,
-          method_dxgi,
-          method_gdi_blt
+          method_wgc_gpu,
+          method_dxgi_gpu
         );
         next_frame += interval;
         if (now > next_frame + interval) next_frame = now;
@@ -466,7 +653,10 @@ class ScreenActor::Implementation {
         terminal.type = "__screenTerminal";
         terminal.session_id = session_id;
         terminal.generation = generation;
-        terminal.internal_message = "capture_failed";
+        const auto* gpu_error = dynamic_cast<const ScreenGpuCaptureError*>(&error);
+        terminal.internal_message = gpu_error
+          ? std::string(gpuCaptureReason(gpu_error->code()))
+          : "gpu_capture_unavailable";
         post_(std::move(terminal));
       }
     } catch (...) {
@@ -483,19 +673,22 @@ class ScreenActor::Implementation {
         terminal.type = "__screenTerminal";
         terminal.session_id = session_id;
         terminal.generation = generation;
-        terminal.internal_message = "capture_failed";
+        terminal.internal_message = "gpu_capture_unavailable";
         post_(std::move(terminal));
       }
     }
+    capturer.reset();
+    source.reset();
+    track.reset();
+    if (uninitialize_com) CoUninitialize();
     logScreen(
       "screen_capture_loop_exit",
       {
         {"sessionId", session_id},
         {"generation", generation},
         {"frames", frames},
-        {"methodWgc", method_wgc},
-        {"methodDxgi", method_dxgi},
-        {"methodGdiBlt", method_gdi_blt},
+        {"methodWgcGpu", method_wgc_gpu},
+        {"methodDxgiGpu", method_dxgi_gpu},
         {"running", running->load()}
       }
     );
@@ -510,12 +703,17 @@ class ScreenActor::Implementation {
   std::uint64_t stats_video_frames_ = 0;
   std::uint64_t stats_audio_frames_ = 0;
   std::uint64_t stats_audio_packets_ = 0;
-  std::uint64_t stats_method_wgc_ = 0;
-  std::uint64_t stats_method_dxgi_ = 0;
-  std::uint64_t stats_method_gdi_blt_ = 0;
+  std::uint64_t stats_method_wgc_gpu_ = 0;
+  std::uint64_t stats_method_dxgi_gpu_ = 0;
   double stats_audio_peak_db_ = -120.0;
   double stats_audio_rms_db_ = -120.0;
   std::string stats_capture_method_;
+  bool stats_rtp_available_ = false;
+  std::uint64_t stats_rtp_packets_sent_ = 0;
+  std::uint64_t stats_rtp_bytes_sent_ = 0;
+  std::uint64_t stats_rtp_frames_sent_ = 0;
+  std::uint64_t stats_rtp_frames_encoded_ = 0;
+  std::string stats_encoder_implementation_;
   std::chrono::steady_clock::time_point next_stats_at_{};
 };
 

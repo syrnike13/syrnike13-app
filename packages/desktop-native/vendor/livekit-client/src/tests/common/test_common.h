@@ -1,0 +1,604 @@
+/*
+ * Copyright 2025 LiveKit
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#pragma once
+
+#include <gtest/gtest.h>
+#include <livekit/livekit.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <numeric>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+
+// Include benchmark utilities for trace file analysis
+#include "../benchmark/benchmark_utils.h"
+
+namespace livekit::test {
+
+using namespace std::chrono_literals;
+
+// =============================================================================
+// Tracing Configuration
+// =============================================================================
+
+// Set to 0 to disable tracing in tests, 1 to enable
+#define LIVEKIT_TEST_ENABLE_TRACING 1
+
+// =============================================================================
+// Common Constants
+// =============================================================================
+
+// Default number of test iterations for connection tests
+constexpr int kDefaultTestIterations = 10;
+
+// Default stress test duration in seconds
+constexpr int kDefaultStressDurationSeconds = 600; // 10 minutes
+
+// Local SFU URL used by end-to-end data track tests.
+constexpr char kLocalTestLiveKitUrl[] = "ws://localhost:7880";
+
+// =============================================================================
+// Common Test Configuration
+// =============================================================================
+
+/**
+ * Common test configuration loaded from environment variables.
+ *
+ * Environment variables:
+ *   LIVEKIT_URL           - WebSocket URL of the LiveKit server
+ *   LIVEKIT_TOKEN_A       - Token for the first test participant
+ *   LIVEKIT_TOKEN_B       - Token for the second test participant
+ *   TEST_ITERATIONS       - Number of iterations for iterative tests (default:
+ * 10) STRESS_DURATION_SECONDS - Duration for stress tests in seconds (default:
+ * 600) STRESS_CALLER_THREADS - Number of caller threads for stress tests
+ * (default: 4)
+ */
+struct TestConfig {
+  std::string url;
+  std::string token_a;
+  std::string token_b;
+  int test_iterations;
+  int stress_duration_seconds;
+  int num_caller_threads;
+  bool available = false;
+
+  static TestConfig fromEnv() {
+    TestConfig config;
+    const char* url = std::getenv("LIVEKIT_URL");
+    const char* token_a = std::getenv("LIVEKIT_TOKEN_A");
+    const char* token_b = std::getenv("LIVEKIT_TOKEN_B");
+    const char* iterations_env = std::getenv("TEST_ITERATIONS");
+    const char* duration_env = std::getenv("STRESS_DURATION_SECONDS");
+    const char* threads_env = std::getenv("STRESS_CALLER_THREADS");
+
+    if (url && token_a && token_b) {
+      config.url = url;
+      config.token_a = token_a;
+      config.token_b = token_b;
+      config.available = true;
+    }
+
+    config.test_iterations = iterations_env ? std::atoi(iterations_env) : kDefaultTestIterations;
+    config.stress_duration_seconds = duration_env ? std::atoi(duration_env) : kDefaultStressDurationSeconds;
+    config.num_caller_threads = threads_env ? std::atoi(threads_env) : 4;
+
+    return config;
+  }
+};
+
+struct TestRoomConnectionOptions {
+  RoomOptions room_options;
+  RoomDelegate* delegate = nullptr;
+};
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+/// Check if the test is running in CI.
+/// Context: some tests are harder to run locally but should be run in CI.
+/// @return True if the test is running in CI, false otherwise.
+inline bool runningInCi() {
+  const char* gha = std::getenv("GITHUB_ACTIONS");
+  return gha != nullptr && std::string(gha) == "true"; // GITHUB_ACTIONS is set to true in CI
+}
+
+/// Get current timestamp in microseconds.
+inline uint64_t getTimestampUs() {
+  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+/// Wait for a remote participant to appear in the room
+inline bool waitForParticipant(Room* room, const std::string& identity, std::chrono::milliseconds timeout) {
+  auto start = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - start < timeout) {
+    if (!room->remoteParticipant(identity).expired()) {
+      return true;
+    }
+    std::this_thread::sleep_for(100ms);
+  }
+  return false;
+}
+
+/// Safely promote the local participant weak handle to a shared_ptr.
+///
+/// Room::localParticipant() returns a std::weak_ptr whose lock() yields nullptr
+/// once the room is torn down (or before connect). Dereferencing the result of
+/// lock() blindly is undefined behavior, so tests must go through this helper,
+/// which throws instead of crashing when the handle is expired.
+inline std::shared_ptr<LocalParticipant> lockLocalParticipant(const Room& room) {
+  if (auto participant = room.localParticipant().lock()) {
+    return participant;
+  }
+  throw std::runtime_error("Local participant handle is expired");
+}
+
+/// Pointer overload of lockLocalParticipant(); throws if @p room is null.
+inline std::shared_ptr<LocalParticipant> lockLocalParticipant(const Room* room) {
+  if (room == nullptr) {
+    throw std::runtime_error("Room is null");
+  }
+  return lockLocalParticipant(*room);
+}
+
+/// Safely promote a remote participant weak handle to a shared_ptr.
+///
+/// Mirrors lockLocalParticipant(): Room::remoteParticipant() returns a
+/// std::weak_ptr that lock()s to nullptr once the participant disconnects, so
+/// this helper throws rather than letting callers dereference a null pointer.
+inline std::shared_ptr<RemoteParticipant> lockRemoteParticipant(const Room& room, const std::string& identity) {
+  if (auto participant = room.remoteParticipant(identity).lock()) {
+    return participant;
+  }
+  throw std::runtime_error("Remote participant '" + identity + "' handle is expired");
+}
+
+/// Pointer overload of lockRemoteParticipant(); throws if @p room is null.
+inline std::shared_ptr<RemoteParticipant> lockRemoteParticipant(const Room* room, const std::string& identity) {
+  if (room == nullptr) {
+    throw std::runtime_error("Room is null");
+  }
+  return lockRemoteParticipant(*room, identity);
+}
+
+inline std::array<std::string, 2> getDataTrackTestTokens() {
+  const char* token_a = std::getenv("LIVEKIT_TOKEN_A");
+  if (token_a == nullptr || std::string(token_a).empty()) {
+    throw std::runtime_error(
+        "LIVEKIT_TOKEN_A must be present and non-empty for data track E2E "
+        "tests");
+  }
+
+  const char* token_b = std::getenv("LIVEKIT_TOKEN_B");
+  if (token_b == nullptr || std::string(token_b).empty()) {
+    throw std::runtime_error(
+        "LIVEKIT_TOKEN_B must be present and non-empty for data track E2E "
+        "tests");
+  }
+
+  return {token_a, token_b};
+}
+
+inline void waitForParticipantVisibility(const std::vector<std::unique_ptr<Room>>& rooms,
+                                         std::chrono::milliseconds timeout = 5s) {
+  std::vector<std::string> participant_identities;
+  participant_identities.reserve(rooms.size());
+  for (const auto& room : rooms) {
+    if (!room || room->localParticipant().expired()) {
+      throw std::runtime_error("Test room is missing a local participant after connect");
+    }
+    participant_identities.push_back(lockLocalParticipant(room.get())->identity());
+  }
+
+  auto start = std::chrono::steady_clock::now();
+  while (std::chrono::steady_clock::now() - start < timeout) {
+    bool all_visible = true;
+    for (size_t i = 0; i < rooms.size(); ++i) {
+      const auto& room = rooms[i];
+      if (!room || room->localParticipant().expired()) {
+        throw std::runtime_error("Test room is missing a local participant after connect");
+      }
+
+      for (size_t j = 0; j < participant_identities.size(); ++j) {
+        if (i == j) {
+          continue;
+        }
+
+        if (room->remoteParticipant(participant_identities[j]).expired()) {
+          all_visible = false;
+          break;
+        }
+      }
+
+      if (!all_visible) {
+        break;
+      }
+    }
+
+    if (all_visible) {
+      return;
+    }
+
+    std::this_thread::sleep_for(10ms);
+  }
+
+  throw std::runtime_error("Not all test participants became visible");
+}
+
+inline std::vector<std::unique_ptr<Room>> testRooms(const std::vector<TestRoomConnectionOptions>& room_configs) {
+  if (room_configs.empty()) {
+    throw std::invalid_argument("testRooms requires at least one room");
+  }
+
+  if (room_configs.size() > 2) {
+    throw std::invalid_argument(
+        "testRooms supports at most two rooms with "
+        "LIVEKIT_TOKEN_A/LIVEKIT_TOKEN_B");
+  }
+
+  auto tokens = getDataTrackTestTokens();
+
+  std::vector<std::unique_ptr<Room>> rooms;
+  rooms.reserve(room_configs.size());
+
+  for (size_t i = 0; i < room_configs.size(); ++i) {
+    auto room = std::make_unique<Room>();
+    if (room_configs[i].delegate != nullptr) {
+      room->setDelegate(room_configs[i].delegate);
+    }
+
+    if (!room->connect(kLocalTestLiveKitUrl, tokens[i], room_configs[i].room_options)) {
+      throw std::runtime_error("Failed to connect test room " + std::to_string(i));
+    }
+
+    rooms.push_back(std::move(room));
+  }
+
+  waitForParticipantVisibility(rooms);
+  return rooms;
+}
+
+inline std::vector<std::unique_ptr<Room>> testRooms(size_t count) {
+  std::vector<TestRoomConnectionOptions> room_configs(count);
+  return testRooms(room_configs);
+}
+
+// =============================================================================
+// Statistics Collection
+// =============================================================================
+
+/**
+ * Thread-safe latency statistics collector.
+ * Records latency measurements and provides summary statistics.
+ */
+class LatencyStats {
+public:
+  void addMeasurement(double latency_ms) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    measurements_.push_back(latency_ms);
+  }
+
+  void printStats(const std::string& title) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (measurements_.empty()) {
+      std::cout << "\n" << title << ": No measurements collected" << std::endl;
+      return;
+    }
+
+    std::vector<double> sorted = measurements_;
+    std::sort(sorted.begin(), sorted.end());
+
+    double sum = std::accumulate(sorted.begin(), sorted.end(), 0.0);
+    double avg = sum / sorted.size();
+    double min = sorted.front();
+    double max = sorted.back();
+    double p50 = getPercentile(sorted, 50);
+    double p95 = getPercentile(sorted, 95);
+    double p99 = getPercentile(sorted, 99);
+
+    std::cout << "\n========================================" << std::endl;
+    std::cout << "  " << title << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "Samples:      " << sorted.size() << std::endl;
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "Min:          " << min << " ms" << std::endl;
+    std::cout << "Avg:          " << avg << " ms" << std::endl;
+    std::cout << "P50:          " << p50 << " ms" << std::endl;
+    std::cout << "P95:          " << p95 << " ms" << std::endl;
+    std::cout << "P99:          " << p99 << " ms" << std::endl;
+    std::cout << "Max:          " << max << " ms" << std::endl;
+    std::cout << "========================================\n" << std::endl;
+  }
+
+  size_t count() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return measurements_.size();
+  }
+
+  void clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    measurements_.clear();
+  }
+
+private:
+  static double getPercentile(const std::vector<double>& sorted, int percentile) {
+    if (sorted.empty()) return 0.0;
+    size_t index = (sorted.size() * percentile) / 100;
+    if (index >= sorted.size()) index = sorted.size() - 1;
+    return sorted[index];
+  }
+
+  mutable std::mutex mutex_;
+  std::vector<double> measurements_;
+};
+
+/**
+ * Extended statistics collector for stress tests.
+ * Tracks success/failure counts, bytes transferred, and error breakdown.
+ */
+class StressTestStats {
+public:
+  void recordCall(bool success, double latency_ms, size_t payload_size = 0) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    total_calls_++;
+    if (success) {
+      successful_calls_++;
+      latencies_.push_back(latency_ms);
+      total_bytes_ += payload_size;
+    } else {
+      failed_calls_++;
+    }
+  }
+
+  void recordError(const std::string& error_type) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    error_counts_[error_type]++;
+  }
+
+  void printStats(const std::string& title = "Stress Test Statistics") const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    std::cout << "\n========================================" << std::endl;
+    std::cout << "  " << title << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "Total calls:      " << total_calls_ << std::endl;
+    std::cout << "Successful:       " << successful_calls_ << std::endl;
+    std::cout << "Failed:           " << failed_calls_ << std::endl;
+    std::cout << "Success rate:     " << std::fixed << std::setprecision(2)
+              << (total_calls_ > 0 ? (100.0 * successful_calls_ / total_calls_) : 0.0) << "%" << std::endl;
+    std::cout << "Total bytes:      " << total_bytes_ << " (" << (total_bytes_ / (1024.0 * 1024.0)) << " MB)"
+              << std::endl;
+
+    if (!latencies_.empty()) {
+      std::vector<double> sorted_latencies = latencies_;
+      std::sort(sorted_latencies.begin(), sorted_latencies.end());
+
+      double sum = std::accumulate(sorted_latencies.begin(), sorted_latencies.end(), 0.0);
+      double avg = sum / sorted_latencies.size();
+      double min = sorted_latencies.front();
+      double max = sorted_latencies.back();
+      double p50 = sorted_latencies[sorted_latencies.size() * 50 / 100];
+      double p95 = sorted_latencies[sorted_latencies.size() * 95 / 100];
+      double p99 = sorted_latencies[sorted_latencies.size() * 99 / 100];
+
+      std::cout << "\nLatency (ms):" << std::endl;
+      std::cout << "  Min:    " << min << std::endl;
+      std::cout << "  Avg:    " << avg << std::endl;
+      std::cout << "  P50:    " << p50 << std::endl;
+      std::cout << "  P95:    " << p95 << std::endl;
+      std::cout << "  P99:    " << p99 << std::endl;
+      std::cout << "  Max:    " << max << std::endl;
+    }
+
+    if (!error_counts_.empty()) {
+      std::cout << "\nError breakdown:" << std::endl;
+      for (const auto& pair : error_counts_) {
+        std::cout << "  " << pair.first << ": " << pair.second << std::endl;
+      }
+    }
+
+    std::cout << "========================================\n" << std::endl;
+  }
+
+  int totalCalls() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return total_calls_;
+  }
+
+  int successfulCalls() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return successful_calls_;
+  }
+
+  int failedCalls() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return failed_calls_;
+  }
+
+private:
+  mutable std::mutex mutex_;
+  int total_calls_ = 0;
+  int successful_calls_ = 0;
+  int failed_calls_ = 0;
+  size_t total_bytes_ = 0;
+  std::vector<double> latencies_;
+  std::map<std::string, int> error_counts_;
+};
+
+// =============================================================================
+// Base Test Fixture
+// =============================================================================
+
+/**
+ * Base test fixture that handles SDK initialization, configuration loading,
+ * and automatic tracing.
+ *
+ * ## Tracing Overview
+ *
+ * Tracing uses Chrome's trace event format to capture timing information.
+ * When enabled, the test automatically:
+ *   1. Generates a trace filename from test name in SetUp()
+ *   2. Starts tracing with a background writer thread
+ *   3. In TearDown(), stops tracing (flushes to file) and analyzes results
+ *
+ * ## Trace Event Types
+ *
+ * The SDK uses two types of trace events:
+ *
+ * 1. Scoped events (TRACE_EVENT0): Automatically record begin/end within a
+ *    scope. Used for synchronous operations like Room::connect().
+ *    - Phase 'B' = begin, Phase 'E' = end
+ *    - Events are matched by thread ID
+ *
+ * 2. Async events (TRACE_EVENT_ASYNC_BEGIN/END): For operations that span
+ *    threads or have explicit start/end points.
+ *    - Phase 'S' = async start, Phase 'F' = async finish
+ *    - Events are matched by a unique ID
+ *
+ * ## Output Files
+ *
+ * Trace files are saved as: <TestSuiteName>_<TestName>_trace.json
+ * These can be viewed in:
+ *   - Chrome: chrome://tracing
+ *   - Perfetto: https://ui.perfetto.dev
+ *
+ * ## Enabling/Disabling Tracing
+ *
+ * Tracing is controlled by LIVEKIT_TEST_ENABLE_TRACING macro at the top of
+ * this file. Set to 0 to disable, 1 to enable.
+ *
+ * ## Default Events Analyzed
+ *
+ * The following events are automatically analyzed if present:
+ *   - Room::connect - Time to establish room connection
+ *   - FfiClient::initialize - SDK initialization time
+ *
+ * Tests can add custom events to analyze via addTraceEventToAnalyze().
+ */
+class LiveKitTestBase : public ::testing::Test {
+protected:
+  void SetUp() override {
+    livekit::initialize(livekit::LogLevel::Info);
+    config_ = TestConfig::fromEnv();
+
+    // Tracing is controlled by compile-time macro LIVEKIT_TEST_ENABLE_TRACING
+    tracing_enabled_ = LIVEKIT_TEST_ENABLE_TRACING;
+
+    if (tracing_enabled_) {
+      // Generate trace filename from test name: TestSuite_TestName_trace.json
+      const ::testing::TestInfo* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+      trace_filename_ =
+          std::string(test_info->test_suite_name()) + "_" + std::string(test_info->name()) + "_trace.json";
+
+      // Start tracing with background file writer
+      // Events are written to file asynchronously, so memory usage is bounded
+      livekit::startTracing(trace_filename_, {"livekit", "livekit.*"});
+    }
+  }
+
+  void TearDown() override {
+    if (tracing_enabled_) {
+      // Stop tracing - this flushes all pending events to the file
+      livekit::stopTracing();
+
+      std::cout << "\nTrace saved to: " << trace_filename_ << std::endl;
+      std::cout << "View in Chrome: chrome://tracing or https://ui.perfetto.dev" << std::endl;
+
+      // Analyze the trace file and print statistics
+      analyzeTraceFile();
+    }
+
+    livekit::shutdown();
+  }
+
+  /// Skip the test if the required environment variables are not set
+  void skipIfNotConfigured() {
+    if (!config_.available) {
+      GTEST_SKIP() << "LIVEKIT_URL, LIVEKIT_TOKEN_A, and LIVEKIT_TOKEN_B not set";
+    }
+  }
+
+  /// Fail the test if the required environment variables are not set
+  void failIfNotConfigured() {
+    if (!config_.available) {
+      FAIL() << "LIVEKIT_URL, LIVEKIT_TOKEN_A, and LIVEKIT_TOKEN_B not set";
+    }
+  }
+
+  /**
+   * Register a custom trace event to analyze in TearDown().
+   *
+   * In addition to the default events (Room::connect, FfiClient::initialize),
+   * tests can register their own events to get statistics printed.
+   *
+   * Example:
+   *   addTraceEventToAnalyze("audio_latency");
+   *
+   * @param name The event name to analyze (e.g., "audio_latency")
+   */
+  void addTraceEventToAnalyze(const std::string& name) { custom_trace_events_.push_back(name); }
+
+  TestConfig config_;
+  bool tracing_enabled_ = false;
+  std::string trace_filename_;
+
+private:
+  /**
+   * Analyze the trace file and print statistics.
+   *
+   * Loads the saved trace file, calculates durations for paired events,
+   * and prints statistics for default SDK events plus any custom events.
+   */
+  void analyzeTraceFile() {
+    // Build list of events to analyze
+    std::vector<std::string> events_to_analyze = {"Room::connect", "FfiClient::initialize"};
+
+    // Add custom events
+    for (const auto& name : custom_trace_events_) {
+      events_to_analyze.push_back(name);
+    }
+
+    // Analyze the trace file
+    auto results = benchmark::analyzeTraceFile(trace_filename_, events_to_analyze);
+
+    // Print statistics for events that have data
+    std::cout << "\n=== Trace Statistics ===" << std::endl;
+    for (const auto& [name, stats] : results) {
+      if (stats.count > 0) {
+        benchmark::printStats(stats);
+      }
+    }
+  }
+
+  /// Custom trace event names to analyze, in addition to defaults
+  std::vector<std::string> custom_trace_events_;
+};
+
+} // namespace livekit::test

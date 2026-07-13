@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url'
 
 const LIVEKIT_VERSION = '1.3.0'
 const CONTRACT_VERSION = 3
-const LIVEKIT_SHA256 =
-  '27a8707348d7fb094023b7c8af29e26b8e4085a4dab75d26be3968f29b2269c3'
+const LIVEKIT_REVISION = '7596552cdba189fd908c8daa1b55c353efd015a3'
+const LIVEKIT_RUST_REVISION = 'dad794d414fda9e8c1de83af1c0f190506a15f8f'
 const NAPI_VERSION = 8
 const ARCH = 'x64'
 const NATIVE_FILES = [
@@ -42,6 +42,21 @@ const desktopStageRoot = path.resolve(
 )
 const buildConfigurationFile = path.resolve(buildRoot, '.syrnike-build-config.json')
 const cmakeCacheFile = path.resolve(buildRoot, 'CMakeCache.txt')
+const vcpkgRoot = resolveVcpkgRoot()
+const windowsCmakeBin = resolveWindowsCmakeBin()
+const windowsLibclangPath = resolveWindowsLibclangPath()
+if (
+  process.platform === 'win32' &&
+  !process.env.LIBCLANG_PATH &&
+  !windowsLibclangPath
+) {
+  throw new Error(
+    'libclang.dll is required for the native LiveKit build. Install the Visual Studio LLVM/Clang component or set LIBCLANG_PATH to the directory containing libclang.dll.',
+  )
+}
+const rustTargetRoot = process.env.SYRNIKE_LIVEKIT_RUST_TARGET_DIR
+  ? path.resolve(process.env.SYRNIKE_LIVEKIT_RUST_TARGET_DIR)
+  : resolveDefaultRustTargetRoot()
 
 const args = new Set(process.argv.slice(2))
 const configIndex = process.argv.indexOf('--config')
@@ -70,9 +85,11 @@ const expectedBuildConfiguration = JSON.stringify(
   {
     arch: ARCH,
     electronVersion,
-    liveKitSha256: LIVEKIT_SHA256,
+    liveKitRevision: LIVEKIT_REVISION,
+    liveKitRustRevision: LIVEKIT_RUST_REVISION,
     liveKitVersion: LIVEKIT_VERSION,
     napiVersion: NAPI_VERSION,
+    rustTargetRoot,
     asan: enableAsan,
   },
   null,
@@ -124,8 +141,12 @@ run('pnpm', [
   '--config',
   configuration,
   `--CDLIVEKIT_SDK_VERSION=v${LIVEKIT_VERSION}`,
-  `--CDLIVEKIT_SDK_SHA256=${LIVEKIT_SHA256}`,
-  '--CDLIVEKIT_LOCAL_SDK_DIR=',
+  `--CDCMAKE_TOOLCHAIN_FILE=${path.resolve(vcpkgRoot, 'scripts', 'buildsystems', 'vcpkg.cmake')}`,
+  '--CDVCPKG_TARGET_TRIPLET=x64-windows-static-md',
+  '--CDVCPKG_HOST_TRIPLET=x64-windows-static-md',
+  `--CDVCPKG_MANIFEST_DIR=${path.resolve(packageRoot, 'vendor', 'livekit-client')}`,
+  `--CDVCPKG_INSTALLED_DIR=${path.resolve(buildRoot, '_deps', 'vcpkg_installed')}`,
+  `--CDLIVEKIT_RUST_TARGET_DIR=${rustTargetRoot}`,
   `--CDNAPI_VERSION=${NAPI_VERSION}`,
   `--CDSYRNIKE_ENABLE_ASAN=${enableAsan ? 'ON' : 'OFF'}`,
   `--CDSYRNIKE_NATIVE_COMMIT=${buildCommitSha}`,
@@ -138,12 +159,10 @@ if (!shouldStage) {
   process.exit(0)
 }
 
-const liveKitBinRoot = path.resolve(
-  buildRoot,
-  '_deps',
-  'livekit-sdk',
-  `livekit-sdk-windows-x64-${LIVEKIT_VERSION}`,
-  'bin',
+const liveKitBinRoot = path.resolve(buildRoot, configuration)
+const liveKitFfiRoot = path.resolve(
+  rustTargetRoot,
+  configuration === 'Debug' ? 'debug' : 'release',
 )
 const sources = new Map([
   [
@@ -161,7 +180,7 @@ const sources = new Map([
   ['livekit.dll', requiredFile(path.resolve(liveKitBinRoot, 'livekit.dll'))],
   [
     'livekit_ffi.dll',
-    requiredFile(path.resolve(liveKitBinRoot, 'livekit_ffi.dll')),
+    requiredFile(path.resolve(liveKitFfiRoot, 'livekit_ffi.dll')),
   ],
 ])
 
@@ -179,6 +198,8 @@ const manifest = {
   electronVersion,
   napiVersion: NAPI_VERSION,
   liveKitVersion: LIVEKIT_VERSION,
+  liveKitRevision: LIVEKIT_REVISION,
+  liveKitRustRevision: LIVEKIT_RUST_REVISION,
   files: NATIVE_FILES.map((name) => ({
     name,
     sha256: sha256(sources.get(name)),
@@ -206,6 +227,23 @@ function run(command, commandArgs) {
     cwd: packageRoot,
     stdio: 'inherit',
     shell: process.platform === 'win32',
+    env: {
+      ...process.env,
+      ...(windowsCmakeBin
+        ? {
+            PATH: `${windowsCmakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
+          }
+        : {}),
+      ...(windowsLibclangPath && !process.env.LIBCLANG_PATH
+        ? { LIBCLANG_PATH: windowsLibclangPath }
+        : {}),
+      // A clean webrtc-sys build launches many memory-heavy MSVC frontends.
+      // Capping Cargo's jobserver keeps a 32 GB development machine responsive
+      // and prevents cl.exe processes from being terminated under memory pressure.
+      ...(process.platform === 'win32' && !process.env.CARGO_BUILD_JOBS
+        ? { CARGO_BUILD_JOBS: '3' }
+        : {}),
+    },
   })
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
@@ -216,6 +254,79 @@ function requiredFile(filePath) {
     throw new Error(`Required native artifact was not built: ${filePath}`)
   }
   return filePath
+}
+
+function resolveVcpkgRoot() {
+  const candidates = [
+    process.env.VCPKG_ROOT,
+    process.env.VCPKG_INSTALLATION_ROOT,
+    'C:/PROGRA~1/MICROS~2/18/COMMUN~1/VC/vcpkg',
+    'C:/PROGRA~1/MICROS~2/18/ENTERP~1/VC/vcpkg',
+    'C:/PROGRA~1/MICROS~2/2022/COMMUN~1/VC/vcpkg',
+    'C:/PROGRA~1/MICROS~2/2022/ENTERP~1/VC/vcpkg',
+    'C:/Program Files/Microsoft Visual Studio/2022/Community/VC/vcpkg',
+    'C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/vcpkg',
+  ].filter(Boolean)
+  const root = candidates.find((candidate) =>
+    existsSync(path.resolve(candidate, 'scripts', 'buildsystems', 'vcpkg.cmake')),
+  )
+  if (!root) {
+    throw new Error('A vcpkg installation is required to build the vendored LiveKit SDK')
+  }
+  return root
+}
+
+function resolveWindowsCmakeBin() {
+  if (process.platform !== 'win32') return undefined
+  const candidates = [
+    'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin',
+    'C:/Program Files/Microsoft Visual Studio/18/Enterprise/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin',
+  ]
+  return candidates.find((candidate) => existsSync(path.resolve(candidate, 'cmake.exe')))
+}
+
+function resolveWindowsLibclangPath() {
+  if (process.platform !== 'win32' || process.env.LIBCLANG_PATH) return undefined
+  const workspaceDriveRoot = path.parse(repoRoot).root
+  const candidates = [
+    'C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/x64/bin',
+    'C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/Llvm/x64/bin',
+    'C:/Program Files/Microsoft Visual Studio/18/Professional/VC/Tools/Llvm/x64/bin',
+    'C:/Program Files/LLVM/bin',
+    // The bootstrap used on Windows workstations installs Python's libclang
+    // into a short, non-synchronised path on the workspace drive. Keep this
+    // after the standard toolchain locations so a Visual Studio installation
+    // remains the preferred source when its LLVM component is present.
+    path.resolve(
+      workspaceDriveRoot,
+      'syrnike-build-tools',
+      'python-libclang',
+      'clang',
+      'native',
+    ),
+    ...(process.env.PATH ?? '').split(path.delimiter),
+  ].filter(Boolean)
+  return candidates.find((candidate) =>
+    existsSync(path.resolve(candidate, 'libclang.dll')),
+  )
+}
+
+function resolveDefaultRustTargetRoot() {
+  if (process.platform !== 'win32') return path.resolve(buildRoot, 'rust-target')
+  const secondaryDriveCache = 'G:/syrnike13-build-cache/livekit-rust-target'
+  if (existsSync(secondaryDriveCache)) return path.resolve(secondaryDriveCache)
+  const localAppData = process.env.LOCALAPPDATA
+  if (!localAppData) {
+    throw new Error(
+      'LOCALAPPDATA is required for the Windows LiveKit build cache, or set SYRNIKE_LIVEKIT_RUST_TARGET_DIR explicitly.',
+    )
+  }
+  return path.resolve(
+    localAppData,
+    'syrnike13',
+    'build-cache',
+    'livekit-rust-target',
+  )
 }
 
 function sha256(filePath) {

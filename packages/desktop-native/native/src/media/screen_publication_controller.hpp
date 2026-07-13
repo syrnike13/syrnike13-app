@@ -10,6 +10,7 @@
 #include <thread>
 
 #include <livekit/livekit.h>
+#include <livekit/d3d11_h264_video_source.h>
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
@@ -55,7 +56,8 @@ class ScreenPublicationController final {
   using StartCaptureWorkers = std::function<void(
     const MediaCommand&,
     const ScreenPublicationDescription&,
-    const std::shared_ptr<livekit::VideoSource>&,
+    const std::shared_ptr<livekit::D3D11H264VideoSource>&,
+    const std::shared_ptr<livekit::LocalVideoTrack>&,
     const std::shared_ptr<livekit::AudioSource>&,
     const std::shared_ptr<std::atomic_bool>&,
     const std::function<bool()>&,

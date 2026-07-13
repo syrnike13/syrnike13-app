@@ -413,7 +413,7 @@ export function isNativeMediaSession(value: unknown): value is NativeMediaSessio
       isNonEmptyString(value.nativeParticipantIdentity, 512)
     )
   }
-  if (value.encoder !== 'webrtc') return false
+  if (value.encoder !== 'mf_h264_d3d11') return false
   if (
     !isOptionalInteger(value.width, 16, 7_680) ||
     !isOptionalInteger(value.height, 16, 4_320) ||
@@ -474,13 +474,12 @@ function isNativeMediaStats(value: unknown, sessionId: string) {
   }
   const methods = value.methods
   if (
-    !(['wgc', 'dxgi', 'gdi_blt'] as const).every(
+    !(['wgc_gpu', 'dxgi_gpu'] as const).every(
       (method) => isFiniteNumber(methods[method], 0, Number.MAX_SAFE_INTEGER),
     ) ||
     (value.activeMethod !== undefined &&
-      value.activeMethod !== 'wgc' &&
-      value.activeMethod !== 'dxgi' &&
-      value.activeMethod !== 'gdi_blt')
+      value.activeMethod !== 'wgc_gpu' &&
+      value.activeMethod !== 'dxgi_gpu')
   ) {
     return false
   }

@@ -145,7 +145,7 @@ Napi::Object sessionToObject(Napi::Env env, const RuntimeEvent& event) {
     audio.Set("echoCancellation", event.echo_cancellation);
     session.Set("audio", audio);
   } else if (event.kind == "screen") {
-    session.Set("encoder", "webrtc");
+    session.Set("encoder", "mf_h264_d3d11");
     session.Set("width", event.width);
     session.Set("height", event.height);
     session.Set("fps", event.fps);
@@ -184,12 +184,17 @@ Napi::Object statsToObject(Napi::Env env, const RuntimeEvent& event) {
   auto stats = Napi::Object::New(env);
   stats.Set("sessionId", event.session_id);
   auto methods = Napi::Object::New(env);
-  methods.Set("wgc", jsNumber(env, event.method_wgc));
-  methods.Set("dxgi", jsNumber(env, event.method_dxgi));
-  methods.Set("gdi_blt", jsNumber(env, event.method_gdi_blt));
+  methods.Set("wgc_gpu", jsNumber(env, event.method_wgc_gpu));
+  methods.Set("dxgi_gpu", jsNumber(env, event.method_dxgi_gpu));
   stats.Set("methods", methods);
   setIfPresent(stats, "activeMethod", event.capture_method);
   stats.Set("videoFrames", jsNumber(env, event.frames));
+  stats.Set("rtpStatsAvailable", event.rtp_stats_available);
+  stats.Set("rtpPacketsSent", jsNumber(env, event.rtp_packets_sent));
+  stats.Set("rtpBytesSent", jsNumber(env, event.rtp_bytes_sent));
+  stats.Set("rtpFramesSent", jsNumber(env, event.rtp_frames_sent));
+  stats.Set("rtpFramesEncoded", jsNumber(env, event.rtp_frames_encoded));
+  setIfPresent(stats, "encoderImplementation", event.encoder_implementation);
   if (event.audio_frames > 0 || event.audio_packets > 0) {
     stats.Set("audioFrames", jsNumber(env, event.audio_frames));
     stats.Set("audioPackets", jsNumber(env, event.audio_packets));

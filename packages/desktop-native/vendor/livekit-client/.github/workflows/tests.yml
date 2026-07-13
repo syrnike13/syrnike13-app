@@ -1,0 +1,468 @@
+name: Tests
+
+# Called by top-level ci.yml
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Disable Cargo incremental artifacts. The Rust FFI is built once per
+  # submodule SHA and cached whole (see the cargo target cache below), so
+  # incremental dirs add nothing but bloat the cached target/ directory and
+  # slow the cache upload/download.
+  CARGO_INCREMENTAL: "0"
+  # vcpkg binary caching for Windows (mirrors builds.yml). The x-gha backend
+  # was removed from vcpkg, so use vcpkg's files provider and persist that
+  # directory with actions/cache.
+  VCPKG_GIT_COMMIT: fb87e2bb3fe69e16c224989acb5a61349166c782
+  VCPKG_BINARY_CACHE_DIR: ${{ github.workspace }}/.vcpkg-binary-cache
+  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite"
+  VCPKG_DEFAULT_TRIPLET: x64-windows-static-md
+  VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static-md
+  VCPKG_TARGET_TRIPLET: x64-windows-static-md
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+            build_cmd: ./build.sh release-tests
+            e2e-testing: true
+          - os: ubuntu-24.04-arm
+            name: linux-arm64
+            build_cmd: ./build.sh release-tests
+            e2e-testing: true
+          - os: macos-26-xlarge
+            name: macos-arm64
+            build_cmd: ./build.sh release-tests
+            e2e-testing: true
+          - os: macos-26-large
+            name: macos-x64
+            build_cmd: ./build.sh release-tests --macos-arch x86_64
+            e2e-testing: true
+          # Pinned to Windows 2022 for current VS 17 implementation
+          - os: windows-2022
+            name: windows-x64
+            build_cmd: .\build.cmd release-tests
+            e2e-testing: true
+
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Pull LFS files
+        run: git lfs pull
+
+      # Cargo's freshness check is mtime-based. A fresh `actions/checkout`
+      # stamps every submodule source file with the checkout time, which is
+      # newer than the cached target/ artifacts — so cargo rebuilds the whole
+      # client-sdk-rust workspace (~6 min) even on an exact cargo-target cache
+      # hit. Pin all submodule source files to a fixed, deterministic
+      # timestamp (older than any cached artifact) so cargo treats them as
+      # unchanged across runs and reuses the cached FFI build. Runs before the
+      # cargo target cache is restored, so target/ does not yet exist and is
+      # never touched. shell: bash so this also runs under Git Bash on Windows.
+      - name: Stabilize Rust source mtimes for cargo freshness
+        shell: bash
+        run: |
+          find client-sdk-rust -type f -not -path '*/.git/*' -exec touch -t 202001010000 {} +
+
+      # ---------- vcpkg for Windows (mirrors builds.yml) ----------
+      - name: Restore vcpkg binary cache
+        if: runner.os == 'Windows'
+        id: cache-vcpkg-binary
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE_DIR }}
+          key: ${{ runner.os }}-${{ matrix.name }}-vcpkg-binary-${{ env.VCPKG_TARGET_TRIPLET }}-${{ env.VCPKG_GIT_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.name }}-vcpkg-binary-${{ env.VCPKG_TARGET_TRIPLET }}-${{ env.VCPKG_GIT_COMMIT }}-
+
+      - name: Setup vcpkg (Windows only)
+        if: runner.os == 'Windows'
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11.5
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_GIT_COMMIT }}
+
+      # ---------- OS-specific deps ----------
+      - name: Install deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkg-config \
+            llvm-dev libclang-dev clang \
+            libva-dev libdrm-dev libgbm-dev libx11-dev libgl1-mesa-dev \
+            libxext-dev libxcomposite-dev libxdamage-dev libxfixes-dev \
+            libxrandr-dev libxi-dev libxkbcommon-dev \
+            libasound2-dev libpulse-dev \
+            libssl-dev \
+            libprotobuf-dev protobuf-compiler \
+            libabsl-dev \
+            libcurl4-openssl-dev \
+            libwayland-dev libdecor-0-dev \
+            jq
+
+      - name: Install deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -eux
+          brew update
+          brew install cmake ninja protobuf abseil
+
+      # ---------- Rust toolchain ----------
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
+        with:
+          toolchain: stable
+
+      - name: Install Rust cross-compilation target
+        if: matrix.name == 'macos-x64'
+        run: rustup target add x86_64-apple-darwin
+
+      # ---------- Cache Cargo ----------
+      # See builds.yml for the rationale: the Rust FFI output only changes with
+      # the client-sdk-rust submodule commit, so key the target cache on the
+      # submodule SHA. Only main pushes save this cache; tests are restore-only
+      # to avoid same-key save races and PR-scoped cache churn.
+      - name: Resolve Rust submodule SHA
+        id: rust_sha
+        shell: bash
+        run: echo "sha=$(git -C client-sdk-rust rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache cargo registry
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.name }}-cargo-registry-${{ hashFiles('client-sdk-rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.name }}-cargo-registry-
+
+      - name: Restore cargo target
+        id: cache-cargo-target
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: client-sdk-rust/target/
+          key: ${{ runner.os }}-${{ matrix.name }}-cargo-target-${{ steps.rust_sha.outputs.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.name }}-cargo-target-
+
+      # restore-keys can hydrate target/ from a prior submodule SHA. cxxbridge
+      # artifacts in webrtc-sys are not compatible across those bumps.
+      - name: Drop stale cargo target on submodule SHA cache miss
+        if: steps.cache-cargo-target.outputs.cache-hit != 'true'
+        shell: bash
+        run: rm -rf client-sdk-rust/target/
+
+      # ---------- Build environment setup ----------
+      - name: Set Linux build environment
+        if: runner.os == 'Linux'
+        run: |
+          echo "CXXFLAGS=-Wno-deprecated-declarations" >> "$GITHUB_ENV"
+          echo "CFLAGS=-Wno-deprecated-declarations" >> "$GITHUB_ENV"
+          LLVM_VERSION=$(llvm-config --version | cut -d. -f1)
+          echo "LIBCLANG_PATH=/usr/lib/llvm-${LLVM_VERSION}/lib" >> "$GITHUB_ENV"
+
+      # ---------- Build (release-tests: tests on, examples off) ----------
+      - name: Build tests (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          chmod +x build.sh
+          ${{ matrix.build_cmd }}
+
+      - name: Build tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ${{ matrix.build_cmd }}
+
+      # ---------- Run unit tests ----------
+      - name: Run unit tests (Unix)
+        if: runner.os != 'Windows'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          build-release/bin/livekit_unit_tests \
+            --gtest_repeat=100 \
+            --gtest_brief=1 \
+            --gtest_output=xml:build-release/unit-test-results.xml
+
+      - name: Run unit tests (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          build-release\bin\livekit_unit_tests.exe `
+            --gtest_repeat=100 `
+            --gtest_brief=1 `
+            --gtest_output="xml:build-release\unit-test-results.xml"
+
+      - name: Start livekit-server
+        if: matrix.e2e-testing
+        id: livekit_server
+        uses: livekit/dev-server-action@61e2b4dcb170dd3591e0c9b0db3c3fe5db93b500
+        with:
+          github-token: ${{ github.token }}
+
+      # Needed by token helper script
+      - name: Install livekit-cli
+        if: matrix.e2e-testing
+        shell: bash
+        env:
+          # Windows installs lk via `gh api` / `gh release download`, which need this env var
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            curl -sSL https://get.livekit.io/cli | bash
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install livekit-cli
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            install_dir="$RUNNER_TEMP/livekit-cli"
+            mkdir -p "$install_dir"
+            tag="$(gh api repos/livekit/livekit-cli/releases/latest --jq '.tag_name')"
+            gh release download "$tag" \
+              --repo livekit/livekit-cli \
+              --pattern "*_windows_amd64.zip" \
+              --output "$RUNNER_TEMP/lk.zip"
+            unzip -o "$RUNNER_TEMP/lk.zip" -d "$install_dir"
+            # GITHUB_PATH updates apply to subsequent steps only; export PATH here
+            # so lk --version in this step succeeds.
+            echo "$install_dir" >> "$GITHUB_PATH"
+            export PATH="$install_dir:$PATH"
+          else
+            echo "::error::Unsupported runner OS for livekit-cli install: ${RUNNER_OS}"
+            exit 1
+          fi
+          lk --version
+
+      - name: Start token server
+        if: matrix.e2e-testing
+        id: token_server
+        uses: livekit/token-server-action@a1e42c649a1998d5b224f5102f252c07762024f0 # v0.0.1
+        with:
+          livekit-url: ws://localhost:7880
+          api-key: devkey
+          api-secret: secret
+
+      - name: Run integration tests
+        if: matrix.e2e-testing
+        timeout-minutes: 10
+        shell: bash
+        env:
+          RUST_LOG: "metrics=debug"
+          LIVEKIT_CREATE_TOKEN_URL: ${{ steps.token_server.outputs.token-url }}
+        run: |
+          set -euo pipefail
+          source .token_helpers/set_data_track_test_tokens.bash
+          build-release/bin/livekit_integration_tests \
+            --gtest_output=xml:build-release/integration-test-results.xml
+
+      - name: Dump livekit-server log on failure
+        if: failure() && matrix.e2e-testing
+        shell: bash
+        run: tail -n 500 "${{ steps.livekit_server.outputs.log-path }}" || true
+
+      - name: Dump token server log on failure
+        if: failure() && matrix.e2e-testing && steps.token_server.outputs.log-path != ''
+        shell: bash
+        run: tail -n 200 "${{ steps.token_server.outputs.log-path }}" || true
+
+      # ---------- Upload results ----------
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ matrix.name }}
+          path: |
+            build-release/unit-test-results.xml
+            build-release/integration-test-results.xml
+            ${{ steps.livekit_server.outputs.log-path }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ============================================================================
+  # Code Coverage (Linux only)
+  # Runs a debug build through gcov/lcov and generates an inline action summary
+  # alongside an HTML report of unit test coverage.
+  # ============================================================================
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    # A debug build instrumented with --coverage is far heavier (RAM + disk)
+    # than the release builds. Cap the wall-clock so a stuck/OOM build fails
+    # fast and visibly instead of hanging toward the 6h default.
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Pull LFS files
+        run: git lfs pull
+
+      # Reclaim ~30GB on the runner. The debug+coverage object tree plus gcov
+      # data is large; prior runs died mid-build from disk/memory pressure.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      # ---------- OS deps ----------
+      - name: Install deps
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkg-config \
+            llvm-dev libclang-dev clang \
+            libva-dev libdrm-dev libgbm-dev libx11-dev libgl1-mesa-dev \
+            libxext-dev libxcomposite-dev libxdamage-dev libxfixes-dev \
+            libxrandr-dev libxi-dev libxkbcommon-dev \
+            libasound2-dev libpulse-dev \
+            libssl-dev \
+            libprotobuf-dev protobuf-compiler \
+            libabsl-dev \
+            libcurl4-openssl-dev \
+            libwayland-dev libdecor-0-dev
+          pip install --break-system-packages gcovr
+
+      # ---------- Rust toolchain ----------
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
+        with:
+          toolchain: stable
+
+      # ---------- Cache Cargo ----------
+      # Only the cargo registry (downloaded crate sources, ~60 MB) is cached
+      # here. The compiled target/ is intentionally not cached for coverage —
+      # see the note below the registry cache step.
+      - name: Cache cargo registry
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-coverage-cargo-registry-${{ hashFiles('client-sdk-rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-coverage-cargo-registry-
+
+      # NOTE: we deliberately do NOT cache client-sdk-rust/target/ here. The
+      # coverage job builds the FFI in debug mode, so its target/ was ~2.8 GB —
+      # the single largest entry in the repo's 10 GB Actions cache budget. That
+      # one cache crowded out the release build/test caches (and the Windows
+      # vcpkg binaries), causing repo-wide LRU eviction and cold rebuilds
+      # elsewhere. Coverage runs once per PR off the critical path, so eating a
+      # cold FFI build here is cheaper than the eviction it caused. The cargo
+      # registry cache above is tiny (~60 MB) and stays.
+
+      # ---------- Build environment setup ----------
+      - name: Set build environment
+        run: |
+          LLVM_VERSION=$(llvm-config --version | cut -d. -f1)
+          echo "LIBCLANG_PATH=/usr/lib/llvm-${LLVM_VERSION}/lib" >> "$GITHUB_ENV"
+          GCC_VER=$(gcc -dumpversion | cut -d. -f1)
+          echo "GCOV_EXECUTABLE=gcov-${GCC_VER}" >> "$GITHUB_ENV"
+
+      # ---------- Configure with upstream preset + coverage flag overrides ----------
+      - name: Configure (linux-debug-tests preset + coverage flags)
+        run: |
+          cmake --preset linux-debug-tests \
+            -DCMAKE_C_FLAGS="-Wno-deprecated-declarations --coverage" \
+            -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations --coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+            -DCMAKE_SHARED_LINKER_FLAGS="--coverage"
+
+      # Cap parallelism: a debug build with --coverage instrumentation has a
+      # much larger per-TU memory footprint, and unbounded --parallel (one job
+      # per core) is what OOM-killed prior runs (failure surfaced only as an
+      # abandoned "Build" step). 2 keeps peak RAM in check on the standard
+      # runner; bump if/when this moves to a larger runner.
+      - name: Build
+        run: cmake --build build-debug --parallel 2
+
+      # ---------- Run unit tests ----------
+      - name: Run unit tests
+        timeout-minutes: 5
+        run: |
+          build-debug/bin/livekit_unit_tests \
+            --gtest_output=xml:build-debug/unit-test-results.xml
+
+      # Make resource-exhaustion failures visible instead of silent. Runs only
+      # if an earlier step failed (e.g. OOM during Build).
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "===== disk ====="; df -h || true
+          echo "===== memory ====="; free -h || true
+          echo "===== dmesg (OOM killer) ====="
+          sudo dmesg 2>/dev/null | grep -iE 'killed process|out of memory|oom' | tail -20 || true
+
+      # ---------- Generate coverage reports ----------
+      - name: Generate coverage reports
+        run: |
+          mkdir -p coverage-html
+          gcovr build-debug \
+            --root . \
+            --gcov-executable "${GCOV_EXECUTABLE}" \
+            --gcov-ignore-parse-errors=all \
+            --filter 'include/' \
+            --filter 'src/' \
+            --exclude 'src/tests/' \
+            --exclude '.*\.pb\.' \
+            --exclude-unreachable-branches \
+            --exclude-throw-branches \
+            --cobertura coverage.xml \
+            --html-details coverage-html/index.html \
+            --txt coverage-summary.txt
+
+      - name: Add coverage summary to job
+        run: |
+          {
+            echo '## Code Coverage Summary'
+            echo ''
+            echo '```'
+            cat coverage-summary.txt
+            echo '```'
+            echo ''
+            echo '*Full HTML report available in the **coverage-report** artifact.*'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------- Upload reports ----------
+      - name: Upload coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage-html/
+          retention-days: 14
+

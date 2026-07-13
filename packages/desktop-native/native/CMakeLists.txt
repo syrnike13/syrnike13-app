@@ -22,22 +22,15 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 if(NOT DEFINED LIVEKIT_SDK_VERSION OR "${LIVEKIT_SDK_VERSION}" STREQUAL "")
   set(LIVEKIT_SDK_VERSION "v1.3.0")
 endif()
-if(NOT DEFINED LIVEKIT_SDK_SHA256 OR "${LIVEKIT_SDK_SHA256}" STREQUAL "")
-  set(LIVEKIT_SDK_SHA256 "27a8707348d7fb094023b7c8af29e26b8e4085a4dab75d26be3968f29b2269c3")
-endif()
-
 include(LiveKitSDK)
 livekit_sdk_setup(
   VERSION "${LIVEKIT_SDK_VERSION}"
-  SDK_DIR "${CMAKE_BINARY_DIR}/_deps/livekit-sdk"
-  SDK_SHA256 "${LIVEKIT_SDK_SHA256}"
-  GITHUB_TOKEN "$ENV{GITHUB_TOKEN}"
+  REVISION "7596552cdba189fd908c8daa1b55c353efd015a3"
+  RUST_REVISION "dad794d414fda9e8c1de83af1c0f190506a15f8f"
+  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../vendor/livekit-client"
 )
-find_package(LiveKit CONFIG REQUIRED)
-string(REGEX REPLACE "^v" "" LIVEKIT_SDK_VERSION_NUMBER "${LIVEKIT_SDK_VERSION}")
-set(LIVEKIT_RUNTIME_DIRECTORY
-  "${CMAKE_BINARY_DIR}/_deps/livekit-sdk/livekit-sdk-windows-x64-${LIVEKIT_SDK_VERSION_NUMBER}/bin"
-)
+# The vendored SDK uses C++17 internally; restore the consumer's standard.
+set(CMAKE_CXX_STANDARD 20)
 
 execute_process(
   COMMAND node -p "require('node-addon-api').include"
@@ -100,7 +93,7 @@ function(syrnike_copy_livekit_runtime target)
       "${LIVEKIT_RUNTIME_DIRECTORY}/livekit.dll"
       "$<TARGET_FILE_DIR:${target}>/livekit.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${LIVEKIT_RUNTIME_DIRECTORY}/livekit_ffi.dll"
+      "${LIVEKIT_FFI_RUNTIME_FILE}"
       "$<TARGET_FILE_DIR:${target}>/livekit_ffi.dll"
     VERBATIM
   )
@@ -126,8 +119,9 @@ add_library(syrnike_media_core STATIC
   src/media/screen_actor.cpp
   src/media/screen_publication_controller.cpp
   src/media/screen_audio_capture.cpp
+  src/media/screen_capture_target.cpp
   src/media/screen_capture_priority.cpp
-  src/media/screen_video_capture.cpp
+  src/media/screen_gpu_capture.cpp
   src/media/voice_gate.cpp
   src/media/voice_activity_detector.cpp
   src/media/voice_actor.cpp
@@ -300,6 +294,17 @@ add_test(
   COMMAND syrnike-native-screen-publication-control-plane-tests
 )
 
+add_executable(syrnike-native-screen-capture-target-tests
+  tests/screen_capture_target_test.cpp
+  src/media/screen_capture_target.cpp
+)
+syrnike_native_target(syrnike-native-screen-capture-target-tests)
+target_link_libraries(syrnike-native-screen-capture-target-tests PRIVATE user32)
+add_test(
+  NAME syrnike-native-screen-capture-target-tests
+  COMMAND syrnike-native-screen-capture-target-tests
+)
+
 add_executable(syrnike-native-camera-actor-lifecycle-tests
   tests/camera_actor_lifecycle_test.cpp
 )
@@ -341,4 +346,26 @@ target_link_libraries(syrnike-native-hooks-runtime-lifecycle-tests PRIVATE syrni
 add_test(
   NAME syrnike-native-hooks-runtime-lifecycle-tests
   COMMAND syrnike-native-hooks-runtime-lifecycle-tests
+)
+
+# Manual, non-gating benchmark. Run the executable directly; its hardware paths
+# report SKIP rather than silently falling back when the adapter lacks support.
+add_executable(syrnike-native-screen-streaming-benchmark
+  tests/screen_streaming_benchmark.cpp
+  src/media/screen_capture_target.cpp
+  src/media/screen_capture_priority.cpp
+  src/media/screen_gpu_capture.cpp
+  src/media/screen_video_capture.cpp
+)
+syrnike_native_target(syrnike-native-screen-streaming-benchmark)
+target_link_libraries(syrnike-native-screen-streaming-benchmark PRIVATE
+  avrt
+  d3d11
+  dxgi
+  mf
+  mfplat
+  mfuuid
+  ole32
+  runtimeobject
+  user32
 )

@@ -17,6 +17,7 @@ import { Button } from '#/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -24,6 +25,7 @@ import {
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
 import { Switch } from '#/components/ui/switch'
+import { rememberDesktopScreenShareBroadcastSource } from '#/features/voice/voice-broadcast-source'
 
 type SourceTab = DesktopDisplayMediaSourceType
 
@@ -162,6 +164,9 @@ export function DesktopScreenSharePicker() {
         setSubmitting(false)
         return
       }
+      if (selectedSource) {
+        rememberDesktopScreenShareBroadcastSource(selectedSource)
+      }
       setRequest(null)
       setSources([])
       setSelectedSourceId(null)
@@ -173,7 +178,14 @@ export function DesktopScreenSharePicker() {
       )
       setSubmitting(false)
     }
-  }, [audioRequested, desktop, request, selectedAudioAvailable, selectedSourceId])
+  }, [
+    audioRequested,
+    desktop,
+    request,
+    selectedAudioAvailable,
+    selectedSource,
+    selectedSourceId,
+  ])
 
   const open = Boolean(request)
 
@@ -182,6 +194,10 @@ export function DesktopScreenSharePicker() {
       <DialogContent className="grid max-h-[min(44rem,92vh)] max-w-[min(58rem,94vw)] grid-rows-[auto_auto_1fr_auto] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b border-border px-5 py-4 pr-12 text-left">
           <DialogTitle className="text-base">Демонстрация экрана</DialogTitle>
+          <DialogDescription className="sr-only">
+            Выберите экран, игру или окно, которое хотите показать участникам
+            голосового канала.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-1 border-b border-border bg-muted/20 px-4 py-2">
