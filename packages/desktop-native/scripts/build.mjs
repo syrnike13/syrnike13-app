@@ -315,16 +315,14 @@ function resolveDefaultRustTargetRoot() {
   if (process.platform !== 'win32') return path.resolve(buildRoot, 'rust-target')
   const secondaryDriveCache = 'G:/syrnike13-build-cache/livekit-rust-target'
   if (existsSync(secondaryDriveCache)) return path.resolve(secondaryDriveCache)
-  const localAppData = process.env.LOCALAPPDATA
-  if (!localAppData) {
-    throw new Error(
-      'LOCALAPPDATA is required for the Windows LiveKit build cache, or set SYRNIKE_LIVEKIT_RUST_TARGET_DIR explicitly.',
-    )
-  }
+
+  // Keep the Cargo target outside the checkout and close to the drive root.
+  // libwebrtc's generated include tree is deep enough that an AppData-based
+  // target path exceeds the path length accepted by cl.exe on clean builds.
+  const workspaceDriveRoot = path.parse(repoRoot).root
   return path.resolve(
-    localAppData,
-    'syrnike13',
-    'build-cache',
+    workspaceDriveRoot,
+    'syrnike13-build-cache',
     'livekit-rust-target',
   )
 }
