@@ -259,6 +259,12 @@ export function VoiceStageView({
     layoutMode === 'grid' &&
     !voiceStage.stageFullscreen &&
     shouldShowVoiceInviteSlot(participants.length)
+  const showEmptyStage =
+    participants.length === 0 &&
+    mediaItems.length === 0 &&
+    !(isDmVoiceStage && voiceCall)
+  const showCenteredJoin =
+    showEmptyStage && !inThisVoiceCall && !connecting
 
   const focusMedia = useCallback(
     (mediaId: string) => {
@@ -450,7 +456,11 @@ export function VoiceStageView({
               displayName={resolveParticipantDisplayName}
             />
           ) : (
-            <EmptyVoiceStage canInvite={canInvite} />
+            <EmptyVoiceStage
+              title={title}
+              joinLabel={resolvedJoinLabel ?? 'Войти'}
+              onJoin={() => void voiceSession.join(channelId)}
+            />
           )
         ) : focusedItem ? (
           <VoiceStageFocusStage
@@ -644,7 +654,7 @@ export function VoiceStageView({
           voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
       >
-        {mobileDrawer ? (
+        {showCenteredJoin ? null : mobileDrawer ? (
           <VoiceStageControls
             channelId={channelId}
             inCall={inThisVoiceCall}
@@ -792,15 +802,22 @@ function VoiceStageWaitingCall({
   )
 }
 
-function EmptyVoiceStage({ canInvite }: { canInvite: boolean }) {
+function EmptyVoiceStage({
+  title,
+  joinLabel,
+  onJoin,
+}: {
+  title: string
+  joinLabel: string
+  onJoin: () => void
+}) {
   return (
-    <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 text-center">
-      <p className="text-lg font-semibold">Никого нет в канале</p>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        {canInvite
-          ? 'Подключитесь к голосу или пригласите участников.'
-          : 'Подключитесь к голосу, чтобы начать разговор.'}
-      </p>
+    <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+      <h2 className="max-w-md truncate text-2xl font-bold">{title}</h2>
+      <p className="text-sm text-muted-foreground">В канале никого нет</p>
+      <Button type="button" size="lg" className="mt-2" onClick={onJoin}>
+        {joinLabel}
+      </Button>
     </div>
   )
 }

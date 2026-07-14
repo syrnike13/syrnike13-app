@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +13,7 @@ const testState = vi.hoisted(() => ({
     micPublishing: true,
     deafened: false,
     speakingUserIds: new Set<string>(),
+    join: vi.fn(),
   },
   stage: {
     stageChannelId: 'voice-a' as string | null,
@@ -231,5 +232,26 @@ describe('VoiceStageView channel media scope', () => {
 
     expect(screen.getByTestId('media-grid').textContent).toBe('local:avatar')
     expect(screen.getByTestId('voice-controls').dataset.connecting).toBe('true')
+  })
+
+  it('renders the empty channel title and joins from the centered action', () => {
+    testState.session.channelId = null
+    testState.session.status = 'idle'
+    testState.session.join.mockResolvedValue(true)
+    testState.stage.stageChannelId = null
+    testState.stage.stageMediaItems = []
+    testState.participants = { 'voice-a': [] }
+
+    renderStage(voiceChannel('voice-a', 'Тихая комната'))
+
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Тихая комната' }),
+    ).toBeTruthy()
+    expect(screen.getByText('В канале никого нет')).toBeTruthy()
+    expect(screen.queryByText('Никого нет в канале')).toBeNull()
+    expect(screen.queryByTestId('voice-controls')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
+    expect(testState.session.join).toHaveBeenCalledWith('voice-a')
   })
 })
