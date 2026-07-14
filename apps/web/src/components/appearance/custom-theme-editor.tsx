@@ -3,7 +3,7 @@ import {
   APPEARANCE_GRADIENT_MIN_COLORS,
   type AppearanceGradientSettings,
 } from '@syrnike13/platform'
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 
 import { PlusIcon, Trash2Icon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
@@ -31,6 +31,10 @@ function GradientColorStop({
   onRemove,
 }: GradientColorStopProps) {
   const [draft, setDraft] = useState(color)
+
+  useEffect(() => {
+    setDraft(color)
+  }, [color])
 
   function commitDraft() {
     const next = draft.trim()
@@ -158,7 +162,7 @@ export function CustomThemeEditor({
         <div className="grid gap-2 sm:grid-cols-2">
           {gradient.colors.map((color, index) => (
             <GradientColorStop
-              key={`${index}:${color}`}
+              key={index}
               color={color}
               index={index}
               canRemove={

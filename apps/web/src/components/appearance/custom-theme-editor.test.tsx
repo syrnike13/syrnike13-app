@@ -81,4 +81,29 @@ describe('CustomThemeEditor', () => {
     fireEvent.blur(input)
     expect(onChange).not.toHaveBeenCalled()
   })
+
+  it('keeps a color stop mounted and synchronizes its hex draft', () => {
+    const { rerender } = render(
+      <CustomThemeEditor
+        gradient={gradient}
+        customized
+        onPreview={vi.fn()}
+        onChange={vi.fn()}
+      />,
+    )
+
+    const input = screen.getByRole('textbox', { name: 'HEX цвета 1' })
+
+    rerender(
+      <CustomThemeEditor
+        gradient={{ ...gradient, colors: ['#112233', '#F4F4F5'] }}
+        customized
+        onPreview={vi.fn()}
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'HEX цвета 1' })).toBe(input)
+    expect((input as HTMLInputElement).value).toBe('#112233')
+  })
 })
