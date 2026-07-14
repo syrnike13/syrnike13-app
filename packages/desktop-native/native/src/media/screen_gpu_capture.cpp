@@ -8,9 +8,11 @@
 
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+#include <winrt/Windows.Security.Authorization.AppCapabilityAccess.h>
 
 #include <algorithm>
 #include <array>
@@ -28,6 +30,8 @@ using Microsoft::WRL::ComPtr;
 namespace capture = winrt::Windows::Graphics::Capture;
 namespace directx = winrt::Windows::Graphics::DirectX;
 namespace d3dwinrt = winrt::Windows::Graphics::DirectX::Direct3D11;
+namespace metadata = winrt::Windows::Foundation::Metadata;
+namespace appcap = winrt::Windows::Security::Authorization::AppCapabilityAccess;
 
 namespace syrnike::desktop_native::media {
 namespace {
@@ -35,6 +39,26 @@ namespace {
 constexpr std::size_t kOutputPoolSize = 5;
 constexpr UINT64 kProducerKey = 0;
 constexpr UINT64 kConsumerKey = 1;
+
+void disableCaptureBorderIfAllowed(
+    const capture::GraphicsCaptureSession& session) {
+  try {
+    if (!metadata::ApiInformation::IsApiContractPresent(
+            L"Windows.Foundation.UniversalApiContract", 12) ||
+        !metadata::ApiInformation::IsPropertyPresent(
+            L"Windows.Graphics.Capture.GraphicsCaptureSession",
+            L"IsBorderRequired")) {
+      return;
+    }
+
+    const auto status = capture::GraphicsCaptureAccess::RequestAccessAsync(
+        capture::GraphicsCaptureAccessKind::Borderless).get();
+    if (status == appcap::AppCapabilityAccessStatus::Allowed) {
+      session.IsBorderRequired(false);
+    }
+  } catch (...) {
+  }
+}
 
 std::uint64_t steadyMicros() {
   return static_cast<std::uint64_t>(
@@ -791,6 +815,7 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
         pool_size_);
     session_ = frame_pool_.CreateCaptureSession(item_);
     session_.IsCursorCaptureEnabled(true);
+    disableCaptureBorderIfAllowed(session_);
     session_.StartCapture();
   }
 
