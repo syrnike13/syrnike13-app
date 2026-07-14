@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 53; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 54; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1438,6 +1438,70 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             )
             .await
             .expect("Failed to add invite lifecycle fields.");
+    };
+
+    if revision <= 53 {
+        info!("Running migration [revision 53 / 14-07-2026]: Add product feedback suggestions.");
+
+        db.db().create_collection("feedback_suggestions").await.ok();
+        db.db().create_collection("feedback_votes").await.ok();
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "feedback_suggestions",
+                "indexes": [
+                    {
+                        "key": {
+                            "moderation_status": 1_i32,
+                            "product_status": 1_i32,
+                            "created_at": -1_i32,
+                            "_id": -1_i32
+                        },
+                        "name": "visibility_status_created"
+                    },
+                    {
+                        "key": {
+                            "author_id": 1_i32,
+                            "created_at": -1_i32,
+                            "_id": -1_i32
+                        },
+                        "name": "author_created"
+                    },
+                    {
+                        "key": {
+                            "category": 1_i32,
+                            "product_status": 1_i32,
+                            "created_at": -1_i32
+                        },
+                        "name": "category_status_created"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create feedback suggestions indexes.");
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "feedback_votes",
+                "indexes": [
+                    {
+                        "key": {
+                            "suggestion_id": 1_i32,
+                            "user_id": 1_i32
+                        },
+                        "name": "suggestion_user_unique",
+                        "unique": true
+                    },
+                    {
+                        "key": {
+                            "suggestion_id": 1_i32
+                        },
+                        "name": "suggestion"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create feedback votes indexes.");
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

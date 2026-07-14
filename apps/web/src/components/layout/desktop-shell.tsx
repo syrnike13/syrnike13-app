@@ -55,6 +55,7 @@ export function DesktopShell() {
   )
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isHomePath = pathname === '/app' || pathname === '/app/'
+  const isFeedbackPath = pathname.startsWith('/app/feedback')
 
   useEffect(() => {
     if (isHomePath && !activeChannelId) {
@@ -70,7 +71,8 @@ export function DesktopShell() {
     from: '/app/',
     shouldThrow: false,
   })
-  const onHomeRoute = !activeChannelId && Boolean(homeMatch || isHomePath)
+  const onHomeRoute =
+    !activeChannelId && Boolean(homeMatch || isHomePath || isFeedbackPath)
   const dmContext = Boolean(activeChannel && isDmChannel(activeChannel))
   const showHomeSidebar = onHomeRoute || dmContext
 

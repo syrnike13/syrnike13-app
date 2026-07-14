@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { UsersIcon } from '#/components/icons'
+import { LightbulbIcon, UsersIcon } from '#/components/icons'
 
 import { CommandPaletteTrigger } from '#/components/command-palette/command-palette-trigger'
 import { DmChannelList } from '#/components/home/dm-channel-list'
@@ -31,13 +31,32 @@ export function HomeSidebar({
       <div className={`space-y-2 border-b p-2 ${shellDivider}`}>
         <CommandPaletteTrigger />
         <Button
-          variant="secondary"
+          variant="ghost"
           className="h-9 w-full justify-start gap-2 px-2 font-medium"
           asChild
         >
-          <Link to={prefix} search={{ tab: 'online' }}>
+          <Link
+            to={prefix}
+            search={{ tab: 'online' }}
+            activeOptions={{ exact: true }}
+            activeProps={{ className: 'bg-sidebar-accent text-foreground' }}
+          >
             <UsersIcon className="size-4 shrink-0" />
             Друзья
+          </Link>
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-9 w-full justify-start gap-2 px-2 font-medium"
+          asChild
+        >
+          <Link
+            to={`${prefix}/feedback`}
+            search={{ view: 'all' }}
+            activeProps={{ className: 'bg-sidebar-accent text-foreground' }}
+          >
+            <LightbulbIcon className="size-4 shrink-0" />
+            Идеи
           </Link>
         </Button>
       </div>

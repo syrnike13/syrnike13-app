@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteRouteImport } from './routes/_admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminUsersIndexRouteImport } from './routes/_admin/users/index'
+import { Route as AdminFeedbackIndexRouteImport } from './routes/_admin/feedback/index'
 import { Route as AdminBadgesIndexRouteImport } from './routes/_admin/badges/index'
 import { Route as AdminBadgesNewRouteImport } from './routes/_admin/badges/new'
 import { Route as AdminBadgesBadgeIdRouteImport } from './routes/_admin/badges/$badgeId'
@@ -34,6 +35,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminFeedbackIndexRoute = AdminFeedbackIndexRouteImport.update({
+  id: '/feedback/',
+  path: '/feedback/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminBadgesIndexRoute = AdminBadgesIndexRouteImport.update({
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/badges/$badgeId': typeof AdminBadgesBadgeIdRoute
   '/badges/new': typeof AdminBadgesNewRoute
   '/badges/': typeof AdminBadgesIndexRoute
+  '/feedback/': typeof AdminFeedbackIndexRoute
   '/users/': typeof AdminUsersIndexRoute
 }
 export interface FileRoutesByTo {
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/badges/$badgeId': typeof AdminBadgesBadgeIdRoute
   '/badges/new': typeof AdminBadgesNewRoute
   '/badges': typeof AdminBadgesIndexRoute
+  '/feedback': typeof AdminFeedbackIndexRoute
   '/users': typeof AdminUsersIndexRoute
 }
 export interface FileRoutesById {
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/_admin/badges/$badgeId': typeof AdminBadgesBadgeIdRoute
   '/_admin/badges/new': typeof AdminBadgesNewRoute
   '/_admin/badges/': typeof AdminBadgesIndexRoute
+  '/_admin/feedback/': typeof AdminFeedbackIndexRoute
   '/_admin/users/': typeof AdminUsersIndexRoute
 }
 export interface FileRouteTypes {
@@ -86,9 +95,17 @@ export interface FileRouteTypes {
     | '/badges/$badgeId'
     | '/badges/new'
     | '/badges/'
+    | '/feedback/'
     | '/users/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/badges/$badgeId' | '/badges/new' | '/badges' | '/users'
+  to:
+    | '/'
+    | '/login'
+    | '/badges/$badgeId'
+    | '/badges/new'
+    | '/badges'
+    | '/feedback'
+    | '/users'
   id:
     | '__root__'
     | '/'
@@ -97,6 +114,7 @@ export interface FileRouteTypes {
     | '/_admin/badges/$badgeId'
     | '/_admin/badges/new'
     | '/_admin/badges/'
+    | '/_admin/feedback/'
     | '/_admin/users/'
   fileRoutesById: FileRoutesById
 }
@@ -136,6 +154,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/_admin/feedback/': {
+      id: '/_admin/feedback/'
+      path: '/feedback'
+      fullPath: '/feedback/'
+      preLoaderRoute: typeof AdminFeedbackIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/_admin/badges/': {
       id: '/_admin/badges/'
       path: '/badges'
@@ -164,6 +189,7 @@ interface AdminRouteRouteChildren {
   AdminBadgesBadgeIdRoute: typeof AdminBadgesBadgeIdRoute
   AdminBadgesNewRoute: typeof AdminBadgesNewRoute
   AdminBadgesIndexRoute: typeof AdminBadgesIndexRoute
+  AdminFeedbackIndexRoute: typeof AdminFeedbackIndexRoute
   AdminUsersIndexRoute: typeof AdminUsersIndexRoute
 }
 
@@ -171,6 +197,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminBadgesBadgeIdRoute: AdminBadgesBadgeIdRoute,
   AdminBadgesNewRoute: AdminBadgesNewRoute,
   AdminBadgesIndexRoute: AdminBadgesIndexRoute,
+  AdminFeedbackIndexRoute: AdminFeedbackIndexRoute,
   AdminUsersIndexRoute: AdminUsersIndexRoute,
 }
 

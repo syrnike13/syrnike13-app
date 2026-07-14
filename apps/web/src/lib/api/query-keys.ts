@@ -10,6 +10,12 @@ export const queryKeys = {
     detail: (userId: string) => ['users', userId] as const,
     profile: (userId: string) => ['users', userId, 'profile'] as const,
   },
+  feedback: {
+    all: ['feedback'] as const,
+    list: (params: unknown) => ['feedback', 'list', params] as const,
+    mine: ['feedback', 'mine'] as const,
+    detail: (id: string) => ['feedback', 'detail', id] as const,
+  },
   admin: {
     badges: ['admin', 'badges'] as const,
     userBadges: (userId: string) => ['admin', 'users', userId, 'badges'] as const,

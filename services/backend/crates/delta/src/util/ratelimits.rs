@@ -54,6 +54,9 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
                 ("swagger", _, _) => ("swagger", None),
                 ("safety", Some("report"), _) => ("safety_report", Some("report")),
                 ("safety", _, _) => ("safety", None),
+                ("feedback", Some("vote"), Method::Put | Method::Delete) => ("feedback_vote", None),
+                ("feedback", _, Method::Post) => ("feedback_create", None),
+                ("feedback", _, _) => ("feedback", None),
                 ("telemetry", Some("native"), Method::Post) => ("native_telemetry", None),
                 _ => ("any", None),
             }
@@ -76,6 +79,9 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
             "swagger" => 100,
             "safety" => 15,
             "safety_report" => 3,
+            "feedback" => 30,
+            "feedback_create" => 4,
+            "feedback_vote" => 12,
             "native_telemetry" => 100,
             _ => 20,
         }

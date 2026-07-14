@@ -92,6 +92,14 @@ pub async fn create_database(db: &MongoDb) {
         .await
         .expect("Failed to create ratelimit_events collection.");
 
+    db.create_collection("feedback_suggestions")
+        .await
+        .expect("Failed to create feedback suggestions collection.");
+
+    db.create_collection("feedback_votes")
+        .await
+        .expect("Failed to create feedback votes collection.");
+
     db.create_collection("pubsub")
         .with_options(
             CreateCollectionOptions::builder()
@@ -291,6 +299,61 @@ pub async fn create_database(db: &MongoDb) {
     })
     .await
     .expect("Failed to create ratelimit_events index.");
+
+    db.run_command(doc! {
+        "createIndexes": "feedback_suggestions",
+        "indexes": [
+            {
+                "key": {
+                    "moderation_status": 1_i32,
+                    "product_status": 1_i32,
+                    "created_at": -1_i32,
+                    "_id": -1_i32
+                },
+                "name": "visibility_status_created"
+            },
+            {
+                "key": {
+                    "author_id": 1_i32,
+                    "created_at": -1_i32,
+                    "_id": -1_i32
+                },
+                "name": "author_created"
+            },
+            {
+                "key": {
+                    "category": 1_i32,
+                    "product_status": 1_i32,
+                    "created_at": -1_i32
+                },
+                "name": "category_status_created"
+            }
+        ]
+    })
+    .await
+    .expect("Failed to create feedback suggestions indexes.");
+
+    db.run_command(doc! {
+        "createIndexes": "feedback_votes",
+        "indexes": [
+            {
+                "key": {
+                    "suggestion_id": 1_i32,
+                    "user_id": 1_i32
+                },
+                "name": "suggestion_user_unique",
+                "unique": true
+            },
+            {
+                "key": {
+                    "suggestion_id": 1_i32
+                },
+                "name": "suggestion"
+            }
+        ]
+    })
+    .await
+    .expect("Failed to create feedback votes indexes.");
 
     info!("Created database.");
 }

@@ -9,6 +9,7 @@ mod auth_account;
 mod bots;
 mod channels;
 mod customisation;
+mod feedback;
 mod invites;
 mod onboard;
 mod policy;
@@ -37,6 +38,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/servers" => servers::routes(),
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
+            "/feedback" => feedback::routes(),
             "/safety" => safety::routes(),
             "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
@@ -60,6 +62,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/servers" => servers::routes(),
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
+            "/feedback" => feedback::routes(),
             "/safety" => safety::routes(),
             "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
@@ -84,6 +87,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/servers" => servers::routes(),
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
+            "/feedback" => feedback::routes(),
             "/safety" => safety::routes(),
             "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
@@ -105,6 +109,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/servers" => servers::routes(),
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
+            "/feedback" => feedback::routes(),
             "/safety" => safety::routes(),
             "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
@@ -191,7 +196,14 @@ fn custom_openapi_spec() -> OpenApi {
             "name": "Platform Administration",
             "tags": [
               "Admin",
-              "User Safety"
+              "User Safety",
+              "Product Feedback Administration"
+            ]
+          },
+          {
+            "name": "Product",
+            "tags": [
+              "Product Feedback"
             ]
           },
           {
@@ -387,6 +399,18 @@ fn custom_openapi_spec() -> OpenApi {
             Tag {
                 name: "Webhooks".to_owned(),
                 description: Some("Send messages from 3rd party services".to_owned()),
+                ..Default::default()
+            },
+            Tag {
+                name: "Product Feedback".to_owned(),
+                description: Some(
+                    "Submit, browse, and vote on authenticated product feedback".to_owned(),
+                ),
+                ..Default::default()
+            },
+            Tag {
+                name: "Product Feedback Administration".to_owned(),
+                description: Some("Moderate and publish product feedback suggestions".to_owned()),
                 ..Default::default()
             },
         ],
