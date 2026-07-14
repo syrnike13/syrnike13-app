@@ -21,7 +21,7 @@ alwaysApply: true
 | Runtime | `applyThemeToDocument()` / `getThemeTokens()` |
 | Fallback до JS | `getDefaultThemeCss()` в `__root.tsx` |
 | Статичные non-color | `apps/web/src/styles.css` (`--radius`, шрифты, тени) |
-| Brand-locked (СЫРНИКИ) | `BRAND_LOCKED_THEME_TOKEN_KEYS` в `theme-tokens.ts` (`primary`, `destructive`, `destructive-soft`, `chart-*`, `ring`) |
+| Brand-locked (СЫРНИКИ) | `BRAND_LOCKED_THEME_TOKEN_KEYS` в `theme-tokens.ts` (`primary`, `destructive`, `destructive-contrast`, `chart-*`, `ring`) |
 
 Не добавлять цветовые `--primary`, `--background` и т.п. в `styles.css` — их перезаписывает runtime темы.
 
@@ -31,7 +31,7 @@ alwaysApply: true
 - предупреждение / idle → `chart-2`
 - фокус → `chart-5`
 - опасность → `destructive`
-- soft-danger (мьют микрофона, tinted danger) → `destructive-soft` + `bg-destructive/…`
+- опасность / мьют микрофона → `destructive`; прежний более тёмный красный для контрастных сочетаний → `destructive-contrast`
 - бренд → `primary`
 - presence → `apps/web/src/lib/presence.ts`
 

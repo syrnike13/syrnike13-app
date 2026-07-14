@@ -467,7 +467,7 @@ function VoiceStageMobileDrawerControlBar({
           aria-label={micMuted ? 'Включить микрофон' : 'Выключить микрофон'}
           className={cn(
             sideButtonClass,
-            micMuted && 'bg-destructive/20 text-destructive-soft',
+            micMuted && 'bg-destructive/20 text-destructive',
           )}
           onClick={onToggleMic}
         >
@@ -616,7 +616,7 @@ function MobileDrawerIconButton({
         onClick={disabled ? undefined : onClick}
         className={cn(
           'flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors',
-          danger && 'bg-destructive/20 text-destructive-soft',
+          danger && 'bg-destructive/20 text-destructive',
           success && 'bg-chart-3/20 text-chart-3',
           highlight && !danger && !success && 'bg-white/15 text-white',
           !danger && !success && !highlight && 'bg-muted hover:bg-accent',

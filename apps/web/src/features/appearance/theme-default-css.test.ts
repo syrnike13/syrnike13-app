@@ -15,7 +15,7 @@ describe('getDefaultThemeCss', () => {
     expect(css).toContain(':root {')
     expect(css).toContain('.dark {')
     expect(css).toContain(
-      `--destructive-soft: ${theme.variants.dark!['destructive-soft']};`,
+      `--destructive-contrast: ${theme.variants.dark!['destructive-contrast']};`,
     )
     expect(css).toContain(
       `--background: ${allThemeCssVariables(theme.variants.light!)['--background']};`,
