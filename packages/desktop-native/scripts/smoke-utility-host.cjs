@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { spawn } = require('node:child_process')
 const { app, utilityProcess } = require('electron')
 
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -69,6 +70,7 @@ function createSmokeContext(overrides = {}) {
 }
 
 async function runSmokeSuite(context) {
+  await smokeMediaEventSerialization(context)
   await smokeRuntime(context, 'media', 'media-host.cjs', 'syrnike_media.node')
   await smokeRuntime(context, 'hotkey', 'hotkey-host.cjs', 'syrnike_hotkey.node')
   await smokeRuntime(context, 'overlay', 'overlay-host.cjs', 'syrnike_overlay.node')
@@ -80,6 +82,48 @@ async function runSmokeSuite(context) {
     true,
   )
   verifyDiagnostics(context)
+}
+
+async function smokeMediaEventSerialization(context) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [context.path.resolve(__dirname, 'smoke-media-event-host.cjs')],
+      {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: {
+          ...process.env,
+          SYRNIKE_NATIVE_MODULE_PATH: context.path.resolve(
+            context.nativeRoot,
+            'syrnike_media.node',
+          ),
+        },
+      },
+    )
+    let settled = false
+    const finish = (error) => {
+      if (settled) return
+      settled = true
+      context.clearTimeoutFn(timeout)
+      child.kill()
+      if (error) {
+        reject(error)
+      } else {
+        resolve()
+      }
+    }
+    const timeout = context.setTimeoutFn(
+      () => finish(new Error('Timed out waiting for local preview removal event')),
+      context.timeoutMs,
+    )
+    child.once('error', finish)
+    child.once('exit', (code) => {
+      finish(new Error(`Media event serialization smoke exited with code ${code}`))
+    })
+    child.stdout.on('data', (chunk) => {
+      if (chunk.toString().includes('local-preview-removal-source-ok')) finish()
+    })
+  })
 }
 
 function smokeRuntime(context, runtime, hostName, addonName, injectCrash = false) {

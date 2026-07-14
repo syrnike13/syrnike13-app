@@ -35,6 +35,7 @@ export function buildVoiceOverlaySnapshot(input: {
           speaking: input.speakingUserIds.has(participant.id),
           muted: participant.self_mute || participant.server_muted,
           deafened: participant.self_deaf || participant.server_deafened,
+          screensharing: participant.screensharing,
         },
       ]
     })

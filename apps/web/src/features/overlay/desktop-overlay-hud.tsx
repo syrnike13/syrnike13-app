@@ -2,6 +2,7 @@ import type { DesktopOverlayState } from '@syrnike13/platform'
 
 import { HeadphoneOffIcon, MicOffIcon } from '#/components/icons'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
+import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { cn } from '#/lib/utils'
 
 export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
@@ -16,7 +17,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
               key={participant.userId}
               data-participant-row
               className={cn(
-                'flex min-h-10 items-center gap-2 rounded-md bg-background/75 px-1 py-1 shadow-sm transition-opacity',
+                'flex min-h-10 items-center gap-2 rounded-md px-1 py-1 transition-opacity',
                 !participant.speaking && 'opacity-55',
               )}
             >
@@ -46,26 +47,29 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                   {initials(participant.displayName)}
                 </AvatarFallback>
               </Avatar>
-              <span
-                data-status-icons
-                className="flex shrink-0 items-center gap-1 text-muted-foreground"
-              >
-                {participant.muted ? (
-                  <span title="Микрофон отключён">
-                    <MicOffIcon className="size-4" />
-                  </span>
-                ) : null}
-                {participant.deafened ? (
-                  <span title="Звук отключён">
-                    <HeadphoneOffIcon className="size-4" />
-                  </span>
-                ) : null}
-              </span>
-              <span
-                data-participant-name
-                className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground"
-              >
-                {participant.displayName}
+              <span className="flex min-w-0 items-center gap-1 rounded-full bg-background/75 px-2 py-0.5 shadow-sm">
+                <span
+                  data-participant-name
+                  className="min-w-0 truncate text-sm font-semibold text-foreground"
+                >
+                  {participant.displayName}
+                </span>
+                <span
+                  data-status-icons
+                  className="flex shrink-0 items-center gap-1 text-muted-foreground"
+                >
+                  {participant.muted ? (
+                    <span title="Микрофон отключён">
+                      <MicOffIcon className="size-4" />
+                    </span>
+                  ) : null}
+                  {participant.deafened ? (
+                    <span title="Звук отключён">
+                      <HeadphoneOffIcon className="size-4" />
+                    </span>
+                  ) : null}
+                </span>
+                {participant.screensharing ? <VoiceOnAirBadge /> : null}
               </span>
             </div>
           ))}

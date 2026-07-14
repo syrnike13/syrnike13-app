@@ -9,6 +9,7 @@ const {
 
 const expectedWidth = 1280
 const expectedHeight = 720
+const expectedFrames = 30
 const benchmark = path.join(
   __dirname,
   '..',
@@ -37,30 +38,40 @@ app.whenReady().then(async () => {
   })
   await window.loadURL('data:text/html,<title>native preview smoke</title>')
 
-  let rendererReceived = false
-  let allReferencesReleased = false
+  const rendererFrames = new Set()
+  const releasedFrames = new Set()
   let childExited = false
 
   const maybeFinish = () => {
-    if (finished || !rendererReceived || !allReferencesReleased || !childExited) return
+    if (
+      finished ||
+      rendererFrames.size !== expectedFrames ||
+      releasedFrames.size !== expectedFrames ||
+      !childExited
+    ) return
     finished = true
     console.log(
       `ASSERT electron_local_screen_preview dimensions=${expectedWidth}x${expectedHeight} ` +
-      'import=pass renderer_video_frame=pass content_nonzero=pass references_released=pass',
+      `frames=${expectedFrames} import=pass renderer_canvas=pass ` +
+      'content_nonzero=pass references_released=pass',
     )
     app.exit(0)
   }
 
-  ipcMain.once('syrnike-preview-smoke-frame', (_event, dimensions) => {
+  ipcMain.on('syrnike-preview-smoke-frame', (_event, dimensions) => {
     if (dimensions?.width !== expectedWidth || dimensions?.height !== expectedHeight) {
       fail(`renderer VideoFrame dimensions mismatch: ${JSON.stringify(dimensions)}`)
       return
     }
-    if (!Number.isSafeInteger(dimensions.rgbChecksum) || dimensions.rgbChecksum === 0) {
-      fail(`renderer VideoFrame has no visible RGB content: ${JSON.stringify(dimensions)}`)
+    if (!Number.isSafeInteger(dimensions.sequence)) {
+      fail(`renderer VideoFrame sequence is invalid: ${JSON.stringify(dimensions)}`)
       return
     }
-    rendererReceived = true
+    if (!Number.isSafeInteger(dimensions.rgbChecksum) || dimensions.rgbChecksum === 0) {
+      fail(`renderer canvas has no visible RGB content: ${JSON.stringify(dimensions)}`)
+      return
+    }
+    rendererFrames.add(dimensions.sequence)
     maybeFinish()
   })
   ipcMain.once('syrnike-preview-smoke-error', (_event, message) => fail(message))
@@ -72,7 +83,7 @@ app.whenReady().then(async () => {
       '1080',
       String(expectedWidth),
       String(expectedHeight),
-      '30',
+      String(expectedFrames),
       '--capture',
       'screen:1',
       String(process.pid),
@@ -80,19 +91,19 @@ app.whenReady().then(async () => {
     { windowsHide: true },
   )
   let stdout = ''
-  let imported = false
+  const importedFrames = new Set()
   child.stdout.setEncoding('utf8')
   child.stdout.on('data', async (chunk) => {
     stdout += chunk
     process.stdout.write(chunk)
-    if (imported) return
-    const match = stdout.match(
-      /EXTERNAL_PREVIEW nt_handle=(\d+) sequence=(\d+) width=(\d+) height=(\d+)/,
-    )
+    const matches = [...stdout.matchAll(
+      /EXTERNAL_PREVIEW nt_handle=(\d+) sequence=(\d+) width=(\d+) height=(\d+)/g,
+    )]
+    const match = matches.find((candidate) => !importedFrames.has(Number(candidate[2])))
     if (!match) return
-    imported = true
     try {
-      const sequence = match[2]
+      const sequence = Number(match[2])
+      importedFrames.add(sequence)
       const width = Number(match[3])
       const height = Number(match[4])
       if (width !== expectedWidth || height !== expectedHeight) {
@@ -109,7 +120,7 @@ app.whenReady().then(async () => {
           handle: { ntHandle },
         },
         allReferencesReleased: () => {
-          allReferencesReleased = true
+          releasedFrames.add(sequence)
           child.stdin.write(`RELEASE ${sequence}\n`)
           maybeFinish()
         },
@@ -117,7 +128,7 @@ app.whenReady().then(async () => {
       try {
         await sharedTexture.sendSharedTexture(
           { frame: window.webContents.mainFrame, importedSharedTexture: texture },
-          { smoke: true },
+          { smoke: true, sequence },
         )
       } finally {
         texture.release()

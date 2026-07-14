@@ -43,6 +43,7 @@ const snapshot = {
       speaking: true,
       muted: false,
       deafened: false,
+      screensharing: false,
     },
   ],
 }

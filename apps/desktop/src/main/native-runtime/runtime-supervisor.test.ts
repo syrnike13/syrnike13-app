@@ -208,6 +208,47 @@ describe('NativeRuntimeSupervisor', () => {
     ])
   })
 
+  it('delivers telemetry without advancing the control event sequence fence', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+    })
+    const eventListener = vi.fn()
+    supervisor.onEvent(eventListener)
+
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'microphoneMetrics',
+        sequence: 10,
+        metrics: { inputDb: -30, thresholdDb: -28, open: false },
+      },
+    })
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'runtimeError',
+        sequence: 9,
+        error: {
+          code: 'test_control_event',
+          message: 'control event after telemetry',
+          retryable: false,
+          stage: 'test',
+        },
+      },
+    })
+
+    expect(eventListener.mock.calls.map(([event]) => event.type)).toEqual([
+      'microphoneMetrics',
+      'runtimeError',
+    ])
+  })
+
   it('rejects a synchronous initial start failure and schedules recovery once', async () => {
     const adapter = new FakeAdapter()
     adapter.startError = new Error('load failed')

@@ -16,7 +16,7 @@ describe('buildVoiceOverlaySnapshot', () => {
           server_muted: false,
           server_deafened: false,
           camera: false,
-          screensharing: false,
+          screensharing: true,
           version: 1,
         },
         {
@@ -67,6 +67,7 @@ describe('buildVoiceOverlaySnapshot', () => {
           speaking: true,
           muted: false,
           deafened: true,
+          screensharing: false,
         },
         {
           userId: 'user-muted',
@@ -75,6 +76,7 @@ describe('buildVoiceOverlaySnapshot', () => {
           speaking: false,
           muted: true,
           deafened: false,
+          screensharing: true,
         },
       ],
     })

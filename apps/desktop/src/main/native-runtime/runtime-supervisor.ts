@@ -123,7 +123,7 @@ export class NativeRuntimeSupervisor {
   private expectedExit = false
   private requestSequence = 0
   private adapterEpoch = 0
-  private lastEventSequence = -1
+  private lastControlEventSequence = -1
   private readonly activeProbeKeys = new Set<string>()
   private readonly retirementWatchdogs = new Map<
     NativeRuntimeLane,
@@ -196,7 +196,7 @@ export class NativeRuntimeSupervisor {
       adapter = this.options.createAdapter()
       this.adapter = adapter
       this.adapterEpoch += 1
-      this.lastEventSequence = -1
+      this.lastControlEventSequence = -1
       this.log('adapter_created', {
         pendingCount: this.pending.size,
       })
@@ -527,17 +527,18 @@ export class NativeRuntimeSupervisor {
       return
     }
     const event = message.event
-    if (event.sequence <= this.lastEventSequence) {
+    const isTelemetry = event.type === 'microphoneMetrics' || event.type === 'stats'
+    if (!isTelemetry && event.sequence <= this.lastControlEventSequence) {
       this.log('runtime_event_dropped_out_of_order', {
         nativeEventType: event.type,
         nativeSequence: event.sequence,
         pendingCount: this.pending.size,
-        message: `last=${this.lastEventSequence}`,
+        message: `last=${this.lastControlEventSequence}`,
       })
       return
     }
-    this.lastEventSequence = event.sequence
-    if (event.type !== 'microphoneMetrics' && event.type !== 'stats') {
+    if (!isTelemetry) {
+      this.lastControlEventSequence = event.sequence
       this.log('runtime_event_received', {
         nativeEventType: event.type,
         nativeSequence: event.sequence,

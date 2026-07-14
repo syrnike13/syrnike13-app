@@ -5,6 +5,7 @@ export type DesktopOverlayParticipant = {
   speaking: boolean
   muted: boolean
   deafened: boolean
+  screensharing: boolean
 }
 
 export type DesktopOverlaySnapshot = {
@@ -100,7 +101,8 @@ function normalizeDesktopOverlayParticipant(
     !nonEmptyString(participant.displayName) ||
     typeof participant.speaking !== 'boolean' ||
     typeof participant.muted !== 'boolean' ||
-    typeof participant.deafened !== 'boolean'
+    typeof participant.deafened !== 'boolean' ||
+    typeof participant.screensharing !== 'boolean'
   ) {
     return []
   }
@@ -119,6 +121,7 @@ function normalizeDesktopOverlayParticipant(
       speaking: participant.speaking,
       muted: participant.muted,
       deafened: participant.deafened,
+      screensharing: participant.screensharing,
     },
   ]
 }
@@ -153,7 +156,8 @@ export function desktopOverlaySnapshotsEqual(
       participant.avatarUrl === other.avatarUrl &&
       participant.speaking === other.speaking &&
       participant.muted === other.muted &&
-      participant.deafened === other.deafened
+      participant.deafened === other.deafened &&
+      participant.screensharing === other.screensharing
     )
   })
 }

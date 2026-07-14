@@ -85,6 +85,7 @@ function activeSnapshot(speaking = false) {
         speaking,
         muted: false,
         deafened: false,
+        screensharing: false,
       },
     ],
   }

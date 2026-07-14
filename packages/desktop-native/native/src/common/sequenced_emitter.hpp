@@ -1,7 +1,8 @@
 #pragma once
 
-#include <atomic>
+#include <cstdint>
 #include <exception>
+#include <mutex>
 #include <utility>
 
 #include "event_sink.hpp"
@@ -13,7 +14,8 @@ class SequencedEmitter {
   explicit SequencedEmitter(EventSinkPtr sink) : sink_(std::move(sink)) {}
 
   bool emit(RuntimeEvent event) {
-    event.sequence = next_sequence_.fetch_add(1, std::memory_order_relaxed);
+    std::lock_guard lock(mutex_);
+    event.sequence = next_sequence_++;
     if (sink_ && sink_->emit(std::move(event))) return true;
     // Lifecycle and control events are not lossy. A saturated JS event seam
     // means the utility host can no longer report trustworthy state, so fail
@@ -22,12 +24,14 @@ class SequencedEmitter {
   }
 
   void close() {
+    std::lock_guard lock(mutex_);
     if (sink_) sink_->close();
   }
 
  private:
+  std::mutex mutex_;
   EventSinkPtr sink_;
-  std::atomic_uint64_t next_sequence_{1};
+  std::uint64_t next_sequence_ = 1;
 };
 
 }  // namespace syrnike::desktop_native

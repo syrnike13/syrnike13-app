@@ -127,10 +127,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const desktop = getSyrnikeDesktop()
   const [nativeVideoTracks, setNativeVideoTracks] = useState<NativeVideoRegistryTrack[]>([])
+  const [localScreenPreviewConsumerCount, setLocalScreenPreviewConsumerCount] =
+    useState(0)
   useEffect(() => {
     if (!desktop) return
     nativeVideoRegistry.start()
-    const update = () => setNativeVideoTracks(nativeVideoRegistry.listTracks())
+    const update = () => {
+      setNativeVideoTracks(nativeVideoRegistry.listTracks())
+      setLocalScreenPreviewConsumerCount(
+        nativeVideoRegistry.getLocalScreenPreviewConsumerCount(),
+      )
+    }
     update()
     const unsubscribe = nativeVideoRegistry.subscribe(update)
     return () => {
@@ -160,14 +167,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const localScreenPreviewFps = screenQuality(
     voicePreferences.screenShareQuality,
   ).fps
+  const localScreenPreviewActive = snapshot.screen.state === 'starting' ||
+    snapshot.screen.state === 'running'
 
   useEffect(() => {
     if (!desktop) return
-    const active = snapshot.screen.state === 'starting' || snapshot.screen.state === 'running'
     const fullscreen = stageFullscreen && focusedMediaId ===
       stageMediaItemId(auth.user?._id ?? '', 'screen')
     void desktop.media.setLocalScreenPreviewDemand({
-      demanded: active && stageMediaFilters.showOwnStream,
+      demanded: localScreenPreviewActive && localScreenPreviewConsumerCount > 0,
       width: fullscreen ? 1920 : 1280,
       height: fullscreen ? 1080 : 720,
       fps: localScreenPreviewFps,
@@ -177,9 +185,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     auth.user?._id,
     focusedMediaId,
     localScreenPreviewFps,
-    snapshot.screen.state,
+    localScreenPreviewActive,
+    localScreenPreviewConsumerCount,
     stageFullscreen,
-    stageMediaFilters.showOwnStream,
   ])
 
   useEffect(() => {
@@ -454,6 +462,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       currentUserId: auth.user?._id ?? null,
       filters: stageMediaFilters,
       nativeTracks: nativeVideoTracks,
+      localScreenPreview: desktop && localScreenPreviewActive && auth.user?._id
+        ? {
+          userId: auth.user._id,
+          track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
+        }
+        : null,
       setNativeDemand: (track, demanded) => desktop?.media.setRemoteVideoDemand(
         track.sessionId,
         track.generation,
@@ -469,10 +483,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [
     auth.user?._id,
     channelId,
+    desktop,
     participants,
     room,
     roomRevision,
     nativeVideoTracks,
+    localScreenPreviewActive,
     stageMediaFilters,
     status,
   ])
@@ -839,11 +855,31 @@ function buildStageItems(options: {
   currentUserId: string | null
   filters: StageMediaFilters
   nativeTracks: readonly NativeVideoRegistryTrack[]
+  localScreenPreview: {
+    userId: string
+    track: NativeVideoRegistryTrack['track']
+  } | null
   setNativeDemand: (track: NativeVideoRegistryTrack, demanded: boolean) => unknown
 }): VoiceStageMediaItem[] {
   const participantIds = new Set(options.participants.map(({ id }) => id))
   const tracks: StageMediaTrackEntry<VideoTrack, VoiceStageMediaPublication>[] = []
+  if (options.localScreenPreview) {
+    participantIds.add(options.localScreenPreview.userId)
+    tracks.push({
+      userId: options.localScreenPreview.userId,
+      source: 'screen',
+      track: options.localScreenPreview.track as unknown as VideoTrack,
+      publication: {
+        source: Track.Source.ScreenShare,
+        isMuted: false,
+        isSubscribed: true,
+      },
+      subscribed: true,
+      live: true,
+    })
+  }
   for (const native of options.nativeTracks) {
+    if (native.local && native.source === 'screen') continue
     const userId = baseVoiceIdentity(native.participantIdentity)
     participantIds.add(userId)
     tracks.push({

@@ -1,14 +1,20 @@
 #include <iostream>
 #include <windows.h>
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "common/bounded_queue.hpp"
 #include "common/diagnostic_log.hpp"
+#include "common/sequenced_emitter.hpp"
 #include "hooks/input_state.hpp"
 #include "hooks/key_codes.hpp"
 #include "media/generation_fence.hpp"
@@ -22,6 +28,39 @@ namespace {
 void require(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
 }
+
+class ConcurrencyDetectingSink final : public syrnike::desktop_native::EventSink {
+ public:
+  bool emit(syrnike::desktop_native::RuntimeEvent event) override {
+    if (active_calls.fetch_add(1) != 0) concurrent_entry.store(true);
+    if (block_next_emit.exchange(false)) {
+      blocked_emit_entered.store(true);
+      while (!release_blocked_emit.load()) std::this_thread::yield();
+    }
+    if ((event.sequence & 1U) != 0) {
+      std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+    {
+      std::lock_guard lock(events_mutex);
+      observed_sequences.push_back(event.sequence);
+    }
+    active_calls.fetch_sub(1);
+    return true;
+  }
+
+  void close() override {
+    if (active_calls.load() != 0) concurrent_close.store(true);
+  }
+
+  std::atomic_int active_calls{0};
+  std::atomic_bool concurrent_entry{false};
+  std::atomic_bool concurrent_close{false};
+  std::atomic_bool block_next_emit{false};
+  std::atomic_bool blocked_emit_entered{false};
+  std::atomic_bool release_blocked_emit{false};
+  std::mutex events_mutex;
+  std::vector<std::uint64_t> observed_sequences;
+};
 
 }  // namespace
 
@@ -43,6 +82,48 @@ int main() try {
   require(cancelled.tryPush("second"), "cancel queue rejected second item");
   require(cancelled.closeAndDiscard() == 2, "cancel queue did not report discarded items");
   require(!cancelled.waitPop().has_value(), "cancel queue executed discarded work");
+
+  auto event_sink = std::make_shared<ConcurrencyDetectingSink>();
+  syrnike::desktop_native::SequencedEmitter emitter(event_sink);
+  constexpr int emitter_thread_count = 8;
+  constexpr int events_per_thread = 100;
+  std::vector<std::thread> emitter_threads;
+  emitter_threads.reserve(emitter_thread_count);
+  for (int thread_index = 0; thread_index < emitter_thread_count; ++thread_index) {
+    emitter_threads.emplace_back([&] {
+      for (int event_index = 0; event_index < events_per_thread; ++event_index) {
+        syrnike::desktop_native::RuntimeEvent event;
+        event.type = "test";
+        emitter.emit(std::move(event));
+      }
+    });
+  }
+  for (auto& thread : emitter_threads) thread.join();
+  require(!event_sink->concurrent_entry.load(), "event sink emit entered concurrently");
+  require(
+    event_sink->observed_sequences.size() == emitter_thread_count * events_per_thread,
+    "sequenced emitter lost events"
+  );
+  for (std::size_t index = 1; index < event_sink->observed_sequences.size(); ++index) {
+    require(
+      event_sink->observed_sequences[index - 1] < event_sink->observed_sequences[index],
+      "event sink observed a non-increasing sequence"
+    );
+  }
+
+  event_sink->block_next_emit.store(true);
+  std::thread final_emit([&] {
+    syrnike::desktop_native::RuntimeEvent event;
+    event.type = "test";
+    emitter.emit(std::move(event));
+  });
+  while (!event_sink->blocked_emit_entered.load()) std::this_thread::yield();
+  std::thread close_thread([&] { emitter.close(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  event_sink->release_blocked_emit.store(true);
+  final_emit.join();
+  close_thread.join();
+  require(!event_sink->concurrent_close.load(), "event sink close raced with emit");
 
   syrnike::hotkeys::InputState input;
   require(input.applyDown("keyboard", "ControlLeft", "Left Ctrl").has_value(), "key down missing");

@@ -32,6 +32,7 @@ describe('DesktopOverlayHud', () => {
                 speaking: true,
                 muted: true,
                 deafened: true,
+                screensharing: true,
               },
               {
                 userId: 'listener',
@@ -40,6 +41,7 @@ describe('DesktopOverlayHud', () => {
                 speaking: false,
                 muted: false,
                 deafened: false,
+                screensharing: false,
               },
             ],
           },
@@ -58,6 +60,7 @@ describe('DesktopOverlayHud', () => {
     )
     expect(screen.getByTitle('Микрофон отключён')).toBeTruthy()
     expect(screen.getByTitle('Звук отключён')).toBeTruthy()
+    expect(screen.getByLabelText('В эфире')).toBeTruthy()
 
     const overlayPanel = container.querySelector('[data-overlay-panel]')
     expect(overlayPanel?.className).not.toContain('bg-')
@@ -69,9 +72,18 @@ describe('DesktopOverlayHud', () => {
     const speakerRow = screen.getByText('Speaker').closest('[data-participant-row]')
     const icons = speakerRow?.querySelector('[data-status-icons]')
     const name = speakerRow?.querySelector('[data-participant-name]')
+    const onAirBadge = screen.getByLabelText('В эфире')
     expect(
-      icons?.compareDocumentPosition(name!) === Node.DOCUMENT_POSITION_FOLLOWING,
+      name?.compareDocumentPosition(icons!) === Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(true)
+    expect(name?.parentElement).toBe(icons?.parentElement)
+    expect(name?.parentElement).toBe(onAirBadge.parentElement)
+    expect(
+      icons?.compareDocumentPosition(onAirBadge) ===
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(true)
+    expect(name?.parentElement?.className).toContain('rounded-full')
+    expect(name?.parentElement?.className).toContain('bg-background/75')
 
     const listenerRow = screen.getByText('Listener').closest('[data-participant-row]')
     expect(listenerRow?.className).toContain('opacity-55')
@@ -118,6 +130,7 @@ describe('DesktopOverlayHud', () => {
                 speaking: false,
                 muted: false,
                 deafened: false,
+                screensharing: false,
               },
             ],
           },

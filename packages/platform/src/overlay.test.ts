@@ -27,6 +27,7 @@ describe('desktop overlay snapshot', () => {
             speaking: true,
             muted: false,
             deafened: true,
+            screensharing: true,
           },
         ],
       }),
@@ -42,6 +43,7 @@ describe('desktop overlay snapshot', () => {
           speaking: true,
           muted: false,
           deafened: true,
+          screensharing: true,
         },
       ],
     })
@@ -61,6 +63,7 @@ describe('desktop overlay snapshot', () => {
             speaking: 'yes',
             muted: false,
             deafened: false,
+            screensharing: false,
           },
         ],
       }),
@@ -81,6 +84,7 @@ describe('desktop overlay snapshot', () => {
           speaking: false,
           muted: false,
           deafened: false,
+          screensharing: false,
         }),
       ),
     })
@@ -118,6 +122,7 @@ describe('desktop overlay snapshot', () => {
           speaking: false,
           muted: false,
           deafened: false,
+          screensharing: false,
         },
       ],
     })

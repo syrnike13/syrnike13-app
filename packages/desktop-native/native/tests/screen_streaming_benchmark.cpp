@@ -636,8 +636,10 @@ int main(int argc, char **argv) try {
     std::size_t captured = 0;
     std::uint64_t gpu_sum = 0;
     std::uint64_t preview_sum = 0;
-    const auto deadline = Clock::now() + std::chrono::seconds(5);
-    while (Clock::now() < deadline && captured == 0) {
+    const auto external_preview = preview_target_pid != GetCurrentProcessId();
+    const auto target_capture_frames = external_preview ? iterations : 1;
+    const auto deadline = Clock::now() + std::chrono::seconds(15);
+    while (Clock::now() < deadline && captured < target_capture_frames) {
       const auto result = capturer->capture(frame);
       if (result.status == ScreenGpuFrameStatus::NewFrame) {
         ComPtr<ID3D11Device1> device1;
@@ -682,6 +684,13 @@ int main(int argc, char **argv) try {
         context->Unmap(readback.Get(), 0);
         check(keyed->ReleaseSync(0), "Release GPU capture producer key");
         gpu_sum = checksum(bytes.data(), bytes.size());
+
+        ScreenPreviewFrame preview;
+        if (!capturer->takePreviewFrame(preview)) {
+          capturer->discard(frame);
+          Sleep(1);
+          continue;
+        }
         ++captured;
         std::cout << "RESULT path=real_screen_gpu_capture method="
                   << result.method << " frames=" << captured
@@ -689,13 +698,7 @@ int main(int argc, char **argv) try {
                   << " gpu_convert_submit_ms="
                   << (result.metrics.scale_us / 1000.0)
                   << " cpu_copy_bytes_per_frame=0 checksum=" << gpu_sum << '\n';
-
-        ScreenPreviewFrame preview;
-        if (!capturer->takePreviewFrame(preview)) {
-          capturer->discard(frame);
-          throw std::runtime_error("GPU capture produced no preview frame");
-        }
-        if (preview_target_pid != GetCurrentProcessId()) {
+        if (external_preview) {
           std::cout << "EXTERNAL_PREVIEW nt_handle=" << preview.nt_handle
                     << " sequence=" << preview.sequence
                     << " width=" << preview.width
@@ -770,7 +773,7 @@ int main(int argc, char **argv) try {
       }
       Sleep(1);
     }
-    if (captured == 0 || gpu_sum == 0 || preview_sum == 0) {
+    if (captured != target_capture_frames || gpu_sum == 0 || preview_sum == 0) {
       throw std::runtime_error(
           "strict GPU screen capture/preview produced no verifiable frame");
     }

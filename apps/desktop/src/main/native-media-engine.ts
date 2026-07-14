@@ -149,7 +149,10 @@ export function registerNativeMediaRuntimeIpc(
   })
   const window = getWindow()
   window?.webContents.on('did-start-navigation', rendererReloaded)
-  window?.webContents.on('render-process-gone', rendererReloaded)
+  window?.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[native-video] renderer process gone', details)
+    rendererReloaded()
+  })
   registerNativeMediaIpc(getWindow, controller)
 }
 

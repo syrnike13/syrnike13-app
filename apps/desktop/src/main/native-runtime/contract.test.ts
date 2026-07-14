@@ -146,4 +146,17 @@ describe('native runtime command validation', () => {
       },
     })).toBe(true)
   })
+
+  it('requires the screen source when the local preview track is removed', () => {
+    const removed = {
+      type: 'localScreenPreviewTrackRemoved',
+      sequence: 8,
+      sessionId: 'screen-session',
+      generation: 3,
+      trackId: 'local-screen:screen-session',
+    }
+
+    expect(isNativeRuntimeEvent({ ...removed, source: 'screen' })).toBe(true)
+    expect(isNativeRuntimeEvent(removed)).toBe(false)
+  })
 })
