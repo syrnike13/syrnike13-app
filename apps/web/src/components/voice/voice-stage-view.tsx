@@ -10,7 +10,10 @@ import {
 import { MessageSquareIcon, ChevronDownIcon } from '#/components/icons'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import type { Channel, User } from '@syrnike13/api-types'
-import type { VoiceCallState } from '#/features/sync/voice-types'
+import type {
+  UserVoiceState,
+  VoiceCallState,
+} from '#/features/sync/voice-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -263,8 +266,15 @@ export function VoiceStageView({
     participants.length === 0 &&
     mediaItems.length === 0 &&
     !(isDmVoiceStage && voiceCall)
+  const showRemoteJoinPreview =
+    useAvatarRosterLayout &&
+    !inThisVoiceCall &&
+    !connecting &&
+    !isDmVoiceStage
   const showCenteredJoin =
-    showEmptyStage && !inThisVoiceCall && !connecting
+    !inThisVoiceCall &&
+    !connecting &&
+    (showEmptyStage || showRemoteJoinPreview)
 
   const focusMedia = useCallback(
     (mediaId: string) => {
@@ -462,6 +472,18 @@ export function VoiceStageView({
               onJoin={() => void voiceSession.join(channelId)}
             />
           )
+        ) : showRemoteJoinPreview ? (
+          <VoiceStageJoinPreview
+            title={title}
+            participants={participants}
+            users={users}
+            currentUser={auth.user}
+            displayName={resolveParticipantDisplayName}
+            joinLabel={
+              resolvedJoinLabel ?? 'Присоединиться к голосовому каналу'
+            }
+            onJoin={() => void voiceSession.join(channelId)}
+          />
         ) : focusedItem ? (
           <VoiceStageFocusStage
             focusedItem={focusedItem}
@@ -818,6 +840,90 @@ function EmptyVoiceStage({
       <Button type="button" size="lg" className="mt-2" onClick={onJoin}>
         {joinLabel}
       </Button>
+    </div>
+  )
+}
+
+function additionalParticipantLabel(count: number) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return `${count} участник`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} участника`
+  }
+  return `${count} участников`
+}
+
+function VoiceStageJoinPreview({
+  title,
+  participants,
+  users,
+  currentUser,
+  displayName,
+  joinLabel,
+  onJoin,
+}: {
+  title: string
+  participants: readonly UserVoiceState[]
+  users: Record<string, User | undefined>
+  currentUser?: User | null
+  displayName: (userId: string) => string
+  joinLabel: string
+  onJoin: () => void
+}) {
+  const visibleParticipants = participants.slice(0, 4)
+  const hiddenParticipantCount = participants.length - visibleParticipants.length
+  const firstParticipantName = displayName(participants[0].id)
+  const status =
+    participants.length === 1
+      ? `${firstParticipantName} сейчас в голосовом чате`
+      : `${firstParticipantName} и ещё ${additionalParticipantLabel(
+          participants.length - 1,
+        )} сейчас в голосовом чате`
+
+  return (
+    <div className="grid min-h-[min(50vh,24rem)] flex-1 place-items-center px-4 text-center">
+      <div className="flex translate-y-3 flex-col items-center gap-4">
+        <div className="grid h-24 w-44 place-items-center rounded-xl bg-muted/80 px-5">
+          <ul
+            className="flex -space-x-3"
+            aria-label="Участники голосового канала"
+          >
+            {visibleParticipants.map((participant) => {
+              const user =
+                users[participant.id] ??
+                (participant.id === currentUser?._id
+                  ? currentUser ?? undefined
+                  : undefined)
+              return (
+                <li key={participant.id} title={displayName(participant.id)}>
+                  <UserAvatar
+                    user={user}
+                    className="size-12 ring-2 ring-muted"
+                    fallbackClassName="size-12 text-sm"
+                    showPresence={false}
+                  />
+                </li>
+              )
+            })}
+            {hiddenParticipantCount > 0 ? (
+              <li
+                className="relative grid size-12 place-items-center rounded-full bg-accent text-sm font-semibold text-accent-foreground ring-2 ring-muted"
+                aria-label={`И ещё ${additionalParticipantLabel(hiddenParticipantCount)}`}
+              >
+                +{hiddenParticipantCount}
+              </li>
+            ) : null}
+          </ul>
+        </div>
+        <div className="space-y-1.5">
+          <h2 className="max-w-md truncate text-3xl font-bold">{title}</h2>
+          <p className="max-w-lg text-sm text-muted-foreground">{status}</p>
+        </div>
+        <Button type="button" size="lg" className="mt-1" onClick={onJoin}>
+          {joinLabel}
+        </Button>
+      </div>
     </div>
   )
 }

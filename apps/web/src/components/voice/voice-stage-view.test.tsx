@@ -189,18 +189,18 @@ describe('VoiceStageView channel media scope', () => {
     )
 
     expect(screen.queryByTestId('media-grid')).toBeNull()
-    expect(screen.getByTestId('avatar-roster').textContent).toBe('bob')
+    expect(screen.getByText('Bob сейчас в голосовом чате')).toBeTruthy()
     expect(screen.queryByText('alice:camera')).toBeNull()
   })
 
-  it('switches avatar rosters when no RTC media scope is active', () => {
+  it('switches remote participant previews when no RTC media scope is active', () => {
     testState.session.channelId = null
     testState.session.status = 'idle'
     testState.stage.stageChannelId = null
     testState.stage.stageMediaItems = []
 
     const { rerender } = renderStage(voiceChannel('voice-a', 'A'))
-    expect(screen.getByTestId('avatar-roster').textContent).toBe('alice')
+    expect(screen.getByText('Alice сейчас в голосовом чате')).toBeTruthy()
 
     const channelB = voiceChannel('voice-b', 'B')
     rerender(
@@ -212,7 +212,8 @@ describe('VoiceStageView channel media scope', () => {
       />,
     )
 
-    expect(screen.getByTestId('avatar-roster').textContent).toBe('bob')
+    expect(screen.queryByText('Alice сейчас в голосовом чате')).toBeNull()
+    expect(screen.getByText('Bob сейчас в голосовом чате')).toBeTruthy()
   })
 
   it('keeps the connecting intent preview visible in its target channel', () => {
@@ -252,6 +253,34 @@ describe('VoiceStageView channel media scope', () => {
     expect(screen.queryByTestId('voice-controls')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
+    expect(testState.session.join).toHaveBeenCalledWith('voice-a')
+  })
+
+  it('joins from the centered preview when other participants are present', () => {
+    testState.session.channelId = null
+    testState.session.status = 'idle'
+    testState.session.join.mockResolvedValue(true)
+    testState.stage.stageChannelId = null
+    testState.stage.stageMediaItems = []
+    testState.participants = {
+      'voice-a': [{ id: 'alice' }, { id: 'bob' }],
+    }
+
+    renderStage(voiceChannel('voice-a', 'Основной'))
+
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Основной' }),
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Alice и ещё 1 участник сейчас в голосовом чате'),
+    ).toBeTruthy()
+    expect(screen.queryByTestId('voice-controls')).toBeNull()
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Присоединиться к голосовому каналу',
+      }),
+    )
     expect(testState.session.join).toHaveBeenCalledWith('voice-a')
   })
 })
