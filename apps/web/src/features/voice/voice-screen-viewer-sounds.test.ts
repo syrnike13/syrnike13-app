@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   SCREEN_VIEWER_SOUND_TOPIC,
   createScreenViewerSoundPayload,
+  screenViewerWatchNotification,
   screenViewerSoundEventFromData,
 } from './voice-screen-viewer-sounds'
 
@@ -78,6 +79,39 @@ describe('screen viewer sound data messages', () => {
         topic: SCREEN_VIEWER_SOUND_TOPIC,
         senderIdentity: viewerIdentity,
         currentUserId: ownerUserId,
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('screen viewer watch notifications', () => {
+  it('notifies only when a remote watch state actually changes', () => {
+    expect(
+      screenViewerWatchNotification({
+        isLocal: false,
+        wasWatching: false,
+        subscribed: true,
+      }),
+    ).toBe('join')
+    expect(
+      screenViewerWatchNotification({
+        isLocal: false,
+        wasWatching: true,
+        subscribed: false,
+      }),
+    ).toBe('leave')
+    expect(
+      screenViewerWatchNotification({
+        isLocal: false,
+        wasWatching: true,
+        subscribed: true,
+      }),
+    ).toBeNull()
+    expect(
+      screenViewerWatchNotification({
+        isLocal: true,
+        wasWatching: false,
+        subscribed: true,
       }),
     ).toBeNull()
   })

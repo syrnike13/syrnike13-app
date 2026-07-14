@@ -50,7 +50,10 @@ import {
   type StageMediaFilters,
   type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
-import { setStageScreenSubscription } from '#/features/voice/voice-stage-subscription'
+import {
+  setStageScreenSubscription,
+  stageScreenMediaUserId,
+} from '#/features/voice/voice-stage-subscription'
 import {
   readVoicePreferences,
   voicePreferenceStore,
@@ -89,6 +92,13 @@ import {
   type RtcDebugStageMediaItem,
 } from '#/features/voice/voice-rtc-debug'
 import { playUiSound } from '#/features/sounds/sound-player'
+import {
+  SCREEN_VIEWER_SOUND_TOPIC,
+  createScreenViewerSoundPayload,
+  screenViewerSoundEventFromData,
+  screenViewerWatchNotification,
+} from '#/features/voice/voice-screen-viewer-sounds'
+import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 type VoiceClient = {
@@ -161,6 +171,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
+  const watchedScreenViewerChannelsRef = useRef(new Map<string, string>())
+  const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
   const voicePreferences = useVoicePreferences()
@@ -214,10 +226,21 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           auth.user?._id ?? 'signed-out',
           () => auth.user?._id ?? null,
         )
+    watchedScreenViewerChannelsRef.current.clear()
     clientRef.current = client
-    setSnapshot(client.snapshot())
+    let previousSnapshot = client.snapshot()
+    setSnapshot(previousSnapshot)
     setRoom(client.room())
-    const unsubscribeSnapshot = client.subscribe(setSnapshot)
+    const unsubscribeSnapshot = client.subscribe((nextSnapshot) => {
+      for (const sound of voiceSnapshotTransitionSounds(
+        previousSnapshot,
+        nextSnapshot,
+      )) {
+        playUiSound(sound)
+      }
+      previousSnapshot = nextSnapshot
+      setSnapshot(nextSnapshot)
+    })
     const unsubscribeRoom = client.subscribeRoom(setRoom)
     syncPreferences(client)
 
@@ -292,6 +315,104 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [room])
 
+  const publishScreenViewerSound = useCallback(
+    (activeRoom: Room, screenOwnerId: string, action: 'join' | 'leave') => {
+      const owner = Array.from(activeRoom.remoteParticipants.values()).find(
+        (participant) => baseVoiceIdentity(participant.identity) === screenOwnerId,
+      )
+      if (!owner) return false
+      void activeRoom.localParticipant
+        .publishData(createScreenViewerSoundPayload({ action, screenOwnerId }), {
+          reliable: true,
+          destinationIdentities: [owner.identity],
+          topic: SCREEN_VIEWER_SOUND_TOPIC,
+        })
+        .catch((error) => {
+          if (import.meta.env.DEV) {
+            console.warn('Failed to publish screen viewer sound intent', error)
+          }
+        })
+      return true
+    },
+    [],
+  )
+
+  const updateScreenViewerNotification = useCallback(
+    (
+      activeRoom: Room,
+      mediaId: string,
+      screenOwnerId: string,
+      subscribed: boolean,
+    ) => {
+      const watched = notifiedScreenViewerIdsRef.current
+      const action = screenViewerWatchNotification({
+        isLocal:
+          screenOwnerId === auth.user?._id ||
+          screenOwnerId === baseVoiceIdentity(activeRoom.localParticipant.identity),
+        wasWatching: watched.has(mediaId),
+        subscribed,
+      })
+      if (!action) return
+      const published = publishScreenViewerSound(
+        activeRoom,
+        screenOwnerId,
+        action,
+      )
+      if (subscribed && published) watched.add(mediaId)
+      if (!subscribed) watched.delete(mediaId)
+    },
+    [auth.user?._id, publishScreenViewerSound],
+  )
+
+  useEffect(() => {
+    if (!room) return
+    const onDataReceived = (
+      payload: Uint8Array,
+      participant?: { identity: string },
+      _kind?: unknown,
+      topic?: string,
+    ) => {
+      const sound = screenViewerSoundEventFromData({
+        payload,
+        topic,
+        senderIdentity: participant?.identity,
+        currentUserId: auth.user?._id,
+      })
+      if (sound) playUiSound(sound)
+    }
+    room.on(RoomEvent.DataReceived, onDataReceived)
+    return () => {
+      room.off(RoomEvent.DataReceived, onDataReceived)
+      for (const mediaId of notifiedScreenViewerIdsRef.current) {
+        const screenOwnerId = stageScreenMediaUserId(mediaId)
+        if (screenOwnerId) {
+          publishScreenViewerSound(room, screenOwnerId, 'leave')
+        }
+      }
+      notifiedScreenViewerIdsRef.current.clear()
+    }
+  }, [auth.user?._id, publishScreenViewerSound, room])
+
+  useEffect(() => {
+    if (!room || snapshot.connection !== 'connected') return
+    for (const [mediaId, targetChannelId] of watchedScreenViewerChannelsRef.current) {
+      if (targetChannelId !== snapshot.membershipChannelId) continue
+      const screenOwnerId = stageScreenMediaUserId(mediaId)
+      if (screenOwnerId) {
+        updateScreenViewerNotification(room, mediaId, screenOwnerId, true)
+      }
+    }
+  }, [room, roomRevision, snapshot, updateScreenViewerNotification])
+
+  useEffect(() => {
+    if (
+      (snapshot.connection === 'disconnected' || snapshot.connection === 'failed') &&
+      !snapshot.intentChannelId
+    ) {
+      watchedScreenViewerChannelsRef.current.clear()
+    }
+  }, [snapshot.connection, snapshot.intentChannelId])
+
   useEffect(() => {
     const failureKey = snapshot.failure
       ? `${snapshot.failure.code}:${snapshot.operationId ?? ''}`
@@ -364,8 +485,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const leave = useCallback(() => {
     void dispatchVoice({ type: 'leave' })
-    playUiSound('voice.disconnect')
-  }, [dispatchVoice])
+    if (snapshot.connection !== 'disconnected' && snapshot.connection !== 'failed') {
+      playUiSound('voice.disconnect')
+    }
+  }, [dispatchVoice, snapshot.connection])
 
   const toggleMic = useCallback(() => {
     if (snapshot.userDeafened) {
@@ -400,7 +523,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const toggleScreenShare = useCallback(() => {
     if (snapshot.screen.state === 'running' || snapshot.screen.state === 'starting') {
       void dispatchVoice({ type: 'setScreen', enabled: false })
-      playUiSound('screen_share.stopped')
       return
     }
     if (desktop) {
@@ -562,9 +684,25 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const joined = await join(targetChannelId)
         if (!joined) return
       }
-      setFocusedMediaId(stageMediaItemId(userId, 'screen'))
+      const mediaId = stageMediaItemId(userId, 'screen')
+      watchedScreenViewerChannelsRef.current.set(mediaId, targetChannelId)
+      const activeRoom = clientRef.current?.room()
+      const currentSnapshot = clientRef.current?.snapshot()
+      if (
+        activeRoom &&
+        currentSnapshot?.connection === 'connected' &&
+        currentSnapshot.membershipChannelId === targetChannelId
+      ) {
+        updateScreenViewerNotification(
+          activeRoom,
+          mediaId,
+          userId,
+          true,
+        )
+      }
+      setFocusedMediaId(mediaId)
     },
-    [channelId, join, setFocusedMediaId, status],
+    [channelId, join, setFocusedMediaId, status, updateScreenViewerNotification],
   )
 
   const setStageMediaSubscribed = useCallback(
@@ -574,14 +712,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const action = setStageScreenSubscription(item, subscribed)
         if (action === 'stop-local-screen') {
           void dispatchVoice({ type: 'setScreen', enabled: false })
-          playUiSound('screen_share.stopped')
+        } else if (!item.isLocal) {
+          if (subscribed && channelId) {
+            watchedScreenViewerChannelsRef.current.set(item.id, channelId)
+          } else if (!subscribed) {
+            watchedScreenViewerChannelsRef.current.delete(item.id)
+          }
+          if (room) {
+            updateScreenViewerNotification(room, item.id, item.userId, subscribed)
+          }
         }
       } else {
         item?.publication?.setSubscribed?.(subscribed)
       }
       setRoomRevision((revision) => revision + 1)
     },
-    [dispatchVoice, stageMediaItems],
+    [channelId, dispatchVoice, room, stageMediaItems, updateScreenViewerNotification],
   )
 
   const sessionValue = useMemo<VoiceSessionContextValue>(

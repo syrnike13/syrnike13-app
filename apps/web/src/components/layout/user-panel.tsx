@@ -62,6 +62,7 @@ export function UserPanel() {
     inVoiceSession,
     micEnabled: voiceSession.micEnabled,
     micPublishing: voiceSession.micPublishing,
+    deafened: voiceSession.deafened,
   })
   const soundOff = voiceSession.deafened
 

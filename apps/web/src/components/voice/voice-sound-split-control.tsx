@@ -7,24 +7,15 @@ import {
 } from '#/components/voice/voice-split-control'
 
 function soundControlTitle({
-  inVoice,
   soundOff,
 }: {
-  inVoice: boolean
   soundOff: boolean
 }) {
-  if (inVoice) {
-    return soundOff ? 'Включить звук' : 'Отключить звук'
-  }
-
-  return soundOff
-    ? 'Звук выключен (применится при входе в голос)'
-    : 'Отключить звук до входа в голос'
+  return soundOff ? 'Включить звук' : 'Выключить звук'
 }
 
 export function VoiceSoundSplitControl({
   surface,
-  inVoice,
   connecting,
   soundOff,
   onToggleDeafen,
@@ -40,7 +31,7 @@ export function VoiceSoundSplitControl({
       surface={surface}
       danger={soundOff}
       disabled={connecting}
-      mainTitle={soundControlTitle({ inVoice, soundOff })}
+      mainTitle={soundControlTitle({ soundOff })}
       chevronTitle="Параметры звука"
       onMainClick={onToggleDeafen}
       popoverContent={<VoiceSoundSettingsMenuContent />}

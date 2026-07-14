@@ -5,6 +5,19 @@ export const SCREEN_VIEWER_SOUND_TOPIC = 'syrnike13.screen-viewer-sound'
 
 type ScreenViewerSoundAction = 'join' | 'leave'
 
+export function screenViewerWatchNotification({
+  isLocal,
+  wasWatching,
+  subscribed,
+}: {
+  isLocal: boolean
+  wasWatching: boolean
+  subscribed: boolean
+}): ScreenViewerSoundAction | null {
+  if (isLocal || wasWatching === subscribed) return null
+  return subscribed ? 'join' : 'leave'
+}
+
 type ScreenViewerSoundPayload = {
   type: 'screen_viewer'
   action: ScreenViewerSoundAction
