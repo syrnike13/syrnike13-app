@@ -437,6 +437,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       : snapshot.connection === 'connecting' || snapshot.connection === 'recovering'
         ? snapshot.intentChannelId
         : null
+
+  // Fullscreen is scoped to one voice session and must not survive leave/move.
+  useEffect(() => {
+    setStageFullscreen(false)
+  }, [channelId])
+
   const status = connectionStatus(snapshot)
   const connectionPhase = connectionPhaseFromSnapshot(snapshot)
   const participants = useSyncStore((state) =>
@@ -633,6 +639,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const stageValue = useMemo<VoiceStageContextValue>(
     () => ({
+      stageChannelId: channelId,
       stageMediaItems,
       focusedMediaId,
       setFocusedMediaId,
@@ -645,6 +652,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       toggleStageFullscreen: () => setStageFullscreen((value) => !value),
     }),
     [
+      channelId,
       focusedMediaId,
       setFocusedMediaId,
       setStageMediaFilters,

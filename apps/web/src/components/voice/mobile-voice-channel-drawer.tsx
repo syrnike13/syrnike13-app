@@ -122,6 +122,7 @@ export function MobileVoiceChannelDrawer() {
                 )}
               >
                 <ChannelChatPanel
+                  key={channel._id}
                   channelId={channel._id}
                   onClose={() => setChatOpen(false)}
                 />

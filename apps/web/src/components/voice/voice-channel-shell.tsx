@@ -87,6 +87,7 @@ export function VoiceChannelShell({
       >
         {chatOpen ? (
           <ChannelChatPanel
+            key={channelId}
             channelId={channelId}
             highlightMessageId={highlightMessageId}
             onClose={() => setChatOpen(false)}

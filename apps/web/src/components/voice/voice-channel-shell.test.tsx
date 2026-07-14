@@ -2,7 +2,7 @@
 
 import { act, cleanup, render, screen } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceChannelShell } from './voice-channel-shell'
@@ -73,7 +73,16 @@ vi.mock('#/components/channels/channel-settings-dialog', () => ({
 }))
 
 vi.mock('#/components/chat/channel-chat-panel', () => ({
-  ChannelChatPanel: () => <div data-testid="channel-chat-panel" />,
+  ChannelChatPanel: ({ channelId }: { channelId: string }) => {
+    const mountedChannelId = useRef(channelId).current
+    return (
+      <div
+        data-testid="channel-chat-panel"
+        data-channel-id={channelId}
+        data-mounted-channel-id={mountedChannelId}
+      />
+    )
+  },
 }))
 
 function directMessageChannel(): Channel {
@@ -101,12 +110,15 @@ function groupChannel(): Channel {
   } as Channel
 }
 
-function legacyVoiceChannel(): Channel {
+function legacyVoiceChannel(
+  id = 'voice-1',
+  name = 'Voice',
+): Channel {
   return {
-    _id: 'voice-1',
+    _id: id,
     channel_type: 'VoiceChannel',
     server: 'server-1',
-    name: 'Voice',
+    name,
     default_permissions: null,
     role_permissions: {},
     voice: { max_users: null },
@@ -189,5 +201,41 @@ describe('VoiceChannelShell', () => {
     expect(screen.getByTestId('channel-settings-dialog').textContent).toBe(
       'voice-1',
     )
+  })
+
+  it('remounts the side chat when the opened voice channel changes', () => {
+    const channelA = legacyVoiceChannel('voice-a', 'A')
+    const channelB = legacyVoiceChannel('voice-b', 'B')
+    syncStore.applyReady({
+      users: [currentUser, targetUser],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Server',
+          owner: CURRENT_USER_ID,
+          channels: [channelA._id, channelB._id],
+          default_permissions: 0,
+        } as never,
+      ],
+      channels: [channelA, channelB],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    })
+    requestVoiceChannelChatOpen(channelA._id)
+
+    const { rerender } = render(
+      <VoiceChannelShell channelId={channelA._id} />,
+    )
+    expect(
+      screen.getByTestId('channel-chat-panel').dataset.mountedChannelId,
+    ).toBe(channelA._id)
+
+    rerender(<VoiceChannelShell channelId={channelB._id} />)
+
+    const panel = screen.getByTestId('channel-chat-panel')
+    expect(panel.dataset.channelId).toBe(channelB._id)
+    expect(panel.dataset.mountedChannelId).toBe(channelB._id)
   })
 })

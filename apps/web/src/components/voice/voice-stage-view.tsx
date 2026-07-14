@@ -90,6 +90,7 @@ type VoiceStageViewProps = {
 }
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
+const EMPTY_STAGE_MEDIA_ITEMS: readonly VoiceStageMediaItem[] = []
 
 export function VoiceStageView({
   channel,
@@ -180,7 +181,10 @@ export function VoiceStageView({
     () => new Map(participants.map((participant) => [participant.id, participant])),
     [participants],
   )
-  const mediaItems = voiceStage.stageMediaItems
+  const mediaItems =
+    voiceStage.stageChannelId === channelId
+      ? voiceStage.stageMediaItems
+      : EMPTY_STAGE_MEDIA_ITEMS
   const gridMediaItems = useMemo(
     () => sortStageMediaItemsForGrid(mediaItems),
     [mediaItems],
