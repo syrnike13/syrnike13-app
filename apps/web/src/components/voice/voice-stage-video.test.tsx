@@ -22,7 +22,13 @@ function videoTrackStub(trackSid = 'TR_screen') {
 
 function nativeTrackStub(trackSid = 'local-screen:session') {
   const detach = vi.fn()
-  const attachCanvas = vi.fn(() => detach)
+  const attachCanvas = vi.fn(
+    (
+      _trackId: string,
+      _canvas: HTMLCanvasElement,
+      _onSizeChange?: (size: { width: number; height: number }) => void,
+    ) => detach,
+  )
   const registry = { attachCanvas } as unknown as NativeVideoRegistry
   return {
     track: new NativeVideoTrackAdapter(trackSid, registry),
