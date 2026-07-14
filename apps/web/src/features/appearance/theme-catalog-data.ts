@@ -5,9 +5,10 @@ import {
   type ThemeSemanticPalette,
   type ThemeTokens,
 } from '#/features/appearance/theme-tokens'
+import type { AppearanceGradientSettings } from '@syrnike13/platform'
 
-/** Яркий коралловый акцент soft-danger (#ff5c5c); brand-locked. */
-const SYRNIKE_DESTRUCTIVE_SOFT = 'oklch(0.7040 0.1910 22.2160)' as const
+/** Яркий коралловый акцент danger (#ff5c5c); brand-locked. */
+const SYRNIKE_DESTRUCTIVE = 'oklch(0.7040 0.1910 22.2160)' as const
 
 const SYRNIKE_LIGHT: ThemeSemanticPalette = {
   background: 'oklch(0.9881 0 0)',
@@ -21,9 +22,9 @@ const SYRNIKE_LIGHT: ThemeSemanticPalette = {
   mutedForeground: 'oklch(0.4800 0.0160 280.8555)',
   accent: 'oklch(0.9350 0.0040 286.3490)',
   accentForeground: 'oklch(0.2789 0.0091 285.7942)',
-  destructive: 'oklch(0.5156 0.1810 22.5393)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1.0000 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.5156 0.1810 22.5393)',
   border: 'oklch(0.8700 0.0040 286.3457)',
   input: 'oklch(0.9750 0.0020 286.3750)',
   ring: 'oklch(0.5774 0.2091 273.8504)',
@@ -57,9 +58,9 @@ const SYRNIKE_DARK: ThemeSemanticPalette = {
   mutedForeground: 'oklch(0.7230 0.0087 278.5820)',
   accent: 'oklch(0.4074 0.0134 280.1154)',
   accentForeground: 'oklch(1.0000 0 0)',
-  destructive: 'oklch(63.7% 0.237 25.331)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1.0000 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(63.7% 0.237 25.331)',
   border: 'oklch(0.3690 0.0103 278.3345)',
   input: 'oklch(0.3066 0.0108 278.2166)',
   ring: 'oklch(0.5774 0.2091 273.8504)',
@@ -100,9 +101,9 @@ const LUG_LIGHT_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.6234 0 0)',
   accent: 'oklch(0.4429 0.0444 134.5073)',
   accentForeground: 'oklch(1.0000 0 0)',
-  destructive: 'oklch(0.4926 0.1864 26.2192)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1.0000 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.4926 0.1864 26.2192)',
   border: 'oklch(0.9300 0.0094 286.2156)',
   input: 'oklch(0.9401 0 0)',
   ring: 'oklch(0.7830 0.0384 132.7370)',
@@ -137,9 +138,9 @@ const LUG_DARK_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.6511 0.0081 80.7132)',
   accent: 'oklch(0.4429 0.0444 134.5073)',
   accentForeground: 'oklch(1.0000 0 0)',
-  destructive: 'oklch(0.4926 0.1864 26.2192)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(0.9796 0.0017 67.8026)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.4926 0.1864 26.2192)',
   border: 'oklch(0.2806 0.0246 82.6847)',
   input: 'oklch(0.1994 0.0155 75.9533)',
   ring: 'oklch(0.7830 0.0384 132.7370)',
@@ -174,9 +175,9 @@ const ISKRA_LIGHT_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.5544 0.0407 257.4166)',
   accent: 'oklch(0.9356 0.0309 17.7172)',
   accentForeground: 'oklch(0.4437 0.1613 26.8994)',
-  destructive: 'oklch(0.5771 0.2152 27.3250)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(0.9842 0.0034 247.8575)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.5771 0.2152 27.3250)',
   border: 'oklch(0.9288 0.0126 255.5078)',
   input: 'oklch(0.9288 0.0126 255.5078)',
   ring: 'oklch(0.6368 0.2078 25.3313)',
@@ -210,9 +211,9 @@ const ISKRA_DARK_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.7118 0.0129 286.0665)',
   accent: 'oklch(0.1790 0.0734 29.2339)',
   accentForeground: 'oklch(0.6346 0.2509 28.4341)',
-  destructive: 'oklch(0.3958 0.1331 25.7230)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(0.9851 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.3958 0.1331 25.7230)',
   border: 'oklch(0.2739 0.0055 286.0326)',
   input: 'oklch(0.2739 0.0055 286.0326)',
   ring: 'oklch(0.6346 0.2509 28.4341)',
@@ -246,9 +247,9 @@ const MATRIX_DARK_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.5638 0.1872 143.2450)',
   accent: 'oklch(0.8686 0.2776 144.4661)',
   accentForeground: 'oklch(0 0 0)',
-  destructive: 'oklch(0.6280 0.2577 29.2339)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1.0000 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.6280 0.2577 29.2339)',
   border: 'oklch(0.3053 0.1039 142.4953)',
   input: 'oklch(0 0 0)',
   ring: 'oklch(0.8686 0.2776 144.4661)',
@@ -282,9 +283,9 @@ const MONOLIT_LIGHT_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.5560 0 0)',
   accent: 'oklch(0.9500 0 0)',
   accentForeground: 'oklch(0.2050 0 0)',
-  destructive: 'oklch(0.5770 0.2450 27.3250)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.5770 0.2450 27.3250)',
   border: 'oklch(0.9500 0 0)',
   input: 'oklch(0.9700 0 0)',
   ring: 'oklch(0.7080 0 0)',
@@ -318,9 +319,9 @@ const MONOLIT_DARK_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.7080 0 0)',
   accent: 'oklch(0.3710 0 0)',
   accentForeground: 'oklch(0.9850 0 0)',
-  destructive: 'oklch(0.7040 0.1910 22.2160)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(0.9850 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.7040 0.1910 22.2160)',
   border: 'oklch(0.2690 0 0)',
   input: 'oklch(0.2690 0 0)',
   ring: 'oklch(0.5560 0 0)',
@@ -354,9 +355,9 @@ const PERGAMENT_LIGHT_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.5530 0.0130 58.0710)',
   accent: 'oklch(0.9245 0.0138 92.9892)',
   accentForeground: 'oklch(0.2333 0.0195 275.9526)',
-  destructive: 'oklch(0.1908 0.0020 106.5859)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1.0000 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.1908 0.0020 106.5859)',
   border: 'oklch(0.8690 0.0050 56.3660)',
   input: 'oklch(0.9220 0 0)',
   ring: 'oklch(0.5540 0.0460 257.4170)',
@@ -390,9 +391,9 @@ const PERGAMENT_DARK_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.7713 0.0169 99.0657)',
   accent: 'oklch(0.2130 0.0078 95.4245)',
   accentForeground: 'oklch(0.9663 0.0080 98.8792)',
-  destructive: 'oklch(0.6368 0.2078 25.3313)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1.0000 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.6368 0.2078 25.3313)',
   border: 'oklch(0.3618 0.0101 106.8928)',
   input: 'oklch(0.4336 0.0113 100.2195)',
   ring: 'oklch(0.8690 0.0220 252.8940)',
@@ -426,9 +427,9 @@ const GRAFIT_LIGHT_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.5560 0 0)',
   accent: 'oklch(0.9700 0 0)',
   accentForeground: 'oklch(0.2050 0 0)',
-  destructive: 'oklch(0.5770 0.2450 27.3250)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.5770 0.2450 27.3250)',
   border: 'oklch(0.9220 0 0)',
   input: 'oklch(0.9220 0 0)',
   ring: 'oklch(0.7080 0 0)',
@@ -462,9 +463,9 @@ const GRAFIT_DARK_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.7080 0 0)',
   accent: 'oklch(0.2740 0.0060 286.0330)',
   accentForeground: 'oklch(0.9850 0 0)',
-  destructive: 'oklch(0.7040 0.1910 22.2160)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(0.9850 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.7040 0.1910 22.2160)',
   border: 'oklch(0.2750 0 0)',
   input: 'oklch(0.3250 0 0)',
   ring: 'oklch(0.5560 0 0)',
@@ -498,9 +499,9 @@ const KONTRAST_LIGHT_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.4400 0 0)',
   accent: 'oklch(0.9220 0 0)',
   accentForeground: 'oklch(0 0 0)',
-  destructive: 'oklch(0.6300 0.1900 23.0300)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(1 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.6300 0.1900 23.0300)',
   border: 'oklch(0.8700 0 0)',
   input: 'oklch(0.8700 0 0)',
   ring: 'oklch(0 0 0)',
@@ -534,9 +535,9 @@ const KONTRAST_DARK_COLORS: ShadcnColorVariables = {
   mutedForeground: 'oklch(0.7200 0 0)',
   accent: 'oklch(0.3200 0 0)',
   accentForeground: 'oklch(1 0 0)',
-  destructive: 'oklch(0.6900 0.2000 23.9100)',
+  destructive: SYRNIKE_DESTRUCTIVE,
   destructiveForeground: 'oklch(0 0 0)',
-  destructiveSoft: SYRNIKE_DESTRUCTIVE_SOFT,
+  destructiveContrast: 'oklch(0.6900 0.2000 23.9100)',
   border: 'oklch(0.2600 0 0)',
   input: 'oklch(0.3200 0 0)',
   ring: 'oklch(0.7200 0 0)',
@@ -561,7 +562,10 @@ export type ThemeDefinition = {
   id: string
   name: string
   description?: string
+  kind: 'solid' | 'gradient'
+  customizable?: boolean
   variants: Partial<Record<ThemeVariant, ThemeTokens>>
+  gradients?: Partial<Record<ThemeVariant, AppearanceGradientSettings>>
 }
 
 export const THEME_CATALOG: ThemeDefinition[] = [
@@ -569,6 +573,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'syrnike',
     name: 'Сырники',
     description: 'Базовая фирменная тема',
+    kind: 'solid',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
       dark: tokensFromPalette(SYRNIKE_DARK),
@@ -578,6 +583,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'lug',
     name: 'Луг',
     description: 'Мягкая зелёная палитра',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(LUG_LIGHT_COLORS, false),
       dark: createThemeTokens(LUG_DARK_COLORS, true),
@@ -587,6 +593,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'iskra',
     name: 'Искра',
     description: 'Контрастные красные акценты',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(ISKRA_LIGHT_COLORS, false),
       dark: createThemeTokens(ISKRA_DARK_COLORS, true),
@@ -596,6 +603,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'matrix',
     name: 'Матрица',
     description: 'Терминальная зелёная палитра',
+    kind: 'solid',
     variants: {
       dark: createThemeTokens(MATRIX_DARK_COLORS, true),
     },
@@ -604,6 +612,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'monolit',
     name: 'Монолит',
     description: 'Нейтральная монохромная палитра',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(MONOLIT_LIGHT_COLORS, false),
       dark: createThemeTokens(MONOLIT_DARK_COLORS, true),
@@ -613,6 +622,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'pergament',
     name: 'Пергамент',
     description: 'Тёплые кремовые тона',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(PERGAMENT_LIGHT_COLORS, false),
       dark: createThemeTokens(PERGAMENT_DARK_COLORS, true),
@@ -622,6 +632,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'grafit',
     name: 'Графит',
     description: 'Нейтральная серая палитра с холодным оттенком',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(GRAFIT_LIGHT_COLORS, false),
       dark: createThemeTokens(GRAFIT_DARK_COLORS, true),
@@ -631,9 +642,201 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'kontrast',
     name: 'Контраст',
     description: 'Резкий чёрно-белый контраст с зелёным акцентом',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(KONTRAST_LIGHT_COLORS, false),
       dark: createThemeTokens(KONTRAST_DARK_COLORS, true),
+    },
+  },
+  {
+    id: 'gradient-twilight',
+    name: 'Сумерки',
+    description: 'Холодный индиго с тёплым закатом',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#5964F2', '#D8798D'], angle: 135, saturation: 70 },
+      dark: { colors: ['#25358D', '#8F4D67'], angle: 135, saturation: 76 },
+    },
+  },
+  {
+    id: 'gradient-aurora',
+    name: 'Аврора',
+    description: 'Глубокий синий, бирюза и фиолетовый',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#3676D8', '#53C7A2', '#9A67D7'], angle: 120, saturation: 72 },
+      dark: { colors: ['#163A72', '#267F72', '#59388E'], angle: 120, saturation: 80 },
+    },
+  },
+  {
+    id: 'gradient-sunset',
+    name: 'Закат',
+    description: 'Коралловый свет на фиолетовом фоне',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#F28B6D', '#C15884', '#6556B3'], angle: 145, saturation: 74 },
+      dark: { colors: ['#7E3E4D', '#733B72', '#393E88'], angle: 145, saturation: 82 },
+    },
+  },
+  {
+    id: 'gradient-ocean',
+    name: 'Океан',
+    description: 'Глубокий синий и чистая бирюза',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#2563EB', '#06B6D4', '#34D399'], angle: 125, saturation: 76 },
+      dark: { colors: ['#122A68', '#087F8C', '#176B5A'], angle: 125, saturation: 82 },
+    },
+  },
+  {
+    id: 'gradient-orchid',
+    name: 'Орхидея',
+    description: 'Лиловый свет с розовым акцентом',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#8B5CF6', '#D946EF', '#FB7185'], angle: 135, saturation: 72 },
+      dark: { colors: ['#432C7A', '#7A287C', '#853846'], angle: 135, saturation: 80 },
+    },
+  },
+  {
+    id: 'gradient-northern-lights',
+    name: 'Сияние',
+    description: 'Изумрудный свет на ночном небе',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#2563EB', '#10B981', '#8B5CF6'], angle: 115, saturation: 78 },
+      dark: { colors: ['#172554', '#065F46', '#4C1D95'], angle: 115, saturation: 86 },
+    },
+  },
+  {
+    id: 'gradient-mango',
+    name: 'Манго',
+    description: 'Солнечный жёлтый, апельсин и коралл',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#FACC15', '#FB923C', '#F43F5E'], angle: 140, saturation: 78 },
+      dark: { colors: ['#854D0E', '#9A3412', '#881337'], angle: 140, saturation: 84 },
+    },
+  },
+  {
+    id: 'gradient-sakura',
+    name: 'Сакура',
+    description: 'Нежный розовый и прохладная сирень',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#FDA4AF', '#F9A8D4', '#C4B5FD'], angle: 130, saturation: 62 },
+      dark: { colors: ['#7F354D', '#71375B', '#4C3A73'], angle: 130, saturation: 74 },
+    },
+  },
+  {
+    id: 'gradient-midnight',
+    name: 'Полночь',
+    description: 'Тёмный индиго с электрическим синим',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#1E3A8A', '#4338CA', '#7C3AED'], angle: 150, saturation: 82 },
+      dark: { colors: ['#0F172A', '#1E1B4B', '#3B176F'], angle: 150, saturation: 90 },
+    },
+  },
+  {
+    id: 'gradient-mint',
+    name: 'Мята',
+    description: 'Свежая мята с небесно-голубым',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#A7F3D0', '#67E8F9', '#93C5FD'], angle: 120, saturation: 60 },
+      dark: { colors: ['#14532D', '#155E75', '#1E3A8A'], angle: 120, saturation: 78 },
+    },
+  },
+  {
+    id: 'gradient-ember',
+    name: 'Жар',
+    description: 'Алый огонь и тёплый янтарь',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#DC2626', '#F97316', '#FBBF24'], angle: 125, saturation: 82 },
+      dark: { colors: ['#450A0A', '#7C2D12', '#78350F'], angle: 125, saturation: 88 },
+    },
+  },
+  {
+    id: 'gradient-dunes',
+    name: 'Дюны',
+    description: 'Песочные тона с мягким кораллом',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#FDE68A', '#FDBA74', '#FCA5A5'], angle: 145, saturation: 62 },
+      dark: { colors: ['#713F12', '#7C2D12', '#702F3E'], angle: 145, saturation: 76 },
+    },
+  },
+  {
+    id: 'gradient',
+    name: 'Свой градиент',
+    description: 'Настраиваемая многослойная тема',
+    kind: 'gradient',
+    customizable: true,
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: {
+        colors: ['#5865F2', '#F4F4F5'],
+        angle: 0,
+        saturation: 74,
+      },
+      dark: {
+        colors: ['#5865F2', '#F4F4F5'],
+        angle: 0,
+        saturation: 74,
+      },
     },
   },
 ]

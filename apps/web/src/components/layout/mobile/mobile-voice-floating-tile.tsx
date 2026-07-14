@@ -127,7 +127,7 @@ export function MobileVoiceFloatingTile() {
         title={title}
         aria-label={`Голос: ${title}. Перетащите в угол или нажмите для управления`}
         className={cn(
-          'pointer-events-auto relative flex size-14 touch-none items-center justify-center rounded-2xl bg-card shadow-lg ring-1 ring-shell-divider transition-shadow active:shadow-md',
+          'gradient-surface-floating pointer-events-auto relative flex size-14 touch-none items-center justify-center rounded-2xl bg-card shadow-lg ring-1 ring-shell-divider transition-shadow active:shadow-md',
           isDragging && 'scale-105 shadow-xl ring-chart-3/40',
           !connected && 'animate-pulse',
         )}

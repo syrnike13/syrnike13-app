@@ -109,7 +109,7 @@ export function VoiceParticipantIcons({
     <span className={cn('flex shrink-0 items-center gap-0.5', className)}>
       {listenerMuted ? (
         <MicOffIcon
-          className="size-3.5 text-destructive-soft"
+          className="size-3.5 text-destructive"
           aria-label="Вы заглушили этого участника"
         />
       ) : null}

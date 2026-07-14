@@ -50,7 +50,7 @@ export function MobileUserPanel() {
       <div className="pointer-events-auto">
         <div className="relative h-14 w-full">
           <div
-            className="absolute top-1/2 right-0 left-6 flex h-10 -translate-y-1/2 items-center rounded-full bg-card pr-1.5 pl-11 shadow-lg ring-1 ring-shell-divider"
+            className="gradient-surface-floating absolute top-1/2 right-0 left-6 flex h-10 -translate-y-1/2 items-center rounded-full bg-card pr-1.5 pl-11 shadow-lg ring-1 ring-shell-divider"
             aria-hidden
           />
 

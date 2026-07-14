@@ -44,7 +44,7 @@ export function MobileProfilePage() {
   })
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
+    <div className="gradient-surface-content flex min-h-0 flex-1 flex-col bg-background">
       <ScrollArea className="min-h-0 flex-1">
         <CurrentUserProfileMenu
           user={user}

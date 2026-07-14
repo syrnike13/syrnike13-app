@@ -67,7 +67,7 @@ export function MessageHoverToolbar({
     >
       <div
         className={cn(
-          'flex items-center gap-0.5 rounded-lg border border-border',
+          'gradient-surface-floating flex items-center gap-0.5 rounded-lg border border-border',
           'bg-popover px-0.5 py-0.5 text-popover-foreground shadow-md',
         )}
         role="toolbar"

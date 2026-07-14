@@ -24,7 +24,7 @@ import {
   railIconSquircleProps,
   railServerScrollAreaClass,
   railServerScrollContentClass,
-  shellNavSurface,
+  shellLowestSurface,
 } from '#/components/layout/shell-chrome'
 import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
@@ -93,7 +93,7 @@ export function ServerRail({
           className={cn(
             'flex h-full w-16 shrink-0 flex-col items-center',
             railPaddingClass,
-            shellNavSurface,
+            shellLowestSurface,
           )}
           style={railBottomReserveStyle}
         >
@@ -110,7 +110,7 @@ export function ServerRail({
       className={cn(
         'flex h-full w-16 shrink-0 flex-col',
         railPaddingClass,
-        shellNavSurface,
+        shellLowestSurface,
       )}
       style={railBottomReserveStyle}
     >

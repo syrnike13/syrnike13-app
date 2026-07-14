@@ -85,7 +85,7 @@ export function UserProfilePopover({
         sideOffset={8}
         collisionPadding={16}
         className={cn(
-          'z-[200] w-[min(340px,calc(100vw-1rem))] overflow-hidden border-0 bg-muted p-0 text-foreground shadow-xl ring-1 ring-border',
+          'gradient-surface-raised z-[200] w-[min(340px,calc(100vw-1rem))] overflow-hidden border-0 bg-muted p-0 text-foreground shadow-xl ring-1 ring-border',
           className,
         )}
         onOpenAutoFocus={(event) => event.preventDefault()}

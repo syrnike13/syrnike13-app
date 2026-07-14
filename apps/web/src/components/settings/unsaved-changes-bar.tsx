@@ -122,7 +122,7 @@ export function UnsavedChangesBar({
     >
       <div
         className={cn(
-          'pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-white/8 bg-muted px-4 py-3 text-foreground shadow-md',
+          'gradient-surface-raised pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3 text-foreground shadow-md',
           (showSaveAck || showResetAck) && 'justify-center',
           showResetAck && 'profile-unsaved-reset-panel',
         )}

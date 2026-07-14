@@ -115,7 +115,7 @@ function SettingsDesktopModal() {
           Параметры аккаунта, уведомлений и оформления
         </DialogDescription>
 
-        <aside className="flex min-h-0 w-[218px] shrink-0 flex-col border-r border-border bg-muted">
+        <aside className="gradient-surface-navigation flex min-h-0 w-[218px] shrink-0 flex-col border-r border-border bg-muted">
           <div className="border-b border-border/60 p-3">
             <button
               type="button"
@@ -191,7 +191,7 @@ function SettingsDesktopModal() {
         </aside>
 
         <ProfileDraftProvider>
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+          <div className="gradient-surface-content relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
             <header className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
               <h2 className="text-xl font-semibold">
                 {settingsSectionTitle(section)}

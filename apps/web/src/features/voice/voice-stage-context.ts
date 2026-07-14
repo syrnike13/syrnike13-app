@@ -9,6 +9,8 @@ import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import type { StageMediaFilters } from '#/features/voice/voice-stage-media'
 
 export type VoiceStageContextValue = {
+  /** Канал RTC-сессии, для которой построены stageMediaItems. */
+  stageChannelId: string | null
   stageMediaItems: readonly VoiceStageMediaItem[]
   focusedMediaId: string | null
   setFocusedMediaId: (mediaId: string | null) => void

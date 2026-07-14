@@ -39,6 +39,7 @@ describe('appearance settings store', () => {
     expect(readStoredAppearanceSettings()).toEqual({
       themeId: 'syrnike',
       colorMode: 'light',
+      gradient: null,
     })
     expect(localStorage.getItem('theme')).toBeNull()
     expect(localStorage.getItem(APPEARANCE_STORAGE_KEY)).toBeTruthy()
@@ -49,6 +50,35 @@ describe('appearance settings store', () => {
     snapshot.themeId = 'mutated'
 
     expect(appearanceSettingsStore.getState()).toEqual(DEFAULT_APPEARANCE_SETTINGS)
+  })
+
+  it('does not expose the live gradient color array', () => {
+    appearanceSettingsStore.setGradient({
+      colors: ['#112233', '#AABBCC'],
+      angle: 90,
+      saturation: 80,
+    })
+    const snapshot = appearanceSettingsStore.getState()
+    snapshot.gradient!.colors[0] = '#FFFFFF'
+
+    expect(appearanceSettingsStore.getState().gradient?.colors[0]).toBe('#112233')
+  })
+
+  it('applies gradient changes from a complete settings update', () => {
+    appearanceSettingsStore.setSettings({
+      ...DEFAULT_APPEARANCE_SETTINGS,
+      gradient: {
+        colors: ['#112233', '#AABBCC'],
+        angle: 45,
+        saturation: 80,
+      },
+    })
+
+    expect(appearanceSettingsStore.getState().gradient).toEqual({
+      colors: ['#112233', '#AABBCC'],
+      angle: 45,
+      saturation: 80,
+    })
   })
 
   it('defaults to syrnike dark when storage is empty', () => {

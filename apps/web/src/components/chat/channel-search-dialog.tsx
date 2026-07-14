@@ -107,7 +107,7 @@ export function ChannelSearchDialog({
           <button
             type="button"
             className={cn(
-              'flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted',
+              'gradient-surface-input flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted',
               stripClassName,
             )}
           >

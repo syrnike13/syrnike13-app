@@ -37,6 +37,7 @@ import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,
   FLOATING_BAR_SCROLL_PAD_CLASS,
+  shellChromeSurface,
   shellColumnHeaderClass,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
@@ -395,7 +396,9 @@ export function ChannelView({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {!dmInCallLayout ? (
-        <header className={cn(shellColumnHeaderClass, 'bg-card px-0')}>
+        <header
+          className={cn(shellColumnHeaderClass, shellChromeSurface, 'px-0')}
+        >
         <div
           className={cn(
             'flex min-w-0 flex-1 items-center gap-2',

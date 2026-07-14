@@ -51,7 +51,7 @@ function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
+    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
       <LoginForm />
     </div>
   )

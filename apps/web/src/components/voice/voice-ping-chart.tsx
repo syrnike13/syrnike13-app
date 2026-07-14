@@ -167,7 +167,7 @@ export function VoicePingChart({ history, className }: VoicePingChartProps) {
 
       {activePoint ? (
         <div
-          className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+          className="gradient-surface-floating pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
           style={{ left: `${tooltipLeft}%` }}
         >
           <p className="font-semibold tabular-nums">{activePoint.ms} мс</p>

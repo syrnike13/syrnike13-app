@@ -5,6 +5,7 @@ import {
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
   DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
   DEFAULT_SOUND_AUTHOR_PACK_ID,
+  normalizeAppearanceGradientSettings,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
 } from './settings'
@@ -234,6 +235,48 @@ describe('desktop local settings contract', () => {
         appearance: {},
       }).appearance,
     ).toEqual(DEFAULT_APPEARANCE_SETTINGS)
+  })
+
+  it('normalizes custom appearance gradients', () => {
+    expect(
+      normalizeAppearanceGradientSettings({
+        colors: ['#5865f2', ' #f4f4f5 ', 'invalid'],
+        angle: 999,
+        saturation: -10,
+      }),
+    ).toEqual({
+      colors: ['#5865F2', '#F4F4F5'],
+      angle: 360,
+      saturation: 0,
+    })
+  })
+
+  it('keeps valid gradient patches and ignores malformed ones', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        appearance: {
+          gradient: {
+            colors: ['#112233', '#AABBCC'],
+            angle: 45,
+            saturation: 80,
+          },
+        },
+      }),
+    ).toEqual({
+      appearance: {
+        gradient: {
+          colors: ['#112233', '#AABBCC'],
+          angle: 45,
+          saturation: 80,
+        },
+      },
+    })
+
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        appearance: { gradient: { colors: ['nope'] } },
+      }),
+    ).toEqual({})
   })
 
   it('ignores malformed non-empty overlay games patches', () => {
