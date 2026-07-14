@@ -70,6 +70,7 @@ export function VoiceChannelShell({
       <VoiceStageView
         channel={channel}
         title={title}
+        showChatToggle={false}
         headerTrailing={
           isServerChannel(runtimeChannel) ? (
             <ChannelSettingsDialog channel={runtimeChannel} />

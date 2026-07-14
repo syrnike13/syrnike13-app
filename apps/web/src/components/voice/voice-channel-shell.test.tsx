@@ -41,17 +41,24 @@ vi.mock('#/components/voice/voice-stage-view', () => ({
     headerTrailing,
     chatOpen,
     onToggleChat,
+    showChatToggle = true,
   }: {
     title: string
     headerTrailing?: ReactNode
     chatOpen: boolean
     onToggleChat: () => void
+    showChatToggle?: boolean
   }) => (
-    <div data-testid="voice-stage-view">
+    <div
+      data-testid="voice-stage-view"
+      data-chat-toggle={showChatToggle ? 'visible' : 'hidden'}
+    >
       <span data-testid="voice-stage-title">{title}</span>
-      <button type="button" onClick={onToggleChat}>
-        {chatOpen ? 'Скрыть чат' : 'Открыть чат'}
-      </button>
+      {showChatToggle ? (
+        <button type="button" onClick={onToggleChat}>
+          {chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+        </button>
+      ) : null}
       {headerTrailing}
     </div>
   ),
@@ -164,7 +171,6 @@ describe('VoiceChannelShell', () => {
     })
 
     expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Скрыть чат' })).toBeTruthy()
   })
 
   it('opens the side chat panel from a pending request on mount', () => {
@@ -177,6 +183,9 @@ describe('VoiceChannelShell', () => {
     renderShell(legacyVoiceChannel())
 
     expect(screen.getByTestId('voice-stage-title').textContent).toBe('Voice')
+    expect(
+      screen.getByTestId('voice-stage-view').getAttribute('data-chat-toggle'),
+    ).toBe('hidden')
     expect(screen.getByTestId('channel-settings-dialog').textContent).toBe(
       'voice-1',
     )
