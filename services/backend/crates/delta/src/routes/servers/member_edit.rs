@@ -105,6 +105,13 @@ pub async fn edit(
             error: error.to_string()
         })
     })?;
+    if let Some(roles) = &data.roles {
+        if roles.iter().collect::<HashSet<_>>().len() != roles.len() {
+            return Err(create_error!(FailedValidation {
+                error: "roles must not contain duplicate IDs".to_string(),
+            }));
+        }
+    }
     if data.remove.contains(&FieldsMember::JoinedAt) {
         return Err(create_error!(InvalidOperation));
     }

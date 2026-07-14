@@ -45,7 +45,6 @@ import {
 } from '#/features/sync/channel-label'
 import {
   isIncomingVoiceCall,
-  isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
 import { getChannelLastMessageId, pickDefaultChannelId } from '#/features/sync/selectors'
@@ -59,15 +58,16 @@ import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat
 import { resolveVoiceChannelClickAction } from '#/features/navigation/voice-channel-click'
 import { useOptionalMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-channel-drawer-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import {
+  isServerVoiceChannel,
+} from '#/lib/channel-voice'
 import { canManageChannel, isChannelAccessRestricted } from '#/lib/permissions'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
+import { attachmentPreviewUrl } from '#/lib/media'
 import { publicAppUrl } from '#/lib/public-origin'
 import { cn } from '#/lib/utils'
-
-type ServerChannel = Extract<Channel, { channel_type: 'TextChannel' }>
 
 type ChannelSidebarItemProps = {
   channel: Channel
@@ -114,12 +114,15 @@ export function ChannelSidebarItem({
       ? s.members[`${channel.server}:${auth.user._id}`]
       : undefined,
   )
-  const canDeleteChannel = canManageChannel(
-    server,
-    channel,
-    member,
-    auth.user?._id,
-  )
+  const canDeleteChannel =
+    channel.channel_type === 'TextChannel' &&
+    canManageChannel(
+      server,
+      channel,
+      member,
+      auth.user?._id,
+      auth.user?.privileged,
+    )
 
   function openChannelSettings() {
     const hostChannelId = activeChannelId ?? channel._id
@@ -182,9 +185,6 @@ export function ChannelSidebarItem({
     selectChannelNotificationBadge(s, channel),
   )
   const voiceCall = useSyncStore((s) => s.voiceCalls[channel._id])
-  const voiceCallDismissed = useSyncStore((s) =>
-    isVoiceCallDismissed(voiceCall, s.dismissedVoiceCallKeys),
-  )
   const voiceCallRingingDismissed = useSyncStore((s) =>
     isVoiceCallRingingDismissed(voiceCall, s.dismissedVoiceCallKeys),
   )
@@ -200,13 +200,11 @@ export function ChannelSidebarItem({
   const incomingVoiceCall =
     !voiceCallRingingDismissed && isIncomingVoiceCall(voiceCall, currentUserId)
   const voiceCallMarkerTitle =
-    voiceCallDismissed
-      ? null
+    voiceCall?.phase === 'active'
+      ? 'Идёт звонок'
       : incomingVoiceCall
         ? 'Входящий звонок'
-        : voiceCall?.phase === 'active'
-          ? 'Идёт звонок'
-          : null
+        : null
 
   async function markRead() {
     if (!token) return
@@ -341,12 +339,20 @@ export function ChannelSidebarItem({
               fallbackClassName="size-6 text-[10px]"
             />
           ) : channel.channel_type === 'Group' ? (
-            <span
-              title="Групповой чат"
-              className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
-            >
-              <UsersIcon aria-hidden="true" className="size-4" />
-            </span>
+            channel.icon ? (
+              <img
+                src={attachmentPreviewUrl(channel.icon)}
+                alt=""
+                className="size-4 shrink-0 rounded-sm object-cover"
+              />
+            ) : (
+              <span
+                title="Групповой чат"
+                className="flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+              >
+                <UsersIcon aria-hidden="true" className="size-4" />
+              </span>
+            )
           ) : serverVoice ? (
             <VoiceChannelIcon channel={channel} server={server} />
           ) : restrictedTextChannel ? (

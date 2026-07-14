@@ -5,7 +5,13 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeftIcon, HeadphonesIcon, UserIcon, UsersIcon } from '#/components/icons'
+import {
+  ChevronLeftIcon,
+  HeadphonesIcon,
+  PhoneIcon,
+  UserIcon,
+  UsersIcon,
+} from '#/components/icons'
 
 import { VoiceChannelShell } from '#/components/voice/voice-channel-shell'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
@@ -13,6 +19,7 @@ import { Button } from '#/components/ui/button'
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { ChannelMemberSidebar } from '#/components/chat/channel-member-sidebar'
 import { DirectMessageProfilePanel } from '#/components/chat/direct-message-profile-panel'
+import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
 import { VoiceCallBanner } from '#/components/voice/voice-call-banner'
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
@@ -33,6 +40,7 @@ import {
   shellColumnHeaderClass,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
+import { attachmentPreviewUrl } from '#/lib/media'
 import { VoiceTextChannelDock } from '#/components/voice/voice-text-channel-dock'
 import { channelHasVoice, isServerVoiceChannel } from '#/lib/channel-voice'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
@@ -141,10 +149,13 @@ export function ChannelView({
   const voice = useVoiceSession()
   const chat = useChannelChat({ channelId, highlightMessageId })
   const [dmProfilePanelOpen, setDmProfilePanelOpen] = useState(true)
+  const [dmProfilePanelWidth, setDmProfilePanelWidth] = useState(320)
+  const [dmProfilePanelResizing, setDmProfilePanelResizing] = useState(false)
   const [fullProfileOpen, setFullProfileOpen] = useState(false)
   const [inlineVoiceStageHeight, setInlineVoiceStageHeight] = useState(
     INLINE_VOICE_STAGE_DEFAULT_HEIGHT,
   )
+  const observedChannelRef = useRef(false)
   const channelContentRef = useRef<HTMLDivElement>(null)
   const inlineVoiceStageRef = useRef<HTMLElement>(null)
 
@@ -170,6 +181,21 @@ export function ChannelView({
     listHighlightMessageId,
     notifyTyping,
   } = chat
+  const syncReady = useSyncStore((state) => state.ready)
+
+  useEffect(() => {
+    if (channel) {
+      observedChannelRef.current = true
+      return
+    }
+    if (!syncReady || !observedChannelRef.current) return
+
+    void navigate({
+      to: routePrefix,
+      search: { tab: 'online' },
+      replace: true,
+    })
+  }, [channel, navigate, routePrefix, syncReady])
 
   useEffect(() => {
     setDmProfilePanelOpen(true)
@@ -251,6 +277,15 @@ export function ChannelView({
 
   const title = getChannelLabel(channel, users, auth.user?._id)
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
+  const dmMessagesBlocked =
+    dmRecipient?.relationship === 'Blocked' ||
+    dmRecipient?.relationship === 'BlockedOther'
+  const dmDisabledPlaceholder =
+    dmRecipient?.relationship === 'Blocked'
+      ? 'Вы заблокировали этого пользователя'
+      : dmRecipient?.relationship === 'BlockedOther'
+        ? 'Пользователь заблокировал вас'
+        : undefined
   const inThisVoiceCall =
     voice.channelId === channelId &&
     voice.status === 'connected'
@@ -389,12 +424,20 @@ export function ChannelView({
             />
           ) : isGroupDirectMessage ? (
             <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span
-                title="Групповой чат"
-                className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
-              >
-                <UsersIcon aria-hidden="true" className="size-5" />
-              </span>
+              {channel.icon ? (
+                <img
+                  src={attachmentPreviewUrl(channel.icon)}
+                  alt=""
+                  className="size-7 shrink-0 rounded-md object-cover"
+                />
+              ) : (
+                <span
+                  title="Групповой чат"
+                  className="flex size-5 shrink-0 items-center justify-center text-muted-foreground"
+                >
+                  <UsersIcon aria-hidden="true" className="size-5" />
+                </span>
+              )}
               <h1 className="truncate font-semibold">{title}</h1>
             </div>
           ) : (
@@ -421,6 +464,9 @@ export function ChannelView({
               <UserIcon className="size-4" />
             </Button>
           ) : null}
+          {channel.channel_type === 'Group' ? (
+            <GroupManagementDialog channel={channel} />
+          ) : null}
           {hasVoice && !inThisVoiceSession ? (
             <>
               {voiceCallIncoming &&
@@ -444,7 +490,11 @@ export function ChannelView({
                 title={voiceActionLabel}
                 onClick={() => void voice.join(channelId)}
               >
-                <HeadphonesIcon className="size-4" />
+                {isDmVoiceCallChannel ? (
+                  <PhoneIcon className="size-4" />
+                ) : (
+                  <HeadphonesIcon className="size-4" />
+                )}
               </Button>
             </>
           ) : null}
@@ -504,6 +554,7 @@ export function ChannelView({
       <div className="flex min-h-0 min-w-0 flex-1">
         <div
           ref={channelContentRef}
+          data-channel-content
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
           {showInlineVoiceStage &&
@@ -667,17 +718,27 @@ export function ChannelView({
 
             <div
               className={cn(
-                'pointer-events-none absolute z-20 flex flex-col items-stretch gap-1',
+                'pointer-events-none absolute z-20 flex flex-col items-stretch gap-1 transition-[right] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
                 FLOATING_BAR_INSET_X_CLASS,
                 FLOATING_BAR_BOTTOM_CLASS,
+                dmProfilePanelResizing && 'transition-none',
               )}
+              style={{
+                right:
+                  isDirectMessage && dmProfilePanelOpen && !dmInCallLayout
+                    ? dmProfilePanelWidth + 8
+                    : 8,
+              }}
             >
               <TypingIndicator channelId={channelId} floating />
               <MessageComposer
                 channel={channel}
                 users={users}
                 floating
-                disabled={!token || auth.gatewayState !== 'connected'}
+                disabled={
+                  !token || auth.gatewayState !== 'connected' || dmMessagesBlocked
+                }
+                disabledPlaceholder={dmDisabledPlaceholder}
                 token={token}
                 replyTo={replyTo}
                 editingMessage={editingMessage}
@@ -701,12 +762,15 @@ export function ChannelView({
             </div>
           </div>
         </div>
-        {isDirectMessage && dmRecipient && dmProfilePanelOpen && !dmInCallLayout ? (
+        {isDirectMessage && dmRecipient && !dmInCallLayout ? (
           <DirectMessageProfilePanel
             user={dmRecipient}
             currentUserId={auth.user?._id}
             token={token}
             aliases={dmAliases}
+            open={dmProfilePanelOpen}
+            onWidthChange={setDmProfilePanelWidth}
+            onResizingChange={setDmProfilePanelResizing}
             onOpenProfile={() => setFullProfileOpen(true)}
           />
         ) : showMemberSidebar && channel.channel_type === 'TextChannel' ? (

@@ -8928,10 +8928,11 @@
             }
           },
           "badges": {
-            "description": "Bitfield of user badges\n\nhttps://docs.rs/syrnike-models/latest/syrnike_models/v0/enum.UserBadges.html",
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0.0
+            "description": "User badges",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserBadge"
+            }
           },
           "status": {
             "description": "User's current status",
@@ -9448,12 +9449,6 @@
                 "$ref": "#/components/schemas/DataUserProfile"
               }
             ],
-            "nullable": true
-          },
-          "badges": {
-            "description": "Bitfield of user badges",
-            "type": "integer",
-            "format": "int32",
             "nullable": true
           },
           "flags": {

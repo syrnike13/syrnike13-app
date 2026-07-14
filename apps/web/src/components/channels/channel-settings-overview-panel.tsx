@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Trash2Icon } from '#/components/icons'
-import type {
-  Channel,
-  DataEditChannel,
-  FieldsChannel,
-} from '@syrnike13/api-types'
+import type { DataEditChannel, FieldsChannel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -45,14 +41,12 @@ import {
   MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
   MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 } from '#/lib/channel-audio-bitrate'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import {
+  isServerVoiceChannel,
+  type ServerChannel,
+} from '#/lib/channel-voice'
 import { syncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
-
-type ServerChannel = Extract<
-  Channel,
-  { channel_type: 'TextChannel' | 'VoiceChannel' }
->
 
 const SLOWMODE_OPTIONS = [
   { value: 0, label: 'Выкл.' },

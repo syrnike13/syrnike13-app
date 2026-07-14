@@ -204,13 +204,13 @@ describe('ServerSettingsPanelContent overview', () => {
     expect(mocks.uploadMediaFile).toHaveBeenNthCalledWith(
       1,
       'session-token',
-      'avatars',
+      'icons',
       icon,
     )
     expect(mocks.uploadMediaFile).toHaveBeenNthCalledWith(
       2,
       'session-token',
-      'backgrounds',
+      'banners',
       banner,
     )
   })

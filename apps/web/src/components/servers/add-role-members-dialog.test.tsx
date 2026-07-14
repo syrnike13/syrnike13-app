@@ -35,6 +35,7 @@ vi.mock('#/features/auth/auth-context', () => ({
 
 vi.mock('#/features/api/servers-api', () => ({
   editServerMember: vi.fn(),
+  fetchServerMembers: vi.fn().mockResolvedValue({ members: [], users: [] }),
 }))
 
 function role(): Role {
@@ -42,6 +43,7 @@ function role(): Role {
     _id: 'role',
     name: 'Kitchen Crew',
     permissions: { a: 0, d: 0 },
+    mentionable: false,
     rank: 5,
   } as Role
 }
@@ -51,6 +53,7 @@ function server(): Server {
     _id: 'server-1',
     name: 'Server',
     owner: 'owner-user',
+    channels: [],
     default_permissions: 0,
     roles: {
       role: role(),

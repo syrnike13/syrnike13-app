@@ -47,6 +47,7 @@ type UserContextMenuVoiceControlsProps = {
   server?: Server
   actorMember?: Member
   actorUserId?: string
+  actorPrivileged?: boolean
   targetMember?: Member
   voiceChannelId?: string
   moveVoiceChannels?: Channel[]
@@ -64,6 +65,7 @@ function canUseVoiceMoveTarget(
   channel: Channel,
   actorMember: Member | undefined,
   actorUserId: string,
+  actorPrivileged = false,
 ) {
   if (!isServerVoiceMoveTarget(channel)) return false
 
@@ -73,6 +75,7 @@ function canUseVoiceMoveTarget(
       channel as Extract<Channel, { channel_type: 'TextChannel' }>,
       actorMember,
       actorUserId,
+      actorPrivileged,
     ),
     ChannelPermission.Connect,
   )
@@ -84,6 +87,7 @@ export function UserContextMenuVoiceControls({
   server,
   actorMember,
   actorUserId,
+  actorPrivileged,
   targetMember,
   voiceChannelId,
   moveVoiceChannels = [],
@@ -95,19 +99,43 @@ export function UserContextMenuVoiceControls({
   )
   const canServerMute =
     server &&
-    canMuteServerMember(server, actorMember, actorUserId, targetMember)
+    canMuteServerMember(
+      server,
+      actorMember,
+      actorUserId,
+      targetMember,
+      actorPrivileged,
+    )
   const canServerDeafen =
     server &&
-    canDeafenServerMember(server, actorMember, actorUserId, targetMember)
+    canDeafenServerMember(
+      server,
+      actorMember,
+      actorUserId,
+      targetMember,
+      actorPrivileged,
+    )
   const canServerMove =
     server &&
     voiceChannelId &&
-    canMoveServerMember(server, actorMember, actorUserId, targetMember)
+    canMoveServerMember(
+      server,
+      actorMember,
+      actorUserId,
+      targetMember,
+      actorPrivileged,
+    )
   const moveTargets =
     server && actorUserId
       ? moveVoiceChannels.filter((channel) => {
           if (channel._id === voiceChannelId) return false
-          return canUseVoiceMoveTarget(server, channel, actorMember, actorUserId)
+          return canUseVoiceMoveTarget(
+            server,
+            channel,
+            actorMember,
+            actorUserId,
+            actorPrivileged,
+          )
         })
       : []
   const serverMuted = targetMember?.can_publish === false
@@ -136,7 +164,7 @@ export function UserContextMenuVoiceControls({
         data,
       )
       const mayBeRemovedTemporaryMember =
-        updated.temporary === true && updated.roles.length === 0
+        updated.temporary === true && (updated.roles?.length ?? 0) === 0
       const memberStillPresent =
         syncStore.getState().members[`${server._id}:${targetMember._id.user}`] !==
         undefined

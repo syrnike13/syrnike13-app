@@ -14,9 +14,13 @@ import {
 import { useAuth } from '#/features/auth/auth-context'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
-import { blockUserRelationship } from '#/features/friends/friend-actions'
+import {
+  blockUserRelationship,
+  unblockBlockedUser,
+} from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { listMutualServers, listServerChannels } from '#/features/sync/selectors'
+import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardText } from '#/lib/clipboard'
 
@@ -42,6 +46,12 @@ export function UserGlobalProfileDialog({
 
   const isSelf = user._id === auth.user?._id
   const canDirectMessage = !isSelf && !user.bot
+  useMutualServerMembersSync(
+    user._id,
+    auth.user?._id,
+    auth.session?.token,
+    open,
+  )
   const mutualServers = useSyncStore((s) =>
     listMutualServers(s, user._id, auth.user?._id),
   )
@@ -80,6 +90,19 @@ export function UserGlobalProfileDialog({
     try {
       await blockUserRelationship(token, user._id)
       close()
+    } catch {
+      // friend-actions already shows the concrete error toast.
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleUnblock() {
+    const token = auth.session?.token
+    if (!token || isSelf) return
+    setBusy(true)
+    try {
+      await unblockBlockedUser(token, user._id)
     } catch {
       // friend-actions already shows the concrete error toast.
     } finally {
@@ -132,6 +155,7 @@ export function UserGlobalProfileDialog({
               onOpenDm={() => void openDm()}
               onCopyId={() => void copyUserId()}
               onBlock={() => void handleBlock()}
+              onUnblock={() => void handleUnblock()}
               onEditProfile={() => {
                 close()
                 openSettings('account')

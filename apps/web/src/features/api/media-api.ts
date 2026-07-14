@@ -41,7 +41,12 @@ export function uploadAttachment(
   })
 }
 
-export type MediaUploadTag = 'avatars' | 'backgrounds' | 'badges'
+export type MediaUploadTag =
+  | 'avatars'
+  | 'backgrounds'
+  | 'icons'
+  | 'banners'
+  | 'badges'
 
 export function uploadMediaFile(
   token: string,

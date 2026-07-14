@@ -11,7 +11,7 @@ use syrnike_models::v0;
 use syrnike_permissions::{calculate_channel_permissions, ChannelPermission, Override};
 use syrnike_result::{create_error, Result};
 
-use crate::routes::servers::audit_mutation;
+use crate::routes::servers::{audit_mutation, hierarchy_policy};
 
 /// # Set Member Permission
 ///
@@ -41,7 +41,15 @@ pub async fn set_user_permissions(
         return Err(create_error!(InvalidOperation));
     };
     let server_id = server.id.clone();
-    db.fetch_member(&server_id, &user_id).await?;
+    let target_member = db.fetch_member(&server_id, &user_id).await?;
+    if target_member.id.user != user.id {
+        hierarchy_policy::ensure_member_below_actor(
+            &user,
+            server,
+            query.get_member_rank(),
+            &target_member,
+        )?;
+    }
 
     let previous_permissions = match &channel {
         Channel::TextChannel {

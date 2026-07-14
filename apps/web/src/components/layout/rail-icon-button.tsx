@@ -1,5 +1,10 @@
-import { Link } from '@tanstack/react-router'
-import type { ComponentProps, ReactNode } from 'react'
+import {
+  useLinkProps,
+  type LinkComponentProps,
+  type RegisteredRouter,
+  type UseLinkPropsOptions,
+} from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 
 import {
   railIconButtonClass,
@@ -51,23 +56,23 @@ export function RailActiveIndicator({
   )
 }
 
-type RailIconButtonProps = {
+type RailIconButtonProps<TTo extends string> = {
   active: boolean
   unread?: boolean
   title: string
   children: ReactNode
-} & ComponentProps<typeof Link>
+} & LinkComponentProps<'a', RegisteredRouter, string, TTo, string, ''>
 
 /** Квадратная кнопка рельса (Home, сервер): единая вёрстка и индикатор активности. */
-export function RailIconButton({
-  active,
-  unread = false,
-  title,
-  children,
-  className,
-  ...linkProps
-}: RailIconButtonProps) {
+export function RailIconButton<TTo extends string>(
+  props: RailIconButtonProps<TTo>,
+) {
+  const { active, unread = false, title, children, ...linkProps } = props
   const indicatorKey = active ? 'active' : unread ? 'unread' : 'idle'
+  const anchorProps = useLinkProps<RegisteredRouter, string, TTo>({
+    ...linkProps,
+    title,
+  } as UseLinkPropsOptions<RegisteredRouter, string, TTo, string, ''>)
 
   return (
     <div className={railIconItemRowClass}>
@@ -85,9 +90,9 @@ export function RailIconButton({
           title={title}
           asChild
         >
-          <Link className={className} {...linkProps}>
+          <a {...anchorProps}>
             {children}
-          </Link>
+          </a>
         </Button>
       </Squircle>
     </div>

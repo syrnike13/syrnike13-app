@@ -225,7 +225,7 @@ describe('ServerSettingsRolesPanel', () => {
       roles: {
         ...syncStore.getState().servers['server-1']!.roles,
         member: {
-          ...syncStore.getState().servers['server-1']!.roles.member,
+          ...syncStore.getState().servers['server-1']!.roles?.member,
           colour: '#ff00aa',
         },
       },

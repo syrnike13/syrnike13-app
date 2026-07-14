@@ -9,6 +9,17 @@ import { syncStore } from '#/features/sync/sync-store'
 
 const interactiveShellMock = vi.hoisted(() => vi.fn())
 
+vi.mock('#/features/auth/auth-context', () => ({
+  useAuth: () => ({
+    session: { token: 'session-token' },
+    user: { _id: 'owner-user', username: 'owner' },
+  }),
+}))
+
+vi.mock('#/features/api/servers-api', () => ({
+  fetchServerMembers: vi.fn().mockResolvedValue({ members: [], users: [] }),
+}))
+
 vi.mock('#/components/user/user-interactive-shell', () => ({
   UserInteractiveShell: (props: {
     user: { _id: string }

@@ -12,10 +12,12 @@ import { getChannelLabel, isDmChannel, isTextChannel } from './channel-label'
 import {
   isIncomingVoiceCall,
   isOutgoingVoiceCall,
-  isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from './voice-call-utils'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import {
+  isServerVoiceChannel,
+  type ServerTextChannel,
+} from '#/lib/channel-voice'
 import { canViewChannel } from '#/lib/permissions'
 import type { ChannelUnreadState, SyncState } from './types'
 
@@ -108,9 +110,6 @@ function hasRelevantVoiceCall(
   currentUserId?: string,
 ) {
   const call = state.voiceCalls[channelId]
-  if (isVoiceCallDismissed(call, state.dismissedVoiceCallKeys)) {
-    return false
-  }
   if (call?.phase === 'active') return true
   if (isVoiceCallRingingDismissed(call, state.dismissedVoiceCallKeys)) {
     return false
@@ -161,7 +160,8 @@ const serverChannelsListCache = new Map<
     server: Server | undefined
     channels: SyncState['channels']
     userId: string | undefined
-    list: Channel[]
+    userPrivileged: boolean
+    list: ServerTextChannel[]
   }
 >()
 
@@ -169,14 +169,16 @@ export function listServerChannels(
   state: SyncState,
   serverId: string,
   userId?: string,
-): Channel[] {
+): ServerTextChannel[] {
   const server = state.servers[serverId]
+  const userPrivileged = Boolean(userId && state.users[userId]?.privileged)
   const cached = serverChannelsListCache.get(serverId)
   if (
     cached &&
     cached.server === server &&
     cached.channels === state.channels &&
-    cached.userId === userId
+    cached.userId === userId &&
+    cached.userPrivileged === userPrivileged
   ) {
     return cached.list
   }
@@ -189,7 +191,7 @@ export function listServerChannels(
       channel.server === serverId,
   )
 
-  let list: Channel[]
+  let list: ServerTextChannel[]
   if (!server?.channels?.length) {
     list = channels.sort((a, b) => {
       const aVoice = isServerVoiceChannel(a)
@@ -213,7 +215,13 @@ export function listServerChannels(
   if (userId && server) {
     const member = state.members[`${serverId}:${userId}`]
     list = list.filter((channel) =>
-      canViewChannel(server, channel, member, userId),
+      canViewChannel(
+        server,
+        channel,
+        member,
+        userId,
+        userPrivileged,
+      ),
     )
   }
 
@@ -221,6 +229,7 @@ export function listServerChannels(
     server,
     channels: state.channels,
     userId,
+    userPrivileged,
     list,
   })
   return list

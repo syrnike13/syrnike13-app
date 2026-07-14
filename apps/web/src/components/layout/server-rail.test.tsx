@@ -20,6 +20,21 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   )),
+  useLinkProps: ({
+    to,
+    params,
+    search: _search,
+    ...props
+  }: {
+    to: string
+    params?: { channelId?: string }
+    search?: Record<string, unknown>
+  } & AnchorHTMLAttributes<HTMLAnchorElement>) => ({
+    ...props,
+    href: params?.channelId
+      ? to.replace('$channelId', params.channelId)
+      : to,
+  }),
   useMatch: ({ from }: { from: string }) =>
     from === '/app/' || from === '/m/'
       ? { routeId: from, params: {}, search: {} }

@@ -14,15 +14,26 @@ export function canManageMemberRoles(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member,
+  actorPrivileged = false,
 ): boolean {
-  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
+  if (
+    !actorPrivileged &&
+    server.owner !== actorUserId &&
+    actorUserId === targetMember._id.user
+  ) {
     return false
   }
 
-  if (server.owner === actorUserId) return true
+  if (server.owner === actorUserId || actorPrivileged) return true
 
   return listServerRoles(server).some((role) =>
-    canAssignRole(server, actorMember, actorUserId, role.rank ?? 0),
+    canAssignRole(
+      server,
+      actorMember,
+      actorUserId,
+      role.rank ?? 0,
+      actorPrivileged,
+    ),
   )
 }
 
@@ -32,8 +43,13 @@ export function canEditAnyMemberRole(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member,
+  actorPrivileged = false,
 ): boolean {
-  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
+  if (
+    !actorPrivileged &&
+    server.owner !== actorUserId &&
+    actorUserId === targetMember._id.user
+  ) {
     return false
   }
 
@@ -46,6 +62,7 @@ export function canEditAnyMemberRole(
       targetMember,
       role,
       !assigned.has(role._id),
+      actorPrivileged,
     ),
   )
 }
@@ -57,8 +74,13 @@ export function canToggleMemberRole(
   targetMember: Member,
   role: Role,
   enabled: boolean,
+  actorPrivileged = false,
 ): boolean {
-  if (server.owner !== actorUserId && actorUserId === targetMember._id.user) {
+  if (
+    !actorPrivileged &&
+    server.owner !== actorUserId &&
+    actorUserId === targetMember._id.user
+  ) {
     return false
   }
 
@@ -68,9 +90,16 @@ export function canToggleMemberRole(
       actorMember,
       actorUserId,
       role.rank ?? 0,
+      actorPrivileged,
     )
   }
 
-  if (server.owner === actorUserId) return true
-  return canAssignRole(server, actorMember, actorUserId, role.rank ?? 0)
+  if (server.owner === actorUserId || actorPrivileged) return true
+  return canAssignRole(
+    server,
+    actorMember,
+    actorUserId,
+    role.rank ?? 0,
+    actorPrivileged,
+  )
 }

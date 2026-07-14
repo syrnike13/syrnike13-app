@@ -8,7 +8,7 @@ use syrnike_database::{
 };
 use syrnike_result::Result;
 
-pub(crate) async fn send_active_group_voice_call_to_new_member(
+pub(crate) async fn send_group_voice_call_to_new_member(
     member_id: &str,
     channel: &Channel,
 ) -> Result<()> {
@@ -16,7 +16,23 @@ pub(crate) async fn send_active_group_voice_call_to_new_member(
         return Ok(());
     };
 
-    if call.phase != VoiceCallPhase::Active {
+    if call.phase == VoiceCallPhase::Ringing {
+        let mut recipients = call.ringing_recipients;
+        if !recipients.iter().any(|recipient| recipient == member_id) {
+            recipients.push(member_id.to_string());
+        }
+
+        EventV1::VoiceCallRinging {
+            channel_id: call.channel_id,
+            initiator_id: call.initiator_id,
+            started_at: call.started_at,
+            expires_at: call.expires_at.unwrap_or(call.started_at),
+            recipients,
+            declined_recipients: call.declined_recipients,
+        }
+        .private(member_id.to_string())
+        .await;
+
         return Ok(());
     }
 

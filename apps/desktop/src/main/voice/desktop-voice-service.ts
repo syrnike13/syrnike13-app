@@ -339,16 +339,22 @@ export class DesktopVoiceService {
 }
 
 export function desktopVoiceWebSocketUrl() {
-  return `wss://${DESKTOP_RELEASE_METADATA.publicHost}/ws`
+  return typeof __DESKTOP_VOICE_WS_URL__ === 'string'
+    ? __DESKTOP_VOICE_WS_URL__
+    : `wss://${DESKTOP_RELEASE_METADATA.publicHost}/ws`
+}
+
+function desktopVoiceApiUrl() {
+  return typeof __DESKTOP_API_URL__ === 'string'
+    ? __DESKTOP_API_URL__
+    : `https://${DESKTOP_RELEASE_METADATA.publicHost}/api`
 }
 
 let voiceNodePromise: Promise<string> | null = null
 
 async function resolveDesktopVoiceNode() {
   if (!voiceNodePromise) {
-    voiceNodePromise = fetch(
-      `https://${DESKTOP_RELEASE_METADATA.publicHost}/api`,
-    )
+    voiceNodePromise = fetch(desktopVoiceApiUrl())
       .then(async (response) => {
         if (!response.ok) throw new Error('Voice node discovery failed')
         const root = (await response.json()) as {

@@ -334,11 +334,18 @@ impl Role {
         id: String,
         name: String,
     ) -> Result<Self> {
+        let rank = match server.roles.values().map(|role| role.rank).max() {
+            Some(rank) => rank
+                .checked_add(1)
+                .ok_or_else(|| create_error!(InvalidOperation))?,
+            None => 0,
+        };
+
         let role = Role {
             id,
             name,
             // Rank of the new role should be below the lowest role
-            rank: server.roles.len() as i64,
+            rank,
             colour: None,
             hoist: false,
             mentionable: true,

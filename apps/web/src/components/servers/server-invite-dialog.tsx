@@ -93,7 +93,12 @@ export function ServerInviteDialog({
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
   const canManageServer = server
     ? hasChannelPermission(
-        calculateServerPermissions(server, member, auth.user?._id),
+        calculateServerPermissions(
+          server,
+          member,
+          auth.user?._id,
+          auth.user?.privileged,
+        ),
         ChannelPermission.ManageServer,
       )
     : false
@@ -119,10 +124,22 @@ export function ServerInviteDialog({
     () =>
       server
         ? textChannels.filter((channel) =>
-            canInviteToChannel(server, channel, member, auth.user?._id),
+            canInviteToChannel(
+              server,
+              channel,
+              member,
+              auth.user?._id,
+              auth.user?.privileged,
+            ),
           )
         : [],
-    [auth.user?._id, member, server, textChannels],
+    [
+      auth.user?._id,
+      auth.user?.privileged,
+      member,
+      server,
+      textChannels,
+    ],
   )
   const inviteChannelKey = inviteChannels.map((channel) => channel._id).join('\0')
   const defaultChannelId = inviteChannels[0]?._id

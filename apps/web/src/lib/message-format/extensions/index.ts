@@ -51,6 +51,7 @@ export function createMessageExtensions(
       Placeholder.configure({
         placeholder: options.placeholder,
         emptyEditorClass: 'is-editor-empty',
+        showOnlyWhenEditable: false,
       }),
     )
   }

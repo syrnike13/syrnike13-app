@@ -222,11 +222,18 @@ stageArtifacts(desktopStageRoot, sources, manifest)
 console.info(`[desktop-native] staged DLL runtime for Electron ${electronVersion}`)
 
 function run(command, commandArgs) {
-  const executable = process.platform === 'win32' ? `${command}.cmd` : command
-  const result = spawnSync(executable, commandArgs, {
+  const useDirectPnpmLauncher = process.platform === 'win32' && command === 'pnpm'
+  if (useDirectPnpmLauncher && !process.env.npm_execpath) {
+    throw new Error('npm_execpath is required to launch pnpm without cmd.exe')
+  }
+  const executable = useDirectPnpmLauncher ? process.execPath : command
+  const spawnArgs = useDirectPnpmLauncher
+    ? [process.env.npm_execpath, ...commandArgs]
+    : commandArgs
+  const result = spawnSync(executable, spawnArgs, {
     cwd: packageRoot,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    shell: false,
     env: {
       ...process.env,
       ...(windowsCmakeBin

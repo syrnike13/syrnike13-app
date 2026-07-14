@@ -9,19 +9,27 @@ const channels = {
     desktopChannel: 'stable',
     webScript: 'dev:prod',
   },
+  local: {
+    desktopChannel: 'stable',
+    webScript: 'dev:local',
+    backendMode: 'local',
+  },
 }
 
 const mode = process.argv[2]
 const channel = channels[mode]
 
 if (!channel) {
-  console.error('Usage: node scripts/run-dev-channel.mjs <nightly|prod>')
+  console.error('Usage: node scripts/run-dev-channel.mjs <nightly|prod|local>')
   process.exit(1)
 }
 
 const env = {
   ...process.env,
   SYRNIKE_DESKTOP_CHANNEL: channel.desktopChannel,
+  ...(channel.backendMode
+    ? { SYRNIKE_DESKTOP_BACKEND_MODE: channel.backendMode }
+    : {}),
 }
 
 if (process.env.SYRNIKE_DESKTOP_DEV_DRY_RUN === '1') {

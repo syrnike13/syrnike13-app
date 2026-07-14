@@ -403,9 +403,13 @@ describe('UserContextMenuContent', () => {
     })
   })
 
-  it('keeps only the clicked role disabled while a role edit is pending', () => {
+  it('disables every role while a member role edit is pending', async () => {
+    let resolveEdit: ((member: unknown) => void) | undefined
     serverApiMocks.editServerMember.mockImplementation(
-      () => new Promise(() => {}),
+      () =>
+        new Promise((resolve) => {
+          resolveEdit = resolve
+        }),
     )
     seedRoleToggleServer()
 
@@ -413,13 +417,22 @@ describe('UserContextMenuContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Member/ }))
 
-    expect(screen.getByRole('button', { name: /Member/ }).disabled).toBe(true)
-    expect(screen.getByRole('button', { name: /Assignable/ }).disabled).toBe(
-      false,
-    )
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Member/ }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ }).disabled).toBe(true)
     expect(
       screen.getByRole('button', { name: /Assignable/ }).className,
     ).not.toContain('data-[disabled]:bg-accent/45')
+
+    resolveEdit?.({
+      _id: { server: 'server-1', user: '01JVOICETARGET0000001' },
+      joined_at: '2024-01-01T00:00:00Z',
+      roles: [],
+    })
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ }).disabled).toBe(
+        false,
+      )
+    })
   })
 
   it('shows only assignable roles and disabled assigned roles in the server user context menu', () => {
@@ -481,11 +494,11 @@ describe('UserContextMenuContent', () => {
     expect(rolesTrigger.className).toContain('svg:last-child')
     expect(rolesTrigger.className).toContain('gap-2')
 
-    const assignable = screen.getByRole('button', { name: /Assignable/ })
+    const assignable = screen.getByRole<HTMLButtonElement>('button', { name: /Assignable/ })
     expect(assignable.disabled).toBe(false)
     expect(assignable.className).toContain('grid-cols-[1rem_minmax(0,1fr)_1rem]')
 
-    const assignedRemovable = screen.getByRole('button', {
+    const assignedRemovable = screen.getByRole<HTMLButtonElement>('button', {
       name: /Assigned Removable/,
     })
     expect(assignedRemovable.disabled).toBe(false)

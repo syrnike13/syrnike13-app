@@ -5,6 +5,8 @@ import { SearchIcon } from '#/components/icons'
 import { Input } from '#/components/ui/input'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserInteractiveShell } from '#/components/user/user-interactive-shell'
+import { useAuth } from '#/features/auth/auth-context'
+import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import {
   listServerMembers,
   memberRoleEntries,
@@ -36,6 +38,8 @@ function formatJoinedAt(value: string | undefined) {
 export function ServerSettingsMembersPanel({
   serverId,
 }: ServerSettingsMembersPanelProps) {
+  const auth = useAuth()
+  useServerMembersSync(serverId, auth.session?.token)
   const server = useSyncStore((s) => s.servers[serverId])
   const members = useSyncStore((s) => listServerMembers(s, serverId))
   const [query, setQuery] = useState('')

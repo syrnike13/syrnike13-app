@@ -208,6 +208,7 @@ export function buildCommandItems({
 export function messageSearchChannelIds(
   state: SyncState,
   activeChannelId?: string,
+  currentUserId?: string,
   limit = 5,
 ): string[] {
   const ids: string[] = []

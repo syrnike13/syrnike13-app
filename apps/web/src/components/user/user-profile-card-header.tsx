@@ -84,9 +84,15 @@ export function UserProfileCardHeader({
         server &&
           member &&
           actorUserId &&
-          canEditAnyMemberRole(server, actorMember, actorUserId, member),
+          canEditAnyMemberRole(
+            server,
+            actorMember,
+            actorUserId,
+            member,
+            auth.user?.privileged,
+          ),
       ),
-    [actorMember, actorUserId, member, server],
+    [actorMember, actorUserId, auth.user?.privileged, member, server],
   )
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
@@ -117,6 +123,7 @@ export function UserProfileCardHeader({
         member,
         role,
         false,
+        auth.user?.privileged,
       )
     ) {
       return
@@ -322,6 +329,7 @@ export function UserProfileCardHeader({
                   member,
                   serverRole!,
                   false,
+                  auth.user?.privileged,
                 )
               const removing = removingRoleId === role.id
 
