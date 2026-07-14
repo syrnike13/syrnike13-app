@@ -2,11 +2,19 @@ import type { DesktopOs } from '@syrnike13/platform'
 
 /** Фон навигации: рельс, сайдбар, title bar. */
 export const shellNavSurface =
-  'bg-background text-foreground' as const
+  'theme-surface-navigation gradient-surface-navigation text-foreground' as const
+
+/** Самый лёгкий слой каркаса: системный хром и рельс серверов. */
+export const shellLowestSurface =
+  'theme-surface-lowest gradient-surface-lowest text-foreground' as const
 
 /** Фон основного контента (чат, канал). */
 export const shellContentSurface =
-  'bg-card text-card-foreground' as const
+  'theme-surface-content gradient-surface-content text-card-foreground' as const
+
+/** Самая контрастная структурная поверхность: шапки каналов и панелей. */
+export const shellChromeSurface =
+  'theme-surface-content gradient-surface-chrome text-card-foreground' as const
 
 /** Высота кастомной шапки окна под каждую ОС (px). */
 export const SHELL_TITLEBAR_HEIGHT_PX = {
@@ -132,4 +140,4 @@ export const floatingBarRingProps = {
 
 /** Поверхность плавающей таблетки без CSS-radius. */
 export const floatingBarSurfaceClass =
-  'w-full overflow-hidden bg-secondary text-secondary-foreground' as const
+  'gradient-surface-floating w-full overflow-hidden bg-secondary text-secondary-foreground' as const

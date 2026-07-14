@@ -105,7 +105,7 @@ export function ServerChannelSearchPopover({
         {variant === 'strip' ? (
           <button
             type="button"
-            className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+            className="gradient-surface-input flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
           >
             <SearchIcon className="size-4 shrink-0" />
             <span className="truncate">Поиск</span>

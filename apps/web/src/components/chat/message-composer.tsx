@@ -510,7 +510,7 @@ export function MessageComposer({
         'relative flex flex-col',
         floating
           ? 'pointer-events-auto gap-2'
-          : 'gap-2 border-t border-border bg-card p-3 text-card-foreground',
+          : 'gradient-surface-raised gap-2 border-t border-border bg-card p-3 text-card-foreground',
       )}
       onDragEnter={(event) => {
         event.preventDefault()

@@ -11,6 +11,7 @@ import { SettingsProfilePanel } from '#/components/settings/settings-profile-pan
 import { SettingsVoicePanel } from '#/components/settings/settings-voice-panel'
 import { SettingsSessionsPanel } from '#/components/settings/settings-sessions-panel'
 import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
+import { CustomThemeEditor } from '#/components/appearance/custom-theme-editor'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
 import { useAppearance } from '#/features/appearance/appearance-context'
 import { getThemeById, themeSupportsColorMode } from '#/features/appearance/theme-registry'
@@ -233,13 +234,33 @@ export function SettingsAccountPanel() {
 }
 
 export function SettingsAppearancePanel() {
-  const { settings, setColorMode } = useAppearance()
+  const {
+    gradientCustomized,
+    previewGradient,
+    resolvedGradient,
+    setColorMode,
+    setGradient,
+    settings,
+  } = useAppearance()
   const activeTheme = getThemeById(settings.themeId)
   const supportsColorMode = themeSupportsColorMode(activeTheme)
 
   return (
     <div className="space-y-6">
-      <SettingsBlock title="Палитра">
+      {activeTheme.kind === 'gradient' && activeTheme.customizable ? (
+        <SettingsBlock
+          title="Настройка градиента"
+          description="Один градиент проходит через всё приложение, а поверхности автоматически сохраняют контраст."
+        >
+          <CustomThemeEditor
+            gradient={resolvedGradient}
+            customized={gradientCustomized}
+            onPreview={previewGradient}
+            onChange={setGradient}
+          />
+        </SettingsBlock>
+      ) : null}
+      <SettingsBlock title="Темы">
         <ThemePickerGrid />
       </SettingsBlock>
       <SettingsBlock title="Режим отображения">

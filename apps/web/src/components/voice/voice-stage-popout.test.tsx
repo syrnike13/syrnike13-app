@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { StrictMode } from 'react'
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
@@ -38,6 +38,8 @@ describe('VoiceStagePopout', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    delete document.documentElement.dataset.theme
+    delete document.documentElement.dataset.themeGradient
   })
 
   it('renders into the child window without closing it on React cleanup', () => {
@@ -83,5 +85,38 @@ describe('VoiceStagePopout', () => {
 
     expect(close).toHaveBeenCalledTimes(1)
     expect(childWindow.close).not.toHaveBeenCalled()
+  })
+
+  it('keeps gradient appearance attributes in sync while open', async () => {
+    vi.useRealTimers()
+    const { childDocument, childWindow } = childWindowStub()
+    document.documentElement.dataset.theme = 'gradient-demo'
+    document.documentElement.dataset.themeGradient = 'aurora'
+
+    const { unmount } = render(
+      <VoiceStagePopout
+        childWindow={childWindow}
+        title="Demo"
+        onClose={vi.fn()}
+      >
+        <span>Stream</span>
+      </VoiceStagePopout>,
+    )
+
+    expect(childDocument.documentElement.dataset.themeGradient).toBe('aurora')
+
+    document.documentElement.dataset.themeGradient = 'sunset'
+    await waitFor(() => {
+      expect(childDocument.documentElement.dataset.themeGradient).toBe('sunset')
+    })
+
+    delete document.documentElement.dataset.themeGradient
+    await waitFor(() => {
+      expect(
+        childDocument.documentElement.hasAttribute('data-theme-gradient'),
+      ).toBe(false)
+    })
+
+    unmount()
   })
 })

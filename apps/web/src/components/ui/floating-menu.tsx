@@ -43,7 +43,7 @@ export function FloatingMenu({
   return createPortal(
     <div
       className={cn(
-        'z-[100] min-w-[11rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
+        'gradient-surface-floating z-[100] min-w-[11rem] rounded-md border bg-popover p-1 text-popover-foreground shadow-md',
         className,
       )}
       style={{ position: 'fixed', left: x, top: y }}

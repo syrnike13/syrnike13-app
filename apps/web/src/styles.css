@@ -29,6 +29,7 @@
   --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
+  --theme-toast-surface: var(--popover);
 }
 
 @theme inline {
@@ -91,6 +92,10 @@ html,
 body,
 #app {
   min-height: 100%;
+}
+
+html {
+  background: var(--theme-backdrop, var(--background)) fixed 0 0 / cover;
 }
 
 @layer base {
@@ -202,6 +207,93 @@ body,
       transition: none;
     }
   }
+}
+
+.theme-surface-lowest {
+  background: var(--theme-surface-lowest, var(--background));
+}
+
+.theme-surface-app-frame {
+  background: var(--theme-surface-app-frame, var(--background));
+}
+
+.theme-surface-navigation {
+  background: var(--theme-surface-navigation, var(--sidebar));
+}
+
+.theme-surface-content {
+  background: var(--theme-surface-content, var(--card));
+}
+
+.theme-surface-chrome {
+  background: var(--theme-surface-chrome, var(--card));
+}
+
+.theme-surface-raised {
+  background: var(--theme-surface-raised, var(--card));
+}
+
+.theme-surface-input {
+  background: var(--theme-surface-input, var(--input));
+}
+
+.theme-surface-highest {
+  background: var(--theme-surface-highest, var(--input));
+}
+
+.theme-surface-floating {
+  background: var(--theme-surface-floating, var(--secondary));
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) body {
+  background: transparent;
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) {
+  --theme-toast-surface: var(--theme-surface-floating);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-navigation {
+  background: var(--theme-surface-navigation);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-lowest {
+  background: var(--theme-surface-lowest);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-content {
+  background: var(--theme-surface-content);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-chrome {
+  background: var(--theme-surface-chrome);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-raised {
+  background: var(--theme-surface-raised);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-card {
+  background: var(--theme-surface-raised);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-input {
+  background: var(--theme-surface-input);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-floating {
+  background: var(--theme-surface-floating);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) :is(
+    .gradient-surface-raised,
+    .gradient-surface-floating
+  ) {
+  backdrop-filter: blur(14px) saturate(115%);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-stage-empty {
+  color: var(--foreground);
 }
 
 @keyframes gateway-logo-wobble {

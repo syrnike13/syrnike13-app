@@ -160,7 +160,7 @@ function ProfileStatusLivePreview({
   bannerUrl: string | null
 }) {
   return (
-    <div className="overflow-visible rounded-xl border border-border bg-card shadow-sm">
+    <div className="gradient-surface-card overflow-visible rounded-xl border border-border bg-card shadow-sm">
       <div className="relative overflow-visible">
         <div
           className={userProfileBannerClassName(
@@ -239,13 +239,13 @@ function ProfileStatusEmptyBubble() {
     <div className="relative">
       <span
         aria-hidden
-        className="absolute -top-3.5 -left-0.5 size-2.5 rounded-full bg-popover shadow-sm transition-colors group-hover/status-trigger:bg-muted"
+        className="gradient-surface-floating absolute -top-3.5 -left-0.5 size-2.5 rounded-full bg-popover shadow-sm transition-colors group-hover/status-trigger:bg-muted"
       />
       <span
         aria-hidden
-        className="absolute -top-1.5 left-1.5 size-5 rounded-full bg-popover shadow-sm transition-colors group-hover/status-trigger:bg-muted"
+        className="gradient-surface-floating absolute -top-1.5 left-1.5 size-5 rounded-full bg-popover shadow-sm transition-colors group-hover/status-trigger:bg-muted"
       />
-      <div className="relative flex w-max items-center gap-1.5 rounded-2xl bg-popover px-3 py-1.5 text-sm text-muted-foreground shadow-md transition-colors group-hover/status-trigger:bg-muted group-hover/status-trigger:text-foreground">
+      <div className="gradient-surface-floating relative flex w-max items-center gap-1.5 rounded-2xl bg-popover px-3 py-1.5 text-sm text-muted-foreground shadow-md transition-colors group-hover/status-trigger:bg-muted group-hover/status-trigger:text-foreground">
         <PlusIcon
           className="size-3.5 shrink-0 opacity-70 group-hover/status-trigger:opacity-100"
           aria-hidden

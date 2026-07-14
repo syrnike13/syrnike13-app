@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_THEME_ID } from '@syrnike13/platform'
+import {
+  DEFAULT_APPEARANCE_SETTINGS,
+  DEFAULT_THEME_ID,
+} from '@syrnike13/platform'
 
 import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
 import {
   allThemeCssVariables,
   getThemeById,
+  getThemeTokens,
 } from '#/features/appearance/theme-registry'
 
 describe('getDefaultThemeCss', () => {
@@ -18,7 +22,17 @@ describe('getDefaultThemeCss', () => {
       `--destructive-contrast: ${theme.variants.dark!['destructive-contrast']};`,
     )
     expect(css).toContain(
-      `--background: ${allThemeCssVariables(theme.variants.light!)['--background']};`,
+      `--background: ${
+        allThemeCssVariables(
+          getThemeTokens(
+            { ...DEFAULT_APPEARANCE_SETTINGS, colorMode: 'light' },
+            false,
+          ),
+        )['--background']
+      };`,
+    )
+    expect(css).toContain(
+      `--theme-surface-content: ${theme.variants.light!.card};`,
     )
   })
 })

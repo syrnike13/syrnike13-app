@@ -144,7 +144,7 @@ export function MentionSuggestionMenu({
     <div
       ref={menuRef}
       className={cn(
-        'pointer-events-auto fixed z-[300] flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded-lg border border-shell-divider p-1 shadow-lg ring-1 ring-shell-divider',
+        'gradient-surface-floating pointer-events-auto fixed z-[300] flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded-lg border border-shell-divider p-1 shadow-lg ring-1 ring-shell-divider',
         surfaceClassName,
       )}
       style={{

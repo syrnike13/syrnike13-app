@@ -1,6 +1,6 @@
 export function ActiveNowPanel() {
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-l border-shell-divider bg-card xl:flex">
+    <aside className="gradient-surface-content hidden w-60 shrink-0 flex-col border-l border-shell-divider bg-card xl:flex">
       <header className="border-b px-4 py-3">
         <h2 className="text-sm font-semibold">Сейчас активны</h2>
       </header>

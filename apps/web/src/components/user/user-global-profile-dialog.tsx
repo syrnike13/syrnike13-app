@@ -123,7 +123,7 @@ export function UserGlobalProfileDialog({
         </DialogDescription>
 
         <div className="flex min-h-0 flex-1 overflow-hidden p-6">
-          <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background ">
+          <aside className="gradient-surface-raised flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background ">
             <UserGlobalProfileSidebar
               user={user}
               serverId={serverId}
@@ -139,7 +139,7 @@ export function UserGlobalProfileDialog({
             />
           </aside>
 
-          <div className="flex min-w-0 flex-1 flex-col bg-background">
+          <div className="gradient-surface-content flex min-w-0 flex-1 flex-col bg-background">
             <UserGlobalProfileSections
               mutualServers={mutualServers}
               busy={busy}

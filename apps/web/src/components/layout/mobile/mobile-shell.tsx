@@ -71,7 +71,7 @@ export function MobileShell() {
 
   if (serverSettingsActive) {
     return (
-      <div className="fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
+      <div className="theme-surface-app-frame fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden text-foreground">
         <Outlet />
       </div>
     )
@@ -82,7 +82,7 @@ export function MobileShell() {
   const showHomeSidebar = onHomeRoute && !selectedServerId
 
   return (
-    <div className="flex h-svh flex-col bg-background text-foreground">
+    <div className="theme-surface-lowest gradient-surface-lowest flex h-svh flex-col text-foreground">
       <ConnectionStatusBanner />
 
       {showChatFullscreen ? (
@@ -124,7 +124,7 @@ export function MobileShell() {
       <MobileVoiceFloatingTile />
 
       {settingsChannelId && activeChannelId ? (
-        <div className="fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
+        <div className="theme-surface-app-frame fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden text-foreground">
           <ChannelSettingsPage
             channelId={settingsChannelId}
             hostChannelId={activeChannelId}

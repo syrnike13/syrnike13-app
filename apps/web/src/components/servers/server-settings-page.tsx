@@ -191,10 +191,10 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
 
   return (
     <div
-      className="relative grid h-full min-h-0 w-full overflow-hidden bg-background"
+      className="gradient-surface-content relative grid h-full min-h-0 w-full overflow-hidden bg-background"
       style={{ gridTemplateColumns: SETTINGS_GRID_COLUMNS }}
     >
-      <aside className="flex min-h-0 flex-col border-r border-border bg-muted/40">
+      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-muted/40">
         <div
           className="ml-auto flex h-full min-w-0 flex-col"
           style={{ width: SETTINGS_NAV_WIDTH }}

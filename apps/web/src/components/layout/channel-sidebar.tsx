@@ -49,7 +49,7 @@ export function ChannelSidebar({
           : undefined
       }
     >
-      <header className={cn(shellColumnHeaderClass, 'bg-background px-3')}>
+      <header className={cn(shellColumnHeaderClass, 'bg-transparent px-3')}>
         {selectedServerId ? (
           <ServerHeaderMenu
             serverId={selectedServerId}

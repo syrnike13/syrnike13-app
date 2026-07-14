@@ -117,7 +117,7 @@ export function MobileVoiceChannelDrawer() {
             {chatOpen ? (
               <div
                 className={cn(
-                  'flex min-h-0 flex-col border-t border-shell-divider bg-background',
+                  'gradient-surface-content flex min-h-0 flex-col border-t border-shell-divider bg-background',
                   fullscreen ? 'flex-1' : 'flex-1',
                 )}
               >

@@ -85,7 +85,7 @@ export function DirectMessageProfilePanel({
   return (
     <aside
       aria-label="Профиль пользователя"
-      className="relative flex min-h-0 shrink-0 flex-col border-l border-shell-divider bg-card"
+      className="theme-surface-content relative flex min-h-0 shrink-0 flex-col border-l border-shell-divider"
       style={{
         width: panelWidth,
         minWidth: MIN_PROFILE_PANEL_WIDTH,

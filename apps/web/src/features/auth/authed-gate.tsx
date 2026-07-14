@@ -108,7 +108,7 @@ function ProfileLoadErrorScreen({
   retry: () => Promise<void>
 }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background px-6 text-foreground">
+    <div className="gradient-surface-content fixed inset-0 z-[200] flex items-center justify-center bg-background px-6 text-foreground">
       <div className="flex w-full max-w-md flex-col items-center text-center">
         <p className="text-xs font-bold tracking-[0.12em] text-foreground uppercase">
           Профиль недоступен

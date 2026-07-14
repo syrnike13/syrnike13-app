@@ -2,7 +2,12 @@ import { CheckIcon } from '#/components/icons'
 import type { AppearanceSettings } from '@syrnike13/platform'
 
 import type { ThemeDefinition } from '#/features/appearance/theme-registry'
-import { previewVariantForTheme, themePreviewColors } from '#/features/appearance/theme-registry'
+import {
+  previewVariantForTheme,
+  themeGradientForPreview,
+  themePreviewColors,
+} from '#/features/appearance/theme-registry'
+import { themeGradientCss } from '#/features/appearance/theme-surfaces'
 import { cn } from '#/lib/utils'
 
 type ThemePreviewCardProps = {
@@ -22,6 +27,11 @@ export function ThemePreviewCard({
 }: ThemePreviewCardProps) {
   const variant = previewVariantForTheme(theme, settings, prefersDark)
   const preview = themePreviewColors(theme, variant)
+  const gradient = themeGradientForPreview(
+    theme,
+    variant,
+    active ? settings.gradient : null,
+  )
 
   return (
     <button
@@ -37,7 +47,11 @@ export function ThemePreviewCard({
       <div className="flex gap-1.5">
         <span
           className="h-8 flex-1 rounded-md border border-black/10"
-          style={{ backgroundColor: preview.background }}
+          style={{
+            backgroundColor: preview.background,
+            backgroundImage:
+              theme.kind === 'gradient' ? themeGradientCss(gradient) : undefined,
+          }}
           aria-hidden
         />
         <span

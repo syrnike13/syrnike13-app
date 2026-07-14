@@ -79,7 +79,7 @@ export function DesktopShell() {
 
   if (serverSettingsMatch) {
     return (
-      <div className="fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
+      <div className="theme-surface-app-frame fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden text-foreground">
         <Outlet />
       </div>
     )
@@ -92,7 +92,7 @@ export function DesktopShell() {
   )
 
   return (
-    <div className="flex h-svh flex-col bg-background text-foreground">
+    <div className="theme-surface-lowest gradient-surface-lowest flex h-svh flex-col text-foreground">
       <ConnectionStatusBanner />
       <ShellTitleBar />
       <div className="relative flex min-h-0 flex-1">
@@ -111,7 +111,7 @@ export function DesktopShell() {
       </div>
 
       {settingsChannelId && activeChannelId ? (
-        <div className="fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
+        <div className="theme-surface-app-frame fixed inset-0 z-50 flex h-svh w-full flex-col overflow-hidden text-foreground">
           <ChannelSettingsPage
             channelId={settingsChannelId}
             hostChannelId={activeChannelId}

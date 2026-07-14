@@ -1,9 +1,15 @@
-import { DEFAULT_THEME_ID } from '@syrnike13/platform'
+import {
+  DEFAULT_APPEARANCE_SETTINGS,
+  DEFAULT_THEME_ID,
+} from '@syrnike13/platform'
 
 import {
   allThemeCssVariables,
   getThemeById,
+  getThemeSurfaceVariables,
+  getThemeTokens,
 } from '#/features/appearance/theme-registry'
+import { allThemeSurfaceCssVariables } from '#/features/appearance/theme-surfaces'
 
 function cssVariablesBlock(
   selector: string,
@@ -19,6 +25,14 @@ function cssVariablesBlock(
 /** CSS fallback до applyThemeToDocument: цвета дефолтной темы из каталога. */
 export function getDefaultThemeCss(): string {
   const theme = getThemeById(DEFAULT_THEME_ID)
+  const lightSettings = {
+    ...DEFAULT_APPEARANCE_SETTINGS,
+    colorMode: 'light' as const,
+  }
+  const darkSettings = {
+    ...DEFAULT_APPEARANCE_SETTINGS,
+    colorMode: 'dark' as const,
+  }
   const light = theme.variants.light
   const dark = theme.variants.dark
 
@@ -27,7 +41,17 @@ export function getDefaultThemeCss(): string {
   }
 
   return [
-    cssVariablesBlock(':root', allThemeCssVariables(light)),
-    cssVariablesBlock('.dark', allThemeCssVariables(dark)),
+    cssVariablesBlock(':root', {
+      ...allThemeCssVariables(getThemeTokens(lightSettings, false)),
+      ...allThemeSurfaceCssVariables(
+        getThemeSurfaceVariables(lightSettings, false),
+      ),
+    }),
+    cssVariablesBlock('.dark', {
+      ...allThemeCssVariables(getThemeTokens(darkSettings, true)),
+      ...allThemeSurfaceCssVariables(
+        getThemeSurfaceVariables(darkSettings, true),
+      ),
+    }),
   ].join('\n\n')
 }

@@ -5,6 +5,7 @@ import {
   type ThemeSemanticPalette,
   type ThemeTokens,
 } from '#/features/appearance/theme-tokens'
+import type { AppearanceGradientSettings } from '@syrnike13/platform'
 
 /** Яркий коралловый акцент danger (#ff5c5c); brand-locked. */
 const SYRNIKE_DESTRUCTIVE = 'oklch(0.7040 0.1910 22.2160)' as const
@@ -561,7 +562,10 @@ export type ThemeDefinition = {
   id: string
   name: string
   description?: string
+  kind: 'solid' | 'gradient'
+  customizable?: boolean
   variants: Partial<Record<ThemeVariant, ThemeTokens>>
+  gradients?: Partial<Record<ThemeVariant, AppearanceGradientSettings>>
 }
 
 export const THEME_CATALOG: ThemeDefinition[] = [
@@ -569,6 +573,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'syrnike',
     name: 'Сырники',
     description: 'Базовая фирменная тема',
+    kind: 'solid',
     variants: {
       light: tokensFromPalette(SYRNIKE_LIGHT),
       dark: tokensFromPalette(SYRNIKE_DARK),
@@ -578,6 +583,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'lug',
     name: 'Луг',
     description: 'Мягкая зелёная палитра',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(LUG_LIGHT_COLORS, false),
       dark: createThemeTokens(LUG_DARK_COLORS, true),
@@ -587,6 +593,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'iskra',
     name: 'Искра',
     description: 'Контрастные красные акценты',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(ISKRA_LIGHT_COLORS, false),
       dark: createThemeTokens(ISKRA_DARK_COLORS, true),
@@ -596,6 +603,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'matrix',
     name: 'Матрица',
     description: 'Терминальная зелёная палитра',
+    kind: 'solid',
     variants: {
       dark: createThemeTokens(MATRIX_DARK_COLORS, true),
     },
@@ -604,6 +612,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'monolit',
     name: 'Монолит',
     description: 'Нейтральная монохромная палитра',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(MONOLIT_LIGHT_COLORS, false),
       dark: createThemeTokens(MONOLIT_DARK_COLORS, true),
@@ -613,6 +622,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'pergament',
     name: 'Пергамент',
     description: 'Тёплые кремовые тона',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(PERGAMENT_LIGHT_COLORS, false),
       dark: createThemeTokens(PERGAMENT_DARK_COLORS, true),
@@ -622,6 +632,7 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'grafit',
     name: 'Графит',
     description: 'Нейтральная серая палитра с холодным оттенком',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(GRAFIT_LIGHT_COLORS, false),
       dark: createThemeTokens(GRAFIT_DARK_COLORS, true),
@@ -631,9 +642,75 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     id: 'kontrast',
     name: 'Контраст',
     description: 'Резкий чёрно-белый контраст с зелёным акцентом',
+    kind: 'solid',
     variants: {
       light: createThemeTokens(KONTRAST_LIGHT_COLORS, false),
       dark: createThemeTokens(KONTRAST_DARK_COLORS, true),
+    },
+  },
+  {
+    id: 'gradient-twilight',
+    name: 'Сумерки',
+    description: 'Холодный индиго с тёплым закатом',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#5964F2', '#D8798D'], angle: 135, saturation: 70 },
+      dark: { colors: ['#25358D', '#8F4D67'], angle: 135, saturation: 76 },
+    },
+  },
+  {
+    id: 'gradient-aurora',
+    name: 'Аврора',
+    description: 'Глубокий синий, бирюза и фиолетовый',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#3676D8', '#53C7A2', '#9A67D7'], angle: 120, saturation: 72 },
+      dark: { colors: ['#163A72', '#267F72', '#59388E'], angle: 120, saturation: 80 },
+    },
+  },
+  {
+    id: 'gradient-sunset',
+    name: 'Закат',
+    description: 'Коралловый свет на фиолетовом фоне',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#F28B6D', '#C15884', '#6556B3'], angle: 145, saturation: 74 },
+      dark: { colors: ['#7E3E4D', '#733B72', '#393E88'], angle: 145, saturation: 82 },
+    },
+  },
+  {
+    id: 'gradient',
+    name: 'Свой градиент',
+    description: 'Настраиваемая многослойная тема',
+    kind: 'gradient',
+    customizable: true,
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: {
+        colors: ['#5865F2', '#F4F4F5'],
+        angle: 0,
+        saturation: 74,
+      },
+      dark: {
+        colors: ['#5865F2', '#F4F4F5'],
+        angle: 0,
+        saturation: 74,
+      },
     },
   },
 ]

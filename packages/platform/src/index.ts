@@ -85,6 +85,8 @@ export type {
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export {
+  APPEARANCE_GRADIENT_MAX_COLORS,
+  APPEARANCE_GRADIENT_MIN_COLORS,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
   DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
@@ -96,6 +98,7 @@ export {
   DEFAULT_THEME_ID,
   SOUND_AUTHOR_PACK_IDS,
   normalizeAppearanceColorMode,
+  normalizeAppearanceGradientSettings,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
   normalizeDesktopLocalSettings,
@@ -109,6 +112,7 @@ export {
   normalizeDesktopVoiceListenerSettings,
   normalizeDesktopVoiceSettings,
   type AppearanceColorMode,
+  type AppearanceGradientSettings,
   type AppearanceSettings,
   type AppearanceSettingsPatch,
   type DesktopLocalSettings,

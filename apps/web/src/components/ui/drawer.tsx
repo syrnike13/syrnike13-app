@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 
+import { usePortalContainer } from '#/components/ui/portal-container'
 import { cn } from '#/lib/utils'
 
 function Drawer({
@@ -10,9 +11,18 @@ function Drawer({
 }
 
 function DrawerPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="drawer-portal" {...props} />
+  const portalContainer = usePortalContainer()
+
+  return (
+    <DialogPrimitive.Portal
+      data-slot="drawer-portal"
+      container={container ?? portalContainer ?? undefined}
+      {...props}
+    />
+  )
 }
 
 function DrawerOverlay({
@@ -45,7 +55,7 @@ function DrawerContent({
       <DialogPrimitive.Content
         data-slot="drawer-content"
         className={cn(
-          'fixed inset-x-0 bottom-0 z-[300] flex max-h-[min(90dvh,640px)] flex-col rounded-t-2xl border border-b-0 bg-background shadow-lg outline-none',
+          'gradient-surface-raised fixed inset-x-0 bottom-0 z-[300] flex max-h-[min(90dvh,640px)] flex-col rounded-t-2xl border border-b-0 bg-background shadow-lg outline-none',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom',
           'pb-[env(safe-area-inset-bottom)] duration-300',
           className,
