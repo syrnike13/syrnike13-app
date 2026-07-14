@@ -1,5 +1,6 @@
 import type { Room } from 'livekit-client'
 import {
+  computeEffectiveMuted,
   isVoiceCommand,
   isVoiceSnapshot,
   type VoiceCommand,
@@ -136,6 +137,24 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
 
     if (isRetainedCommand(command)) {
       this.retainedCommands.set(command.type, command)
+    }
+
+    if (
+      !this.ownedClient &&
+      !this.ownerId &&
+      (command.type === 'setUserMuted' ||
+        command.type === 'setUserDeafened')
+    ) {
+      const snapshot = {
+        ...this.snapshotValue,
+        ...(command.type === 'setUserMuted'
+          ? { userMuted: command.muted }
+          : { userDeafened: command.deafened }),
+      }
+      this.publishLocalSnapshot({
+        ...snapshot,
+        effectiveMuted: computeEffectiveMuted(snapshot),
+      })
     }
 
     if (this.ownedClient) {
