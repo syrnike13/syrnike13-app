@@ -61,6 +61,10 @@ describe('DesktopOverlayHud', () => {
 
     const overlayPanel = container.querySelector('[data-overlay-panel]')
     expect(overlayPanel?.className).not.toContain('bg-')
+    expect(container.querySelector('main')?.className).toContain(
+      'text-foreground',
+    )
+    expect(container.innerHTML).not.toMatch(/text-white|rgba\(|#[\da-f]{3,8}/i)
 
     const speakerRow = screen.getByText('Speaker').closest('[data-participant-row]')
     const icons = speakerRow?.querySelector('[data-status-icons]')

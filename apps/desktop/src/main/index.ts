@@ -155,11 +155,7 @@ async function setOpenAtLogin(openAtLogin: boolean) {
 }
 
 async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
-  desktopLocalSettings = await updateDesktopLocalSettings(
-    desktopLocalSettingsPath(),
-    { overlay },
-    desktopLocalSettingsDefaults(),
-  )
+  await patchDesktopLocalSettings({ overlay })
 }
 
 function applyDesktopLocalSettings(settings: DesktopLocalSettings) {

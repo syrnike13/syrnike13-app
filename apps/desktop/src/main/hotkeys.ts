@@ -77,8 +77,10 @@ export function stopHotkeyRecording() {
 
 export function getHotkeyRuntimeStatus() {
   if (process.platform !== 'win32') return 'unsupported-platform'
-  if (!hooksRuntimeController.isAvailable()) return 'not-running'
-  return hooksRuntimeController.getStatus() === 'ready' ? 'running' : 'not-running'
+  if (!hooksRuntimeController.isAvailable('hotkey')) return 'not-running'
+  return hooksRuntimeController.getStatus('hotkey') === 'ready'
+    ? 'running'
+    : 'not-running'
 }
 
 export function disposeHotkeys() {

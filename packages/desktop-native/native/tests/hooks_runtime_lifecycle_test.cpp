@@ -40,10 +40,32 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
     throw std::runtime_error("hooks runtime reply disappeared");
   }
 
+  syrnike::desktop_native::RuntimeEvent waitForegroundWindow() {
+    std::unique_lock lock(mutex_);
+    const bool found = changed_.wait_for(lock, std::chrono::seconds(5), [&] {
+      std::size_t count = 0;
+      for (const auto& event : events_) {
+        if (event.type == "foregroundWindow") ++count;
+      }
+      return count > foreground_events_consumed_;
+    });
+    if (!found) throw std::runtime_error("overlay foreground event timed out");
+    std::size_t index = 0;
+    for (const auto& event : events_) {
+      if (event.type != "foregroundWindow") continue;
+      if (index++ == foreground_events_consumed_) {
+        ++foreground_events_consumed_;
+        return event;
+      }
+    }
+    throw std::runtime_error("overlay foreground event disappeared");
+  }
+
  private:
   std::mutex mutex_;
   std::condition_variable changed_;
   std::vector<syrnike::desktop_native::RuntimeEvent> events_;
+  std::size_t foreground_events_consumed_ = 0;
 };
 
 }  // namespace
@@ -76,6 +98,10 @@ int main() try {
     if (!runtime.dispatch(HooksCommand{"startOverlay", overlay_start_id}) ||
         !sink->waitReply(overlay_start_id).ok) {
       throw std::runtime_error("overlay actor failed to start");
+    }
+    const auto foreground = sink->waitForegroundWindow();
+    if (!foreground.foreground_window) {
+      throw std::runtime_error("overlay foreground event omitted its typed payload");
     }
     const auto probe_id = "probe-" + std::to_string(cycle);
     if (!runtime.dispatch(HooksCommand{"probeHooksRuntime", probe_id}) ||

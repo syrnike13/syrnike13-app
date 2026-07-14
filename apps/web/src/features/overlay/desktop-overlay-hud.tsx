@@ -8,7 +8,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
   if (!state.visible || !state.snapshot.active) return null
 
   return (
-    <main className="min-h-screen bg-transparent p-5 text-white">
+    <main className="h-screen overflow-hidden bg-transparent p-5 text-foreground">
       <section data-overlay-panel className="w-[296px] overflow-hidden">
         <div className="space-y-1">
           {state.snapshot.participants.map((participant) => (
@@ -16,7 +16,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
               key={participant.userId}
               data-participant-row
               className={cn(
-                'flex min-h-10 items-center gap-2 rounded-md px-1 py-1.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-opacity',
+                'flex min-h-10 items-center gap-2 rounded-md bg-background/75 px-1 py-1 shadow-sm transition-opacity',
                 !participant.speaking && 'opacity-55',
               )}
             >
@@ -48,7 +48,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
               </Avatar>
               <span
                 data-status-icons
-                className="flex shrink-0 items-center gap-1 text-white/80"
+                className="flex shrink-0 items-center gap-1 text-muted-foreground"
               >
                 {participant.muted ? (
                   <span title="Микрофон отключён">
@@ -63,7 +63,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
               </span>
               <span
                 data-participant-name
-                className="min-w-0 flex-1 truncate text-sm font-semibold text-white/90"
+                className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground"
               >
                 {participant.displayName}
               </span>

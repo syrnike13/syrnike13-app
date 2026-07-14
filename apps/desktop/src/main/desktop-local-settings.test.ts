@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -122,6 +122,31 @@ describe('desktop local settings', () => {
         anonymousNativeMetrics: true,
         nativeCrashReports: true,
       })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('serializes concurrent read-modify-write updates without losing fields', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      await Promise.all([
+        updateDesktopLocalSettings(filePath, {
+          voice: { noiseSuppression: false },
+        }),
+        updateDesktopLocalSettings(filePath, {
+          appearance: { themeId: 'night' },
+        }),
+      ])
+
+      const saved = JSON.parse(
+        await readFile(filePath, 'utf8'),
+      ) as DesktopLocalSettings
+      expect(saved.voice.noiseSuppression).toBe(false)
+      expect(saved.appearance.themeId).toBe('night')
+      await expect(access(`${filePath}.tmp`)).rejects.toThrow()
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

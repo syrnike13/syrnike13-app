@@ -46,10 +46,16 @@ export class HooksRuntimeController {
     })
   }
 
-  isAvailable() { return nativeRuntimeAvailable('hotkey') && nativeRuntimeAvailable('overlay') }
-  getStatus() {
+  isAvailable(kind: 'hotkey' | 'overlay' | 'both' = 'both') {
+    if (kind === 'hotkey') return nativeRuntimeAvailable('hotkey')
+    if (kind === 'overlay') return nativeRuntimeAvailable('overlay')
+    return nativeRuntimeAvailable('hotkey') && nativeRuntimeAvailable('overlay')
+  }
+  getStatus(kind: 'hotkey' | 'overlay' | 'both' = 'both') {
     const hotkey = this.hotkeySupervisor.getSnapshot().status
     const overlay = this.overlaySupervisor.getSnapshot().status
+    if (kind === 'hotkey') return hotkey
+    if (kind === 'overlay') return overlay
     if (hotkey === 'degraded' || overlay === 'degraded') return 'degraded'
     if (hotkey === 'recovering' || overlay === 'recovering') return 'recovering'
     if (hotkey === 'starting' || overlay === 'starting') return 'starting'
@@ -94,7 +100,7 @@ export class HooksRuntimeController {
   }
   private request(kind: 'hotkey' | 'overlay', command: HooksRuntimeCommand) {
     if (this.disposed) return Promise.reject(new Error('Native hooks controller is disposed'))
-    if (!this.isAvailable()) return Promise.reject(new Error(`Native ${kind} runtime is not available`))
+    if (!this.isAvailable(kind)) return Promise.reject(new Error(`Native ${kind} runtime is not available`))
     return (kind === 'hotkey' ? this.hotkeySupervisor : this.overlaySupervisor).request(command, REQUEST_TIMEOUT_MS)
   }
   private handleHotkeyEvent(event: HooksRuntimeEvent) {

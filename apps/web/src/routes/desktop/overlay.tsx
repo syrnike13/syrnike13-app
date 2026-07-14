@@ -15,10 +15,14 @@ function DesktopOverlayRoute() {
 
   useEffect(() => {
     document.documentElement.style.background = 'transparent'
+    document.documentElement.style.overflow = 'hidden'
     document.body.style.background = 'transparent'
+    document.body.style.overflow = 'hidden'
     return () => {
       document.documentElement.style.background = ''
+      document.documentElement.style.overflow = ''
       document.body.style.background = ''
+      document.body.style.overflow = ''
     }
   }, [])
 

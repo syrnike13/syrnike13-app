@@ -42,6 +42,8 @@ const PROTECTED_GAME_SIGNATURES = [
   },
 ]
 
+const DETECTED_GAME_LAST_SEEN_WRITE_INTERVAL_MS = 5 * 60 * 1_000
+
 let targetListener: ((target: DesktopOverlayGameTarget | null) => void) | null = null
 
 function handleForegroundWindow(window: OverlayForegroundWindow | null) {
@@ -56,7 +58,7 @@ export function startOverlayGameDetector(
     return
   }
 
-  if (!hooksRuntimeController.isAvailable()) {
+  if (!hooksRuntimeController.isAvailable('overlay')) {
     onTargetChanged(null)
     return
   }
@@ -149,6 +151,15 @@ export function rememberDetectedOverlayGame(
   lastSeenAt: number,
 ): DesktopOverlaySettings {
   const existing = settings.games.find((game) => game.id === target.gameId)
+  if (
+    existing &&
+    existing.processName === target.processName &&
+    existing.processPath === target.processPath &&
+    existing.title === target.title &&
+    lastSeenAt - existing.lastSeenAt < DETECTED_GAME_LAST_SEEN_WRITE_INTERVAL_MS
+  ) {
+    return settings
+  }
   const nextGame = {
     id: target.gameId,
     processName: target.processName,

@@ -28,6 +28,21 @@ function supervisorStub() {
 }
 
 describe('HooksRuntimeController', () => {
+  it('reports each hooks runtime status independently', () => {
+    const hotkey = supervisorStub()
+    const overlay = supervisorStub()
+    hotkey.supervisor.getSnapshot = () => ({ status: 'ready' })
+    overlay.supervisor.getSnapshot = () => ({ status: 'degraded' })
+    const controller = new HooksRuntimeController(
+      hotkey.supervisor,
+      overlay.supervisor,
+    )
+
+    expect(controller.getStatus('hotkey')).toBe('ready')
+    expect(controller.getStatus('overlay')).toBe('degraded')
+    expect(controller.getStatus()).toBe('degraded')
+  })
+
   it('restarts and replays each hooks runtime independently', async () => {
     const hotkey = supervisorStub()
     const overlay = supervisorStub()

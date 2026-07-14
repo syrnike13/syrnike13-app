@@ -137,9 +137,7 @@ function RootComponent() {
     return (
       <AppearanceProvider>
         <ThemeColorMeta />
-        <NativeScrollbarEnhancer />
         <Outlet />
-        <AgentationDevtools />
       </AppearanceProvider>
     )
   }

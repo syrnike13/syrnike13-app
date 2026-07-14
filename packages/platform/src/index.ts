@@ -48,7 +48,14 @@ export type {
   DesktopOverlayState,
 } from './overlay'
 export {
+  DESKTOP_OVERLAY_MAX_AVATAR_URL_LENGTH,
+  DESKTOP_OVERLAY_MAX_CHANNEL_ID_LENGTH,
+  DESKTOP_OVERLAY_MAX_CHANNEL_LABEL_LENGTH,
+  DESKTOP_OVERLAY_MAX_DISPLAY_NAME_LENGTH,
+  DESKTOP_OVERLAY_MAX_PARTICIPANTS,
+  DESKTOP_OVERLAY_MAX_USER_ID_LENGTH,
   EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
+  desktopOverlaySnapshotsEqual,
   normalizeDesktopOverlaySnapshot,
 } from './overlay'
 export type {
