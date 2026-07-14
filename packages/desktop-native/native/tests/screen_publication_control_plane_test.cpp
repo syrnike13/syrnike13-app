@@ -2,6 +2,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -10,9 +11,13 @@
 #include <utility>
 #include <vector>
 
+#include <livekit/d3d11_h264_video_source.h>
+
 #include "common/event_sink.hpp"
+#include "common/sequenced_emitter.hpp"
 #include "media/livekit_publication_client.hpp"
 #include "media/media_runtime.hpp"
+#include "media/screen_publication_controller.hpp"
 
 namespace {
 
@@ -139,6 +144,228 @@ void requireProbe(
   );
 }
 
+class FakeD3D11H264VideoSource final : public livekit::D3D11H264VideoSource {
+ public:
+  FakeD3D11H264VideoSource(int width, int height)
+      : D3D11H264VideoSource(width, height) {}
+
+  bool capture(
+    std::unique_ptr<livekit::D3D11TextureLease> lease,
+    std::int64_t
+  ) override {
+    if (lease) lease->release();
+    return true;
+  }
+};
+
+class ScreenControllerHarness final {
+ public:
+  using Controller = syrnike::desktop_native::media::ScreenPublicationController;
+  using FakeLiveKit =
+    syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
+
+  ScreenControllerHarness(
+    Controller::QueryEncoderCapability query_encoder_capability,
+    Controller::CreateVideoSource create_video_source
+  ) : sink(std::make_shared<CollectingSink>()),
+      emitter(sink),
+      livekit(std::make_shared<FakeLiveKit>()) {
+    controller = std::make_unique<Controller>(
+      emitter,
+      [this](syrnike::desktop_native::MediaCommand command) {
+        {
+          std::lock_guard lock(commands_mutex_);
+          commands_.push_back(std::move(command));
+        }
+        commands_changed_.notify_all();
+        return true;
+      },
+      [this](const std::string& session_id, std::uint64_t generation) {
+        return session_id == session_id_ && generation == generation_.load();
+      },
+      livekit,
+      Controller::CommitIfCurrent{},
+      Controller::Now{},
+      [](const syrnike::desktop_native::MediaCommand& command) {
+        syrnike::desktop_native::media::ScreenPublicationDescription description;
+        description.width = static_cast<std::uint32_t>(command.width);
+        description.height = static_cast<std::uint32_t>(command.height);
+        return description;
+      },
+      [](
+        const syrnike::desktop_native::MediaCommand&,
+        const syrnike::desktop_native::media::ScreenPublicationDescription&,
+        const std::shared_ptr<livekit::D3D11H264VideoSource>&,
+        const std::shared_ptr<livekit::LocalVideoTrack>&,
+        const std::shared_ptr<livekit::AudioSource>&,
+        const std::shared_ptr<std::atomic_bool>&,
+        const std::function<bool()>&,
+        std::thread&,
+        std::thread&
+      ) {},
+      [](const std::string&, std::uint64_t) {},
+      std::move(query_encoder_capability),
+      std::move(create_video_source)
+    );
+  }
+
+  ~ScreenControllerHarness() {
+    livekit->setBlocked(FakeLiveKit::Operation::Connect, false);
+    livekit->setBlocked(FakeLiveKit::Operation::Publish, false);
+    livekit->setBlocked(FakeLiveKit::Operation::Unpublish, false);
+    livekit->setBlocked(FakeLiveKit::Operation::Disconnect, false);
+    if (controller) controller->shutdown();
+  }
+
+  void setCurrent(std::uint64_t generation) { generation_.store(generation); }
+
+  void handleNextWorkerCommand(std::chrono::milliseconds timeout = 2s) {
+    syrnike::desktop_native::MediaCommand command;
+    {
+      std::unique_lock lock(commands_mutex_);
+      if (!commands_changed_.wait_for(lock, timeout, [this] { return !commands_.empty(); })) {
+        throw std::runtime_error("timed out waiting for screen controller worker command");
+      }
+      command = std::move(commands_.front());
+      commands_.pop_front();
+    }
+    controller->handleWorkerCommand(command);
+  }
+
+  std::shared_ptr<CollectingSink> sink;
+  syrnike::desktop_native::SequencedEmitter emitter;
+  std::shared_ptr<FakeLiveKit> livekit;
+  std::unique_ptr<Controller> controller;
+
+ private:
+  const std::string session_id_ = "screen-di";
+  std::atomic<std::uint64_t> generation_{1};
+  std::mutex commands_mutex_;
+  std::condition_variable commands_changed_;
+  std::deque<syrnike::desktop_native::MediaCommand> commands_;
+};
+
+void verifyUnavailableEncoderFailsClosed() {
+  std::atomic_int query_calls{0};
+  std::atomic_int factory_calls{0};
+  ScreenControllerHarness harness(
+    [&] {
+      query_calls.fetch_add(1);
+      return livekit::D3D11H264Capability{false, "test capability unavailable"};
+    },
+    [&](int, int) -> std::shared_ptr<livekit::D3D11H264VideoSource> {
+      factory_calls.fetch_add(1);
+      return {};
+    }
+  );
+  harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
+
+  const auto start = screenCommand("startScreenCapture", "di-unavailable", "screen-di", 1);
+  harness.controller->startCapture(start);
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("di-unavailable");
+  require(!reply.ok, "unavailable encoder capability resolved as success");
+  require(
+    reply.error && reply.error->code == "gpu_encoder_unavailable",
+    "unavailable encoder capability did not return gpu_encoder_unavailable"
+  );
+  require(query_calls.load() == 1, "encoder capability callback was not called exactly once");
+  require(factory_calls.load() == 0, "video source factory ran after unavailable capability");
+  require(
+    harness.livekit->pending(ScreenControllerHarness::FakeLiveKit::Operation::Publish) == 0,
+    "unavailable encoder capability reached LiveKit publication"
+  );
+  require(
+    harness.sink->countSessionStarted("screen-di", 1) == 0,
+    "unavailable encoder capability emitted sessionStarted"
+  );
+}
+
+void verifyNullEncoderSourceFailsClosed() {
+  std::atomic_int factory_calls{0};
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [&](int, int) -> std::shared_ptr<livekit::D3D11H264VideoSource> {
+      factory_calls.fetch_add(1);
+      return {};
+    }
+  );
+  harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
+
+  const auto start = screenCommand("startScreenCapture", "di-null-source", "screen-di", 1);
+  harness.controller->startCapture(start);
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("di-null-source");
+  require(!reply.ok, "null encoder source resolved as success");
+  require(
+    reply.error && reply.error->code == "gpu_encoder_unavailable",
+    "null encoder source did not return gpu_encoder_unavailable"
+  );
+  require(factory_calls.load() == 1, "video source factory was not called exactly once");
+  require(
+    harness.livekit->pending(ScreenControllerHarness::FakeLiveKit::Operation::Publish) == 0,
+    "null encoder source reached LiveKit publication"
+  );
+  require(
+    harness.sink->countSessionStarted("screen-di", 1) == 0,
+    "null encoder source emitted sessionStarted"
+  );
+}
+
+void verifyCancelledPublishRollsBackExactSid() {
+  ScreenControllerHarness harness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [](int width, int height) {
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    }
+  );
+  harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Publish, true);
+
+  const auto start = screenCommand("startScreenCapture", "di-stale", "screen-di", 1);
+  harness.controller->startCapture(start);
+  harness.livekit->waitUntilPending(ScreenControllerHarness::FakeLiveKit::Operation::Publish, 1);
+
+  harness.setCurrent(2);
+  const auto cancel = screenCommand("disconnectScreen", "di-cancel", "screen-di", 2);
+  harness.controller->disconnect(cancel, false);
+
+  harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Unpublish, true);
+  harness.livekit->setBlocked(ScreenControllerHarness::FakeLiveKit::Operation::Disconnect, true);
+  ScreenControllerHarness::FakeLiveKit::Release published;
+  published.publication_sid = "screen-video-exact";
+  harness.livekit->releaseNext(
+    ScreenControllerHarness::FakeLiveKit::Operation::Publish,
+    std::move(published)
+  );
+  harness.livekit->waitUntilPending(
+    ScreenControllerHarness::FakeLiveKit::Operation::Unpublish,
+    1
+  );
+  harness.livekit->releaseNext(ScreenControllerHarness::FakeLiveKit::Operation::Unpublish);
+  harness.livekit->waitUntilPending(
+    ScreenControllerHarness::FakeLiveKit::Operation::Disconnect,
+    1
+  );
+  harness.livekit->releaseNext(ScreenControllerHarness::FakeLiveKit::Operation::Disconnect);
+
+  harness.handleNextWorkerCommand();
+  const auto reply = harness.sink->waitReply("di-stale");
+  require(!reply.ok, "cancelled screen publish resolved as success");
+  require(
+    reply.error && reply.error->code == "stale_generation",
+    "cancelled screen publish did not return stale_generation"
+  );
+  require(
+    harness.sink->countSessionStarted("screen-di", 1) == 0,
+    "cancelled screen publish emitted an obsolete sessionStarted"
+  );
+  const auto unpublished_sids = harness.livekit->unpublishedPublicationSids();
+  require(
+    unpublished_sids.size() == 1 && unpublished_sids.front() == "screen-video-exact",
+    "cancelled screen publish did not roll back the exact publication SID"
+  );
+}
+
 }  // namespace
 
 int main() try {
@@ -207,70 +434,11 @@ int main() try {
     "superseded screen connect did not fail as stale_generation"
   );
 
+  verifyUnavailableEncoderFailsClosed();
+  verifyNullEncoderSourceFailsClosed();
+  verifyCancelledPublishRollsBackExactSid();
+
   livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, false);
-  const auto prepare_b = screenCommand("connectScreen", "prepare-b", "screen-b", 5);
-  require(runtime.dispatch(prepare_b), "runtime rejected screen prepare");
-  require(sink->waitReply("prepare-b").ok, "screen prepare failed");
-
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, true);
-  const auto start_b = screenCommand("startScreenCapture", "start-b", "screen-b", 5);
-  require(runtime.dispatch(start_b), "runtime rejected blocked screen publish");
-  try {
-    livekit->waitUntilPending(
-      DeterministicFakeLiveKitPublicationClient::Operation::Publish,
-      1
-    );
-  } catch (const std::exception&) {
-    const auto early_reply = sink->waitReply("start-b", 10ms);
-    throw std::runtime_error(
-      "screen publish failed before reaching LiveKit: " +
-      (early_reply.error ? early_reply.error->message : std::string("unknown error"))
-    );
-  }
-  requireProbe(runtime, sink, "probe-publish");
-
-  auto cancel_b = screenCommand("disconnectScreen", "cancel-b", "screen-b", 6);
-  require(runtime.dispatch(cancel_b), "runtime rejected screen cancel during blocked publish");
-  require(
-    sink->waitReply("cancel-b", 500ms).ok,
-    "screen disconnect did not reply while publish was blocked"
-  );
-
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, true);
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect, true);
-  DeterministicFakeLiveKitPublicationClient::Release published;
-  published.publication_sid = "screen-video-exact";
-  livekit->releaseNext(
-    DeterministicFakeLiveKitPublicationClient::Operation::Publish,
-    std::move(published)
-  );
-  livekit->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, 1);
-  requireProbe(runtime, sink, "probe-unpublish");
-
-  livekit->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish);
-  livekit->waitUntilPending(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect, 1);
-  requireProbe(runtime, sink, "probe-disconnect");
-  livekit->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect);
-
-  const auto reply_b = sink->waitReply("start-b");
-  require(!reply_b.ok, "superseded screen publish resolved as success");
-  require(
-    reply_b.error && reply_b.error->code == "stale_generation",
-    "superseded screen publish did not fail as stale_generation"
-  );
-  require(
-    sink->countSessionStarted("screen-b", 5) == 0,
-    "stale screen publication completion promoted an obsolete generation"
-  );
-  const auto unpublished_sids = livekit->unpublishedPublicationSids();
-  require(
-    unpublished_sids.size() == 1 && unpublished_sids.front() == "screen-video-exact",
-    "screen rollback did not unpublish the exact acknowledged publication SID"
-  );
-
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Publish, false);
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Unpublish, false);
-  livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Disconnect, false);
   const auto prepare_c = screenCommand("connectScreen", "prepare-c", "screen-c", 7);
   require(runtime.dispatch(prepare_c), "runtime rejected terminal-semantics prepare");
   require(sink->waitReply("prepare-c").ok, "terminal-semantics prepare failed");

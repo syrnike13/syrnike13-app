@@ -65,6 +65,11 @@ class ScreenPublicationController final {
     std::thread&
   )>;
   using CapturePromoted = std::function<void(const std::string&, std::uint64_t)>;
+  using QueryEncoderCapability = std::function<livekit::D3D11H264Capability()>;
+  using CreateVideoSource = std::function<std::shared_ptr<livekit::D3D11H264VideoSource>(
+    int,
+    int
+  )>;
 
   ScreenPublicationController(
     SequencedEmitter& emitter,
@@ -75,7 +80,9 @@ class ScreenPublicationController final {
     Now now,
     DescribePublication describe_publication,
     StartCaptureWorkers start_capture_workers,
-    CapturePromoted capture_promoted
+    CapturePromoted capture_promoted,
+    QueryEncoderCapability query_encoder_capability = {},
+    CreateVideoSource create_video_source = {}
   );
   ~ScreenPublicationController();
 

@@ -73,7 +73,9 @@ class ScreenPublicationController::Implementation {
     Now now,
     DescribePublication describe_publication,
     StartCaptureWorkers start_capture_workers,
-    CapturePromoted capture_promoted
+    CapturePromoted capture_promoted,
+    QueryEncoderCapability query_encoder_capability,
+    CreateVideoSource create_video_source
   ) : emitter_(emitter),
       post_(std::move(post)),
       is_current_(std::move(is_current)),
@@ -82,7 +84,9 @@ class ScreenPublicationController::Implementation {
       now_(std::move(now)),
       describe_publication_(std::move(describe_publication)),
       start_capture_workers_(std::move(start_capture_workers)),
-      capture_promoted_(std::move(capture_promoted)) {
+      capture_promoted_(std::move(capture_promoted)),
+      query_encoder_capability_(std::move(query_encoder_capability)),
+      create_video_source_(std::move(create_video_source)) {
     if (!commit_if_current_) {
       commit_if_current_ = [this](
         const std::string& session_id,
@@ -95,6 +99,18 @@ class ScreenPublicationController::Implementation {
       };
     }
     if (!now_) now_ = [] { return LiveKitConnectPolicy::Clock::now(); };
+    if (!query_encoder_capability_) {
+      query_encoder_capability_ = [] {
+        return livekit::queryD3D11H264Capability();
+      };
+    }
+    if (!create_video_source_) {
+      create_video_source_ = [](int width, int height) {
+        return std::shared_ptr<livekit::D3D11H264VideoSource>(
+          livekit::createD3D11H264VideoSource(width, height)
+        );
+      };
+    }
   }
 
   ~Implementation() { shutdown(); }
@@ -671,13 +687,13 @@ class ScreenPublicationController::Implementation {
     resources.description.bitrate = screenBitrate(command.bitrate);
     const auto& description = resources.description;
 
-    const auto capability = livekit::queryD3D11H264Capability();
+    const auto capability = query_encoder_capability_();
     if (!capability.available) {
       throw std::runtime_error(
         "gpu_encoder_unavailable: " + capability.reason
       );
     }
-    resources.video_source = livekit::createD3D11H264VideoSource(
+    resources.video_source = create_video_source_(
       static_cast<int>(description.width),
       static_cast<int>(description.height)
     );
@@ -1080,6 +1096,8 @@ class ScreenPublicationController::Implementation {
   DescribePublication describe_publication_;
   StartCaptureWorkers start_capture_workers_;
   CapturePromoted capture_promoted_;
+  QueryEncoderCapability query_encoder_capability_;
+  CreateVideoSource create_video_source_;
   std::unique_ptr<ScreenResources> prepared_;
   std::unique_ptr<ScreenResources> active_;
   std::shared_ptr<AttemptState> candidate_;
@@ -1098,7 +1116,9 @@ ScreenPublicationController::ScreenPublicationController(
   Now now,
   DescribePublication describe_publication,
   StartCaptureWorkers start_capture_workers,
-  CapturePromoted capture_promoted
+  CapturePromoted capture_promoted,
+  QueryEncoderCapability query_encoder_capability,
+  CreateVideoSource create_video_source
 ) : implementation_(std::make_unique<Implementation>(
       emitter,
       std::move(post),
@@ -1108,7 +1128,9 @@ ScreenPublicationController::ScreenPublicationController(
       std::move(now),
       std::move(describe_publication),
       std::move(start_capture_workers),
-      std::move(capture_promoted)
+      std::move(capture_promoted),
+      std::move(query_encoder_capability),
+      std::move(create_video_source)
     )) {}
 
 ScreenPublicationController::~ScreenPublicationController() = default;
