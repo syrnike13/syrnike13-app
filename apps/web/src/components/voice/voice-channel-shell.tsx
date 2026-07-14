@@ -70,6 +70,7 @@ export function VoiceChannelShell({
       <VoiceStageView
         channel={channel}
         title={title}
+        showChatToggle={false}
         headerTrailing={
           isServerChannel(runtimeChannel) ? (
             <ChannelSettingsDialog channel={runtimeChannel} />
@@ -86,6 +87,7 @@ export function VoiceChannelShell({
       >
         {chatOpen ? (
           <ChannelChatPanel
+            key={channelId}
             channelId={channelId}
             highlightMessageId={highlightMessageId}
             onClose={() => setChatOpen(false)}

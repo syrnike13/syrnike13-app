@@ -28,14 +28,13 @@ export function syncPopoutDocumentAppearance(
     delete targetHtml.dataset.theme
   }
 
-  if (sourceHtml.style.cssText) {
-    targetHtml.style.cssText = sourceHtml.style.cssText
+  if (sourceHtml.dataset.themeGradient) {
+    targetHtml.dataset.themeGradient = sourceHtml.dataset.themeGradient
+  } else {
+    delete targetHtml.dataset.themeGradient
   }
 
-  const colorScheme = sourceHtml.style.colorScheme
-  if (colorScheme) {
-    targetHtml.style.colorScheme = colorScheme
-  }
+  targetHtml.style.cssText = sourceHtml.style.cssText
 
   let base = target.head.querySelector(
     `base[${POPOUT_STYLE_MARKER}]`,
@@ -129,6 +128,20 @@ export function VoiceStagePopout({
     const root = ensurePopoutDocument(childWindow)
     setContainer(root)
 
+    const appearanceObserver = new MutationObserver(() => {
+      syncPopoutDocumentAppearance(window.document, childWindow.document)
+    })
+    appearanceObserver.observe(window.document.documentElement, {
+      attributes: true,
+      attributeFilter: [
+        'class',
+        'style',
+        'lang',
+        'data-theme',
+        'data-theme-gradient',
+      ],
+    })
+
     const closePoll = window.setInterval(() => {
       if (childWindow.closed) {
         onCloseRef.current()
@@ -136,6 +149,7 @@ export function VoiceStagePopout({
     }, 500)
 
     return () => {
+      appearanceObserver.disconnect()
       window.clearInterval(closePoll)
       setContainer(null)
     }

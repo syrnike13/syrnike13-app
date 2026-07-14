@@ -18,13 +18,13 @@ type SegmentState = {
 }
 
 export const splitControlDangerMainClass =
-  'bg-destructive/20 text-destructive-soft group-hover/media:bg-destructive/30 group-hover/media:text-destructive-soft'
+  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/30 group-hover/media:text-destructive'
 
 export const splitControlDangerChevronClass =
-  'bg-destructive/20 text-destructive-soft group-hover/media:bg-destructive/12 group-hover/media:text-destructive-soft'
+  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
 
 export const splitControlDangerStandaloneClass =
-  'bg-destructive/20 text-destructive-soft hover:bg-destructive/30 hover:text-destructive-soft'
+  'bg-destructive/20 text-destructive hover:bg-destructive/30 hover:text-destructive'
 
 export function splitControlMainButtonClass(
   surface: VoiceSplitControlSurface,

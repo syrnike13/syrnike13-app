@@ -1,4 +1,8 @@
-import type { AppearanceColorMode, AppearanceSettings } from '@syrnike13/platform'
+import type {
+  AppearanceColorMode,
+  AppearanceGradientSettings,
+  AppearanceSettings,
+} from '@syrnike13/platform'
 import {
   createContext,
   useCallback,
@@ -16,6 +20,7 @@ import {
 import { appearanceSettingsStore } from '#/features/appearance/appearance-settings-store'
 import {
   listThemes,
+  resolveThemeGradient,
   resolveThemeVariant,
   type ThemeDefinition,
   type ThemeVariant,
@@ -27,6 +32,10 @@ type AppearanceContextValue = {
   themes: ThemeDefinition[]
   setThemeId: (themeId: string) => void
   setColorMode: (colorMode: AppearanceColorMode) => void
+  resolvedGradient: AppearanceGradientSettings
+  gradientCustomized: boolean
+  previewGradient: (gradient: AppearanceGradientSettings) => void
+  setGradient: (gradient: AppearanceGradientSettings | null) => void
 }
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null)
@@ -62,9 +71,24 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     appearanceSettingsStore.setColorMode(colorMode)
   }, [])
 
+  const previewGradient = useCallback((gradient: AppearanceGradientSettings) => {
+    appearanceSettingsStore.previewGradient(gradient)
+  }, [])
+
+  const setGradient = useCallback(
+    (gradient: AppearanceGradientSettings | null) => {
+      appearanceSettingsStore.setGradient(gradient)
+    },
+    [],
+  )
+
   const resolvedVariant = useMemo(
     () => resolveThemeVariant(settings, prefersDark),
     [settings, prefersDark],
+  )
+  const resolvedGradient = useMemo(
+    () => resolveThemeGradient(settings, prefersDark),
+    [prefersDark, settings],
   )
 
   const value = useMemo<AppearanceContextValue>(
@@ -74,8 +98,20 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       themes: listThemes(),
       setThemeId,
       setColorMode,
+      resolvedGradient,
+      gradientCustomized: settings.gradient !== null,
+      previewGradient,
+      setGradient,
     }),
-    [settings, resolvedVariant, setThemeId, setColorMode],
+    [
+      previewGradient,
+      resolvedGradient,
+      resolvedVariant,
+      setColorMode,
+      setGradient,
+      setThemeId,
+      settings,
+    ],
   )
 
   return (

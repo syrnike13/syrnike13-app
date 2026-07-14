@@ -19,7 +19,7 @@ export function VoiceCallBanner({
   onDismiss,
 }: VoiceCallBannerProps) {
   return (
-    <div className="shrink-0 border-b border-shell-divider bg-card/95 px-3 py-2">
+    <div className="gradient-surface-raised shrink-0 border-b border-shell-divider bg-card/95 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3">
           <HeadphonesIcon className="size-4" />

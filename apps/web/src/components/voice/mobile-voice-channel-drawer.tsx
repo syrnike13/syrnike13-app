@@ -117,11 +117,12 @@ export function MobileVoiceChannelDrawer() {
             {chatOpen ? (
               <div
                 className={cn(
-                  'flex min-h-0 flex-col border-t border-shell-divider bg-background',
+                  'gradient-surface-content flex min-h-0 flex-col border-t border-shell-divider bg-background',
                   fullscreen ? 'flex-1' : 'flex-1',
                 )}
               >
                 <ChannelChatPanel
+                  key={channel._id}
                   channelId={channel._id}
                   onClose={() => setChatOpen(false)}
                 />

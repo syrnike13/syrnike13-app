@@ -69,11 +69,19 @@ export type DesktopObservabilitySettings = {
   nativeCrashReports: boolean
 }
 
-export type { AppearanceSettings, AppearanceSettingsPatch, AppearanceColorMode } from './appearance'
+export type {
+  AppearanceColorMode,
+  AppearanceGradientSettings,
+  AppearanceSettings,
+  AppearanceSettingsPatch,
+} from './appearance'
 export {
+  APPEARANCE_GRADIENT_MAX_COLORS,
+  APPEARANCE_GRADIENT_MIN_COLORS,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_THEME_ID,
   normalizeAppearanceColorMode,
+  normalizeAppearanceGradientSettings,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
 } from './appearance'

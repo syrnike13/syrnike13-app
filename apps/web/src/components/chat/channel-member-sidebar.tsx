@@ -132,7 +132,7 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
   }, [server, visibleMembers])
 
   return (
-    <aside className="hidden min-h-0 w-52 shrink-0 flex-col border-l border-shell-divider bg-card text-card-foreground lg:flex">
+    <aside className="theme-surface-content gradient-surface-content hidden min-h-0 w-52 shrink-0 flex-col border-l border-shell-divider text-card-foreground lg:flex">
       <ScrollArea className="min-h-0 flex-1">
         <ul className="flex flex-col gap-0.5 p-2">
           {sidebarItems.map((item) =>

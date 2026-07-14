@@ -58,11 +58,11 @@ export function VoiceRtcDebugView() {
   const snapshot = voiceTelemetry.rtcDebugSnapshot
 
   return (
-    <div className="flex min-h-0 flex-1 bg-background text-foreground">
-      <aside className="w-72 shrink-0 border-r border-border bg-background px-8 py-10">
+    <div className="gradient-surface-content flex min-h-0 flex-1 bg-background text-foreground">
+      <aside className="gradient-surface-navigation w-72 shrink-0 border-r border-border bg-sidebar px-8 py-10 text-sidebar-foreground">
         <div className="mb-6">
           <h1 className="text-xl font-bold leading-none">General</h1>
-          <p className="mt-3 text-base text-white">
+          <p className="mt-3 text-base text-sidebar-foreground">
             {voiceSession.status === 'connected' ? 'Connected' : 'Disconnected'}
           </p>
         </div>
@@ -77,8 +77,9 @@ export function VoiceRtcDebugView() {
               type="button"
               onClick={() => setSection(item.id)}
               className={cn(
-                'flex h-9 w-full items-center rounded px-3 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-white',
-                section === item.id && 'bg-accent text-white',
+                'flex h-9 w-full items-center rounded px-3 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                section === item.id &&
+                  'bg-sidebar-accent text-sidebar-accent-foreground',
               )}
             >
               {item.label}
@@ -536,7 +537,7 @@ function MetricGroup({
 }) {
   return (
     <section className="min-w-0">
-      <h3 className="mb-3 truncate text-sm font-bold text-white">{title}</h3>
+      <h3 className="mb-3 truncate text-sm font-bold text-foreground">{title}</h3>
       <div className="divide-y divide-border">{children}</div>
     </section>
   )
@@ -554,7 +555,7 @@ function MetricRow({
   return (
     <section className="min-w-0">
       <div className="flex min-h-10 items-center justify-between gap-4 border-b border-border py-2">
-        <div className="min-w-0 text-sm font-bold text-white">{label}</div>
+        <div className="min-w-0 text-sm font-bold text-foreground">{label}</div>
         <div className="max-w-[55%] truncate text-right text-sm tabular-nums text-muted-foreground">
           {value}
         </div>
@@ -565,7 +566,7 @@ function MetricRow({
 }
 
 function SectionHeader({ title }: { title: string }) {
-  return <h2 className="mb-6 text-base font-bold text-white">{title}</h2>
+  return <h2 className="mb-6 text-base font-bold text-foreground">{title}</h2>
 }
 
 function MediaTabs({

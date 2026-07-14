@@ -58,7 +58,7 @@ export function VoiceConnectionStrip() {
       : 'Голосовой канал'
 
   const locationLabel = server
-    ? `${server.name} / ${channelLabel}`
+    ? `${channelLabel} / ${server.name}`
     : channelLabel
 
   const connected = isVoiceConnectionReady({

@@ -16,6 +16,7 @@ import {
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import { Textarea } from '#/components/ui/textarea'
 import {
   addGroupMember,
   deleteChannel,
@@ -300,12 +301,12 @@ export function GroupManagementDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="group-settings-description">Описание</Label>
-              <textarea
+              <Textarea
                 id="group-settings-description"
                 value={description}
                 maxLength={1024}
                 disabled={busy}
-                className="min-h-20 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="min-h-20 resize-y"
                 onChange={(event) => setDescription(event.target.value)}
               />
             </div>

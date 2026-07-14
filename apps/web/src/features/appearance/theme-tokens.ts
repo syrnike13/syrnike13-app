@@ -15,7 +15,7 @@ export const THEME_TOKEN_KEYS = [
   'accent-foreground',
   'destructive',
   'destructive-foreground',
-  'destructive-soft',
+  'destructive-contrast',
   'border',
   'input',
   'ring',
@@ -46,7 +46,7 @@ export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
   'primary-foreground',
   'destructive',
   'destructive-foreground',
-  'destructive-soft',
+  'destructive-contrast',
   'ring',
   'chart-1',
   'chart-2',
@@ -71,7 +71,7 @@ export type ThemeSemanticPalette = {
   accentForeground: string
   destructive: string
   destructiveForeground: string
-  destructiveSoft: string
+  destructiveContrast: string
   border: string
   input: string
   ring: string
@@ -110,7 +110,7 @@ export type ShadcnColorVariables = {
   accentForeground: string
   destructive: string
   destructiveForeground: string
-  destructiveSoft: string
+  destructiveContrast: string
   border: string
   input: string
   ring: string
@@ -164,7 +164,7 @@ export function createThemeTokens(
     'accent-foreground': colors.accentForeground,
     destructive: colors.destructive,
     'destructive-foreground': colors.destructiveForeground,
-    'destructive-soft': colors.destructiveSoft,
+    'destructive-contrast': colors.destructiveContrast,
     border: colors.border,
     input: colors.input,
     ring: colors.ring,
@@ -204,7 +204,7 @@ export function buildThemeTokens(palette: ThemeSemanticPalette): ThemeTokens {
     'accent-foreground': palette.accentForeground,
     destructive: palette.destructive,
     'destructive-foreground': palette.destructiveForeground,
-    'destructive-soft': palette.destructiveSoft,
+    'destructive-contrast': palette.destructiveContrast,
     border: palette.border,
     input: palette.input,
     ring: palette.ring,

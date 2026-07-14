@@ -91,7 +91,7 @@ export function IncomingVoiceCallOverlay({
 
   return (
     <div
-      className="fixed right-4 bottom-4 z-[120] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-2xl"
+      className="gradient-surface-raised fixed right-4 bottom-4 z-[120] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-2xl"
       role="status"
       aria-live="polite"
     >

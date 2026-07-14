@@ -67,7 +67,7 @@ export function ChannelChatPanel({
 
   if (!channel) {
     return (
-      <aside className="flex h-full w-full flex-col border-l border-shell-divider bg-background">
+      <aside className="gradient-surface-content flex h-full w-full flex-col border-l border-shell-divider bg-background">
         <PanelHeader title="Чат" onClose={onClose} />
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
           Канал не найден
@@ -92,7 +92,7 @@ export function ChannelChatPanel({
         : undefined
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col border-l border-shell-divider bg-background">
+    <aside className="gradient-surface-content flex h-full min-h-0 w-full flex-col border-l border-shell-divider bg-background">
       <PanelHeader title={title} onClose={onClose}>
         {historyQuery.isFetching ? (
           <span className="text-xs text-muted-foreground">загрузка…</span>

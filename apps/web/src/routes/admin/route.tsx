@@ -28,7 +28,7 @@ function AdminRedirect() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-background px-6 text-sm text-muted-foreground">
+    <main className="gradient-surface-content flex min-h-svh items-center justify-center bg-background px-6 text-sm text-muted-foreground">
       Переходим в админку...
     </main>
   )

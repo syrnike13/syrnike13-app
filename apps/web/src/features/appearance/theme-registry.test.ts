@@ -8,6 +8,7 @@ import {
   THEME_TOKEN_KEYS,
   applyBrandLockedThemeTokens,
   getThemeById,
+  getThemeSurfaceVariables,
   getThemeTokens,
   resolveThemeVariant,
   themePreviewColors,
@@ -65,13 +66,13 @@ describe('theme registry', () => {
   it('forces matrix to dark regardless of color mode', () => {
     expect(
       resolveThemeVariant(
-        { themeId: 'matrix', colorMode: 'light' },
+        { ...DEFAULT_APPEARANCE_SETTINGS, themeId: 'matrix', colorMode: 'light' },
         false,
       ),
     ).toBe('dark')
   })
 
-  it('exposes eight palettes including syrnike base', () => {
+  it('keeps the solid palettes and exposes the gradient presets', () => {
     expect(THEME_CATALOG.map((theme) => theme.id)).toEqual([
       'syrnike',
       'lug',
@@ -81,8 +82,24 @@ describe('theme registry', () => {
       'pergament',
       'grafit',
       'kontrast',
+      'gradient-twilight',
+      'gradient-aurora',
+      'gradient-sunset',
+      'gradient-ocean',
+      'gradient-orchid',
+      'gradient-northern-lights',
+      'gradient-mango',
+      'gradient-sakura',
+      'gradient-midnight',
+      'gradient-mint',
+      'gradient-ember',
+      'gradient-dunes',
+      'gradient',
     ])
     expect(getThemeById('syrnike').name).toBe('Сырники')
+    expect(getThemeById('syrnike').kind).toBe('solid')
+    expect(getThemeById('gradient').kind).toBe('gradient')
+    expect(getThemeById('gradient').customizable).toBe(true)
   })
 
   it('keeps brand-locked tokens from syrnike for every theme', () => {
@@ -107,7 +124,7 @@ describe('theme registry', () => {
 
   it('resolves lug theme with syrnike brand tokens via getThemeTokens', () => {
     const tokens = getThemeTokens(
-      { themeId: 'lug', colorMode: 'light' },
+      { ...DEFAULT_APPEARANCE_SETTINGS, themeId: 'lug', colorMode: 'light' },
       false,
     )
     const syrnikeLight = getThemeById('syrnike').variants.light!
@@ -115,6 +132,46 @@ describe('theme registry', () => {
       expect(tokens[key]).toBe(syrnikeLight[key])
     }
     expect(tokens.background).toBe(getThemeById('lug').variants.light!.background)
+  })
+
+  it('tints tokens and builds gradient surfaces only for gradient themes', () => {
+    const gradientSettings = {
+      ...DEFAULT_APPEARANCE_SETTINGS,
+      themeId: 'gradient',
+      colorMode: 'dark' as const,
+    }
+    const tokens = getThemeTokens(gradientSettings, true)
+    const surfaces = getThemeSurfaceVariables(gradientSettings, true)
+
+    expect(tokens.background).toContain('color-mix(in oklab')
+    expect(surfaces['theme-backdrop']).toContain('linear-gradient')
+
+    const solidSettings = {
+      ...DEFAULT_APPEARANCE_SETTINGS,
+      themeId: 'lug',
+      colorMode: 'dark' as const,
+    }
+    const solidTokens = getThemeTokens(solidSettings, true)
+    const solidSurfaces = getThemeSurfaceVariables(solidSettings, true)
+    expect(solidSurfaces['theme-backdrop']).toBe(solidTokens.background)
+    expect(solidSurfaces['theme-surface-content']).toBe(solidTokens.card)
+  })
+
+  it('keeps preset gradients independent from custom gradient settings', () => {
+    const settings = {
+      ...DEFAULT_APPEARANCE_SETTINGS,
+      themeId: 'gradient-aurora',
+      colorMode: 'dark' as const,
+      gradient: {
+        colors: ['#112233', '#AABBCC'],
+        angle: 45,
+        saturation: 80,
+      },
+    }
+
+    expect(getThemeSurfaceVariables(settings, true)['theme-backdrop']).toBe(
+      'linear-gradient(120deg, #163A72, #267F72, #59388E)',
+    )
   })
 
   it('uses catalog palette colors in theme picker previews (not brand-locked)', () => {

@@ -4,6 +4,7 @@ import {
   normalizeAppearanceColorMode,
   normalizeAppearanceSettings,
   type AppearanceColorMode,
+  type AppearanceGradientSettings,
   type AppearanceSettings,
 } from '@syrnike13/platform'
 
@@ -25,6 +26,7 @@ function migrateLegacyTheme(): AppearanceSettings | null {
     const colorMode = normalizeAppearanceColorMode(legacy, 'dark')
     localStorage.removeItem(LEGACY_THEME_STORAGE_KEY)
     return {
+      ...DEFAULT_APPEARANCE_SETTINGS,
       themeId: DEFAULT_THEME_ID,
       colorMode,
     }
@@ -71,6 +73,15 @@ function emit() {
   listeners.forEach((listener) => listener())
 }
 
+function cloneSettings(settings: AppearanceSettings): AppearanceSettings {
+  return {
+    ...settings,
+    gradient: settings.gradient
+      ? { ...settings.gradient, colors: [...settings.gradient.colors] }
+      : null,
+  }
+}
+
 function persist() {
   if (typeof window === 'undefined') return
   if (getSyrnikeDesktop()) {
@@ -84,10 +95,13 @@ function persist() {
   }
 }
 
-function patch(partial: Partial<AppearanceSettings>) {
+function patch(
+  partial: Partial<AppearanceSettings>,
+  options: { persist?: boolean } = {},
+) {
   state = normalizeAppearanceSettings({ ...state, ...partial })
   stateRevision += 1
-  persist()
+  if (options.persist !== false) persist()
   applyThemeToDocument(state)
   emit()
 }
@@ -109,7 +123,7 @@ export const appearanceSettingsStore = {
     }
   },
 
-  getState: () => ({ ...state }),
+  getState: () => cloneSettings(state),
 
   setThemeId(themeId: string) {
     if (state.themeId === themeId) return
@@ -121,15 +135,16 @@ export const appearanceSettingsStore = {
     patch({ colorMode })
   },
 
+  previewGradient(gradient: AppearanceGradientSettings) {
+    patch({ gradient }, { persist: false })
+  },
+
+  setGradient(gradient: AppearanceGradientSettings | null) {
+    patch({ gradient })
+  },
+
   setSettings(settings: AppearanceSettings) {
-    const next = normalizeAppearanceSettings(settings)
-    if (
-      next.themeId === state.themeId &&
-      next.colorMode === state.colorMode
-    ) {
-      return
-    }
-    patch(next)
+    patch(normalizeAppearanceSettings(settings))
   },
 }
 

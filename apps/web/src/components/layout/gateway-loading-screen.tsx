@@ -40,7 +40,7 @@ export function GatewayLoadingScreen({
     <div
       className={cn(
         'fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden',
-        'bg-background px-6 text-foreground transition-opacity duration-300',
+        'gradient-surface-content bg-background px-6 text-foreground transition-opacity duration-300',
         visible ? 'opacity-100' : 'opacity-0',
       )}
       role="status"

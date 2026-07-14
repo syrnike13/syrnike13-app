@@ -3,10 +3,12 @@ import type { AppearanceSettings } from '@syrnike13/platform'
 import {
   allThemeCssVariables,
   getThemeById,
+  getThemeSurfaceVariables,
   getThemeTokens,
   resolveThemeVariant,
   type ThemeVariant,
 } from '#/features/appearance/theme-registry'
+import { allThemeSurfaceCssVariables } from '#/features/appearance/theme-surfaces'
 
 export function readSystemPrefersDark(): boolean {
   if (typeof window === 'undefined') return true
@@ -27,8 +29,19 @@ export function applyThemeToDocument(
 
   root.classList.toggle('dark', variant === 'dark')
   root.dataset.theme = theme.id
+  root.dataset.themeGradient =
+    theme.kind === 'gradient'
+      ? theme.customizable && settings.gradient
+        ? 'custom'
+        : 'preset'
+      : 'none'
 
-  const variables = allThemeCssVariables(tokens)
+  const variables = {
+    ...allThemeCssVariables(tokens),
+    ...allThemeSurfaceCssVariables(
+      getThemeSurfaceVariables(settings, prefersDark),
+    ),
+  }
   for (const [name, value] of Object.entries(variables)) {
     root.style.setProperty(name, value)
   }

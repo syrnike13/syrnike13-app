@@ -107,7 +107,7 @@ export function DirectMessageProfilePanel({
       <div
         data-dm-profile-surface
         className={cn(
-          'absolute inset-y-0 right-0 z-10 flex min-h-0 flex-col overflow-y-auto border-l border-shell-divider bg-card shadow-sm will-change-[translate,opacity] transition-[translate,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+          'theme-surface-content absolute inset-y-0 right-0 z-10 flex min-h-0 flex-col overflow-y-auto border-l border-shell-divider shadow-sm will-change-[translate,opacity] transition-[translate,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
           open ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0',
         )}
         style={{

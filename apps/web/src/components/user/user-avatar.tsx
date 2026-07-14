@@ -69,7 +69,7 @@ export function AvatarNotificationBadge({
         height: layout.sizePx,
         fontSize: Math.round(layout.sizePx * 0.62),
         lineHeight: 1,
-        backgroundColor: 'var(--destructive)',
+        backgroundColor: 'var(--destructive-contrast)',
         color: 'var(--destructive-foreground)',
         boxShadow: `0 0 0 ${layout.ringPx}px ${presenceRingColorVar(ringClassName)}`,
       }}

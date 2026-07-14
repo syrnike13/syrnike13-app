@@ -36,7 +36,7 @@ export function DesktopUpdateBanner() {
   if (state.status === 'downloading') {
     return (
       <div
-        className="fixed inset-x-0 z-50 border-b border-border/60 bg-background/95 px-4 py-2 text-sm text-muted-foreground backdrop-blur"
+        className="gradient-surface-raised fixed inset-x-0 z-50 border-b border-border/60 bg-background/95 px-4 py-2 text-sm text-muted-foreground backdrop-blur"
         style={{ top: titleBarHeightPx }}
       >
         Загрузка обновления… {Math.round(state.percent)}%
@@ -48,7 +48,7 @@ export function DesktopUpdateBanner() {
 
   return (
     <div
-      className="fixed inset-x-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b border-primary/30 bg-background/95 px-4 py-2.5 text-sm backdrop-blur"
+      className="gradient-surface-raised fixed inset-x-0 z-50 flex flex-wrap items-center justify-between gap-3 border-b border-primary/30 bg-background/95 px-4 py-2.5 text-sm backdrop-blur"
       style={{ top: titleBarHeightPx }}
     >
       <span>

@@ -30,6 +30,7 @@ import {
 } from '#/components/icons'
 import { Button } from '#/components/ui/button'
 import { FloatingMenu, FloatingMenuItem } from '#/components/ui/floating-menu'
+import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { useAuth } from '#/features/auth/auth-context'
@@ -615,12 +616,12 @@ function AuditUserFilter({
         className="max-h-80 w-[260px] overflow-y-auto"
       >
         <div className="sticky top-0 z-10 bg-popover p-1">
-          <div className="flex h-8 items-center gap-2 rounded-md border border-border bg-background px-2">
-            <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
-            <input
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               value={query}
               placeholder="Найти пользователя"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              className="h-8 pl-8"
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
