@@ -48,11 +48,6 @@ pub async fn set_role_permissions(
                 role.rank,
             )?;
 
-            let current_value: Override = role.permissions.into();
-            permissions
-                .throw_permission_override(current_value, &data.permissions)
-                .await?;
-
             let previous_permissions = match &channel {
                 Channel::TextChannel {
                     role_permissions, ..
@@ -60,6 +55,10 @@ pub async fn set_role_permissions(
                 _ => return Err(create_error!(InvalidOperation)),
             };
             let requested_permissions = data.permissions.clone();
+            permissions
+                .throw_permission_override(previous_permissions.clone(), &requested_permissions)
+                .await?;
+
             let change_key = format!("role_permissions.{}", role_id);
             let changes = HashMap::from([(
                 change_key,

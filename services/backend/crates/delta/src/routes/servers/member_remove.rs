@@ -14,7 +14,7 @@ use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
 use syrnike_result::{Result, create_error};
 use validator::Validate;
 
-use super::audit_mutation;
+use super::{audit_mutation, hierarchy_policy};
 
 /// # Kick Member
 ///
@@ -53,11 +53,12 @@ pub async fn kick(
         .throw_if_lacking_channel_permission(ChannelPermission::KickMembers)?;
 
     let member = member_id.as_member(db, &server.id).await?;
-    if member.get_ranking(query.server_ref().as_ref().unwrap())
-        <= query.get_member_rank().unwrap_or(i64::MIN)
-    {
-        return Err(create_error!(NotElevated));
-    }
+    hierarchy_policy::ensure_member_below_actor(
+        &user,
+        &server,
+        query.get_member_rank(),
+        &member,
+    )?;
 
     let changes = audit_mutation::audit_changes(vec![(
         "member",

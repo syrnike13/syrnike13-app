@@ -9,7 +9,8 @@ use syrnike_result::Result;
 use ulid::Ulid;
 
 use crate::{
-    events::client::EventV1, Database, File, PartialServer, Server, SystemMessage, User, AMQP,
+    events::client::EventV1, Database, File, PartialServer, RelationshipStatus, Server,
+    SystemMessage, User, AMQP,
 };
 
 #[cfg(feature = "mongodb")]
@@ -372,6 +373,19 @@ impl Channel {
         if let Channel::Group { recipients, .. } = self {
             if recipients.contains(&String::from(&user.id)) {
                 return Err(create_error!(AlreadyInGroup));
+            }
+
+            for recipient_id in recipients.iter() {
+                let recipient = db.fetch_user(recipient_id).await?;
+                if matches!(
+                    user.relationship_with(recipient_id),
+                    RelationshipStatus::Blocked | RelationshipStatus::BlockedOther
+                ) || matches!(
+                    recipient.relationship_with(&user.id),
+                    RelationshipStatus::Blocked | RelationshipStatus::BlockedOther
+                ) {
+                    return Err(create_error!(NotFriends));
+                }
             }
 
             let config = config().await;
@@ -769,6 +783,18 @@ impl Channel {
                             vec![],
                         )
                         .await?;
+
+                        EventV1::ChannelUpdate {
+                            id: id.to_string(),
+                            data: PartialChannel {
+                                owner: Some(new_owner.to_string()),
+                                ..Default::default()
+                            }
+                            .into(),
+                            clear: vec![],
+                        }
+                        .p(id.to_string())
+                        .await;
 
                         SystemMessage::ChannelOwnershipChanged {
                             from: owner.to_string(),

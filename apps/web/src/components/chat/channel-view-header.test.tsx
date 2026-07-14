@@ -135,6 +135,10 @@ vi.mock('#/components/voice/voice-channel-shell', () => ({
   ),
 }))
 
+vi.mock('#/components/chat/group-management-dialog', () => ({
+  GroupManagementDialog: () => null,
+}))
+
 vi.mock('#/components/voice/voice-stage-view', () => ({
   VoiceStageView: ({
     channel,
@@ -280,6 +284,16 @@ describe('ChannelView direct message header', () => {
     }
     syncStore.reset()
     vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+    vi.stubGlobal('matchMedia', () => ({
+      matches: false,
+      media: '',
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
     syncStore.applyReady({
       users: [currentUser, targetUser],
       servers: [
@@ -335,7 +349,9 @@ describe('ChannelView direct message header', () => {
     expect(profileButton.getAttribute('aria-pressed')).toBe('true')
 
     fireEvent.click(profileButton)
-    expect(screen.queryByLabelText('Профиль пользователя')).toBeNull()
+    expect(
+      screen.getByLabelText('Профиль пользователя').getAttribute('aria-hidden'),
+    ).toBe('true')
     expect(profileButton.getAttribute('aria-pressed')).toBe('false')
 
     fireEvent.click(profileButton)

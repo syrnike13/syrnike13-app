@@ -40,12 +40,17 @@ describe('ImageLightbox', () => {
     )
 
     const dialog = screen.getByRole('dialog', { name: 'poster.png' })
+    const image = within(dialog).getByRole('img', { name: 'poster.png' })
     expect(
-      within(dialog)
-        .getByRole('img', { name: 'poster.png' })
-        .getAttribute('src')
-        ?.endsWith('/attachments/file-1/poster.png'),
+      image.getAttribute('src')?.endsWith('/attachments/file-1/poster.png'),
     ).toBe(true)
+    expect(image.classList.contains('cursor-pointer')).toBe(true)
+    expect(image.classList.contains('cursor-zoom-in')).toBe(false)
+    expect(image.classList.contains('cursor-zoom-out')).toBe(false)
+
+    fireEvent.click(image)
+    expect(image.classList.contains('scale-110')).toBe(true)
+    expect(image.classList.contains('cursor-pointer')).toBe(true)
 
     const openOriginal = within(dialog).getByRole('link', {
       name: 'Открыть оригинал',

@@ -41,7 +41,7 @@ export function MessageAttachments({ attachments }: MessageAttachmentsProps) {
                   alt={file.filename ?? 'Изображение'}
                   aspectRatio={aspectRatio ?? undefined}
                   objectFit="contain"
-                  wrapperClassName="max-h-96 cursor-zoom-in sm:max-w-[28rem]"
+                  wrapperClassName="max-h-96 cursor-pointer sm:max-w-[28rem]"
                 />
               </button>
             )

@@ -12,9 +12,9 @@ import { listDmChannels } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import {
   isIncomingVoiceCall,
-  isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
+import { attachmentPreviewUrl } from '#/lib/media'
 import { cn } from '#/lib/utils'
 
 type DmChannelListProps = {
@@ -58,10 +58,6 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
         const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
         const dmUser = dmRecipientId ? users[dmRecipientId] : undefined
         const voiceCall = syncState.voiceCalls[channel._id]
-        const voiceCallDismissed = isVoiceCallDismissed(
-          voiceCall,
-          syncState.dismissedVoiceCallKeys,
-        )
         const voiceCallRingingDismissed = isVoiceCallRingingDismissed(
           voiceCall,
           syncState.dismissedVoiceCallKeys,
@@ -70,13 +66,11 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
           !voiceCallRingingDismissed &&
           isIncomingVoiceCall(voiceCall, auth.user?._id)
         const voiceCallMarkerTitle =
-          voiceCallDismissed
-            ? null
+          voiceCall?.phase === 'active'
+            ? 'Идёт звонок'
             : incomingVoiceCall
               ? 'Входящий звонок'
-              : voiceCall?.phase === 'active'
-                ? 'Идёт звонок'
-                : null
+              : null
 
         return (
           <Button
@@ -97,12 +91,20 @@ export function DmChannelList({ activeChannelId, className }: DmChannelListProps
                   fallbackClassName="size-8 text-xs"
                 />
               ) : channel.channel_type === 'Group' ? (
-                <span
-                  title="Групповой чат"
-                  className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
-                >
-                  <UsersIcon aria-hidden="true" className="size-5" />
-                </span>
+                channel.icon ? (
+                  <img
+                    src={attachmentPreviewUrl(channel.icon)}
+                    alt=""
+                    className="size-8 shrink-0 rounded-md object-cover"
+                  />
+                ) : (
+                  <span
+                    title="Групповой чат"
+                    className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
+                  >
+                    <UsersIcon aria-hidden="true" className="size-5" />
+                  </span>
+                )
               ) : (
                 <HashIcon className="size-5 shrink-0 text-muted-foreground" />
               )}

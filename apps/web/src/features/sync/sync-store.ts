@@ -3,6 +3,7 @@ import type {
   Channel,
   ChannelUnread,
   Emoji,
+  FieldsChannel,
   InviteJoinResponse,
   Member,
   Message,
@@ -241,6 +242,27 @@ function clearMemberFields(
     }
   }
   return next
+}
+
+function clearChannelFields(channel: Channel, clear: FieldsChannel[] | undefined) {
+  const next: Record<string, unknown> = { ...channel }
+  for (const field of clear ?? []) {
+    switch (field) {
+      case 'Description':
+        delete next.description
+        break
+      case 'Icon':
+        delete next.icon
+        break
+      case 'DefaultPermissions':
+        delete next.default_permissions
+        break
+      case 'Voice':
+        delete next.voice
+        break
+    }
+  }
+  return next as Channel
 }
 
 function memberKey(member: Member) {
@@ -1310,8 +1332,17 @@ export const syncStore = {
         this.upsertChannel(event as Channel)
         break
       case 'ChannelUpdate': {
-        const { id, data } = event as { id: string; data: Partial<Channel> }
-        this.patchChannel(id, data)
+        const { id, data, clear } = event as {
+          id: string
+          data: Partial<Channel>
+          clear?: FieldsChannel[]
+        }
+        const existing = state.channels[id]
+        if (existing) {
+          this.upsertChannel(
+            mergeChannel(clearChannelFields(existing, clear), data),
+          )
+        }
         break
       }
       case 'ChannelDelete': {
@@ -1440,7 +1471,8 @@ export const syncStore = {
         const channels = { ...state.channels }
         for (const [channelId, channel] of Object.entries(channels)) {
           if (
-            serverChannelServerId(channel) !== id ||
+            channel.channel_type !== 'TextChannel' ||
+            channel.server !== id ||
             !channel.role_permissions?.[role_id]
           ) {
             continue

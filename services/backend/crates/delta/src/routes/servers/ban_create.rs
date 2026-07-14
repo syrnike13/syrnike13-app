@@ -16,7 +16,7 @@ use syrnike_permissions::{ChannelPermission, calculate_server_permissions};
 use syrnike_result::{Result, create_error};
 use validator::Validate;
 
-use super::audit_mutation;
+use super::{audit_mutation, hierarchy_policy};
 
 /// # Ban User
 ///
@@ -55,11 +55,12 @@ pub async fn ban(
     // If member exists, check privileges against them
     let member = target.as_member(db, &server.id).await.ok();
     if let Some(member) = &member {
-        if member.get_ranking(query.server_ref().as_ref().unwrap())
-            <= query.get_member_rank().unwrap_or(i64::MIN)
-        {
-            return Err(create_error!(NotElevated));
-        }
+        hierarchy_policy::ensure_member_below_actor(
+            &user,
+            &server,
+            query.get_member_rank(),
+            member,
+        )?;
     }
 
     let changes = audit_mutation::audit_changes(vec![

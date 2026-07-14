@@ -7,7 +7,7 @@ use syrnike_database::{
 use syrnike_models::v0::{self, InviteJoinResponse};
 use syrnike_result::{create_error, Result};
 
-use crate::routes::voice_call_member_sync::send_active_group_voice_call_to_new_member;
+use crate::routes::voice_call_member_sync::send_group_voice_call_to_new_member;
 
 /// # Join Invite
 ///
@@ -63,11 +63,11 @@ pub async fn join(
 
                 channel.add_user_to_group(db, amqp, &user, creator).await?;
                 if let Err(error) =
-                    send_active_group_voice_call_to_new_member(&user.id, &channel).await
+                    send_group_voice_call_to_new_member(&user.id, &channel).await
                 {
                     syrnike_config::capture_internal_error!(&error);
                     warn!(
-                        "Failed to send active group voice call to newly joined user {}: {error:?}",
+                        "Failed to send group voice call to newly joined user {}: {error:?}",
                         user.id
                     );
                 }

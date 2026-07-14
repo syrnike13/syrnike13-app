@@ -133,7 +133,13 @@ export function ChannelSettingsPage({
 
   const canManage =
     isServerSettingsChannel && settingsChannel
-      ? canManageChannel(server, settingsChannel, member, auth.user?._id)
+      ? canManageChannel(
+          server,
+          settingsChannel,
+          member,
+          auth.user?._id,
+          auth.user?.privileged,
+        )
       : false
 
   const canManagePermissions =
@@ -143,11 +149,18 @@ export function ChannelSettingsPage({
           settingsChannel,
           member,
           auth.user?._id,
+          auth.user?.privileged,
         )
       : false
   const canManageWebhooks =
     isServerSettingsChannel && settingsChannel.channel_type === 'TextChannel'
-      ? canManageChannelWebhooks(server, settingsChannel, member, auth.user?._id)
+      ? canManageChannelWebhooks(
+          server,
+          settingsChannel,
+          member,
+          auth.user?._id,
+          auth.user?.privileged,
+        )
       : false
 
   const closeSettings = useCallback(() => {

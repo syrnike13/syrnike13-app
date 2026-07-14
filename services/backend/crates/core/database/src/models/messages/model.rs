@@ -296,6 +296,10 @@ impl Message {
             limits.message_length,
         )?;
 
+        if let Some(content) = data.content.as_deref() {
+            Self::validate_content(db, content).await?;
+        }
+
         idempotency
             .consume_nonce(data.nonce)
             .await
@@ -495,6 +499,14 @@ impl Message {
                 match db.fetch_message(&id).await {
                     // Referenced message exists
                     Ok(message) => {
+                        if message.channel != channel.id() {
+                            if fail_if_not_exists.unwrap_or(true) {
+                                return Err(create_error!(NotFound));
+                            }
+
+                            continue;
+                        }
+
                         if mention && allow_mentions {
                             user_mentions.insert(message.author.to_owned());
                         }
@@ -816,6 +828,10 @@ impl Message {
         partial: PartialMessage,
         remove: Vec<FieldsMessage>,
     ) -> Result<()> {
+        if let Some(content) = partial.content.as_deref() {
+            Self::validate_content(db, content).await?;
+        }
+
         self.apply_options(partial.clone());
 
         for field in &remove {
@@ -1026,6 +1042,17 @@ impl Message {
         } else {
             Err(create_error!(PayloadTooLarge))
         }
+    }
+
+    /// Validate custom emojis in message content.
+    async fn validate_content(db: &Database, content: &str) -> Result<()> {
+        for emoji in syrnike_parser::parse_message(content).emojis {
+            if !Emoji::can_use(db, &emoji).await? {
+                return Err(create_error!(InvalidOperation));
+            }
+        }
+
+        Ok(())
     }
 
     /// Delete a message

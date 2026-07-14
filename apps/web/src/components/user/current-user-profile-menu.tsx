@@ -20,7 +20,6 @@ import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { cn } from '#/lib/utils'
 
 type CurrentUserProfileMenuProps = {
   user: User
@@ -193,7 +192,7 @@ export function CurrentUserProfileMenu({
               className={profileMenuRowClass}
               onClick={() => {
                 onClose?.()
-                void navigate({ to: '/admin/badges' })
+                void navigate({ to: '/admin' })
               }}
             >
               <SettingsIcon

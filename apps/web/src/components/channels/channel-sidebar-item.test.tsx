@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   join: vi.fn(async () => {}),
   openVoiceChannelDrawer: vi.fn(),
-  deleteChannel: vi.fn(async () => {}),
+  deleteChannel: vi.fn(async (_serverId: string, _channelId: string) => {}),
   pathname: '/app/',
   voice: {
     channelId: 'voice-main' as string | null,
@@ -425,7 +425,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     expect(screen.getByTitle('Идёт звонок')).toBeTruthy()
   })
 
-  it('does not mark active calls after hiding the same ringing phase', () => {
+  it('marks active calls after hiding the same ringing phase', () => {
     const ringingCall = {
       channelId: 'dm-call',
       initiatorId: 'caller-user',
@@ -459,7 +459,7 @@ describe('ChannelSidebarItem voice navigation', () => {
       />,
     )
 
-    expect(screen.queryByTitle('Идёт звонок')).toBeNull()
+    expect(screen.getByTitle('Идёт звонок')).toBeTruthy()
   })
 
   it('renders group direct messages with a group icon in the channel row', () => {

@@ -154,7 +154,7 @@ impl Database {
                             verify: Template {
                                 title: "Verify your Stoat account.".into(),
                                 text: include_str!("../../templates/verify.txt").into(),
-                                url: format!("{}/login/verify/", config.hosts.app),
+                                url: format!("{}/verify/", config.hosts.app),
                                 html: Some(include_str!("../../templates/verify.html").into()),
                             },
                             reset: Template {
@@ -185,7 +185,7 @@ impl Database {
                             verify: Template {
                                 title: "Verify your account.".into(),
                                 text: include_str!("../../templates/verify.whitelabel.txt").into(),
-                                url: format!("{}/login/verify/", config.hosts.app),
+                                url: format!("{}/verify/", config.hosts.app),
                                 html: None,
                             },
                             reset: Template {

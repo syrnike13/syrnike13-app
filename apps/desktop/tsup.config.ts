@@ -5,6 +5,20 @@ import path from 'node:path'
 const WEB_DEV_URL = process.env.SYRNIKE_WEB_DEV_URL ?? 'http://127.0.0.1:3000'
 const DESKTOP_RELEASE_CHANNEL =
   process.env.SYRNIKE_DESKTOP_CHANNEL === 'nightly' ? 'nightly' : 'stable'
+const DESKTOP_BACKEND_MODE =
+  process.env.SYRNIKE_DESKTOP_BACKEND_MODE === 'local' ? 'local' : 'release'
+const DESKTOP_PUBLIC_HOST =
+  DESKTOP_RELEASE_CHANNEL === 'nightly' ? 'beta.syrnike13.ru' : 'syrnike13.ru'
+const DESKTOP_VOICE_WS_URL =
+  process.env.SYRNIKE_DESKTOP_VOICE_WS_URL ??
+  (DESKTOP_BACKEND_MODE === 'local'
+    ? 'ws://127.0.0.1:14703'
+    : `wss://${DESKTOP_PUBLIC_HOST}/ws`)
+const DESKTOP_API_URL =
+  process.env.SYRNIKE_DESKTOP_API_URL ??
+  (DESKTOP_BACKEND_MODE === 'local'
+    ? 'http://127.0.0.1:14702'
+    : `https://${DESKTOP_PUBLIC_HOST}/api`)
 const DESKTOP_SENTRY_DSN = process.env.SYRNIKE_DESKTOP_SENTRY_DSN ?? ''
 const DESKTOP_SENTRY_ENVIRONMENT =
   process.env.SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT ?? DESKTOP_RELEASE_CHANNEL
@@ -32,6 +46,8 @@ const MAIN_DEFINES = {
     DESKTOP_NATIVE_METRICS_ENDPOINT,
   ),
   __DESKTOP_COMMIT_SHA__: JSON.stringify(DESKTOP_COMMIT_SHA),
+  __DESKTOP_VOICE_WS_URL__: JSON.stringify(DESKTOP_VOICE_WS_URL),
+  __DESKTOP_API_URL__: JSON.stringify(DESKTOP_API_URL),
 }
 
 export default defineConfig([

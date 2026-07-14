@@ -68,7 +68,13 @@ export function RoleMembersPanel({
 
   const canAddMembers = Boolean(
     actorUserId &&
-      canAssignRole(server, actorMember, actorUserId, role.rank ?? 0),
+      canAssignRole(
+        server,
+        actorMember,
+        actorUserId,
+        role.rank ?? 0,
+        auth.user?.privileged,
+      ),
   )
 
   const withRole = useMemo(() => {
@@ -101,6 +107,7 @@ export function RoleMembersPanel({
         targetMember,
         role,
         false,
+        auth.user?.privileged,
       )
     ) {
       return
@@ -138,6 +145,7 @@ export function RoleMembersPanel({
           member,
           role,
           false,
+          auth.user?.privileged,
         ),
     )
 

@@ -69,6 +69,7 @@ function composerPlaceholder(
 type MessageComposerProps = {
   channel?: Channel
   disabled?: boolean
+  disabledPlaceholder?: string
   token?: string
   users: Record<string, User>
   replyTo?: Message | null
@@ -84,6 +85,7 @@ type MessageComposerProps = {
 export function MessageComposer({
   channel,
   disabled,
+  disabledPlaceholder,
   token,
   users,
   replyTo,
@@ -364,13 +366,15 @@ export function MessageComposer({
   const waitingForConnection =
     Boolean(token) && auth.gatewayState !== 'connected'
 
-  const placeholder = composerPlaceholder(
-    channel,
-    users,
-    auth.user?._id,
-    isEditing,
-    waitingForConnection,
-  )
+  const placeholder =
+    disabledPlaceholder ??
+    composerPlaceholder(
+      channel,
+      users,
+      auth.user?._id,
+      isEditing,
+      waitingForConnection,
+    )
 
   const hasComposerHeader = showReplyBanner || isEditing
 
