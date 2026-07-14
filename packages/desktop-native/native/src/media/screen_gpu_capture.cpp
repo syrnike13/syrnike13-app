@@ -1,6 +1,7 @@
 #include "screen_gpu_capture.hpp"
 
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <dxgi1_2.h>
 #include <Windows.Graphics.Capture.Interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
@@ -21,6 +22,7 @@
 #include <cmath>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -533,6 +535,386 @@ class GpuFramePool {
   std::uint64_t sequence_ = 0;
 };
 
+// Independent BGRA pool for Electron preview. A slot remains occupied until
+// Electron reports that every renderer GPU reference has been released. The
+// capture path never waits for a slot: preview is simply skipped under load.
+class GpuPreviewPool {
+ public:
+  GpuPreviewPool(
+      ID3D11Device* device,
+      ID3D11DeviceContext* context,
+      std::uint32_t max_width,
+      std::uint32_t max_height)
+      : device_(device),
+        context_(context),
+        max_width_(max_width),
+        max_height_(max_height) {
+    requireHr(
+        device_->QueryInterface(IID_PPV_ARGS(&video_device_)),
+        ScreenGpuCaptureErrorCode::FormatUnsupported,
+        "D3D11 preview video device is unavailable");
+    requireHr(
+        context_->QueryInterface(IID_PPV_ARGS(&video_context_)),
+        ScreenGpuCaptureErrorCode::FormatUnsupported,
+        "D3D11 preview video context is unavailable");
+  }
+
+  ~GpuPreviewPool() {
+    std::lock_guard lock(mutex_);
+    for (auto& slot : slots_) {
+      closeRemoteHandle(slot);
+      if (slot.shared_handle) CloseHandle(slot.shared_handle);
+    }
+  }
+
+  void setDemand(ScreenPreviewDemand demand) {
+    demand.width = std::clamp<std::uint32_t>(
+        demand.width & ~1U, 16,
+        std::max<std::uint32_t>(16, std::min<std::uint32_t>(max_width_, 3840)));
+    demand.height = std::clamp<std::uint32_t>(
+        demand.height & ~1U, 16,
+        std::max<std::uint32_t>(16, std::min<std::uint32_t>(max_height_, 2160)));
+    demand.fps = std::clamp<std::uint32_t>(demand.fps, 1, 60);
+    std::lock_guard lock(mutex_);
+    demand_ = demand;
+    ++demand_revision_;
+    if (!demand.demanded && pending_) {
+      for (auto& slot : slots_) {
+        if (!slot.occupied || slot.sequence != pending_->sequence) continue;
+        closeRemoteHandle(slot);
+        slot.occupied = false;
+        break;
+      }
+      pending_.reset();
+    }
+  }
+
+  void process(
+      ID3D11Texture2D* source,
+      std::uint32_t source_width,
+      std::uint32_t source_height,
+      std::uint32_t content_width,
+      std::uint32_t content_height) {
+    ScreenPreviewDemand demand;
+    std::uint64_t demand_revision = 0;
+    std::uint64_t reserved_sequence = 0;
+    std::size_t slot_index = slots_.size();
+    const auto now = std::chrono::steady_clock::now();
+    {
+      std::lock_guard lock(mutex_);
+      demand = demand_;
+      demand_revision = demand_revision_;
+      if (!demand.demanded || demand.electron_main_pid == 0 || pending_) return;
+      if (now < next_retry_at_) return;
+      const auto interval = std::chrono::microseconds(1'000'000 / demand.fps);
+      if (last_frame_at_ != std::chrono::steady_clock::time_point{} &&
+          now - last_frame_at_ < interval) return;
+      for (std::size_t attempt = 0; attempt < slots_.size(); ++attempt) {
+        const auto candidate = (next_slot_ + attempt) % slots_.size();
+        if (!slots_[candidate].occupied) {
+          slots_[candidate].occupied = true;
+          reserved_sequence = ++sequence_;
+          slots_[candidate].sequence = reserved_sequence;
+          slot_index = candidate;
+          break;
+        }
+      }
+    }
+    if (slot_index == slots_.size()) return;
+
+    auto& slot = slots_[slot_index];
+    try {
+      configureSlot(slot, source_width, source_height, demand.width, demand.height);
+      D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC input_description{};
+      input_description.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+      ComPtr<ID3D11VideoProcessorInputView> input_view;
+      requireHr(
+          video_device_->CreateVideoProcessorInputView(
+              source, slot.enumerator.Get(), &input_description, &input_view),
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to create preview input view");
+      const RECT source_rect{
+          0, 0,
+          static_cast<LONG>(std::min(source_width, content_width)),
+          static_cast<LONG>(std::min(source_height, content_height)),
+      };
+      const RECT output_rect{0, 0, static_cast<LONG>(demand.width), static_cast<LONG>(demand.height)};
+      const auto destination_rect = fitRect(
+          static_cast<std::uint32_t>(source_rect.right),
+          static_cast<std::uint32_t>(source_rect.bottom),
+          demand.width, demand.height);
+      video_context_->VideoProcessorSetStreamFrameFormat(
+          slot.processor.Get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+      D3D11_VIDEO_PROCESSOR_COLOR_SPACE input_color{};
+      input_color.RGB_Range = 0;
+      input_color.Nominal_Range = D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255;
+      video_context_->VideoProcessorSetStreamColorSpace(
+          slot.processor.Get(), 0, &input_color);
+      D3D11_VIDEO_PROCESSOR_COLOR_SPACE output_color{};
+      output_color.RGB_Range = 0;
+      output_color.Nominal_Range = D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255;
+      video_context_->VideoProcessorSetOutputColorSpace(
+          slot.processor.Get(), &output_color);
+      video_context_->VideoProcessorSetStreamSourceRect(
+          slot.processor.Get(), 0, TRUE, &source_rect);
+      video_context_->VideoProcessorSetStreamDestRect(
+          slot.processor.Get(), 0, TRUE, &destination_rect);
+      video_context_->VideoProcessorSetOutputTargetRect(
+          slot.processor.Get(), TRUE, &output_rect);
+      D3D11_VIDEO_COLOR background{};
+      background.RGBA.A = 1.0F;
+      video_context_->VideoProcessorSetOutputBackgroundColor(
+          slot.processor.Get(), FALSE, &background);
+      D3D11_VIDEO_PROCESSOR_STREAM stream{};
+      stream.Enable = TRUE;
+      stream.pInputSurface = input_view.Get();
+      requireHr(
+          video_context_->VideoProcessorBlt(
+              slot.processor.Get(), slot.output_view.Get(), 0, 1, &stream),
+          ScreenGpuCaptureErrorCode::DeviceLost,
+          "GPU preview copy failed");
+      context_->Flush();
+
+      HANDLE main_process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, demand.electron_main_pid);
+      if (!main_process) throw ScreenGpuCaptureError(
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "Electron main process is unavailable for preview");
+      HANDLE duplicated = nullptr;
+      const BOOL duplicated_ok = DuplicateHandle(
+          GetCurrentProcess(), slot.shared_handle, main_process, &duplicated,
+          0, FALSE, DUPLICATE_SAME_ACCESS);
+      CloseHandle(main_process);
+      if (!duplicated_ok) throw ScreenGpuCaptureError(
+          ScreenGpuCaptureErrorCode::InteropUnavailable,
+          "failed to duplicate preview texture handle");
+
+      std::lock_guard lock(mutex_);
+      slot.remote_handle = duplicated;
+      slot.remote_pid = demand.electron_main_pid;
+      if (demand_revision != demand_revision_ || !demand_.demanded) {
+        closeRemoteHandle(slot);
+        slot.occupied = false;
+        return;
+      }
+      last_frame_at_ = now;
+      next_slot_ = (slot_index + 1) % slots_.size();
+      pending_ = ScreenPreviewFrame{
+          reserved_sequence,
+          steadyMicros(),
+          demand.width,
+          demand.height,
+          reinterpret_cast<std::uint64_t>(duplicated),
+      };
+    } catch (const ScreenGpuCaptureError& error) {
+      std::lock_guard lock(mutex_);
+      closeRemoteHandle(slot);
+      slot.texture.Reset();
+      slot.occupied = false;
+      recordFailureLocked(error.code(), error.hresult(), error.what(), now);
+    } catch (const std::exception& error) {
+      std::lock_guard lock(mutex_);
+      closeRemoteHandle(slot);
+      slot.texture.Reset();
+      slot.occupied = false;
+      recordFailureLocked(
+          ScreenGpuCaptureErrorCode::InteropUnavailable, 0, error.what(), now);
+    } catch (...) {
+      std::lock_guard lock(mutex_);
+      closeRemoteHandle(slot);
+      slot.texture.Reset();
+      slot.occupied = false;
+      recordFailureLocked(
+          ScreenGpuCaptureErrorCode::InteropUnavailable, 0,
+          "unknown local screen preview failure", now);
+    }
+  }
+
+  bool take(ScreenPreviewFrame& frame) {
+    std::lock_guard lock(mutex_);
+    if (!pending_) return false;
+    frame = *pending_;
+    pending_.reset();
+    return true;
+  }
+
+  bool takeFailure(ScreenPreviewFailure& failure) {
+    std::lock_guard lock(mutex_);
+    if (!pending_failure_) return false;
+    failure = std::move(*pending_failure_);
+    pending_failure_.reset();
+    return true;
+  }
+
+  void release(std::uint64_t sequence) noexcept {
+    std::lock_guard lock(mutex_);
+    for (auto& slot : slots_) {
+      if (!slot.occupied || slot.sequence != sequence) continue;
+      closeRemoteHandle(slot);
+      slot.occupied = false;
+      return;
+    }
+  }
+
+  std::size_t inFlight() const noexcept {
+    std::lock_guard lock(mutex_);
+    return static_cast<std::size_t>(std::count_if(
+        slots_.begin(), slots_.end(), [](const auto& slot) { return slot.occupied; }));
+  }
+
+ private:
+  struct Slot {
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11VideoProcessorEnumerator> enumerator;
+    ComPtr<ID3D11VideoProcessor> processor;
+    ComPtr<ID3D11VideoProcessorOutputView> output_view;
+    HANDLE shared_handle = nullptr;
+    HANDLE remote_handle = nullptr;
+    std::uint32_t remote_pid = 0;
+    std::uint32_t source_width = 0;
+    std::uint32_t source_height = 0;
+    std::uint32_t output_width = 0;
+    std::uint32_t output_height = 0;
+    std::uint64_t sequence = 0;
+    bool occupied = false;
+  };
+
+  void configureSlot(
+      Slot& slot,
+      std::uint32_t source_width,
+      std::uint32_t source_height,
+      std::uint32_t output_width,
+      std::uint32_t output_height) {
+    if (slot.texture && slot.source_width == source_width &&
+        slot.source_height == source_height && slot.output_width == output_width &&
+        slot.output_height == output_height) return;
+    if (slot.shared_handle) CloseHandle(slot.shared_handle);
+    slot.texture.Reset();
+    slot.enumerator.Reset();
+    slot.processor.Reset();
+    slot.output_view.Reset();
+    slot.shared_handle = nullptr;
+    slot.source_width = 0;
+    slot.source_height = 0;
+    slot.output_width = 0;
+    slot.output_height = 0;
+
+    D3D11_TEXTURE2D_DESC description{};
+    description.Width = output_width;
+    description.Height = output_height;
+    description.MipLevels = 1;
+    description.ArraySize = 1;
+    description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    description.SampleDesc.Count = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.BindFlags =
+        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    // Electron's BGRA shared-texture contract requires an NT shared handle
+    // without IDXGIKeyedMutex. The video processor writes directly into this
+    // texture, and the slot remains immutable while Electron owns the frame.
+    description.MiscFlags =
+        D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+        D3D11_RESOURCE_MISC_SHARED;
+    requireHr(
+        device_->CreateTexture2D(&description, nullptr, &slot.texture),
+        ScreenGpuCaptureErrorCode::InteropUnavailable,
+        "failed to create shared BGRA preview texture");
+    ComPtr<IDXGIResource1> resource;
+    requireHr(
+        slot.texture.As(&resource),
+        ScreenGpuCaptureErrorCode::InteropUnavailable,
+        "preview texture does not expose IDXGIResource1");
+    requireHr(
+        resource->CreateSharedHandle(
+            nullptr, DXGI_SHARED_RESOURCE_READ, nullptr, &slot.shared_handle),
+        ScreenGpuCaptureErrorCode::InteropUnavailable,
+        "failed to export preview texture handle");
+
+    D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
+    content.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+    content.InputWidth = source_width;
+    content.InputHeight = source_height;
+    content.OutputWidth = output_width;
+    content.OutputHeight = output_height;
+    content.Usage = D3D11_VIDEO_USAGE_OPTIMAL_SPEED;
+    requireHr(
+        video_device_->CreateVideoProcessorEnumerator(&content, &slot.enumerator),
+        ScreenGpuCaptureErrorCode::FormatUnsupported,
+        "failed to create preview video processor enumerator");
+    requireHr(
+        video_device_->CreateVideoProcessor(slot.enumerator.Get(), 0, &slot.processor),
+        ScreenGpuCaptureErrorCode::FormatUnsupported,
+        "failed to create preview video processor");
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC output_description{};
+    output_description.ViewDimension = D3D11_VPOV_DIMENSION_TEXTURE2D;
+    requireHr(
+        video_device_->CreateVideoProcessorOutputView(
+            slot.texture.Get(), slot.enumerator.Get(), &output_description,
+            &slot.output_view),
+        ScreenGpuCaptureErrorCode::FormatUnsupported,
+        "failed to create preview output view");
+    slot.source_width = source_width;
+    slot.source_height = source_height;
+    slot.output_width = output_width;
+    slot.output_height = output_height;
+  }
+
+  static void closeRemoteHandle(Slot& slot) noexcept {
+    if (!slot.remote_handle || slot.remote_pid == 0) {
+      slot.remote_handle = nullptr;
+      slot.remote_pid = 0;
+      return;
+    }
+    const HANDLE process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, slot.remote_pid);
+    if (process) {
+      HANDLE local = nullptr;
+      if (DuplicateHandle(
+              process, slot.remote_handle, GetCurrentProcess(), &local, 0, FALSE,
+              DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS)) {
+        CloseHandle(local);
+      }
+      CloseHandle(process);
+    }
+    slot.remote_handle = nullptr;
+    slot.remote_pid = 0;
+  }
+
+  void recordFailureLocked(
+      ScreenGpuCaptureErrorCode code,
+      long hresult,
+      std::string message,
+      std::chrono::steady_clock::time_point now) {
+    next_retry_at_ = now + std::chrono::seconds(1);
+    if (last_failure_report_at_ != std::chrono::steady_clock::time_point{} &&
+        now - last_failure_report_at_ < std::chrono::seconds(10)) {
+      ++suppressed_failures_;
+      return;
+    }
+    pending_failure_ = ScreenPreviewFailure{
+        code, hresult, std::move(message), suppressed_failures_};
+    suppressed_failures_ = 0;
+    last_failure_report_at_ = now;
+  }
+
+  ComPtr<ID3D11Device> device_;
+  ComPtr<ID3D11DeviceContext> context_;
+  ComPtr<ID3D11VideoDevice> video_device_;
+  ComPtr<ID3D11VideoContext> video_context_;
+  const std::uint32_t max_width_;
+  const std::uint32_t max_height_;
+  mutable std::mutex mutex_;
+  ScreenPreviewDemand demand_;
+  std::array<Slot, 3> slots_;
+  std::optional<ScreenPreviewFrame> pending_;
+  std::optional<ScreenPreviewFailure> pending_failure_;
+  std::size_t next_slot_ = 0;
+  std::uint64_t sequence_ = 0;
+  std::uint64_t demand_revision_ = 0;
+  std::chrono::steady_clock::time_point last_frame_at_{};
+  std::chrono::steady_clock::time_point next_retry_at_{};
+  std::chrono::steady_clock::time_point last_failure_report_at_{};
+  std::uint64_t suppressed_failures_ = 0;
+};
+
 class DxgiGpuCapturer final : public ScreenGpuCapturer {
  public:
   DxgiGpuCapturer(
@@ -540,7 +922,8 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       std::uint32_t width,
       std::uint32_t height)
       : target_(target), selection_(selectAdapter(target_)), d3d_(createDevice(selection_)),
-        pool_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height) {
+        pool_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height),
+        preview_(d3d_.device.Get(), d3d_.context.Get(), width, height) {
     recreateDuplication();
   }
 
@@ -593,6 +976,8 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       result = pool_.process(
           texture.Get(), native_width_, native_height_, native_width_, native_height_,
           method(), metrics, frame);
+      preview_.process(
+          texture.Get(), native_width_, native_height_, native_width_, native_height_);
     } catch (const ScreenGpuCaptureError& error) {
       metrics.hresult = error.hresult();
       result = {ScreenGpuFrameStatus::FatalError, metrics, method(), error.code()};
@@ -602,6 +987,21 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   }
 
   void discard(const ScreenGpuFrame& frame) noexcept override { pool_.discard(frame); }
+  void setPreviewDemand(ScreenPreviewDemand demand) override {
+    preview_.setDemand(demand);
+  }
+  bool takePreviewFrame(ScreenPreviewFrame& frame) override {
+    return preview_.take(frame);
+  }
+  bool takePreviewFailure(ScreenPreviewFailure& failure) override {
+    return preview_.takeFailure(failure);
+  }
+  void releasePreviewFrame(std::uint64_t sequence) noexcept override {
+    preview_.release(sequence);
+  }
+  std::size_t previewFramesInFlight() const noexcept override {
+    return preview_.inFlight();
+  }
   const char* method() const noexcept override { return "dxgi_gpu"; }
   LUID adapterLuid() const noexcept override { return d3d_.adapter_luid; }
 
@@ -624,6 +1024,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   AdapterSelection selection_;
   D3dDevice d3d_;
   GpuFramePool pool_;
+  GpuPreviewPool preview_;
   ComPtr<IDXGIOutputDuplication> duplication_;
   std::uint32_t native_width_ = 0;
   std::uint32_t native_height_ = 0;
@@ -636,7 +1037,8 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
       std::uint32_t width,
       std::uint32_t height)
       : target_(target), selection_(selectAdapter(target_)), d3d_(createDevice(selection_)),
-        pool_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height) {
+        pool_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height),
+        preview_(d3d_.device.Get(), d3d_.context.Get(), width, height) {
     initialize();
   }
 
@@ -733,13 +1135,20 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
             std::chrono::steady_clock::now() - started_at)
             .count());
     try {
-      return pool_.process(
+      auto result = pool_.process(
           texture.Get(),
           static_cast<std::uint32_t>(pool_size_.Width),
           static_cast<std::uint32_t>(pool_size_.Height),
           static_cast<std::uint32_t>(content_size.Width),
           static_cast<std::uint32_t>(content_size.Height),
           method(), metrics, frame);
+      preview_.process(
+          texture.Get(),
+          static_cast<std::uint32_t>(pool_size_.Width),
+          static_cast<std::uint32_t>(pool_size_.Height),
+          static_cast<std::uint32_t>(content_size.Width),
+          static_cast<std::uint32_t>(content_size.Height));
+      return result;
     } catch (const ScreenGpuCaptureError& error) {
       metrics.hresult = error.hresult();
       return {ScreenGpuFrameStatus::FatalError, metrics, method(), error.code()};
@@ -747,6 +1156,21 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   }
 
   void discard(const ScreenGpuFrame& frame) noexcept override { pool_.discard(frame); }
+  void setPreviewDemand(ScreenPreviewDemand demand) override {
+    preview_.setDemand(demand);
+  }
+  bool takePreviewFrame(ScreenPreviewFrame& frame) override {
+    return preview_.take(frame);
+  }
+  bool takePreviewFailure(ScreenPreviewFailure& failure) override {
+    return preview_.takeFailure(failure);
+  }
+  void releasePreviewFrame(std::uint64_t sequence) noexcept override {
+    preview_.release(sequence);
+  }
+  std::size_t previewFramesInFlight() const noexcept override {
+    return preview_.inFlight();
+  }
   const char* method() const noexcept override { return "wgc_gpu"; }
   LUID adapterLuid() const noexcept override { return d3d_.adapter_luid; }
 
@@ -833,6 +1257,7 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   AdapterSelection selection_;
   D3dDevice d3d_;
   GpuFramePool pool_;
+  GpuPreviewPool preview_;
   d3dwinrt::IDirect3DDevice winrt_device_{nullptr};
   capture::GraphicsCaptureItem item_{nullptr};
   capture::Direct3D11CaptureFramePool frame_pool_{nullptr};

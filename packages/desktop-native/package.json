@@ -8,6 +8,7 @@
     "build:debug": "node scripts/build.mjs --config Debug --no-stage",
     "build:asan": "node scripts/build.mjs --config Debug --no-stage --asan",
     "smoke:electron": "pnpm --filter @syrnike13/desktop exec electron ../../packages/desktop-native/scripts/smoke-utility-host.cjs",
+    "smoke:local-screen-preview": "pnpm --filter @syrnike13/desktop exec electron ../../packages/desktop-native/scripts/smoke-local-screen-preview.cjs",
     "test:smoke-harness": "node --test scripts/smoke-utility-host.test.cjs",
     "test:native": "ctest --test-dir build -C Release --output-on-failure && pnpm run test:smoke-harness",
     "test:native:debug": "ctest --test-dir build -C Debug --output-on-failure && pnpm run test:smoke-harness",

@@ -289,6 +289,9 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         demanded,
       )
     },
+    setLocalScreenPreviewDemand(demand) {
+      return ipcRenderer.invoke(IPC.mediaSetLocalScreenPreviewDemand, demand)
+    },
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void) {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => {
         if (isDesktopDisplayMediaRequest(request)) handler(request)

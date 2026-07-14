@@ -6,6 +6,7 @@ export type NativeVideoTrackMetadata = {
   trackId: string
   participantIdentity: string
   source: NativeVideoSource
+  local: boolean
   sequence: number
   rendererEpoch: number
 }
@@ -47,6 +48,10 @@ export class NativeVideoTrackAdapter {
 
 export class NativeVideoRegistry {
   private readonly tracks = new Map<string, TrackEntry>()
+  private readonly tombstones = new Map<
+    string,
+    { sessionId: string; generation: number }
+  >()
   private readonly listeners = new Set<() => void>()
   private listening = false
   private version = 0
@@ -66,6 +71,7 @@ export class NativeVideoRegistry {
       entry.generator.stop()
     }
     this.tracks.clear()
+    this.tombstones.clear()
     this.notify()
   }
 
@@ -93,9 +99,11 @@ export class NativeVideoRegistry {
     }))
   }
 
-  removeTrack(trackId: string) {
+  removeTrack(trackId: string, expected?: { sessionId: string; generation: number }) {
     const entry = this.tracks.get(trackId)
     if (!entry) return
+    if (expected && (entry.metadata.sessionId !== expected.sessionId ||
+      entry.metadata.generation !== expected.generation)) return
     this.tracks.delete(trackId)
     void entry.writer.abort()
     entry.generator.stop()
@@ -105,11 +113,21 @@ export class NativeVideoRegistry {
   private readonly onMessage = (event: MessageEvent<unknown>) => {
     if (event.source !== window || event.origin !== window.location.origin) return
     if (isTrackRemovedMessage(event.data)) {
-      this.removeTrack(event.data.metadata.trackId)
+      this.tombstones.set(event.data.metadata.trackId, event.data.metadata)
+      this.removeTrack(event.data.metadata.trackId, event.data.metadata)
       return
     }
     if (!isFrameMessage(event.data)) return
     const { metadata, frame } = event.data
+    const tombstone = this.tombstones.get(metadata.trackId)
+    if (tombstone) {
+      if (tombstone.sessionId === metadata.sessionId &&
+        metadata.generation <= tombstone.generation) {
+        frame.close()
+        return
+      }
+      this.tombstones.delete(metadata.trackId)
+    }
     let entry = this.tracks.get(metadata.trackId)
     if (entry && (metadata.rendererEpoch !== entry.metadata.rendererEpoch || metadata.generation !== entry.metadata.generation)) {
       this.removeTrack(metadata.trackId)
@@ -142,12 +160,14 @@ export class NativeVideoRegistry {
 
 function isTrackRemovedMessage(value: unknown): value is {
   type: 'syrnike-native-video-track-removed'
-  metadata: { trackId: string }
+  metadata: { trackId: string; sessionId: string; generation: number }
 } {
   if (!value || typeof value !== 'object') return false
   const candidate = value as { type?: unknown; metadata?: { trackId?: unknown } }
   return candidate.type === 'syrnike-native-video-track-removed' &&
-    typeof candidate.metadata?.trackId === 'string'
+    typeof candidate.metadata?.trackId === 'string' &&
+    typeof (candidate.metadata as { sessionId?: unknown }).sessionId === 'string' &&
+    Number.isSafeInteger((candidate.metadata as { generation?: unknown }).generation)
 }
 
 function isFrameMessage(value: unknown): value is NativeVideoFrameMessage {
@@ -158,6 +178,7 @@ function isFrameMessage(value: unknown): value is NativeVideoFrameMessage {
     Boolean(metadata) && typeof metadata?.trackId === 'string' &&
     typeof metadata.sessionId === 'string' && typeof metadata.participantIdentity === 'string' &&
     (metadata.source === 'camera' || metadata.source === 'screen') &&
+    typeof metadata.local === 'boolean' &&
     Number.isSafeInteger(metadata.generation) && Number.isSafeInteger(metadata.sequence) &&
     Number.isSafeInteger(metadata.rendererEpoch)
 }

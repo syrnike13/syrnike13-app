@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   isNativeRuntimeCommand,
+  isNativeRuntimeEvent,
   redactSensitiveText,
   sanitizeRuntimeError,
 } from './contract'
@@ -92,5 +93,57 @@ describe('native runtime command validation', () => {
         selfWindowHwnd: '18446744073709551616',
       }),
     ).toBe(false)
+  })
+
+  it('accepts bounded local screen preview demand and release commands', () => {
+    expect(isNativeRuntimeCommand({
+      type: 'setLocalScreenPreviewDemand',
+      sessionId: 'screen-session',
+      generation: 3,
+      demanded: true,
+      electronMainPid: 42,
+      options: { width: 1920, height: 1080, fps: 30 },
+    })).toBe(true)
+    expect(isNativeRuntimeCommand({
+      type: 'setLocalScreenPreviewDemand',
+      sessionId: 'screen-session',
+      generation: 3,
+      demanded: true,
+      electronMainPid: 42,
+      options: { width: 1920, height: 1080, fps: 60 },
+    })).toBe(true)
+    expect(isNativeRuntimeCommand({
+      type: 'setLocalScreenPreviewDemand',
+      sessionId: 'screen-session',
+      generation: 3,
+      demanded: true,
+      electronMainPid: 42,
+      options: { width: 1920, height: 1080, fps: 61 },
+    })).toBe(false)
+    expect(isNativeRuntimeCommand({
+      type: 'releaseLocalScreenPreviewFrame',
+      sessionId: 'screen-session',
+      generation: 3,
+      trackId: 'local-screen:screen-session',
+      sequence: 7,
+    })).toBe(true)
+  })
+
+  it('accepts a retryable local preview diagnostic without failing the screen session', () => {
+    expect(isNativeRuntimeEvent({
+      type: 'localScreenPreviewFailed',
+      sequence: 7,
+      sessionId: 'screen-session',
+      generation: 3,
+      trackId: 'local-screen:screen-session',
+      error: {
+        code: 'LOCAL_SCREEN_PREVIEW_FAILED',
+        message: 'failed to create preview output view (HRESULT -2147024809)',
+        stage: 'gpu_interop_unavailable',
+        retryable: true,
+        sessionId: 'screen-session',
+        generation: 3,
+      },
+    })).toBe(true)
   })
 })

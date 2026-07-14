@@ -324,7 +324,15 @@ function describeError(error) {
 }
 
 function requiredCapabilities(runtime) {
-  if (runtime === 'media') return ['microphone', 'screen', 'screenAudio', 'preview', 'queries']
+  if (runtime === 'media') return [
+    'microphone',
+    'screen',
+    'screenAudio',
+    'preview',
+    'queries',
+    'remoteVideo',
+    'localScreenPreview',
+  ]
   return runtime === 'hotkey' ? ['hotkeys'] : ['overlay']
 }
 

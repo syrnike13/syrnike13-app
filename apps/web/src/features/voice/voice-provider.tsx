@@ -39,6 +39,7 @@ import {
   type VoiceMediaAvailabilityState,
 } from '#/features/voice/voice-media-availability'
 import { useMediaDevices } from '#/features/voice/use-media-devices'
+import { useVoicePreferences } from '#/features/voice/use-voice-preferences'
 import {
   readStageMediaFilters,
   writeStageMediaFilters,
@@ -49,6 +50,7 @@ import {
   type StageMediaFilters,
   type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
+import { setStageScreenSubscription } from '#/features/voice/voice-stage-subscription'
 import {
   readVoicePreferences,
   voicePreferenceStore,
@@ -130,7 +132,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     nativeVideoRegistry.start()
     const update = () => setNativeVideoTracks(nativeVideoRegistry.listTracks())
     update()
-    return nativeVideoRegistry.subscribe(update)
+    const unsubscribe = nativeVideoRegistry.subscribe(update)
+    return () => {
+      unsubscribe()
+      nativeVideoRegistry.stop()
+    }
   }, [desktop])
   const clientRef = useRef<VoiceClient | null>(null)
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(INITIAL_SNAPSHOT)
@@ -150,6 +156,43 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
+  const voicePreferences = useVoicePreferences()
+  const localScreenPreviewFps = screenQuality(
+    voicePreferences.screenShareQuality,
+  ).fps
+
+  useEffect(() => {
+    if (!desktop) return
+    const active = snapshot.screen.state === 'starting' || snapshot.screen.state === 'running'
+    const fullscreen = stageFullscreen && focusedMediaId ===
+      stageMediaItemId(auth.user?._id ?? '', 'screen')
+    void desktop.media.setLocalScreenPreviewDemand({
+      demanded: active && stageMediaFilters.showOwnStream,
+      width: fullscreen ? 1920 : 1280,
+      height: fullscreen ? 1080 : 720,
+      fps: localScreenPreviewFps,
+    }).catch(() => undefined)
+  }, [
+    desktop,
+    auth.user?._id,
+    focusedMediaId,
+    localScreenPreviewFps,
+    snapshot.screen.state,
+    stageFullscreen,
+    stageMediaFilters.showOwnStream,
+  ])
+
+  useEffect(() => {
+    if (!desktop) return
+    return () => {
+      void desktop.media.setLocalScreenPreviewDemand({
+        demanded: false,
+        width: 1280,
+        height: 720,
+        fps: localScreenPreviewFps,
+      }).catch(() => undefined)
+    }
+  }, [desktop, localScreenPreviewFps])
 
   const inputDevices = useMediaDevices('audioinput')
   const videoDevices = useMediaDevices('videoinput')
@@ -505,10 +548,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const setStageMediaSubscribed = useCallback(
     (mediaId: string, subscribed: boolean) => {
       const item = stageMediaItems.find((candidate) => candidate.id === mediaId)
-      item?.publication?.setSubscribed?.(subscribed)
+      if (item?.kind === 'screen') {
+        const action = setStageScreenSubscription(item, subscribed)
+        if (action === 'stop-local-screen') {
+          void dispatchVoice({ type: 'setScreen', enabled: false })
+          playUiSound('screen_share.stopped')
+        }
+      } else {
+        item?.publication?.setSubscribed?.(subscribed)
+      }
       setRoomRevision((revision) => revision + 1)
     },
-    [stageMediaItems],
+    [dispatchVoice, stageMediaItems],
   )
 
   const sessionValue = useMemo<VoiceSessionContextValue>(
@@ -803,9 +854,11 @@ function buildStageItems(options: {
         source: native.source === 'screen' ? Track.Source.ScreenShare : Track.Source.Camera,
         isMuted: false,
         isSubscribed: true,
-        setSubscribed: (demanded) => {
-          void options.setNativeDemand(native, demanded)
-        },
+        setSubscribed: native.local
+          ? undefined
+          : (demanded) => {
+            void options.setNativeDemand(native, demanded)
+          },
       },
       subscribed: true,
       live: true,

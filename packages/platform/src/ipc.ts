@@ -47,6 +47,8 @@ export const IPC = {
     'syrnike-desktop:media:microphone-preview-state',
   mediaDisplayPickerResolved: 'syrnike-desktop:media:display-picker-resolved',
   mediaSetRemoteVideoDemand: 'syrnike-desktop:media:set-remote-video-demand',
+  mediaSetLocalScreenPreviewDemand:
+    'syrnike-desktop:media:set-local-screen-preview-demand',
   voiceDispatch: 'syrnike-desktop:voice:dispatch',
   voiceGetSnapshot: 'syrnike-desktop:voice:get-snapshot',
   voiceSnapshotChanged: 'syrnike-desktop:voice:snapshot-changed',

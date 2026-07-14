@@ -97,6 +97,14 @@ export type MediaRuntimeCommand =
   | ({ type: 'setRemoteVideoDemand'; trackId: string; demanded: boolean } &
       SessionCommandBase)
   | ({
+      type: 'setLocalScreenPreviewDemand'
+      demanded: boolean
+      electronMainPid: number
+      options: { width: number; height: number; fps: number }
+    } & SessionCommandBase)
+  | ({ type: 'releaseLocalScreenPreviewFrame'; trackId: string; sequence: number } &
+      SessionCommandBase)
+  | ({
       type: 'configureVoiceOutput'
       deafened: boolean
       deviceId?: string
@@ -237,6 +245,21 @@ export type MediaRuntimeEvent =
     } & SessionEventBase)
   | ({ type: 'remoteVideoTrackRemoved'; trackId: string } & SessionEventBase)
   | ({ type: 'remoteVideoFailed'; trackId: string; source?: 'camera' | 'screen' } &
+      SessionEventBase)
+  | ({
+      type: 'localScreenPreviewFrame'
+      trackId: string
+      participantIdentity: string
+      source: 'screen'
+      frameSequence: number
+      timestampUs: number
+      width: number
+      height: number
+      ntHandle: Uint8Array
+    } & SessionEventBase)
+  | ({ type: 'localScreenPreviewTrackRemoved'; trackId: string; source: 'screen' } &
+      SessionEventBase)
+  | ({ type: 'localScreenPreviewFailed'; trackId: string; error: NativeRuntimeError } &
       SessionEventBase)
   | ({ type: 'runtimeError'; error: NativeRuntimeError } & RuntimeEventBase)
 
@@ -537,6 +560,15 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
     case 'setRemoteVideoDemand':
       return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
         typeof value.demanded === 'boolean'
+    case 'setLocalScreenPreviewDemand':
+      return isSessionCommand(value) && typeof value.demanded === 'boolean' &&
+        isIntegerInRange(value.electronMainPid, 1, 0xffff_ffff) &&
+        isRecord(value.options) && isIntegerInRange(value.options.width, 16, 3840) &&
+        isIntegerInRange(value.options.height, 16, 2160) &&
+        isIntegerInRange(value.options.fps, 1, 60)
+    case 'releaseLocalScreenPreviewFrame':
+      return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
+        isSequence(value.sequence)
     case 'configureVoiceOutput':
       return (
         isSessionCommand(value) &&
@@ -804,10 +836,13 @@ export function isNativeRuntimeEvent(
         )
       )
     case 'remoteVideoFrame':
+    case 'localScreenPreviewFrame':
       return (
         isNonEmptyString(value.trackId, 512) &&
         typeof value.participantIdentity === 'string' && value.participantIdentity.length <= 512 &&
-        (value.source === 'camera' || value.source === 'screen') &&
+        (value.type === 'localScreenPreviewFrame'
+          ? value.source === 'screen'
+          : value.source === 'camera' || value.source === 'screen') &&
         isSequence(value.frameSequence) && isSequence(value.timestampUs) &&
         isIntegerInRange(value.width, 1, 7680) &&
         isIntegerInRange(value.height, 1, 4320) &&
@@ -815,6 +850,13 @@ export function isNativeRuntimeEvent(
       )
     case 'remoteVideoTrackRemoved':
       return isNonEmptyString(value.trackId, 512)
+    case 'localScreenPreviewTrackRemoved':
+      return isNonEmptyString(value.trackId, 512) && value.source === 'screen'
+    case 'localScreenPreviewFailed':
+      return isNonEmptyString(value.trackId, 512) && isRuntimeError(value.error) &&
+        value.error.code === 'LOCAL_SCREEN_PREVIEW_FAILED' &&
+        value.error.sessionId === value.sessionId &&
+        value.error.generation === value.generation
     case 'remoteVideoFailed':
       return isNonEmptyString(value.trackId, 512) &&
         (value.source === undefined || value.source === 'camera' || value.source === 'screen')

@@ -272,6 +272,11 @@ class MediaRuntime::Implementation {
       type == "__screenRetireDone" ||
       type == "connectScreen" || type == "startScreenCapture" ||
       type == "stopScreenCapture" || type == "disconnectScreen" ||
+      type == "setLocalScreenPreviewDemand" ||
+      type == "releaseLocalScreenPreviewFrame" ||
+      type == "__localScreenPreviewFrame" ||
+      type == "__localScreenPreviewFailed" ||
+      type == "__localScreenPreviewTrackRemoved" ||
       type == "probeScreenActor"
     ) {
       command.internal_enqueued_steady_ms = enqueue_started_at;
@@ -631,6 +636,81 @@ class MediaRuntime::Implementation {
   }
 
   void handleScreen(const MediaCommand& command) {
+    if (command.type == "__localScreenPreviewFailed") {
+      const auto message = command.internal_message +
+        " (HRESULT " + std::to_string(command.diagnostic_hresult) + ")";
+      logRuntime(
+        "local_screen_preview_failed",
+        {
+          {"sessionId", command.session_id},
+          {"generation", command.generation},
+          {"reason", command.video_source},
+          {"hresult", command.diagnostic_hresult},
+          {"message", diagnostics::redactForDiagnostics(command.internal_message)},
+          {"suppressed", command.diagnostic_suppressed}
+        }
+      );
+      RuntimeEvent event;
+      event.type = "localScreenPreviewFailed";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.error = NativeError{
+        "LOCAL_SCREEN_PREVIEW_FAILED",
+        message,
+        command.video_source,
+        true,
+        command.session_id,
+        command.generation
+      };
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__localScreenPreviewFrame") {
+      if (!desired_screen_.isCurrent(command.session_id, command.generation)) {
+        MediaCommand release = command;
+        release.type = "releaseLocalScreenPreviewFrame";
+        screen_.handleWorkerCommand(release);
+        return;
+      }
+      RuntimeEvent event;
+      event.type = "localScreenPreviewFrame";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.participant_identity = command.participant_identity;
+      event.video_source = "screen";
+      event.frame_sequence = command.frame_sequence;
+      event.timestamp_us = command.timestamp_us;
+      event.nt_handle = command.nt_handle;
+      event.width = command.width;
+      event.height = command.height;
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__localScreenPreviewTrackRemoved") {
+      RuntimeEvent event;
+      event.type = "localScreenPreviewTrackRemoved";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.video_source = "screen";
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "releaseLocalScreenPreviewFrame") {
+      screen_.handleWorkerCommand(command);
+      emitter_.emit(reply(command));
+      return;
+    }
+    if (command.type == "setLocalScreenPreviewDemand") {
+      if (!desired_screen_.isCurrent(command.session_id, command.generation)) {
+        throw std::runtime_error("stale screen preview generation");
+      }
+      screen_.handleWorkerCommand(command);
+      emitter_.emit(reply(command));
+      return;
+    }
     if (command.type == "__screenTerminal") {
       screen_.handleTerminal(command);
       return;

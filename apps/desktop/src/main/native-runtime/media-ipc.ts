@@ -97,6 +97,17 @@ export function registerNativeMediaIpc(
   )
 
   ipcMain.handle(
+    IPC.mediaSetLocalScreenPreviewDemand,
+    async (event, demand: { demanded: boolean; width: number; height: number; fps: number }) => {
+      assertTrusted(event, getWindow, 'local screen preview demand')
+      if (!demand || typeof demand !== 'object') {
+        throw new Error('Local screen preview demand is required')
+      }
+      return controller.setLocalScreenPreviewDemand(demand)
+    },
+  )
+
+  ipcMain.handle(
     IPC.mediaOpenDisplayPicker,
     async (event, audioRequested: boolean) => {
       assertTrusted(event, getWindow, 'picker')

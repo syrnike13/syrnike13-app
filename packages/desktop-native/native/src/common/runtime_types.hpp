@@ -180,6 +180,9 @@ struct MediaCommand {
   std::uint64_t frame_sequence = 0;
   std::uint64_t timestamp_us = 0;
   std::uint64_t nt_handle = 0;
+  std::uint32_t electron_main_pid = 0;
+  std::int64_t diagnostic_hresult = 0;
+  std::uint64_t diagnostic_suppressed = 0;
 };
 
 struct HooksCommand {

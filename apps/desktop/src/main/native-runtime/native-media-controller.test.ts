@@ -81,6 +81,91 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('NativeMediaController retained tools', () => {
+  it('persists local screen preview demand and binds it to each active generation', async () => {
+    const harness = createHarness()
+    await harness.controller.setLocalScreenPreviewDemand({
+      demanded: true,
+      width: 1280,
+      height: 720,
+      fps: 30,
+    })
+    expect(harness.request).not.toHaveBeenCalled()
+
+    harness.event({
+      type: 'sessionLifecycle',
+      sequence: 1,
+      sessionId: 'screen-a',
+      generation: 4,
+      kind: 'screen',
+      state: { status: 'starting', sessionId: 'screen-a' },
+    })
+    await waitUntil(() => harness.request.mock.calls.some(
+      ([command]) => command.type === 'setLocalScreenPreviewDemand',
+    ))
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setLocalScreenPreviewDemand',
+      sessionId: 'screen-a',
+      generation: 4,
+      demanded: true,
+      options: { width: 1280, height: 720, fps: 30 },
+    }), expect.any(Number))
+
+    harness.event({
+      type: 'sessionStopped',
+      sequence: 2,
+      sessionId: 'screen-a',
+      generation: 4,
+    })
+    harness.request.mockClear()
+    await harness.controller.setLocalScreenPreviewDemand({
+      demanded: false,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+    })
+    expect(harness.request).not.toHaveBeenCalled()
+    harness.event({
+      type: 'sessionLifecycle',
+      sequence: 3,
+      sessionId: 'screen-b',
+      generation: 5,
+      kind: 'screen',
+      state: { status: 'starting', sessionId: 'screen-b' },
+    })
+    await waitUntil(() => harness.request.mock.calls.length > 0)
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'screen-b',
+      generation: 5,
+      demanded: false,
+      options: { width: 1920, height: 1080, fps: 30 },
+    }), expect.any(Number))
+  })
+
+  it('rejects non-finite local screen preview demand before persisting it', async () => {
+    const harness = createHarness()
+    await expect(harness.controller.setLocalScreenPreviewDemand({
+      demanded: true,
+      width: Number.NaN,
+      height: 720,
+      fps: 30,
+    })).rejects.toThrow('Invalid local screen preview demand')
+    harness.event({
+      type: 'sessionLifecycle',
+      sequence: 1,
+      sessionId: 'screen-a',
+      generation: 1,
+      kind: 'screen',
+      state: { status: 'starting', sessionId: 'screen-a' },
+    })
+    await waitUntil(() => harness.request.mock.calls.length > 0)
+    expect(harness.request).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setLocalScreenPreviewDemand',
+      demanded: false,
+      options: { width: 1280, height: 720, fps: 30 },
+    }), expect.any(Number))
+  })
+
+
   it('forwards microphone levels without requiring self-monitoring', () => {
     const harness = createHarness()
     const listener = vi.fn()

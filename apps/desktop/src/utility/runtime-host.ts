@@ -53,7 +53,15 @@ type NativeRuntimeAddon = {
 }
 
 const REQUIRED_CAPABILITIES: Record<NativeRuntimeKind, readonly string[]> = {
-  media: ['microphone', 'screen', 'screenAudio', 'preview', 'queries', 'remoteVideo'],
+  media: [
+    'microphone',
+    'screen',
+    'screenAudio',
+    'preview',
+    'queries',
+    'remoteVideo',
+    'localScreenPreview',
+  ],
   hotkey: ['hotkeys'],
   overlay: ['overlay'],
 }

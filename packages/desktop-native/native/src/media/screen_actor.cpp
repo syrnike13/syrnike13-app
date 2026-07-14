@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 
 #include <livekit/d3d11_h264_video_source.h>
@@ -219,6 +220,14 @@ class ScreenActor::Implementation {
   }
 
   void handleWorkerCommand(const MediaCommand& command) {
+    if (command.type == "setLocalScreenPreviewDemand") {
+      setPreviewDemand(command);
+      return;
+    }
+    if (command.type == "releaseLocalScreenPreviewFrame") {
+      releasePreviewFrame(command);
+      return;
+    }
     publication_->handleWorkerCommand(command);
   }
 
@@ -283,6 +292,7 @@ class ScreenActor::Implementation {
       throw std::runtime_error(std::string(gpuCaptureReason(error.code())));
     }
     if (!is_current()) throw std::runtime_error("stale screen capture generation");
+    registerPreviewCapturer(command, capturer);
     capture_thread = std::thread(
       [this,
        session_id = command.session_id,
@@ -290,6 +300,7 @@ class ScreenActor::Implementation {
        width = description.width,
        height = description.height,
        fps = description.fps,
+       participant_identity = command.participant_identity,
        source = video_source,
        track = video_track,
        running,
@@ -300,6 +311,7 @@ class ScreenActor::Implementation {
           width,
           height,
           fps,
+          std::move(participant_identity),
           std::move(source),
           std::move(track),
           std::move(running),
@@ -544,6 +556,7 @@ class ScreenActor::Implementation {
     std::uint32_t width,
     std::uint32_t height,
     int fps,
+    std::string participant_identity,
     std::shared_ptr<livekit::D3D11H264VideoSource> source,
     std::shared_ptr<livekit::LocalVideoTrack> track,
     std::shared_ptr<std::atomic_bool> running,
@@ -583,6 +596,37 @@ class ScreenActor::Implementation {
       while (running->load()) {
         const auto capture = capturer->capture(captured);
         if (capture.method && capture.method[0] != '\0') method = capture.method;
+        ScreenPreviewFrame preview;
+        if (capturer->takePreviewFrame(preview)) {
+            MediaCommand preview_command;
+            preview_command.type = "__localScreenPreviewFrame";
+            preview_command.session_id = session_id;
+            preview_command.generation = generation;
+            preview_command.track_id = localPreviewTrackId(session_id);
+            preview_command.participant_identity = participant_identity;
+            preview_command.video_source = "screen";
+            preview_command.frame_sequence = preview.sequence;
+            preview_command.timestamp_us = preview.timestamp_us;
+            preview_command.width = static_cast<int>(preview.width);
+            preview_command.height = static_cast<int>(preview.height);
+            preview_command.nt_handle = preview.nt_handle;
+            if (!post_(std::move(preview_command))) {
+              capturer->releasePreviewFrame(preview.sequence);
+            }
+        }
+        ScreenPreviewFailure preview_failure;
+        if (capturer->takePreviewFailure(preview_failure)) {
+          MediaCommand failure;
+          failure.type = "__localScreenPreviewFailed";
+          failure.session_id = session_id;
+          failure.generation = generation;
+          failure.track_id = localPreviewTrackId(session_id);
+          failure.video_source = std::string(gpuCaptureReason(preview_failure.code));
+          failure.internal_message = std::move(preview_failure.message);
+          failure.diagnostic_hresult = preview_failure.hresult;
+          failure.diagnostic_suppressed = preview_failure.suppressed;
+          post_(std::move(failure));
+        }
         if (capture.status == ScreenGpuFrameStatus::NewFrame) {
           auto lease = std::make_unique<ScreenTextureLease>(capturer, captured);
           const auto timestamp = captured.timestamp_us != 0
@@ -677,6 +721,7 @@ class ScreenActor::Implementation {
         post_(std::move(terminal));
       }
     }
+    retirePreviewCapturer(session_id, generation, capturer);
     capturer.reset();
     source.reset();
     track.reset();
@@ -692,6 +737,85 @@ class ScreenActor::Implementation {
         {"running", running->load()}
       }
     );
+  }
+
+  static std::string previewKey(
+    const std::string& session_id,
+    std::uint64_t generation
+  ) {
+    return session_id + ":" + std::to_string(generation);
+  }
+
+  static std::string localPreviewTrackId(const std::string& session_id) {
+    return "local-screen:" + session_id;
+  }
+
+  void registerPreviewCapturer(
+    const MediaCommand& command,
+    const std::shared_ptr<ScreenGpuCapturer>& capturer
+  ) {
+    std::lock_guard lock(preview_mutex_);
+    auto& state = preview_capturers_[previewKey(command.session_id, command.generation)];
+    state.capturer = capturer;
+    state.active = true;
+    if (preview_session_id_ == command.session_id &&
+        preview_generation_ == command.generation) {
+      capturer->setPreviewDemand(preview_demand_);
+    } else {
+      capturer->setPreviewDemand({});
+    }
+  }
+
+  void setPreviewDemand(const MediaCommand& command) {
+    ScreenPreviewDemand demand;
+    demand.demanded = command.demanded;
+    demand.width = static_cast<std::uint32_t>(command.width);
+    demand.height = static_cast<std::uint32_t>(command.height);
+    demand.fps = static_cast<std::uint32_t>(command.fps);
+    demand.electron_main_pid = command.electron_main_pid;
+    std::lock_guard lock(preview_mutex_);
+    preview_demand_ = demand;
+    preview_session_id_ = command.session_id;
+    preview_generation_ = command.generation;
+    const auto found = preview_capturers_.find(
+      previewKey(command.session_id, command.generation));
+    if (found != preview_capturers_.end() && found->second.capturer) {
+      found->second.capturer->setPreviewDemand(demand);
+    }
+  }
+
+  void releasePreviewFrame(const MediaCommand& command) {
+    std::lock_guard lock(preview_mutex_);
+    const auto key = previewKey(command.session_id, command.generation);
+    const auto found = preview_capturers_.find(key);
+    if (found == preview_capturers_.end() || !found->second.capturer) return;
+    found->second.capturer->releasePreviewFrame(command.frame_sequence);
+    if (!found->second.active &&
+        found->second.capturer->previewFramesInFlight() == 0) {
+      preview_capturers_.erase(found);
+    }
+  }
+
+  void retirePreviewCapturer(
+    const std::string& session_id,
+    std::uint64_t generation,
+    const std::shared_ptr<ScreenGpuCapturer>& capturer
+  ) {
+    capturer->setPreviewDemand({});
+    MediaCommand removed;
+    removed.type = "__localScreenPreviewTrackRemoved";
+    removed.session_id = session_id;
+    removed.generation = generation;
+    removed.track_id = localPreviewTrackId(session_id);
+    post_(std::move(removed));
+    std::lock_guard lock(preview_mutex_);
+    const auto key = previewKey(session_id, generation);
+    const auto found = preview_capturers_.find(key);
+    if (found == preview_capturers_.end()) return;
+    found->second.active = false;
+    if (found->second.capturer->previewFramesInFlight() == 0) {
+      preview_capturers_.erase(found);
+    }
   }
 
   SequencedEmitter& emitter_;
@@ -715,6 +839,15 @@ class ScreenActor::Implementation {
   std::uint64_t stats_rtp_frames_encoded_ = 0;
   std::string stats_encoder_implementation_;
   std::chrono::steady_clock::time_point next_stats_at_{};
+  struct PreviewCapturerState {
+    std::shared_ptr<ScreenGpuCapturer> capturer;
+    bool active = false;
+  };
+  std::mutex preview_mutex_;
+  ScreenPreviewDemand preview_demand_;
+  std::string preview_session_id_;
+  std::uint64_t preview_generation_ = 0;
+  std::unordered_map<std::string, PreviewCapturerState> preview_capturers_;
 };
 
 ScreenActor::ScreenActor(

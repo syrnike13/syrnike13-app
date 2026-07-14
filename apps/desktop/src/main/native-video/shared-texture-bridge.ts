@@ -8,6 +8,7 @@ export type NativeSharedVideoFrame = {
   trackId: string
   participantIdentity: string
   source: NativeVideoSource
+  local: boolean
   sequence: number
   width: number
   height: number
@@ -20,7 +21,7 @@ export type NativeSharedVideoFrame = {
 export type NativeSharedVideoRelease = Pick<
   NativeSharedVideoFrame,
   'sessionId' | 'generation' | 'trackId' | 'sequence'
-> & { runtimeEpoch: number }
+> & { runtimeEpoch: number; local: boolean }
 
 export type SharedTextureBridgeDependencies = {
   getWindow(): BrowserWindow | null
@@ -45,6 +46,7 @@ export class NativeSharedTextureBridge {
   private readonly latestSequence = new Map<string, number>()
   private rendererEpoch = 0
   private disposed = false
+  private lastFailureReportAt = 0
 
   constructor(private readonly dependencies: SharedTextureBridgeDependencies) {}
 
@@ -103,7 +105,8 @@ export class NativeSharedTextureBridge {
         },
         allReferencesReleased: () => this.finishNativeRelease(key),
       })
-    } catch {
+    } catch (error) {
+      this.reportFailure('import', frame, error)
       this.dependencies.release(frame)
       return false
     }
@@ -121,12 +124,14 @@ export class NativeSharedTextureBridge {
           trackId: frame.trackId,
           participantIdentity: frame.participantIdentity,
           source: frame.source,
+          local: frame.local,
           sequence: frame.sequence,
           rendererEpoch,
         },
       )
       return true
-    } catch {
+    } catch (error) {
+      this.reportFailure('send', frame, error)
       return false
     } finally {
       this.releaseEntryMainReference(key, entry)
@@ -167,5 +172,23 @@ export class NativeSharedTextureBridge {
     if (!entry) return
     this.inFlight.delete(key)
     this.dependencies.release(entry.frame)
+  }
+
+  private reportFailure(
+    stage: 'import' | 'send',
+    frame: NativeSharedVideoFrame,
+    error: unknown,
+  ) {
+    const now = Date.now()
+    if (now - this.lastFailureReportAt < 10_000) return
+    this.lastFailureReportAt = now
+    console.warn(`[native-video] shared texture ${stage} failed`, {
+      local: frame.local,
+      source: frame.source,
+      trackId: frame.trackId,
+      width: frame.width,
+      height: frame.height,
+      error,
+    })
   }
 }

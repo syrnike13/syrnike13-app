@@ -26,6 +26,13 @@ type PreviewSessionState = {
   status: 'starting' | 'running'
 }
 
+type LocalScreenPreviewDemand = {
+  demanded: boolean
+  width: number
+  height: number
+  fps: number
+}
+
 export type NativeMediaControllerEvent =
   | { type: 'microphoneMetrics'; event: NativeMicrophoneMetricsEvent }
   | { type: 'microphonePreviewState'; event: NativeMicrophonePreviewStateEvent }
@@ -47,6 +54,13 @@ export class NativeMediaController {
   private previewStartOperation: Promise<void> | null = null
   private lastRestoredRestartCount = 0
   private disposed = false
+  private activeScreen: { sessionId: string; generation: number } | null = null
+  private localScreenPreviewDemand: LocalScreenPreviewDemand = {
+    demanded: false,
+    width: 1280,
+    height: 720,
+    fps: 30,
+  }
 
   constructor(private readonly options: NativeMediaControllerOptions) {
     this.unsubscribeRuntimeEvent = options.supervisor.onEvent((event) =>
@@ -131,6 +145,23 @@ export class NativeMediaController {
     )
   }
 
+  async setLocalScreenPreviewDemand(demand: LocalScreenPreviewDemand) {
+    if (!demand || typeof demand.demanded !== 'boolean' ||
+      !Number.isFinite(demand.width) || !Number.isFinite(demand.height) ||
+      !Number.isFinite(demand.fps)) {
+      throw new Error('Invalid local screen preview demand')
+    }
+    this.localScreenPreviewDemand = {
+      demanded: Boolean(demand.demanded),
+      width: Math.max(16, Math.min(3840, Math.trunc(demand.width))),
+      height: Math.max(16, Math.min(2160, Math.trunc(demand.height))),
+      fps: Math.max(1, Math.min(60, Math.trunc(demand.fps))),
+    }
+    const screen = this.activeScreen
+    if (!screen) return
+    await this.sendLocalScreenPreviewDemand(screen)
+  }
+
   async dispose() {
     if (this.disposed) return
     await this.stopMicrophonePreview().catch(() => undefined)
@@ -203,8 +234,27 @@ export class NativeMediaController {
       event.type === 'displaySourceList' ||
       event.type === 'remoteVideoFrame' ||
       event.type === 'remoteVideoTrackRemoved' ||
-      event.type === 'remoteVideoFailed'
+      event.type === 'remoteVideoFailed' ||
+      event.type === 'localScreenPreviewFrame' ||
+      event.type === 'localScreenPreviewTrackRemoved' ||
+      event.type === 'localScreenPreviewFailed'
     ) return
+    if (event.type === 'sessionLifecycle' && event.kind === 'screen') {
+      if (event.state.status === 'starting' || event.state.status === 'running') {
+        const next = { sessionId: event.sessionId, generation: event.generation }
+        const changed = this.activeScreen?.sessionId !== next.sessionId ||
+          this.activeScreen.generation !== next.generation
+        this.activeScreen = next
+        if (changed) void this.sendLocalScreenPreviewDemand(next).catch(() => undefined)
+      } else if (this.activeScreen?.sessionId === event.sessionId &&
+        this.activeScreen.generation === event.generation) {
+        this.activeScreen = null
+      }
+    }
+    if (event.type === 'sessionStopped' && this.activeScreen?.sessionId === event.sessionId &&
+      this.activeScreen.generation === event.generation) {
+      this.activeScreen = null
+    }
     const preview = this.preview
     if (!preview || event.sessionId !== preview.sessionId || event.generation !== preview.generation) return
     if (event.type === 'sessionStopped') {
@@ -216,6 +266,9 @@ export class NativeMediaController {
   }
 
   private handleSupervisorState(snapshot: NativeRuntimeSupervisorSnapshot) {
+    if (snapshot.status === 'degraded' || snapshot.status === 'recovering') {
+      this.activeScreen = null
+    }
     if (snapshot.status === 'degraded' && (this.preview || this.previewStartOperation)) {
       this.preview = null
       this.previewStartOperation = null
@@ -248,6 +301,20 @@ export class NativeMediaController {
     for (const listener of this.listeners) {
       try { listener(event) } catch { /* Runtime behavior must not depend on observers. */ }
     }
+  }
+
+  private sendLocalScreenPreviewDemand(screen: { sessionId: string; generation: number }) {
+    const demand = this.localScreenPreviewDemand
+    return this.request(
+      {
+        type: 'setLocalScreenPreviewDemand',
+        ...screen,
+        demanded: demand.demanded,
+        electronMainPid: this.options.processId ?? process.pid,
+        options: { width: demand.width, height: demand.height, fps: demand.fps },
+      },
+      2_000,
+    )
   }
 }
 

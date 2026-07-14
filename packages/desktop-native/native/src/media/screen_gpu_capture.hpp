@@ -4,6 +4,7 @@
 #include <dxgiformat.h>
 
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -59,6 +60,29 @@ struct ScreenGpuFrameResult {
   ScreenGpuCaptureErrorCode error_code = ScreenGpuCaptureErrorCode::CaptureUnavailable;
 };
 
+struct ScreenPreviewDemand {
+  bool demanded = false;
+  std::uint32_t width = 1280;
+  std::uint32_t height = 720;
+  std::uint32_t fps = 30;
+  std::uint32_t electron_main_pid = 0;
+};
+
+struct ScreenPreviewFrame {
+  std::uint64_t sequence = 0;
+  std::uint64_t timestamp_us = 0;
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  std::uint64_t nt_handle = 0;
+};
+
+struct ScreenPreviewFailure {
+  ScreenGpuCaptureErrorCode code = ScreenGpuCaptureErrorCode::InteropUnavailable;
+  long hresult = 0;
+  std::string message;
+  std::uint64_t suppressed = 0;
+};
+
 // A strict GPU-only capturer. Every NewFrame references a shared NV12 D3D11
 // texture guarded by IDXGIKeyedMutex: producer key 0, consumer key 1. The
 // downstream encoder must release key 0 after it has finished reading.
@@ -72,6 +96,11 @@ class ScreenGpuCapturer {
   virtual ~ScreenGpuCapturer() = default;
   virtual ScreenGpuFrameResult capture(ScreenGpuFrame& frame) = 0;
   virtual void discard(const ScreenGpuFrame& frame) noexcept = 0;
+  virtual void setPreviewDemand(ScreenPreviewDemand demand) = 0;
+  virtual bool takePreviewFrame(ScreenPreviewFrame& frame) = 0;
+  virtual bool takePreviewFailure(ScreenPreviewFailure& failure) = 0;
+  virtual void releasePreviewFrame(std::uint64_t sequence) noexcept = 0;
+  [[nodiscard]] virtual std::size_t previewFramesInFlight() const noexcept = 0;
   [[nodiscard]] virtual const char* method() const noexcept = 0;
   [[nodiscard]] virtual LUID adapterLuid() const noexcept = 0;
 };

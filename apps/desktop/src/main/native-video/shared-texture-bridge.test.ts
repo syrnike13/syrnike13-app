@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { NativeSharedTextureBridge, type NativeSharedVideoFrame } from './shared-texture-bridge'
 
 function frame(sequence: number, trackId = 'camera'): NativeSharedVideoFrame {
-  return { sessionId: 's', generation: 2, trackId, participantIdentity: 'p', source: trackId === 'screen' ? 'screen' : 'camera', sequence, width: 640, height: 360, timestampUs: sequence * 1_000, runtimeEpoch: 0, ntHandle: Buffer.alloc(8) }
+  return { sessionId: 's', generation: 2, trackId, participantIdentity: 'p', source: trackId === 'screen' ? 'screen' : 'camera', local: false, sequence, width: 640, height: 360, timestampUs: sequence * 1_000, runtimeEpoch: 0, ntHandle: Buffer.alloc(8) }
 }
 
 function harness(maxInFlight = 3) {
@@ -58,5 +58,15 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.release).not.toHaveBeenCalled()
     h.callbacks[0]()
     expect(h.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases a removed local preview only after the Electron GPU fence', async () => {
+    const h = harness()
+    const local = { ...frame(1, 'screen'), local: true }
+    await h.bridge.deliver(local)
+    h.bridge.removeTrack(local.sessionId, local.generation, local.trackId)
+    expect(h.release).not.toHaveBeenCalled()
+    h.callbacks[0]()
+    expect(h.release).toHaveBeenCalledWith(local)
   })
 })

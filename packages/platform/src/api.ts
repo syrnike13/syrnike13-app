@@ -245,6 +245,12 @@ export interface SyrnikeDesktopApi {
       trackId: string,
       demanded: boolean,
     ): Promise<void>
+    setLocalScreenPreviewDemand(demand: {
+      demanded: boolean
+      width: number
+      height: number
+      fps: number
+    }): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,

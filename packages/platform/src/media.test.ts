@@ -27,6 +27,7 @@ describe('native media support contracts', () => {
     type DesktopMediaApi = SyrnikeDesktopApi['media']
     expectTypeOf<DesktopMediaApi>().toHaveProperty('startMicrophonePreview')
     expectTypeOf<DesktopMediaApi>().toHaveProperty('setRemoteVideoDemand')
+    expectTypeOf<DesktopMediaApi>().toHaveProperty('setLocalScreenPreviewDemand')
     expectTypeOf<DesktopMediaApi>().not.toHaveProperty('applyLocalMediaIntent')
     expectTypeOf<DesktopMediaApi>().not.toHaveProperty('configureMicrophonePipeline')
     expectTypeOf<DesktopMediaApi>().not.toHaveProperty('getState')

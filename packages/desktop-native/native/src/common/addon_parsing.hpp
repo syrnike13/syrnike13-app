@@ -137,6 +137,7 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   command.audio_bitrate = intField(settings, "audioBitrate", command.audio_bitrate);
   command.exclude_process_id = uint32Field(object, "excludeProcessId");
   command.self_window_handle = uint64Field(object, "selfWindowHwnd");
+  command.electron_main_pid = uint32Field(object, "electronMainPid");
   command.audio_requested = boolField(settings, "audioRequested", false);
   const auto audio = settings.Get("audio");
   if (audio.IsBoolean()) command.audio_requested = audio.As<Napi::Boolean>().Value();

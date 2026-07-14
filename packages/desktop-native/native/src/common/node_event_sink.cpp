@@ -239,7 +239,7 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
 
   setIfPresent(result, "sessionId", event.session_id);
   if (!event.session_id.empty()) result.Set("generation", jsNumber(env, event.generation));
-  if (event.type == "remoteVideoFrame") {
+  if (event.type == "remoteVideoFrame" || event.type == "localScreenPreviewFrame") {
     result.Set("participantIdentity", event.participant_identity);
     result.Set("source", event.video_source);
     result.Set("frameSequence", jsNumber(env, event.frame_sequence));

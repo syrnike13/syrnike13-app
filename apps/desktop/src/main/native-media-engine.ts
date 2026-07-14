@@ -28,7 +28,8 @@ import { NativeRtcEngineAdapter } from './voice/native-rtc-engine-adapter'
 import { NativeSharedTextureBridge } from './native-video/shared-texture-bridge'
 
 let getWindowRef: (() => BrowserWindow | null) | null = null
-let videoBridge: NativeSharedTextureBridge | null = null
+let remoteVideoBridge: NativeSharedTextureBridge | null = null
+let localPreviewBridge: NativeSharedTextureBridge | null = null
 let stopVideoEvents: (() => void) | null = null
 
 type NativeMediaDiagnostics = {
@@ -97,28 +98,30 @@ export function registerNativeMediaRuntimeIpc(
   getWindow: () => BrowserWindow | null,
 ) {
   getWindowRef = getWindow
-  videoBridge ??= new NativeSharedTextureBridge({
-    getWindow,
-    release: (frame) => {
-      const runtime = supervisor.getSnapshot()
-      if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
-      void supervisor.request({
-        type: 'releaseRemoteVideoFrame',
-        sessionId: frame.sessionId,
-        generation: frame.generation,
-        trackId: frame.trackId,
-        sequence: frame.sequence,
-      }, 2_000).catch(() => undefined)
-    },
-  })
+  remoteVideoBridge ??= createVideoBridge(getWindow, false)
+  localPreviewBridge ??= createVideoBridge(getWindow, true)
   stopVideoEvents ??= supervisor.onEvent((event) => {
-    if (event.type === 'remoteVideoFrame') {
-      void videoBridge?.deliver({
+    if (event.type === 'localScreenPreviewFailed') {
+      console.warn('[native-media] local screen preview failed', {
+        sessionId: event.sessionId,
+        generation: event.generation,
+        trackId: event.trackId,
+        code: event.error.code,
+        stage: event.error.stage,
+        message: event.error.message,
+      })
+      return
+    }
+    if (event.type === 'remoteVideoFrame' || event.type === 'localScreenPreviewFrame') {
+      const local = event.type === 'localScreenPreviewFrame'
+      const bridge = local ? localPreviewBridge : remoteVideoBridge
+      void bridge?.deliver({
         sessionId: event.sessionId,
         generation: event.generation,
         trackId: event.trackId,
         participantIdentity: event.participantIdentity,
         source: event.source,
+        local,
         sequence: event.frameSequence,
         width: event.width,
         height: event.height,
@@ -128,8 +131,12 @@ export function registerNativeMediaRuntimeIpc(
       })
       return
     }
-    if (event.type === 'remoteVideoTrackRemoved' || event.type === 'remoteVideoFailed') {
-      videoBridge?.removeTrack(event.sessionId, event.generation, event.trackId)
+    if (event.type === 'remoteVideoTrackRemoved' || event.type === 'remoteVideoFailed' ||
+      event.type === 'localScreenPreviewTrackRemoved') {
+      const bridge = event.type === 'localScreenPreviewTrackRemoved'
+        ? localPreviewBridge
+        : remoteVideoBridge
+      bridge?.removeTrack(event.sessionId, event.generation, event.trackId)
       const window = getWindow()
       if (window && !window.isDestroyed()) {
         window.webContents.send('syrnike-desktop:media:remote-video-track-removed', {
@@ -141,9 +148,37 @@ export function registerNativeMediaRuntimeIpc(
     }
   })
   const window = getWindow()
-  window?.webContents.on('did-start-navigation', () => videoBridge?.rendererReloaded())
-  window?.webContents.on('render-process-gone', () => videoBridge?.rendererReloaded())
+  window?.webContents.on('did-start-navigation', rendererReloaded)
+  window?.webContents.on('render-process-gone', rendererReloaded)
   registerNativeMediaIpc(getWindow, controller)
+}
+
+function createVideoBridge(
+  getWindow: () => BrowserWindow | null,
+  local: boolean,
+) {
+  return new NativeSharedTextureBridge({
+    getWindow,
+    release: (frame) => {
+      const runtime = supervisor.getSnapshot()
+      if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
+      const identity = {
+        sessionId: frame.sessionId,
+        generation: frame.generation,
+        trackId: frame.trackId,
+        sequence: frame.sequence,
+      }
+      const command = local
+        ? { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
+        : { type: 'releaseRemoteVideoFrame' as const, ...identity }
+      void supervisor.request(command, 2_000).catch(() => undefined)
+    },
+  })
+}
+
+function rendererReloaded() {
+  remoteVideoBridge?.rendererReloaded()
+  localPreviewBridge?.rendererReloaded()
 }
 
 export function startNativeMediaRuntime() {
@@ -167,8 +202,10 @@ export async function disposeNativeMediaRuntime() {
   try {
     stopVideoEvents?.()
     stopVideoEvents = null
-    videoBridge?.dispose()
-    videoBridge = null
+    remoteVideoBridge?.dispose()
+    remoteVideoBridge = null
+    localPreviewBridge?.dispose()
+    localPreviewBridge = null
     await controller.dispose()
     diagnostics?.log.log('native_media_dispose_completed')
   } catch (error) {

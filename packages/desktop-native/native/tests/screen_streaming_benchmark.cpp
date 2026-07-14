@@ -510,6 +510,9 @@ int main(int argc, char **argv) try {
       argc > 4 ? static_cast<uint32_t>(std::stoul(argv[4])) : 720;
   const size_t iterations = argc > 5 ? std::stoul(argv[5]) : 120;
   const std::string capture_source = argc > 7 ? argv[7] : "screen:1";
+  const std::uint32_t preview_target_pid = argc > 8
+      ? static_cast<std::uint32_t>(std::stoul(argv[8]))
+      : static_cast<std::uint32_t>(GetCurrentProcessId());
   if (!sw || !sh || !dw || !dh || !iterations || (dw & 1) || (dh & 1))
     throw std::runtime_error("dimensions/iterations must be non-zero and NV12 "
                              "output dimensions even");
@@ -622,9 +625,17 @@ int main(int argc, char **argv) try {
     const auto target =
         syrnike::voice::resolveScreenCaptureTarget(capture_source);
     auto capturer = ScreenGpuCapturer::create(target, dw, dh);
+    capturer->setPreviewDemand({
+        true,
+        sw,
+        sh,
+        60,
+        preview_target_pid,
+    });
     ScreenGpuFrame frame;
     std::size_t captured = 0;
     std::uint64_t gpu_sum = 0;
+    std::uint64_t preview_sum = 0;
     const auto deadline = Clock::now() + std::chrono::seconds(5);
     while (Clock::now() < deadline && captured == 0) {
       const auto result = capturer->capture(frame);
@@ -678,18 +689,160 @@ int main(int argc, char **argv) try {
                   << " gpu_convert_submit_ms="
                   << (result.metrics.scale_us / 1000.0)
                   << " cpu_copy_bytes_per_frame=0 checksum=" << gpu_sum << '\n';
+
+        ScreenPreviewFrame preview;
+        if (!capturer->takePreviewFrame(preview)) {
+          capturer->discard(frame);
+          throw std::runtime_error("GPU capture produced no preview frame");
+        }
+        if (preview_target_pid != GetCurrentProcessId()) {
+          std::cout << "EXTERNAL_PREVIEW nt_handle=" << preview.nt_handle
+                    << " sequence=" << preview.sequence
+                    << " width=" << preview.width
+                    << " height=" << preview.height << std::endl;
+          capturer->discard(frame);
+          std::string release_command;
+          if (!std::getline(std::cin, release_command) ||
+              release_command !=
+                  "RELEASE " + std::to_string(preview.sequence)) {
+            throw std::runtime_error(
+                "Electron did not acknowledge the preview release fence");
+          }
+          capturer->releasePreviewFrame(preview.sequence);
+          preview_sum = 1;
+          continue;
+        }
+        ComPtr<ID3D11Texture2D> preview_texture;
+        const HRESULT open_preview = device1->OpenSharedResource1(
+            reinterpret_cast<HANDLE>(preview.nt_handle),
+            IID_PPV_ARGS(&preview_texture));
+        if (FAILED(open_preview)) {
+          capturer->releasePreviewFrame(preview.sequence);
+          capturer->discard(frame);
+          throw std::runtime_error(
+              "failed to open BGRA preview shared texture (HRESULT " +
+              std::to_string(open_preview) + ")");
+        }
+        D3D11_TEXTURE2D_DESC preview_desc{};
+        preview_texture->GetDesc(&preview_desc);
+        if (preview_desc.Width != dw || preview_desc.Height != dh ||
+            preview_desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM) {
+          capturer->releasePreviewFrame(preview.sequence);
+          capturer->discard(frame);
+          throw std::runtime_error("GPU preview output format mismatch");
+        }
+        D3D11_TEXTURE2D_DESC preview_readback_desc = preview_desc;
+        preview_readback_desc.Usage = D3D11_USAGE_STAGING;
+        preview_readback_desc.BindFlags = 0;
+        preview_readback_desc.MiscFlags = 0;
+        preview_readback_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> preview_readback;
+        check(device->CreateTexture2D(
+                  &preview_readback_desc, nullptr, &preview_readback),
+              "Create GPU preview verification texture");
+        context->CopyResource(preview_readback.Get(), preview_texture.Get());
+        D3D11_MAPPED_SUBRESOURCE preview_mapped{};
+        check(context->Map(
+                  preview_readback.Get(), 0, D3D11_MAP_READ, 0,
+                  &preview_mapped),
+              "Map GPU preview verification texture");
+        std::vector<std::uint8_t> preview_bytes(
+            static_cast<std::size_t>(dw) * dh * 4);
+        for (std::uint32_t row = 0; row < dh; ++row) {
+          std::memcpy(
+              preview_bytes.data() + static_cast<std::size_t>(row) * dw * 4,
+              static_cast<const std::uint8_t*>(preview_mapped.pData) +
+                  static_cast<std::size_t>(row) * preview_mapped.RowPitch,
+              static_cast<std::size_t>(dw) * 4);
+        }
+        context->Unmap(preview_readback.Get(), 0);
+        preview_sum = checksum(preview_bytes.data(), preview_bytes.size());
+        capturer->releasePreviewFrame(preview.sequence);
+        capturer->discard(frame);
+        std::cout << "RESULT path=local_screen_gpu_preview method="
+                  << result.method << " frames=1 dimensions=" << preview.width
+                  << 'x' << preview.height
+                  << " cpu_copy_bytes_per_frame=0 checksum=" << preview_sum
+                  << '\n';
       } else if (result.status == ScreenGpuFrameStatus::FatalError ||
                  result.status == ScreenGpuFrameStatus::TargetClosed) {
         throw std::runtime_error("strict GPU screen capture failed");
       }
       Sleep(1);
     }
-    if (captured == 0 || gpu_sum == 0) {
+    if (captured == 0 || gpu_sum == 0 || preview_sum == 0) {
       throw std::runtime_error(
-          "strict GPU screen capture produced no verifiable frame");
+          "strict GPU screen capture/preview produced no verifiable frame");
     }
     std::cout << "ASSERT real_screen_gpu_capture nv12_shared_texture=pass "
+                 "bgra_preview_shared_texture=pass "
                  "cpu_readback_in_timed_path=absent\n";
+    if (preview_target_pid == GetCurrentProcessId()) {
+      struct CapturePhase {
+        std::size_t capture_calls = 0;
+        std::size_t preview_frames = 0;
+        double call_ms = 0;
+      };
+      const auto measure_phase = [&](bool preview_enabled) {
+        capturer->setPreviewDemand({
+            preview_enabled,
+            dw,
+            dh,
+            60,
+            static_cast<std::uint32_t>(GetCurrentProcessId()),
+        });
+        CapturePhase phase;
+        const auto phase_begin = Clock::now();
+        const auto phase_deadline = phase_begin + std::chrono::seconds(5);
+        const auto target_frames = std::max<std::size_t>(60, iterations);
+        while (Clock::now() < phase_deadline &&
+               phase.capture_calls < target_frames) {
+          ScreenGpuFrame phase_frame;
+          const auto call_begin = Clock::now();
+          const auto result = capturer->capture(phase_frame);
+          const auto call_end = Clock::now();
+          if (result.status == ScreenGpuFrameStatus::NewFrame) {
+            ++phase.capture_calls;
+            phase.call_ms += std::chrono::duration<double, std::milli>(
+                                 call_end - call_begin)
+                                 .count();
+            capturer->discard(phase_frame);
+          } else if (result.status == ScreenGpuFrameStatus::FatalError ||
+                     result.status == ScreenGpuFrameStatus::TargetClosed) {
+            throw std::runtime_error("GPU preview steady-state capture failed");
+          }
+          ScreenPreviewFrame phase_preview;
+          if (capturer->takePreviewFrame(phase_preview)) {
+            ++phase.preview_frames;
+            capturer->releasePreviewFrame(phase_preview.sequence);
+          }
+          Sleep(1);
+        }
+        if (phase.capture_calls == 0 ||
+            (preview_enabled && phase.preview_frames == 0)) {
+          throw std::runtime_error("GPU preview steady-state sample is empty");
+        }
+        return phase;
+      };
+
+      const auto without_preview = measure_phase(false);
+      const auto with_preview = measure_phase(true);
+      const auto without_preview_avg =
+          without_preview.call_ms / without_preview.capture_calls;
+      const auto with_preview_avg = with_preview.call_ms / with_preview.capture_calls;
+      const auto overhead_per_capture_ms = with_preview_avg - without_preview_avg;
+      const auto overhead_per_preview_ms =
+          (with_preview.call_ms - without_preview_avg * with_preview.capture_calls) /
+          with_preview.preview_frames;
+      std::cout << "RESULT path=local_screen_gpu_preview_steady fps_limit=60 "
+                << "preview_frames=" << with_preview.preview_frames
+                << " capture_calls=" << with_preview.capture_calls
+                << " baseline_call_avg_ms=" << without_preview_avg
+                << " preview_call_avg_ms=" << with_preview_avg
+                << " overhead_per_capture_ms=" << overhead_per_capture_ms
+                << " overhead_per_preview_frame_ms=" << overhead_per_preview_ms
+                << " cpu_copy_bytes_per_frame=0\n";
+    }
   }
   D3D11_QUERY_DESC query_desc{D3D11_QUERY_EVENT, 0};
   ComPtr<ID3D11Query> query;
