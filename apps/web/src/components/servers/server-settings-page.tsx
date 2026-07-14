@@ -106,7 +106,12 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     listServerChannels(s, serverId, auth.user?._id),
   )
   const settingsAccess = server
-    ? getServerSettingsAccess(server, member, auth.user?._id)
+    ? getServerSettingsAccess(
+        server,
+        member,
+        auth.user?._id,
+        auth.user?.privileged,
+      )
     : null
   const canOpenSettings = settingsAccess
     ? canOpenServerSettings(settingsAccess)

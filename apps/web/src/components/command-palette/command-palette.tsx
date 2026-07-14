@@ -149,7 +149,11 @@ export function CommandPalette() {
     }
 
     const snapshot = syncStore.getState()
-    const channelIds = messageSearchChannelIds(snapshot, activeChannelId)
+    const channelIds = messageSearchChannelIds(
+      snapshot,
+      activeChannelId,
+      auth.user?._id,
+    )
     let cancelled = false
     const timer = window.setTimeout(() => {
       setSearchingMessages(true)

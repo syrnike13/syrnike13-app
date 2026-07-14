@@ -55,6 +55,7 @@ describe('UserGlobalProfileSidebar', () => {
         onOpenDm={vi.fn()}
         onCopyId={vi.fn()}
         onBlock={vi.fn()}
+        onUnblock={vi.fn()}
         onEditProfile={vi.fn()}
       />,
     )

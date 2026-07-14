@@ -18,7 +18,6 @@ import type { VoiceCallState } from '#/features/sync/voice-types'
 import {
   isIncomingVoiceCall,
   isOutgoingVoiceCall,
-  isVoiceCallDismissed,
   isVoiceCallRingingDismissed,
 } from '#/features/sync/voice-call-utils'
 import { RailActiveIndicator } from '#/components/layout/rail-icon-button'
@@ -31,8 +30,8 @@ function voiceCallMarkerTitleForCall(
   dismissedVoiceCallKeys: Record<string, true>,
   currentUserId: string | undefined,
 ): string | null {
-  if (isVoiceCallDismissed(voiceCall, dismissedVoiceCallKeys)) {
-    return null
+  if (voiceCall?.phase === 'active') {
+    return 'Идёт звонок'
   }
   if (
     !isVoiceCallRingingDismissed(voiceCall, dismissedVoiceCallKeys) &&
@@ -45,9 +44,6 @@ function voiceCallMarkerTitleForCall(
     isOutgoingVoiceCall(voiceCall, currentUserId)
   ) {
     return 'Исходящий звонок'
-  }
-  if (voiceCall?.phase === 'active') {
-    return 'Идёт звонок'
   }
   return null
 }

@@ -17,6 +17,7 @@ import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
+import { useServerMembersSync } from '#/features/sync/server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
 import { cn } from '#/lib/utils'
@@ -47,6 +48,7 @@ export function AddRoleMembersDialog({
   onOpenChange,
 }: AddRoleMembersDialogProps) {
   const auth = useAuth()
+  useServerMembersSync(server._id, auth.session?.token, open)
   const actorMember = useSyncStore((state) =>
     auth.user?._id
       ? state.members[`${server._id}:${auth.user._id}`]
@@ -88,6 +90,7 @@ export function AddRoleMembersDialog({
           member,
           role,
           true,
+          auth.user?.privileged,
         )
       ) {
         continue
@@ -114,6 +117,7 @@ export function AddRoleMembersDialog({
   }, [
     actorMember,
     actorUserId,
+    auth.user?.privileged,
     query,
     role,
     server,

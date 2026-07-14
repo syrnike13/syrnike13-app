@@ -90,7 +90,13 @@ export function ServerHeaderMenu({
     listServerChannels(s, serverId, auth.user?._id),
   )
   const menuPermissions = server
-    ? getServerMenuPermissions(server, channels, member, auth.user?._id)
+    ? getServerMenuPermissions(
+        server,
+        channels,
+        member,
+        auth.user?._id,
+        auth.user?.privileged,
+      )
     : null
   const [menuOpen, setMenuOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)

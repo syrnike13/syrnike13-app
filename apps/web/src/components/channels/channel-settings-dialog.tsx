@@ -46,18 +46,21 @@ export function ChannelSettingsDialog({
     channel,
     member,
     auth.user?._id,
+    auth.user?.privileged,
   )
   const canManagePermissions = canManageChannelPermissions(
     server,
     channel,
     member,
     auth.user?._id,
+    auth.user?.privileged,
   )
   const canManageWebhooks = canManageChannelWebhooks(
     server,
     channel,
     member,
     auth.user?._id,
+    auth.user?.privileged,
   )
 
   if (!canManage && !canManagePermissions && !canManageWebhooks) return null

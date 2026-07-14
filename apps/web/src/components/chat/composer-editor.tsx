@@ -74,6 +74,9 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       useState<MentionSuggestionState | null>(null)
     const mentionSuggestionRef = useRef<MentionSuggestionState | null>(null)
     const selectedIndexRef = useRef(0)
+    const onKeyDownRef = useRef(onKeyDown)
+
+    onKeyDownRef.current = onKeyDown
 
     const syncMentionSuggestion = (
       props: SuggestionProps<MentionSuggestionItem>,
@@ -171,7 +174,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
           }
 
           if (event.key === 'Enter' && !event.shiftKey) {
-            onKeyDown?.(event as unknown as ReactKeyboardEvent)
+            onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent)
             return true
           }
           return false
@@ -188,10 +191,11 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       },
       onUpdate: ({ editor: currentEditor }) => {
         const wire = serializeMessageContent(currentEditor.getJSON())
+        if (value !== lastEmittedRef.current) return
         lastEmittedRef.current = wire
         onValueChange(wire)
       },
-    })
+    }, [placeholder])
 
     useEffect(() => {
       if (!editor) return

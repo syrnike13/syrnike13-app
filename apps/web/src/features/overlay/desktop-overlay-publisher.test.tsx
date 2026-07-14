@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 
 import { StrictMode } from 'react'
+import type { DesktopOverlaySnapshot } from '@syrnike13/platform'
 import { render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const componentMocks = vi.hoisted(() => {
-  const setSnapshot = vi.fn(async () => undefined)
+  const setSnapshot = vi.fn(
+    async (_snapshot: DesktopOverlaySnapshot) => undefined,
+  )
   return {
     setSnapshot,
     desktopAvailable: true,

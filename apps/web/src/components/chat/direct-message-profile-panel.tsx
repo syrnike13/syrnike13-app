@@ -7,10 +7,12 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfileStatusBubble } from '#/components/user/user-profile-status-bubble'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { listMutualServers } from '#/features/sync/selectors'
+import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
+import { cn } from '#/lib/utils'
 
 const DEFAULT_PROFILE_PANEL_WIDTH = 320
 const MIN_PROFILE_PANEL_WIDTH = 280
@@ -28,6 +30,9 @@ type DirectMessageProfilePanelProps = {
   currentUserId?: string
   token?: string | null
   aliases: string[]
+  open: boolean
+  onWidthChange?: (width: number) => void
+  onResizingChange?: (resizing: boolean) => void
   onOpenProfile?: () => void
 }
 
@@ -36,9 +41,13 @@ export function DirectMessageProfilePanel({
   currentUserId,
   token,
   aliases,
+  open,
+  onWidthChange,
+  onResizingChange,
   onOpenProfile,
 }: DirectMessageProfilePanelProps) {
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PROFILE_PANEL_WIDTH)
+  useMutualServerMembersSync(user._id, currentUserId, token)
   const mutualServers = useSyncStore((s) =>
     listMutualServers(s, user._id, currentUserId),
   )
@@ -59,14 +68,15 @@ export function DirectMessageProfilePanel({
 
   function startResize(event: ReactPointerEvent<HTMLDivElement>) {
     event.preventDefault()
+    onResizingChange?.(true)
 
     const startX = event.clientX
     const startWidth = panelWidth
 
     function handlePointerMove(moveEvent: PointerEvent) {
-      setPanelWidth(
-        clampPanelWidth(startWidth + startX - moveEvent.clientX),
-      )
+      const nextWidth = clampPanelWidth(startWidth + startX - moveEvent.clientX)
+      setPanelWidth(nextWidth)
+      onWidthChange?.(nextWidth)
     }
 
     function stopResize() {
@@ -74,6 +84,7 @@ export function DirectMessageProfilePanel({
       window.removeEventListener('pointerup', stopResize)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      onResizingChange?.(false)
     }
 
     document.body.style.cursor = 'col-resize'
@@ -85,22 +96,34 @@ export function DirectMessageProfilePanel({
   return (
     <aside
       aria-label="Профиль пользователя"
-      className="theme-surface-content relative flex min-h-0 shrink-0 flex-col border-l border-shell-divider"
-      style={{
-        width: panelWidth,
-        minWidth: MIN_PROFILE_PANEL_WIDTH,
-        maxWidth: '42vw',
-      }}
+      aria-hidden={!open}
+      data-state={open ? 'open' : 'closed'}
+      inert={!open}
+      className={cn(
+        'relative z-20 min-h-0 w-0 shrink-0 overflow-visible',
+        !open && 'pointer-events-none',
+      )}
     >
       <div
-        aria-label="Изменить ширину профиля"
-        aria-orientation="vertical"
-        className="absolute inset-y-0 left-0 z-20 w-1 cursor-col-resize touch-none transition-colors hover:bg-primary/50"
-        role="separator"
-        onPointerDown={startResize}
-      />
+        data-dm-profile-surface
+        className={cn(
+          'theme-surface-content absolute inset-y-0 right-0 z-10 flex min-h-0 flex-col overflow-y-auto border-l border-shell-divider shadow-sm will-change-[translate,opacity] transition-[translate,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+          open ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0',
+        )}
+        style={{
+          width: panelWidth,
+          minWidth: MIN_PROFILE_PANEL_WIDTH,
+          maxWidth: '42vw',
+        }}
+      >
+        <div
+          aria-label="Изменить ширину профиля"
+          aria-orientation="vertical"
+          className="absolute inset-y-0 left-0 z-20 w-1 cursor-col-resize touch-none transition-colors hover:bg-primary/50"
+          role="separator"
+          onPointerDown={startResize}
+        />
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <div className="relative shrink-0">
           <div
             className={userProfileBannerClassName(

@@ -1048,13 +1048,8 @@ export interface components {
       avatar?: components["schemas"]["File"] | null;
       /** @description Relationships with other users */
       relations?: components["schemas"]["Relationship"][];
-      /**
-       * Format: uint32
-       * @description Bitfield of user badges
-       *
-       * https://docs.rs/syrnike-models/latest/syrnike_models/v0/enum.UserBadges.html
-       */
-      badges?: number;
+      /** @description User badges */
+      badges?: components["schemas"]["UserBadge"][];
       /** @description User's current status */
       status?: components["schemas"]["UserStatus"] | null;
       /**
@@ -1202,11 +1197,6 @@ export interface components {
        * This is applied as a partial.
        */
       profile?: components["schemas"]["DataUserProfile"] | null;
-      /**
-       * Format: int32
-       * @description Bitfield of user badges
-       */
-      badges?: number | null;
       /**
        * Format: int32
        * @description Enum of user flags

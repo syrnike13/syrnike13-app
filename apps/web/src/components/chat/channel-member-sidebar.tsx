@@ -116,7 +116,13 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
     if (channel.channel_type !== 'TextChannel' || !server) return members
 
     return members.filter((entry) =>
-      canViewChannel(server, channel, entry.member, entry.user._id),
+      canViewChannel(
+        server,
+        channel,
+        entry.member,
+        entry.user._id,
+        entry.user.privileged,
+      ),
     )
   }, [channel, members, server])
 

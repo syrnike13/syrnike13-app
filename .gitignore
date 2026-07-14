@@ -39,6 +39,7 @@ release/
 coverage/
 .turbo/
 .vite/
+.syrnike-build-cache/
 .tanstack/
 .nitro/
 .output/

@@ -240,7 +240,7 @@ describe('listVisibleDmRailChannels', () => {
     expect(visible).toEqual([])
   })
 
-  it('hides an active voice call after dismissing the same ringing call', () => {
+  it('shows an active voice call after dismissing the same ringing call', () => {
     const activeCall = dmChannel('dm-active-call', 'friend-a')
     const startedAt = '2026-06-12T10:00:00.000Z'
     const dismissedRingingCall = {
@@ -269,7 +269,7 @@ describe('listVisibleDmRailChannels', () => {
       CURRENT_USER_ID,
     )
 
-    expect(visible).toEqual([])
+    expect(visible.map((channel) => channel._id)).toEqual(['dm-active-call'])
   })
 
   it('shows direct messages with an active voice call', () => {

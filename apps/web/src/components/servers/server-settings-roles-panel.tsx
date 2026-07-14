@@ -250,6 +250,7 @@ function SortableRolesList({
   server,
   member,
   userId,
+  userPrivileged,
   memberCounts,
   selectedId,
   reordering,
@@ -262,6 +263,7 @@ function SortableRolesList({
   server: Server
   member: Member | undefined
   userId: string
+  userPrivileged: boolean
   memberCounts: Record<string, number>
   selectedId: string | null
   reordering: boolean
@@ -290,8 +292,12 @@ function SortableRolesList({
     const activeRole = roles[oldIndex]
     const overRole = roles[newIndex]
     if (
-      !canManageRole(server, member, userId, activeRole.rank ?? 0) ||
-      !canManageRole(server, member, userId, overRole.rank ?? 0)
+      !canManageRole(server, member, userId, activeRole.rank ?? 0, {
+        privileged: userPrivileged,
+      }) ||
+      !canManageRole(server, member, userId, overRole.rank ?? 0, {
+        privileged: userPrivileged,
+      })
     ) {
       return
     }
@@ -321,7 +327,13 @@ function SortableRolesList({
         <div className="space-y-1">
           {roles.map((role) => {
             const roleRank = role.rank ?? 0
-            const manageable = canManageRole(server, member, userId, roleRank)
+            const manageable = canManageRole(
+              server,
+              member,
+              userId,
+              roleRank,
+              { privileged: userPrivileged },
+            )
             const canDrag =
               canReorder &&
               manageable &&
@@ -518,8 +530,9 @@ export function ServerSettingsRolesPanel({
 
   const token = auth.session?.token
   const userId = auth.user?._id
+  const userPrivileged = Boolean(auth.user?.privileged)
   const serverPermissions = server && userId
-    ? calculateServerPermissions(server, member, userId)
+    ? calculateServerPermissions(server, member, userId, userPrivileged)
     : 0
 
   const canCreateRoles = server && userId
@@ -582,7 +595,13 @@ export function ServerSettingsRolesPanel({
 
   function requestRoleDeletion(role: Role) {
     if (!token || !userId) return
-    if (!canManageRole(server, member, userId, role.rank ?? 0)) return
+    if (
+      !canManageRole(server, member, userId, role.rank ?? 0, {
+        privileged: userPrivileged,
+      })
+    ) {
+      return
+    }
 
     setRolePendingDeletion(role)
   }
@@ -595,6 +614,7 @@ export function ServerSettingsRolesPanel({
         member,
         userId,
         rolePendingDeletion.rank ?? 0,
+        { privileged: userPrivileged },
       )
     ) {
       return
@@ -693,6 +713,7 @@ export function ServerSettingsRolesPanel({
                 server={server}
                 member={member}
                 userId={userId}
+                userPrivileged={userPrivileged}
                 memberCounts={roleMemberCounts}
                 selectedId={effectiveSelectedId}
                 reordering={reordering}
@@ -725,6 +746,7 @@ export function ServerSettingsRolesPanel({
                 role={selectedRole}
                 token={token}
                 userId={userId}
+                userPrivileged={userPrivileged}
                 member={member}
                 onDeleteRequested={() => requestRoleDeletion(selectedRole)}
               />

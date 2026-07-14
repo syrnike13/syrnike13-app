@@ -140,6 +140,36 @@ describe('canToggleMemberRole', () => {
 })
 
 describe('member role edit affordances', () => {
+  it('allows privileged users to edit roles without server membership', () => {
+    const role = makeRole()
+    const server = makeServer({ roles: { [role._id]: role } })
+    const target = makeMember({
+      _id: { server: 'server-1', user: 'target-1' },
+      roles: [role._id],
+    })
+
+    expect(
+      canEditAnyMemberRole(
+        server,
+        undefined,
+        'privileged-1',
+        target,
+        true,
+      ),
+    ).toBe(true)
+    expect(
+      canToggleMemberRole(
+        server,
+        undefined,
+        'privileged-1',
+        target,
+        role,
+        false,
+        true,
+      ),
+    ).toBe(true)
+  })
+
   it('opens role editing when at least one lower role can be toggled', () => {
     const lowerRole = makeRole({ _id: 'lower', name: 'Lower', rank: 5 })
     const server = makeServer({

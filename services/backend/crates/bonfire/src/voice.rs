@@ -333,7 +333,7 @@ pub async fn send_voice_server_update(
     config: &ProtocolConfiguration,
     event: EventV1,
 ) {
-    write.lock().await.send(config.encode(&event)).await.ok();
+    let _ = write.lock().await.send(config.encode(&event)).await;
 }
 
 pub async fn send_voice_state_ack(

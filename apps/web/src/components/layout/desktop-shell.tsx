@@ -12,7 +12,6 @@ import { IncomingVoiceCallOverlay } from '#/components/voice/incoming-voice-call
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { isDmChannel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { usePlatform } from '#/platform/use-platform'
 import { parseChannelSettingsTab } from '#/components/channels/channel-settings-types'
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
 import { cn } from '#/lib/utils'
@@ -24,8 +23,6 @@ import { cn } from '#/lib/utils'
  * поэтому сам читает channel/settings match из активного роута.
  */
 export function DesktopShell() {
-  const { capabilities } = usePlatform()
-
   const channelMatch = useMatch({
     from: '/app/c/$channelId',
     shouldThrow: false,

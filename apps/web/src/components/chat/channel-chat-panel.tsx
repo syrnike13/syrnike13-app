@@ -3,6 +3,7 @@ import { MessageSquareIcon, XIcon } from '#/components/icons'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
 import { ChannelSearchDialog } from '#/components/chat/channel-search-dialog'
+import { GroupManagementDialog } from '#/components/chat/group-management-dialog'
 import { MessageComposer } from '#/components/chat/message-composer'
 import { MessageList } from '#/components/chat/message-list'
 import { TypingIndicator } from '#/components/chat/typing-indicator'
@@ -17,7 +18,7 @@ import {
 } from '#/features/api/messages-api'
 import { useChannelChat } from '#/features/chat/use-channel-chat'
 import { syncStore } from '#/features/sync/sync-store'
-import { getChannelLabel } from '#/features/sync/channel-label'
+import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,
@@ -76,6 +77,19 @@ export function ChannelChatPanel({
   }
 
   const title = getChannelLabel(channel, users, auth.user?._id)
+  const dmRecipientId = getDmRecipientId(channel, auth.user?._id)
+  const dmRecipientRelationship = dmRecipientId
+    ? users[dmRecipientId]?.relationship
+    : undefined
+  const dmMessagesBlocked =
+    dmRecipientRelationship === 'Blocked' ||
+    dmRecipientRelationship === 'BlockedOther'
+  const dmDisabledPlaceholder =
+    dmRecipientRelationship === 'Blocked'
+      ? 'Вы заблокировали этого пользователя'
+      : dmRecipientRelationship === 'BlockedOther'
+        ? 'Пользователь заблокировал вас'
+        : undefined
 
   return (
     <aside className="gradient-surface-content flex h-full min-h-0 w-full flex-col border-l border-shell-divider bg-background">
@@ -85,6 +99,9 @@ export function ChannelChatPanel({
         ) : null}
         {channel.channel_type === 'TextChannel' ? (
           <ChannelSettingsDialog channel={channel} />
+        ) : null}
+        {channel.channel_type === 'Group' ? (
+          <GroupManagementDialog channel={channel} />
         ) : null}
         {token ? (
           <>
@@ -171,7 +188,10 @@ export function ChannelChatPanel({
             channel={channel}
             users={users}
             floating
-            disabled={!token || auth.gatewayState !== 'connected'}
+            disabled={
+              !token || auth.gatewayState !== 'connected' || dmMessagesBlocked
+            }
+            disabledPlaceholder={dmDisabledPlaceholder}
             token={token}
             replyTo={replyTo}
             editingMessage={editingMessage}

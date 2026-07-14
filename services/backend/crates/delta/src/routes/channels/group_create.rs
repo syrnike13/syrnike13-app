@@ -27,6 +27,7 @@ pub async fn create_group(
         })
     })?;
 
+    let mut target_users = Vec::with_capacity(data.users.len());
     for target in &data.users {
         let target_user = db.fetch_user(target).await?;
         if target_user.bot.is_some() {
@@ -36,6 +37,22 @@ pub async fn create_group(
         match user.relationship_with(target) {
             RelationshipStatus::Friend | RelationshipStatus::User => {}
             _ => {
+                return Err(create_error!(NotFriends));
+            }
+        }
+
+        target_users.push(target_user);
+    }
+
+    for (index, target_user) in target_users.iter().enumerate() {
+        for other_user in target_users.iter().skip(index + 1) {
+            if matches!(
+                target_user.relationship_with(&other_user.id),
+                RelationshipStatus::Blocked | RelationshipStatus::BlockedOther
+            ) || matches!(
+                other_user.relationship_with(&target_user.id),
+                RelationshipStatus::Blocked | RelationshipStatus::BlockedOther
+            ) {
                 return Err(create_error!(NotFriends));
             }
         }

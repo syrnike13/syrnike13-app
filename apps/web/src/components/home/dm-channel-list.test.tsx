@@ -274,7 +274,7 @@ describe('DmChannelList', () => {
     expect(screen.queryByTitle('Входящий звонок')).toBeNull()
   })
 
-  it('does not mark active calls after hiding the same ringing phase', () => {
+  it('marks active calls after hiding the same ringing phase', () => {
     const ringingCall = {
       channelId: 'dm-1',
       initiatorId: 'friend-1',
@@ -324,6 +324,6 @@ describe('DmChannelList', () => {
 
     render(<DmChannelList />)
 
-    expect(screen.queryByTitle('Идёт звонок')).toBeNull()
+    expect(screen.getByTitle('Идёт звонок')).toBeTruthy()
   })
 })

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { syncStore } from '#/features/sync/sync-store'
 import type { GatewayServerEvent } from '#/features/sync/types'
+import type { Channel } from '@syrnike13/api-types'
 
 const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
@@ -1132,10 +1133,12 @@ describe('syncStore role events', () => {
     expect(state.members['server-1:user-1']?.roles).toEqual(['role-2'])
     expect(state.members['server-1:user-2']?.roles).toEqual([])
     expect(state.members['server-2:user-3']?.roles).toEqual(['role-1'])
-    expect(
-      state.channels['channel-1']?.role_permissions?.['role-1'],
-    ).toBeUndefined()
-    expect(state.channels['channel-1']?.role_permissions?.['role-2']).toEqual({
+    const channel = state.channels['channel-1'] as Extract<
+      Channel,
+      { channel_type: 'TextChannel' }
+    >
+    expect(channel.role_permissions?.['role-1']).toBeUndefined()
+    expect(channel.role_permissions?.['role-2']).toEqual({
       a: 2,
       d: 0,
     })

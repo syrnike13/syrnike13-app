@@ -11,7 +11,7 @@ use crate::Database;
 
 static PERMISSIBLE_EMOJIS: Lazy<HashSet<String>> = Lazy::new(|| {
     include_str!("unicode_emoji.txt")
-        .split('\n')
+        .lines()
         .map(|x| x.replace('\u{FE0F}', ""))
         .collect()
 });
@@ -73,13 +73,15 @@ impl Emoji {
 
     /// Delete an emoji
     pub async fn delete(self, db: &Database) -> Result<()> {
+        db.detach_emoji(&self).await?;
+
         EventV1::EmojiDelete {
             id: self.id.to_string(),
         }
         .p(self.parent().to_string())
         .await;
 
-        db.detach_emoji(&self).await
+        Ok(())
     }
 
     /// Update an emoji
@@ -105,8 +107,8 @@ impl Emoji {
     /// Check whether we can use a given emoji
     pub async fn can_use(db: &Database, emoji: &str) -> Result<bool> {
         if Ulid::from_str(emoji).is_ok() {
-            db.fetch_emoji(emoji).await?;
-            Ok(true)
+            let emoji = db.fetch_emoji(emoji).await?;
+            Ok(!matches!(emoji.parent, EmojiParent::Detached))
         } else {
             let sanitized_emoji = emoji.replace('\u{FE0F}', "");
             Ok(PERMISSIBLE_EMOJIS.contains(&sanitized_emoji))

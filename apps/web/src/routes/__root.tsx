@@ -46,7 +46,7 @@ const contentSecurityPolicy = [
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://js.hcaptcha.com https://*.hcaptcha.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' https: data: blob:",
+  "img-src 'self' http://localhost:* http://127.0.0.1:* https: data: blob:",
   "media-src 'self' https: data: blob:",
   "connect-src 'self' http://localhost:* http://127.0.0.1:* https: ws: wss:",
   "frame-src 'self' https://*.hcaptcha.com",

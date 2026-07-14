@@ -816,14 +816,15 @@ impl State {
 
                 if let Some(channel) = self.cache.channels.get(id) {
                     let can_view = self.cache.can_view_channel(db, channel).await;
-                    if could_view != can_view {
-                        if can_view {
-                            queue_add = Some(id.clone());
-                            *event = EventV1::ChannelCreate(channel.clone().into());
-                        } else {
-                            queue_remove = Some(id.clone());
-                            *event = EventV1::ChannelDelete { id: id.clone() };
-                        }
+                    if !can_view {
+                        // A stale client may still hold this channel even when
+                        // this gateway cache already considered it hidden.
+                        // Always make the post-update visibility authoritative.
+                        queue_remove = Some(id.clone());
+                        *event = EventV1::ChannelDelete { id: id.clone() };
+                    } else if !could_view {
+                        queue_add = Some(id.clone());
+                        *event = EventV1::ChannelCreate(channel.clone().into());
                     }
                 }
             }

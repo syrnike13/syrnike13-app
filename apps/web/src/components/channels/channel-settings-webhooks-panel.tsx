@@ -65,12 +65,13 @@ export function ChannelSettingsWebhooksPanel({
 
   useEffect(() => {
     if (!token) return
+    const sessionToken = token
     let active = true
 
     async function loadWebhooks() {
       setLoading(true)
       try {
-        const nextWebhooks = await fetchChannelWebhooks(token, channel._id)
+        const nextWebhooks = await fetchChannelWebhooks(sessionToken, channel._id)
         if (active) setWebhooks(nextWebhooks)
       } catch (error) {
         if (active) {

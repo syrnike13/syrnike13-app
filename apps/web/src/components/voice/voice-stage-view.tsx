@@ -255,7 +255,13 @@ export function VoiceStageView({
     !mobileDrawer && (participants.length > 0 || mediaItems.length > 0)
   const canInvite =
     server && channel.channel_type === 'TextChannel'
-      ? canInviteToChannel(server, channel, member, auth.user?._id)
+      ? canInviteToChannel(
+          server,
+          channel,
+          member,
+          auth.user?._id,
+          auth.user?.privileged,
+        )
       : false
   const showInviteSlot =
     canInvite &&

@@ -97,8 +97,8 @@ export function ImageLightbox({ file, open, onOpenChange }: ImageLightboxProps) 
             src={src}
             alt={title}
             className={cn(
-              'max-h-[calc(100vh-5rem)] max-w-[calc(100vw-5rem)] object-contain transition-transform duration-150 ease-out',
-              zoomed ? 'scale-110 cursor-zoom-out' : 'cursor-zoom-in',
+              'max-h-[calc(100vh-5rem)] max-w-[calc(100vw-5rem)] cursor-pointer object-contain transition-transform duration-150 ease-out',
+              zoomed && 'scale-110',
             )}
             draggable={false}
             loading="eager"

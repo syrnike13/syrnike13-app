@@ -24,6 +24,7 @@ import type { ServerChannel } from '#/lib/channel-voice'
 import {
   calculateChannelPermissions,
   canManageRole,
+  getMemberRank,
 } from '#/lib/permissions'
 import { roleIconUrl } from '#/lib/media'
 import {
@@ -56,6 +57,7 @@ function ChannelPermissionEditor({
   server,
   member,
   userId,
+  userPrivileged,
   token,
   roleId,
   userTargetId,
@@ -67,6 +69,7 @@ function ChannelPermissionEditor({
   server: Server
   member: Member | undefined
   userId: string
+  userPrivileged: boolean
   token: string
   roleId: string | null
   userTargetId?: string
@@ -79,8 +82,15 @@ function ChannelPermissionEditor({
   )
   const [saving, setSaving] = useState(false)
   const actorPermissions = useMemo(
-    () => calculateChannelPermissions(server, channel, member, userId),
-    [channel, member, server, userId],
+    () =>
+      calculateChannelPermissions(
+        server,
+        channel,
+        member,
+        userId,
+        userPrivileged,
+      ),
+    [channel, member, server, userId, userPrivileged],
   )
 
   useEffect(() => {
@@ -195,7 +205,8 @@ function ChannelPermissionEditor({
 
       {!canEdit ? (
         <p className="text-sm text-muted-foreground">
-          Недостаточно прав для изменения прав этой роли.
+          Недостаточно прав для изменения прав{' '}
+          {userTargetId ? 'этого участника' : 'этой роли'}.
         </p>
       ) : null}
     </div>
@@ -286,6 +297,7 @@ export function ChannelSettingsPermissionsPanel({
 
   const token = auth.session?.token
   const userId = auth.user?._id
+  const userPrivileged = Boolean(auth.user?.privileged)
 
   const effectiveSelectedId = useMemo(() => {
     if (selectedId === DEFAULT_PERMISSIONS_ID) return DEFAULT_PERMISSIONS_ID
@@ -321,9 +333,20 @@ export function ChannelSettingsPermissionsPanel({
     selectedRole && token && userId
       ? canManageRole(server, member, userId, selectedRole.rank ?? 0, {
           permissions: true,
+          privileged: userPrivileged,
         })
       : false
-  const canEditSelectedUser = Boolean(token && userId && selectedUserEntry)
+  const canEditSelectedUser = Boolean(
+    token &&
+      userId &&
+      selectedUserEntry &&
+      (userPrivileged ||
+        selectedUserEntry.user._id === userId ||
+        server.owner === userId ||
+        (selectedUserEntry.user._id !== server.owner &&
+          getMemberRank(server, selectedUserEntry.member) >
+            getMemberRank(server, member))),
+  )
 
   if (!token || !userId) {
     return null
@@ -398,6 +421,7 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
+                userPrivileged={userPrivileged}
                 token={token}
                 roleId={null}
                 roleName="@everyone"
@@ -411,6 +435,7 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
+                userPrivileged={userPrivileged}
                 token={token}
                 roleId={selectedRole._id}
                 roleName={selectedRole.name}
@@ -426,6 +451,7 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
+                userPrivileged={userPrivileged}
                 token={token}
                 roleId={null}
                 userTargetId={selectedUserEntry.user._id}
@@ -442,6 +468,7 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
+                userPrivileged={userPrivileged}
                 token={token}
                 roleId={null}
                 roleName="@everyone"

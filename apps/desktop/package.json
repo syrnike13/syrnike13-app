@@ -13,7 +13,7 @@
     "dev": "pnpm run dev:nightly",
     "dev:nightly": "node scripts/run-dev-channel.mjs nightly",
     "dev:prod": "node scripts/run-dev-channel.mjs prod",
-    "dev:local": "pnpm run build:shell && concurrently -k -n web,electron \"pnpm --filter @syrnike13/web dev:local\" \"wait-on http-get://127.0.0.1:3000 && pnpm exec electron .\"",
+    "dev:local": "node scripts/run-dev-channel.mjs local",
     "verify:web-dist": "node scripts/verify-web-dist-production.mjs",
     "build": "pnpm --filter @syrnike13/web build && pnpm run verify:web-dist && pnpm run build:shell",
     "start": "pnpm exec electron .",

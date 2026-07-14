@@ -83,20 +83,22 @@ const BAN_DELETE_MESSAGE_PRESETS = [
 
 const pendingRoleEditKeys = new Set<string>()
 
-function roleEditKey(serverId: string, userId: string, roleId: string) {
-  return `${serverId}:${userId}:${roleId}`
+function roleEditKey(serverId: string, userId: string) {
+  return `${serverId}:${userId}`
 }
 
 function UserRolesContextMenuSub({
   server,
   actorMember,
   actorUserId,
+  actorPrivileged,
   targetMember,
   token,
 }: {
   server: Server
   actorMember: Member | undefined
   actorUserId: string | undefined
+  actorPrivileged: boolean
   targetMember: Member
   token: string | undefined
 }) {
@@ -117,6 +119,7 @@ function UserRolesContextMenuSub({
             targetMember,
             role,
             true,
+            actorPrivileged,
           )
           const canRemove = canToggleMemberRole(
             server,
@@ -125,12 +128,21 @@ function UserRolesContextMenuSub({
             targetMember,
             role,
             false,
+            actorPrivileged,
           )
 
           return { role, assigned, canAdd, canRemove }
         })
         .filter(({ assigned, canAdd }) => assigned || canAdd),
-    [actorMember, actorUserId, assignedRoleIds, roles, server, targetMember],
+    [
+      actorMember,
+      actorPrivileged,
+      actorUserId,
+      assignedRoleIds,
+      roles,
+      server,
+      targetMember,
+    ],
   )
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null)
 
@@ -147,6 +159,7 @@ function UserRolesContextMenuSub({
         targetMember,
         role,
         enabled,
+        actorPrivileged,
       )
     ) {
       return
@@ -155,7 +168,7 @@ function UserRolesContextMenuSub({
     const nextRoles = enabled
       ? [...new Set([...(targetMember.roles ?? []), roleId])]
       : (targetMember.roles ?? []).filter((id) => id !== roleId)
-    const pendingKey = roleEditKey(server._id, targetMember._id.user, roleId)
+    const pendingKey = roleEditKey(server._id, targetMember._id.user)
     if (pendingRoleEditKeys.has(pendingKey)) return
 
     pendingRoleEditKeys.add(pendingKey)
@@ -188,13 +201,9 @@ function UserRolesContextMenuSub({
       </ContextMenuSubTrigger>
       <ContextMenuSubContent className="max-h-80 w-72 overflow-y-auto">
         {visibleRoles.map(({ role, assigned, canAdd, canRemove }) => {
-          const pendingKey = roleEditKey(
-            server._id,
-            targetMember._id.user,
-            role._id,
-          )
+          const pendingKey = roleEditKey(server._id, targetMember._id.user)
           const disabled =
-            savingRoleId === role._id ||
+            savingRoleId !== null ||
             pendingRoleEditKeys.has(pendingKey) ||
             (assigned ? !canRemove : !canAdd)
           const iconUrl = roleIconUrl(role.icon)
@@ -317,10 +326,22 @@ export function UserContextMenuContent({
 
   const canKick =
     server &&
-    canKickServerMember(server, actorMember, auth.user?._id, targetMember)
+    canKickServerMember(
+      server,
+      actorMember,
+      auth.user?._id,
+      targetMember,
+      auth.user?.privileged,
+    )
   const canBan =
     server &&
-    canBanServerMember(server, actorMember, auth.user?._id, targetMember)
+    canBanServerMember(
+      server,
+      actorMember,
+      auth.user?._id,
+      targetMember,
+      auth.user?.privileged,
+    )
   const canBlock = !isSelf
   const canDirectMessage = !isSelf && !user.bot
   const showRoles = Boolean(server && targetMember && !isSelf)
@@ -451,6 +472,7 @@ export function UserContextMenuContent({
           server={server}
           actorMember={actorMember}
           actorUserId={auth.user?._id}
+          actorPrivileged={auth.user?.privileged}
           targetMember={targetMember}
           voiceChannelId={targetVoiceChannelId}
           moveVoiceChannels={moveVoiceChannels}
@@ -483,6 +505,7 @@ export function UserContextMenuContent({
           server={server}
           actorMember={actorMember}
           actorUserId={auth.user?._id}
+          actorPrivileged={Boolean(auth.user?.privileged)}
           targetMember={targetMember}
           token={token}
         />

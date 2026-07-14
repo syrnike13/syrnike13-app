@@ -85,9 +85,13 @@ const APP_SHUTDOWN_TIMEOUT_MS = 5_000
 const isDev = !app.isPackaged
 
 if (isDev) {
+  const devUserDataPath = process.env.SYRNIKE_DESKTOP_DEV_USER_DATA?.trim()
+
   app.setPath(
     'userData',
-    path.join(app.getPath('appData'), 'syrnike13-desktop-dev'),
+    devUserDataPath
+      ? path.resolve(devUserDataPath)
+      : path.join(app.getPath('appData'), 'syrnike13-desktop-dev'),
   )
 }
 

@@ -59,6 +59,7 @@ type UserGlobalProfileSidebarProps = {
   onOpenDm: () => void
   onCopyId: () => void
   onBlock: () => void
+  onUnblock: () => void
   onEditProfile: () => void
 }
 
@@ -89,6 +90,7 @@ export function UserGlobalProfileSidebar({
   onOpenDm,
   onCopyId,
   onBlock,
+  onUnblock,
   onEditProfile,
 }: UserGlobalProfileSidebarProps) {
   const auth = useAuth()
@@ -124,9 +126,15 @@ export function UserGlobalProfileSidebar({
         server &&
           member &&
           actorUserId &&
-          canEditAnyMemberRole(server, actorMember, actorUserId, member),
+          canEditAnyMemberRole(
+            server,
+            actorMember,
+            actorUserId,
+            member,
+            auth.user?.privileged,
+          ),
       ),
-    [actorMember, actorUserId, member, server],
+    [actorMember, actorUserId, auth.user?.privileged, member, server],
   )
 
   const profileQuery = useQuery({
@@ -146,7 +154,19 @@ export function UserGlobalProfileSidebar({
     if (!token || !actorUserId || !server || !member) return
     const role = server.roles?.[roleId]
     if (!role) return
-    if (!canToggleMemberRole(server, actorMember, actorUserId, member, role, false)) return
+    if (
+      !canToggleMemberRole(
+        server,
+        actorMember,
+        actorUserId,
+        member,
+        role,
+        false,
+        auth.user?.privileged,
+      )
+    ) {
+      return
+    }
     setRemovingRoleId(roleId)
     try {
       const nextRoles = (member.roles ?? []).filter((id) => id !== roleId)
@@ -352,10 +372,17 @@ export function UserGlobalProfileSidebar({
                     <CopyIcon className="size-3.5" />
                     Копировать ID
                   </FloatingMenuItem>
-                  <FloatingMenuItem onClick={onBlock}>
-                    <BanIcon className="size-3.5" />
-                    Заблокировать
-                  </FloatingMenuItem>
+                  {user.relationship === 'Blocked' ? (
+                    <FloatingMenuItem onClick={onUnblock}>
+                      <BanIcon className="size-3.5" />
+                      Разблокировать
+                    </FloatingMenuItem>
+                  ) : (
+                    <FloatingMenuItem onClick={onBlock}>
+                      <BanIcon className="size-3.5" />
+                      Заблокировать
+                    </FloatingMenuItem>
+                  )}
                 </PopoverContent>
               </Popover>
             </>
@@ -402,6 +429,7 @@ export function UserGlobalProfileSidebar({
                     member,
                     serverRole!,
                     false,
+                    auth.user?.privileged,
                   )
                 const removing = removingRoleId === role.id
                 return (

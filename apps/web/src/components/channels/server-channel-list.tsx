@@ -433,14 +433,25 @@ export function ServerChannelList({
   ) as ServerChannel[]
 
   const canManage = server
-    ? canManageServerChannels(server, member, auth.user?._id)
+    ? canManageServerChannels(
+        server,
+        member,
+        auth.user?._id,
+        auth.user?.privileged,
+      )
     : false
   const canInvite = useCallback(
     (channel: ServerChannel) =>
       server
-        ? canInviteToChannel(server, channel, member, auth.user?._id)
+        ? canInviteToChannel(
+            server,
+            channel,
+            member,
+            auth.user?._id,
+            auth.user?.privileged,
+          )
         : false,
-    [auth.user?._id, member, server],
+    [auth.user?._id, auth.user?.privileged, member, server],
   )
 
   const computedSections = useMemo(

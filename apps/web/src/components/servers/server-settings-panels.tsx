@@ -271,12 +271,12 @@ function ServerSettingsGeneralPanel({
         }
       }
       if (iconFile) {
-        patch.icon = await uploadMediaFile(token, 'avatars', iconFile)
+        patch.icon = await uploadMediaFile(token, 'icons', iconFile)
       } else if (removeIcon) {
         remove.push('Icon')
       }
       if (bannerFile) {
-        patch.banner = await uploadMediaFile(token, 'backgrounds', bannerFile)
+        patch.banner = await uploadMediaFile(token, 'banners', bannerFile)
       } else if (removeBanner) {
         remove.push('Banner')
       }

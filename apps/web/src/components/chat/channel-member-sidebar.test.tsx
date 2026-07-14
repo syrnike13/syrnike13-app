@@ -37,6 +37,7 @@ function server(): Server {
     _id: 'server-1',
     name: 'Server',
     owner: 'owner-user',
+    channels: [],
     default_permissions: ChannelPermission.ViewChannel,
   } as Server
 }
@@ -112,6 +113,7 @@ describe('ChannelMemberSidebar', () => {
               _id: 'allowed',
               name: 'Allowed',
               permissions: { a: 0, d: 0 },
+              mentionable: false,
               rank: 1,
             },
           },

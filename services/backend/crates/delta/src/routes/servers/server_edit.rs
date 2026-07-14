@@ -178,6 +178,36 @@ pub async fn edit(
         })
     })?;
 
+    let conflicting_field = [
+        (
+            data.description.is_some(),
+            v0::FieldsServer::Description,
+            "description",
+        ),
+        (data.icon.is_some(), v0::FieldsServer::Icon, "icon"),
+        (data.banner.is_some(), v0::FieldsServer::Banner, "banner"),
+        (
+            data.categories.is_some(),
+            v0::FieldsServer::Categories,
+            "categories",
+        ),
+        (
+            data.system_messages.is_some(),
+            v0::FieldsServer::SystemMessages,
+            "system_messages",
+        ),
+    ]
+    .iter()
+    .find_map(|(is_set, field, name)| {
+        (*is_set && data.remove.contains(field)).then_some(*name)
+    });
+
+    if let Some(field) = conflicting_field {
+        return Err(create_error!(FailedValidation {
+            error: format!("{field} cannot be set and removed in the same request")
+        }));
+    }
+
     let mut server = target.as_server(db).await?;
     let mut query = DatabasePermissionQuery::new(db, &user).server(&server);
     let permissions = calculate_server_permissions(&mut query).await;

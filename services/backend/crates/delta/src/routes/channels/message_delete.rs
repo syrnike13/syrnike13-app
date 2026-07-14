@@ -24,12 +24,15 @@ pub async fn delete(
         return Err(create_error!(NotFound));
     }
 
-    if message.author != user.id {
-        let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
-        calculate_channel_permissions(&mut query)
-            .await
-            .throw_if_lacking_channel_permission(ChannelPermission::ManageMessages)?;
-    }
+    let required_permission = if message.author == user.id {
+        ChannelPermission::ViewChannel
+    } else {
+        ChannelPermission::ManageMessages
+    };
+    let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
+    calculate_channel_permissions(&mut query)
+        .await
+        .throw_if_lacking_channel_permission(required_permission)?;
 
     message.delete(db).await.map(|_| EmptyResponse)
 }

@@ -10,6 +10,8 @@ import {
   canInviteToChannel,
   canKickServerMember,
   canMoveServerMember,
+  canManageChannelWebhooks,
+  canManageRole,
   canChangeMemberNickname,
   canMuteServerMember,
   canTimeoutServerMember,
@@ -69,6 +71,19 @@ function makeTextChannel(
 }
 
 describe('calculateServerPermissions', () => {
+  it('grants all safe permissions to privileged users without membership', () => {
+    const permissions = calculateServerPermissions(
+      makeServer(),
+      undefined,
+      'privileged-1',
+      true,
+    )
+
+    expect(
+      hasChannelPermission(permissions, ChannelPermission.ManageServer),
+    ).toBe(true)
+  })
+
   it('grants all safe permissions to the server owner', () => {
     const server = makeServer({ owner: 'user-1' })
     const permissions = calculateServerPermissions(
@@ -105,6 +120,28 @@ describe('calculateServerPermissions', () => {
     expect(
       hasChannelPermission(permissions, ChannelPermission.ManageServer),
     ).toBe(false)
+  })
+})
+
+describe('privileged management helpers', () => {
+  it('allows role and webhook management without server membership', () => {
+    const server = makeServer()
+    const channel = makeTextChannel()
+
+    expect(
+      canManageRole(server, undefined, 'privileged-1', 0, {
+        privileged: true,
+      }),
+    ).toBe(true)
+    expect(
+      canManageChannelWebhooks(
+        server,
+        channel,
+        undefined,
+        'privileged-1',
+        true,
+      ),
+    ).toBe(true)
   })
 })
 

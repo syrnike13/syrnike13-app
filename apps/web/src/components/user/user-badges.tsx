@@ -38,7 +38,7 @@ export function UserBadges({
   className,
   size = 'md',
 }: UserBadgesProps) {
-  const visibleBadges = (badges ?? []).filter((badge) => badgeIconUrl(badge.icon))
+    const visibleBadges = (badges ?? []).filter((badge) => badgeIconUrl(badge.icon))
   if (visibleBadges.length === 0) return null
 
   return (

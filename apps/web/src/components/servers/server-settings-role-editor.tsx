@@ -17,7 +17,7 @@ import {
 } from '#/components/ui/popover'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { uploadAttachment } from '#/features/api/media-api'
+import { uploadMediaFile } from '#/features/api/media-api'
 import {
   editServerRole,
   setServerRolePermissions,
@@ -79,6 +79,7 @@ export function ServerSettingsRoleEditor({
   role,
   token,
   userId,
+  userPrivileged,
   member,
   onDeleteRequested,
 }: {
@@ -87,6 +88,7 @@ export function ServerSettingsRoleEditor({
   role: Role
   token: string
   userId: string
+  userPrivileged: boolean
   member: Member | undefined
   onDeleteRequested: () => void
 }) {
@@ -95,17 +97,19 @@ export function ServerSettingsRoleEditor({
     member,
     userId,
     role.rank ?? 0,
+    { privileged: userPrivileged },
   )
   const canEditPermissions = canManageRole(
     server,
     member,
     userId,
     role.rank ?? 0,
-    { permissions: true },
+    { permissions: true, privileged: userPrivileged },
   )
   const actorPermissions = useMemo(
-    () => calculateServerPermissions(server, member, userId),
-    [member, server, userId],
+    () =>
+      calculateServerPermissions(server, member, userId, userPrivileged),
+    [member, server, userId, userPrivileged],
   )
   const [activeTab, setActiveTab] = useState<RoleEditorTab>('display')
   const [name, setName] = useState(role.name)
@@ -236,7 +240,7 @@ export function ServerSettingsRoleEditor({
       ) {
         let iconAttachmentId: string | undefined
         if (iconFile) {
-          iconAttachmentId = await uploadAttachment(token, iconFile)
+          iconAttachmentId = await uploadMediaFile(token, 'icons', iconFile)
         }
         const trimmedColour = colour.trim()
 

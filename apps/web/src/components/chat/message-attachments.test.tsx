@@ -40,5 +40,11 @@ describe('MessageAttachments', () => {
     expect(preview.parentElement?.classList.contains('sm:max-w-[28rem]')).toBe(
       true,
     )
+    expect(preview.parentElement?.classList.contains('cursor-pointer')).toBe(
+      true,
+    )
+    expect(preview.parentElement?.classList.contains('cursor-zoom-in')).toBe(
+      false,
+    )
   })
 })

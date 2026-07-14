@@ -60,6 +60,7 @@ export function MemberRolesEditor({
           targetMember,
           role,
           !checked,
+          auth.user?.privileged,
         ) ||
         canToggleMemberRole(
           server,
@@ -68,10 +69,19 @@ export function MemberRolesEditor({
           targetMember,
           role,
           checked,
+          auth.user?.privileged,
         )
       )
     })
-  }, [actorMember, assignedRoleIds, roles, server, targetMember, userId])
+  }, [
+    actorMember,
+    assignedRoleIds,
+    auth.user?.privileged,
+    roles,
+    server,
+    targetMember,
+    userId,
+  ])
 
   const filteredRoles = useMemo(() => {
     const query = roleSearch.trim().toLowerCase()
@@ -81,7 +91,13 @@ export function MemberRolesEditor({
   }, [editableRoles, roleSearch])
 
   const canManage = userId
-    ? canEditAnyMemberRole(server, actorMember, userId, targetMember)
+    ? canEditAnyMemberRole(
+        server,
+        actorMember,
+        userId,
+        targetMember,
+        auth.user?.privileged,
+      )
     : false
 
   async function toggleRole(roleId: string, enabled: boolean) {
@@ -97,6 +113,7 @@ export function MemberRolesEditor({
         targetMember,
         role,
         enabled,
+        auth.user?.privileged,
       )
     ) {
       return
@@ -163,6 +180,7 @@ export function MemberRolesEditor({
               targetMember,
               role,
               !checked,
+              auth.user?.privileged,
             )
           const iconUrl = roleIconUrl(role.icon)
 

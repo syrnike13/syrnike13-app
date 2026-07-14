@@ -1,11 +1,11 @@
 import type {
   Channel,
   CreateWebhookBody,
-  DataDefaultChannelPermissions,
   DataEditChannel,
   DataEditWebhook,
   DataSetRolePermissions,
   DataSetUserPermissions,
+  User,
   Webhook,
 } from '@syrnike13/api-types'
 
@@ -32,6 +32,44 @@ export async function createGroupChannel(
     method: 'POST',
     token,
     body: { name, users: userIds },
+  })
+}
+
+export async function fetchGroupMembers(token: string, groupId: string) {
+  return apiRequest<User[]>(`/channels/${groupId}/members`, { token })
+}
+
+export async function addGroupMember(
+  token: string,
+  groupId: string,
+  userId: string,
+) {
+  return apiRequest<void>(`/channels/${groupId}/recipients/${userId}`, {
+    method: 'PUT',
+    token,
+  })
+}
+
+export async function removeGroupMember(
+  token: string,
+  groupId: string,
+  userId: string,
+) {
+  return apiRequest<void>(`/channels/${groupId}/recipients/${userId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+export async function transferGroupOwnership(
+  token: string,
+  groupId: string,
+  ownerId: string,
+) {
+  return apiRequest<Channel>(`/channels/${groupId}`, {
+    method: 'PATCH',
+    token,
+    body: { owner: ownerId },
   })
 }
 
@@ -82,7 +120,7 @@ export async function setChannelUserPermissions(
 export async function setDefaultChannelPermissions(
   token: string,
   channelId: string,
-  data: DataDefaultChannelPermissions,
+  data: { permissions: number } | DataSetRolePermissions,
 ) {
   return apiRequest<Channel>(`/channels/${channelId}/permissions/default`, {
     method: 'PUT',
