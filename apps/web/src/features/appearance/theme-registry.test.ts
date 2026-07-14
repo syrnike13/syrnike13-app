@@ -72,7 +72,7 @@ describe('theme registry', () => {
     ).toBe('dark')
   })
 
-  it('keeps the existing solid palettes and exposes a separate gradient theme', () => {
+  it('keeps the solid palettes and exposes the gradient presets', () => {
     expect(THEME_CATALOG.map((theme) => theme.id)).toEqual([
       'syrnike',
       'lug',
@@ -85,6 +85,15 @@ describe('theme registry', () => {
       'gradient-twilight',
       'gradient-aurora',
       'gradient-sunset',
+      'gradient-ocean',
+      'gradient-orchid',
+      'gradient-northern-lights',
+      'gradient-mango',
+      'gradient-sakura',
+      'gradient-midnight',
+      'gradient-mint',
+      'gradient-ember',
+      'gradient-dunes',
       'gradient',
     ])
     expect(getThemeById('syrnike').name).toBe('Сырники')

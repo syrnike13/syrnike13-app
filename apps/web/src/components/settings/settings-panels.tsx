@@ -14,6 +14,7 @@ import { ColorModeSegment } from '#/components/appearance/color-mode-segment'
 import { CustomThemeEditor } from '#/components/appearance/custom-theme-editor'
 import { ThemePickerGrid } from '#/components/appearance/theme-picker-grid'
 import { useAppearance } from '#/features/appearance/appearance-context'
+import { CUSTOM_GRADIENT_CONTROLS_ENABLED } from '#/features/appearance/appearance-feature-flags'
 import { getThemeById, themeSupportsColorMode } from '#/features/appearance/theme-registry'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
@@ -247,7 +248,9 @@ export function SettingsAppearancePanel() {
 
   return (
     <div className="space-y-6">
-      {activeTheme.kind === 'gradient' && activeTheme.customizable ? (
+      {CUSTOM_GRADIENT_CONTROLS_ENABLED &&
+      activeTheme.kind === 'gradient' &&
+      activeTheme.customizable ? (
         <SettingsBlock
           title="Настройка градиента"
           description="Один градиент проходит через всё приложение, а поверхности автоматически сохраняют контраст."

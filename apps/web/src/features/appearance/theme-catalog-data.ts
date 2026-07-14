@@ -691,6 +691,132 @@ export const THEME_CATALOG: ThemeDefinition[] = [
     },
   },
   {
+    id: 'gradient-ocean',
+    name: 'Океан',
+    description: 'Глубокий синий и чистая бирюза',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#2563EB', '#06B6D4', '#34D399'], angle: 125, saturation: 76 },
+      dark: { colors: ['#122A68', '#087F8C', '#176B5A'], angle: 125, saturation: 82 },
+    },
+  },
+  {
+    id: 'gradient-orchid',
+    name: 'Орхидея',
+    description: 'Лиловый свет с розовым акцентом',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#8B5CF6', '#D946EF', '#FB7185'], angle: 135, saturation: 72 },
+      dark: { colors: ['#432C7A', '#7A287C', '#853846'], angle: 135, saturation: 80 },
+    },
+  },
+  {
+    id: 'gradient-northern-lights',
+    name: 'Сияние',
+    description: 'Изумрудный свет на ночном небе',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#2563EB', '#10B981', '#8B5CF6'], angle: 115, saturation: 78 },
+      dark: { colors: ['#172554', '#065F46', '#4C1D95'], angle: 115, saturation: 86 },
+    },
+  },
+  {
+    id: 'gradient-mango',
+    name: 'Манго',
+    description: 'Солнечный жёлтый, апельсин и коралл',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#FACC15', '#FB923C', '#F43F5E'], angle: 140, saturation: 78 },
+      dark: { colors: ['#854D0E', '#9A3412', '#881337'], angle: 140, saturation: 84 },
+    },
+  },
+  {
+    id: 'gradient-sakura',
+    name: 'Сакура',
+    description: 'Нежный розовый и прохладная сирень',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#FDA4AF', '#F9A8D4', '#C4B5FD'], angle: 130, saturation: 62 },
+      dark: { colors: ['#7F354D', '#71375B', '#4C3A73'], angle: 130, saturation: 74 },
+    },
+  },
+  {
+    id: 'gradient-midnight',
+    name: 'Полночь',
+    description: 'Тёмный индиго с электрическим синим',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#1E3A8A', '#4338CA', '#7C3AED'], angle: 150, saturation: 82 },
+      dark: { colors: ['#0F172A', '#1E1B4B', '#3B176F'], angle: 150, saturation: 90 },
+    },
+  },
+  {
+    id: 'gradient-mint',
+    name: 'Мята',
+    description: 'Свежая мята с небесно-голубым',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#A7F3D0', '#67E8F9', '#93C5FD'], angle: 120, saturation: 60 },
+      dark: { colors: ['#14532D', '#155E75', '#1E3A8A'], angle: 120, saturation: 78 },
+    },
+  },
+  {
+    id: 'gradient-ember',
+    name: 'Жар',
+    description: 'Алый огонь и тёплый янтарь',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#DC2626', '#F97316', '#FBBF24'], angle: 125, saturation: 82 },
+      dark: { colors: ['#450A0A', '#7C2D12', '#78350F'], angle: 125, saturation: 88 },
+    },
+  },
+  {
+    id: 'gradient-dunes',
+    name: 'Дюны',
+    description: 'Песочные тона с мягким кораллом',
+    kind: 'gradient',
+    variants: {
+      light: tokensFromPalette(SYRNIKE_LIGHT),
+      dark: tokensFromPalette(SYRNIKE_DARK),
+    },
+    gradients: {
+      light: { colors: ['#FDE68A', '#FDBA74', '#FCA5A5'], angle: 145, saturation: 62 },
+      dark: { colors: ['#713F12', '#7C2D12', '#702F3E'], angle: 145, saturation: 76 },
+    },
+  },
+  {
     id: 'gradient',
     name: 'Свой градиент',
     description: 'Настраиваемая многослойная тема',
