@@ -418,6 +418,8 @@ type RetainedCommand = Exclude<
   | { type: 'leave' }
   | { type: 'retryVoice' }
   | { type: 'retryMedia' }
+  | { type: 'setCamera' }
+  | { type: 'setScreen' }
 >
 
 function isRetainedCommand(command: VoiceCommand): command is RetainedCommand {
@@ -425,7 +427,9 @@ function isRetainedCommand(command: VoiceCommand): command is RetainedCommand {
     command.type !== 'join' &&
     command.type !== 'leave' &&
     command.type !== 'retryVoice' &&
-    command.type !== 'retryMedia'
+    command.type !== 'retryMedia' &&
+    command.type !== 'setCamera' &&
+    command.type !== 'setScreen'
   )
 }
 

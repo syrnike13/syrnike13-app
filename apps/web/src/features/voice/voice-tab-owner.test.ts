@@ -255,6 +255,32 @@ describe('VoiceTabOwner', () => {
     await owner.dispose()
   })
 
+  it('does not restore camera or screen sharing after leaving and rejoining', async () => {
+    const { clients, createOwner } = harness()
+    const owner = createOwner()
+
+    owner.dispatch({ type: 'join', channelId: 'A' })
+    await waitUntil(() => clients.length === 1)
+    owner.dispatch({ type: 'setCamera', enabled: true, deviceId: 'camera-a' })
+    owner.dispatch({
+      type: 'setScreen',
+      enabled: true,
+      audioEnabled: true,
+      width: 1_920,
+      height: 1_080,
+      fps: 60,
+      bitrate: 6_000_000,
+    })
+
+    owner.dispatch({ type: 'leave' })
+    await waitUntil(() => owner.snapshot().connection === 'disconnected')
+    owner.dispatch({ type: 'join', channelId: 'B' })
+    await waitUntil(() => clients.length === 2)
+
+    expect(clients[1].commands).toEqual([{ type: 'join', channelId: 'B' }])
+    await owner.dispose()
+  })
+
   it('forwards controls from an observer without creating another Room', async () => {
     const { clients, createOwner } = harness()
     const owner = createOwner()
