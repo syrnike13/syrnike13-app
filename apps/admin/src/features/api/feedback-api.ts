@@ -23,6 +23,13 @@ export async function fetchPublishedFeedback(token: string) {
   )
 }
 
+export async function searchPublishedFeedback(token: string, search: string) {
+  return apiRequest<FeedbackSuggestionPage>(
+    `/feedback?search=${encodeURIComponent(search)}&sort=new&offset=0&limit=100`,
+    { token },
+  )
+}
+
 export async function approveFeedback(token: string, id: string) {
   return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}/approve`, {
     method: 'POST',

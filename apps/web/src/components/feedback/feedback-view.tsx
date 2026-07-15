@@ -5,8 +5,8 @@ import type {
   FeedbackProductStatus,
   FeedbackSort,
 } from '@syrnike13/api-types'
-import { useDeferredValue, useState } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useDeferredValue, useEffect, useState } from 'react'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 
 import {
@@ -49,6 +49,7 @@ export type FeedbackViewMode = 'all' | 'mine'
 
 export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackViewMode }) {
   const auth = useAuth()
+  const queryClient = useQueryClient()
   const prefix = useAppRoutePrefix()
   const token = auth.session?.token
   const [mode, setMode] = useState<FeedbackViewMode>(initialMode)
@@ -97,6 +98,25 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
       return next < lastPage.total ? next : undefined
     },
   })
+
+  useEffect(() => {
+    if (!token || !allQuery.isSuccess) return
+
+    void queryClient.prefetchInfiniteQuery({
+      queryKey: queryKeys.feedback.mine,
+      queryFn: ({ pageParam }) =>
+        fetchMyFeedbackSuggestions(token, {
+          offset: pageParam,
+          limit: PAGE_SIZE,
+        }),
+      initialPageParam: 0,
+      staleTime: 30_000,
+      getNextPageParam: (lastPage) => {
+        const next = lastPage.offset + lastPage.suggestions.length
+        return next < lastPage.total ? next : undefined
+      },
+    })
+  }, [allQuery.isSuccess, queryClient, token])
 
   const activeQuery = mode === 'all' ? allQuery : mineQuery
   const suggestions = activeQuery.data?.pages.flatMap((page) => page.suggestions) ?? []

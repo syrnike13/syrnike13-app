@@ -16,7 +16,7 @@ import { cn } from '#/lib/utils'
 const NAV = [
   { to: '/badges', label: 'Бейджи', icon: AwardIcon },
   { to: '/users', label: 'Пользователи', icon: UserSearchIcon },
-  { to: '/feedback', label: 'Идеи', icon: SparklesIcon },
+  { to: '/feedback', label: 'Обращения', icon: SparklesIcon },
 ] as const
 
 export function AdminShell({ children }: { children?: ReactNode }) {
