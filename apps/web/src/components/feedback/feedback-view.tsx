@@ -76,7 +76,9 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
       fetchFeedbackSuggestions(token!, { ...listParams, offset: pageParam }),
     initialPageParam: 0,
     enabled: Boolean(token) && mode === 'all',
-    staleTime: 2 * 60_000,
+    // Moderators update statuses in a separate app, so cached list data must be
+    // considered stale when the user returns to this view.
+    staleTime: 0,
     getNextPageParam: (lastPage) => {
       const next = lastPage.offset + lastPage.suggestions.length
       return next < lastPage.total ? next : undefined
@@ -89,7 +91,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
       fetchMyFeedbackSuggestions(token!, { offset: pageParam, limit: PAGE_SIZE }),
     initialPageParam: 0,
     enabled: Boolean(token) && mode === 'mine',
-    staleTime: 2 * 60_000,
+    staleTime: 0,
     getNextPageParam: (lastPage) => {
       const next = lastPage.offset + lastPage.suggestions.length
       return next < lastPage.total ? next : undefined
