@@ -119,7 +119,7 @@ export function SettingsMobileModal() {
   if (!open) return null
 
   return createPortal(
-    <div className="gradient-surface-content fixed inset-0 z-[300] flex flex-col bg-background text-foreground">
+    <div className="gradient-surface-solid fixed inset-0 z-[300] flex flex-col bg-background text-foreground">
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-2 pb-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)]">
         {stack.length > 1 ? (
           <Button
