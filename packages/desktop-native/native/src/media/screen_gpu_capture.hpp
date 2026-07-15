@@ -37,6 +37,7 @@ class ScreenGpuCaptureError final : public std::runtime_error {
 enum class ScreenGpuFrameStatus {
   NewFrame,
   NoFrame,
+  EncoderBackpressure,
   RecoverableLost,
   TargetClosed,
   FatalError,

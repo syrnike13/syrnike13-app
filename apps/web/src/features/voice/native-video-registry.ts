@@ -89,6 +89,9 @@ export class NativeVideoRegistry {
     { sessionId: string; generation: number }
   >()
   private readonly listeners = new Set<() => void>()
+  private activeRemoteSession: { sessionId: string; generation: number } | null =
+    null
+  private readonly retiredRemoteSessions = new Set<string>()
   private listening = false
   private version = 0
 
@@ -108,6 +111,17 @@ export class NativeVideoRegistry {
     this.localScreenConsumers.clear()
     this.publications.clear()
     this.tombstones.clear()
+    this.activeRemoteSession = null
+    this.retiredRemoteSessions.clear()
+    this.notify()
+  }
+
+  clearRemote() {
+    if (this.activeRemoteSession) {
+      this.retiredRemoteSessions.add(remoteSessionKey(this.activeRemoteSession))
+      this.activeRemoteSession = null
+    }
+    if (!this.clearRemoteEntries()) return
     this.notify()
   }
 
@@ -220,6 +234,7 @@ export class NativeVideoRegistry {
     if (isPublicationMessage(event.data)) {
       const { metadata } = event.data
       if (event.data.type === 'syrnike-native-screen-publication-unavailable') {
+        if (!this.isActiveRemoteSession(metadata)) return
         const publication = this.publications.get(metadata.trackId)
         if (publication &&
           (publication.sessionId !== metadata.sessionId ||
@@ -231,8 +246,10 @@ export class NativeVideoRegistry {
         return
       }
 
+      if (!this.acceptRemoteSession(metadata)) return
       const current = this.publications.get(metadata.trackId)
-      if (current && metadata.generation < current.generation) return
+      if (current && current.sessionId === metadata.sessionId &&
+        metadata.generation < current.generation) return
       const tombstone = this.tombstones.get(metadata.trackId)
       if (tombstone && tombstone.sessionId === metadata.sessionId &&
         metadata.generation >= tombstone.generation) {
@@ -249,12 +266,26 @@ export class NativeVideoRegistry {
       return
     }
     if (isTrackRemovedMessage(event.data)) {
+      const { metadata } = event.data
+      const track = this.tracks.get(metadata.trackId)
+      if (!track?.metadata.local && !this.isActiveRemoteSession(metadata)) return
+      const publication = this.publications.get(metadata.trackId)
+      if (publication &&
+        (publication.sessionId !== metadata.sessionId ||
+          publication.generation !== metadata.generation)) return
+      if (track &&
+        (track.metadata.sessionId !== metadata.sessionId ||
+          track.metadata.generation !== metadata.generation)) return
       this.tombstones.set(event.data.metadata.trackId, event.data.metadata)
       this.removeTrack(event.data.metadata.trackId, event.data.metadata)
       return
     }
     if (!isFrameMessage(event.data)) return
     const { metadata, frame } = event.data
+    if (!metadata.local && !this.acceptRemoteSession(metadata)) {
+      frame.close()
+      return
+    }
     const tombstone = this.tombstones.get(metadata.trackId)
     if (tombstone) {
       if (
@@ -270,7 +301,8 @@ export class NativeVideoRegistry {
     let entry = this.tracks.get(metadata.trackId)
     if (
       entry &&
-      (metadata.rendererEpoch !== entry.metadata.rendererEpoch ||
+      (metadata.sessionId !== entry.metadata.sessionId ||
+        metadata.rendererEpoch !== entry.metadata.rendererEpoch ||
         metadata.generation !== entry.metadata.generation)
     ) {
       this.removeTrack(metadata.trackId)
@@ -359,10 +391,55 @@ export class NativeVideoRegistry {
       : entry.consumers
   }
 
+  private acceptRemoteSession(metadata: { sessionId: string; generation: number }) {
+    const key = remoteSessionKey(metadata)
+    if (this.retiredRemoteSessions.has(key)) return false
+    const active = this.activeRemoteSession
+    if (!active) {
+      this.activeRemoteSession = {
+        sessionId: metadata.sessionId,
+        generation: metadata.generation,
+      }
+      return true
+    }
+    if (active.sessionId === metadata.sessionId &&
+      active.generation === metadata.generation) return true
+    if (metadata.generation < active.generation) return false
+
+    this.retiredRemoteSessions.add(remoteSessionKey(active))
+    this.clearRemoteEntries()
+    this.activeRemoteSession = {
+      sessionId: metadata.sessionId,
+      generation: metadata.generation,
+    }
+    return true
+  }
+
+  private isActiveRemoteSession(metadata: { sessionId: string; generation: number }) {
+    return this.activeRemoteSession?.sessionId === metadata.sessionId &&
+      this.activeRemoteSession.generation === metadata.generation
+  }
+
+  private clearRemoteEntries() {
+    let changed = this.publications.size > 0 || this.tombstones.size > 0
+    this.publications.clear()
+    this.tombstones.clear()
+    for (const [trackId, entry] of this.tracks) {
+      if (entry.metadata.local) continue
+      changed = true
+      this.disposeTrack(trackId, entry, false)
+    }
+    return changed
+  }
+
   private notify() {
     this.version += 1
     for (const listener of this.listeners) listener()
   }
+}
+
+function remoteSessionKey(value: { sessionId: string; generation: number }) {
+  return `${value.sessionId}:${value.generation}`
 }
 
 function drawFrame(consumer: CanvasConsumer, frame: VideoFrame) {

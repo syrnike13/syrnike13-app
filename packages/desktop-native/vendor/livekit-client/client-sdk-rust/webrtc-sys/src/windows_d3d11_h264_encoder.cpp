@@ -200,11 +200,22 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool uninitialize_com = SUCCEEDED(com_result);
     std::thread worker;
+    ComPtr<IMFShutdown> shutdown;
     {
       std::lock_guard lock(mutex_);
       stopping_ = true;
       cv_.notify_all();
       worker = std::move(worker_);
+      shutdown = shutdown_;
+    }
+    // Hardware MFTs can remain blocked inside ProcessOutput after a GPU
+    // workload transition. Joining first would then pin the whole native
+    // runtime forever. IMFShutdown is explicitly callable from the owning
+    // process to cancel outstanding asynchronous MFT work, so request it
+    // before waiting for the encoder worker to leave.
+    if (shutdown) {
+      const HRESULT shutdown_result = shutdown->Shutdown();
+      TraceEncoder("ShutdownBeforeRelease", shutdown_result);
     }
     if (worker.joinable())
       worker.join();

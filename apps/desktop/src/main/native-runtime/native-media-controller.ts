@@ -55,6 +55,11 @@ export class NativeMediaController {
   private lastRestoredRestartCount = 0
   private disposed = false
   private activeScreen: { sessionId: string; generation: number } | null = null
+  private readonly remoteVideoDemands = new Map<
+    string,
+    { demanded: boolean; revision: number }
+  >()
+  private remoteVideoDemandRevision = 0
   private localScreenPreviewDemand: LocalScreenPreviewDemand = {
     demanded: false,
     width: 1280,
@@ -139,10 +144,36 @@ export class NativeMediaController {
     demanded: boolean,
   ) {
     if (!sessionId || !trackId) throw new Error('Remote video identity is required')
+    const key = remoteVideoDemandKey(sessionId, generation, trackId)
+    this.remoteVideoDemands.set(key, {
+      demanded,
+      revision: ++this.remoteVideoDemandRevision,
+    })
     await this.request(
       { type: 'setRemoteVideoDemand', sessionId, generation, trackId, demanded },
       2_000,
     )
+  }
+
+  async recoverRemoteVideoDemand(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+  ) {
+    const key = remoteVideoDemandKey(sessionId, generation, trackId)
+    const desired = this.remoteVideoDemands.get(key)
+    if (!desired?.demanded) return false
+    await this.request(
+      { type: 'setRemoteVideoDemand', sessionId, generation, trackId, demanded: false },
+      2_000,
+    )
+    const current = this.remoteVideoDemands.get(key)
+    if (!current?.demanded || current.revision !== desired.revision) return false
+    await this.request(
+      { type: 'setRemoteVideoDemand', sessionId, generation, trackId, demanded: true },
+      2_000,
+    )
+    return true
   }
 
   async setLocalScreenPreviewDemand(demand: LocalScreenPreviewDemand) {
@@ -166,6 +197,7 @@ export class NativeMediaController {
     if (this.disposed) return
     await this.stopMicrophonePreview().catch(() => undefined)
     this.disposed = true
+    this.remoteVideoDemands.clear()
     this.unsubscribeRuntimeEvent()
     this.unsubscribeRuntimeState()
     this.listeners.clear()
@@ -316,6 +348,14 @@ export class NativeMediaController {
       2_000,
     )
   }
+}
+
+function remoteVideoDemandKey(
+  sessionId: string,
+  generation: number,
+  trackId: string,
+) {
+  return `${sessionId}:${generation}:${trackId}`
 }
 
 function unwrapResult(value: unknown) {

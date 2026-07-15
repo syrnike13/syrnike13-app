@@ -196,6 +196,15 @@ function createVideoBridge(
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
       void supervisor.request(command, 2_000).catch(() => undefined)
     },
+    onTrackStalled: local
+      ? undefined
+      : async (frame) => {
+          await controller.recoverRemoteVideoDemand(
+            frame.sessionId,
+            frame.generation,
+            frame.trackId,
+          )
+        },
   })
 }
 

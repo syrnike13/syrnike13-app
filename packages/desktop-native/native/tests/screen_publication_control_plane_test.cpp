@@ -8,6 +8,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -91,6 +92,15 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
           event.generation == generation) {
         ++count;
       }
+    }
+    return count;
+  }
+
+  std::size_t countRepliesWithEmptyRequestId() const {
+    std::lock_guard lock(mutex_);
+    std::size_t count = 0;
+    for (const auto& event : events_) {
+      if (event.type == "reply" && event.request_id.empty()) ++count;
     }
     return count;
   }
@@ -366,6 +376,88 @@ void verifyCancelledPublishRollsBackExactSid() {
   );
 }
 
+ScreenControllerHarness makeWorkingHarness() {
+  return ScreenControllerHarness(
+    [] { return livekit::D3D11H264Capability{true, {}}; },
+    [](int width, int height) {
+      return std::make_shared<FakeD3D11H264VideoSource>(width, height);
+    }
+  );
+}
+
+void startHarnessCapture(ScreenControllerHarness& harness, const std::string& request_id) {
+  const auto start = screenCommand("startScreenCapture", request_id, "screen-di", 1);
+  harness.controller->startCapture(start);
+  harness.handleNextWorkerCommand();
+  require(harness.sink->waitReply(request_id).ok, "screen harness capture did not start");
+}
+
+void releaseRetirement(ScreenControllerHarness& harness) {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  harness.livekit->waitUntilPending(Operation::Unpublish, 1);
+  harness.livekit->releaseNext(Operation::Unpublish);
+  harness.livekit->waitUntilPending(Operation::Disconnect, 1);
+  harness.livekit->releaseNext(Operation::Disconnect);
+  harness.handleNextWorkerCommand();
+}
+
+void verifyRtpStallRestartsCapture() {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  auto harness = makeWorkingHarness();
+  startHarnessCapture(harness, "di-stall-start");
+  require(
+    harness.sink->countSessionStarted("screen-di", 1) == 1,
+    "initial screen capture did not emit sessionStarted exactly once"
+  );
+
+  harness.livekit->setBlocked(Operation::Unpublish, true);
+  harness.livekit->setBlocked(Operation::Disconnect, true);
+  harness.livekit->setBlocked(Operation::Connect, true);
+  auto stalled = screenCommand("__screenRtpStalled", {}, "screen-di", 1);
+  harness.controller->restartCaptureAfterStall(stalled);
+
+  releaseRetirement(harness);
+  harness.livekit->waitUntilPending(Operation::Connect, 1);
+  harness.livekit->releaseNext(Operation::Connect);
+  harness.handleNextWorkerCommand();
+
+  require(
+    harness.sink->countSessionStarted("screen-di", 1) == 2,
+    "RTP stall did not promote a replacement screen capture"
+  );
+  require(
+    harness.sink->countRepliesWithEmptyRequestId() == 0,
+    "RTP stall recovery emitted an invalid empty-request reply"
+  );
+}
+
+void verifyManualStopCancelsPendingStallRestart() {
+  using Operation = ScreenControllerHarness::FakeLiveKit::Operation;
+  auto harness = makeWorkingHarness();
+  startHarnessCapture(harness, "di-stop-start");
+
+  harness.livekit->setBlocked(Operation::Unpublish, true);
+  harness.livekit->setBlocked(Operation::Disconnect, true);
+  harness.livekit->setBlocked(Operation::Connect, true);
+  auto stalled = screenCommand("__screenRtpStalled", {}, "screen-di", 1);
+  harness.controller->restartCaptureAfterStall(stalled);
+  harness.livekit->waitUntilPending(Operation::Unpublish, 1);
+
+  const auto stop = screenCommand("stopScreenCapture", "di-stop", "screen-di", 1);
+  harness.controller->stopCapture(stop);
+  releaseRetirement(harness);
+  std::this_thread::sleep_for(100ms);
+
+  require(
+    harness.livekit->pending(Operation::Connect) == 0,
+    "manual stop launched the pending RTP stall restart"
+  );
+  require(
+    harness.sink->countSessionStarted("screen-di", 1) == 1,
+    "manual stop promoted an unexpected replacement screen capture"
+  );
+}
+
 }  // namespace
 
 int main() try {
@@ -437,6 +529,8 @@ int main() try {
   verifyUnavailableEncoderFailsClosed();
   verifyNullEncoderSourceFailsClosed();
   verifyCancelledPublishRollsBackExactSid();
+  verifyRtpStallRestartsCapture();
+  verifyManualStopCancelsPendingStallRestart();
 
   livekit->setBlocked(DeterministicFakeLiveKitPublicationClient::Operation::Connect, false);
   const auto prepare_c = screenCommand("connectScreen", "prepare-c", "screen-c", 7);

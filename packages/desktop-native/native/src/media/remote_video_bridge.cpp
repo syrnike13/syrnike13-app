@@ -159,17 +159,28 @@ class D3DSharedTextureUploader {
 }  // namespace
 
 struct RemoteVideoBridge::TrackWorker {
+  std::shared_ptr<livekit::Track> track;
   std::shared_ptr<livekit::VideoStream> stream;
   std::thread thread;
+  std::thread first_frame_watchdog;
   std::atomic_bool stopped{false};
+  std::atomic_bool first_frame_received{false};
+  std::atomic_bool first_frame_timed_out{false};
   std::mutex frames_mutex;
 #ifdef _WIN32
   std::unordered_map<std::uint64_t, std::shared_ptr<SharedFrame>> frames;
 #endif
 };
 
-RemoteVideoBridge::RemoteVideoBridge(std::uint32_t electron_main_pid, Post post)
-  : electron_main_pid_(electron_main_pid), post_(std::move(post)) {}
+RemoteVideoBridge::RemoteVideoBridge(
+  std::uint32_t electron_main_pid,
+  Post post,
+  OnEnded on_ended,
+  OnHealthy on_healthy
+) : electron_main_pid_(electron_main_pid),
+    post_(std::move(post)),
+    on_ended_(std::move(on_ended)),
+    on_healthy_(std::move(on_healthy)) {}
 
 RemoteVideoBridge::~RemoteVideoBridge() { stop(); }
 
@@ -198,12 +209,16 @@ void RemoteVideoBridge::addTrack(
   std::optional<livekit::TrackSource> publication_source
 ) {
   if (!track || track->kind() != livekit::TrackKind::KIND_VIDEO) return;
+  std::lock_guard lifecycle_lock(lifecycle_mutex_);
   const auto track_id = track->sid();
-  removeTrack(track_id);
+  // A repeated subscribed callback replaces the decoder for the same SID. It
+  // is an implementation detail, not a track removal visible to the renderer.
+  removeTrackLocked(track_id, {}, false);
   livekit::VideoStream::Options options;
   options.capacity = 1;
   options.format = livekit::VideoBufferType::BGRA;
   auto worker = std::make_unique<TrackWorker>();
+  worker->track = track;
   worker->stream = livekit::VideoStream::fromTrack(track, options);
   auto* raw = worker.get();
   const auto source = remoteVideoSourceLabel(publication_source, track->source());
@@ -213,10 +228,15 @@ void RemoteVideoBridge::addTrack(
 #ifdef _WIN32
     try {
       D3DSharedTextureUploader uploader;
-      std::uint64_t sequence = 0;
       livekit::VideoFrameEvent frame_event;
+      bool healthy_reported = false;
       while (!raw->stopped.load() && raw->stream->read(frame_event)) {
-        const auto next = ++sequence;
+        raw->first_frame_received = true;
+        std::uint64_t next = 0;
+        {
+          std::lock_guard lock(mutex_);
+          next = ++next_frame_sequence_;
+        }
         {
           std::lock_guard frames_lock(raw->frames_mutex);
           if (raw->frames.size() >= max_in_flight) continue;
@@ -241,9 +261,33 @@ void RemoteVideoBridge::addTrack(
         command.width = frame_event.frame.width();
         command.height = frame_event.frame.height();
         command.nt_handle = handle;
-        if (!post_(std::move(command))) release(track_id, next);
+        if (!post_(std::move(command))) {
+          release(track_id, next);
+        } else if (!healthy_reported) {
+          healthy_reported = true;
+          if (on_healthy_) on_healthy_(track_id, raw->track);
+        }
+      }
+      if (!raw->stopped.load()) {
+        const std::string message = raw->first_frame_timed_out.load()
+          ? "Remote video stream did not produce its first frame"
+          : "Remote video stream ended unexpectedly";
+        MediaCommand command;
+        command.type = "__remoteVideoFailed";
+        {
+          std::lock_guard lock(mutex_);
+          command.session_id = session_id_;
+          command.generation = generation_;
+        }
+        command.track_id = track_id;
+        command.video_source = source;
+        command.internal_message = message;
+        logRemoteVideoFailure(track_id, source, message);
+        post_(std::move(command));
+        if (on_ended_) on_ended_(track_id, raw->track, message);
       }
     } catch (const std::exception& error) {
+      if (raw->stopped.load()) return;
       MediaCommand command;
       command.type = "__remoteVideoFailed";
       {
@@ -256,7 +300,9 @@ void RemoteVideoBridge::addTrack(
       command.internal_message = error.what();
       logRemoteVideoFailure(track_id, source, error.what());
       post_(std::move(command));
+      if (on_ended_) on_ended_(track_id, raw->track, error.what());
     } catch (...) {
+      if (raw->stopped.load()) return;
       MediaCommand command;
       command.type = "__remoteVideoFailed";
       {
@@ -268,26 +314,76 @@ void RemoteVideoBridge::addTrack(
       command.video_source = source;
       command.internal_message = "Unknown remote video bridge failure";
       logRemoteVideoFailure(track_id, source, command.internal_message);
+      const auto message = command.internal_message;
       post_(std::move(command));
+      if (on_ended_) on_ended_(track_id, raw->track, message);
     }
 #endif
+  });
+  raw->first_frame_watchdog = std::thread([raw] {
+    const auto deadline = std::chrono::steady_clock::now() +
+      kRemoteVideoFirstFrameTimeout;
+    while (!raw->stopped.load() && !raw->first_frame_received.load()) {
+      if (std::chrono::steady_clock::now() >= deadline) {
+        raw->first_frame_timed_out = true;
+        raw->stream->close();
+        return;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
   });
   std::lock_guard lock(mutex_);
   tracks_.emplace(track_id, std::move(worker));
 }
 
-void RemoteVideoBridge::removeTrack(const std::string& track_id) {
+void RemoteVideoBridge::removeTrack(const std::string& track_id, bool notify) {
+  std::lock_guard lifecycle_lock(lifecycle_mutex_);
+  removeTrackLocked(track_id, {}, notify);
+}
+
+void RemoteVideoBridge::removeTrackIfCurrent(
+  const std::string& track_id,
+  const std::shared_ptr<livekit::Track>& expected_track,
+  bool notify
+) {
+  if (!expected_track) return;
+  std::lock_guard lifecycle_lock(lifecycle_mutex_);
+  removeTrackLocked(track_id, expected_track, notify);
+}
+
+void RemoteVideoBridge::removeTrackLocked(
+  const std::string& track_id,
+  const std::shared_ptr<livekit::Track>& expected_track,
+  bool notify
+) {
   std::unique_ptr<TrackWorker> worker;
   {
     std::lock_guard lock(mutex_);
     auto found = tracks_.find(track_id);
     if (found == tracks_.end()) return;
+    if (expected_track && found->second->track != expected_track) return;
     worker = std::move(found->second);
     tracks_.erase(found);
   }
   worker->stopped = true;
   worker->stream->close();
   if (worker->thread.joinable()) worker->thread.join();
+  if (worker->first_frame_watchdog.joinable()) {
+    worker->first_frame_watchdog.join();
+  }
+#ifdef _WIN32
+  {
+    std::lock_guard lock(mutex_);
+    std::lock_guard frames_lock(worker->frames_mutex);
+    for (auto& [sequence, frame] : worker->frames) {
+      if (released_frame_sequences_.erase(sequence) == 0) {
+        retired_frames_.emplace(sequence, std::move(frame));
+      }
+    }
+    worker->frames.clear();
+  }
+#endif
+  if (!notify) return;
   MediaCommand command;
   command.type = "__remoteVideoTrackRemoved";
   command.track_id = track_id;
@@ -302,10 +398,17 @@ void RemoteVideoBridge::removeTrack(const std::string& track_id) {
 void RemoteVideoBridge::release(const std::string& track_id, std::uint64_t sequence) {
   std::lock_guard lock(mutex_);
   const auto found = tracks_.find(track_id);
-  if (found == tracks_.end()) return;
 #ifdef _WIN32
-  std::lock_guard frames_lock(found->second->frames_mutex);
-  found->second->frames.erase(sequence);
+  bool released = false;
+  if (found != tracks_.end()) {
+    std::lock_guard frames_lock(found->second->frames_mutex);
+    released = found->second->frames.erase(sequence) != 0;
+  }
+  released = retired_frames_.erase(sequence) != 0 || released;
+  // A release can race the short interval between removing a worker from the
+  // active map and migrating its in-flight textures. Remember it so migration
+  // never resurrects an already released handle.
+  if (!released) released_frame_sequences_.insert(sequence);
 #endif
 }
 

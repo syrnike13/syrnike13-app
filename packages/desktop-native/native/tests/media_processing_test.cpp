@@ -197,6 +197,11 @@ int main() try {
   using livekit::TrackSource;
   using syrnike::desktop_native::media::remoteVideoSourceLabel;
   require(
+    syrnike::desktop_native::media::kRemoteVideoFirstFrameTimeout ==
+      std::chrono::seconds(5),
+    "remote video first-frame recovery timeout changed"
+  );
+  require(
     remoteVideoSourceLabel(TrackSource::SOURCE_SCREENSHARE, std::nullopt) == "screen",
     "publication screen source was not preserved in remote video metadata"
   );

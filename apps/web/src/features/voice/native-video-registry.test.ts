@@ -290,6 +290,63 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
       track: null,
     })
   })
+
+  it('ignores a removed event from the previous session', () => {
+    const registry = new NativeVideoRegistry()
+    const publication = publicationMessage('available')
+    publication.metadata.sessionId = 'next-session'
+    deliver(registry, publication)
+    const currentFrame = remoteFrameMessage(1, new FakeVideoFrame())
+    currentFrame.metadata.sessionId = 'next-session'
+    deliver(registry, currentFrame)
+
+    deliver(registry, remoteRemovalMessage())
+
+    expect(registry.getTrack('remote-screen')).toBe(
+      registry.listPublications()[0]?.track,
+    )
+  })
+
+  it('clears remote media between voice channels and rejects late old-session events', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+
+    registry.clearRemote()
+
+    expect(registry.listPublications()).toEqual([])
+    expect(registry.listTracks()).toEqual([])
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(2, new FakeVideoFrame()))
+    expect(registry.listPublications()).toEqual([])
+    expect(registry.listTracks()).toEqual([])
+  })
+
+  it('purges the previous session when a newer generation starts', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    const nextPublication = publicationMessage('available')
+    nextPublication.metadata = {
+      ...nextPublication.metadata,
+      trackId: 'next-screen',
+      sessionId: 'next-session',
+      generation: 2,
+    }
+
+    deliver(registry, nextPublication)
+
+    expect(registry.getTrack('remote-screen')).toBeNull()
+    expect(registry.listPublications()).toEqual([
+      expect.objectContaining({
+        trackId: 'next-screen',
+        sessionId: 'next-session',
+        generation: 2,
+      }),
+    ])
+    deliver(registry, publicationMessage('available'))
+    expect(registry.listPublications()).toHaveLength(1)
+  })
 })
 
 function metadata(generation: number, sequence: number) {

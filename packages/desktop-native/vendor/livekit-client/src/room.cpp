@@ -598,7 +598,7 @@ void Room::onEvent(const FfiEvent& event) {
               const auto& owned_publication = tp.publication();
               auto rpublication = std::make_shared<RemoteTrackPublication>(owned_publication);
               // Store it on the participant, keyed by SID
-              rparticipant->mutableTrackPublications().emplace(rpublication->sid(), std::move(rpublication));
+              rparticipant->mutableTrackPublications().emplace(rpublication->sid(), rpublication);
               ev.participant = rparticipant;
               ev.publication = rpublication;
             } else {

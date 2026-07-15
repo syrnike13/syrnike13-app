@@ -81,6 +81,56 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('NativeMediaController retained tools', () => {
+  it('restarts only a remote video track that is still demanded', async () => {
+    const harness = createHarness()
+    await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+    harness.request.mockClear()
+
+    await expect(
+      harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),
+    ).resolves.toBe(true)
+    expect(harness.request.mock.calls.map(([command]) => command)).toEqual([
+      expect.objectContaining({ type: 'setRemoteVideoDemand', demanded: false }),
+      expect.objectContaining({ type: 'setRemoteVideoDemand', demanded: true }),
+    ])
+
+    await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', false)
+    harness.request.mockClear()
+    await expect(
+      harness.controller.recoverRemoteVideoDemand('voice', 3, 'screen'),
+    ).resolves.toBe(false)
+    expect(harness.request).not.toHaveBeenCalled()
+  })
+
+  it('does not restore a stalled track after the user stops watching it', async () => {
+    const harness = createHarness()
+    await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+    harness.request.mockClear()
+    let releaseRecovery!: () => void
+    let unsubscribeRequests = 0
+    harness.request.mockImplementation(async (command: MediaRuntimeCommand) => {
+      if (command.type === 'setRemoteVideoDemand' && !command.demanded &&
+        ++unsubscribeRequests === 1) {
+        await new Promise<void>((resolve) => { releaseRecovery = resolve })
+      }
+      return undefined
+    })
+
+    const recovery = harness.controller.recoverRemoteVideoDemand(
+      'voice',
+      3,
+      'screen',
+    )
+    await waitUntil(() => unsubscribeRequests === 1)
+    await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', false)
+    releaseRecovery()
+
+    await expect(recovery).resolves.toBe(false)
+    expect(harness.request.mock.calls.some(
+      ([command]) => command.type === 'setRemoteVideoDemand' && command.demanded,
+    )).toBe(false)
+  })
+
   it('persists local screen preview demand and binds it to each active generation', async () => {
     const harness = createHarness()
     await harness.controller.setLocalScreenPreviewDemand({

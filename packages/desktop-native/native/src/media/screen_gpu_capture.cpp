@@ -388,7 +388,10 @@ class GpuFramePool {
                     ScreenGpuCaptureErrorCode::CaptureUnavailable);
     }
 
-    return result(ScreenGpuFrameStatus::NoFrame, method, metrics,
+    // WGC/DXGI supplied a source texture, but every NV12 output slot is still
+    // owned by the encoder. Keep this distinct from a capture-source miss so
+    // the actor can restart the stalled MFT instead of recreating WGC.
+    return result(ScreenGpuFrameStatus::EncoderBackpressure, method, metrics,
                   ScreenGpuCaptureErrorCode::CaptureUnavailable);
   }
 
@@ -1043,9 +1046,7 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   }
 
   ~WgcGpuCapturer() override {
-    if (closed_subscribed_ && item_) item_.Closed(closed_token_);
-    if (session_) session_.Close();
-    if (frame_pool_) frame_pool_.Close();
+    closeCaptureSession();
   }
 
   ScreenGpuFrameResult capture(ScreenGpuFrame& frame) override {
@@ -1073,10 +1074,11 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
           code,
       };
     }
-    if (!capture_frame) return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+    if (!capture_frame) return handleNoFrame();
     if (content_size.Width <= 0 || content_size.Height <= 0) {
-      return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+      return handleNoFrame();
     }
+    last_frame_at_ = std::chrono::steady_clock::now();
     if (content_size.Width != pool_size_.Width || content_size.Height != pool_size_.Height) {
       try {
         capture_frame.Close();
@@ -1175,6 +1177,68 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   LUID adapterLuid() const noexcept override { return d3d_.adapter_luid; }
 
  private:
+  ScreenGpuFrameResult handleNoFrame() {
+    // Recover WGC only when the capture source itself stops delivering frames.
+    // Encoder-owned output slots are reported separately as
+    // EncoderBackpressure and require recreating the publication/encoder.
+    constexpr auto stall_timeout = std::chrono::seconds(2);
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_frame_at_ < stall_timeout ||
+        now - last_restart_at_ < stall_timeout) {
+      return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+    }
+    last_restart_at_ = now;
+    try {
+      closeCaptureSession();
+      target_closed_.store(false, std::memory_order_release);
+      initialize();
+      last_frame_at_ = now;
+      return {ScreenGpuFrameStatus::RecoverableLost, {}, method()};
+    } catch (const ScreenGpuCaptureError& error) {
+      syrnike::voice::ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = error.hresult();
+      return {
+          error.code() == ScreenGpuCaptureErrorCode::TargetClosed
+              ? ScreenGpuFrameStatus::TargetClosed
+              : ScreenGpuFrameStatus::FatalError,
+          metrics,
+          method(),
+          error.code(),
+      };
+    } catch (const winrt::hresult_error& error) {
+      syrnike::voice::ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = static_cast<long>(error.code());
+      const auto code = captureErrorForHr(error.code());
+      return {
+          code == ScreenGpuCaptureErrorCode::TargetClosed
+              ? ScreenGpuFrameStatus::TargetClosed
+              : ScreenGpuFrameStatus::FatalError,
+          metrics,
+          method(),
+          code,
+      };
+    }
+  }
+
+  void closeCaptureSession() noexcept {
+    try {
+      if (closed_subscribed_ && item_) item_.Closed(closed_token_);
+    } catch (...) {
+    }
+    closed_subscribed_ = false;
+    try {
+      if (session_) session_.Close();
+    } catch (...) {
+    }
+    try {
+      if (frame_pool_) frame_pool_.Close();
+    } catch (...) {
+    }
+    session_ = nullptr;
+    frame_pool_ = nullptr;
+    item_ = nullptr;
+  }
+
   void initialize() {
     try {
       winrt::init_apartment(winrt::apartment_type::multi_threaded);
@@ -1241,6 +1305,9 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
     session_.IsCursorCaptureEnabled(true);
     disableCaptureBorderIfAllowed(session_);
     session_.StartCapture();
+    const auto now = std::chrono::steady_clock::now();
+    last_frame_at_ = now;
+    last_restart_at_ = now;
   }
 
   void recreateFramePool(winrt::Windows::Graphics::SizeInt32 size) {
@@ -1266,6 +1333,8 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   winrt::event_token closed_token_{};
   bool closed_subscribed_ = false;
   std::atomic_bool target_closed_{false};
+  std::chrono::steady_clock::time_point last_frame_at_{};
+  std::chrono::steady_clock::time_point last_restart_at_{};
 };
 
 }  // namespace

@@ -240,6 +240,7 @@ class MediaRuntime::Implementation {
       type == "__remoteVideoFrame" ||
       type == "__remoteVideoTrackRemoved" ||
       type == "__remoteVideoFailed" ||
+      type == "__remoteVideoRetryRequested" ||
       type == "__remoteScreenPublicationAvailable" ||
       type == "__remoteScreenPublicationUnavailable" ||
       type == "releaseRemoteVideoFrame" ||
@@ -272,6 +273,7 @@ class MediaRuntime::Implementation {
       type == "__screenAttemptReady" ||
       type == "__screenAttemptFailed" ||
       type == "__screenRetireDone" ||
+      type == "__screenRtpStalled" ||
       type == "connectScreen" || type == "startScreenCapture" ||
       type == "stopScreenCapture" || type == "disconnectScreen" ||
       type == "setLocalScreenPreviewDemand" ||
@@ -497,6 +499,21 @@ class MediaRuntime::Implementation {
       voice_.handleWorkerCommand(command);
       return;
     }
+    if (command.type == "__remoteScreenPublicationAvailable" ||
+        command.type == "__remoteScreenPublicationUnavailable") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      RuntimeEvent event;
+      event.type = command.type == "__remoteScreenPublicationAvailable"
+        ? "remoteScreenPublicationAvailable"
+        : "remoteScreenPublicationUnavailable";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.participant_identity = command.participant_identity;
+      event.video_source = "screen";
+      emitter_.emit(std::move(event));
+      return;
+    }
     if (command.type == "__voiceOutputFailed") {
       if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
       RuntimeEvent event;
@@ -539,6 +556,7 @@ class MediaRuntime::Implementation {
       return;
     }
     if (command.type == "__remoteVideoTrackRemoved" || command.type == "__remoteVideoFailed") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
       RuntimeEvent event;
       event.type = command.type == "__remoteVideoFailed"
         ? "remoteVideoFailed" : "remoteVideoTrackRemoved";
@@ -547,6 +565,11 @@ class MediaRuntime::Implementation {
       event.track_id = command.track_id;
       event.video_source = command.video_source;
       emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__remoteVideoRetryRequested") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
+      livekit_client_->retryRemoteVideo(command.track_id, command.internal_message);
       return;
     }
     if (command.type == "releaseRemoteVideoFrame") {
@@ -668,21 +691,6 @@ class MediaRuntime::Implementation {
       emitter_.emit(std::move(event));
       return;
     }
-    if (command.type == "__remoteScreenPublicationAvailable" ||
-        command.type == "__remoteScreenPublicationUnavailable") {
-      if (!desired_voice_.isCurrent(command.session_id, command.generation)) return;
-      RuntimeEvent event;
-      event.type = command.type == "__remoteScreenPublicationAvailable"
-        ? "remoteScreenPublicationAvailable"
-        : "remoteScreenPublicationUnavailable";
-      event.session_id = command.session_id;
-      event.generation = command.generation;
-      event.track_id = command.track_id;
-      event.participant_identity = command.participant_identity;
-      event.video_source = "screen";
-      emitter_.emit(std::move(event));
-      return;
-    }
     if (command.type == "__localScreenPreviewFrame") {
       if (!desired_screen_.isCurrent(command.session_id, command.generation)) {
         MediaCommand release = command;
@@ -735,7 +743,8 @@ class MediaRuntime::Implementation {
     if (
       command.type == "__screenAttemptReady" ||
       command.type == "__screenAttemptFailed" ||
-      command.type == "__screenRetireDone"
+      command.type == "__screenRetireDone" ||
+      command.type == "__screenRtpStalled"
     ) {
       screen_.handleWorkerCommand(command);
       return;

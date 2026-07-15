@@ -169,10 +169,11 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
       liveKitVersion: NATIVE_RUNTIME_LIVEKIT_VERSION,
       releaseChannel,
     })
-  } catch {
+  } catch (error) {
     diagnosticLog?.log('startup_validation_failed', {
       reason: 'artifact_distribution_verification_failed',
       runtimeKind,
+      error: error instanceof Error ? error.message : String(error),
     })
     postIncompatibleReady(parentPort, runtimeKind)
     await diagnosticLog?.close()

@@ -65,6 +65,7 @@ class LiveKitPublicationClient {
   virtual void configureRemoteAudio(RemoteAudioSettings settings) = 0;
   virtual void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) = 0;
   virtual void setRemoteVideoDemand(std::string track_id, bool demanded) = 0;
+  virtual void retryRemoteVideo(std::string track_id, std::string reason) = 0;
   virtual void disconnectVoice() = 0;
 
   virtual std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
@@ -121,6 +122,7 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
   void configureRemoteAudio(RemoteAudioSettings settings) override;
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) override;
   void setRemoteVideoDemand(std::string track_id, bool demanded) override;
+  void retryRemoteVideo(std::string track_id, std::string reason) override;
   void disconnectVoice() override;
 
   std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
