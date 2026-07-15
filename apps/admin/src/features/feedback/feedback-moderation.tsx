@@ -1,9 +1,6 @@
-import type {
-  FeedbackProductStatus,
-  FeedbackSuggestion,
-} from '@syrnike13/api-types'
+import type { FeedbackSuggestion } from '@syrnike13/api-types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -13,6 +10,7 @@ import {
   AdminSectionHeader,
 } from '#/components/layout/page'
 import { CheckIcon, Loader2Icon, XIcon } from '#/components/icons'
+import { MetaFlag } from '#/components/meta-flag'
 import { Button } from '#/components/ui/button'
 import {
   Dialog,
@@ -24,6 +22,14 @@ import {
 } from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
 import { Textarea } from '#/components/ui/textarea'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -36,6 +42,15 @@ import {
   setFeedbackResponse,
   setFeedbackStatus,
 } from '#/features/api/feedback-api'
+import {
+  FEEDBACK_PRODUCT_STATUSES,
+  feedbackAreaLabel,
+  feedbackCategoryLabel,
+  feedbackPlatformLabel,
+  feedbackProductStatusLabel,
+  publicFeedbackStatus,
+  type PublicFeedbackProductStatus,
+} from '#/features/feedback/feedback-meta'
 import { queryKeys } from '#/lib/api/query-keys'
 import { cn } from '#/lib/utils'
 
@@ -44,15 +59,6 @@ type ModerationDialog =
   | { type: 'reject'; suggestion: FeedbackSuggestion }
   | { type: 'merge'; suggestion: FeedbackSuggestion }
   | null
-
-const STATUS_OPTIONS: { value: FeedbackProductStatus; label: string }[] = [
-  { value: 'collecting', label: 'Собираем голоса' },
-  { value: 'under_consideration', label: 'Рассматриваем' },
-  { value: 'planned', label: 'Запланировано' },
-  { value: 'in_progress', label: 'В работе' },
-  { value: 'released', label: 'Выпущено' },
-  { value: 'not_planned', label: 'Не планируется' },
-]
 
 export function FeedbackModerationPage() {
   const auth = useAuth()
@@ -81,20 +87,20 @@ export function FeedbackModerationPage() {
   const approveMutation = useMutation({
     mutationFn: (id: string) => approveFeedback(token!, id),
     onSuccess: () => {
-      toast.success('Идея опубликована')
+      toast.success('Обращение опубликовано')
       void invalidate()
     },
-    onError: () => toast.error('Не удалось одобрить идею'),
+    onError: () => toast.error('Не удалось одобрить обращение'),
   })
   const rejectMutation = useMutation({
     mutationFn: ({ id, rejectionReason }: { id: string; rejectionReason: string }) =>
       rejectFeedback(token!, id, { reason: rejectionReason }),
     onSuccess: () => {
-      toast.success('Идея отклонена')
+      toast.success('Обращение отклонено')
       closeDialog()
       void invalidate()
     },
-    onError: () => toast.error('Не удалось отклонить идею'),
+    onError: () => toast.error('Не удалось отклонить обращение'),
   })
   const mergeMutation = useMutation({
     mutationFn: ({ id, target, mergeReason }: { id: string; target: string; mergeReason: string }) =>
@@ -107,7 +113,7 @@ export function FeedbackModerationPage() {
       closeDialog()
       void invalidate()
     },
-    onError: () => toast.error('Не удалось объединить идеи'),
+    onError: () => toast.error('Не удалось объединить обращения'),
   })
 
   const activeQuery = mode === 'pending' ? pendingQuery : publishedQuery
@@ -140,8 +146,8 @@ export function FeedbackModerationPage() {
       ) : suggestions.length === 0 ? (
         <AdminEmpty>
           {mode === 'pending'
-            ? 'Новых идей на модерации нет.'
-            : 'Опубликованных идей пока нет.'}
+            ? 'Новых обращений на модерации нет.'
+            : 'Опубликованных обращений пока нет.'}
         </AdminEmpty>
       ) : (
         <AdminSection>
@@ -179,7 +185,7 @@ export function FeedbackModerationPage() {
       <Dialog open={Boolean(dialog)} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{dialog?.type === 'merge' ? 'Объединить дубль' : 'Отклонить идею'}</DialogTitle>
+            <DialogTitle>{dialog?.type === 'merge' ? 'Объединить дубль' : 'Отклонить обращение'}</DialogTitle>
             <DialogDescription>
               {dialog?.suggestion.title}
             </DialogDescription>
@@ -188,11 +194,11 @@ export function FeedbackModerationPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="feedback-target">Куда перенести голоса</Label>
-                <Input id="feedback-target" value={targetId} onChange={(event) => setTargetId(event.target.value)} placeholder="ID основной идеи" />
+                <Input id="feedback-target" value={targetId} onChange={(event) => setTargetId(event.target.value)} placeholder="ID основного обращения" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="feedback-merge-reason">Пояснение</Label>
-                <Textarea id="feedback-merge-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Например: идея уже обсуждается" />
+                <Textarea id="feedback-merge-reason" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Например: обращение уже обсуждается" />
               </div>
             </div>
           ) : (
@@ -255,26 +261,41 @@ function FeedbackAdminRow({
   onReject: () => void
   onMerge: () => void
 }) {
+  const statusLabel = feedbackProductStatusLabel(suggestion.status)
+
   return (
     <div className={cn('flex flex-col gap-3 border-b border-border/60 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center', selected && 'bg-muted/25')}>
       <button type="button" className="min-w-0 flex-1 text-left" onClick={onSelect}>
         <div className="truncate text-[13px] font-semibold">{suggestion.title}</div>
         <div className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-muted-foreground">{suggestion.description}</div>
-        <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
-          <span>{suggestion.category}</span>
-          <span>{suggestion.vote_count} голосов</span>
-          <span className="font-mono">{suggestion._id}</span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <MetaFlag tone={suggestion.category === 'idea' ? 'accent' : 'muted'}>
+            {feedbackCategoryLabel(suggestion.category)}
+          </MetaFlag>
+          {suggestion.area ? (
+            <MetaFlag>{feedbackAreaLabel(suggestion.area)}</MetaFlag>
+          ) : null}
+          <MetaFlag>
+            {suggestion.platform
+              ? feedbackPlatformLabel(suggestion.platform)
+              : 'Платформа не указана'}
+          </MetaFlag>
+          {statusLabel ? <MetaFlag tone="ok">{statusLabel}</MetaFlag> : null}
+          <MetaFlag>{suggestion.vote_count} голосов</MetaFlag>
+          <MetaFlag>
+            <span className="font-mono">{suggestion._id}</span>
+          </MetaFlag>
         </div>
       </button>
       {mode === 'pending' ? (
         <div className="flex shrink-0 flex-wrap gap-1.5">
           <Button size="sm" onClick={onApprove} disabled={approving}>
-            <CheckIcon className="size-3.5" />
+            <CheckIcon data-icon="inline-start" />
             Одобрить
           </Button>
           <Button size="sm" variant="secondary" onClick={onMerge}>Объединить</Button>
           <Button size="sm" variant="ghost" className="text-destructive" onClick={onReject}>
-            <XIcon className="size-3.5" />
+            <XIcon data-icon="inline-start" />
             Отклонить
           </Button>
         </div>
@@ -296,28 +317,30 @@ function PublishedFeedbackEditor({
   token: string
   onSaved: (suggestion: FeedbackSuggestion) => void
 }) {
-  const [status, setStatus] = useState<FeedbackProductStatus>(suggestion.status)
+  const [status, setStatus] = useState<PublicFeedbackProductStatus | ''>(() =>
+    publicFeedbackStatus(suggestion.status),
+  )
   const [response, setResponse] = useState(suggestion.team_response ?? '')
 
-  useEffect(() => {
-    setStatus(suggestion.status)
-    setResponse(suggestion.team_response ?? '')
-  }, [suggestion])
+  const statusChanged = status !== '' && status !== suggestion.status
+  const normalizedResponse = response.trim() || null
+  const responseChanged =
+    normalizedResponse !== (suggestion.team_response ?? null)
+  const hasChanges = statusChanged || responseChanged
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       let updated = suggestion
-      if (status !== suggestion.status) {
+      if (statusChanged) {
         updated = await setFeedbackStatus(token, suggestion._id, { status })
       }
-      const normalizedResponse = response.trim() || null
-      if (normalizedResponse !== (suggestion.team_response ?? null)) {
+      if (responseChanged) {
         updated = await setFeedbackResponse(token, suggestion._id, { response: normalizedResponse })
       }
       return updated
     },
     onSuccess: (updated) => {
-      toast.success('Идея обновлена')
+      toast.success('Обращение обновлено')
       onSaved(updated)
     },
     onError: () => toast.error('Не удалось сохранить изменения'),
@@ -325,7 +348,7 @@ function PublishedFeedbackEditor({
   const hideMutation = useMutation({
     mutationFn: () => hideFeedback(token, suggestion._id),
     onSuccess: (updated) => {
-      toast.success('Идея скрыта')
+      toast.success('Обращение скрыто')
       onSaved(updated)
     },
   })
@@ -334,14 +357,34 @@ function PublishedFeedbackEditor({
     <div className="grid gap-4 border-b border-border/60 bg-muted/10 px-4 py-4 lg:grid-cols-[14rem_minmax(0,1fr)_auto]">
       <div className="space-y-1.5">
         <Label htmlFor={`status-${suggestion._id}`}>Статус</Label>
-        <select
-          id={`status-${suggestion._id}`}
+        <Select
           value={status}
-          className="h-9 w-full rounded-md border border-input bg-input px-3 text-[13px] outline-none focus:ring-2 focus:ring-ring/50"
-          onChange={(event) => setStatus(event.target.value as FeedbackProductStatus)}
+          onValueChange={(value) =>
+            setStatus(value as PublicFeedbackProductStatus)
+          }
         >
-          {STATUS_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-        </select>
+          <SelectTrigger
+            id={`status-${suggestion._id}`}
+            aria-label="Статус обращения"
+            className="w-full"
+          >
+            <SelectValue placeholder="Статус не назначен" />
+          </SelectTrigger>
+          <SelectContent
+            position="popper"
+            side="bottom"
+            align="start"
+            sideOffset={0}
+          >
+            <SelectGroup>
+              {FEEDBACK_PRODUCT_STATUSES.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor={`response-${suggestion._id}`}>Ответ команды</Label>
@@ -354,7 +397,13 @@ function PublishedFeedbackEditor({
         />
       </div>
       <div className="flex items-end gap-2 lg:flex-col lg:justify-end">
-        <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>Сохранить</Button>
+        <Button
+          size="sm"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || !hasChanges}
+        >
+          Сохранить
+        </Button>
         <Button size="sm" variant="ghost" className="text-destructive" onClick={() => hideMutation.mutate()} disabled={hideMutation.isPending}>Скрыть</Button>
       </div>
     </div>

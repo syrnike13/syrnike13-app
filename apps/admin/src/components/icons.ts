@@ -1,6 +1,8 @@
 export {
   RiAddLine as PlusIcon,
   RiArrowLeftLine as ArrowLeftIcon,
+  RiArrowDownSLine as ChevronDownIcon,
+  RiArrowUpSLine as ChevronUpIcon,
   RiAwardLine as AwardIcon,
   RiCheckLine as CheckIcon,
   RiCheckboxCircleLine as CircleCheckIcon,
