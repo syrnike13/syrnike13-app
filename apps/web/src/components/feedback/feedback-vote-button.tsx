@@ -6,6 +6,7 @@ import {
   addFeedbackVote,
   removeFeedbackVote,
 } from '#/features/api/feedback-api'
+import { useAuth } from '#/features/auth/auth-context'
 import { queryKeys } from '#/lib/api/query-keys'
 import { cn } from '#/lib/utils'
 
@@ -18,6 +19,7 @@ export function FeedbackVoteButton({
   token: string
   compact?: boolean
 }) {
+  const auth = useAuth()
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: () =>
@@ -25,7 +27,12 @@ export function FeedbackVoteButton({
         ? removeFeedbackVote(token, suggestion._id)
         : addFeedbackVote(token, suggestion._id),
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKeys.feedback.detail(updated._id), updated)
+      if (auth.user?._id) {
+        queryClient.setQueryData(
+          queryKeys.feedback.detail(auth.user._id, updated._id),
+          updated,
+        )
+      }
       void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.all })
     },
   })

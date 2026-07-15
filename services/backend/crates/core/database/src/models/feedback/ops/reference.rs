@@ -270,7 +270,11 @@ impl AbstractFeedback for ReferenceDb {
 
     async fn remove_feedback_vote(&self, suggestion_id: &str, user_id: &str) -> Result<()> {
         let mut feedback = self.feedback.lock().await;
-        if !feedback.suggestions.contains_key(suggestion_id) {
+        let suggestion = feedback
+            .suggestions
+            .get(suggestion_id)
+            .ok_or_else(|| create_error!(NotFound))?;
+        if suggestion.moderation_status != v0::FeedbackModerationStatus::Approved {
             return Err(create_error!(NotFound));
         }
 
@@ -541,5 +545,17 @@ mod tests {
             .await
             .expect("source view fetched");
         assert_eq!(source_view.vote_count, 0);
+
+        let error = db
+            .remove_feedback_vote(&source.id, "source-only-user")
+            .await
+            .expect_err("merged aliases cannot mutate the canonical vote");
+        assert!(matches!(error.error_type, ErrorType::NotFound));
+        let canonical = db
+            .fetch_feedback_suggestion_view(&target.id, "source-only-user")
+            .await
+            .expect("canonical view fetched");
+        assert!(canonical.voted);
+        assert_eq!(canonical.vote_count, 4);
     }
 }

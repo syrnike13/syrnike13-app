@@ -101,6 +101,7 @@ export function FeedbackCreateForm() {
   const prefix = useAppRoutePrefix()
   const navigate = useNavigate()
   const token = auth.session?.token
+  const viewerId = auth.user?._id
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState<FeedbackCategory | ''>('')
@@ -112,7 +113,9 @@ export function FeedbackCreateForm() {
   )
 
   const similarQuery = useQuery({
-    queryKey: queryKeys.feedback.list({ similar: normalizedTitle }),
+    queryKey: queryKeys.feedback.list(viewerId ?? 'pending-session', {
+      similar: normalizedTitle,
+    }),
     queryFn: () =>
       fetchFeedbackSuggestions(token!, {
         search: normalizedTitle,
@@ -120,7 +123,7 @@ export function FeedbackCreateForm() {
         offset: 0,
         limit: 3,
       }),
-    enabled: Boolean(token) && normalizedTitle.length >= 4,
+    enabled: Boolean(token && viewerId) && normalizedTitle.length >= 4,
     staleTime: 30_000,
   })
 

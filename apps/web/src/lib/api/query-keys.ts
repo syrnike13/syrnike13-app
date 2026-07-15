@@ -12,9 +12,11 @@ export const queryKeys = {
   },
   feedback: {
     all: ['feedback'] as const,
-    list: (params: unknown) => ['feedback', 'list', params] as const,
-    mine: ['feedback', 'mine'] as const,
-    detail: (id: string) => ['feedback', 'detail', id] as const,
+    list: (viewerId: string, params: unknown) =>
+      ['feedback', viewerId, 'list', params] as const,
+    mine: (viewerId: string) => ['feedback', viewerId, 'mine'] as const,
+    detail: (viewerId: string, id: string) =>
+      ['feedback', viewerId, 'detail', id] as const,
   },
   admin: {
     badges: ['admin', 'badges'] as const,

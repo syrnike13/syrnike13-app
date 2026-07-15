@@ -52,6 +52,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   const queryClient = useQueryClient()
   const prefix = useAppRoutePrefix()
   const token = auth.session?.token
+  const viewerId = auth.user?._id
   const [mode, setMode] = useState<FeedbackViewMode>(initialMode)
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
@@ -72,11 +73,11 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   }
 
   const allQuery = useInfiniteQuery({
-    queryKey: queryKeys.feedback.list(listParams),
+    queryKey: queryKeys.feedback.list(viewerId ?? 'pending-session', listParams),
     queryFn: ({ pageParam }) =>
       fetchFeedbackSuggestions(token!, { ...listParams, offset: pageParam }),
     initialPageParam: 0,
-    enabled: Boolean(token) && mode === 'all',
+    enabled: Boolean(token && viewerId) && mode === 'all',
     // Moderators update statuses in a separate app, so cached list data must be
     // considered stale when the user returns to this view.
     staleTime: 0,
@@ -87,11 +88,11 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   })
 
   const mineQuery = useInfiniteQuery({
-    queryKey: queryKeys.feedback.mine,
+    queryKey: queryKeys.feedback.mine(viewerId ?? 'pending-session'),
     queryFn: ({ pageParam }) =>
       fetchMyFeedbackSuggestions(token!, { offset: pageParam, limit: PAGE_SIZE }),
     initialPageParam: 0,
-    enabled: Boolean(token) && mode === 'mine',
+    enabled: Boolean(token && viewerId) && mode === 'mine',
     staleTime: 0,
     getNextPageParam: (lastPage) => {
       const next = lastPage.offset + lastPage.suggestions.length
@@ -100,10 +101,10 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   })
 
   useEffect(() => {
-    if (!token || !allQuery.isSuccess) return
+    if (!token || !viewerId || !allQuery.isSuccess) return
 
     void queryClient.prefetchInfiniteQuery({
-      queryKey: queryKeys.feedback.mine,
+      queryKey: queryKeys.feedback.mine(viewerId),
       queryFn: ({ pageParam }) =>
         fetchMyFeedbackSuggestions(token, {
           offset: pageParam,
@@ -116,7 +117,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
         return next < lastPage.total ? next : undefined
       },
     })
-  }, [allQuery.isSuccess, queryClient, token])
+  }, [allQuery.isSuccess, queryClient, token, viewerId])
 
   const activeQuery = mode === 'all' ? allQuery : mineQuery
   const suggestions = activeQuery.data?.pages.flatMap((page) => page.suggestions) ?? []

@@ -1,8 +1,13 @@
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
 import { RiArrowRightLine, RiGitMergeLine, RiUserLine } from '@remixicon/react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { AdminEmpty, AdminPage, AdminSection } from '#/components/layout/page'
@@ -30,12 +35,12 @@ import { SearchField } from '#/components/search-field'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   approveFeedback,
+  fetchAllPublishedFeedback,
   fetchPendingFeedback,
   fetchPublishedFeedback,
   hideFeedback,
   mergeFeedback,
   rejectFeedback,
-  searchPublishedFeedback,
   setFeedbackResponse,
   setFeedbackStatus,
 } from '#/features/api/feedback-api'
@@ -50,6 +55,7 @@ import {
 } from '#/features/feedback/feedback-meta'
 import {
   getFeedbackSimilarity,
+  normalizeFeedbackText,
   rankSimilarFeedback,
   type FeedbackSimilarity,
 } from '#/features/feedback/feedback-similarity'
@@ -67,6 +73,7 @@ type CandidateSelection = {
 }
 
 const EMPTY_SUGGESTIONS: FeedbackSuggestion[] = []
+const FEEDBACK_PAGE_SIZE = 50
 const feedbackDateFormatter = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
   month: 'short',
@@ -85,65 +92,87 @@ export function FeedbackModerationPage() {
   const [dialog, setDialog] = useState<ModerationDialog>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
-  const pendingQuery = useQuery({
+  const pendingQuery = useInfiniteQuery({
     queryKey: queryKeys.admin.feedbackPending,
-    queryFn: () => fetchPendingFeedback(token!),
+    queryFn: ({ pageParam }) =>
+      fetchPendingFeedback(token!, {
+        offset: pageParam,
+        limit: FEEDBACK_PAGE_SIZE,
+      }),
+    initialPageParam: 0,
     enabled: Boolean(token),
+    getNextPageParam: (lastPage) => {
+      const next = lastPage.offset + lastPage.suggestions.length
+      return next < lastPage.total ? next : undefined
+    },
   })
-  const publishedQuery = useQuery({
+  const publishedQuery = useInfiniteQuery({
     queryKey: queryKeys.admin.feedbackPublished,
-    queryFn: () => fetchPublishedFeedback(token!),
+    queryFn: ({ pageParam }) =>
+      fetchPublishedFeedback(token!, {
+        offset: pageParam,
+        limit: FEEDBACK_PAGE_SIZE,
+      }),
+    initialPageParam: 0,
     enabled: Boolean(token),
+    getNextPageParam: (lastPage) => {
+      const next = lastPage.offset + lastPage.suggestions.length
+      return next < lastPage.total ? next : undefined
+    },
+  })
+  const publishedCatalogQuery = useQuery({
+    queryKey: queryKeys.admin.feedbackPublishedCatalog,
+    queryFn: () => fetchAllPublishedFeedback(token!),
+    enabled: Boolean(token) && mode === 'pending',
+    staleTime: 30_000,
   })
 
   const activeQuery = mode === 'pending' ? pendingQuery : publishedQuery
-  const suggestions = activeQuery.data?.suggestions ?? EMPTY_SUGGESTIONS
-  const publishedSuggestions = publishedQuery.data?.suggestions ?? EMPTY_SUGGESTIONS
+  const pendingSuggestions = useMemo(
+    () => pendingQuery.data?.pages.flatMap((page) => page.suggestions) ?? EMPTY_SUGGESTIONS,
+    [pendingQuery.data?.pages],
+  )
+  const publishedSuggestions = useMemo(
+    () => publishedQuery.data?.pages.flatMap((page) => page.suggestions) ?? EMPTY_SUGGESTIONS,
+    [publishedQuery.data?.pages],
+  )
+  const suggestions = mode === 'pending' ? pendingSuggestions : publishedSuggestions
   const selectedSuggestion = useMemo(
     () => suggestions.find((item) => item._id === selectedId) ?? suggestions[0] ?? null,
     [selectedId, suggestions],
   )
-  const normalizedDuplicateSearch = duplicateSearch.trim()
-  const duplicateSearchQuery = useQuery({
-    queryKey: [
-      'admin',
-      'feedback',
-      'published-search',
-      normalizedDuplicateSearch,
-    ],
-    queryFn: () => searchPublishedFeedback(token!, normalizedDuplicateSearch),
-    enabled:
-      Boolean(token) &&
-      mode === 'pending' &&
-      Boolean(selectedSuggestion) &&
-      normalizedDuplicateSearch.length >= 2,
-  })
+  const publishedCatalog = publishedCatalogQuery.data ?? publishedSuggestions
+  const deferredDuplicateSearch = useDeferredValue(duplicateSearch)
+  const normalizedDuplicateSearch = normalizeFeedbackText(deferredDuplicateSearch)
   const similarFeedback = useMemo(
     () =>
       selectedSuggestion
-        ? rankSimilarFeedback(selectedSuggestion, publishedSuggestions)
+        ? rankSimilarFeedback(selectedSuggestion, publishedCatalog)
         : [],
-    [publishedSuggestions, selectedSuggestion],
+    [publishedCatalog, selectedSuggestion],
   )
   const manualSearchCandidates = useMemo(() => {
-    if (!selectedSuggestion) return []
+    if (!selectedSuggestion || normalizedDuplicateSearch.length < 2) return []
 
     const automaticIds = new Set(
       similarFeedback.map(({ suggestion }) => suggestion._id),
     )
 
-    return (duplicateSearchQuery.data?.suggestions ?? EMPTY_SUGGESTIONS)
+    return publishedCatalog
       .filter(
         (candidate) =>
           candidate.moderation_status === 'approved' &&
           candidate._id !== selectedSuggestion._id &&
-          !automaticIds.has(candidate._id),
+          !automaticIds.has(candidate._id) &&
+          normalizeFeedbackText(`${candidate.title} ${candidate.description}`).includes(
+            normalizedDuplicateSearch,
+          ),
       )
       .map((suggestion) => ({
         suggestion,
         similarity: getFeedbackSimilarity(selectedSuggestion, suggestion) ?? undefined,
       }))
-  }, [duplicateSearchQuery.data?.suggestions, selectedSuggestion, similarFeedback])
+  }, [normalizedDuplicateSearch, publishedCatalog, selectedSuggestion, similarFeedback])
 
   function invalidate() {
     return queryClient.invalidateQueries({ queryKey: queryKeys.admin.feedback })
@@ -202,8 +231,8 @@ export function FeedbackModerationPage() {
     onError: () => toast.error('Не удалось объединить обращения'),
   })
 
-  const pendingTotal = pendingQuery.data?.total ?? 0
-  const publishedTotal = publishedQuery.data?.total ?? 0
+  const pendingTotal = pendingQuery.data?.pages[0]?.total ?? 0
+  const publishedTotal = publishedQuery.data?.pages[0]?.total ?? 0
 
   return (
     <AdminPage title="Обращения" innerClassName="max-w-[80rem]">
@@ -235,7 +264,10 @@ export function FeedbackModerationPage() {
                 total={mode === 'pending' ? pendingTotal : publishedTotal}
                 suggestions={suggestions}
                 selectedId={selectedSuggestion?._id}
+                hasNextPage={activeQuery.hasNextPage}
+                loadingNextPage={activeQuery.isFetchingNextPage}
                 onSelect={selectSuggestion}
+                onLoadMore={() => void activeQuery.fetchNextPage()}
               />
               {selectedSuggestion ? (
                 <FeedbackInspector
@@ -246,14 +278,17 @@ export function FeedbackModerationPage() {
                   similarFeedback={similarFeedback}
                   duplicateSearch={duplicateSearch}
                   manualSearchCandidates={manualSearchCandidates}
-                  manualSearchIsLoading={duplicateSearchQuery.isFetching}
-                  manualSearchIsError={duplicateSearchQuery.isError}
+                  duplicateCatalogIsLoading={publishedCatalogQuery.isPending}
+                  duplicateCatalogIsError={publishedCatalogQuery.isError}
                   onDuplicateSearchChange={setDuplicateSearch}
                   onMergeTargetChange={setMergeTarget}
+                  onRetryDuplicateCatalog={() => void publishedCatalogQuery.refetch()}
                   onApprove={() => approveMutation.mutate(selectedSuggestion._id)}
                   approving={
-                    approveMutation.isPending &&
-                    approveMutation.variables === selectedSuggestion._id
+                    publishedCatalogQuery.isPending ||
+                    publishedCatalogQuery.isError ||
+                    (approveMutation.isPending &&
+                      approveMutation.variables === selectedSuggestion._id)
                   }
                   onReject={() => setDialog({ type: 'reject', source: selectedSuggestion })}
                   onMerge={() => {
@@ -394,13 +429,19 @@ function FeedbackQueue({
   total,
   suggestions,
   selectedId,
+  hasNextPage,
+  loadingNextPage,
   onSelect,
+  onLoadMore,
 }: {
   mode: Mode
   total: number
   suggestions: FeedbackSuggestion[]
   selectedId?: string
+  hasNextPage: boolean
+  loadingNextPage: boolean
   onSelect: (suggestion: FeedbackSuggestion) => void
+  onLoadMore: () => void
 }) {
   return (
     <aside className="min-w-0 border-b border-border/60 lg:border-r lg:border-b-0">
@@ -421,6 +462,17 @@ function FeedbackQueue({
           />
         ))}
       </div>
+      {hasNextPage ? (
+        <div className="flex justify-center border-t border-border/60 p-4">
+          <Button
+            variant="secondary"
+            disabled={loadingNextPage}
+            onClick={onLoadMore}
+          >
+            {loadingNextPage ? 'Загружаем…' : 'Показать ещё'}
+          </Button>
+        </div>
+      ) : null}
     </aside>
   )
 }
@@ -483,10 +535,11 @@ function FeedbackInspector({
   similarFeedback,
   duplicateSearch,
   manualSearchCandidates,
-  manualSearchIsLoading,
-  manualSearchIsError,
+  duplicateCatalogIsLoading,
+  duplicateCatalogIsError,
   onDuplicateSearchChange,
   onMergeTargetChange,
+  onRetryDuplicateCatalog,
   onApprove,
   approving,
   onReject,
@@ -499,10 +552,11 @@ function FeedbackInspector({
   similarFeedback: CandidateSelection[]
   duplicateSearch: string
   manualSearchCandidates: CandidateSelection[]
-  manualSearchIsLoading: boolean
-  manualSearchIsError: boolean
+  duplicateCatalogIsLoading: boolean
+  duplicateCatalogIsError: boolean
   onDuplicateSearchChange: (value: string) => void
   onMergeTargetChange: (target: FeedbackSuggestion | null) => void
+  onRetryDuplicateCatalog: () => void
   onApprove: () => void
   approving: boolean
   onReject: () => void
@@ -559,10 +613,11 @@ function FeedbackInspector({
             manualSearchCandidates={manualSearchCandidates}
             selectedTarget={mergeTarget}
             searchValue={duplicateSearch}
-            searchIsLoading={manualSearchIsLoading}
-            searchIsError={manualSearchIsError}
+            catalogIsLoading={duplicateCatalogIsLoading}
+            catalogIsError={duplicateCatalogIsError}
             onSearchChange={onDuplicateSearchChange}
             onTargetChange={onMergeTargetChange}
+            onRetryCatalog={onRetryDuplicateCatalog}
           />
         ) : (
           <PublishedFeedbackEditor
@@ -598,20 +653,22 @@ function DuplicatePicker({
   manualSearchCandidates,
   selectedTarget,
   searchValue,
-  searchIsLoading,
-  searchIsError,
+  catalogIsLoading,
+  catalogIsError,
   onSearchChange,
   onTargetChange,
+  onRetryCatalog,
 }: {
   source: FeedbackSuggestion
   automaticCandidates: CandidateSelection[]
   manualSearchCandidates: CandidateSelection[]
   selectedTarget: FeedbackSuggestion | null
   searchValue: string
-  searchIsLoading: boolean
-  searchIsError: boolean
+  catalogIsLoading: boolean
+  catalogIsError: boolean
   onSearchChange: (value: string) => void
   onTargetChange: (target: FeedbackSuggestion | null) => void
+  onRetryCatalog: () => void
 }) {
   const hasSearch = searchValue.trim().length >= 2
 
@@ -620,7 +677,7 @@ function DuplicatePicker({
       <div className="flex flex-col gap-1">
         <h3 className="text-[16px] font-semibold">Возможные дубли</h3>
         <p className="text-[12px] leading-5 text-muted-foreground">
-          Подсказки по названию и описанию среди загруженных опубликованных обращений.
+          Подсказки по названию и описанию по всему каталогу опубликованных обращений.
         </p>
       </div>
 
@@ -632,7 +689,21 @@ function DuplicatePicker({
       />
 
       <CandidateGroup label="Подсказки">
-        {automaticCandidates.length > 0 ? (
+        {catalogIsLoading ? (
+          <div className="flex items-center gap-2 px-1 py-2 text-[12px] text-muted-foreground">
+            <Loader2Icon className="size-4 animate-spin" />
+            Проверяем весь каталог…
+          </div>
+        ) : catalogIsError ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/30 px-3 py-2">
+            <p className="text-[12px] text-destructive">
+              Не удалось проверить каталог. Одобрение временно недоступно.
+            </p>
+            <Button size="sm" variant="outline" onClick={onRetryCatalog}>
+              Повторить
+            </Button>
+          </div>
+        ) : automaticCandidates.length > 0 ? (
           automaticCandidates.map((candidate) => (
             <DuplicateCandidate
               key={candidate.suggestion._id}
@@ -650,14 +721,9 @@ function DuplicatePicker({
 
       {hasSearch ? (
         <CandidateGroup label="Результаты поиска">
-          {searchIsLoading ? (
-            <div className="flex items-center gap-2 px-1 py-2 text-[12px] text-muted-foreground">
-              <Loader2Icon className="size-4 animate-spin" />
-              Ищем опубликованные обращения…
-            </div>
-          ) : searchIsError ? (
-            <p className="px-1 py-2 text-[12px] text-destructive">
-              Не удалось выполнить поиск. Попробуйте ещё раз.
+          {catalogIsLoading ? (
+            <p className="px-1 py-2 text-[12px] text-muted-foreground">
+              Поиск станет доступен после загрузки каталога.
             </p>
           ) : manualSearchCandidates.length > 0 ? (
             manualSearchCandidates.map((candidate) => (

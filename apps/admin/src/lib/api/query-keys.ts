@@ -8,5 +8,6 @@ export const queryKeys = {
     feedback: ['admin', 'feedback'] as const,
     feedbackPending: ['admin', 'feedback', 'pending'] as const,
     feedbackPublished: ['admin', 'feedback', 'published'] as const,
+    feedbackPublishedCatalog: ['admin', 'feedback', 'published-catalog'] as const,
   },
 } as const

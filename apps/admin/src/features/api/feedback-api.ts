@@ -9,23 +9,60 @@ import type {
 
 import { apiRequest } from '#/lib/api/client'
 
-export async function fetchPendingFeedback(token: string) {
+type FeedbackPageParams = {
+  offset?: number
+  limit?: number
+}
+
+function feedbackPageQuery({ offset = 0, limit = 50 }: FeedbackPageParams) {
+  return `offset=${offset}&limit=${limit}`
+}
+
+export async function fetchPendingFeedback(
+  token: string,
+  params: FeedbackPageParams = {},
+) {
   return apiRequest<FeedbackSuggestionPage>(
-    '/feedback/admin/pending?offset=0&limit=100',
+    `/feedback/admin/pending?${feedbackPageQuery(params)}`,
     { token },
   )
 }
 
-export async function fetchPublishedFeedback(token: string) {
+export async function fetchPublishedFeedback(
+  token: string,
+  params: FeedbackPageParams = {},
+) {
   return apiRequest<FeedbackSuggestionPage>(
-    '/feedback?sort=new&offset=0&limit=100',
+    `/feedback?sort=new&${feedbackPageQuery(params)}`,
     { token },
   )
 }
 
-export async function searchPublishedFeedback(token: string, search: string) {
+export async function fetchAllPublishedFeedback(token: string) {
+  const suggestions = new Map<string, FeedbackSuggestion>()
+  let offset = 0
+
+  while (true) {
+    const page = await fetchPublishedFeedback(token, { offset, limit: 100 })
+    for (const suggestion of page.suggestions) {
+      suggestions.set(suggestion._id, suggestion)
+    }
+
+    const nextOffset = page.offset + page.suggestions.length
+    if (page.suggestions.length === 0 || nextOffset >= page.total) break
+    offset = nextOffset
+  }
+
+  return [...suggestions.values()]
+}
+
+export async function searchPublishedFeedback(
+  token: string,
+  search: string,
+  params: FeedbackPageParams = { limit: 100 },
+) {
   return apiRequest<FeedbackSuggestionPage>(
-    `/feedback?search=${encodeURIComponent(search)}&sort=new&offset=0&limit=100`,
+    `/feedback?search=${encodeURIComponent(search)}&sort=new&${feedbackPageQuery(params)}`,
     { token },
   )
 }

@@ -66,8 +66,9 @@ pub async fn list(
 
 /// # List My Feedback Suggestions
 ///
-/// List every feedback suggestion created by the current user, including ideas
-/// that are pending, rejected, merged, or hidden from the public catalogue.
+/// List feedback suggestions created by the current user, including ideas that
+/// are pending, rejected, or merged. Hidden suggestions are visible only to
+/// platform administrators through administration APIs.
 #[openapi(tag = "Product Feedback")]
 #[get("/mine?<offset>&<limit>")]
 pub async fn mine(
@@ -78,6 +79,12 @@ pub async fn mine(
 ) -> Result<Json<v0::FeedbackSuggestionPage>> {
     let query = FeedbackSuggestionQuery {
         author_id: Some(user.id.clone()),
+        moderation_statuses: vec![
+            v0::FeedbackModerationStatus::Pending,
+            v0::FeedbackModerationStatus::Approved,
+            v0::FeedbackModerationStatus::Rejected,
+            v0::FeedbackModerationStatus::Merged,
+        ],
         sort: v0::FeedbackSort::New,
         offset: offset.unwrap_or_default(),
         limit: limit.unwrap_or(20),
@@ -101,12 +108,9 @@ pub async fn detail(
     user: User,
     id: String,
 ) -> Result<Json<v0::FeedbackSuggestion>> {
-    let suggestion = db.fetch_feedback_suggestion(&id).await?;
-    ensure_visible(&suggestion, &user)?;
-    Ok(Json(view_into_api(
-        db.fetch_feedback_suggestion_view(&id, &user.id).await?,
-        &user,
-    )))
+    let view = db.fetch_feedback_suggestion_view(&id, &user.id).await?;
+    ensure_visible(&view.suggestion, &user)?;
+    Ok(Json(view_into_api(view, &user)))
 }
 
 /// # Create Feedback Suggestion
@@ -159,10 +163,9 @@ pub async fn add_vote(
     }
 
     db.add_feedback_vote(&id, &user.id).await?;
-    Ok(Json(view_into_api(
-        db.fetch_feedback_suggestion_view(&id, &user.id).await?,
-        &user,
-    )))
+    let view = db.fetch_feedback_suggestion_view(&id, &user.id).await?;
+    ensure_visible(&view.suggestion, &user)?;
+    Ok(Json(view_into_api(view, &user)))
 }
 
 /// # Remove Feedback Vote
@@ -176,12 +179,9 @@ pub async fn remove_vote(
     id: String,
 ) -> Result<Json<v0::FeedbackSuggestion>> {
     db.remove_feedback_vote(&id, &user.id).await?;
-    let suggestion = db.fetch_feedback_suggestion(&id).await?;
-    ensure_visible(&suggestion, &user)?;
-    Ok(Json(view_into_api(
-        db.fetch_feedback_suggestion_view(&id, &user.id).await?,
-        &user,
-    )))
+    let view = db.fetch_feedback_suggestion_view(&id, &user.id).await?;
+    ensure_visible(&view.suggestion, &user)?;
+    Ok(Json(view_into_api(view, &user)))
 }
 
 /// # List Pending Feedback Suggestions
@@ -674,5 +674,39 @@ mod tests {
         )
         .await;
         assert_eq!(create_denied.status(), Status::Forbidden);
+    }
+
+    #[rocket::async_test]
+    async fn hidden_feedback_is_absent_from_author_detail_and_mine() {
+        let context = FeedbackTestContext::new().await;
+        let (author, author_session) = context.user(false).await;
+        let (_, admin_session) = context.user(true).await;
+        let suggestion = context.insert_pending(&author.id).await;
+
+        let hidden = FeedbackTestContext::request_with_session(
+            &admin_session,
+            context
+                .client
+                .post(format!("/feedback/admin/{}/hide", suggestion.id)),
+        )
+        .await;
+        assert_eq!(hidden.status(), Status::Ok);
+
+        let detail = FeedbackTestContext::request_with_session(
+            &author_session,
+            context.client.get(format!("/feedback/{}", suggestion.id)),
+        )
+        .await;
+        assert_eq!(detail.status(), Status::NotFound);
+
+        let mine = FeedbackTestContext::request_with_session(
+            &author_session,
+            context.client.get("/feedback/mine"),
+        )
+        .await;
+        assert_eq!(mine.status(), Status::Ok);
+        let page: v0::FeedbackSuggestionPage = mine.into_json().await.expect("response body");
+        assert_eq!(page.total, 0);
+        assert!(page.suggestions.is_empty());
     }
 }

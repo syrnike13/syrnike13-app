@@ -31,10 +31,11 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   const auth = useAuth()
   const prefix = useAppRoutePrefix()
   const token = auth.session?.token
+  const viewerId = auth.user?._id
   const query = useQuery({
-    queryKey: queryKeys.feedback.detail(feedbackId),
+    queryKey: queryKeys.feedback.detail(viewerId ?? 'pending-session', feedbackId),
     queryFn: () => fetchFeedbackSuggestion(token!, feedbackId),
-    enabled: Boolean(token),
+    enabled: Boolean(token && viewerId),
   })
   const author = useSyncStore((state) =>
     query.data?.author ? state.users[query.data.author] : undefined,

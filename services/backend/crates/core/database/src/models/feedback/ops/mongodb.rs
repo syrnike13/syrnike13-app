@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
+use async_std::sync::Mutex as AsyncMutex;
 use bson::{doc, Bson, Document};
-use futures::TryStreamExt;
+use futures::{future::BoxFuture, FutureExt, TryStreamExt};
 use iso8601_timestamp::Timestamp;
+use mongodb::error::{TRANSIENT_TRANSACTION_ERROR, UNKNOWN_TRANSACTION_COMMIT_RESULT};
 use mongodb::options::UpdateOptions;
 use syrnike_models::v0;
 use syrnike_result::Result;
@@ -16,6 +18,8 @@ use super::AbstractFeedback;
 
 static SUGGESTIONS_COL: &str = "feedback_suggestions";
 static VOTES_COL: &str = "feedback_votes";
+static FEEDBACK_MUTATION_LOCK: AsyncMutex<()> = AsyncMutex::new(());
+const TRANSACTION_ATTEMPTS: usize = 3;
 
 #[async_trait]
 impl AbstractFeedback for MongoDb {
@@ -63,44 +67,66 @@ impl AbstractFeedback for MongoDb {
             .count_documents(filter.clone())
             .await
             .map_err(|_| create_database_error!("count_documents", SUGGESTIONS_COL))?;
-        let mut suggestions = self
-            .col::<FeedbackSuggestion>(SUGGESTIONS_COL)
-            .find(filter)
-            .await
-            .map_err(|_| create_database_error!("find", SUGGESTIONS_COL))?
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|_| create_database_error!("deserialize", SUGGESTIONS_COL))?;
+        let limit = query.limit.clamp(1, 100);
+        let offset = query.offset.min(i64::MAX as usize) as i64;
+        let suggestions = match query.sort {
+            v0::FeedbackSort::New => self
+                .col::<FeedbackSuggestion>(SUGGESTIONS_COL)
+                .find(filter)
+                .sort(doc! { "created_at": -1, "_id": -1 })
+                .skip(offset as u64)
+                .limit(limit as i64)
+                .await
+                .map_err(|_| create_database_error!("find", SUGGESTIONS_COL))?
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|_| create_database_error!("deserialize", SUGGESTIONS_COL))?,
+            v0::FeedbackSort::Popular => {
+                let documents = self
+                    .col::<FeedbackSuggestion>(SUGGESTIONS_COL)
+                    .aggregate(vec![
+                    doc! { "$match": filter },
+                    doc! { "$lookup": {
+                        "from": VOTES_COL,
+                        "let": { "suggestion_id": "$_id" },
+                        "pipeline": [
+                            { "$match": { "$expr": { "$eq": ["$suggestion_id", "$$suggestion_id"] } } },
+                            { "$count": "count" },
+                        ],
+                        "as": "_vote_stats",
+                    } },
+                    doc! { "$set": {
+                        "_vote_count": { "$ifNull": [
+                            { "$arrayElemAt": ["$_vote_stats.count", 0] },
+                            0,
+                        ] },
+                    } },
+                    doc! { "$unset": "_vote_stats" },
+                    doc! { "$sort": { "_vote_count": -1, "created_at": -1, "_id": -1 } },
+                    doc! { "$skip": offset },
+                    doc! { "$limit": limit as i64 },
+                    doc! { "$unset": "_vote_count" },
+                    ])
+                    .await
+                    .map_err(|_| create_database_error!("aggregate", SUGGESTIONS_COL))?
+                    .try_collect::<Vec<_>>()
+                    .await
+                    .map_err(|_| create_database_error!("deserialize", SUGGESTIONS_COL))?;
+                documents
+                    .into_iter()
+                    .map(bson::from_document::<FeedbackSuggestion>)
+                    .collect::<std::result::Result<Vec<_>, _>>()
+                    .map_err(|_| create_database_error!("deserialize", SUGGESTIONS_COL))?
+            }
+        };
 
         let suggestion_ids = suggestions
             .iter()
             .map(|suggestion| suggestion.id.clone())
             .collect::<Vec<_>>();
         let (vote_counts, voted) = self.feedback_vote_state(&suggestion_ids, viewer_id).await?;
-
-        match query.sort {
-            v0::FeedbackSort::Popular => suggestions.sort_by(|left, right| {
-                vote_counts
-                    .get(&right.id)
-                    .copied()
-                    .unwrap_or_default()
-                    .cmp(&vote_counts.get(&left.id).copied().unwrap_or_default())
-                    .then_with(|| right.created_at.cmp(&left.created_at))
-                    .then_with(|| right.id.cmp(&left.id))
-            }),
-            v0::FeedbackSort::New => suggestions.sort_by(|left, right| {
-                right
-                    .created_at
-                    .cmp(&left.created_at)
-                    .then_with(|| right.id.cmp(&left.id))
-            }),
-        }
-
-        let limit = query.limit.clamp(1, 100);
         let suggestions = suggestions
             .into_iter()
-            .skip(query.offset)
-            .take(limit)
             .map(|suggestion| FeedbackSuggestionView {
                 vote_count: vote_counts.get(&suggestion.id).copied().unwrap_or_default(),
                 voted: voted.contains(&suggestion.id),
@@ -117,16 +143,69 @@ impl AbstractFeedback for MongoDb {
     }
 
     async fn approve_feedback_suggestion(&self, id: &str) -> Result<FeedbackSuggestion> {
+        let transactions = self.feedback_transactions_supported().await?;
         let pending = bson::to_bson(&v0::FeedbackModerationStatus::Pending)
             .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
         let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
             .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        if transactions {
+            let db = self.clone();
+            let id = id.to_string();
+            return run_feedback_transaction(self, SUGGESTIONS_COL, move |session| {
+                let db = db.clone();
+                let id = id.clone();
+                let pending = pending.clone();
+                let approved = approved.clone();
+                async move {
+                    let suggestion = db
+                        .col::<FeedbackSuggestion>(SUGGESTIONS_COL)
+                        .find_one_and_update(
+                            doc! {
+                                "_id": &id,
+                                "moderation_status": { "$in": [pending, approved] },
+                                "_feedback_merge_target": { "$exists": false },
+                                "_feedback_merge_source": { "$exists": false },
+                            },
+                            doc! { "$set": {
+                                "moderation_status": bson::to_bson(&v0::FeedbackModerationStatus::Approved)
+                                    .map_err(mongodb::error::Error::custom)?,
+                                "rejection_reason": null,
+                                "merged_into": null,
+                                "merge_reason": null,
+                                "updated_at": bson::to_bson(&Timestamp::now_utc())
+                                    .map_err(mongodb::error::Error::custom)?,
+                            } },
+                        )
+                        .return_document(mongodb::options::ReturnDocument::After)
+                        .session(&mut *session)
+                        .await?
+                        .ok_or_else(|| mongodb::error::Error::custom(create_error!(InvalidOperation)))?;
+                    let vote = FeedbackVote::new(suggestion.id.clone(), suggestion.author_id.clone());
+                    db.col::<FeedbackVote>(VOTES_COL)
+                        .update_one(
+                            doc! { "suggestion_id": &vote.suggestion_id, "user_id": &vote.user_id },
+                            doc! { "$setOnInsert": bson::to_document(&vote)
+                                .map_err(mongodb::error::Error::custom)? },
+                        )
+                        .with_options(UpdateOptions::builder().upsert(true).build())
+                        .session(&mut *session)
+                        .await?;
+                    Ok(suggestion)
+                }
+                .boxed()
+            })
+            .await;
+        }
+
+        let _guard = FEEDBACK_MUTATION_LOCK.lock().await;
         let suggestion = self
             .col::<FeedbackSuggestion>(SUGGESTIONS_COL)
             .find_one_and_update(
                 doc! {
                     "_id": id,
                     "moderation_status": { "$in": [pending, approved] },
+                    "_feedback_merge_target": { "$exists": false },
+                    "_feedback_merge_source": { "$exists": false },
                 },
                 doc! {
                     "$set": {
@@ -160,6 +239,12 @@ impl AbstractFeedback for MongoDb {
     }
 
     async fn reject_feedback_suggestion(&self, id: &str, reason: String) -> Result<()> {
+        let transactions = self.feedback_transactions_supported().await?;
+        let _guard = if transactions {
+            None
+        } else {
+            Some(FEEDBACK_MUTATION_LOCK.lock().await)
+        };
         update_pending(
             self,
             id,
@@ -183,95 +268,138 @@ impl AbstractFeedback for MongoDb {
         if source_id == target_id {
             return Err(create_error!(InvalidOperation));
         }
-
-        let target = self.fetch_feedback_suggestion(target_id).await?;
-        if target.moderation_status != v0::FeedbackModerationStatus::Approved {
-            return Err(create_error!(InvalidOperation));
+        if !self.feedback_transactions_supported().await? {
+            let _guard = FEEDBACK_MUTATION_LOCK.lock().await;
+            return self
+                .merge_feedback_suggestion_standalone(source_id, target_id, reason)
+                .await;
         }
-
-        let source = self.fetch_feedback_suggestion(source_id).await?;
-        if source.moderation_status == v0::FeedbackModerationStatus::Hidden {
-            return Err(create_error!(InvalidOperation));
-        }
-
-        if source.moderation_status == v0::FeedbackModerationStatus::Merged {
-            if source.merged_into.as_deref() != Some(target_id) {
-                return Err(create_error!(InvalidOperation));
+        let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let active_statuses = vec![
+            bson::to_bson(&v0::FeedbackModerationStatus::Pending)
+                .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
+            approved.clone(),
+            bson::to_bson(&v0::FeedbackModerationStatus::Rejected)
+                .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
+        ];
+        let merged = bson::to_bson(&v0::FeedbackModerationStatus::Merged)
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let now = bson::to_bson(&Timestamp::now_utc())
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let db = self.clone();
+        let source_id = source_id.to_string();
+        let target_id = target_id.to_string();
+        run_feedback_transaction(self, SUGGESTIONS_COL, move |session| {
+            let db = db.clone();
+            let source_id = source_id.clone();
+            let target_id = target_id.clone();
+            let approved = approved.clone();
+            let active_statuses = active_statuses.clone();
+            let merged = merged.clone();
+            let now = now.clone();
+            let reason = reason.clone();
+            async move {
+                let target = db
+                    .col::<Document>(SUGGESTIONS_COL)
+                    .update_one(
+                        doc! {
+                            "_id": &target_id,
+                            "moderation_status": &approved,
+                            "_feedback_merge_target": { "$exists": false },
+                            "_feedback_merge_source": { "$exists": false },
+                        },
+                        doc! { "$inc": { "_merge_revision": 1_i64 } },
+                    )
+                    .session(&mut *session)
+                    .await?;
+                if target.matched_count == 0 {
+                    return Err(mongodb::error::Error::custom(create_error!(InvalidOperation)));
+                }
+                let source = db
+                    .col::<FeedbackSuggestion>(SUGGESTIONS_COL)
+                    .find_one(doc! { "_id": &source_id })
+                    .session(&mut *session)
+                    .await?
+                    .ok_or_else(|| mongodb::error::Error::custom(create_error!(NotFound)))?;
+                if source.moderation_status == v0::FeedbackModerationStatus::Merged {
+                    return if source.merged_into.as_deref() == Some(target_id.as_str()) {
+                        Ok(())
+                    } else {
+                        Err(mongodb::error::Error::custom(create_error!(InvalidOperation)))
+                    };
+                }
+                if source.moderation_status == v0::FeedbackModerationStatus::Hidden {
+                    return Err(mongodb::error::Error::custom(create_error!(InvalidOperation)));
+                }
+                let mut cursor = db
+                    .col::<FeedbackVote>(VOTES_COL)
+                    .find(doc! { "suggestion_id": &source_id })
+                    .session(&mut *session)
+                    .await?;
+                let source_votes = cursor.stream(&mut *session).try_collect::<Vec<_>>().await?;
+                for vote in source_votes {
+                    let transferred = FeedbackVote::new(target_id.clone(), vote.user_id);
+                    db.col::<FeedbackVote>(VOTES_COL)
+                        .update_one(
+                            doc! { "suggestion_id": &transferred.suggestion_id, "user_id": &transferred.user_id },
+                            doc! { "$setOnInsert": bson::to_document(&transferred)
+                                .map_err(mongodb::error::Error::custom)? },
+                        )
+                        .with_options(UpdateOptions::builder().upsert(true).build())
+                        .session(&mut *session)
+                        .await?;
+                }
+                db.col::<Document>(VOTES_COL)
+                    .delete_many(doc! { "suggestion_id": &source_id })
+                    .session(&mut *session)
+                    .await?;
+                let source = db
+                    .col::<Document>(SUGGESTIONS_COL)
+                    .update_one(
+                        doc! {
+                            "_id": &source_id,
+                            "moderation_status": { "$in": active_statuses },
+                            "_feedback_merge_target": { "$exists": false },
+                            "_feedback_merge_source": { "$exists": false },
+                        },
+                        doc! { "$set": {
+                            "moderation_status": merged,
+                            "merged_into": &target_id,
+                            "merge_reason": reason,
+                            "updated_at": now,
+                        } },
+                    )
+                    .session(&mut *session)
+                    .await?;
+                if source.matched_count == 0 {
+                    return Err(mongodb::error::Error::custom(create_error!(InvalidOperation)));
+                }
+                Ok(())
             }
-        } else {
-            let active_statuses = vec![
-                bson::to_bson(&v0::FeedbackModerationStatus::Pending)
-                    .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
-                bson::to_bson(&v0::FeedbackModerationStatus::Approved)
-                    .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
-                bson::to_bson(&v0::FeedbackModerationStatus::Rejected)
-                    .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
-            ];
-            let result = self
-                .col::<Document>(SUGGESTIONS_COL)
-                .update_one(
-                    doc! { "_id": source_id, "moderation_status": { "$in": active_statuses } },
-                    doc! { "$set": {
-                        "moderation_status": bson::to_bson(&v0::FeedbackModerationStatus::Merged)
-                            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
-                        "merged_into": target_id,
-                        "merge_reason": reason,
-                        "updated_at": bson::to_bson(&Timestamp::now_utc())
-                            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
-                    } },
-                )
-                .await
-                .map_err(|_| create_database_error!("update_one", SUGGESTIONS_COL))?;
-
-            if result.matched_count == 0 {
-                return Err(create_error!(InvalidOperation));
-            }
-        }
-
-        let source_votes = self
-            .col::<FeedbackVote>(VOTES_COL)
-            .find(doc! { "suggestion_id": source_id })
-            .await
-            .map_err(|_| create_database_error!("find", VOTES_COL))?
-            .try_collect::<Vec<_>>()
-            .await
-            .map_err(|_| create_database_error!("deserialize", VOTES_COL))?;
-
-        // The source is now closed to new votes. Copy before removal; both
-        // writes are idempotent and the compound unique index prevents
-        // duplicate users on the target. Retrying a merged source resumes an
-        // interrupted transfer safely.
-        for vote in source_votes {
-            let transferred = FeedbackVote::new(target_id.to_string(), vote.user_id);
-            self.col::<FeedbackVote>(VOTES_COL)
-                .update_one(
-                    doc! {
-                        "suggestion_id": &transferred.suggestion_id,
-                        "user_id": &transferred.user_id,
-                    },
-                    doc! { "$setOnInsert": bson::to_document(&transferred)
-                    .map_err(|_| create_database_error!("serialize", VOTES_COL))? },
-                )
-                .with_options(UpdateOptions::builder().upsert(true).build())
-                .await
-                .map_err(|_| create_database_error!("update_one", VOTES_COL))?;
-        }
-
-        self.col::<Document>(VOTES_COL)
-            .delete_many(doc! { "suggestion_id": source_id })
-            .await
-            .map_err(|_| create_database_error!("delete_many", VOTES_COL))?;
-
-        Ok(())
+            .boxed()
+        })
+        .await
     }
 
     async fn hide_feedback_suggestion(&self, id: &str) -> Result<()> {
+        let transactions = self.feedback_transactions_supported().await?;
+        let _guard = if transactions {
+            None
+        } else {
+            Some(FEEDBACK_MUTATION_LOCK.lock().await)
+        };
         let merged = bson::to_bson(&v0::FeedbackModerationStatus::Merged)
             .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
         let result = self
             .col::<Document>(SUGGESTIONS_COL)
             .update_one(
-                doc! { "_id": id, "moderation_status": { "$ne": merged } },
+                doc! {
+                    "_id": id,
+                    "moderation_status": { "$ne": merged },
+                    "_feedback_merge_target": { "$exists": false },
+                    "_feedback_merge_source": { "$exists": false },
+                },
                 doc! { "$set": {
                     "moderation_status": bson::to_bson(&v0::FeedbackModerationStatus::Hidden)
                         .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
@@ -294,11 +422,22 @@ impl AbstractFeedback for MongoDb {
         id: &str,
         status: v0::FeedbackProductStatus,
     ) -> Result<()> {
+        let transactions = self.feedback_transactions_supported().await?;
+        let _guard = if transactions {
+            None
+        } else {
+            Some(FEEDBACK_MUTATION_LOCK.lock().await)
+        };
         let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
             .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
         update_one_checked(
             self,
-            doc! { "_id": id, "moderation_status": approved },
+            doc! {
+                "_id": id,
+                "moderation_status": approved,
+                "_feedback_merge_target": { "$exists": false },
+                "_feedback_merge_source": { "$exists": false },
+            },
             doc! {
                 "product_status": bson::to_bson(&status)
                     .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
@@ -310,6 +449,12 @@ impl AbstractFeedback for MongoDb {
     }
 
     async fn set_feedback_team_response(&self, id: &str, response: Option<String>) -> Result<()> {
+        let transactions = self.feedback_transactions_supported().await?;
+        let _guard = if transactions {
+            None
+        } else {
+            Some(FEEDBACK_MUTATION_LOCK.lock().await)
+        };
         let blocked = vec![
             bson::to_bson(&v0::FeedbackModerationStatus::Merged)
                 .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
@@ -318,7 +463,12 @@ impl AbstractFeedback for MongoDb {
         ];
         update_one_checked(
             self,
-            doc! { "_id": id, "moderation_status": { "$nin": blocked } },
+            doc! {
+                "_id": id,
+                "moderation_status": { "$nin": blocked },
+                "_feedback_merge_target": { "$exists": false },
+                "_feedback_merge_source": { "$exists": false },
+            },
             doc! {
                 "team_response": response.map(Bson::String).unwrap_or(Bson::Null),
                 "updated_at": bson::to_bson(&Timestamp::now_utc())
@@ -329,15 +479,217 @@ impl AbstractFeedback for MongoDb {
     }
 
     async fn add_feedback_vote(&self, suggestion_id: &str, user_id: &str) -> Result<()> {
+        if !self.feedback_transactions_supported().await? {
+            let _guard = FEEDBACK_MUTATION_LOCK.lock().await;
+            return self
+                .add_feedback_vote_standalone(suggestion_id, user_id)
+                .await;
+        }
         let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
             .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
-        let exists = self
-            .col::<Document>(SUGGESTIONS_COL)
-            .find_one(doc! { "_id": suggestion_id, "moderation_status": approved })
+        let vote = FeedbackVote::new(suggestion_id.to_string(), user_id.to_string());
+        let db = self.clone();
+        let suggestion_id = suggestion_id.to_string();
+        let user_id = user_id.to_string();
+        run_feedback_transaction(self, VOTES_COL, move |session| {
+            let db = db.clone();
+            let suggestion_id = suggestion_id.clone();
+            let user_id = user_id.clone();
+            let approved = approved.clone();
+            let vote = vote.clone();
+            async move {
+                let suggestion = db
+                    .col::<Document>(SUGGESTIONS_COL)
+                    .update_one(
+                        doc! {
+                            "_id": &suggestion_id,
+                            "moderation_status": approved,
+                            "_feedback_merge_target": { "$exists": false },
+                            "_feedback_merge_source": { "$exists": false },
+                        },
+                        doc! { "$inc": { "_vote_revision": 1_i64 } },
+                    )
+                    .session(&mut *session)
+                    .await?;
+                if suggestion.matched_count == 0 {
+                    return Err(mongodb::error::Error::custom(create_error!(NotFound)));
+                }
+                db.col::<FeedbackVote>(VOTES_COL)
+                    .update_one(
+                        doc! { "suggestion_id": &suggestion_id, "user_id": &user_id },
+                        doc! { "$setOnInsert": bson::to_document(&vote)
+                        .map_err(mongodb::error::Error::custom)? },
+                    )
+                    .with_options(UpdateOptions::builder().upsert(true).build())
+                    .session(&mut *session)
+                    .await?;
+                Ok(())
+            }
+            .boxed()
+        })
+        .await
+    }
+
+    async fn remove_feedback_vote(&self, suggestion_id: &str, user_id: &str) -> Result<()> {
+        if !self.feedback_transactions_supported().await? {
+            let _guard = FEEDBACK_MUTATION_LOCK.lock().await;
+            return self
+                .remove_feedback_vote_standalone(suggestion_id, user_id)
+                .await;
+        }
+        let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let db = self.clone();
+        let suggestion_id = suggestion_id.to_string();
+        let user_id = user_id.to_string();
+        run_feedback_transaction(self, VOTES_COL, move |session| {
+            let db = db.clone();
+            let suggestion_id = suggestion_id.clone();
+            let user_id = user_id.clone();
+            let approved = approved.clone();
+            async move {
+                let suggestion = db
+                    .col::<Document>(SUGGESTIONS_COL)
+                    .update_one(
+                        doc! {
+                            "_id": &suggestion_id,
+                            "moderation_status": approved,
+                            "_feedback_merge_target": { "$exists": false },
+                            "_feedback_merge_source": { "$exists": false },
+                        },
+                        doc! { "$inc": { "_vote_revision": 1_i64 } },
+                    )
+                    .session(&mut *session)
+                    .await?;
+                if suggestion.matched_count == 0 {
+                    return Err(mongodb::error::Error::custom(create_error!(NotFound)));
+                }
+                db.col::<Document>(VOTES_COL)
+                    .delete_one(doc! { "suggestion_id": &suggestion_id, "user_id": &user_id })
+                    .session(&mut *session)
+                    .await?;
+                Ok(())
+            }
+            .boxed()
+        })
+        .await
+    }
+}
+
+async fn run_feedback_transaction<T, F>(
+    db: &MongoDb,
+    collection: &'static str,
+    mut operation: F,
+) -> Result<T>
+where
+    F: for<'a> FnMut(&'a mut mongodb::ClientSession) -> BoxFuture<'a, mongodb::error::Result<T>>,
+{
+    let mut last_error = None;
+    for _ in 0..TRANSACTION_ATTEMPTS {
+        let mut session = db
+            .start_session()
             .await
-            .map_err(|_| create_database_error!("find_one", SUGGESTIONS_COL))?
-            .is_some();
-        if !exists {
+            .map_err(|_| create_database_error!("start_session", collection))?;
+        if let Err(error) = session.start_transaction().await {
+            if error.contains_label(TRANSIENT_TRANSACTION_ERROR) {
+                last_error = Some(error);
+                async_std::task::yield_now().await;
+                continue;
+            }
+            return Err(feedback_transaction_error(error, collection));
+        }
+
+        let value = match operation(&mut session).await {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = session.abort_transaction().await;
+                if error.contains_label(TRANSIENT_TRANSACTION_ERROR) {
+                    last_error = Some(error);
+                    async_std::task::yield_now().await;
+                    continue;
+                }
+                return Err(feedback_transaction_error(error, collection));
+            }
+        };
+
+        let mut retry_whole_transaction = false;
+        for _ in 0..TRANSACTION_ATTEMPTS {
+            match session.commit_transaction().await {
+                Ok(()) => return Ok(value),
+                Err(error) if error.contains_label(UNKNOWN_TRANSACTION_COMMIT_RESULT) => {
+                    last_error = Some(error);
+                    async_std::task::yield_now().await;
+                }
+                Err(error) if error.contains_label(TRANSIENT_TRANSACTION_ERROR) => {
+                    last_error = Some(error);
+                    retry_whole_transaction = true;
+                    break;
+                }
+                Err(error) => return Err(feedback_transaction_error(error, collection)),
+            }
+        }
+        if !retry_whole_transaction {
+            break;
+        }
+    }
+
+    Err(feedback_transaction_error(
+        last_error.unwrap_or_else(|| mongodb::error::Error::custom("transaction retry exhausted")),
+        collection,
+    ))
+}
+
+fn feedback_transaction_error(
+    error: mongodb::error::Error,
+    collection: &'static str,
+) -> syrnike_result::Error {
+    if let Some(error) = error.get_custom::<syrnike_result::Error>() {
+        error.clone()
+    } else {
+        create_database_error!("transaction", collection)
+    }
+}
+
+impl MongoDb {
+    async fn feedback_transactions_supported(&self) -> Result<bool> {
+        if let Some(supported) = self.transaction_capability().get().copied() {
+            return Ok(supported);
+        }
+
+        let hello = self
+            .db()
+            .run_command(doc! { "hello": 1 })
+            .await
+            .map_err(|_| create_database_error!("hello", SUGGESTIONS_COL))?;
+        let supported = hello.contains_key("setName")
+            || hello
+                .get_str("msg")
+                .is_ok_and(|message| message == "isdbgrid");
+        let _ = self.transaction_capability().set(supported);
+        info!(
+            "MongoDB feedback transactions for database '{}': {}",
+            self.1, supported
+        );
+        Ok(supported)
+    }
+
+    async fn add_feedback_vote_standalone(&self, suggestion_id: &str, user_id: &str) -> Result<()> {
+        let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let suggestion = self
+            .col::<Document>(SUGGESTIONS_COL)
+            .update_one(
+                doc! {
+                    "_id": suggestion_id,
+                    "moderation_status": approved,
+                    "_feedback_merge_target": { "$exists": false },
+                    "_feedback_merge_source": { "$exists": false },
+                },
+                doc! { "$inc": { "_vote_revision": 1_i64 } },
+            )
+            .await
+            .map_err(|_| create_database_error!("update_one", SUGGESTIONS_COL))?;
+        if suggestion.matched_count == 0 {
             return Err(create_error!(NotFound));
         }
 
@@ -351,51 +703,30 @@ impl AbstractFeedback for MongoDb {
             .with_options(UpdateOptions::builder().upsert(true).build())
             .await
             .map_err(|_| create_database_error!("update_one", VOTES_COL))?;
-
-        // A merge may have started after the approval check. In that case,
-        // move this just-created vote to the canonical target rather than
-        // allowing the merge's source cleanup to discard it.
-        let current = self.fetch_feedback_suggestion(suggestion_id).await?;
-        if current.moderation_status == v0::FeedbackModerationStatus::Approved {
-            return Ok(());
-        }
-
-        if current.moderation_status == v0::FeedbackModerationStatus::Merged {
-            if let Some(target_id) = current.merged_into {
-                let target = self.fetch_feedback_suggestion(&target_id).await?;
-                if target.moderation_status == v0::FeedbackModerationStatus::Approved {
-                    let transferred = FeedbackVote::new(target_id, user_id.to_string());
-                    self.col::<FeedbackVote>(VOTES_COL)
-                        .update_one(
-                            doc! {
-                                "suggestion_id": &transferred.suggestion_id,
-                                "user_id": &transferred.user_id,
-                            },
-                            doc! { "$setOnInsert": bson::to_document(&transferred)
-                            .map_err(|_| create_database_error!("serialize", VOTES_COL))? },
-                        )
-                        .with_options(UpdateOptions::builder().upsert(true).build())
-                        .await
-                        .map_err(|_| create_database_error!("update_one", VOTES_COL))?;
-                }
-            }
-        }
-
-        self.col::<Document>(VOTES_COL)
-            .delete_one(doc! { "suggestion_id": suggestion_id, "user_id": user_id })
-            .await
-            .map_err(|_| create_database_error!("delete_one", VOTES_COL))?;
-        Err(create_error!(NotFound))
+        Ok(())
     }
 
-    async fn remove_feedback_vote(&self, suggestion_id: &str, user_id: &str) -> Result<()> {
-        let exists = self
+    async fn remove_feedback_vote_standalone(
+        &self,
+        suggestion_id: &str,
+        user_id: &str,
+    ) -> Result<()> {
+        let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let suggestion = self
             .col::<Document>(SUGGESTIONS_COL)
-            .find_one(doc! { "_id": suggestion_id })
+            .update_one(
+                doc! {
+                    "_id": suggestion_id,
+                    "moderation_status": approved,
+                    "_feedback_merge_target": { "$exists": false },
+                    "_feedback_merge_source": { "$exists": false },
+                },
+                doc! { "$inc": { "_vote_revision": 1_i64 } },
+            )
             .await
-            .map_err(|_| create_database_error!("find_one", SUGGESTIONS_COL))?
-            .is_some();
-        if !exists {
+            .map_err(|_| create_database_error!("update_one", SUGGESTIONS_COL))?;
+        if suggestion.matched_count == 0 {
             return Err(create_error!(NotFound));
         }
 
@@ -403,23 +734,171 @@ impl AbstractFeedback for MongoDb {
             .delete_one(doc! { "suggestion_id": suggestion_id, "user_id": user_id })
             .await
             .map_err(|_| create_database_error!("delete_one", VOTES_COL))?;
-
-        // If the source was merged while removal was in flight, removing the
-        // canonical vote is the only unambiguous cancel action for this user.
-        let current = self.fetch_feedback_suggestion(suggestion_id).await?;
-        if current.moderation_status == v0::FeedbackModerationStatus::Merged {
-            if let Some(target_id) = current.merged_into {
-                self.col::<Document>(VOTES_COL)
-                    .delete_one(doc! { "suggestion_id": target_id, "user_id": user_id })
-                    .await
-                    .map_err(|_| create_database_error!("delete_one", VOTES_COL))?;
-            }
-        }
         Ok(())
     }
-}
 
-impl MongoDb {
+    async fn merge_feedback_suggestion_standalone(
+        &self,
+        source_id: &str,
+        target_id: &str,
+        reason: Option<String>,
+    ) -> Result<()> {
+        let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let target = self
+            .col::<Document>(SUGGESTIONS_COL)
+            .update_one(
+                doc! {
+                    "_id": target_id,
+                    "moderation_status": approved,
+                    "_feedback_merge_target": { "$exists": false },
+                    "$or": [
+                        { "_feedback_merge_source": { "$exists": false } },
+                        { "_feedback_merge_source": source_id },
+                    ],
+                },
+                doc! {
+                    "$inc": { "_merge_revision": 1_i64 },
+                    "$set": { "_feedback_merge_source": source_id },
+                },
+            )
+            .await
+            .map_err(|_| create_database_error!("update_one", SUGGESTIONS_COL))?;
+        if target.matched_count == 0 {
+            return Err(create_error!(InvalidOperation));
+        }
+
+        let source = match self.fetch_feedback_suggestion(source_id).await {
+            Ok(source) => source,
+            Err(error) => {
+                self.release_feedback_merge_target_claim(target_id, source_id)
+                    .await?;
+                return Err(error);
+            }
+        };
+        if source.moderation_status == v0::FeedbackModerationStatus::Merged {
+            return if source.merged_into.as_deref() == Some(target_id) {
+                self.release_feedback_merge_target_claim(target_id, source_id)
+                    .await?;
+                Ok(())
+            } else {
+                self.release_feedback_merge_target_claim(target_id, source_id)
+                    .await?;
+                Err(create_error!(InvalidOperation))
+            };
+        }
+        if source.moderation_status == v0::FeedbackModerationStatus::Hidden {
+            self.release_feedback_merge_target_claim(target_id, source_id)
+                .await?;
+            return Err(create_error!(InvalidOperation));
+        }
+
+        let active_statuses = vec![
+            bson::to_bson(&v0::FeedbackModerationStatus::Pending)
+                .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
+            bson::to_bson(&v0::FeedbackModerationStatus::Approved)
+                .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
+            bson::to_bson(&v0::FeedbackModerationStatus::Rejected)
+                .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
+        ];
+        let claimed = self
+            .col::<Document>(SUGGESTIONS_COL)
+            .update_one(
+                doc! {
+                    "_id": source_id,
+                    "moderation_status": { "$in": &active_statuses },
+                    "$or": [
+                        { "_feedback_merge_target": { "$exists": false } },
+                        { "_feedback_merge_target": target_id },
+                    ],
+                    "_feedback_merge_source": { "$exists": false },
+                },
+                doc! { "$set": { "_feedback_merge_target": target_id } },
+            )
+            .await
+            .map_err(|_| create_database_error!("update_one", SUGGESTIONS_COL))?;
+        if claimed.matched_count == 0 {
+            self.release_feedback_merge_target_claim(target_id, source_id)
+                .await?;
+            return Err(create_error!(InvalidOperation));
+        }
+
+        let source_votes = self
+            .col::<FeedbackVote>(VOTES_COL)
+            .find(doc! { "suggestion_id": source_id })
+            .await
+            .map_err(|_| create_database_error!("find", VOTES_COL))?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|_| create_database_error!("deserialize", VOTES_COL))?;
+        for vote in source_votes {
+            let transferred = FeedbackVote::new(target_id.to_string(), vote.user_id);
+            self.col::<FeedbackVote>(VOTES_COL)
+                .update_one(
+                    doc! {
+                        "suggestion_id": &transferred.suggestion_id,
+                        "user_id": &transferred.user_id,
+                    },
+                    doc! { "$setOnInsert": bson::to_document(&transferred)
+                    .map_err(|_| create_database_error!("serialize", VOTES_COL))? },
+                )
+                .with_options(UpdateOptions::builder().upsert(true).build())
+                .await
+                .map_err(|_| create_database_error!("update_one", VOTES_COL))?;
+        }
+
+        self.col::<Document>(VOTES_COL)
+            .delete_many(doc! { "suggestion_id": source_id })
+            .await
+            .map_err(|_| create_database_error!("delete_many", VOTES_COL))?;
+
+        let merged = bson::to_bson(&v0::FeedbackModerationStatus::Merged)
+            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let result = self
+            .col::<Document>(SUGGESTIONS_COL)
+            .update_one(
+                doc! {
+                    "_id": source_id,
+                    "moderation_status": { "$in": active_statuses },
+                    "_feedback_merge_target": target_id,
+                },
+                doc! {
+                    "$set": {
+                        "moderation_status": merged,
+                        "merged_into": target_id,
+                        "merge_reason": reason,
+                        "updated_at": bson::to_bson(&Timestamp::now_utc())
+                            .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
+                    },
+                    "$unset": { "_feedback_merge_target": "" },
+                },
+            )
+            .await
+            .map_err(|_| create_database_error!("update_one", SUGGESTIONS_COL))?;
+        if result.matched_count == 0 {
+            Err(create_error!(InvalidOperation))
+        } else {
+            self.release_feedback_merge_target_claim(target_id, source_id)
+                .await?;
+            Ok(())
+        }
+    }
+
+    async fn release_feedback_merge_target_claim(
+        &self,
+        target_id: &str,
+        source_id: &str,
+    ) -> Result<()> {
+        self.col::<Document>(SUGGESTIONS_COL)
+            .update_one(
+                doc! { "_id": target_id, "_feedback_merge_source": source_id },
+                doc! { "$unset": { "_feedback_merge_source": "" } },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|_| create_database_error!("update_one", SUGGESTIONS_COL))
+    }
+
     async fn feedback_vote_state(
         &self,
         suggestion_ids: &[String],
@@ -429,21 +908,43 @@ impl MongoDb {
             return Ok((HashMap::new(), HashSet::new()));
         }
 
-        let votes = self
+        let grouped = self
+            .col::<Document>(VOTES_COL)
+            .aggregate(vec![
+                doc! { "$match": { "suggestion_id": { "$in": suggestion_ids } } },
+                doc! { "$group": { "_id": "$suggestion_id", "count": { "$sum": 1 } } },
+            ])
+            .await
+            .map_err(|_| create_database_error!("aggregate", VOTES_COL))?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|_| create_database_error!("deserialize", VOTES_COL))?;
+        let mut counts = HashMap::new();
+        for group in grouped {
+            let suggestion_id = group
+                .get_str("_id")
+                .map_err(|_| create_database_error!("deserialize", VOTES_COL))?;
+            let count = group
+                .get_i64("count")
+                .or_else(|_| group.get_i32("count").map(i64::from))
+                .map_err(|_| create_database_error!("deserialize", VOTES_COL))?;
+            counts.insert(suggestion_id.to_string(), count.max(0) as u64);
+        }
+
+        let viewer_votes = self
             .col::<FeedbackVote>(VOTES_COL)
-            .find(doc! { "suggestion_id": { "$in": suggestion_ids } })
+            .find(doc! {
+                "suggestion_id": { "$in": suggestion_ids },
+                "user_id": viewer_id,
+            })
             .await
             .map_err(|_| create_database_error!("find", VOTES_COL))?
             .try_collect::<Vec<_>>()
             .await
             .map_err(|_| create_database_error!("deserialize", VOTES_COL))?;
-        let mut counts = HashMap::new();
         let mut voted = HashSet::new();
-        for vote in votes {
-            *counts.entry(vote.suggestion_id.clone()).or_insert(0) += 1;
-            if vote.user_id == viewer_id {
-                voted.insert(vote.suggestion_id);
-            }
+        for vote in viewer_votes {
+            voted.insert(vote.suggestion_id);
         }
 
         Ok((counts, voted))
@@ -453,7 +954,17 @@ impl MongoDb {
 async fn update_pending(db: &MongoDb, id: &str, set: Document) -> Result<()> {
     let pending = bson::to_bson(&v0::FeedbackModerationStatus::Pending)
         .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
-    update_one_checked(db, doc! { "_id": id, "moderation_status": pending }, set).await
+    update_one_checked(
+        db,
+        doc! {
+            "_id": id,
+            "moderation_status": pending,
+            "_feedback_merge_target": { "$exists": false },
+            "_feedback_merge_source": { "$exists": false },
+        },
+        set,
+    )
+    .await
 }
 
 async fn update_one_checked(db: &MongoDb, filter: Document, set: Document) -> Result<()> {

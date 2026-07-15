@@ -59,7 +59,19 @@ export function FeedbackSuggestionRow({
         suggestion.voted && 'before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary',
       )}
     >
-      <FeedbackVoteButton suggestion={suggestion} token={token} />
+      {publiclyApproved ? (
+        <FeedbackVoteButton suggestion={suggestion} token={token} />
+      ) : (
+        <div
+          className="flex h-[4.5rem] w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border border-border bg-muted/20 text-muted-foreground"
+          aria-label={`${suggestion.vote_count.toLocaleString('ru-RU')} голосов`}
+        >
+          <span className="text-sm font-semibold">
+            {suggestion.vote_count.toLocaleString('ru-RU')}
+          </span>
+          <span className="text-[10px]">голосов</span>
+        </div>
+      )}
 
       <div className="min-w-0 self-stretch py-0.5">
         <Link
