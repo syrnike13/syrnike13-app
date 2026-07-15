@@ -54,6 +54,18 @@ ipcRenderer.on('syrnike-desktop:media:remote-video-track-removed', (_event, meta
   )
 })
 
+for (const state of ['available', 'unavailable'] as const) {
+  ipcRenderer.on(
+    `syrnike-desktop:media:remote-screen-publication-${state}`,
+    (_event, metadata) => {
+      window.postMessage(
+        { type: `syrnike-native-screen-publication-${state}`, metadata },
+        window.location.origin,
+      )
+    },
+  )
+}
+
 function resolveDesktopOs(): DesktopOs {
   switch (process.platform) {
     case 'darwin':

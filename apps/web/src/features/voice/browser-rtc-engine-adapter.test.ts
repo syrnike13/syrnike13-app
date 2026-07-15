@@ -91,13 +91,17 @@ vi.mock('livekit-client', () => {
       Reconnecting: 'reconnecting',
       Reconnected: 'reconnected',
       Disconnected: 'disconnected',
+      TrackPublished: 'trackPublished',
       TrackSubscribed: 'trackSubscribed',
       TrackUnsubscribed: 'trackUnsubscribed',
       ActiveSpeakersChanged: 'activeSpeakersChanged',
     },
     Track: {
       Kind: { Audio: 'audio' },
-      Source: { ScreenShareAudio: 'screen_share_audio' },
+      Source: {
+        ScreenShare: 'screen_share',
+        ScreenShareAudio: 'screen_share_audio',
+      },
     },
     Room: MockRoom,
   }
@@ -241,6 +245,36 @@ describe('BrowserRtcEngineAdapter', () => {
     expect(room.localParticipant.setCameraEnabled).toHaveBeenCalledTimes(1)
     expect(room.localParticipant.setScreenShareEnabled).toHaveBeenCalledTimes(1)
     expect(room.disconnect).not.toHaveBeenCalled()
+    await adapter.dispose()
+  })
+
+  it('keeps newly published remote screen media unsubscribed until requested', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    await adapter.connect(lease, desired(), new AbortController().signal)
+    const room = livekit.rooms[0]
+    const screenVideo = {
+      source: 'screen_share',
+      isSubscribed: true,
+      setSubscribed: vi.fn(),
+    }
+    const screenAudio = {
+      source: 'screen_share_audio',
+      isSubscribed: true,
+      setSubscribed: vi.fn(),
+    }
+    const microphone = {
+      source: 'microphone',
+      isSubscribed: true,
+      setSubscribed: vi.fn(),
+    }
+
+    room.emit('trackPublished', screenVideo)
+    room.emit('trackPublished', screenAudio)
+    room.emit('trackPublished', microphone)
+
+    expect(screenVideo.setSubscribed).toHaveBeenCalledWith(false)
+    expect(screenAudio.setSubscribed).toHaveBeenCalledWith(false)
+    expect(microphone.setSubscribed).not.toHaveBeenCalled()
     await adapter.dispose()
   })
 

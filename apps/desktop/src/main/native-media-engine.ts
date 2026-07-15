@@ -131,6 +131,26 @@ export function registerNativeMediaRuntimeIpc(
       })
       return
     }
+    if (event.type === 'remoteScreenPublicationAvailable' ||
+      event.type === 'remoteScreenPublicationUnavailable') {
+      const window = getWindow()
+      if (window && !window.isDestroyed()) {
+        const suffix = event.type === 'remoteScreenPublicationAvailable'
+          ? 'available'
+          : 'unavailable'
+        window.webContents.send(
+          `syrnike-desktop:media:remote-screen-publication-${suffix}`,
+          {
+            trackId: event.trackId,
+            participantIdentity: event.participantIdentity,
+            source: event.source,
+            sessionId: event.sessionId,
+            generation: event.generation,
+          },
+        )
+      }
+      return
+    }
     if (event.type === 'remoteVideoTrackRemoved' || event.type === 'remoteVideoFailed' ||
       event.type === 'localScreenPreviewTrackRemoved') {
       const bridge = event.type === 'localScreenPreviewTrackRemoved'

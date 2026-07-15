@@ -182,4 +182,29 @@ describe('native runtime command validation', () => {
     expect(isNativeRuntimeEvent({ ...removed, source: 'screen' })).toBe(true)
     expect(isNativeRuntimeEvent(removed)).toBe(false)
   })
+
+  it('validates remote screen publication inventory events', () => {
+    const publication = {
+      sequence: 9,
+      sessionId: 'voice-session',
+      generation: 4,
+      trackId: 'screen-publication',
+      participantIdentity: 'user:screen',
+      source: 'screen',
+    }
+
+    expect(isNativeRuntimeEvent({
+      ...publication,
+      type: 'remoteScreenPublicationAvailable',
+    })).toBe(true)
+    expect(isNativeRuntimeEvent({
+      ...publication,
+      type: 'remoteScreenPublicationUnavailable',
+    })).toBe(true)
+    expect(isNativeRuntimeEvent({
+      ...publication,
+      type: 'remoteScreenPublicationAvailable',
+      participantIdentity: '',
+    })).toBe(false)
+  })
 })

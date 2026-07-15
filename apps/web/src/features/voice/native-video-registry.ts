@@ -33,11 +33,25 @@ type TrackEntry = {
   drawRequest: number | null
 }
 
+type PublicationEntry = {
+  sessionId: string
+  generation: number
+  trackId: string
+  participantIdentity: string
+  source: 'screen'
+  adapter: NativeVideoTrackAdapter
+}
+
 const LOCAL_SCREEN_PREVIEW_TRACK_ID = 'local-screen-preview'
 
 export type NativeVideoRegistryTrack = NativeVideoTrackMetadata & {
   track: NativeVideoTrackAdapter
   consumerCount: number
+}
+
+export type NativeVideoRegistryPublication = Omit<PublicationEntry, 'adapter'> & {
+  demandTrackId: string
+  track: NativeVideoTrackAdapter | null
 }
 
 export class NativeVideoTrackAdapter {
@@ -64,6 +78,7 @@ export function isNativeVideoTrackAdapter(
 
 export class NativeVideoRegistry {
   private readonly tracks = new Map<string, TrackEntry>()
+  private readonly publications = new Map<string, PublicationEntry>()
   private readonly localScreenConsumers = new Map<symbol, CanvasConsumer>()
   private readonly localScreenAdapter = new NativeVideoTrackAdapter(
     LOCAL_SCREEN_PREVIEW_TRACK_ID,
@@ -91,6 +106,7 @@ export class NativeVideoRegistry {
       this.disposeTrack(trackId, entry, false)
     }
     this.localScreenConsumers.clear()
+    this.publications.clear()
     this.tombstones.clear()
     this.notify()
   }
@@ -126,6 +142,20 @@ export class NativeVideoRegistry {
       track: entry.adapter,
       consumerCount: this.consumersFor(entry).size,
     }))
+  }
+
+  listPublications(): NativeVideoRegistryPublication[] {
+    return [...this.publications.values()].map(({ adapter, ...publication }) => {
+      const track = this.tracks.get(publication.trackId)
+      return {
+        ...publication,
+        demandTrackId: publication.trackId,
+        track: track?.metadata.sessionId === publication.sessionId &&
+            track.metadata.generation === publication.generation
+          ? adapter
+          : null,
+      }
+    })
   }
 
   attachCanvas(
@@ -187,6 +217,37 @@ export class NativeVideoRegistry {
 
   private readonly onMessage = (event: MessageEvent<unknown>) => {
     if (event.source !== window || event.origin !== window.location.origin) return
+    if (isPublicationMessage(event.data)) {
+      const { metadata } = event.data
+      if (event.data.type === 'syrnike-native-screen-publication-unavailable') {
+        const publication = this.publications.get(metadata.trackId)
+        if (publication &&
+          (publication.sessionId !== metadata.sessionId ||
+            publication.generation !== metadata.generation)) return
+        this.tombstones.set(metadata.trackId, metadata)
+        this.publications.delete(metadata.trackId)
+        this.removeTrack(metadata.trackId, metadata)
+        this.notify()
+        return
+      }
+
+      const current = this.publications.get(metadata.trackId)
+      if (current && metadata.generation < current.generation) return
+      const tombstone = this.tombstones.get(metadata.trackId)
+      if (tombstone && tombstone.sessionId === metadata.sessionId &&
+        metadata.generation >= tombstone.generation) {
+        this.tombstones.delete(metadata.trackId)
+      }
+      this.publications.set(metadata.trackId, {
+        ...metadata,
+        adapter: current?.sessionId === metadata.sessionId &&
+            current.generation === metadata.generation
+          ? current.adapter
+          : new NativeVideoTrackAdapter(metadata.trackId, this),
+      })
+      this.notify()
+      return
+    }
     if (isTrackRemovedMessage(event.data)) {
       this.tombstones.set(event.data.metadata.trackId, event.data.metadata)
       this.removeTrack(event.data.metadata.trackId, event.data.metadata)
@@ -221,9 +282,13 @@ export class NativeVideoRegistry {
     }
 
     if (!entry) {
+      const publication = metadata.source === 'screen' && !metadata.local
+        ? this.publications.get(metadata.trackId)
+        : undefined
       entry = {
         metadata,
-        adapter: new NativeVideoTrackAdapter(metadata.trackId, this),
+        adapter: publication?.adapter ??
+          new NativeVideoTrackAdapter(metadata.trackId, this),
         consumers: new Map(),
         pendingFrame: null,
         drawRequest: null,
@@ -329,6 +394,31 @@ function isTrackRemovedMessage(value: unknown): value is {
     Number.isSafeInteger(
       (candidate.metadata as { generation?: unknown }).generation,
     )
+  )
+}
+
+function isPublicationMessage(value: unknown): value is {
+  type: 'syrnike-native-screen-publication-available' |
+    'syrnike-native-screen-publication-unavailable'
+  metadata: {
+    trackId: string
+    participantIdentity: string
+    source: 'screen'
+    sessionId: string
+    generation: number
+  }
+} {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
+  const metadata = candidate.metadata
+  return (
+    (candidate.type === 'syrnike-native-screen-publication-available' ||
+      candidate.type === 'syrnike-native-screen-publication-unavailable') &&
+    typeof metadata?.trackId === 'string' &&
+    typeof metadata.participantIdentity === 'string' &&
+    metadata.source === 'screen' &&
+    typeof metadata.sessionId === 'string' &&
+    Number.isSafeInteger(metadata.generation)
   )
 }
 

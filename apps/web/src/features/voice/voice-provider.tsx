@@ -10,6 +10,8 @@ import {
   RoomEvent,
   Track,
   type Room,
+  type RemoteParticipant,
+  type RemoteTrackPublication,
   type VideoTrack,
 } from 'livekit-client'
 import {
@@ -31,6 +33,7 @@ import { createWebVoiceAuthorityAdapter } from '#/features/voice/web-voice-autho
 import { baseVoiceIdentity } from '#/features/voice/native-voice-identity'
 import {
   nativeVideoRegistry,
+  type NativeVideoRegistryPublication,
   type NativeVideoRegistryTrack,
 } from '#/features/voice/native-video-registry'
 import { DesktopScreenSharePicker } from '#/features/voice/desktop-screen-share-picker'
@@ -51,7 +54,9 @@ import {
   type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
 import {
+  applyStageScreenPublicationSubscription,
   setStageScreenSubscription,
+  shouldSubscribeStageScreen,
   stageScreenMediaUserId,
 } from '#/features/voice/voice-stage-subscription'
 import {
@@ -137,6 +142,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const auth = useAuth()
   const desktop = getSyrnikeDesktop()
   const [nativeVideoTracks, setNativeVideoTracks] = useState<NativeVideoRegistryTrack[]>([])
+  const [nativeVideoPublications, setNativeVideoPublications] = useState<
+    NativeVideoRegistryPublication[]
+  >([])
   const [localScreenPreviewConsumerCount, setLocalScreenPreviewConsumerCount] =
     useState(0)
   useEffect(() => {
@@ -144,6 +152,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     nativeVideoRegistry.start()
     const update = () => {
       setNativeVideoTracks(nativeVideoRegistry.listTracks())
+      setNativeVideoPublications(nativeVideoRegistry.listPublications())
       setLocalScreenPreviewConsumerCount(
         nativeVideoRegistry.getLocalScreenPreviewConsumerCount(),
       )
@@ -172,6 +181,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const watchedScreenViewerChannelsRef = useRef(new Map<string, string>())
+  const pendingScreenWatchIdsRef = useRef(new Set<string>())
   const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
@@ -227,6 +237,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           () => auth.user?._id ?? null,
         )
     watchedScreenViewerChannelsRef.current.clear()
+    pendingScreenWatchIdsRef.current.clear()
     clientRef.current = client
     let previousSnapshot = client.snapshot()
     setSnapshot(previousSnapshot)
@@ -295,12 +306,27 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!room) return
     const refresh = () => setRoomRevision((revision) => revision + 1)
+    const onTrackUnpublished = (
+      publication: RemoteTrackPublication,
+      participant: RemoteParticipant,
+    ) => {
+      if (publication.source === Track.Source.ScreenShare) {
+        const mediaId = stageMediaItemId(
+          baseVoiceIdentity(participant.identity),
+          'screen',
+        )
+        watchedScreenViewerChannelsRef.current.delete(mediaId)
+        pendingScreenWatchIdsRef.current.delete(mediaId)
+        notifiedScreenViewerIdsRef.current.delete(mediaId)
+      }
+      refresh()
+    }
     room.on(RoomEvent.ParticipantConnected, refresh)
     room.on(RoomEvent.ParticipantDisconnected, refresh)
     room.on(RoomEvent.TrackSubscribed, refresh)
     room.on(RoomEvent.TrackUnsubscribed, refresh)
     room.on(RoomEvent.TrackPublished, refresh)
-    room.on(RoomEvent.TrackUnpublished, refresh)
+    room.on(RoomEvent.TrackUnpublished, onTrackUnpublished)
     room.on(RoomEvent.TrackMuted, refresh)
     room.on(RoomEvent.TrackUnmuted, refresh)
     return () => {
@@ -309,7 +335,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.off(RoomEvent.TrackSubscribed, refresh)
       room.off(RoomEvent.TrackUnsubscribed, refresh)
       room.off(RoomEvent.TrackPublished, refresh)
-      room.off(RoomEvent.TrackUnpublished, refresh)
+      room.off(RoomEvent.TrackUnpublished, onTrackUnpublished)
       room.off(RoomEvent.TrackMuted, refresh)
       room.off(RoomEvent.TrackUnmuted, refresh)
     }
@@ -410,6 +436,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       !snapshot.intentChannelId
     ) {
       watchedScreenViewerChannelsRef.current.clear()
+      pendingScreenWatchIdsRef.current.clear()
     }
   }, [snapshot.connection, snapshot.intentChannelId])
 
@@ -554,6 +581,30 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         ? snapshot.intentChannelId
         : null
 
+  useEffect(() => {
+    if (!room || !channelId) return
+    const watchedRemoteScreenIds = new Set(
+      [...watchedScreenViewerChannelsRef.current]
+        .filter(([, targetChannelId]) => targetChannelId === channelId)
+        .map(([mediaId]) => mediaId),
+    )
+    const roomParticipants = [
+      room.localParticipant,
+      ...room.remoteParticipants.values(),
+    ]
+    for (const participant of roomParticipants) {
+      const userId = baseVoiceIdentity(participant.identity)
+      const subscribed = shouldSubscribeStageScreen({
+        isLocal: participant === room.localParticipant,
+        mediaId: stageMediaItemId(userId, 'screen'),
+        watchedRemoteScreenIds,
+      })
+      for (const publication of participant.trackPublications.values()) {
+        applyStageScreenPublicationSubscription(publication, subscribed)
+      }
+    }
+  }, [channelId, room, roomRevision])
+
   // Fullscreen is scoped to one voice session and must not survive leave/move.
   useEffect(() => {
     setStageFullscreen(false)
@@ -578,24 +629,32 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
 
   const stageMediaItems = useMemo(() => {
+    const watchedRemoteScreenIds = new Set(
+      [...watchedScreenViewerChannelsRef.current]
+        .filter(([, targetChannelId]) => targetChannelId === channelId)
+        .map(([mediaId]) => mediaId),
+    )
     const items = buildStageItems({
       room,
       participants,
       currentUserId: auth.user?._id ?? null,
       filters: stageMediaFilters,
+      watchedRemoteScreenIds,
       nativeTracks: nativeVideoTracks,
+      nativePublications: nativeVideoPublications,
       localScreenPreview: desktop && localScreenPreviewActive && auth.user?._id
         ? {
           userId: auth.user._id,
           track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
         }
         : null,
-      setNativeDemand: (track, demanded) => desktop?.media.setRemoteVideoDemand(
-        track.sessionId,
-        track.generation,
-        track.trackId,
-        demanded,
-      ),
+      setNativeDemand: (sessionId, generation, trackId, demanded) =>
+        desktop?.media.setRemoteVideoDemand(
+          sessionId,
+          generation,
+          trackId,
+          demanded,
+        ),
     })
     return withConnectingLocalAvatarItem(items, {
       connecting: status === 'connecting' && channelId != null,
@@ -610,11 +669,57 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     room,
     roomRevision,
     nativeVideoTracks,
+    nativeVideoPublications,
     localScreenPreviewActive,
     stageMediaFilters,
     status,
   ])
   stageMediaItemsRef.current = stageMediaItems
+
+  useEffect(() => {
+    if (!channelId) return
+    const availableRemoteScreenIds = new Set(
+      nativeVideoPublications.map((publication) =>
+        stageMediaItemId(
+          baseVoiceIdentity(publication.participantIdentity),
+          'screen',
+        )),
+    )
+    const remoteParticipantUserIds = new Set(
+      participants
+        .map(({ id }) => id)
+        .filter((id) => id !== auth.user?._id),
+    )
+    if (room) {
+      for (const participant of room.remoteParticipants.values()) {
+        const userId = baseVoiceIdentity(participant.identity)
+        remoteParticipantUserIds.add(userId)
+        for (const publication of participant.trackPublications.values()) {
+          if (publication.source === Track.Source.ScreenShare) {
+            availableRemoteScreenIds.add(stageMediaItemId(userId, 'screen'))
+          }
+        }
+      }
+    }
+    for (const [mediaId, targetChannelId] of watchedScreenViewerChannelsRef.current) {
+      if (targetChannelId !== channelId) continue
+      if (availableRemoteScreenIds.has(mediaId)) {
+        pendingScreenWatchIdsRef.current.delete(mediaId)
+        continue
+      }
+      const userId = stageScreenMediaUserId(mediaId)
+      if (
+        pendingScreenWatchIdsRef.current.has(mediaId) &&
+        userId &&
+        remoteParticipantUserIds.has(userId)
+      ) {
+        continue
+      }
+      watchedScreenViewerChannelsRef.current.delete(mediaId)
+      pendingScreenWatchIdsRef.current.delete(mediaId)
+      notifiedScreenViewerIdsRef.current.delete(mediaId)
+    }
+  }, [auth.user?._id, channelId, nativeVideoPublications, participants, room, roomRevision])
 
   useEffect(() => {
     if (snapshot.connection !== 'connected' || !room) {
@@ -674,12 +779,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const watchParticipantScreenShare = useCallback(
     async (targetChannelId: string, userId: string) => {
-      if (channelId !== targetChannelId || status !== 'connected') {
-        const joined = await join(targetChannelId)
-        if (!joined) return
-      }
       const mediaId = stageMediaItemId(userId, 'screen')
       watchedScreenViewerChannelsRef.current.set(mediaId, targetChannelId)
+      pendingScreenWatchIdsRef.current.add(mediaId)
+      setRoomRevision((revision) => revision + 1)
+      if (channelId !== targetChannelId || status !== 'connected') {
+        const joined = await join(targetChannelId)
+        if (!joined) {
+          watchedScreenViewerChannelsRef.current.delete(mediaId)
+          pendingScreenWatchIdsRef.current.delete(mediaId)
+          setRoomRevision((revision) => revision + 1)
+          return
+        }
+      }
       const activeRoom = clientRef.current?.room()
       const currentSnapshot = clientRef.current?.snapshot()
       if (
@@ -709,8 +821,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         } else if (!item.isLocal) {
           if (subscribed && channelId) {
             watchedScreenViewerChannelsRef.current.set(item.id, channelId)
+            pendingScreenWatchIdsRef.current.delete(item.id)
           } else if (!subscribed) {
             watchedScreenViewerChannelsRef.current.delete(item.id)
+            pendingScreenWatchIdsRef.current.delete(item.id)
           }
           if (room) {
             updateScreenViewerNotification(room, item.id, item.userId, subscribed)
@@ -1005,12 +1119,19 @@ function buildStageItems(options: {
   participants: readonly { id: string }[]
   currentUserId: string | null
   filters: StageMediaFilters
+  watchedRemoteScreenIds: ReadonlySet<string>
   nativeTracks: readonly NativeVideoRegistryTrack[]
+  nativePublications: readonly NativeVideoRegistryPublication[]
   localScreenPreview: {
     userId: string
     track: NativeVideoRegistryTrack['track']
   } | null
-  setNativeDemand: (track: NativeVideoRegistryTrack, demanded: boolean) => unknown
+  setNativeDemand: (
+    sessionId: string,
+    generation: number,
+    trackId: string,
+    demanded: boolean,
+  ) => unknown
 }): VoiceStageMediaItem[] {
   const participantIds = new Set(options.participants.map(({ id }) => id))
   const tracks: StageMediaTrackEntry<VideoTrack, VoiceStageMediaPublication>[] = []
@@ -1030,24 +1151,49 @@ function buildStageItems(options: {
     })
   }
   for (const native of options.nativeTracks) {
-    if (native.local && native.source === 'screen') continue
+    if (native.source === 'screen') continue
     const userId = baseVoiceIdentity(native.participantIdentity)
     participantIds.add(userId)
     tracks.push({
       userId,
-      source: native.source,
+      source: 'camera',
       track: native.track as unknown as VideoTrack,
       publication: {
-        source: native.source === 'screen' ? Track.Source.ScreenShare : Track.Source.Camera,
+        source: Track.Source.Camera,
         isMuted: false,
         isSubscribed: true,
-        setSubscribed: native.local
-          ? undefined
-          : (demanded) => {
-            void options.setNativeDemand(native, demanded)
-          },
       },
       subscribed: true,
+      live: true,
+    })
+  }
+  for (const publication of options.nativePublications) {
+    const userId = baseVoiceIdentity(publication.participantIdentity)
+    const mediaId = stageMediaItemId(userId, 'screen')
+    const subscribed = shouldSubscribeStageScreen({
+      isLocal: false,
+      mediaId,
+      watchedRemoteScreenIds: options.watchedRemoteScreenIds,
+    })
+    participantIds.add(userId)
+    tracks.push({
+      userId,
+      source: 'screen',
+      track: subscribed ? publication.track as unknown as VideoTrack : null,
+      publication: {
+        source: Track.Source.ScreenShare,
+        isMuted: false,
+        isSubscribed: subscribed,
+        setSubscribed: (demanded) => {
+          void options.setNativeDemand(
+            publication.sessionId,
+            publication.generation,
+            publication.demandTrackId,
+            demanded,
+          )
+        },
+      },
+      subscribed,
       live: true,
     })
   }
@@ -1068,12 +1214,20 @@ function buildStageItems(options: {
               ? 'camera'
               : null
         if (!source) continue
+        const isLocal = participant === options.room.localParticipant
+        const subscribed = source === 'screen'
+          ? shouldSubscribeStageScreen({
+            isLocal,
+            mediaId: stageMediaItemId(userId, 'screen'),
+            watchedRemoteScreenIds: options.watchedRemoteScreenIds,
+          })
+          : publication.isSubscribed
         tracks.push({
           userId,
           source,
-          track: publication.videoTrack ?? null,
+          track: subscribed ? publication.videoTrack ?? null : null,
           publication,
-          subscribed: publication.isSubscribed,
+          subscribed,
           live: !publication.isMuted,
         })
       }

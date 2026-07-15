@@ -96,7 +96,7 @@ describe('NativeRtcEngineAdapter', () => {
     ).toMatchObject({
       config: {
         bypassSystemAudioInputProcessing: true,
-        automaticGainControl: false,
+        automaticGainControl: true,
       },
     })
     const microphone = runtime.commands.find(

@@ -213,6 +213,83 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     expect(consumer.drawImage).not.toHaveBeenCalled()
     expect(stale.close).toHaveBeenCalledOnce()
   })
+
+  it('lists an unsubscribed screen publication before any frame exists', () => {
+    const registry = new NativeVideoRegistry()
+
+    deliver(registry, publicationMessage('available'))
+
+    expect(registry.listTracks()).toEqual([])
+    expect(registry.listPublications()).toEqual([
+      expect.objectContaining({
+        trackId: 'remote-screen',
+        demandTrackId: 'remote-screen',
+        participantIdentity: 'remote-user',
+        source: 'screen',
+        track: null,
+      }),
+    ])
+  })
+
+  it('removes materialized video without removing publication availability', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+
+    deliver(registry, remoteRemovalMessage())
+
+    expect(registry.getTrack('remote-screen')).toBeNull()
+    expect(registry.listPublications()[0]).toMatchObject({
+      demandTrackId: 'remote-screen',
+      track: null,
+    })
+  })
+
+  it('accepts re-demand frames only after the stable publication is re-announced', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    deliver(registry, remoteRemovalMessage())
+    const late = new FakeVideoFrame()
+    deliver(registry, remoteFrameMessage(2, late))
+    expect(late.close).toHaveBeenCalledOnce()
+    expect(registry.getTrack('remote-screen')).toBeNull()
+
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+
+    expect(registry.getTrack('remote-screen')).toBe(
+      registry.listPublications()[0]?.track,
+    )
+  })
+
+  it('removes publication availability on unpublish and fences late frames', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, publicationMessage('unavailable'))
+    const late = new FakeVideoFrame()
+
+    deliver(registry, remoteFrameMessage(1, late))
+
+    expect(registry.listPublications()).toEqual([])
+    expect(registry.getTrack('remote-screen')).toBeNull()
+    expect(late.close).toHaveBeenCalledOnce()
+  })
+
+  it('does not attach a stale same-generation track from another session', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    const nextSession = publicationMessage('available')
+    nextSession.metadata.sessionId = 'next-session'
+
+    deliver(registry, nextSession)
+
+    expect(registry.listPublications()[0]).toMatchObject({
+      sessionId: 'next-session',
+      track: null,
+    })
+  })
 })
 
 function metadata(generation: number, sequence: number) {
@@ -247,6 +324,47 @@ function removalMessage(generation: number) {
       trackId: 'local-screen:session',
       sessionId: 'session',
       generation,
+    },
+  }
+}
+
+function publicationMessage(state: 'available' | 'unavailable') {
+  return {
+    type: `syrnike-native-screen-publication-${state}`,
+    metadata: {
+      trackId: 'remote-screen',
+      participantIdentity: 'remote-user',
+      source: 'screen',
+      sessionId: 'session',
+      generation: 1,
+    },
+  }
+}
+
+function remoteFrameMessage(sequence: number, frame: FakeVideoFrame) {
+  return {
+    type: 'syrnike-native-video-frame',
+    metadata: {
+      sessionId: 'session',
+      generation: 1,
+      trackId: 'remote-screen',
+      participantIdentity: 'remote-user',
+      source: 'screen',
+      local: false,
+      sequence,
+      rendererEpoch: 0,
+    },
+    frame,
+  }
+}
+
+function remoteRemovalMessage() {
+  return {
+    type: 'syrnike-native-video-track-removed',
+    metadata: {
+      trackId: 'remote-screen',
+      sessionId: 'session',
+      generation: 1,
     },
   }
 }

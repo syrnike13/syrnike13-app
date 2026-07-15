@@ -244,6 +244,18 @@ export type MediaRuntimeEvent =
       ntHandle: Uint8Array
     } & SessionEventBase)
   | ({ type: 'remoteVideoTrackRemoved'; trackId: string } & SessionEventBase)
+  | ({
+      type: 'remoteScreenPublicationAvailable'
+      trackId: string
+      participantIdentity: string
+      source: 'screen'
+    } & SessionEventBase)
+  | ({
+      type: 'remoteScreenPublicationUnavailable'
+      trackId: string
+      participantIdentity: string
+      source: 'screen'
+    } & SessionEventBase)
   | ({ type: 'remoteVideoFailed'; trackId: string; source?: 'camera' | 'screen' } &
       SessionEventBase)
   | ({
@@ -852,6 +864,11 @@ export function isNativeRuntimeEvent(
       )
     case 'remoteVideoTrackRemoved':
       return isNonEmptyString(value.trackId, 512)
+    case 'remoteScreenPublicationAvailable':
+    case 'remoteScreenPublicationUnavailable':
+      return isNonEmptyString(value.trackId, 512) &&
+        isNonEmptyString(value.participantIdentity, 512) &&
+        value.source === 'screen'
     case 'localScreenPreviewTrackRemoved':
       return isNonEmptyString(value.trackId, 512) && value.source === 'screen'
     case 'localScreenPreviewFailed':
