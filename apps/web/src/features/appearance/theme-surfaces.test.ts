@@ -42,6 +42,8 @@ describe('theme surfaces', () => {
     expect(variables['theme-surface-floating']).not.toBe(
       variables['theme-surface-raised'],
     )
+    expect(variables['theme-surface-solid']).not.toContain('linear-gradient')
+    expect(variables['theme-surface-solid']).not.toContain('transparent')
     expect(variables['theme-surface-input']).toContain('fixed 0 0 / cover')
     expect(variables['theme-surface-input']).not.toBe(
       variables['theme-surface-floating'],
@@ -53,7 +55,7 @@ describe('theme surfaces', () => {
       const surfaces = buildThemeSurfaceVariables(gradient, variant)
 
       for (const [key, surface] of Object.entries(surfaces)) {
-        if (key === 'theme-backdrop') continue
+        if (key === 'theme-backdrop' || key === 'theme-surface-solid') continue
         expect(surfaceOverlayAlpha(surface)).toBeGreaterThanOrEqual(0)
         expect(surfaceOverlayAlpha(surface)).toBeLessThanOrEqual(1)
       }
@@ -87,6 +89,24 @@ describe('theme surfaces', () => {
     expect(surfaces['theme-surface-navigation']).toBe(base.background)
     expect(surfaces['theme-surface-chrome']).toBe(base.card)
     expect(surfaces['theme-surface-input']).toBe(base.input)
+    expect(surfaces['theme-surface-solid']).toBe(base.popover)
+  })
+
+  it('builds a solid surface from the equal-weight Oklab average', () => {
+    const threeStops = {
+      ...gradient,
+      colors: ['#FF0000', '#00FF00', '#0000FF'],
+    }
+    const dark = buildThemeSurfaceVariables(threeStops, 'dark')
+    const light = buildThemeSurfaceVariables(threeStops, 'light')
+
+    expect(dark['theme-surface-solid']).toContain(
+      'color-mix(in oklab, #FF0000 50%, #00FF00 50%) 66.6667%, #0000FF 33.3333%',
+    )
+    expect(dark['theme-surface-solid']).toContain('black')
+    expect(light['theme-surface-solid']).toContain('white')
+    expect(dark['theme-surface-solid']).not.toContain('linear-gradient')
+    expect(light['theme-surface-solid']).not.toContain('transparent')
   })
 
   it('duplicates a single stop into a valid gradient', () => {

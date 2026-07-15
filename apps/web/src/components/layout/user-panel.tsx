@@ -166,7 +166,7 @@ export function UserPanel() {
             align="start"
             sideOffset={8}
             collisionPadding={16}
-            className="gradient-surface-raised z-[200] w-[min(300px,calc(100vw-1rem))] overflow-hidden border-0 bg-card p-0 text-foreground shadow-xl ring-1 ring-shell-divider"
+            className="z-[200] w-[min(300px,calc(100vw-1rem))] overflow-hidden border-0 bg-card p-0 text-foreground shadow-xl ring-1 ring-shell-divider"
             onOpenAutoFocus={(event) => event.preventDefault()}
           >
             <CurrentUserProfileMenu

@@ -245,6 +245,10 @@ html {
   background: var(--theme-surface-floating, var(--secondary));
 }
 
+.theme-surface-solid {
+  background: var(--theme-surface-solid, var(--popover));
+}
+
 :root[data-theme-gradient]:not([data-theme-gradient='none']) body {
   background: transparent;
 }
@@ -283,6 +287,11 @@ html {
 
 :root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-floating {
   background: var(--theme-surface-floating);
+}
+
+:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-surface-solid {
+  background: var(--theme-surface-solid);
+  backdrop-filter: none;
 }
 
 :root[data-theme-gradient]:not([data-theme-gradient='none']) :is(

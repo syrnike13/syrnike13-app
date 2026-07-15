@@ -11,9 +11,13 @@ describe('UserProfileStatusBubble', () => {
   })
 
   it('renders the trimmed status text', () => {
-    render(<UserProfileStatusBubble status="  тест статус  " />)
+    const { container } = render(
+      <UserProfileStatusBubble status="  тест статус  " />,
+    )
 
     expect(screen.getByText('тест статус')).toBeTruthy()
+    expect(container.querySelectorAll('.gradient-surface-solid')).toHaveLength(3)
+    expect(container.querySelector('.gradient-surface-floating')).toBeNull()
   })
 
   it('renders nothing for empty or missing status', () => {

@@ -35,6 +35,11 @@ alwaysApply: true
 - бренд → `primary`
 - presence → `apps/web/src/lib/presence.ts`
 
+## Поверхности градиентных тем
+
+- элементы без видимого градиента используют `gradient-surface-solid`; цвет берётся из равновесного Oklab-среднего всех stop-цветов и затемняется/осветляется через opacity категории
+- общий `PopoverContent` всегда использует `gradient-surface-solid`; portal-элементы с той же семантикой добавляют класс явно
+
 ## Исключения
 
 - цвета ролей/серверов из API, `role-colour-picker.tsx`, `avatar-tile-palette.ts`
