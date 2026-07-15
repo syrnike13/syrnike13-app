@@ -5,6 +5,8 @@ import type { SoundEventId } from './sound-events'
 export type SoundVoiceMediaState = {
   screensharing: boolean
   camera: boolean
+  selfMuted?: boolean
+  selfDeafened?: boolean
 }
 
 export type SoundEventContext = {
@@ -84,6 +86,25 @@ function voiceStateFlagChanged(
   return current
 }
 
+function selfVoiceStateFlagChanged(
+  event: GatewayServerEvent,
+  flag: 'self_mute' | 'self_deaf',
+  previousKey: 'selfMuted' | 'selfDeafened',
+  previousVoiceState?: SoundVoiceMediaState | null,
+) {
+  if (!event.state || !(flag in event.state)) return null
+  const current = Boolean(event.state[flag])
+  let previous: boolean
+  if (typeof event.previous_state === 'object' && event.previous_state) {
+    previous = Boolean(Reflect.get(event.previous_state, flag))
+  } else if (previousVoiceState?.[previousKey] != null) {
+    previous = Boolean(previousVoiceState[previousKey])
+  } else {
+    return null
+  }
+  return current === previous ? null : current
+}
+
 export function soundEventFromGatewayEvent(
   event: GatewayServerEvent,
   context: SoundEventContext,
@@ -143,7 +164,25 @@ export function soundEventFromGatewayEvent(
       ) {
         return null
       }
-      if (eventUserId(event) === context.currentUserId) return null
+      if (eventUserId(event) === context.currentUserId) {
+        const deafened = selfVoiceStateFlagChanged(
+          event,
+          'self_deaf',
+          'selfDeafened',
+          context.previousVoiceState,
+        )
+        if (deafened != null) {
+          return deafened ? 'voice.deafen' : 'voice.undeafen'
+        }
+        const muted = selfVoiceStateFlagChanged(
+          event,
+          'self_mute',
+          'selfMuted',
+          context.previousVoiceState,
+        )
+        if (muted != null) return muted ? 'voice.mute' : 'voice.unmute'
+        return null
+      }
       const screenShare = voiceStateFlagChanged(
         event,
         'screensharing',

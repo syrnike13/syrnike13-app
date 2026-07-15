@@ -326,4 +326,42 @@ describe('gateway sound event mapping', () => {
       ),
     ).toBeNull()
   })
+
+  it('plays mute and deafen sounds only for confirmed self voice updates', () => {
+    expect(
+      soundEventFromGatewayEvent(
+        {
+          type: 'VoiceStateUpdate',
+          channel_id: 'voice-open',
+          state: { id: 'user-self', self_mute: true },
+          previous_state: { self_mute: false },
+        },
+        baseContext,
+      ),
+    ).toBe('voice.mute')
+
+    expect(
+      soundEventFromGatewayEvent(
+        {
+          type: 'VoiceStateUpdate',
+          channel_id: 'voice-open',
+          state: { id: 'user-self', self_deaf: false },
+          previous_state: { self_deaf: true },
+        },
+        baseContext,
+      ),
+    ).toBe('voice.undeafen')
+
+    expect(
+      soundEventFromGatewayEvent(
+        {
+          type: 'VoiceStateUpdate',
+          channel_id: 'voice-other',
+          state: { id: 'user-self', self_mute: true },
+          previous_state: { self_mute: false },
+        },
+        baseContext,
+      ),
+    ).toBeNull()
+  })
 })

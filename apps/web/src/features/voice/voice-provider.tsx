@@ -485,29 +485,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const leave = useCallback(() => {
     void dispatchVoice({ type: 'leave' })
-    if (snapshot.connection !== 'disconnected' && snapshot.connection !== 'failed') {
-      playUiSound('voice.disconnect')
-    }
-  }, [dispatchVoice, snapshot.connection])
+  }, [dispatchVoice])
 
   const toggleMic = useCallback(() => {
     if (snapshot.userDeafened) {
       voicePreferenceStore.setDeafened(false)
       void dispatchVoice({ type: 'setUserDeafened', deafened: false })
-      playUiSound('voice.undeafen')
       return
     }
     const enabled = snapshot.userMuted
     voicePreferenceStore.setMicEnabled(enabled)
     void dispatchVoice({ type: 'setUserMuted', muted: !enabled })
-    playUiSound(enabled ? 'voice.unmute' : 'voice.mute')
   }, [dispatchVoice, snapshot.userDeafened, snapshot.userMuted])
 
   const toggleDeafen = useCallback(() => {
     const deafened = !snapshot.userDeafened
     voicePreferenceStore.setDeafened(deafened)
     void dispatchVoice({ type: 'setUserDeafened', deafened })
-    playUiSound(deafened ? 'voice.deafen' : 'voice.undeafen')
   }, [dispatchVoice, snapshot.userDeafened])
 
   const toggleCamera = useCallback(() => {

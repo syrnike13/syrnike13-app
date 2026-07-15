@@ -249,7 +249,7 @@ outgoing_friend_requests = 5
 bots = 2
 
 # Message content length
-message_length = 2000
+message_length = 8000
 
 # Number of attachments that can be included
 message_attachments = 5
@@ -295,7 +295,7 @@ outgoing_friend_requests = 10
 bots = 5
 
 # Message content length
-message_length = 2000
+message_length = 8000
 
 # Number of attachments that can be included
 message_attachments = 5
