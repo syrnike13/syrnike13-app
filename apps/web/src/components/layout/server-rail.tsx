@@ -74,9 +74,11 @@ function ServerIcon({
 export function ServerRail({
   variant,
   reserveUserPanelSpace = true,
+  userPanelReservePx = USER_PANEL_RESERVE_PX,
 }: {
   variant: ServerRailVariant
   reserveUserPanelSpace?: boolean
+  userPanelReservePx?: number
 }) {
   const auth = useAuth()
   const ready = useSyncStore((s) => s.ready)
@@ -106,7 +108,7 @@ export function ServerRail({
     (variant === 'desktop' || !selectedServerId)
 
   const railBottomReserveStyle = reserveUserPanelSpace
-    ? { paddingBottom: USER_PANEL_RESERVE_PX }
+    ? { paddingBottom: userPanelReservePx }
     : undefined
 
   if (!ready) {
