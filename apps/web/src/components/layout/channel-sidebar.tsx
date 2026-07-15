@@ -1,6 +1,5 @@
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { ServerChannelList } from '#/components/channels/server-channel-list'
-import { useState } from 'react'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import {
@@ -32,7 +31,6 @@ export function ChannelSidebar({
   const users = useSyncStore((s) => s.users)
   const unreads = useSyncStore((s) => s.unreads)
   const servers = useSyncStore((s) => s.servers)
-  const [bannerInteractionActive, setBannerInteractionActive] = useState(false)
   const prefersReducedMotion = useMediaQuery(
     '(prefers-reduced-motion: reduce)',
   )
@@ -48,7 +46,7 @@ export function ChannelSidebar({
     : undefined
   const serverName = selectedServer?.name ?? 'Личные сообщения'
   const bannerUrl = serverBannerUrl(selectedServer?.banner, {
-    animated: bannerInteractionActive && !prefersReducedMotion,
+    animated: !prefersReducedMotion,
   })
 
   return (
@@ -66,10 +64,6 @@ export function ChannelSidebar({
           'relative overflow-hidden px-3',
           bannerUrl ? 'h-32 items-start py-3' : 'bg-transparent',
         )}
-        onPointerEnter={() => setBannerInteractionActive(true)}
-        onPointerLeave={() => setBannerInteractionActive(false)}
-        onFocusCapture={() => setBannerInteractionActive(true)}
-        onBlurCapture={() => setBannerInteractionActive(false)}
       >
         {bannerUrl ? (
           <>
