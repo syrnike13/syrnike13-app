@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 55; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 57; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1556,6 +1556,57 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             })
             .await
             .expect("Failed to create feedback type and area index.");
+    };
+
+    if revision <= 55 {
+        info!("Running migration [revision 55 / 15-07-2026]: Add anonymous feedback authorship.");
+
+        db.col::<Document>("feedback_suggestions")
+            .update_many(
+                doc! { "anonymous": { "$exists": false } },
+                doc! { "$set": { "anonymous": false } },
+            )
+            .await
+            .expect("Failed to add anonymous feedback flag.");
+    };
+
+    if revision <= 56 {
+        info!("Running migration [revision 56 / 15-07-2026]: Backfill feedback author tags.");
+
+        let mut suggestions = db
+            .col::<Document>("feedback_suggestions")
+            .find(doc! { "author_username": { "$exists": false } })
+            .await
+            .expect("Failed to fetch feedback suggestions without author tags.");
+
+        while let Some(suggestion) = suggestions.next().await {
+            let suggestion = suggestion.expect("Failed to read feedback suggestion.");
+            let Some(id) = suggestion.get_str("_id").ok() else {
+                continue;
+            };
+            let Some(author_id) = suggestion.get_str("author_id").ok() else {
+                continue;
+            };
+            let Some(author) = db
+                .col::<Document>("users")
+                .find_one(doc! { "_id": author_id })
+                .await
+                .expect("Failed to fetch feedback author.")
+            else {
+                continue;
+            };
+            let Some(username) = author.get_str("username").ok() else {
+                continue;
+            };
+
+            db.col::<Document>("feedback_suggestions")
+                .update_one(
+                    doc! { "_id": id },
+                    doc! { "$set": { "author_username": username } },
+                )
+                .await
+                .expect("Failed to backfill feedback author tag.");
+        }
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

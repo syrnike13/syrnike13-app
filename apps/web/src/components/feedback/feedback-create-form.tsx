@@ -135,13 +135,14 @@ export function FeedbackCreateForm() {
   )
 
   const createMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (anonymous: boolean) =>
       createFeedbackSuggestion(token!, {
         title: normalizedTitle,
         description: description.trim(),
         category: category as FeedbackCategory,
         area: area || undefined,
         platform: platform as FeedbackPlatform,
+        anonymous,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.all })
@@ -172,7 +173,7 @@ export function FeedbackCreateForm() {
           className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-8 sm:py-8"
           onSubmit={(event) => {
             event.preventDefault()
-            if (canSubmit && !createMutation.isPending) createMutation.mutate()
+            if (canSubmit && !createMutation.isPending) createMutation.mutate(false)
           }}
         >
           <section className="space-y-3" aria-labelledby="feedback-category-label">
@@ -354,13 +355,26 @@ export function FeedbackCreateForm() {
             <p>Перед публикацией обращение пройдёт модерацию.</p>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" asChild>
-              <Link to={`${prefix}/feedback`} search={{ view: 'all' }}>Отмена</Link>
-            </Button>
-            <Button type="submit" disabled={!canSubmit || createMutation.isPending}>
-              {createMutation.isPending ? 'Отправляем…' : 'Отправить на модерацию'}
-            </Button>
+          <div className="space-y-3 border-t border-shell-divider pt-5">
+            <p className="text-xs leading-5 text-muted-foreground sm:text-right">
+              При анонимной публикации ваше имя увидят только модераторы.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" asChild>
+                <Link to={`${prefix}/feedback`} search={{ view: 'all' }}>Отмена</Link>
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!canSubmit || createMutation.isPending}
+                onClick={() => createMutation.mutate(true)}
+              >
+                Добавить анонимно
+              </Button>
+              <Button type="submit" disabled={!canSubmit || createMutation.isPending}>
+                {createMutation.isPending ? 'Отправляем…' : 'Отправить на модерацию'}
+              </Button>
+            </div>
           </div>
         </form>
       </ScrollArea>

@@ -40,8 +40,15 @@ export function FeedbackSuggestionRow({
   token: string
 }) {
   const prefix = useAppRoutePrefix()
-  const author = useSyncStore((state) => state.users[suggestion.author])
-  const authorLabel = author?.display_name ?? author?.username ?? 'Участник'
+  const author = useSyncStore((state) =>
+    suggestion.author ? state.users[suggestion.author] : undefined,
+  )
+  const authorUsername = suggestion.author_username ?? author?.username
+  const authorLabel = suggestion.anonymous
+    ? 'Анонимно'
+    : authorUsername
+      ? `@${authorUsername}`
+      : 'Участник'
   const publiclyApproved = suggestion.moderation_status === 'approved'
 
   return (

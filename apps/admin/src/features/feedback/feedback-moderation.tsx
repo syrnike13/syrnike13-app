@@ -457,11 +457,16 @@ function FeedbackQueueItem({
           {mode === 'published' && statusLabel ? (
             <FeedbackTag tone="status">{statusLabel}</FeedbackTag>
           ) : null}
+          {suggestion.anonymous ? (
+            <FeedbackTag tone="anonymous">Анонимно</FeedbackTag>
+          ) : null}
         </div>
         <div className="mt-2 truncate text-[13px] font-semibold text-foreground">
           {suggestion.title}
         </div>
         <div className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span>{feedbackAuthorTag(suggestion)}</span>
+          <span aria-hidden>•</span>
           <span>{suggestion.platform ? feedbackPlatformLabel(suggestion.platform) : 'Все платформы'}</span>
           <span aria-hidden>•</span>
           <span>{formatFeedbackDate(suggestion.created_at)}</span>
@@ -529,10 +534,13 @@ function FeedbackInspector({
             {mode === 'published' && statusLabel ? (
               <FeedbackTag tone="status">{statusLabel}</FeedbackTag>
             ) : null}
+            {suggestion.anonymous ? (
+              <FeedbackTag tone="anonymous">Анонимно для пользователей</FeedbackTag>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
             <RiUserLine className="size-4" aria-hidden />
-            <span>{suggestion.author}</span>
+            <span className="font-medium text-foreground">{feedbackAuthorTag(suggestion)}</span>
             <span aria-hidden>•</span>
             <span>{formatFeedbackDate(suggestion.created_at)}</span>
             <span aria-hidden>•</span>
@@ -923,7 +931,7 @@ function FeedbackTag({
   tone,
 }: {
   children: ReactNode
-  tone: 'danger' | 'success' | 'area' | 'platform' | 'status' | 'reason'
+  tone: 'danger' | 'success' | 'area' | 'platform' | 'status' | 'reason' | 'anonymous'
 }) {
   return (
     <span
@@ -935,11 +943,17 @@ function FeedbackTag({
         tone === 'platform' && 'border-border/80 bg-secondary/50 text-muted-foreground',
         tone === 'status' && 'border-warning/55 bg-warning/10 text-warning',
         tone === 'reason' && 'border-primary/40 bg-primary/10 text-primary',
+        tone === 'anonymous' && 'border-border/80 bg-muted/60 text-muted-foreground',
       )}
     >
       {children}
     </span>
   )
+}
+
+function feedbackAuthorTag(suggestion: FeedbackSuggestion) {
+  const author = suggestion.author_username ?? suggestion.author
+  return author ? `@${author}` : 'Неизвестный пользователь'
 }
 
 function formatFeedbackDate(value: string) {

@@ -10,6 +10,10 @@ auto_derived!(
         #[serde(rename = "_id")]
         pub id: String,
         pub author_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub author_username: Option<String>,
+        #[serde(default)]
+        pub anonymous: bool,
         pub title: String,
         pub description: String,
         pub category: v0::FeedbackCategory,
@@ -102,15 +106,19 @@ pub(crate) struct FeedbackStore {
 impl FeedbackSuggestion {
     pub fn new(
         author_id: String,
+        author_username: String,
         title: String,
         description: String,
         category: v0::FeedbackCategory,
         area: Option<v0::FeedbackArea>,
         platform: v0::FeedbackPlatform,
+        anonymous: bool,
     ) -> Self {
         Self {
             id: Ulid::new().to_string(),
             author_id,
+            author_username: Some(author_username),
+            anonymous,
             title,
             description,
             category,
@@ -141,10 +149,17 @@ impl FeedbackSuggestion {
         }
     }
 
-    pub fn into_api(self, vote_count: u64, voted: bool) -> v0::FeedbackSuggestion {
+    pub fn into_api(
+        self,
+        vote_count: u64,
+        voted: bool,
+        reveal_author: bool,
+    ) -> v0::FeedbackSuggestion {
         v0::FeedbackSuggestion {
             id: self.id,
-            author: self.author_id,
+            author: reveal_author.then_some(self.author_id),
+            author_username: reveal_author.then_some(self.author_username).flatten(),
+            anonymous: self.anonymous,
             title: self.title,
             description: self.description,
             category: self.category,

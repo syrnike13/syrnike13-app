@@ -348,11 +348,13 @@ mod tests {
     async fn insert(db: &Database, author_id: &str, title: &str) -> FeedbackSuggestion {
         let suggestion = FeedbackSuggestion::new(
             author_id.to_string(),
+            "feedback_author".to_string(),
             title.to_string(),
             "A detailed feedback proposal.".to_string(),
             v0::FeedbackCategory::Idea,
             Some(v0::FeedbackArea::Desktop),
             v0::FeedbackPlatform::Windows,
+            false,
         );
         db.insert_feedback_suggestion(&suggestion)
             .await

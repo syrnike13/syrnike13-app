@@ -60,6 +60,7 @@ pub async fn list(
 
     Ok(Json(page_into_api(
         db.fetch_feedback_suggestions(&user.id, query).await?,
+        &user,
     )))
 }
 
@@ -85,6 +86,7 @@ pub async fn mine(
 
     Ok(Json(page_into_api(
         db.fetch_feedback_suggestions(&user.id, query).await?,
+        &user,
     )))
 }
 
@@ -103,6 +105,7 @@ pub async fn detail(
     ensure_visible(&suggestion, &user)?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -124,17 +127,20 @@ pub async fn create(
     let data = normalise_create_data(data.into_inner())?;
     let suggestion = FeedbackSuggestion::new(
         user.id.clone(),
+        user.username.clone(),
         data.title,
         data.description,
         data.category,
         data.area,
         data.platform,
+        data.anonymous,
     );
     db.insert_feedback_suggestion(&suggestion).await?;
 
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&suggestion.id, &user.id)
             .await?,
+        &user,
     )))
 }
 
@@ -155,6 +161,7 @@ pub async fn add_vote(
     db.add_feedback_vote(&id, &user.id).await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -173,6 +180,7 @@ pub async fn remove_vote(
     ensure_visible(&suggestion, &user)?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -198,6 +206,7 @@ pub async fn admin_pending(
 
     Ok(Json(page_into_api(
         db.fetch_feedback_suggestions(&user.id, query).await?,
+        &user,
     )))
 }
 
@@ -215,6 +224,7 @@ pub async fn approve(
     db.approve_feedback_suggestion(&id).await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -237,6 +247,7 @@ pub async fn reject(
     db.reject_feedback_suggestion(&id, reason).await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -261,6 +272,7 @@ pub async fn merge(
         .await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -278,6 +290,7 @@ pub async fn hide(
     db.hide_feedback_suggestion(&id).await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -297,6 +310,7 @@ pub async fn set_status(
         .await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -318,6 +332,7 @@ pub async fn set_response(
     db.set_feedback_team_response(&id, data.response).await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
+        &user,
     )))
 }
 
@@ -338,17 +353,24 @@ fn ensure_visible(suggestion: &FeedbackSuggestion, user: &User) -> Result<()> {
     }
 }
 
-fn page_into_api(page: FeedbackSuggestionPage) -> v0::FeedbackSuggestionPage {
+fn page_into_api(page: FeedbackSuggestionPage, user: &User) -> v0::FeedbackSuggestionPage {
     v0::FeedbackSuggestionPage {
-        suggestions: page.suggestions.into_iter().map(view_into_api).collect(),
+        suggestions: page
+            .suggestions
+            .into_iter()
+            .map(|view| view_into_api(view, user))
+            .collect(),
         total: page.total,
         offset: page.offset,
         limit: page.limit,
     }
 }
 
-fn view_into_api(view: FeedbackSuggestionView) -> v0::FeedbackSuggestion {
-    view.suggestion.into_api(view.vote_count, view.voted)
+fn view_into_api(view: FeedbackSuggestionView, user: &User) -> v0::FeedbackSuggestion {
+    let reveal_author =
+        user.privileged || view.suggestion.author_id == user.id || !view.suggestion.anonymous;
+    view.suggestion
+        .into_api(view.vote_count, view.voted, reveal_author)
 }
 
 fn parse_product_status(value: Option<String>) -> Result<Option<v0::FeedbackProductStatus>> {
@@ -566,11 +588,13 @@ mod tests {
         async fn insert_pending(&self, author_id: &str) -> FeedbackSuggestion {
             let suggestion = FeedbackSuggestion::new(
                 author_id.to_string(),
+                "feedback_author".to_string(),
                 "A private proposal".to_string(),
                 "A sufficiently detailed private proposal.".to_string(),
                 v0::FeedbackCategory::Idea,
                 Some(v0::FeedbackArea::Desktop),
                 v0::FeedbackPlatform::Windows,
+                false,
             );
             self.db
                 .insert_feedback_suggestion(&suggestion)

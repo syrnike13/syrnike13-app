@@ -3348,9 +3348,20 @@ export interface components {
      * @enum {string}
      */
     VoiceCallEndReason: "completed" | "cancelled" | "missed";
-    /** @enum {string} */
-    FeedbackModerationStatus: "pending" | "approved" | "rejected" | "merged" | "hidden";
-    /** @enum {string} */
+    /**
+     * @description Moderation visibility of a feedback suggestion.
+     * @enum {string}
+     */
+    FeedbackModerationStatus:
+      | "pending"
+      | "approved"
+      | "rejected"
+      | "merged"
+      | "hidden";
+    /**
+     * @description Delivery state of an approved feedback suggestion.
+     * @enum {string}
+     */
     FeedbackProductStatus:
       | "collecting"
       | "under_consideration"
@@ -3358,9 +3369,15 @@ export interface components {
       | "in_progress"
       | "released"
       | "not_planned";
-    /** @enum {string} */
+    /**
+     * @description User-selected kind of feedback.
+     * @enum {string}
+     */
     FeedbackCategory: "bug" | "idea";
-    /** @enum {string} */
+    /**
+     * @description Optional product area affected by the feedback.
+     * @enum {string}
+     */
     FeedbackArea:
       | "navigation"
       | "voice_video"
@@ -3370,20 +3387,22 @@ export interface components {
       | "desktop"
       | "activities"
       | "other";
-    /** @enum {string} */
-    FeedbackPlatform:
-      | "windows"
-      | "macos"
-      | "linux"
-      | "web"
-      | "android"
-      | "ios";
-    /** @enum {string} */
+    /**
+     * @description Optional client platform where the feedback applies.
+     * @enum {string}
+     */
+    FeedbackPlatform: "windows" | "macos" | "linux" | "web" | "android" | "ios";
+    /**
+     * @description Sort order for the feedback catalogue.
+     * @enum {string}
+     */
     FeedbackSort: "popular" | "new";
-    /** A product feedback suggestion visible to the requesting user. */
+    /** @description A product feedback suggestion visible to the requesting user. */
     FeedbackSuggestion: {
       _id: string;
-      author: string;
+      author?: string;
+      author_username?: string;
+      anonymous: boolean;
       title: string;
       description: string;
       category: components["schemas"]["FeedbackCategory"];
@@ -3395,35 +3414,46 @@ export interface components {
       rejection_reason?: string | null;
       merged_into?: string | null;
       merge_reason?: string | null;
+      /** Format: uint64 */
       vote_count: number;
       voted: boolean;
       created_at: components["schemas"]["ISO8601 Timestamp"];
       updated_at: components["schemas"]["ISO8601 Timestamp"];
     };
-    /** Paginated feedback catalogue response. */
+    /** @description Paginated feedback catalogue response. */
     FeedbackSuggestionPage: {
       suggestions: components["schemas"]["FeedbackSuggestion"][];
+      /** Format: uint64 */
       total: number;
+      /** Format: uint64 */
       offset: number;
+      /** Format: uint64 */
       limit: number;
     };
+    /** @description Data for a new feedback suggestion. */
     DataCreateFeedbackSuggestion: {
       title: string;
       description: string;
       category: components["schemas"]["FeedbackCategory"];
       area?: components["schemas"]["FeedbackArea"];
       platform: components["schemas"]["FeedbackPlatform"];
+      /** @default false */
+      anonymous?: boolean;
     };
+    /** @description Rejection reason supplied by a moderator. */
     DataRejectFeedbackSuggestion: {
       reason: string;
     };
+    /** @description Destination suggestion when merging a duplicate. */
     DataMergeFeedbackSuggestion: {
       target_id: string;
       reason?: string | null;
     };
+    /** @description Product delivery status update. */
     DataSetFeedbackProductStatus: {
       status: components["schemas"]["FeedbackProductStatus"];
     };
+    /** @description Official team response update. Send null to clear it. */
     DataSetFeedbackTeamResponse: {
       response?: string | null;
     };
@@ -6319,7 +6349,7 @@ export interface operations {
   };
   feedback_list: {
     parameters: {
-      query?: {
+      query: {
         search?: string;
         category?: components["schemas"]["FeedbackCategory"];
         area?: components["schemas"]["FeedbackArea"];
@@ -6331,93 +6361,201 @@ export interface operations {
       };
     };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestionPage"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestionPage"];
+        };
+      };
     };
   };
   feedback_create: {
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
     requestBody: {
-      content: { "application/json": components["schemas"]["DataCreateFeedbackSuggestion"] };
+      content: {
+        "application/json": components["schemas"]["DataCreateFeedbackSuggestion"];
+      };
     };
   };
   feedback_mine: {
-    parameters: { query?: { offset?: number; limit?: number } };
+    parameters: {
+      query: {
+        offset?: number;
+        limit?: number;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestionPage"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestionPage"];
+        };
+      };
     };
   };
   feedback_detail: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
   };
   feedback_add_vote: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
   };
   feedback_remove_vote: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
   };
   feedback_admin_pending: {
-    parameters: { query?: { offset?: number; limit?: number } };
+    parameters: {
+      query: {
+        offset?: number;
+        limit?: number;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestionPage"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestionPage"];
+        };
+      };
     };
   };
   feedback_admin_approve: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
   };
   feedback_admin_reject: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
     requestBody: {
-      content: { "application/json": components["schemas"]["DataRejectFeedbackSuggestion"] };
+      content: {
+        "application/json": components["schemas"]["DataRejectFeedbackSuggestion"];
+      };
     };
   };
   feedback_admin_merge: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
     requestBody: {
-      content: { "application/json": components["schemas"]["DataMergeFeedbackSuggestion"] };
+      content: {
+        "application/json": components["schemas"]["DataMergeFeedbackSuggestion"];
+      };
     };
   };
   feedback_admin_hide: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
   };
   feedback_admin_set_status: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
     requestBody: {
-      content: { "application/json": components["schemas"]["DataSetFeedbackProductStatus"] };
+      content: {
+        "application/json": components["schemas"]["DataSetFeedbackProductStatus"];
+      };
     };
   };
   feedback_admin_set_response: {
-    parameters: { path: { id: string } };
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
     responses: {
-      200: { content: { "application/json": components["schemas"]["FeedbackSuggestion"] } };
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
     };
     requestBody: {
-      content: { "application/json": components["schemas"]["DataSetFeedbackTeamResponse"] };
+      content: {
+        "application/json": components["schemas"]["DataSetFeedbackTeamResponse"];
+      };
     };
   };
 }

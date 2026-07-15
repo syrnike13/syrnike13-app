@@ -67,8 +67,14 @@ auto_derived!(
         /// Unique suggestion id.
         #[cfg_attr(feature = "serde", serde(rename = "_id"))]
         pub id: String,
-        /// Author user id.
-        pub author: String,
+        /// Author user id. Hidden from other users for anonymous suggestions.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub author: Option<String>,
+        /// Author username snapshot. Hidden from other users for anonymous suggestions.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub author_username: Option<String>,
+        /// Whether the author is hidden from other users.
+        pub anonymous: bool,
         /// Short user-facing title.
         pub title: String,
         /// Full proposal text.
@@ -126,6 +132,9 @@ auto_derived!(
         #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
         pub area: Option<FeedbackArea>,
         pub platform: FeedbackPlatform,
+        /// Publish without exposing the author to other users. Moderators still see the author.
+        #[cfg_attr(feature = "serde", serde(default))]
+        pub anonymous: bool,
     }
 
     /// Rejection reason supplied by a moderator.

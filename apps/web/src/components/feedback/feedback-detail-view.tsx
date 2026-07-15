@@ -37,7 +37,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
     enabled: Boolean(token),
   })
   const author = useSyncStore((state) =>
-    query.data ? state.users[query.data.author] : undefined,
+    query.data?.author ? state.users[query.data.author] : undefined,
   )
 
   if (query.isLoading) {
@@ -50,7 +50,12 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
 
   const suggestion = query.data
   const approved = suggestion.moderation_status === 'approved'
-  const authorLabel = author?.display_name ?? author?.username ?? 'Участник'
+  const authorUsername = suggestion.author_username ?? author?.username
+  const authorLabel = suggestion.anonymous
+    ? 'Анонимно'
+    : authorUsername
+      ? `@${authorUsername}`
+      : 'Участник'
   const date = new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
     month: 'long',

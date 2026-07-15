@@ -15520,10 +15520,12 @@
       "FeedbackSuggestion": {
         "description": "A product feedback suggestion visible to the requesting user.",
         "type": "object",
-        "required": ["_id", "author", "title", "description", "category", "moderation_status", "status", "vote_count", "voted", "created_at", "updated_at"],
+        "required": ["_id", "anonymous", "title", "description", "category", "moderation_status", "status", "vote_count", "voted", "created_at", "updated_at"],
         "properties": {
           "_id": {"type": "string"},
           "author": {"type": "string"},
+          "author_username": {"type": "string"},
+          "anonymous": {"type": "boolean"},
           "title": {"type": "string"},
           "description": {"type": "string"},
           "category": {"$ref": "#/components/schemas/FeedbackCategory"},
@@ -15561,7 +15563,8 @@
           "description": {"type": "string", "minLength": 10, "maxLength": 5000},
           "category": {"$ref": "#/components/schemas/FeedbackCategory"},
           "area": {"$ref": "#/components/schemas/FeedbackArea"},
-          "platform": {"$ref": "#/components/schemas/FeedbackPlatform"}
+          "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
+          "anonymous": {"type": "boolean", "default": false}
         }
       },
       "DataRejectFeedbackSuggestion": {
