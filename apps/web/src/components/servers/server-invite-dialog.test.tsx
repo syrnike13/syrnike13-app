@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerInviteDialog } from '#/components/servers/server-invite-dialog'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 import { permissionOr } from '#/lib/permission-bits'
 
 const mocks = vi.hoisted(() => ({
@@ -79,6 +80,10 @@ vi.mock('#/lib/clipboard', () => ({
 describe('ServerInviteDialog', () => {
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['channel-1', 'channel-2'],
+    })
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',

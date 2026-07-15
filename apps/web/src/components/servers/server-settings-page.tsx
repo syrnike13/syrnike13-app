@@ -27,7 +27,7 @@ import {
   canOpenServerSettings,
   canViewServerSettingsTab,
   getServerSettingsAccess,
-} from '#/lib/permissions'
+} from '#/features/authorization/authorization'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { cn } from '#/lib/utils'

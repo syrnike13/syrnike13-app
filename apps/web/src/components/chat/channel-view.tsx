@@ -44,6 +44,7 @@ import { cn } from '#/lib/utils'
 import { attachmentPreviewUrl } from '#/lib/media'
 import { VoiceTextChannelDock } from '#/components/voice/voice-text-channel-dock'
 import { channelHasVoice, isServerVoiceChannel } from '#/lib/channel-voice'
+import { canMessageUser } from '#/features/authorization/authorization'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { closeVoiceCallNotification } from '#/features/notifications/voice-call-notifications'
 import {
@@ -279,8 +280,7 @@ export function ChannelView({
   const title = getChannelLabel(channel, users, auth.user?._id)
   const dmRecipient = dmRecipientId ? users[dmRecipientId] : undefined
   const dmMessagesBlocked =
-    dmRecipient?.relationship === 'Blocked' ||
-    dmRecipient?.relationship === 'BlockedOther'
+    Boolean(dmRecipient && !canMessageUser(dmRecipient._id))
   const dmDisabledPlaceholder =
     dmRecipient?.relationship === 'Blocked'
       ? 'Вы заблокировали этого пользователя'

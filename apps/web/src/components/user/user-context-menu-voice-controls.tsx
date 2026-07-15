@@ -34,12 +34,10 @@ import {
 import { runtimeChannelName } from '#/lib/channel-voice'
 import {
   canDeafenServerMember,
+  canConnectToChannel,
   canMoveServerMember,
   canMuteServerMember,
-  calculateChannelPermissions,
-  ChannelPermission,
-  hasChannelPermission,
-} from '#/lib/permissions'
+} from '#/features/authorization/authorization'
 
 type UserContextMenuVoiceControlsProps = {
   userId: string
@@ -61,24 +59,15 @@ function isServerVoiceMoveTarget(channel: Channel): boolean {
 }
 
 function canUseVoiceMoveTarget(
-  server: Server,
+  _server: Server,
   channel: Channel,
-  actorMember: Member | undefined,
-  actorUserId: string,
-  actorPrivileged = false,
+  _actorMember: Member | undefined,
+  _actorUserId: string,
+  _actorPrivileged = false,
 ) {
   if (!isServerVoiceMoveTarget(channel)) return false
 
-  return hasChannelPermission(
-    calculateChannelPermissions(
-      server,
-      channel as Extract<Channel, { channel_type: 'TextChannel' }>,
-      actorMember,
-      actorUserId,
-      actorPrivileged,
-    ),
-    ChannelPermission.Connect,
-  )
+  return canConnectToChannel(channel)
 }
 
 export function UserContextMenuVoiceControls({

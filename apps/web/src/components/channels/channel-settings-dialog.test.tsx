@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { installAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -46,6 +47,9 @@ const textChannel = {
 describe('ChannelSettingsDialog', () => {
   beforeEach(() => {
     syncStore.reset()
+    installAuthorizationForTest({
+      channels: { 'text-general': ChannelPermission.ManageWebhooks },
+    })
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',

@@ -22,10 +22,10 @@ import {
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import type { ServerChannel } from '#/lib/channel-voice'
 import {
-  calculateChannelPermissions,
-  canManageRole,
+  canGrantChannelPermission,
+  canManageChannelPermissionSubject,
   getMemberRank,
-} from '#/lib/permissions'
+} from '#/features/authorization/authorization'
 import { roleIconUrl } from '#/lib/media'
 import {
   getAllowedPermissionTriStates,
@@ -54,10 +54,10 @@ function roleSidebarRowStateClass(selected: boolean) {
 
 function ChannelPermissionEditor({
   channel,
-  server,
-  member,
-  userId,
-  userPrivileged,
+  server: _server,
+  member: _member,
+  userId: _userId,
+  userPrivileged: _userPrivileged,
   token,
   roleId,
   userTargetId,
@@ -81,17 +81,6 @@ function ChannelPermissionEditor({
     overrideFieldFromRole(initialPermissions),
   )
   const [saving, setSaving] = useState(false)
-  const actorPermissions = useMemo(
-    () =>
-      calculateChannelPermissions(
-        server,
-        channel,
-        member,
-        userId,
-        userPrivileged,
-      ),
-    [channel, member, server, userId, userPrivileged],
-  )
 
   useEffect(() => {
     setPermissions(overrideFieldFromRole(initialPermissions))
@@ -175,7 +164,7 @@ function ChannelPermissionEditor({
               {group.permissions.map((permission) => {
                 const allowedStates = getAllowedPermissionTriStates(
                   initialPermissions,
-                  actorPermissions,
+                  canGrantChannelPermission(channel, permission.flag),
                   permission.flag,
                 )
                 return (
@@ -327,25 +316,45 @@ export function ChannelSettingsPermissionsPanel({
     ? members.find((entry) => entry.user._id === selectedUserId)
     : undefined
 
-  const canEditDefault = Boolean(token && userId)
+  const canEditDefault = Boolean(
+    token &&
+      userId &&
+      canManageChannelPermissionSubject(
+        server,
+        channel,
+        member,
+        userId,
+        {},
+        userPrivileged,
+      ),
+  )
 
   const canEditSelectedRole =
     selectedRole && token && userId
-      ? canManageRole(server, member, userId, selectedRole.rank ?? 0, {
-          permissions: true,
-          privileged: userPrivileged,
-        })
+      ? canManageChannelPermissionSubject(
+          server,
+          channel,
+          member,
+          userId,
+          { roleRank: selectedRole.rank ?? 0 },
+          userPrivileged,
+        )
       : false
   const canEditSelectedUser = Boolean(
     token &&
       userId &&
       selectedUserEntry &&
-      (userPrivileged ||
-        selectedUserEntry.user._id === userId ||
-        server.owner === userId ||
-        (selectedUserEntry.user._id !== server.owner &&
-          getMemberRank(server, selectedUserEntry.member) >
-            getMemberRank(server, member))),
+      canManageChannelPermissionSubject(
+        server,
+        channel,
+        member,
+        userId,
+        {
+          userId: selectedUserEntry.user._id,
+          roleRank: getMemberRank(server, selectedUserEntry.member),
+        },
+        userPrivileged,
+      ),
   )
 
   if (!token || !userId) {

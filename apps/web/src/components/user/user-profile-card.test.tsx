@@ -5,6 +5,8 @@ import type { Channel, User } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserProfileCard } from './user-profile-card'
+import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const navigateMock = vi.hoisted(() => vi.fn())
 const openDirectMessageChannelMock = vi.hoisted(() =>
@@ -57,10 +59,13 @@ const targetUser = {
 describe('UserProfileCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    syncStore.reset()
+    grantAllAuthorizationForTest({ userIds: ['target-user'] })
   })
 
   afterEach(() => {
     cleanup()
+    syncStore.reset()
   })
 
   it('opens a direct message from the profile popover', async () => {

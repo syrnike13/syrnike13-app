@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserContextMenuVoiceControls } from '#/components/user/user-context-menu-voice-controls'
 import { syncStore } from '#/features/sync/sync-store'
 import { permissionOr } from '#/lib/permission-bits'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   editServerMember: vi.fn(),
@@ -208,6 +209,10 @@ describe('UserContextMenuVoiceControls server moderation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['voice-1', 'voice-2'],
+    })
     syncStore.patchVoiceParticipant('voice-1', TARGET_USER_ID, {
       joined_at: 1,
       self_mute: false,

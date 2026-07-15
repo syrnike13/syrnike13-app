@@ -61,7 +61,8 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   isServerVoiceChannel,
 } from '#/lib/channel-voice'
-import { canManageChannel, isChannelAccessRestricted } from '#/lib/permissions'
+import { canManageChannel } from '#/features/authorization/authorization'
+import { isChannelAccessRestricted } from '#/features/authorization/permission-draft'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'

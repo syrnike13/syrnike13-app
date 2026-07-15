@@ -15,7 +15,8 @@ import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-r
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   createServerRole: vi.fn(),
@@ -184,6 +185,7 @@ function renderWithDraft() {
 describe('ServerSettingsRolesPanel', () => {
   beforeEach(() => {
     setupServer()
+    grantAllAuthorizationForTest({ serverIds: ['server-1'] })
     mocks.deleteServerRole.mockResolvedValue(undefined)
   })
 

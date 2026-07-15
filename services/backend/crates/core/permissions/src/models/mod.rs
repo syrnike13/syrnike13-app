@@ -1,10 +1,12 @@
 mod channel;
+mod global;
 mod server;
 mod user;
 
 pub use channel::*;
+pub use global::*;
 pub use server::*;
-use syrnike_result::{create_error, Result};
+use syrnike_result::{Result, create_error};
 pub use user::*;
 
 /// Holds a permission value to manipulate.

@@ -25,9 +25,9 @@ import {
 import { syncStore } from '#/features/sync/sync-store'
 import { roleIconUrl } from '#/lib/media'
 import {
-  calculateServerPermissions,
+  canGrantServerPermission,
   canManageRole,
-} from '#/lib/permissions'
+} from '#/features/authorization/authorization'
 import {
   getAllowedPermissionTriStates,
   getPermissionTriState,
@@ -105,11 +105,6 @@ export function ServerSettingsRoleEditor({
     userId,
     role.rank ?? 0,
     { permissions: true, privileged: userPrivileged },
-  )
-  const actorPermissions = useMemo(
-    () =>
-      calculateServerPermissions(server, member, userId, userPrivileged),
-    [member, server, userId, userPrivileged],
   )
   const [activeTab, setActiveTab] = useState<RoleEditorTab>('display')
   const [name, setName] = useState(role.name)
@@ -515,7 +510,7 @@ export function ServerSettingsRoleEditor({
                 {group.permissions.map((permission) => {
                   const allowedStates = getAllowedPermissionTriStates(
                     role.permissions,
-                    actorPermissions,
+                    canGrantServerPermission(server, permission.flag),
                     permission.flag,
                   )
                   return (

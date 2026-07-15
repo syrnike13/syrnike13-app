@@ -50,6 +50,7 @@ import {
 } from '#/lib/member-roles'
 import { FxImage } from '#/components/ui/fx-image'
 import { cn } from '#/lib/utils'
+import { canMessageUser } from '#/features/authorization/authorization'
 
 type UserGlobalProfileSidebarProps = {
   user: User
@@ -97,7 +98,7 @@ export function UserGlobalProfileSidebar({
   const token = auth.session?.token
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
-  const canDirectMessage = !isSelf && !user.bot
+  const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
 
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)

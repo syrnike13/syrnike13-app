@@ -27,6 +27,7 @@ import {
 } from '#/features/api/channels-api'
 import { uploadMediaFile } from '#/features/api/media-api'
 import { useAuth } from '#/features/auth/auth-context'
+import { canInviteUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { attachmentPreviewUrl } from '#/lib/media'
@@ -98,6 +99,7 @@ export function GroupManagementDialog({
           (user) =>
             user._id !== currentUserId &&
             user.relationship === 'Friend' &&
+            canInviteUser(user._id) &&
             !user.bot &&
             !memberIds.has(user._id),
         )

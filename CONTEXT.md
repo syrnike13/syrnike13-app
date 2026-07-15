@@ -139,3 +139,40 @@ _Avoid_: Native media execution failed, voice disconnected, generic failure
 Termination or unresponsiveness of one Windows utility host. Media, hotkey, and
 overlay runtime losses are isolated and recovered independently.
 _Avoid_: Sidecar lost, application crash, voice state update failed
+
+## Authorization
+
+**Authorization Scope**:
+A global account context, server, channel, or user relationship for which the
+current account has one effective permission mask.
+_Avoid_: Permission context, target object
+
+**Permission Source**:
+An editable default, role, channel, user, membership, timeout, ownership, or
+privileged input from which the backend derives Effective Permissions.
+_Avoid_: Effective rights, client permission
+
+**Effective Permissions**:
+The backend-authoritative permission mask for one Authorization Scope after all
+Permission Sources and restrictions have been resolved.
+_Avoid_: Calculated client permissions, raw permissions
+
+**Authorization Snapshot**:
+The complete sync projection of Effective Permissions for the current account,
+keyed by Authorization Scope and replaced atomically by revision.
+_Avoid_: Permission cache, role snapshot
+
+**Capability**:
+A named action the interface may expose after the Authorization Module evaluates
+Effective Permissions and any target-relative facts such as member rank.
+_Avoid_: Button permission, permission flag
+
+**Authorization Module**:
+The only client module allowed to turn an Authorization Snapshot into
+Capabilities; interface modules never interpret permission masks directly.
+_Avoid_: Permission helper, UI permission check
+
+**Permission Draft**:
+A hypothetical permission result used only while editing Permission Sources; it
+never authorizes a current-account action.
+_Avoid_: Effective permissions, optimistic permission

@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet};
 use futures::future::join_all;
 use syrnike_database::{
     Channel, Database, Member, Presence, RelationshipStatus, Role,
-    events::client::{EventV1, ReadyPayloadFields, VoiceCall, VoiceCallPhase},
+    events::client::{
+        AuthorizationSnapshot, EventV1, ReadyPayloadFields, VoiceCall, VoiceCallPhase,
+    },
     util::permissions::DatabasePermissionQuery,
     voice::{
         UserVoiceChannel,
@@ -12,7 +14,10 @@ use syrnike_database::{
     },
 };
 use syrnike_models::v0;
-use syrnike_permissions::{ChannelPermission, calculate_channel_permissions};
+use syrnike_permissions::{
+    ChannelPermission, GlobalPermission, calculate_channel_permissions,
+    calculate_server_permissions, calculate_user_permissions,
+};
 use syrnike_presence::filter_online;
 use syrnike_result::Result;
 
@@ -97,9 +102,7 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
-    use syrnike_database::{
-        DatabaseInfo, MemberCompositeKey, PartialRole, Role, Server, User,
-    };
+    use syrnike_database::{DatabaseInfo, MemberCompositeKey, PartialRole, Role, Server, User};
     use syrnike_permissions::OverrideField;
 
     use super::*;
@@ -142,6 +145,7 @@ mod tests {
         );
         state.insert_subscription(server_id.clone()).await;
         state.apply_state().await;
+        state.authorization_enabled = true;
 
         let mut event = EventV1::ServerRoleUpdate {
             id: server_id.clone(),
@@ -170,6 +174,15 @@ mod tests {
             .expect("role inserted");
         assert_eq!(role.name, "Moderators");
         assert_eq!(role.id, role_id);
+        assert!(matches!(
+            event,
+            EventV1::Bulk { ref v }
+                if v.iter().any(|event| matches!(
+                    event,
+                    EventV1::AuthorizationSnapshot { snapshot }
+                        if snapshot.revision == 1 && snapshot.servers.contains_key(&server_id)
+                ))
+        ));
     }
 
     #[async_std::test]
@@ -232,6 +245,7 @@ mod tests {
                 last_message_id: None,
                 default_permissions: None,
                 role_permissions: HashMap::new(),
+                user_permissions: HashMap::new(),
                 nsfw: false,
                 voice: None,
                 slowmode: None,
@@ -245,7 +259,7 @@ mod tests {
     }
 
     #[async_std::test]
-    async fn server_role_ranks_update_recalculates_current_user_channel_visibility() {
+    async fn server_role_ranks_update_keeps_combined_channel_overrides_visible() {
         let db = DatabaseInfo::Reference
             .connect()
             .await
@@ -363,25 +377,86 @@ mod tests {
         assert!(state.handle_incoming_event_v1(&db, &mut event).await);
         assert!(matches!(
             event,
-            EventV1::Bulk { ref v }
-                if v.iter().any(|event| matches!(
-                    event,
-                    EventV1::ChannelDelete { id } if id == &channel_id
-                ))
+            EventV1::ServerRoleRanksUpdate { ref id, .. } if id == &server_id
         ));
-        assert!(!state.subscribed.read().await.contains(&channel_id));
-        assert!(!state.cache.channels.contains_key(&channel_id));
+        assert!(state.subscribed.read().await.contains(&channel_id));
+        assert!(state.cache.channels.contains_key(&channel_id));
     }
 }
 
 /// State Manager
 impl State {
+    async fn authorization_snapshot(&self, db: &Database, revision: u64) -> AuthorizationSnapshot {
+        let perspective = self
+            .cache
+            .users
+            .get(&self.cache.user_id)
+            .expect("authorization perspective missing from gateway cache");
+
+        let mut servers = HashMap::new();
+        for (server_id, server) in &self.cache.servers {
+            let mut query = DatabasePermissionQuery::new(db, perspective).server(server);
+            if let Some(member) = self.cache.members.get(server_id) {
+                query = query.member(member);
+            }
+            servers.insert(
+                server_id.clone(),
+                calculate_server_permissions(&mut query).await.into_raw(),
+            );
+        }
+
+        let mut channels = HashMap::new();
+        for (channel_id, channel) in &self.cache.channels {
+            let mut query = DatabasePermissionQuery::new(db, perspective).channel(channel);
+            if let Some(server_id) = channel.server() {
+                if let Some(server) = self.cache.servers.get(server_id) {
+                    query = query.server(server);
+                }
+                if let Some(member) = self.cache.members.get(server_id) {
+                    query = query.member(member);
+                }
+            }
+            channels.insert(
+                channel_id.clone(),
+                calculate_channel_permissions(&mut query).await.into_raw(),
+            );
+        }
+
+        let mut users = HashMap::new();
+        for (user_id, user) in &self.cache.users {
+            let mut query = DatabasePermissionQuery::new(db, perspective).user(user);
+            users.insert(
+                user_id.clone(),
+                calculate_user_permissions(&mut query).await.into_raw(),
+            );
+        }
+
+        AuthorizationSnapshot {
+            revision,
+            global: if perspective.privileged {
+                GlobalPermission::AccessAdmin as u64
+            } else {
+                0
+            },
+            servers,
+            channels,
+            users,
+        }
+    }
+
+    async fn next_authorization_snapshot(&mut self, db: &Database) -> AuthorizationSnapshot {
+        self.authorization_revision = self.authorization_revision.saturating_add(1);
+        self.authorization_snapshot(db, self.authorization_revision)
+            .await
+    }
+
     /// Generate a Ready packet for the current user
     pub async fn generate_ready_payload(
         &mut self,
         db: &Database,
         fields: &ReadyPayloadFields,
     ) -> Result<EventV1> {
+        self.authorization_enabled = fields.authorization;
         let user = self.clone_user();
         self.cache.is_bot = user.bot.is_some();
 
@@ -625,6 +700,12 @@ impl State {
             self.insert_subscription(channel.id().to_string()).await;
         }
 
+        let authorization = if fields.authorization {
+            Some(self.next_authorization_snapshot(db).await)
+        } else {
+            None
+        };
+
         Ok(EventV1::Ready {
             users: if fields.users { Some(users) } else { None },
             servers: if fields.servers {
@@ -650,6 +731,7 @@ impl State {
             channel_unreads,
 
             policy_changes,
+            authorization,
         })
     }
 
@@ -779,6 +861,7 @@ impl State {
         // It may also need to sub or unsub a single value.
         let mut queue_add = None;
         let mut queue_remove = None;
+        let mut refresh_authorization = false;
 
         match event {
             EventV1::ChannelCreate(channel) => {
@@ -790,6 +873,7 @@ impl State {
 
                 self.insert_subscription(id.clone()).await;
                 self.cache.channels.insert(id, channel);
+                refresh_authorization = true;
             }
             EventV1::ChannelUpdate {
                 id, data, clear, ..
@@ -827,13 +911,16 @@ impl State {
                         *event = EventV1::ChannelCreate(channel.clone().into());
                     }
                 }
+                refresh_authorization = true;
             }
             EventV1::ChannelDelete { id } => {
                 self.remove_subscription(id).await;
                 self.cache.channels.remove(id);
+                refresh_authorization = true;
             }
             EventV1::ChannelGroupJoin { user, .. } => {
                 self.insert_subscription(user.clone()).await;
+                refresh_authorization = true;
             }
             EventV1::ChannelGroupLeave { id, user, .. } => {
                 if user == &self.cache.user_id {
@@ -841,6 +928,7 @@ impl State {
                 } else if !self.cache.can_subscribe_to_user(user) {
                     self.remove_subscription(user).await;
                 }
+                refresh_authorization = true;
             }
 
             EventV1::ServerCreate {
@@ -867,6 +955,7 @@ impl State {
                 }
 
                 queue_server = Some(id.clone());
+                refresh_authorization = true;
             }
             EventV1::ServerUpdate {
                 id, data, clear, ..
@@ -882,6 +971,7 @@ impl State {
                 if data.default_permissions.is_some() {
                     queue_server = Some(id.clone());
                 }
+                refresh_authorization = true;
             }
             EventV1::ServerMemberJoin { .. } => {
                 // We will always receive ServerCreate when joining a new server.
@@ -897,6 +987,7 @@ impl State {
                         }
                     }
                     self.cache.members.remove(id);
+                    refresh_authorization = true;
                 }
             }
             EventV1::ServerDelete { id } => {
@@ -909,6 +1000,7 @@ impl State {
                     }
                 }
                 self.cache.members.remove(id);
+                refresh_authorization = true;
             }
             EventV1::ServerMemberUpdate { id, data, clear } => {
                 if id.user == self.cache.user_id {
@@ -923,6 +1015,7 @@ impl State {
                     if data.roles.is_some() || clear.contains(&v0::FieldsMember::Roles) {
                         queue_server = Some(id.server.clone());
                     }
+                    refresh_authorization = true;
                 }
             }
             EventV1::ServerRoleUpdate {
@@ -968,11 +1061,13 @@ impl State {
                         }
                     }
                 }
+                refresh_authorization = true;
             }
             EventV1::ServerRoleDelete { id, role_id } => {
                 if let Some(server) = self.cache.servers.get_mut(id) {
                     server.roles.remove(role_id);
                 }
+                refresh_authorization = true;
 
                 if let Some(member) = self.cache.members.get(id) {
                     if member.roles.contains(role_id) {
@@ -988,6 +1083,7 @@ impl State {
                         }
                     }
                 }
+                refresh_authorization = true;
 
                 if let Some(member) = self.cache.members.get(id) {
                     if ranks.iter().any(|role_id| member.roles.contains(role_id)) {
@@ -996,7 +1092,9 @@ impl State {
                 }
             }
 
-            EventV1::UserUpdate { event_id, .. } => {
+            EventV1::UserUpdate {
+                id, data, event_id, ..
+            } => {
                 if let Some(id) = event_id {
                     if self.cache.seen_events.contains(id) {
                         return false;
@@ -1006,15 +1104,33 @@ impl State {
                 }
 
                 *event_id = None;
+                let affects_authorization =
+                    data.privileged.is_some() || data.bot.is_some() || data.relations.is_some();
+                if affects_authorization {
+                    if let Ok(user) = db.fetch_user(id).await {
+                        self.cache.users.insert(id.clone(), user);
+                    }
+                    refresh_authorization = true;
+                }
             }
             EventV1::UserRelationship { id, user, .. } => {
-                self.cache.users.insert(id.clone(), user.clone().into());
+                if let Ok(perspective) = db.fetch_user(&self.cache.user_id).await {
+                    self.cache
+                        .users
+                        .insert(self.cache.user_id.clone(), perspective);
+                }
+                let target = db
+                    .fetch_user(id)
+                    .await
+                    .unwrap_or_else(|_| user.clone().into());
+                self.cache.users.insert(id.clone(), target);
 
                 if self.cache.can_subscribe_to_user(id) {
                     self.insert_subscription(id.clone()).await;
                 } else {
                     self.remove_subscription(id).await;
                 }
+                refresh_authorization = true;
             }
 
             EventV1::Message(message) => {
@@ -1046,6 +1162,20 @@ impl State {
 
         if let Some(id) = queue_remove {
             self.remove_subscription(&id).await;
+        }
+
+        if refresh_authorization && self.authorization_enabled {
+            let snapshot = self.next_authorization_snapshot(db).await;
+            let authorization_event = EventV1::AuthorizationSnapshot { snapshot };
+            match event {
+                EventV1::Bulk { v } => v.push(authorization_event),
+                _ => {
+                    let original = std::mem::replace(event, EventV1::Bulk { v: vec![] });
+                    *event = EventV1::Bulk {
+                        v: vec![original, authorization_event],
+                    };
+                }
+            }
         }
 
         true

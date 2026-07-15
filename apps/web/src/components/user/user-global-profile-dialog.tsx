@@ -23,6 +23,7 @@ import { listMutualServers, listServerChannels } from '#/features/sync/selectors
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardText } from '#/lib/clipboard'
+import { canMessageUser } from '#/features/authorization/authorization'
 
 type UserGlobalProfileDialogProps = {
   user: User
@@ -45,7 +46,7 @@ export function UserGlobalProfileDialog({
   const [busy, setBusy] = useState(false)
 
   const isSelf = user._id === auth.user?._id
-  const canDirectMessage = !isSelf && !user.bot
+  const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
   useMutualServerMembersSync(
     user._id,
     auth.user?._id,

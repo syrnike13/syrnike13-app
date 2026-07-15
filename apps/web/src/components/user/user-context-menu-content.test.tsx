@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserContextMenuContent } from './user-context-menu-content'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const navigateMock = vi.hoisted(() => vi.fn())
 const voiceJoinMock = vi.hoisted(() => vi.fn().mockResolvedValue(true))
@@ -204,6 +205,11 @@ describe('UserContextMenuContent', () => {
     })
     serverApiMocks.kickServerMember.mockResolvedValue(undefined)
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['voice-1', 'voice-2', 'text-1'],
+      userIds: ['01JVOICETARGET0000001'],
+    })
   })
 
   afterEach(() => {

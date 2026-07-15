@@ -28,6 +28,7 @@ const READY_FIELDS = [
   'voice_states',
   'voice_calls',
   'channel_unreads',
+  'authorization',
 ] as const
 
 const HEARTBEAT_INTERVAL_MS = 30_000

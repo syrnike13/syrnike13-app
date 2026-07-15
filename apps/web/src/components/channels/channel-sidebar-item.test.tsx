@@ -14,7 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSidebarItem } from '#/components/channels/channel-sidebar-item'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 import * as voiceChannelChatIntent from '#/features/voice/voice-channel-chat-intent'
 
 const mocks = vi.hoisted(() => ({
@@ -212,6 +213,10 @@ function upsertTextServerChannel(channel = textServerChannel) {
 describe('ChannelSidebarItem voice navigation', () => {
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['voice-main', 'text-general', 'text-private'],
+    })
     mocks.navigate.mockClear()
     mocks.join.mockClear()
     mocks.openVoiceChannelDrawer.mockClear()

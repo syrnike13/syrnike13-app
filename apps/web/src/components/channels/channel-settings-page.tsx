@@ -33,7 +33,7 @@ import {
   canManageChannel,
   canManageChannelPermissions,
   canManageChannelWebhooks,
-} from '#/lib/permissions'
+} from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type ChannelSettingsPageProps = {

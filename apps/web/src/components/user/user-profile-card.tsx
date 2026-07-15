@@ -27,6 +27,10 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship, sendFriendRequestToUser } from '#/features/friends/friend-actions'
 import type { MemberRoleEntry } from '#/features/sync/selectors'
 import { writeClipboardText } from '#/lib/clipboard'
+import {
+  canMessageUser,
+  canViewUserProfile,
+} from '#/features/authorization/authorization'
 
 export type UserProfileCardProps = {
   user: User
@@ -56,7 +60,8 @@ export function UserProfileCard({
   const [messageDraft, setMessageDraft] = useState('')
 
   const isSelf = profile._id === auth.user?._id
-  const canMessage = !hideMessage && !isSelf && !profile.bot
+  const canMessage =
+    !hideMessage && !isSelf && !profile.bot && canMessageUser(profile._id)
   const showBannerMenu = !isSelf && !profile.bot
   const canAddFriend = showBannerMenu && profile.relationship === 'None'
 
@@ -174,7 +179,9 @@ export function UserProfileCard({
               ) : null}
               <UserProfileCardBannerMenu
                 disabled={busy}
-                canViewProfile={Boolean(onOpenGlobalProfile)}
+                canViewProfile={
+                  Boolean(onOpenGlobalProfile) && canViewUserProfile(profile._id)
+                }
                 onViewProfile={handleViewProfile}
                 onBlock={() => void handleBlock()}
                 onCopyUserId={() => void copyUserId()}

@@ -65,7 +65,7 @@ import {
 } from '#/features/voice/use-voice-stage-chrome-visible'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
-import { canInviteToChannel } from '#/lib/permissions'
+import { canInviteToChannel } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type VoiceStageDmHeader = {

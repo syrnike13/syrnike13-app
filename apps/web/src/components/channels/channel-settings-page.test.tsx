@@ -7,7 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChannelSettingsPage } from '#/components/channels/channel-settings-page'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import {
+  grantAllAuthorizationForTest,
+  installAuthorizationForTest,
+} from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -76,6 +80,10 @@ const textChannel = {
 describe('ChannelSettingsPage', () => {
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['voice-legacy', 'text-general'],
+    })
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',
@@ -119,6 +127,9 @@ describe('ChannelSettingsPage', () => {
 
   it('opens the webhooks tab for webhook-only text channel admins', () => {
     syncStore.reset()
+    installAuthorizationForTest({
+      channels: { 'text-general': ChannelPermission.ManageWebhooks },
+    })
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',

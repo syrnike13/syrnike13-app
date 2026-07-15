@@ -15,6 +15,7 @@ import {
 } from '#/components/user/profile-menu-row'
 import { PresenceStatusSelect } from '#/components/user/presence-status-select'
 import { useAuth } from '#/features/auth/auth-context'
+import { canAccessAdmin } from '#/features/authorization/authorization'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
@@ -186,7 +187,7 @@ export function CurrentUserProfileMenu({
             />
             <span className="truncate">Редактировать профиль</span>
           </button>
-          {auth.user?.privileged ? (
+          {canAccessAdmin() ? (
             <button
               type="button"
               className={profileMenuRowClass}

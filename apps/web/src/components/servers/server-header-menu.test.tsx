@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
 import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   deleteOrLeaveServer: vi.fn(),
@@ -118,6 +119,7 @@ describe('ServerHeaderMenu', () => {
 
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({ serverIds: ['server-1'] })
     upsertServer()
     mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
     mocks.navigate.mockResolvedValue(undefined)

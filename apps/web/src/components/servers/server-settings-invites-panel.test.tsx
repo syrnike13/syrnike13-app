@@ -13,7 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsInvitesPanel } from '#/components/servers/server-settings-invites-panel'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   fetchServerInvites: vi.fn(),
@@ -102,6 +103,10 @@ function renderWithQuery(children: ReactNode) {
 describe('ServerSettingsInvitesPanel', () => {
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['channel-1', 'channel-2'],
+    })
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',

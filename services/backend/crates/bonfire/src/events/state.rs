@@ -73,6 +73,8 @@ pub struct State {
 
     pub subscribed: Arc<RwLock<HashSet<String>>>,
     pub active_servers: Arc<Mutex<LruTimeCache<String, ()>>>,
+    pub authorization_revision: u64,
+    pub authorization_enabled: bool,
 }
 
 impl State {
@@ -100,6 +102,8 @@ impl State {
             session_id,
             private_topic,
             state: SubscriptionStateChange::Reset,
+            authorization_revision: 0,
+            authorization_enabled: false,
         }
     }
 

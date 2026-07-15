@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserGlobalProfileDialog } from '#/components/user/user-global-profile-dialog'
 import { syncStore } from '#/features/sync/sync-store'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -55,6 +56,10 @@ describe('UserGlobalProfileDialog', () => {
     mocks.navigate.mockClear()
     mocks.openSettings.mockClear()
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-a'],
+      channelIds: ['channel-a'],
+    })
     syncStore.upsertServer({
       _id: 'server-a',
       name: 'Alpha',

@@ -41,6 +41,7 @@ import {
   kickServerMember,
 } from '#/features/api/servers-api'
 import { openDirectMessageChannel } from '#/features/dm/dm-actions'
+import { canMessageUser } from '#/features/authorization/authorization'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { blockUserRelationship } from '#/features/friends/friend-actions'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
@@ -59,7 +60,7 @@ import {
 import {
   canBanServerMember,
   canKickServerMember,
-} from '#/lib/permissions'
+} from '#/features/authorization/authorization'
 import { canToggleMemberRole, listServerRoles } from '#/lib/member-roles'
 import { roleIconUrl } from '#/lib/media'
 import { normalizeRoleColour, roleColourStyle } from '#/lib/server-permissions'
@@ -343,7 +344,7 @@ export function UserContextMenuContent({
       auth.user?.privileged,
     )
   const canBlock = !isSelf
-  const canDirectMessage = !isSelf && !user.bot
+  const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
   const showRoles = Boolean(server && targetMember && !isSelf)
 
   const token = auth.session?.token

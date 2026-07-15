@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerRail } from '#/components/layout/server-rail'
 import { syncStore } from '#/features/sync/sync-store'
+import { ChannelPermission } from '#/features/authorization/authorization'
 import { serverIconUrl } from '#/lib/media'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -453,6 +454,13 @@ describe('ServerRail', () => {
 
   it('shows a rail unread indicator instead of a badge on servers', () => {
     syncStore.applyReady({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: { 'text-1': ChannelPermission.ViewChannel },
+        users: {},
+      },
       users: [
         {
           _id: 'current-user',
@@ -506,6 +514,13 @@ describe('ServerRail', () => {
 
   it('keeps the unread rail indicator visible without hover', () => {
     syncStore.applyReady({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: { 'text-1': ChannelPermission.ViewChannel },
+        users: {},
+      },
       users: [
         {
           _id: 'current-user',

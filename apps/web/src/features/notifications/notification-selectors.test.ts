@@ -2,6 +2,7 @@ import type { Channel, User } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
 import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
+import { ChannelPermission } from '#/features/authorization/authorization'
 
 import {
   selectChannelNotificationBadge,
@@ -63,6 +64,7 @@ function unread(
 function state(overrides: Partial<SyncState> = {}): SyncState {
   return {
     ready: true,
+    authorization: { revision: 0, global: 0, servers: {}, channels: {}, users: {} },
     selectedServerId: null,
     servers: {},
     channels: {},
@@ -162,6 +164,17 @@ describe('notification selectors', () => {
 
   it('counts unread server channels for a server badge', () => {
     const syncState = state({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: {
+          read: ChannelPermission.ViewChannel,
+          'unread-a': ChannelPermission.ViewChannel,
+          'unread-b': ChannelPermission.ViewChannel,
+        },
+        users: {},
+      },
       servers: {
         'server-1': {
           _id: 'server-1',
@@ -200,6 +213,17 @@ describe('notification selectors', () => {
 
   it('marks server badges urgent when visible channels contain mentions', () => {
     const syncState = state({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: {
+          'mention-a': ChannelPermission.ViewChannel,
+          'mention-b': ChannelPermission.ViewChannel,
+          unread: ChannelPermission.ViewChannel,
+        },
+        users: {},
+      },
       servers: {
         'server-1': {
           _id: 'server-1',

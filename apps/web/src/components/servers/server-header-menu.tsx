@@ -38,7 +38,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardText } from '#/lib/clipboard'
-import { getServerMenuPermissions } from '#/lib/permissions'
+import { getServerMenuPermissions } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type ServerHeaderMenuProps = {
