@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
-import { useRef, type ReactNode } from 'react'
+import { useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceChannelShell } from './voice-channel-shell'
@@ -38,13 +38,11 @@ vi.mock('#/features/auth/auth-context', () => ({
 vi.mock('#/components/voice/voice-stage-view', () => ({
   VoiceStageView: ({
     title,
-    headerTrailing,
     chatOpen,
     onToggleChat,
     showChatToggle = true,
   }: {
     title: string
-    headerTrailing?: ReactNode
     chatOpen: boolean
     onToggleChat: () => void
     showChatToggle?: boolean
@@ -59,16 +57,7 @@ vi.mock('#/components/voice/voice-stage-view', () => ({
           {chatOpen ? 'Скрыть чат' : 'Открыть чат'}
         </button>
       ) : null}
-      {headerTrailing}
     </div>
-  ),
-}))
-
-vi.mock('#/components/channels/channel-settings-dialog', () => ({
-  ChannelSettingsDialog: ({ channel }: { channel: { _id: string } }) => (
-    <button type="button" data-testid="channel-settings-dialog">
-      {channel._id}
-    </button>
   ),
 }))
 
@@ -191,16 +180,18 @@ describe('VoiceChannelShell', () => {
 
     expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
   })
-  it('passes channel settings into server voice stage actions', () => {
+  it('shows the chat toggle in a server voice stage', () => {
     renderShell(legacyVoiceChannel())
 
     expect(screen.getByTestId('voice-stage-title').textContent).toBe('Voice')
     expect(
       screen.getByTestId('voice-stage-view').getAttribute('data-chat-toggle'),
-    ).toBe('hidden')
-    expect(screen.getByTestId('channel-settings-dialog').textContent).toBe(
-      'voice-1',
-    )
+    ).toBe('visible')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть чат' }))
+
+    expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
+    expect(screen.queryByTestId('channel-settings-dialog')).toBeNull()
   })
 
   it('remounts the side chat when the opened voice channel changes', () => {
