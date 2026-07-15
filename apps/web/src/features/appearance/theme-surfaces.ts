@@ -161,12 +161,12 @@ function darkSurfaceOpacities(saturation: number) {
     lowest: 0.54 + mixAmount * 0.12,
     appFrame: 0.42 + mixAmount * 0.4 * 0.7,
     navigation: 0.58 + mixAmount * 0.12,
-    content: 0.64 + mixAmount * 0.25,
+    content: 0.56 + mixAmount * 0.25,
     chrome: 0.68 + mixAmount * 0.2,
     raised: 0.42 + mixAmount * 0.4 * 0.7,
     input: 0.95 + mixAmount * 0.4 * 0.65,
     highest: 0.39 + mixAmount * 0.4 * 0.65,
-    floating: 0.38 + mixAmount * 0.22,
+    floating: 0.44 + mixAmount * 0.22,
     solid: 0.30 + mixAmount * 0.20,
   }
 }
