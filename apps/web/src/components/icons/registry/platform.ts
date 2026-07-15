@@ -1,4 +1,9 @@
-import { RiAppleFill, RiUbuntuFill, RiWindowsFill } from '@remixicon/react'
+import {
+  RiAndroidFill,
+  RiAppleFill,
+  RiUbuntuFill,
+  RiWindowsFill,
+} from '@remixicon/react'
 
 import { defineIcon } from '#/components/icons/define-icon'
 
@@ -15,4 +20,9 @@ export const AppleIcon = defineIcon(RiAppleFill, {
 export const LinuxIcon = defineIcon(RiUbuntuFill, {
   pack: 'remixicon',
   name: 'RiUbuntuFill',
+})
+
+export const AndroidIcon = defineIcon(RiAndroidFill, {
+  pack: 'remixicon',
+  name: 'RiAndroidFill',
 })

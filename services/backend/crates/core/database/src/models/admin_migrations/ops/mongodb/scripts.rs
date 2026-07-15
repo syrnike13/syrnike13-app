@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 54; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 55; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1502,6 +1502,60 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             })
             .await
             .expect("Failed to create feedback votes indexes.");
+    };
+
+    if revision <= 54 {
+        info!("Running migration [revision 54 / 15-07-2026]: Split feedback type and area.");
+
+        db.col::<Document>("feedback_suggestions")
+            .update_many(
+                doc! {},
+                vec![doc! {
+                    "$set": {
+                        "category": "idea",
+                        "area": {
+                            "$switch": {
+                                "branches": [
+                                    { "case": { "$eq": ["$category", "navigation"] }, "then": "navigation" },
+                                    { "case": { "$eq": ["$category", "voice_video"] }, "then": "voice_video" },
+                                    { "case": { "$eq": ["$category", "community"] }, "then": "community" },
+                                    { "case": { "$eq": ["$category", "messages"] }, "then": "messages" },
+                                    { "case": { "$eq": ["$category", "moderation"] }, "then": "moderation" },
+                                    { "case": { "$eq": ["$category", "desktop"] }, "then": "desktop" }
+                                ],
+                                "default": "$$REMOVE"
+                            }
+                        }
+                    }
+                }],
+            )
+            .await
+            .expect("Failed to split feedback type and area.");
+
+        db.db()
+            .run_command(doc! {
+                "dropIndexes": "feedback_suggestions",
+                "index": "category_status_created"
+            })
+            .await
+            .ok();
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "feedback_suggestions",
+                "indexes": [{
+                    "key": {
+                        "category": 1_i32,
+                        "area": 1_i32,
+                        "platform": 1_i32,
+                        "product_status": 1_i32,
+                        "created_at": -1_i32
+                    },
+                    "name": "category_area_platform_status_created"
+                }]
+            })
+            .await
+            .expect("Failed to create feedback type and area index.");
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

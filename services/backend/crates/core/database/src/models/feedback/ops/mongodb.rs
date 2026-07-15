@@ -483,7 +483,16 @@ fn query_filter(query: &FeedbackSuggestionQuery) -> Result<Document> {
         });
     }
     if let Some(category) = &query.category {
-        filters.push(doc! { "category": category });
+        filters.push(doc! { "category": bson::to_bson(category)
+        .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))? });
+    }
+    if let Some(area) = &query.area {
+        filters.push(doc! { "area": bson::to_bson(area)
+        .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))? });
+    }
+    if let Some(platform) = &query.platform {
+        filters.push(doc! { "platform": bson::to_bson(platform)
+        .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))? });
     }
     if let Some(status) = &query.product_status {
         filters.push(doc! { "product_status": bson::to_bson(status)
@@ -516,7 +525,8 @@ mod tests {
     #[test]
     fn query_filter_uses_stable_persisted_field_names() {
         let filter = query_filter(&FeedbackSuggestionQuery {
-            category: Some("desktop".to_string()),
+            category: Some(v0::FeedbackCategory::Idea),
+            area: Some(v0::FeedbackArea::Desktop),
             product_status: Some(v0::FeedbackProductStatus::Planned),
             ..Default::default()
         })
@@ -525,7 +535,8 @@ mod tests {
         assert_eq!(
             filter,
             doc! { "$and": [
-                { "category": "desktop" },
+                { "category": bson::to_bson(&v0::FeedbackCategory::Idea).unwrap() },
+                { "area": bson::to_bson(&v0::FeedbackArea::Desktop).unwrap() },
                 { "product_status": bson::to_bson(&v0::FeedbackProductStatus::Planned).unwrap() },
             ] }
         );

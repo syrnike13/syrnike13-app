@@ -295,6 +295,14 @@ fn query_matches(suggestion: &FeedbackSuggestion, query: &FeedbackSuggestionQuer
             .as_ref()
             .is_none_or(|category| &suggestion.category == category)
         && query
+            .area
+            .as_ref()
+            .is_none_or(|area| suggestion.area.as_ref() == Some(area))
+        && query
+            .platform
+            .as_ref()
+            .is_none_or(|platform| suggestion.platform.as_ref() == Some(platform))
+        && query
             .product_status
             .as_ref()
             .is_none_or(|status| &suggestion.product_status == status)
@@ -342,7 +350,9 @@ mod tests {
             author_id.to_string(),
             title.to_string(),
             "A detailed feedback proposal.".to_string(),
-            "desktop".to_string(),
+            v0::FeedbackCategory::Idea,
+            Some(v0::FeedbackArea::Desktop),
+            v0::FeedbackPlatform::Windows,
         );
         db.insert_feedback_suggestion(&suggestion)
             .await

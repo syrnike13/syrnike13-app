@@ -1,10 +1,18 @@
-import type { FeedbackProductStatus, FeedbackSort } from '@syrnike13/api-types'
+import type {
+  FeedbackArea,
+  FeedbackCategory,
+  FeedbackPlatform,
+  FeedbackProductStatus,
+  FeedbackSort,
+} from '@syrnike13/api-types'
 import { useDeferredValue, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 
 import {
+  FEEDBACK_AREAS,
   FEEDBACK_CATEGORIES,
+  FEEDBACK_PLATFORMS,
   FEEDBACK_PRODUCT_STATUSES,
 } from '#/components/feedback/feedback-meta'
 import { FeedbackSuggestionRow } from '#/components/feedback/feedback-suggestion-row'
@@ -46,13 +54,17 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
   const [sort, setSort] = useState<FeedbackSort>('popular')
-  const [category, setCategory] = useState('all')
+  const [category, setCategory] = useState<FeedbackCategory | 'all'>('all')
+  const [area, setArea] = useState<FeedbackArea | 'all'>('all')
+  const [platform, setPlatform] = useState<FeedbackPlatform | 'all'>('all')
   const [status, setStatus] = useState<FeedbackProductStatus | 'all'>('all')
 
   const listParams = {
     search: deferredSearch,
     sort,
     category,
+    area,
+    platform,
     status,
     limit: PAGE_SIZE,
   }
@@ -85,8 +97,8 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   const suggestions = activeQuery.data?.pages.flatMap((page) => page.suggestions) ?? []
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <header className="shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6 sm:py-4">
+    <div className="gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+      <header className="gradient-surface-chrome shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
             {prefix === '/m' ? (
@@ -102,19 +114,19 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
           <Button className="shrink-0" asChild>
             <Link to={`${prefix}/feedback/new`}>
               <PlusIcon className="size-4" data-icon="inline-start" />
-              <span className="hidden sm:inline">Предложить идею</span>
-              <span className="sm:hidden">Предложить</span>
+              <span className="hidden sm:inline">Добавить обращение</span>
+              <span className="sm:hidden">Добавить</span>
             </Link>
           </Button>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(14rem,1fr)_auto_auto] xl:grid-cols-[minmax(16rem,1fr)_auto_auto_auto]">
-          <label className="relative min-w-0">
+        <div className="mt-4 flex flex-wrap gap-2">
+          <label className="relative min-w-56 flex-1">
             <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Найти предложение"
+              placeholder="Найти обращение"
               className="h-9 pl-9"
             />
           </label>
@@ -129,13 +141,47 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
             </SelectContent>
           </Select>
 
-          <Select value={category} onValueChange={setCategory}>
+          <Select
+            value={category}
+            onValueChange={(value) => setCategory(value as FeedbackCategory | 'all')}
+          >
+            <SelectTrigger className="w-full sm:w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все типы</SelectItem>
+              {FEEDBACK_CATEGORIES.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={area} onValueChange={(value) => setArea(value as FeedbackArea | 'all')}>
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Все категории</SelectItem>
-              {FEEDBACK_CATEGORIES.map((item) => (
+              <SelectItem value="all">Все области</SelectItem>
+              {FEEDBACK_AREAS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={platform}
+            onValueChange={(value) => setPlatform(value as FeedbackPlatform | 'all')}
+          >
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все платформы</SelectItem>
+              {FEEDBACK_PLATFORMS.map((item) => (
                 <SelectItem key={item.value} value={item.value}>
                   {item.label}
                 </SelectItem>
@@ -172,13 +218,13 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
               )}
               onClick={() => setMode(item)}
             >
-              {item === 'all' ? 'Все идеи' : 'Мои предложения'}
+              {item === 'all' ? 'Все обращения' : 'Мои обращения'}
             </button>
           ))}
         </div>
       </header>
 
-      <div className="flex shrink-0 items-start gap-2 border-b border-shell-divider bg-muted/10 px-4 py-2.5 text-xs leading-5 text-muted-foreground sm:px-6">
+      <div className="gradient-surface-raised flex shrink-0 items-start gap-2 border-b border-shell-divider bg-muted/10 px-4 py-2.5 text-xs leading-5 text-muted-foreground sm:px-6">
         <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
         <p>Голоса показывают интерес сообщества, но не являются обещанием реализации.</p>
       </div>
@@ -188,14 +234,14 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
           {activeQuery.isLoading ? (
             <FeedbackListSkeleton />
           ) : activeQuery.isError ? (
-            <FeedbackEmpty title="Не удалось загрузить идеи" description="Проверьте соединение и повторите позже." />
+            <FeedbackEmpty title="Не удалось загрузить обращения" description="Проверьте соединение и повторите позже." />
           ) : suggestions.length === 0 ? (
             <FeedbackEmpty
-              title={mode === 'mine' ? 'У вас пока нет предложений' : 'Ничего не нашлось'}
-              description={mode === 'mine' ? 'Предложите идею — после модерации она появится в общем списке.' : 'Измените поиск или фильтры.'}
+              title={mode === 'mine' ? 'У вас пока нет обращений' : 'Ничего не нашлось'}
+              description={mode === 'mine' ? 'Добавьте обращение — после модерации оно появится в общем списке.' : 'Измените поиск или фильтры.'}
             />
           ) : (
-            <div className="overflow-hidden rounded-lg border border-shell-divider bg-card/25">
+            <div className="gradient-surface-card overflow-hidden rounded-lg border border-shell-divider bg-card/25">
               {suggestions.map((suggestion) => (
                 <FeedbackSuggestionRow
                   key={suggestion._id}

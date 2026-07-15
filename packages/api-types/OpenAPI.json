@@ -7243,7 +7243,9 @@
         "operationId": "feedback_list",
         "parameters": [
           {"name": "search", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 200}},
-          {"name": "category", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 32}},
+          {"name": "category", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackCategory"}},
+          {"name": "area", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackArea"}},
+          {"name": "platform", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackPlatform"}},
           {"name": "status", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackProductStatus"}},
           {"name": "sort", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackSort"}},
           {"name": "offset", "in": "query", "required": false, "schema": {"type": "integer", "format": "uint64", "minimum": 0}},
@@ -15495,6 +15497,21 @@
         "type": "string",
         "enum": ["collecting", "under_consideration", "planned", "in_progress", "released", "not_planned"]
       },
+      "FeedbackCategory": {
+        "description": "User-selected kind of feedback.",
+        "type": "string",
+        "enum": ["bug", "idea"]
+      },
+      "FeedbackArea": {
+        "description": "Optional product area affected by the feedback.",
+        "type": "string",
+        "enum": ["navigation", "voice_video", "community", "messages", "moderation", "desktop", "activities", "other"]
+      },
+      "FeedbackPlatform": {
+        "description": "Optional client platform where the feedback applies.",
+        "type": "string",
+        "enum": ["windows", "macos", "linux", "web", "android", "ios"]
+      },
       "FeedbackSort": {
         "description": "Sort order for the feedback catalogue.",
         "type": "string",
@@ -15509,7 +15526,9 @@
           "author": {"type": "string"},
           "title": {"type": "string"},
           "description": {"type": "string"},
-          "category": {"type": "string"},
+          "category": {"$ref": "#/components/schemas/FeedbackCategory"},
+          "area": {"$ref": "#/components/schemas/FeedbackArea"},
+          "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
           "moderation_status": {"$ref": "#/components/schemas/FeedbackModerationStatus"},
           "status": {"$ref": "#/components/schemas/FeedbackProductStatus"},
           "team_response": {"type": "string", "nullable": true},
@@ -15536,11 +15555,13 @@
       "DataCreateFeedbackSuggestion": {
         "description": "Data for a new feedback suggestion.",
         "type": "object",
-        "required": ["title", "description", "category"],
+        "required": ["title", "description", "category", "platform"],
         "properties": {
           "title": {"type": "string", "minLength": 3, "maxLength": 140},
           "description": {"type": "string", "minLength": 10, "maxLength": 5000},
-          "category": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"}
+          "category": {"$ref": "#/components/schemas/FeedbackCategory"},
+          "area": {"$ref": "#/components/schemas/FeedbackArea"},
+          "platform": {"$ref": "#/components/schemas/FeedbackPlatform"}
         }
       },
       "DataRejectFeedbackSuggestion": {

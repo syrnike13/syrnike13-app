@@ -41,6 +41,8 @@ vi.mock('@tanstack/react-router', () => ({
     from === '/app/' || from === '/m/'
       ? { routeId: from, params: {}, search: {} }
       : false,
+  useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
+    select({ location: { pathname: '/app' } }),
 }))
 
 vi.mock('#/features/auth/auth-context', () => ({

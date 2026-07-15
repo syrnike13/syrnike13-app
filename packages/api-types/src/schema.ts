@@ -3359,6 +3359,26 @@ export interface components {
       | "released"
       | "not_planned";
     /** @enum {string} */
+    FeedbackCategory: "bug" | "idea";
+    /** @enum {string} */
+    FeedbackArea:
+      | "navigation"
+      | "voice_video"
+      | "community"
+      | "messages"
+      | "moderation"
+      | "desktop"
+      | "activities"
+      | "other";
+    /** @enum {string} */
+    FeedbackPlatform:
+      | "windows"
+      | "macos"
+      | "linux"
+      | "web"
+      | "android"
+      | "ios";
+    /** @enum {string} */
     FeedbackSort: "popular" | "new";
     /** A product feedback suggestion visible to the requesting user. */
     FeedbackSuggestion: {
@@ -3366,7 +3386,9 @@ export interface components {
       author: string;
       title: string;
       description: string;
-      category: string;
+      category: components["schemas"]["FeedbackCategory"];
+      area?: components["schemas"]["FeedbackArea"];
+      platform?: components["schemas"]["FeedbackPlatform"];
       moderation_status: components["schemas"]["FeedbackModerationStatus"];
       status: components["schemas"]["FeedbackProductStatus"];
       team_response?: string | null;
@@ -3388,7 +3410,9 @@ export interface components {
     DataCreateFeedbackSuggestion: {
       title: string;
       description: string;
-      category: string;
+      category: components["schemas"]["FeedbackCategory"];
+      area?: components["schemas"]["FeedbackArea"];
+      platform: components["schemas"]["FeedbackPlatform"];
     };
     DataRejectFeedbackSuggestion: {
       reason: string;
@@ -6297,7 +6321,9 @@ export interface operations {
     parameters: {
       query?: {
         search?: string;
-        category?: string;
+        category?: components["schemas"]["FeedbackCategory"];
+        area?: components["schemas"]["FeedbackArea"];
+        platform?: components["schemas"]["FeedbackPlatform"];
         status?: components["schemas"]["FeedbackProductStatus"];
         sort?: components["schemas"]["FeedbackSort"];
         offset?: number;

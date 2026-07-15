@@ -14,6 +14,9 @@ type HomeSidebarProps = {
   reserveUserPanelSpace?: boolean
 }
 
+const activeNavItemClassName =
+  'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-primary-foreground' as const
+
 export function HomeSidebar({
   activeChannelId,
   reserveUserPanelSpace = true,
@@ -39,7 +42,7 @@ export function HomeSidebar({
             to={prefix}
             search={{ tab: 'online' }}
             activeOptions={{ exact: true }}
-            activeProps={{ className: 'bg-sidebar-accent text-foreground' }}
+            activeProps={{ className: activeNavItemClassName }}
           >
             <UsersIcon className="size-4 shrink-0" />
             Друзья
@@ -53,7 +56,7 @@ export function HomeSidebar({
           <Link
             to={`${prefix}/feedback`}
             search={{ view: 'all' }}
-            activeProps={{ className: 'bg-sidebar-accent text-foreground' }}
+            activeProps={{ className: activeNavItemClassName }}
           >
             <LightbulbIcon className="size-4 shrink-0" />
             Идеи

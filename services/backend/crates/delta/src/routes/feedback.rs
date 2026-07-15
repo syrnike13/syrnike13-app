@@ -32,12 +32,14 @@ pub fn routes() -> (Vec<rocket::Route>, revolt_okapi::openapi3::OpenApi) {
 /// List approved product feedback suggestions. This catalogue is only available
 /// to authenticated users.
 #[openapi(tag = "Product Feedback")]
-#[get("/?<search>&<category>&<status>&<sort>&<offset>&<limit>")]
+#[get("/?<search>&<category>&<area>&<platform>&<status>&<sort>&<offset>&<limit>")]
 pub async fn list(
     db: &State<Database>,
     user: User,
     search: Option<String>,
     category: Option<String>,
+    area: Option<String>,
+    platform: Option<String>,
     status: Option<String>,
     sort: Option<String>,
     offset: Option<usize>,
@@ -46,7 +48,9 @@ pub async fn list(
     let query = FeedbackSuggestionQuery {
         moderation_statuses: vec![v0::FeedbackModerationStatus::Approved],
         search: normalise_search(search)?,
-        category: normalise_category(category)?,
+        category: parse_category(category)?,
+        area: parse_area(area)?,
+        platform: parse_platform(platform)?,
         product_status: parse_product_status(status)?,
         sort: parse_sort(sort)?,
         offset: offset.unwrap_or_default(),
@@ -118,8 +122,14 @@ pub async fn create(
     }
 
     let data = normalise_create_data(data.into_inner())?;
-    let suggestion =
-        FeedbackSuggestion::new(user.id.clone(), data.title, data.description, data.category);
+    let suggestion = FeedbackSuggestion::new(
+        user.id.clone(),
+        data.title,
+        data.description,
+        data.category,
+        data.area,
+        data.platform,
+    );
     db.insert_feedback_suggestion(&suggestion).await?;
 
     Ok(Json(view_into_api(
@@ -367,7 +377,6 @@ fn normalise_create_data(
 ) -> Result<v0::DataCreateFeedbackSuggestion> {
     data.title = normalise_required(data.title, "title")?;
     data.description = normalise_required(data.description, "description")?;
-    data.category = normalise_required(data.category, "category")?.to_lowercase();
     data.validate().map_err(validation_from)?;
     Ok(data)
 }
@@ -383,14 +392,41 @@ fn normalise_search(search: Option<String>) -> Result<Option<String>> {
     Ok(search)
 }
 
-fn normalise_category(category: Option<String>) -> Result<Option<String>> {
-    let category = normalise_optional(category)?.map(|value| value.to_lowercase());
-    if let Some(category) = &category {
-        if category.len() > 32 || !v0::RE_FEEDBACK_CATEGORY.is_match(category) {
-            return validation_error("category must be a stable category slug");
-        }
+fn parse_category(value: Option<String>) -> Result<Option<v0::FeedbackCategory>> {
+    match value.as_deref() {
+        None | Some("") => Ok(None),
+        Some("bug") => Ok(Some(v0::FeedbackCategory::Bug)),
+        Some("idea") => Ok(Some(v0::FeedbackCategory::Idea)),
+        Some(_) => Err(create_error!(InvalidOperation)),
     }
-    Ok(category)
+}
+
+fn parse_area(value: Option<String>) -> Result<Option<v0::FeedbackArea>> {
+    match value.as_deref() {
+        None | Some("") => Ok(None),
+        Some("navigation") => Ok(Some(v0::FeedbackArea::Navigation)),
+        Some("voice_video") => Ok(Some(v0::FeedbackArea::VoiceVideo)),
+        Some("community") => Ok(Some(v0::FeedbackArea::Community)),
+        Some("messages") => Ok(Some(v0::FeedbackArea::Messages)),
+        Some("moderation") => Ok(Some(v0::FeedbackArea::Moderation)),
+        Some("desktop") => Ok(Some(v0::FeedbackArea::Desktop)),
+        Some("activities") => Ok(Some(v0::FeedbackArea::Activities)),
+        Some("other") => Ok(Some(v0::FeedbackArea::Other)),
+        Some(_) => Err(create_error!(InvalidOperation)),
+    }
+}
+
+fn parse_platform(value: Option<String>) -> Result<Option<v0::FeedbackPlatform>> {
+    match value.as_deref() {
+        None | Some("") => Ok(None),
+        Some("windows") => Ok(Some(v0::FeedbackPlatform::Windows)),
+        Some("macos") => Ok(Some(v0::FeedbackPlatform::Macos)),
+        Some("linux") => Ok(Some(v0::FeedbackPlatform::Linux)),
+        Some("web") => Ok(Some(v0::FeedbackPlatform::Web)),
+        Some("android") => Ok(Some(v0::FeedbackPlatform::Android)),
+        Some("ios") => Ok(Some(v0::FeedbackPlatform::Ios)),
+        Some(_) => Err(create_error!(InvalidOperation)),
+    }
 }
 
 fn normalise_optional(value: Option<String>) -> Result<Option<String>> {
@@ -532,7 +568,9 @@ mod tests {
                 author_id.to_string(),
                 "A private proposal".to_string(),
                 "A sufficiently detailed private proposal.".to_string(),
-                "desktop".to_string(),
+                v0::FeedbackCategory::Idea,
+                Some(v0::FeedbackArea::Desktop),
+                v0::FeedbackPlatform::Windows,
             );
             self.db
                 .insert_feedback_suggestion(&suggestion)

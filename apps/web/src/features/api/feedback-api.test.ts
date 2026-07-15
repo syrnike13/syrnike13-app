@@ -23,7 +23,9 @@ describe('feedback api', () => {
 
     await fetchFeedbackSuggestions('token', {
       search: '  папки серверов  ',
-      category: 'navigation',
+      category: 'idea',
+      area: 'navigation',
+      platform: 'windows',
       status: 'all',
       sort: 'popular',
       offset: 20,
@@ -31,7 +33,7 @@ describe('feedback api', () => {
     })
 
     expect(mocks.apiRequest).toHaveBeenCalledWith(
-      '/feedback?search=%D0%BF%D0%B0%D0%BF%D0%BA%D0%B8+%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80%D0%BE%D0%B2&category=navigation&sort=popular&offset=20&limit=20',
+      '/feedback?search=%D0%BF%D0%B0%D0%BF%D0%BA%D0%B8+%D1%81%D0%B5%D1%80%D0%B2%D0%B5%D1%80%D0%BE%D0%B2&category=idea&area=navigation&platform=windows&sort=popular&offset=20&limit=20',
       { token: 'token' },
     )
   })
@@ -51,7 +53,9 @@ describe('feedback api', () => {
     const body = {
       title: 'Папки для серверов',
       description: 'Позволяют организовать большой список.',
-      category: 'navigation',
+      category: 'idea' as const,
+      area: 'navigation' as const,
+      platform: 'windows' as const,
     }
 
     await createFeedbackSuggestion('token', body)

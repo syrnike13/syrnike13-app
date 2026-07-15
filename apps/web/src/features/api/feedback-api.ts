@@ -1,5 +1,8 @@
 import type {
   DataCreateFeedbackSuggestion,
+  FeedbackArea,
+  FeedbackCategory,
+  FeedbackPlatform,
   FeedbackProductStatus,
   FeedbackSort,
   FeedbackSuggestion,
@@ -10,7 +13,9 @@ import { apiRequest } from '#/lib/api/client'
 
 export type FeedbackListParams = {
   search?: string
-  category?: string
+  category?: FeedbackCategory | 'all'
+  area?: FeedbackArea | 'all'
+  platform?: FeedbackPlatform | 'all'
   status?: FeedbackProductStatus | 'all'
   sort?: FeedbackSort
   offset?: number
@@ -21,9 +26,13 @@ function feedbackQuery(params: FeedbackListParams) {
   const query = new URLSearchParams()
   const search = params.search?.trim()
   const category = params.category?.trim()
+  const area = params.area?.trim()
+  const platform = params.platform?.trim()
 
   if (search) query.set('search', search)
   if (category && category !== 'all') query.set('category', category)
+  if (area && area !== 'all') query.set('area', area)
+  if (platform && platform !== 'all') query.set('platform', platform)
   if (params.status && params.status !== 'all') {
     query.set('status', params.status)
   }

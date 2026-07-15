@@ -12,7 +12,11 @@ auto_derived!(
         pub author_id: String,
         pub title: String,
         pub description: String,
-        pub category: String,
+        pub category: v0::FeedbackCategory,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub area: Option<v0::FeedbackArea>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub platform: Option<v0::FeedbackPlatform>,
         pub moderation_status: v0::FeedbackModerationStatus,
         pub product_status: v0::FeedbackProductStatus,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -43,7 +47,9 @@ auto_derived!(
 pub struct FeedbackSuggestionQuery {
     pub author_id: Option<String>,
     pub moderation_statuses: Vec<v0::FeedbackModerationStatus>,
-    pub category: Option<String>,
+    pub category: Option<v0::FeedbackCategory>,
+    pub area: Option<v0::FeedbackArea>,
+    pub platform: Option<v0::FeedbackPlatform>,
     pub product_status: Option<v0::FeedbackProductStatus>,
     pub search: Option<String>,
     pub sort: v0::FeedbackSort,
@@ -57,6 +63,8 @@ impl Default for FeedbackSuggestionQuery {
             author_id: None,
             moderation_statuses: Vec::new(),
             category: None,
+            area: None,
+            platform: None,
             product_status: None,
             search: None,
             sort: v0::FeedbackSort::New,
@@ -92,13 +100,22 @@ pub(crate) struct FeedbackStore {
 }
 
 impl FeedbackSuggestion {
-    pub fn new(author_id: String, title: String, description: String, category: String) -> Self {
+    pub fn new(
+        author_id: String,
+        title: String,
+        description: String,
+        category: v0::FeedbackCategory,
+        area: Option<v0::FeedbackArea>,
+        platform: v0::FeedbackPlatform,
+    ) -> Self {
         Self {
             id: Ulid::new().to_string(),
             author_id,
             title,
             description,
             category,
+            area,
+            platform: Some(platform),
             moderation_status: v0::FeedbackModerationStatus::Pending,
             product_status: v0::FeedbackProductStatus::Collecting,
             team_response: None,
@@ -131,6 +148,8 @@ impl FeedbackSuggestion {
             title: self.title,
             description: self.description,
             category: self.category,
+            area: self.area,
+            platform: self.platform,
             moderation_status: self.moderation_status,
             status: self.product_status,
             team_response: self.team_response,

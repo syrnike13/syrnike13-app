@@ -34,7 +34,7 @@ export function FeedbackVoteButton({
     <button
       type="button"
       className={cn(
-        'group/vote flex shrink-0 flex-col items-center justify-center rounded-md border text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'gradient-surface-input group/vote flex shrink-0 flex-col items-center justify-center rounded-md border text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
         compact ? 'size-14 gap-0.5' : 'h-[4.5rem] w-16 gap-1',
         suggestion.voted
           ? 'border-primary/45 bg-primary/10 text-primary'

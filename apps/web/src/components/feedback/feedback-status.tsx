@@ -1,10 +1,13 @@
 import type {
+  FeedbackCategory,
   FeedbackModerationStatus,
   FeedbackProductStatus,
 } from '@syrnike13/api-types'
 
 import {
   FEEDBACK_MODERATION_LABELS,
+  feedbackCategoryClass,
+  feedbackCategoryLabel,
   feedbackModerationClass,
   feedbackProductStatusLabel,
   feedbackStatusClass,
@@ -19,10 +22,21 @@ export function FeedbackProductStatus({
 }: {
   status: FeedbackProductStatus
 }) {
+  const label = feedbackProductStatusLabel(status)
+  if (!label) return null
+
   return (
     <span className={cn(statusBaseClass, feedbackStatusClass(status))}>
       <span className="size-1.5 rounded-full bg-current" aria-hidden />
-      {feedbackProductStatusLabel(status)}
+      {label}
+    </span>
+  )
+}
+
+export function FeedbackCategoryBadge({ category }: { category: FeedbackCategory }) {
+  return (
+    <span className={cn(statusBaseClass, feedbackCategoryClass(category))}>
+      {feedbackCategoryLabel(category)}
     </span>
   )
 }

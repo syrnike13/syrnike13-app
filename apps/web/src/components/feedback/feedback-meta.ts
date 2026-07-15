@@ -1,24 +1,50 @@
 import type {
+  FeedbackArea,
+  FeedbackCategory,
   FeedbackModerationStatus,
+  FeedbackPlatform,
   FeedbackProductStatus,
 } from '@syrnike13/api-types'
 
 export const FEEDBACK_CATEGORIES = [
+  { value: 'bug', label: 'Баг', description: 'Что-то работает неправильно' },
+  { value: 'idea', label: 'Идея', description: 'Предложение новой возможности' },
+] satisfies { value: FeedbackCategory; label: string; description: string }[]
+
+export const FEEDBACK_AREAS = [
   { value: 'navigation', label: 'Навигация и интерфейс' },
   { value: 'voice_video', label: 'Голосовые и видео' },
   { value: 'community', label: 'Серверы и сообщества' },
   { value: 'messages', label: 'Сообщения и контент' },
   { value: 'moderation', label: 'Модерация и безопасность' },
-  { value: 'mobile', label: 'Мобильное приложение' },
-  { value: 'desktop', label: 'Десктопное приложение' },
+  { value: 'activities', label: 'Активности' },
   { value: 'other', label: 'Другое' },
-] as const
+] satisfies { value: FeedbackArea; label: string }[]
+
+const FEEDBACK_AREA_LABELS: Record<FeedbackArea, string> = {
+  navigation: 'Навигация и интерфейс',
+  voice_video: 'Голосовые и видео',
+  community: 'Серверы и сообщества',
+  messages: 'Сообщения и контент',
+  moderation: 'Модерация и безопасность',
+  desktop: 'Десктопное приложение',
+  activities: 'Активности',
+  other: 'Другое',
+}
+
+export const FEEDBACK_PLATFORMS = [
+  { value: 'windows', label: 'Windows' },
+  { value: 'macos', label: 'macOS' },
+  { value: 'linux', label: 'Linux' },
+  { value: 'web', label: 'Web' },
+  { value: 'android', label: 'Android' },
+  { value: 'ios', label: 'iOS' },
+] satisfies { value: FeedbackPlatform; label: string }[]
 
 export const FEEDBACK_PRODUCT_STATUSES: {
   value: FeedbackProductStatus
   label: string
 }[] = [
-  { value: 'collecting', label: 'Собираем голоса' },
   { value: 'under_consideration', label: 'Рассматриваем' },
   { value: 'planned', label: 'Запланировано' },
   { value: 'in_progress', label: 'В работе' },
@@ -37,18 +63,33 @@ export const FEEDBACK_MODERATION_LABELS: Record<
   hidden: 'Скрыто',
 }
 
-export function feedbackCategoryLabel(category: string) {
+export function feedbackCategoryLabel(category: FeedbackCategory) {
   return (
     FEEDBACK_CATEGORIES.find((item) => item.value === category)?.label ??
     category
   )
 }
 
+export function feedbackAreaLabel(area: FeedbackArea) {
+  return FEEDBACK_AREA_LABELS[area] ?? area
+}
+
+export function feedbackPlatformLabel(platform: FeedbackPlatform) {
+  return FEEDBACK_PLATFORMS.find((item) => item.value === platform)?.label ?? platform
+}
+
 export function feedbackProductStatusLabel(status: FeedbackProductStatus) {
+  if (status === 'collecting') return null
   return (
     FEEDBACK_PRODUCT_STATUSES.find((item) => item.value === status)?.label ??
     status
   )
+}
+
+export function feedbackCategoryClass(category: FeedbackCategory) {
+  return category === 'bug'
+    ? 'border-destructive/30 bg-destructive/8 text-destructive'
+    : 'border-primary/30 bg-primary/8 text-primary'
 }
 
 export function feedbackStatusClass(status: FeedbackProductStatus) {

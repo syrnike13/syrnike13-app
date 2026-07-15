@@ -4,13 +4,16 @@ import { Link } from '@tanstack/react-router'
 import {
   CalendarIcon,
   ChevronRightIcon,
+  MonitorIcon,
   TagIcon,
   UserIcon,
 } from '#/components/icons'
 import {
-  feedbackCategoryLabel,
+  feedbackAreaLabel,
+  feedbackPlatformLabel,
 } from '#/components/feedback/feedback-meta'
 import {
+  FeedbackCategoryBadge,
   FeedbackModerationStatus,
   FeedbackProductStatus,
 } from '#/components/feedback/feedback-status'
@@ -66,10 +69,19 @@ export function FeedbackSuggestionRow({
         </Link>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
-          <span className="inline-flex items-center gap-1">
-            <TagIcon className="size-3.5" aria-hidden />
-            {feedbackCategoryLabel(suggestion.category)}
-          </span>
+          <FeedbackCategoryBadge category={suggestion.category} />
+          {suggestion.area ? (
+            <span className="inline-flex items-center gap-1">
+              <TagIcon className="size-3.5" aria-hidden />
+              {feedbackAreaLabel(suggestion.area)}
+            </span>
+          ) : null}
+          {suggestion.platform ? (
+            <span className="inline-flex items-center gap-1">
+              <MonitorIcon className="size-3.5" aria-hidden />
+              {feedbackPlatformLabel(suggestion.platform)}
+            </span>
+          ) : null}
           <span className="inline-flex items-center gap-1">
             <UserIcon className="size-3.5" aria-hidden />
             {authorLabel}
@@ -78,12 +90,18 @@ export function FeedbackSuggestionRow({
       </div>
 
       <div className="hidden min-w-0 space-y-1.5 text-xs text-muted-foreground lg:block">
-        <span className="flex items-center gap-1.5">
-          <TagIcon className="size-3.5 shrink-0" aria-hidden />
-          <span className="truncate">
-            {feedbackCategoryLabel(suggestion.category)}
+        <div className="flex min-w-0 items-center gap-2">
+          <FeedbackCategoryBadge category={suggestion.category} />
+          {suggestion.area ? (
+            <span className="truncate">{feedbackAreaLabel(suggestion.area)}</span>
+          ) : null}
+        </div>
+        {suggestion.platform ? (
+          <span className="flex items-center gap-1.5">
+            <MonitorIcon className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{feedbackPlatformLabel(suggestion.platform)}</span>
           </span>
-        </span>
+        ) : null}
         <span className="flex items-center gap-1.5">
           <UserIcon className="size-3.5 shrink-0" aria-hidden />
           <span className="truncate">{authorLabel}</span>

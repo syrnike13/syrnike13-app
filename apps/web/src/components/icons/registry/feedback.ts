@@ -6,6 +6,11 @@ export const LightbulbIcon = defineIcon(iconifyIcon('lucide:lightbulb'), {
   name: 'lucide:lightbulb',
 })
 
+export const BugIcon = defineIcon(iconifyIcon('lucide:bug'), {
+  pack: 'iconify',
+  name: 'lucide:bug',
+})
+
 export const ArrowUpIcon = defineIcon(iconifyIcon('lucide:arrow-up'), {
   pack: 'iconify',
   name: 'lucide:arrow-up',

@@ -1,12 +1,6 @@
 use iso8601_timestamp::Timestamp;
-use once_cell::sync::Lazy;
-use regex::Regex;
-
 #[cfg(feature = "validator")]
 use validator::Validate;
-
-pub static RE_FEEDBACK_CATEGORY: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^[a-z0-9][a-z0-9_-]{0,31}$").unwrap());
 
 auto_derived!(
     /// Moderation visibility of a feedback suggestion.
@@ -30,6 +24,37 @@ auto_derived!(
         NotPlanned,
     }
 
+    /// User-selected kind of feedback.
+    #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+    pub enum FeedbackCategory {
+        Bug,
+        Idea,
+    }
+
+    /// Optional product area affected by the feedback.
+    #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+    pub enum FeedbackArea {
+        Navigation,
+        VoiceVideo,
+        Community,
+        Messages,
+        Moderation,
+        Desktop,
+        Activities,
+        Other,
+    }
+
+    /// Optional client platform where the feedback applies.
+    #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
+    pub enum FeedbackPlatform {
+        Windows,
+        Macos,
+        Linux,
+        Web,
+        Android,
+        Ios,
+    }
+
     /// Sort order for the feedback catalogue.
     #[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
     pub enum FeedbackSort {
@@ -48,8 +73,14 @@ auto_derived!(
         pub title: String,
         /// Full proposal text.
         pub description: String,
-        /// Stable category slug.
-        pub category: String,
+        /// Whether this reports a bug or proposes an idea.
+        pub category: FeedbackCategory,
+        /// Optional product area affected by the feedback.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub area: Option<FeedbackArea>,
+        /// Optional client platform where the feedback applies.
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub platform: Option<FeedbackPlatform>,
         /// Moderation visibility state.
         pub moderation_status: FeedbackModerationStatus,
         /// Product delivery state.
@@ -91,11 +122,10 @@ auto_derived!(
         pub title: String,
         #[cfg_attr(feature = "validator", validate(length(min = 10, max = 5000)))]
         pub description: String,
-        #[cfg_attr(
-            feature = "validator",
-            validate(length(min = 1, max = 32), regex = "RE_FEEDBACK_CATEGORY")
-        )]
-        pub category: String,
+        pub category: FeedbackCategory,
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        pub area: Option<FeedbackArea>,
+        pub platform: FeedbackPlatform,
     }
 
     /// Rejection reason supplied by a moderator.
@@ -127,17 +157,3 @@ auto_derived!(
         pub response: Option<String>,
     }
 );
-
-#[cfg(test)]
-mod tests {
-    use super::RE_FEEDBACK_CATEGORY;
-
-    #[test]
-    fn feedback_category_accepts_stable_slugs() {
-        assert!(RE_FEEDBACK_CATEGORY.is_match("desktop_app"));
-        assert!(RE_FEEDBACK_CATEGORY.is_match("api-v2"));
-        assert!(!RE_FEEDBACK_CATEGORY.is_match("Desktop"));
-        assert!(!RE_FEEDBACK_CATEGORY.is_match(""));
-        assert!(!RE_FEEDBACK_CATEGORY.is_match("has spaces"));
-    }
-}

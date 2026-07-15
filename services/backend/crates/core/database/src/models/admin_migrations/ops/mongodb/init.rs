@@ -323,10 +323,12 @@ pub async fn create_database(db: &MongoDb) {
             {
                 "key": {
                     "category": 1_i32,
+                    "area": 1_i32,
+                    "platform": 1_i32,
                     "product_status": 1_i32,
                     "created_at": -1_i32
                 },
-                "name": "category_status_created"
+                "name": "category_area_platform_status_created"
             }
         ]
     })

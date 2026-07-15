@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 
 import {
-  feedbackCategoryLabel,
+  feedbackAreaLabel,
+  feedbackPlatformLabel,
 } from '#/components/feedback/feedback-meta'
 import {
+  FeedbackCategoryBadge,
   FeedbackModerationStatus,
   FeedbackProductStatus,
 } from '#/components/feedback/feedback-status'
@@ -13,6 +15,7 @@ import {
   CalendarIcon,
   ChevronLeftIcon,
   InfoIcon,
+  MonitorIcon,
   TagIcon,
   UserIcon,
 } from '#/components/icons'
@@ -38,11 +41,11 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   )
 
   if (query.isLoading) {
-    return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Загружаем идею…</div>
+    return <div className="gradient-surface-content flex flex-1 items-center justify-center text-sm text-muted-foreground">Загружаем обращение…</div>
   }
 
   if (!query.data) {
-    return <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">Идея не найдена или недоступна.</div>
+    return <div className="gradient-surface-content flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">Обращение не найдено или недоступно.</div>
   }
 
   const suggestion = query.data
@@ -55,14 +58,14 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   }).format(new Date(suggestion.created_at))
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-shell-divider px-3 sm:px-5">
+    <div className="gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+      <header className="gradient-surface-chrome flex h-14 shrink-0 items-center gap-2 border-b border-shell-divider px-3 sm:px-5">
         <Button variant="ghost" size="icon" asChild>
           <Link to={`${prefix}/feedback`} search={{ view: 'all' }} aria-label="Назад к идеям">
             <ChevronLeftIcon className="size-5" />
           </Link>
         </Button>
-        <span className="truncate text-sm font-semibold">Идея</span>
+        <span className="truncate text-sm font-semibold">Обращение</span>
       </header>
 
       <ScrollArea className="min-h-0 flex-1">
@@ -78,7 +81,13 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
                   {suggestion.title}
                 </h1>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5"><TagIcon className="size-3.5" />{feedbackCategoryLabel(suggestion.category)}</span>
+                  <FeedbackCategoryBadge category={suggestion.category} />
+                  {suggestion.area ? (
+                    <span className="inline-flex items-center gap-1.5"><TagIcon className="size-3.5" />{feedbackAreaLabel(suggestion.area)}</span>
+                  ) : null}
+                  {suggestion.platform ? (
+                    <span className="inline-flex items-center gap-1.5"><MonitorIcon className="size-3.5" />{feedbackPlatformLabel(suggestion.platform)}</span>
+                  ) : null}
                   <span className="inline-flex items-center gap-1.5"><UserIcon className="size-3.5" />{authorLabel}</span>
                   <span className="inline-flex items-center gap-1.5"><CalendarIcon className="size-3.5" />{date}</span>
                 </div>
@@ -101,7 +110,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
             </div>
 
             {suggestion.team_response ? (
-              <section className="mt-8 rounded-lg border border-primary/20 bg-primary/5 p-4 sm:p-5">
+              <section className="gradient-surface-raised mt-8 rounded-lg border border-primary/20 bg-primary/5 p-4 sm:p-5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-primary">
                   <InfoIcon className="size-4" aria-hidden />
                   Ответ команды
@@ -113,14 +122,14 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
             ) : null}
 
             {suggestion.rejection_reason ? (
-              <section className="mt-8 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm leading-6">
+              <section className="gradient-surface-raised mt-8 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm leading-6">
                 <h2 className="font-semibold text-destructive">Причина отклонения</h2>
                 <p className="mt-1 text-muted-foreground">{suggestion.rejection_reason}</p>
               </section>
             ) : null}
 
             {suggestion.merged_into ? (
-              <section className="mt-8 rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6">
+              <section className="gradient-surface-raised mt-8 rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6">
                 <h2 className="font-semibold">Предложение объединено</h2>
                 {suggestion.merge_reason ? <p className="mt-1 text-muted-foreground">{suggestion.merge_reason}</p> : null}
                 <Button variant="link" className="mt-1 h-auto p-0" asChild>
