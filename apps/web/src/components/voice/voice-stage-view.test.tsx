@@ -149,6 +149,20 @@ function renderStage(channel: Channel) {
   )
 }
 
+function getEmbeddedStageSurface(container: HTMLElement): HTMLElement {
+  const surface = container.querySelector<HTMLElement>(
+    '[data-voice-stage-surface="embedded"]',
+  )
+  if (!surface) throw new Error('Embedded VoiceStage surface was not rendered')
+  return surface
+}
+
+function expectFixedBlackStageSurface(surface: HTMLElement) {
+  expect(surface.classList.contains('bg-black')).toBe(true)
+  expect(surface.classList.contains('gradient-surface-content')).toBe(false)
+  expect(surface.classList.contains('gradient-stage-empty')).toBe(false)
+}
+
 describe('VoiceStageView channel media scope', () => {
   beforeEach(() => {
     testState.session.channelId = 'voice-a'
@@ -191,6 +205,33 @@ describe('VoiceStageView channel media scope', () => {
     expect(screen.queryByTestId('media-grid')).toBeNull()
     expect(screen.getByText('Bob сейчас в голосовом чате')).toBeTruthy()
     expect(screen.queryByText('alice:camera')).toBeNull()
+  })
+
+  it('keeps the stage surface black across media and empty states', () => {
+    const channel = voiceChannel('voice-a', 'A')
+    const { container, rerender } = renderStage(channel)
+    const surface = getEmbeddedStageSurface(container)
+
+    expectFixedBlackStageSurface(surface)
+
+    testState.session.channelId = null
+    testState.session.status = 'idle'
+    testState.stage.stageChannelId = null
+    testState.stage.stageMediaItems = []
+    testState.participants = { 'voice-a': [] }
+
+    rerender(
+      <VoiceStageView
+        channel={channel}
+        title="A"
+        chatOpen={false}
+        onToggleChat={() => undefined}
+      />,
+    )
+
+    expect(getEmbeddedStageSurface(container)).toBe(surface)
+    expectFixedBlackStageSurface(surface)
+    expect(screen.getByText('В канале никого нет')).toBeTruthy()
   })
 
   it('switches remote participant previews when no RTC media scope is active', () => {

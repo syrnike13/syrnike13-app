@@ -292,10 +292,6 @@ html {
   backdrop-filter: blur(14px) saturate(115%);
 }
 
-:root[data-theme-gradient]:not([data-theme-gradient='none']) .gradient-stage-empty {
-  color: var(--foreground);
-}
-
 @keyframes gateway-logo-wobble {
   0%,
   100% {

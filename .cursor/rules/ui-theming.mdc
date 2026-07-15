@@ -40,3 +40,4 @@ alwaysApply: true
 - цвета ролей/серверов из API, `role-colour-picker.tsx`, `avatar-tile-palette.ts`
 - meta/fallback hex (`theme-color`)
 - desktop native shell: прозрачный оверлей, `backgroundColor` окна до загрузки web
+- canvas VoiceStage и его popout: фиксированный чёрный фон, без `theme-surface-*` и `gradient-surface-*` на корневой поверхности
