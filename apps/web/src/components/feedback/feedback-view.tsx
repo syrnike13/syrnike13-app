@@ -17,6 +17,7 @@ import {
 } from '#/components/feedback/feedback-meta'
 import { FeedbackSuggestionRow } from '#/components/feedback/feedback-suggestion-row'
 import {
+  ChevronDownIcon,
   ChevronLeftIcon,
   InfoIcon,
   LightbulbIcon,
@@ -26,13 +27,6 @@ import {
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '#/components/ui/select'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchFeedbackSuggestions,
@@ -75,6 +69,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
       fetchFeedbackSuggestions(token!, { ...listParams, offset: pageParam }),
     initialPageParam: 0,
     enabled: Boolean(token) && mode === 'all',
+    staleTime: 2 * 60_000,
     getNextPageParam: (lastPage) => {
       const next = lastPage.offset + lastPage.suggestions.length
       return next < lastPage.total ? next : undefined
@@ -87,6 +82,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
       fetchMyFeedbackSuggestions(token!, { offset: pageParam, limit: PAGE_SIZE }),
     initialPageParam: 0,
     enabled: Boolean(token) && mode === 'mine',
+    staleTime: 2 * 60_000,
     getNextPageParam: (lastPage) => {
       const next = lastPage.offset + lastPage.suggestions.length
       return next < lastPage.total ? next : undefined
@@ -131,80 +127,60 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
             />
           </label>
 
-          <Select value={sort} onValueChange={(value) => setSort(value as FeedbackSort)}>
-            <SelectTrigger className="w-full sm:w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="popular">Популярные</SelectItem>
-              <SelectItem value="new">Новые</SelectItem>
-            </SelectContent>
-          </Select>
+          <FeedbackFilterSelect
+            ariaLabel="Сортировка"
+            className="sm:w-36"
+            value={sort}
+            options={[
+              { value: 'popular', label: 'Популярные' },
+              { value: 'new', label: 'Новые' },
+            ]}
+            onValueChange={(value) => setSort(value as FeedbackSort)}
+          />
 
-          <Select
+          <FeedbackFilterSelect
+            ariaLabel="Тип обращения"
+            className="sm:w-36"
             value={category}
+            options={[
+              { value: 'all', label: 'Все типы' },
+              ...FEEDBACK_CATEGORIES,
+            ]}
             onValueChange={(value) => setCategory(value as FeedbackCategory | 'all')}
-          >
-            <SelectTrigger className="w-full sm:w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все типы</SelectItem>
-              {FEEDBACK_CATEGORIES.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
 
-          <Select value={area} onValueChange={(value) => setArea(value as FeedbackArea | 'all')}>
-            <SelectTrigger className="w-full sm:w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все области</SelectItem>
-              {FEEDBACK_AREAS.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <FeedbackFilterSelect
+            ariaLabel="Область"
+            className="sm:w-48"
+            value={area}
+            options={[
+              { value: 'all', label: 'Все области' },
+              ...FEEDBACK_AREAS,
+            ]}
+            onValueChange={(value) => setArea(value as FeedbackArea | 'all')}
+          />
 
-          <Select
+          <FeedbackFilterSelect
+            ariaLabel="Платформа"
+            className="sm:w-40"
             value={platform}
+            options={[
+              { value: 'all', label: 'Все платформы' },
+              ...FEEDBACK_PLATFORMS,
+            ]}
             onValueChange={(value) => setPlatform(value as FeedbackPlatform | 'all')}
-          >
-            <SelectTrigger className="w-full sm:w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все платформы</SelectItem>
-              {FEEDBACK_PLATFORMS.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
 
-          <Select
+          <FeedbackFilterSelect
+            ariaLabel="Статус"
+            className="sm:w-44"
             value={status}
+            options={[
+              { value: 'all', label: 'Все статусы' },
+              ...FEEDBACK_PRODUCT_STATUSES,
+            ]}
             onValueChange={(value) => setStatus(value as FeedbackProductStatus | 'all')}
-          >
-            <SelectTrigger className="w-full sm:w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все статусы</SelectItem>
-              {FEEDBACK_PRODUCT_STATUSES.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         </div>
 
         <div className="mt-3 flex items-end gap-6">
@@ -266,6 +242,42 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
         </div>
       </ScrollArea>
     </div>
+  )
+}
+
+function FeedbackFilterSelect({
+  ariaLabel,
+  className,
+  value,
+  options,
+  onValueChange,
+}: {
+  ariaLabel: string
+  className?: string
+  value: string
+  options: ReadonlyArray<{ value: string; label: string }>
+  onValueChange: (value: string) => void
+}) {
+  return (
+    <label className={cn('relative w-full', className)}>
+      <span className="sr-only">{ariaLabel}</span>
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        className="h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 pr-8 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        onChange={(event) => onValueChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDownIcon
+        className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden
+      />
+    </label>
   )
 }
 

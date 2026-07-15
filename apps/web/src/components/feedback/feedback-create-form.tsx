@@ -4,7 +4,7 @@ import type {
   FeedbackPlatform,
 } from '@syrnike13/api-types'
 import { useMemo, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
@@ -97,6 +97,7 @@ function FeedbackPlatformOption({
 
 export function FeedbackCreateForm() {
   const auth = useAuth()
+  const queryClient = useQueryClient()
   const prefix = useAppRoutePrefix()
   const navigate = useNavigate()
   const token = auth.session?.token
@@ -143,6 +144,7 @@ export function FeedbackCreateForm() {
         platform: platform as FeedbackPlatform,
       }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.all })
       toast.success('Обращение отправлено на модерацию')
       void navigate({
         to: `${prefix}/feedback`,
@@ -222,11 +224,19 @@ export function FeedbackCreateForm() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="feedback-area">Область <span className="font-normal text-muted-foreground">— необязательно</span></Label>
-              <Select value={area} onValueChange={(value) => setArea(value as FeedbackArea)}>
+              <Select
+                value={area}
+                onValueChange={(value) => setArea(value as FeedbackArea)}
+              >
                 <SelectTrigger id="feedback-area" className="h-11 w-full">
                   <SelectValue placeholder="Выберите область" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  position="popper"
+                  side="bottom"
+                  align="start"
+                  sideOffset={8}
+                >
                   <SelectGroup>
                     {FEEDBACK_AREAS.map((item) => (
                       <SelectItem key={item.value} value={item.value}>
@@ -251,7 +261,12 @@ export function FeedbackCreateForm() {
                     ) : null}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  position="popper"
+                  side="bottom"
+                  align="start"
+                  sideOffset={8}
+                >
                   <SelectGroup>
                     {FEEDBACK_PLATFORMS.map((item) => (
                       <SelectItem key={item.value} value={item.value}>
@@ -334,8 +349,8 @@ export function FeedbackCreateForm() {
             />
           </div>
 
-          <div className="flex items-start gap-2 text-sm leading-6 text-muted-foreground">
-            <InfoIcon className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+          <div className="flex items-center gap-2 text-sm leading-6 text-muted-foreground">
+            <InfoIcon className="size-5 shrink-0 text-primary" aria-hidden />
             <p>Перед публикацией обращение пройдёт модерацию.</p>
           </div>
 
