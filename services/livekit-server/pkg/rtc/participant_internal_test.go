@@ -264,7 +264,7 @@ func TestTrackPublishing(t *testing.T) {
 			Width:  1920,
 			Height: 1080,
 			Layers: []*livekit.VideoLayer{
-				{Quality: livekit.VideoQuality_HIGH, Width: 1920, Height: 1080, Bitrate: 6_000_000},
+				{Quality: livekit.VideoQuality_HIGH, Width: 1920, Height: 1080, Bitrate: 5_000_000},
 			},
 		})
 
@@ -272,6 +272,45 @@ func TestTrackPublishing(t *testing.T) {
 		res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
 		require.Equal(t, livekit.RequestResponse_NOT_ALLOWED, res.GetRequestResponse().Reason)
 		require.Nil(t, p.pendingTracks["cid"])
+	})
+
+	t.Run("should allow desktop and browser screen share preset bitrates", func(t *testing.T) {
+		presets := []struct {
+			name    string
+			width   uint32
+			height  uint32
+			bitrate uint32
+		}{
+			{name: "desktop medium", width: 1920, height: 1080, bitrate: 4_000_000},
+			{name: "desktop high", width: 1920, height: 1080, bitrate: 8_000_000},
+			{name: "browser low", width: 1280, height: 720, bitrate: 3_000_000},
+			{name: "browser high", width: 1920, height: 1080, bitrate: 6_000_000},
+			{name: "browser high60", width: 1920, height: 1080, bitrate: 10_000_000},
+		}
+
+		for _, preset := range presets {
+			t.Run(preset.name, func(t *testing.T) {
+				p := newParticipantForTest("test")
+				sink := p.params.Sink.(*routingfakes.FakeMessageSink)
+
+				p.AddTrack(&livekit.AddTrackRequest{
+					Cid:    "cid",
+					Name:   "screen",
+					Type:   livekit.TrackType_VIDEO,
+					Source: livekit.TrackSource_SCREEN_SHARE,
+					Width:  preset.width,
+					Height: preset.height,
+					Layers: []*livekit.VideoLayer{
+						{Quality: livekit.VideoQuality_HIGH, Width: preset.width, Height: preset.height, Bitrate: preset.bitrate},
+					},
+				})
+
+				require.Equal(t, 1, sink.WriteMessageCallCount())
+				res := sink.WriteMessageArgsForCall(0).(*livekit.SignalResponse)
+				require.NotNil(t, res.GetTrackPublished())
+				require.NotNil(t, p.pendingTracks["cid"])
+			})
+		}
 	})
 
 	t.Run("should allow screen share preset bitrate", func(t *testing.T) {
