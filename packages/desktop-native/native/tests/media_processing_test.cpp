@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -28,17 +29,62 @@ std::vector<float> frameAtDb(float db) {
   );
 }
 
+float frameRms(const std::vector<float>& frame) {
+  if (frame.empty()) return 0.0f;
+  double square_sum = 0.0;
+  for (const float sample : frame) {
+    square_sum += static_cast<double>(sample) * sample;
+  }
+  return static_cast<float>(std::sqrt(square_sum / frame.size()));
+}
+
+float framePeak(const std::vector<float>& frame) {
+  float peak = 0.0f;
+  for (const float sample : frame) peak = std::max(peak, std::abs(sample));
+  return peak;
+}
+
+bool isExactSilence(const std::vector<float>& frame) {
+  return std::all_of(frame.begin(), frame.end(), [](float sample) {
+    return sample == 0.0f;
+  });
+}
+
 }  // namespace
 
 int main() try {
   syrnike::voice::RuntimeConfig config;
-  const auto enabled = syrnike::voice::microphoneApmOptions(config, true);
+  config.echo_cancellation_enabled = true;
+  const auto enabled = syrnike::voice::microphoneCleanupApmOptions(config, true);
   require(enabled.noise_suppression, "noise suppression was not enabled");
   require(enabled.echo_cancellation, "echo cancellation ignored a valid reference");
-  require(!enabled.auto_gain_control, "unexpected AGC changes microphone gain");
 
-  const auto without_reference = syrnike::voice::microphoneApmOptions(config, false);
+  config.automatic_gain_control_enabled = true;
+  require(
+    syrnike::voice::microphoneCleanupApmOptions(config, true) == enabled,
+    "AGC changes recreated the cleanup APM configuration"
+  );
+
+  const auto without_reference =
+    syrnike::voice::microphoneCleanupApmOptions(config, false);
   require(!without_reference.echo_cancellation, "echo cancellation ran without reference audio");
+
+  syrnike::voice::RuntimeConfig clipping_config;
+  clipping_config.input_volume = 2.0f;
+  clipping_config.voice_gate_enabled = false;
+  clipping_config.noise_suppression_enabled = false;
+  clipping_config.echo_cancellation_enabled = false;
+  clipping_config.automatic_gain_control_enabled = true;
+  syrnike::voice::MicrophoneAudioProcessor clipping_processor;
+  const auto clipping_frame = clipping_processor.processFrame(
+    std::vector<float>(syrnike::voice::kSamplesPer10Ms, 0.75f),
+    clipping_config,
+    nullptr
+  );
+  require(
+    clipping_frame.clipped_samples == syrnike::voice::kSamplesPer10Ms,
+    "pre-AGC PCM16 boundary clipping was not reported"
+  );
 
   using LiveKitConnectPolicy =
     syrnike::desktop_native::media::LiveKitConnectPolicy;
@@ -187,24 +233,226 @@ int main() try {
   }
   require(reference.queuedFrames() == 2, "echo reference queue is unbounded");
 
-  syrnike::voice::VoiceGateProcessor gate(48'000);
-  syrnike::voice::VoiceGateConfig gate_config;
-  gate_config.enabled = true;
-  gate_config.auto_threshold = false;
-  gate_config.manual_threshold_db = -26.0f;
-  gate_config.attack_ms = 4;
-  gate_config.hold_ms = 50;
-  gate_config.release_ms = 100;
-  gate_config.lookahead_ms = 0;
-  gate.updateConfig(gate_config);
-  auto speech = frameAtDb(-18.0f);
-  require(gate.processFrame(speech).open, "voice gate did not open for speech");
-  for (int index = 0; index < 8; ++index) {
-    auto noise = frameAtDb(-50.0f);
-    gate.processFrame(noise);
+  {
+    syrnike::voice::VoiceGateProcessor gate(48'000);
+    syrnike::voice::VoiceGateConfig gate_config;
+    gate_config.enabled = false;
+    gate_config.auto_threshold = false;
+    gate_config.manual_threshold_db = -26.0f;
+    gate.updateConfig(gate_config);
+    auto input = frameAtDb(-18.0f);
+    const auto expected_rms = frameRms(input);
+    const auto metrics = gate.processFrame(input);
+    require(metrics.open && metrics.gain == 1.0f, "disabled voice gate was not open");
+    require(
+      std::abs(frameRms(input) - expected_rms) < 0.000001f,
+      "disabled voice gate changed output RMS"
+    );
   }
-  auto noise = frameAtDb(-50.0f);
-  require(!gate.processFrame(noise).open, "voice gate never closed after hold");
+
+  {
+    syrnike::voice::VoiceGateProcessor gate(48'000);
+    syrnike::voice::VoiceGateConfig gate_config;
+    gate_config.enabled = true;
+    gate_config.auto_threshold = false;
+    gate_config.manual_threshold_db = -26.0f;
+    gate_config.hysteresis_db = 6.0f;
+    gate_config.attack_ms = 4;
+    gate_config.hold_ms = 50;
+    gate_config.release_ms = 100;
+    gate_config.lookahead_ms = 0;
+    gate.updateConfig(gate_config);
+
+    auto speech = frameAtDb(-18.0f);
+    const auto speech_input_rms = frameRms(speech);
+    const auto speech_metrics = gate.processFrame(speech);
+    require(speech_metrics.open, "manual voice gate did not open for speech");
+    require(
+      frameRms(speech) > speech_input_rms * 0.85f,
+      "manual voice gate attack removed too much speech onset"
+    );
+
+    gate_config.manual_threshold_db = -24.0f;
+    gate.updateConfig(gate_config);
+    auto automated_speech = frameAtDb(-18.0f);
+    require(
+      gate.processFrame(automated_speech).open &&
+        frameRms(automated_speech) > speech_input_rms * 0.99f,
+      "manual threshold automation reset the open gate envelope"
+    );
+
+    for (int index = 0; index < 20; ++index) {
+      auto hysteresis_level = frameAtDb(-29.0f);
+      require(
+        gate.processFrame(hysteresis_level).open,
+        "manual voice gate chattered inside the hysteresis band"
+      );
+    }
+
+    for (int index = 0; index < 4; ++index) {
+      auto pause = frameAtDb(-50.0f);
+      const auto pause_metrics = gate.processFrame(pause);
+      require(pause_metrics.open, "manual voice gate closed before hold elapsed");
+      require(framePeak(pause) > 0.0f, "manual hold muted its output early");
+    }
+
+    auto release_start = frameAtDb(-50.0f);
+    const auto release_metrics = gate.processFrame(release_start);
+    require(!release_metrics.open, "manual voice gate did not enter release after hold");
+    require(
+      framePeak(release_start) > 0.0f && release_metrics.gain > 0.0f,
+      "manual voice gate release hard-muted a frame"
+    );
+
+    for (int index = 0; index < 9; ++index) {
+      auto release = frameAtDb(-50.0f);
+      gate.processFrame(release);
+    }
+    auto closed = frameAtDb(-50.0f);
+    const auto closed_metrics = gate.processFrame(closed);
+    require(!closed_metrics.open, "manual voice gate reopened below threshold");
+    require(closed_metrics.gain == 0.0f, "manual voice gate release never reached zero gain");
+    require(isExactSilence(closed), "manual voice gate did not produce exact digital silence");
+  }
+
+  {
+    syrnike::voice::VoiceGateProcessor gate(48'000);
+    syrnike::voice::VoiceGateConfig gate_config;
+    gate_config.enabled = true;
+    gate_config.auto_threshold = true;
+    gate_config.manual_threshold_db = -28.0f;
+    gate_config.auto_margin_db = 8.0f;
+    gate_config.hysteresis_db = 6.0f;
+    gate_config.attack_ms = 4;
+    gate_config.hold_ms = 50;
+    gate_config.release_ms = 100;
+    gate_config.lookahead_ms = 20;
+    gate.updateConfig(gate_config);
+
+    syrnike::voice::VoiceGateFrameMetrics background_metrics;
+    std::vector<float> background;
+    for (int index = 0; index < 500; ++index) {
+      background = frameAtDb(-30.0f);
+      background_metrics = gate.processFrame(background);
+    }
+    require(
+      background_metrics.noise_floor_db > -33.0f,
+      "auto voice gate did not adapt upward to sustained background"
+    );
+    require(
+      background_metrics.threshold_db > -26.0f,
+      "auto voice gate threshold did not converge above sustained background"
+    );
+    require(!background_metrics.open, "auto voice gate remained open on sustained background");
+    require(isExactSilence(background), "auto voice gate did not silence learned background");
+
+    const float floor_before_transient = background_metrics.noise_floor_db;
+    auto transient = frameAtDb(-8.0f);
+    gate.processFrame(transient);
+    for (int index = 0; index < 10; ++index) {
+      auto steady_background = frameAtDb(-30.0f);
+      background_metrics = gate.processFrame(steady_background);
+    }
+    require(
+      std::abs(background_metrics.noise_floor_db - floor_before_transient) < 0.5f,
+      "auto voice gate learned a short loud transient as background"
+    );
+
+    const float floor_before_speech = background_metrics.noise_floor_db;
+    for (int index = 0; index < 300; ++index) {
+      auto quiet_speech = frameAtDb(-18.0f);
+      background_metrics = gate.processFrame(quiet_speech);
+      require(background_metrics.open, "auto voice gate closed during sustained speech");
+    }
+    require(
+      std::abs(background_metrics.noise_floor_db - floor_before_speech) < 0.5f,
+      "auto voice gate learned sustained speech as background"
+    );
+  }
+
+  {
+    syrnike::voice::VoiceGateProcessor gate(48'000);
+    syrnike::voice::VoiceGateConfig gate_config;
+    gate_config.enabled = true;
+    gate_config.auto_threshold = true;
+    gate_config.hold_ms = 50;
+    gate_config.release_ms = 50;
+    gate_config.lookahead_ms = 20;
+    gate.updateConfig(gate_config);
+
+    for (int index = 0; index < 30; ++index) {
+      std::vector<float> silence(syrnike::voice::kSamplesPer10Ms, 0.0f);
+      gate.processFrame(silence);
+      require(isExactSilence(silence), "auto lookahead leaked during closed startup");
+    }
+
+    auto onset = frameAtDb(-18.0f);
+    const auto onset_input_rms = frameRms(onset);
+    require(gate.processFrame(onset).open, "auto voice gate did not detect speech onset");
+    require(isExactSilence(onset), "auto lookahead emitted audio before its delay elapsed");
+    auto speech_second = frameAtDb(-18.0f);
+    gate.processFrame(speech_second);
+    auto speech_third = frameAtDb(-18.0f);
+    const auto speech_third_metrics = gate.processFrame(speech_third);
+    require(speech_third_metrics.gain == 1.0f, "auto voice gate attack did not finish in pre-roll");
+    require(
+      frameRms(speech_third) > onset_input_rms * 0.99f,
+      "auto lookahead did not preserve the first speech frame"
+    );
+
+    gate_config.auto_threshold = false;
+    gate_config.lookahead_ms = 0;
+    gate.updateConfig(gate_config);
+    auto manual_quiet = frameAtDb(-50.0f);
+    const auto manual_quiet_metrics = gate.processFrame(manual_quiet);
+    require(!manual_quiet_metrics.open, "mode switch leaked an open manual gate");
+    require(isExactSilence(manual_quiet), "mode switch leaked buffered auto audio");
+    auto manual_speech = frameAtDb(-18.0f);
+    require(gate.processFrame(manual_speech).open, "manual gate stayed closed after mode switch");
+    require(framePeak(manual_speech) > 0.0f, "manual gate muted speech after mode switch");
+
+    gate_config.auto_threshold = true;
+    gate_config.lookahead_ms = 20;
+    gate.updateConfig(gate_config);
+    auto switched_onset = frameAtDb(-18.0f);
+    require(gate.processFrame(switched_onset).open, "auto gate stayed closed after mode switch");
+    require(isExactSilence(switched_onset), "auto mode switch bypassed fresh lookahead");
+    for (int index = 0; index < 2; ++index) {
+      auto switched_speech = frameAtDb(-18.0f);
+      gate.processFrame(switched_speech);
+      if (index == 1) {
+        require(
+          frameRms(switched_speech) > onset_input_rms * 0.99f,
+          "auto gate lost onset after switching modes"
+        );
+      }
+    }
+  }
+  {
+    syrnike::voice::RuntimeConfig gate_agc_config;
+    gate_agc_config.noise_suppression_enabled = false;
+    gate_agc_config.echo_cancellation_enabled = false;
+    gate_agc_config.voice_gate_enabled = true;
+    gate_agc_config.voice_gate_auto_threshold = false;
+    gate_agc_config.voice_gate_threshold_db = -20.0f;
+    gate_agc_config.automatic_gain_control_enabled = true;
+
+    syrnike::voice::MicrophoneAudioProcessor processor;
+    auto processed = processor.processFrame(frameAtDb(-10.0f), gate_agc_config, nullptr);
+    require(processed.gate_metrics.open, "gate did not open before the AGC silence test");
+
+    for (int index = 0; index < 60; ++index) {
+      processed = processor.processFrame(frameAtDb(-50.0f), gate_agc_config, nullptr);
+    }
+    require(!processed.gate_metrics.open, "gate stayed open below the manual threshold");
+    require(processed.gate_metrics.gain == 0.0f, "gate did not finish its release");
+    require(
+      std::all_of(processed.pcm.begin(), processed.pcm.end(), [](std::int16_t sample) {
+        return sample == 0;
+      }),
+      "final AGC resurrected a fully closed gate"
+    );
+  }
   return 0;
 } catch (const std::exception& error) {
   std::cerr << error.what() << '\n';

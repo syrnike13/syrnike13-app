@@ -97,6 +97,8 @@ export type NativeMediaMicrophoneSessionStartOptions = {
 export type NativeMicrophonePipelineConfig = {
   /** Explicit capture device, or null to follow the Windows default device. */
   deviceId: string | null
+  bypassSystemAudioInputProcessing: boolean
+  automaticGainControl: boolean
   noiseSuppression: boolean
   echoCancellation: boolean
   inputVolume: number

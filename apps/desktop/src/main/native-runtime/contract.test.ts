@@ -95,6 +95,29 @@ describe('native runtime command validation', () => {
     ).toBe(false)
   })
 
+  it('requires RAW bypass and AGC flags in microphone pipeline commands', () => {
+    const command = {
+      type: 'configureMicrophone',
+      revision: 2,
+      config: {
+        deviceId: null,
+        bypassSystemAudioInputProcessing: true,
+        automaticGainControl: false,
+        noiseSuppression: true,
+        echoCancellation: true,
+        inputVolume: 1,
+        voiceGateEnabled: true,
+        voiceGateThresholdDb: -28,
+        voiceGateAutoThreshold: true,
+      },
+    }
+
+    expect(isNativeRuntimeCommand(command)).toBe(true)
+    const { automaticGainControl: _automaticGainControl, ...incomplete } =
+      command.config
+    expect(isNativeRuntimeCommand({ ...command, config: incomplete })).toBe(false)
+  })
+
   it('accepts bounded local screen preview demand and release commands', () => {
     expect(isNativeRuntimeCommand({
       type: 'setLocalScreenPreviewDemand',

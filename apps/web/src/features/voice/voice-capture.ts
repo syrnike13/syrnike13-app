@@ -88,13 +88,16 @@ export function screenShareCombinedPublishOptions(
 }
 
 export function voiceAudioProcessingConstraints(
-  prefs: Pick<VoicePreferenceState, 'echoCancellation'>,
+  prefs: Pick<
+    VoicePreferenceState,
+    'echoCancellation' | 'automaticGainControl'
+  >,
 ): AudioCaptureOptions {
   return {
     channelCount: 1,
     echoCancellation: prefs.echoCancellation,
     noiseSuppression: false,
-    autoGainControl: false,
+    autoGainControl: prefs.automaticGainControl,
   }
 }
 

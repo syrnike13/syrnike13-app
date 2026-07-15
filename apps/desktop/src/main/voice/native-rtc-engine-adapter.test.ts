@@ -91,6 +91,14 @@ describe('NativeRtcEngineAdapter', () => {
     expect(commandTypes.indexOf('connectMicrophone')).toBeGreaterThan(
       commandTypes.indexOf('warmMicrophone'),
     )
+    expect(
+      runtime.commands.find((command) => command.type === 'warmMicrophone'),
+    ).toMatchObject({
+      config: {
+        bypassSystemAudioInputProcessing: true,
+        automaticGainControl: false,
+      },
+    })
     const microphone = runtime.commands.find(
       (command) => command.type === 'connectMicrophone',
     )

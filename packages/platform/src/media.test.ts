@@ -7,6 +7,8 @@ describe('native media support contracts', () => {
   it('keeps the microphone pipeline command config for runtime users', () => {
     expectTypeOf<NativeMicrophonePipelineConfig>().toMatchTypeOf<{
       deviceId: string | null
+      bypassSystemAudioInputProcessing: boolean
+      automaticGainControl: boolean
       noiseSuppression: boolean
       echoCancellation: boolean
       inputVolume: number

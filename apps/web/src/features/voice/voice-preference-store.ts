@@ -15,6 +15,7 @@ import {
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 const STORAGE_KEY = 'syrnike13-voice-preferences'
+const STORAGE_VERSION = 2
 
 export const VOICE_OUTPUT_VOLUME_MAX = 3
 
@@ -26,6 +27,8 @@ export type VoicePreferenceState = {
   preferredVideoDevice?: string
   inputVolume: number
   outputVolume: number
+  bypassSystemAudioInputProcessing: boolean
+  automaticGainControl: boolean
   noiseSuppression: boolean
   echoCancellation: boolean
   voiceGateEnabled: boolean
@@ -57,8 +60,10 @@ const DEFAULT_STATE: VoicePreferenceState = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
+  bypassSystemAudioInputProcessing: true,
+  automaticGainControl: true,
   noiseSuppression: true,
-  echoCancellation: true,
+  echoCancellation: false,
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
@@ -154,6 +159,14 @@ export function normalizeVoicePreferenceState(
       parsed.outputVolume <= VOICE_OUTPUT_VOLUME_MAX
         ? parsed.outputVolume
         : DEFAULT_STATE.outputVolume,
+    bypassSystemAudioInputProcessing:
+      typeof parsed.bypassSystemAudioInputProcessing === 'boolean'
+        ? parsed.bypassSystemAudioInputProcessing
+        : DEFAULT_STATE.bypassSystemAudioInputProcessing,
+    automaticGainControl:
+      typeof parsed.automaticGainControl === 'boolean'
+        ? parsed.automaticGainControl
+        : DEFAULT_STATE.automaticGainControl,
     noiseSuppression:
       typeof parsed.noiseSuppression === 'boolean'
         ? parsed.noiseSuppression
@@ -183,21 +196,35 @@ export function normalizeVoicePreferenceState(
   }
 }
 
-function loadState(): VoicePreferenceState {
+type PersistedVoicePreferenceState = Partial<VoicePreferenceState> & {
+  version?: unknown
+}
+
+export function loadVoicePreferenceState(): VoicePreferenceState {
   if (typeof window === 'undefined' || getSyrnikeDesktop()) {
     return normalizeVoicePreferenceState(null)
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return normalizeVoicePreferenceState(
-      raw ? (JSON.parse(raw) as Partial<VoicePreferenceState>) : null,
-    )
+    if (!raw) return normalizeVoicePreferenceState(null)
+    const parsed = JSON.parse(raw) as PersistedVoicePreferenceState
+    const normalized = normalizeVoicePreferenceState(parsed)
+    if (parsed.version !== STORAGE_VERSION) {
+      normalized.echoCancellation = false
+      normalized.automaticGainControl = true
+      try {
+        persistBrowserState(normalized)
+      } catch {
+        // quota / private mode
+      }
+    }
+    return normalized
   } catch {
     return normalizeVoicePreferenceState(null)
   }
 }
 
-let state = loadState()
+let state = loadVoicePreferenceState()
 let stateRevision = 0
 const listeners = new Set<() => void>()
 
@@ -212,10 +239,17 @@ function persist() {
     return
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    persistBrowserState(state)
   } catch {
     // quota / private mode
   }
+}
+
+function persistBrowserState(nextState: VoicePreferenceState) {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ version: STORAGE_VERSION, ...nextState }),
+  )
 }
 
 function patch(partial: Partial<VoicePreferenceState>) {
@@ -247,6 +281,9 @@ export const voicePreferenceStore = {
   getDeafened: () => state.deafened,
   getInputVolume: () => state.inputVolume,
   getOutputVolume: () => state.outputVolume,
+  getBypassSystemAudioInputProcessing: () =>
+    state.bypassSystemAudioInputProcessing,
+  getAutomaticGainControl: () => state.automaticGainControl,
   getNoiseSuppression: () => state.noiseSuppression,
   getPreferredAudioInputDevice: () => state.preferredAudioInputDevice,
   getPreferredAudioOutputDevice: () => state.preferredAudioOutputDevice,
@@ -275,6 +312,19 @@ export const voicePreferenceStore = {
     )
     if (state.outputVolume === next) return
     patch({ outputVolume: next })
+  },
+  setBypassSystemAudioInputProcessing: (
+    bypassSystemAudioInputProcessing: boolean,
+  ) => {
+    if (
+      state.bypassSystemAudioInputProcessing ===
+      bypassSystemAudioInputProcessing
+    ) return
+    patch({ bypassSystemAudioInputProcessing })
+  },
+  setAutomaticGainControl: (automaticGainControl: boolean) => {
+    if (state.automaticGainControl === automaticGainControl) return
+    patch({ automaticGainControl })
   },
   setNoiseSuppression: (noiseSuppression: boolean) => {
     if (state.noiseSuppression === noiseSuppression) return

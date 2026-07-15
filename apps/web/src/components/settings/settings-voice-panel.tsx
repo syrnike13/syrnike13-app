@@ -144,7 +144,7 @@ function MicInputMeter({ levels }: { levels: readonly number[] }) {
 
 export function SettingsVoicePanel() {
   const prefs = useVoicePreferences()
-  const { capabilities } = usePlatform()
+  const { capabilities, os } = usePlatform()
   const { setSelfMonitoringActive } = useVoiceMedia()
   const setSelfMonitoringActiveRef = useRef(setSelfMonitoringActive)
   const inputDevices = useMediaDevices('audioinput')
@@ -265,6 +265,26 @@ export function SettingsVoicePanel() {
       </SettingsBlock>
 
       <SettingsBlock title="Обработка звука">
+        {os === 'win32' ? (
+          <SettingsToggleRow
+            label="Обход системной обработки микрофона"
+            hint="Запрашивает необработанный сигнал у Windows; если RAW не поддерживается, используется обычный режим"
+            checked={prefs.bypassSystemAudioInputProcessing}
+            onCheckedChange={(checked) =>
+              voicePreferenceStore.setBypassSystemAudioInputProcessing(checked)
+            }
+          />
+        ) : null}
+
+        <SettingsToggleRow
+          label="Автоматическая регулировка усиления"
+          hint="Выравнивает громкость тихой и громкой речи"
+          checked={prefs.automaticGainControl}
+          onCheckedChange={(checked) =>
+            voicePreferenceStore.setAutomaticGainControl(checked)
+          }
+        />
+
         <SettingsRow
           label="Автоматическая чувствительность"
           hint="Регулируйте порог передачи звука в Сырниках"

@@ -18,6 +18,8 @@ export type DesktopVoiceSettings = {
   preferredVideoDevice?: string
   inputVolume: number
   outputVolume: number
+  bypassSystemAudioInputProcessing: boolean
+  automaticGainControl: boolean
   noiseSuppression: boolean
   echoCancellation: boolean
   voiceGateEnabled: boolean
@@ -87,7 +89,7 @@ export {
 } from './appearance'
 
 export type DesktopLocalSettings = {
-  version: 1
+  version: 2
   voice: DesktopVoiceSettings
   voiceListener: DesktopVoiceListenerSettings
   overlay: DesktopOverlaySettings
@@ -122,8 +124,10 @@ export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
+  bypassSystemAudioInputProcessing: true,
+  automaticGainControl: true,
   noiseSuppression: true,
-  echoCancellation: true,
+  echoCancellation: false,
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
@@ -159,7 +163,7 @@ export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySetting
 }
 
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
-  version: 1,
+  version: 2,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
@@ -291,6 +295,14 @@ export function normalizeDesktopVoiceSettings(
       defaults.outputVolume,
       0,
       VOICE_VOLUME_MAX,
+    ),
+    bypassSystemAudioInputProcessing: booleanOrDefault(
+      settings.bypassSystemAudioInputProcessing,
+      defaults.bypassSystemAudioInputProcessing,
+    ),
+    automaticGainControl: booleanOrDefault(
+      settings.automaticGainControl,
+      defaults.automaticGainControl,
     ),
     noiseSuppression: booleanOrDefault(
       settings.noiseSuppression,
@@ -430,9 +442,14 @@ export function normalizeDesktopLocalSettings(
   defaults: DesktopLocalSettings = DEFAULT_DESKTOP_LOCAL_SETTINGS,
 ): DesktopLocalSettings {
   const settings = objectRecord(value)
+  const voice = normalizeDesktopVoiceSettings(settings.voice, defaults.voice)
+  if (settings.version !== 2) {
+    voice.echoCancellation = false
+    voice.automaticGainControl = true
+  }
   return {
-    version: 1,
-    voice: normalizeDesktopVoiceSettings(settings.voice, defaults.voice),
+    version: 2,
+    voice,
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
     appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
@@ -474,6 +491,18 @@ export function normalizeDesktopVoiceSettingsPatch(
   }
   if ('outputVolume' in patch) {
     next.outputVolume = clampNumber(patch.outputVolume, 1, 0, VOICE_VOLUME_MAX)
+  }
+  if (
+    'bypassSystemAudioInputProcessing' in patch &&
+    typeof patch.bypassSystemAudioInputProcessing === 'boolean'
+  ) {
+    next.bypassSystemAudioInputProcessing = patch.bypassSystemAudioInputProcessing
+  }
+  if (
+    'automaticGainControl' in patch &&
+    typeof patch.automaticGainControl === 'boolean'
+  ) {
+    next.automaticGainControl = patch.automaticGainControl
   }
   if (
     'noiseSuppression' in patch &&

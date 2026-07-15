@@ -14,13 +14,12 @@ class AudioProcessingModule;
 
 namespace syrnike::voice {
 
-struct MicrophoneAudioProcessingOptions {
+struct MicrophoneCleanupApmOptions {
   bool noise_suppression = false;
   bool echo_cancellation = false;
   bool high_pass_filter = false;
-  bool auto_gain_control = false;
 
-  bool operator==(const MicrophoneAudioProcessingOptions&) const = default;
+  bool operator==(const MicrophoneCleanupApmOptions&) const = default;
 };
 
 struct MicrophoneAudioProcessorFrame {
@@ -31,7 +30,7 @@ struct MicrophoneAudioProcessorFrame {
   MicrophoneProcessingStatus status;
 };
 
-MicrophoneAudioProcessingOptions microphoneApmOptions(
+MicrophoneCleanupApmOptions microphoneCleanupApmOptions(
   const RuntimeConfig& config,
   bool echo_reference_available
 );
@@ -48,11 +47,14 @@ public:
   );
 
 private:
-  bool ensureApm(const MicrophoneAudioProcessingOptions& options);
+  bool ensureCleanupApm(const MicrophoneCleanupApmOptions& options);
+  bool ensureAgcApm(bool enabled);
 
   VoiceGateProcessor gate_;
-  MicrophoneAudioProcessingOptions active_options_{};
-  std::unique_ptr<livekit::AudioProcessingModule> apm_;
+  MicrophoneCleanupApmOptions active_cleanup_options_{};
+  bool active_agc_enabled_ = false;
+  std::unique_ptr<livekit::AudioProcessingModule> cleanup_apm_;
+  std::unique_ptr<livekit::AudioProcessingModule> agc_apm_;
 };
 
 }  // namespace syrnike::voice

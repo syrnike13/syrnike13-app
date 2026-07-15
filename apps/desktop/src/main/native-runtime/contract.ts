@@ -348,6 +348,8 @@ function isMicrophonePipelineConfig(
   if (!isRecord(value)) return false
   return (
     (value.deviceId === null || isNonEmptyString(value.deviceId, 2_048)) &&
+    typeof value.bypassSystemAudioInputProcessing === 'boolean' &&
+    typeof value.automaticGainControl === 'boolean' &&
     typeof value.noiseSuppression === 'boolean' &&
     typeof value.echoCancellation === 'boolean' &&
     isFiniteNumber(value.inputVolume, 0, 4) &&

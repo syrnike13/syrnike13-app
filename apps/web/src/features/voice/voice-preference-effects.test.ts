@@ -8,6 +8,8 @@ const base: VoicePreferenceState = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
+  bypassSystemAudioInputProcessing: true,
+  automaticGainControl: false,
   noiseSuppression: true,
   echoCancellation: true,
   voiceGateEnabled: true,
@@ -77,6 +79,20 @@ describe('voicePreferenceEffectFlags', () => {
       voicePreferenceEffectFlags(base, {
         ...base,
         noiseSuppression: false,
+      }),
+    ).toMatchObject({
+      devicesChanged: false,
+      micProcessingChanged: true,
+      remoteAudioChanged: false,
+    })
+  })
+
+  it('tracks RAW bypass and automatic gain changes as mic processing changes', () => {
+    expect(
+      voicePreferenceEffectFlags(base, {
+        ...base,
+        bypassSystemAudioInputProcessing: false,
+        automaticGainControl: true,
       }),
     ).toMatchObject({
       devicesChanged: false,

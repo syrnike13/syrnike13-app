@@ -261,6 +261,23 @@ int main() try {
   SetEnvironmentVariableW(L"SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID", nullptr);
 
   syrnike::voice::RuntimeConfig config;
+  const syrnike::desktop_native::MediaCommand default_command;
+  require(
+    default_command.bypass_system_audio_input_processing,
+    "media command bypass did not default to enabled"
+  );
+  require(
+    default_command.automatic_gain_control,
+    "media command automatic gain control did not default to enabled"
+  );
+  require(
+    config.bypass_system_audio_input_processing,
+    "system audio input processing bypass did not default to enabled"
+  );
+  require(
+    config.automatic_gain_control_enabled,
+    "automatic gain control did not default to enabled"
+  );
   config.input_volume = 0.75f;
   config.voice_gate_enabled = true;
   config.noise_suppression_enabled = true;
@@ -271,6 +288,46 @@ int main() try {
   require(merged.input_volume == 0.75f, "partial config reset input volume");
   require(!merged.voice_gate_enabled, "partial config did not apply voice gate");
   require(merged.noise_suppression_enabled, "partial config reset noise suppression");
+  require(
+    merged.bypass_system_audio_input_processing,
+    "partial config reset system audio input processing bypass"
+  );
+  require(
+    merged.automatic_gain_control_enabled,
+    "partial config reset automatic gain control"
+  );
+
+  syrnike::desktop_native::MediaCommand audio_processing_patch;
+  audio_processing_patch.bypass_system_audio_input_processing = false;
+  audio_processing_patch.has_bypass_system_audio_input_processing = true;
+  audio_processing_patch.automatic_gain_control = false;
+  audio_processing_patch.has_automatic_gain_control = true;
+  const auto audio_processing_merged =
+    syrnike::desktop_native::media::mergeRuntimeConfig(merged, audio_processing_patch);
+  require(
+    !audio_processing_merged.bypass_system_audio_input_processing,
+    "partial config did not apply system audio input processing bypass"
+  );
+  require(
+    !audio_processing_merged.automatic_gain_control_enabled,
+    "partial config did not apply automatic gain control"
+  );
+  require(
+    syrnike::desktop_native::media::microphoneCaptureConfigRequiresRestart(
+      merged,
+      audio_processing_merged
+    ),
+    "bypass change did not request a capture stream restart"
+  );
+  auto agc_only = merged;
+  agc_only.automatic_gain_control_enabled = false;
+  require(
+    !syrnike::desktop_native::media::microphoneCaptureConfigRequiresRestart(
+      merged,
+      agc_only
+    ),
+    "AGC change unnecessarily requested a capture stream restart"
+  );
 
   using syrnike::desktop_native::media::canReuseActiveScreenRoom;
   require(canReuseActiveScreenRoom(false, "prepared", 1, "other", 2, false), "idle room connect rejected");

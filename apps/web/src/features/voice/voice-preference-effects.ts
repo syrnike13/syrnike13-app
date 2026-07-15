@@ -15,6 +15,9 @@ export function voicePreferenceEffectFlags(
       previous.preferredAudioInputDevice !== next.preferredAudioInputDevice ||
       previous.preferredAudioOutputDevice !== next.preferredAudioOutputDevice,
     micProcessingChanged:
+      previous.bypassSystemAudioInputProcessing !==
+        next.bypassSystemAudioInputProcessing ||
+      previous.automaticGainControl !== next.automaticGainControl ||
       previous.noiseSuppression !== next.noiseSuppression ||
       previous.echoCancellation !== next.echoCancellation ||
       previous.voiceGateEnabled !== next.voiceGateEnabled ||

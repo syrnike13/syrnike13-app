@@ -71,6 +71,8 @@ describe('native microphone processing boundary', () => {
 
     const preview = await startMicPreview({
       prefs: {
+        bypassSystemAudioInputProcessing: true,
+        automaticGainControl: false,
         noiseSuppression: true,
         echoCancellation: true,
         voiceGateEnabled: true,
@@ -115,6 +117,8 @@ describe('native microphone processing boundary', () => {
     } as unknown as ReturnType<typeof getSyrnikeDesktop>)
 
     const prefs: MicPreviewPreferences = {
+      bypassSystemAudioInputProcessing: true,
+      automaticGainControl: false,
       noiseSuppression: true,
       echoCancellation: true,
       voiceGateEnabled: true,
@@ -162,6 +166,8 @@ describe('native microphone processing boundary', () => {
     expect(voiceDispatch).toHaveBeenNthCalledWith(1, {
       type: 'configureMicrophone',
       deviceId: 'mic-1',
+      bypassSystemAudioInputProcessing: true,
+      automaticGainControl: false,
       noiseSuppression: true,
       echoCancellation: true,
       inputVolume: 1,
@@ -187,6 +193,8 @@ describe('native microphone processing boundary', () => {
     expect(voiceDispatch).toHaveBeenLastCalledWith({
       type: 'configureMicrophone',
       deviceId: 'mic-1',
+      bypassSystemAudioInputProcessing: true,
+      automaticGainControl: false,
       noiseSuppression: false,
       echoCancellation: true,
       inputVolume: 1.5,
@@ -228,6 +236,8 @@ describe('native microphone processing boundary', () => {
 
     const preview = await startMicPreview({
       prefs: {
+        bypassSystemAudioInputProcessing: true,
+        automaticGainControl: false,
         noiseSuppression: true,
         echoCancellation: true,
         voiceGateEnabled: false,

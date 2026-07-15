@@ -165,6 +165,9 @@ export class VoiceDirector {
       case 'configureMicrophone':
         this.updateDesiredMedia({
           microphoneDeviceId: command.deviceId,
+          bypassSystemAudioInputProcessing:
+            command.bypassSystemAudioInputProcessing,
+          automaticGainControl: command.automaticGainControl,
           noiseSuppression: command.noiseSuppression,
           echoCancellation: command.echoCancellation,
           inputVolume: command.inputVolume,

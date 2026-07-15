@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -121,6 +121,51 @@ describe('desktop local settings', () => {
       expect(next.observability).toEqual({
         anonymousNativeMetrics: true,
         nativeCrashReports: true,
+      })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('migrates legacy microphone defaults once and persists version 2', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          version: 1,
+          voice: {
+            preferredAudioInputDevice: 'legacy-mic',
+            inputVolume: 0.42,
+            echoCancellation: true,
+            automaticGainControl: false,
+          },
+          appearance: { themeId: 'night' },
+        }),
+      )
+
+      const migrated = await loadDesktopLocalSettings(filePath)
+      expect(migrated).toMatchObject({
+        version: 2,
+        voice: {
+          preferredAudioInputDevice: 'legacy-mic',
+          inputVolume: 0.42,
+          echoCancellation: false,
+          automaticGainControl: true,
+        },
+        appearance: { themeId: 'night' },
+      })
+      expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual(migrated)
+
+      const updated = await updateDesktopLocalSettings(filePath, {
+        voice: { echoCancellation: true, automaticGainControl: false },
+      })
+      await expect(loadDesktopLocalSettings(filePath)).resolves.toEqual(updated)
+      expect(updated).toMatchObject({
+        version: 2,
+        voice: { echoCancellation: true, automaticGainControl: false },
       })
     } finally {
       await rm(dir, { recursive: true, force: true })

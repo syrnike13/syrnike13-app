@@ -948,6 +948,9 @@ function syncPreferences(client: VoiceClient) {
   client.dispatch({
     type: 'configureMicrophone',
     deviceId: preferences.preferredAudioInputDevice,
+    bypassSystemAudioInputProcessing:
+      preferences.bypassSystemAudioInputProcessing,
+    automaticGainControl: preferences.automaticGainControl,
     noiseSuppression: preferences.noiseSuppression,
     echoCancellation: preferences.echoCancellation,
     inputVolume: preferences.inputVolume,

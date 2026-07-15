@@ -25,6 +25,8 @@ export const MIC_PREVIEW_METER_BAR_COUNT = 32
 
 export type MicPreviewPreferences = Pick<
   VoicePreferenceState,
+  | 'bypassSystemAudioInputProcessing'
+  | 'automaticGainControl'
   | 'echoCancellation'
   | 'noiseSuppression'
   | 'voiceGateEnabled'

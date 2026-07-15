@@ -55,6 +55,8 @@ const reservation: VoiceReservationRequest = {
     inputMode: 'voice_activity',
     pushToTalkHeld: false,
     effectiveMuted: true,
+    bypassSystemAudioInputProcessing: true,
+    automaticGainControl: false,
     noiseSuppression: true,
     echoCancellation: true,
     inputVolume: 1,

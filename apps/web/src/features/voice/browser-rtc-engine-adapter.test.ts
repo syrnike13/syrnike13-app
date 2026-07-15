@@ -180,6 +180,8 @@ function desired(
     inputMode: 'voice_activity',
     pushToTalkHeld: false,
     effectiveMuted: false,
+    bypassSystemAudioInputProcessing: true,
+    automaticGainControl: false,
     noiseSuppression: true,
     echoCancellation: true,
     inputVolume: 1,

@@ -124,6 +124,8 @@ The native signal order is:
 -> WebRTC APM noise suppression / AEC when enabled and available
 -> input volume
 -> voice gate
+-> WebRTC adaptive digital gain control when enabled
+-> closed-gate digital-silence guard
 -> soft limiter
 -> LiveKit native audio frame
 ```
@@ -217,6 +219,6 @@ avoid double processing.
 
 ## Out of Scope
 
-Krisp, RNNoise, DeepFilterNet3, AGC, new ML denoise, HDR, hardware encoding and
+Krisp, RNNoise, DeepFilterNet3, new ML denoise, HDR, hardware encoding and
 new capture capabilities are not part of this migration. The microphone target
 is the WebRTC/APM standard processing class.

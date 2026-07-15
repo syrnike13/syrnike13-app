@@ -1,18 +1,32 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   defaultScreenShareQuality,
   effectiveVoiceJoinPreferences,
+  loadVoicePreferenceState,
   parseScreenShareCaptureMode,
   voicePreferenceStore,
 } from '#/features/voice/voice-preference-store'
 
 describe('voicePreferenceStore', () => {
+  const browserStorage = new Map<string, string>()
+
   beforeEach(() => {
+    vi.stubGlobal('window', {})
+    vi.stubGlobal('localStorage', {
+      clear: () => browserStorage.clear(),
+      getItem: (key: string) => browserStorage.get(key) ?? null,
+      setItem: (key: string, value: string) => browserStorage.set(key, value),
+    })
+    localStorage.clear()
     voicePreferenceStore.setMicEnabled(true)
     voicePreferenceStore.setDeafened(false)
     voicePreferenceStore.setVoiceGateEnabled(true)
     voicePreferenceStore.setVoiceGateAutoThreshold(true)
+    voicePreferenceStore.setBypassSystemAudioInputProcessing(true)
+    voicePreferenceStore.setAutomaticGainControl(true)
+    voicePreferenceStore.setNoiseSuppression(true)
+    voicePreferenceStore.setEchoCancellation(false)
   })
 
   it('persists mic preference', () => {
@@ -40,8 +54,57 @@ describe('voicePreferenceStore', () => {
       voiceGateEnabled: true,
       voiceGateAutoThreshold: true,
       voiceGateThresholdDb: -28,
+      bypassSystemAudioInputProcessing: true,
+      automaticGainControl: true,
       noiseSuppression: true,
+      echoCancellation: false,
+    })
+  })
+
+  it('migrates legacy browser preferences once and persists the marker', () => {
+    localStorage.setItem(
+      'syrnike13-voice-preferences',
+      JSON.stringify({
+        preferredAudioInputDevice: 'legacy-mic',
+        inputVolume: 0.42,
+        voiceGateEnabled: false,
+        echoCancellation: true,
+        automaticGainControl: false,
+      }),
+    )
+
+    expect(loadVoicePreferenceState()).toMatchObject({
+      preferredAudioInputDevice: 'legacy-mic',
+      inputVolume: 0.42,
+      voiceGateEnabled: false,
+      echoCancellation: false,
+      automaticGainControl: true,
+    })
+    expect(
+      JSON.parse(localStorage.getItem('syrnike13-voice-preferences') ?? '{}'),
+    ).toMatchObject({
+      version: 2,
+      preferredAudioInputDevice: 'legacy-mic',
+      inputVolume: 0.42,
+      voiceGateEnabled: false,
+      echoCancellation: false,
+      automaticGainControl: true,
+    })
+  })
+
+  it('preserves explicit microphone values in current browser preferences', () => {
+    localStorage.setItem(
+      'syrnike13-voice-preferences',
+      JSON.stringify({
+        version: 2,
+        echoCancellation: true,
+        automaticGainControl: false,
+      }),
+    )
+
+    expect(loadVoicePreferenceState()).toMatchObject({
       echoCancellation: true,
+      automaticGainControl: false,
     })
   })
 
@@ -93,12 +156,16 @@ describe('voicePreferenceStore', () => {
   })
 
   it('persists separate microphone cleanup toggles', () => {
+    voicePreferenceStore.setBypassSystemAudioInputProcessing(false)
+    voicePreferenceStore.setAutomaticGainControl(false)
     voicePreferenceStore.setNoiseSuppression(false)
-    voicePreferenceStore.setEchoCancellation(false)
+    voicePreferenceStore.setEchoCancellation(true)
 
     expect(voicePreferenceStore.getState()).toMatchObject({
+      bypassSystemAudioInputProcessing: false,
+      automaticGainControl: false,
       noiseSuppression: false,
-      echoCancellation: false,
+      echoCancellation: true,
     })
   })
 })

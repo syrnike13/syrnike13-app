@@ -24,6 +24,9 @@ function nonGateProcessingChanged(
   next: MicPreviewPreferences,
 ) {
   return (
+    previous.bypassSystemAudioInputProcessing !==
+      next.bypassSystemAudioInputProcessing ||
+    previous.automaticGainControl !== next.automaticGainControl ||
     previous.noiseSuppression !== next.noiseSuppression ||
     previous.echoCancellation !== next.echoCancellation ||
     previous.voiceGateEnabled !== next.voiceGateEnabled ||
@@ -45,6 +48,9 @@ export function useMicPreviewLoopback(
   const processingPrefsRef = useRef<MicPreviewPreferences | null>(null)
 
   const previewPrefs: MicPreviewPreferences = {
+    bypassSystemAudioInputProcessing:
+      prefs.bypassSystemAudioInputProcessing,
+    automaticGainControl: prefs.automaticGainControl,
     noiseSuppression: prefs.noiseSuppression,
     echoCancellation: prefs.echoCancellation,
     voiceGateEnabled: prefs.voiceGateEnabled,
@@ -151,6 +157,8 @@ export function useMicPreviewLoopback(
     })
   }, [
     active,
+    previewPrefs.bypassSystemAudioInputProcessing,
+    previewPrefs.automaticGainControl,
     previewPrefs.noiseSuppression,
     previewPrefs.echoCancellation,
     previewPrefs.voiceGateEnabled,

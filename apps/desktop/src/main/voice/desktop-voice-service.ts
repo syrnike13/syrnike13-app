@@ -166,6 +166,9 @@ export class DesktopVoiceService {
     runtime.director.dispatch({
       type: 'configureMicrophone',
       deviceId: settings.preferredAudioInputDevice,
+      bypassSystemAudioInputProcessing:
+        settings.bypassSystemAudioInputProcessing,
+      automaticGainControl: settings.automaticGainControl,
       noiseSuppression: settings.noiseSuppression,
       echoCancellation: settings.echoCancellation,
       inputVolume: settings.inputVolume,
