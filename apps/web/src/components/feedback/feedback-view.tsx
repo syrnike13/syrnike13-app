@@ -17,7 +17,6 @@ import {
 } from '#/components/feedback/feedback-meta'
 import { FeedbackSuggestionRow } from '#/components/feedback/feedback-suggestion-row'
 import {
-  ChevronDownIcon,
   ChevronLeftIcon,
   InfoIcon,
   LightbulbIcon,
@@ -27,6 +26,14 @@ import {
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   fetchFeedbackSuggestions,
@@ -259,25 +266,25 @@ function FeedbackFilterSelect({
   onValueChange: (value: string) => void
 }) {
   return (
-    <label className={cn('relative w-full', className)}>
-      <span className="sr-only">{ariaLabel}</span>
-      <select
-        aria-label={ariaLabel}
-        value={value}
-        className="h-9 w-full appearance-none rounded-md border border-input bg-transparent px-3 pr-8 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        onChange={(event) => onValueChange(event.target.value)}
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger aria-label={ariaLabel} className={cn('w-full', className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent
+        position="popper"
+        side="bottom"
+        align="start"
+        sideOffset={0}
       >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDownIcon
-        className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
-    </label>
+        <SelectGroup>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }
 
