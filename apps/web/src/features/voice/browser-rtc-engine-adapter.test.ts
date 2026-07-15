@@ -242,6 +242,127 @@ describe('BrowserRtcEngineAdapter', () => {
     await adapter.dispose()
   })
 
+  it('waits for signaling before publishing desired media', async () => {
+    let resolveConnect!: () => void
+    livekit.connectPromise = new Promise<void>((resolve) => {
+      resolveConnect = resolve
+    })
+    const adapter = new BrowserRtcEngineAdapter()
+    const connecting = adapter.connect(
+      lease,
+      desired({ screenEnabled: false }),
+      new AbortController().signal,
+    )
+    const room = livekit.rooms[0]
+
+    adapter.updateDesiredMedia(
+      desired({
+        cameraEnabled: true,
+        screenEnabled: true,
+        screenAudioEnabled: true,
+      }),
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(room.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled()
+    expect(room.localParticipant.setCameraEnabled).not.toHaveBeenCalled()
+    expect(room.localParticipant.setScreenShareEnabled).not.toHaveBeenCalled()
+
+    resolveConnect()
+    await connecting
+    await waitUntil(
+      () =>
+        room.localParticipant.setCameraEnabled.mock.calls.length === 1 &&
+        room.localParticipant.setScreenShareEnabled.mock.calls.length === 1,
+    )
+
+    expect(room.localParticipant.setScreenShareEnabled).toHaveBeenCalledWith(
+      true,
+      expect.any(Object),
+      expect.any(Object),
+    )
+    await adapter.dispose()
+  })
+
+  it('queues media changes until signaling recovers', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    const initial = desired({ screenEnabled: false })
+    await adapter.connect(lease, initial, new AbortController().signal)
+    const room = livekit.rooms[0]
+    await waitUntil(
+      () =>
+        room.localParticipant.setScreenShareEnabled.mock.calls.length === 1 &&
+        remoteAudioMixers.instances[0].setOutputDevice.mock.calls.length === 1,
+    )
+
+    room.emit('reconnecting')
+    adapter.updateDesiredMedia({
+      ...initial,
+      screenEnabled: true,
+      screenAudioEnabled: true,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(room.localParticipant.setScreenShareEnabled).toHaveBeenCalledTimes(1)
+
+    room.emit('reconnected')
+    await waitUntil(
+      () => room.localParticipant.setScreenShareEnabled.mock.calls.length === 2,
+    )
+    expect(room.localParticipant.setScreenShareEnabled).toHaveBeenLastCalledWith(
+      true,
+      expect.any(Object),
+      expect.any(Object),
+    )
+    await adapter.dispose()
+  })
+
+  it('does not advance an in-flight media reconcile while signaling is reconnecting', async () => {
+    const adapter = new BrowserRtcEngineAdapter()
+    const initial = desired({ screenEnabled: false })
+    await adapter.connect(lease, initial, new AbortController().signal)
+    const room = livekit.rooms[0]
+    await waitUntil(
+      () => room.localParticipant.setScreenShareEnabled.mock.calls.length === 1,
+    )
+
+    let finishScreenStart!: () => void
+    room.localParticipant.setScreenShareEnabled.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        finishScreenStart = resolve
+      }),
+    )
+    adapter.updateDesiredMedia({
+      ...initial,
+      screenEnabled: true,
+      screenAudioEnabled: true,
+    })
+    await waitUntil(
+      () => room.localParticipant.setScreenShareEnabled.mock.calls.length === 2,
+    )
+
+    room.emit('reconnecting')
+    adapter.updateDesiredMedia(initial)
+    finishScreenStart()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(room.localParticipant.setScreenShareEnabled).toHaveBeenCalledTimes(2)
+
+    room.emit('reconnected')
+    await waitUntil(
+      () => room.localParticipant.setScreenShareEnabled.mock.calls.length === 3,
+    )
+    expect(room.localParticipant.setScreenShareEnabled).toHaveBeenLastCalledWith(
+      false,
+      expect.any(Object),
+      expect.any(Object),
+    )
+    await adapter.dispose()
+  })
+
   it('does not block camera, screen, or output while microphone permission is pending', async () => {
     const adapter = new BrowserRtcEngineAdapter()
     const initial = desired({

@@ -307,8 +307,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function diagnosticEventFields(event: Record<string, unknown>) {
   const request = isRecord(event.request) ? event.request : null
+  const error = isRecord(event.data) ? event.data : null
   return {
     eventType: typeof event.type === 'string' ? event.type : 'unknown',
+    fatal: event.fatal === true,
+    errorScope: diagnosticString(event.scope),
+    errorType: diagnosticString(error?.type),
+    errorMessage: diagnosticString(error?.message),
     version: finiteDiagnosticInteger(event.version),
     authorityVersion: finiteDiagnosticInteger(event.authority_version),
     operationId: diagnosticString(event.operation_id),

@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstdlib>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -166,7 +167,10 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
       }
       remote_video_.addTrack(
         event.track,
-        event.participant ? event.participant->identity() : std::string{}
+        event.participant ? event.participant->identity() : std::string{},
+        event.publication
+          ? std::optional{event.publication->source()}
+          : std::nullopt
       );
     }
   }

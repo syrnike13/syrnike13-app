@@ -226,10 +226,19 @@ function run(command, commandArgs) {
   if (useDirectPnpmLauncher && !process.env.npm_execpath) {
     throw new Error('npm_execpath is required to launch pnpm without cmd.exe')
   }
-  const executable = useDirectPnpmLauncher ? process.execPath : command
-  const spawnArgs = useDirectPnpmLauncher
-    ? [process.env.npm_execpath, ...commandArgs]
-    : commandArgs
+  const pnpmLauncher = useDirectPnpmLauncher ? process.env.npm_execpath : undefined
+  const pnpmLauncherIsExecutable =
+    pnpmLauncher && path.extname(pnpmLauncher).toLowerCase() === '.exe'
+  const executable = pnpmLauncherIsExecutable
+    ? pnpmLauncher
+    : useDirectPnpmLauncher
+      ? process.execPath
+      : command
+  const spawnArgs = pnpmLauncherIsExecutable
+    ? commandArgs
+    : useDirectPnpmLauncher
+      ? [pnpmLauncher, ...commandArgs]
+      : commandArgs
   const result = spawnSync(executable, spawnArgs, {
     cwd: packageRoot,
     stdio: 'inherit',

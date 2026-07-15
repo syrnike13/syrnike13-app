@@ -10,15 +10,47 @@
 #include <livekit/video_stream.h>
 
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
+
+#include "../common/diagnostic_log.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
 constexpr std::size_t max_in_flight = 3;
 
+void logRemoteVideoFailure(
+  const std::string& track_id,
+  const std::string& source,
+  std::string message
+) {
+  diagnostics::DiagnosticLog::instance().write(
+    "remote_video_bridge_failed",
+    {
+      {"trackId", track_id},
+      {"videoSource", source},
+      {"message", std::move(message)}
+    }
+  );
+}
+
 #ifdef _WIN32
 using Microsoft::WRL::ComPtr;
+
+[[noreturn]] void throwHResult(const char* operation, HRESULT result) {
+  std::ostringstream message;
+  message << operation << " (HRESULT 0x"
+          << std::hex << std::uppercase << static_cast<std::uint32_t>(result) << ")";
+  throw std::runtime_error(message.str());
+}
+
+[[noreturn]] void throwWin32Error(const char* operation, DWORD error) {
+  std::ostringstream message;
+  message << operation << " (Win32 " << error << ")";
+  throw std::runtime_error(message.str());
+}
 
 struct SharedFrame {
   ComPtr<ID3D11Texture2D> texture;
@@ -48,7 +80,7 @@ class D3DSharedTextureUploader {
       nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
       nullptr, 0, D3D11_SDK_VERSION, &device_, &level, &context_
     );
-    if (FAILED(result)) throw std::runtime_error("D3D11 device creation failed");
+    if (FAILED(result)) throwHResult("D3D11 device creation failed", result);
   }
 
   std::pair<std::uint64_t, std::shared_ptr<SharedFrame>> upload(
@@ -63,35 +95,55 @@ class D3DSharedTextureUploader {
     description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     description.SampleDesc.Count = 1;
     description.Usage = D3D11_USAGE_DEFAULT;
-    description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    description.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+    description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    // Electron imports an NT handle for a shared BGRA texture. NTHANDLE alone
+    // is not a complete shared-resource contract and CreateTexture2D rejects it.
+    description.MiscFlags =
+      D3D11_RESOURCE_MISC_SHARED_NTHANDLE |
+      D3D11_RESOURCE_MISC_SHARED;
     ComPtr<ID3D11Texture2D> texture;
-    if (FAILED(device_->CreateTexture2D(&description, nullptr, &texture))) {
-      throw std::runtime_error("D3D11 shared texture creation failed");
+    const auto texture_result = device_->CreateTexture2D(&description, nullptr, &texture);
+    if (FAILED(texture_result)) {
+      throwHResult("D3D11 shared texture creation failed", texture_result);
     }
     context_->UpdateSubresource(
       texture.Get(), 0, nullptr, frame.data(),
       static_cast<UINT>(frame.width() * 4), 0
     );
+    // The renderer opens this resource on a different D3D device. Flush the
+    // producer context before exporting the handle so Electron cannot observe
+    // the texture before the upload command has been submitted.
+    context_->Flush();
     ComPtr<IDXGIResource1> resource;
-    if (FAILED(texture.As(&resource))) throw std::runtime_error("DXGI resource query failed");
+    const auto query_result = texture.As(&resource);
+    if (FAILED(query_result)) throwHResult("DXGI resource query failed", query_result);
     HANDLE local_handle = nullptr;
-    if (FAILED(resource->CreateSharedHandle(
+    const auto handle_result = resource->CreateSharedHandle(
       nullptr, DXGI_SHARED_RESOURCE_READ, nullptr, &local_handle
-    ))) throw std::runtime_error("DXGI shared handle creation failed");
+    );
+    if (FAILED(handle_result)) {
+      throwHResult("DXGI shared handle creation failed", handle_result);
+    }
     HANDLE main_process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, main_pid);
     if (!main_process) {
+      const auto open_process_error = GetLastError();
       CloseHandle(local_handle);
-      throw std::runtime_error("Electron main process handle open failed");
+      throwWin32Error(
+        "Electron main process handle open failed",
+        open_process_error
+      );
     }
     HANDLE duplicated = nullptr;
     const BOOL duplicated_ok = DuplicateHandle(
       GetCurrentProcess(), local_handle, main_process, &duplicated,
       0, FALSE, DUPLICATE_SAME_ACCESS
     );
+    const auto duplicate_error = duplicated_ok ? ERROR_SUCCESS : GetLastError();
     CloseHandle(main_process);
     CloseHandle(local_handle);
-    if (!duplicated_ok) throw std::runtime_error("DXGI handle duplication failed");
+    if (!duplicated_ok) {
+      throwWin32Error("DXGI handle duplication failed", duplicate_error);
+    }
     auto retained = std::make_shared<SharedFrame>();
     retained->texture = std::move(texture);
     retained->remote_handle = duplicated;
@@ -121,6 +173,19 @@ RemoteVideoBridge::RemoteVideoBridge(std::uint32_t electron_main_pid, Post post)
 
 RemoteVideoBridge::~RemoteVideoBridge() { stop(); }
 
+std::string remoteVideoSourceLabel(
+  std::optional<livekit::TrackSource> publication_source,
+  std::optional<livekit::TrackSource> track_source
+) {
+  const auto source = publication_source &&
+      *publication_source != livekit::TrackSource::SOURCE_UNKNOWN
+    ? publication_source
+    : track_source;
+  return source == livekit::TrackSource::SOURCE_SCREENSHARE
+    ? std::string("screen")
+    : std::string("camera");
+}
+
 void RemoteVideoBridge::updateIdentity(std::string session_id, std::uint64_t generation) {
   std::lock_guard lock(mutex_);
   session_id_ = std::move(session_id);
@@ -129,7 +194,8 @@ void RemoteVideoBridge::updateIdentity(std::string session_id, std::uint64_t gen
 
 void RemoteVideoBridge::addTrack(
   std::shared_ptr<livekit::Track> track,
-  std::string participant_identity
+  std::string participant_identity,
+  std::optional<livekit::TrackSource> publication_source
 ) {
   if (!track || track->kind() != livekit::TrackKind::KIND_VIDEO) return;
   const auto track_id = track->sid();
@@ -140,8 +206,7 @@ void RemoteVideoBridge::addTrack(
   auto worker = std::make_unique<TrackWorker>();
   worker->stream = livekit::VideoStream::fromTrack(track, options);
   auto* raw = worker.get();
-  const auto source = track->source() == livekit::TrackSource::SOURCE_SCREENSHARE
-    ? std::string("screen") : std::string("camera");
+  const auto source = remoteVideoSourceLabel(publication_source, track->source());
   raw->thread = std::thread([
     this, raw, track_id, participant_identity = std::move(participant_identity), source
   ] {
@@ -178,6 +243,19 @@ void RemoteVideoBridge::addTrack(
         command.nt_handle = handle;
         if (!post_(std::move(command))) release(track_id, next);
       }
+    } catch (const std::exception& error) {
+      MediaCommand command;
+      command.type = "__remoteVideoFailed";
+      {
+        std::lock_guard lock(mutex_);
+        command.session_id = session_id_;
+        command.generation = generation_;
+      }
+      command.track_id = track_id;
+      command.video_source = source;
+      command.internal_message = error.what();
+      logRemoteVideoFailure(track_id, source, error.what());
+      post_(std::move(command));
     } catch (...) {
       MediaCommand command;
       command.type = "__remoteVideoFailed";
@@ -188,6 +266,8 @@ void RemoteVideoBridge::addTrack(
       }
       command.track_id = track_id;
       command.video_source = source;
+      command.internal_message = "Unknown remote video bridge failure";
+      logRemoteVideoFailure(track_id, source, command.internal_message);
       post_(std::move(command));
     }
 #endif

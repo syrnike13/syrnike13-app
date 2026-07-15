@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -14,6 +15,11 @@
 #include "../common/runtime_types.hpp"
 
 namespace syrnike::desktop_native::media {
+
+std::string remoteVideoSourceLabel(
+  std::optional<livekit::TrackSource> publication_source,
+  std::optional<livekit::TrackSource> track_source
+);
 
 class RemoteVideoBridge {
  public:
@@ -28,7 +34,8 @@ class RemoteVideoBridge {
   void updateIdentity(std::string session_id, std::uint64_t generation);
   void addTrack(
     std::shared_ptr<livekit::Track> track,
-    std::string participant_identity
+    std::string participant_identity,
+    std::optional<livekit::TrackSource> publication_source
   );
   void removeTrack(const std::string& track_id);
   void release(const std::string& track_id, std::uint64_t sequence);
