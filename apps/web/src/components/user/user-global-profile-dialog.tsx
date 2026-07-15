@@ -23,6 +23,7 @@ import { listMutualServers, listServerChannels } from '#/features/sync/selectors
 import { useMutualServerMembersSync } from '#/features/sync/mutual-server-members-sync'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { writeClipboardText } from '#/lib/clipboard'
+import { canMessageUser } from '#/features/authorization/authorization'
 
 type UserGlobalProfileDialogProps = {
   user: User
@@ -45,7 +46,7 @@ export function UserGlobalProfileDialog({
   const [busy, setBusy] = useState(false)
 
   const isSelf = user._id === auth.user?._id
-  const canDirectMessage = !isSelf && !user.bot
+  const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
   useMutualServerMembersSync(
     user._id,
     auth.user?._id,
@@ -146,7 +147,7 @@ export function UserGlobalProfileDialog({
         </DialogDescription>
 
         <div className="flex min-h-0 flex-1 overflow-hidden p-6">
-          <aside className="gradient-surface-raised flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background ">
+          <aside className="flex w-1/2 min-w-0 shrink-0 flex-col overflow-hidden bg-background ">
             <UserGlobalProfileSidebar
               user={user}
               serverId={serverId}
@@ -163,7 +164,7 @@ export function UserGlobalProfileDialog({
             />
           </aside>
 
-          <div className="gradient-surface-content flex min-w-0 flex-1 flex-col bg-background">
+          <div className="flex min-w-0 flex-1 flex-col bg-background">
             <UserGlobalProfileSections
               mutualServers={mutualServers}
               busy={busy}

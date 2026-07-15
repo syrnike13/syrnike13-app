@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerChannelList } from '#/components/channels/server-channel-list'
 import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 import { UNCATEGORIZED_SECTION_ID } from '#/lib/channel-sidebar-layout'
 
 const mocks = vi.hoisted(() => ({
@@ -101,6 +102,10 @@ describe('ServerChannelList', () => {
     mocks.editServer.mockClear()
     mocks.onDragEnd = null
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-a'],
+      channelIds: ['channel-a', 'channel-b'],
+    })
     syncStore.upsertServer({
       _id: 'server-a',
       name: 'Alpha',

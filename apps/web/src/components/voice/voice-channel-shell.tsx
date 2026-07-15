@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 
 import { ChannelChatPanel } from '#/components/chat/channel-chat-panel'
-import { ChannelSettingsDialog } from '#/components/channels/channel-settings-dialog'
 import { VoiceStageView } from '#/components/voice/voice-stage-view'
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
@@ -11,7 +10,6 @@ import {
   subscribeVoiceChannelChatOpen,
 } from '#/features/voice/voice-channel-chat-intent'
 import {
-  isServerChannel,
   isServerVoiceChannel,
   type RuntimeChannel,
 } from '#/lib/channel-voice'
@@ -70,12 +68,6 @@ export function VoiceChannelShell({
       <VoiceStageView
         channel={channel}
         title={title}
-        showChatToggle={false}
-        headerTrailing={
-          isServerChannel(runtimeChannel) ? (
-            <ChannelSettingsDialog channel={runtimeChannel} />
-          ) : undefined
-        }
         chatOpen={chatOpen}
         onToggleChat={() => setChatOpen((open) => !open)}
       />

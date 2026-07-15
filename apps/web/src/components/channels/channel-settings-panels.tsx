@@ -12,7 +12,7 @@ import {
   canManageChannel,
   canManageChannelPermissions,
   canManageChannelWebhooks,
-} from '#/lib/permissions'
+} from '#/features/authorization/authorization'
 
 type ChannelSettingsPanelContentProps = {
   channel: ServerChannel

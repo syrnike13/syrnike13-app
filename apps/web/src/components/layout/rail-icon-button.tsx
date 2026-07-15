@@ -24,6 +24,18 @@ import { cn } from '#/lib/utils'
 const railIndicatorBaseClass =
   'pointer-events-none absolute top-1/2 -left-1 z-10 w-1 -translate-y-1/2 rounded-r-full bg-foreground'
 
+/** Статичная полоска непрочитанного без hover/active-поведения. */
+export function RailUnreadIndicator({ className }: { className?: string }) {
+  return (
+    <span
+      data-slot="rail-indicator"
+      data-unread=""
+      aria-label="Есть непрочитанные сообщения"
+      className={cn(railIndicatorBaseClass, 'h-2 opacity-100', className)}
+    />
+  )
+}
+
 type RailActiveIndicatorProps = {
   active: boolean
   /** Непрочитанные на неактивном пункте — полоска меньше активной (h-8). */

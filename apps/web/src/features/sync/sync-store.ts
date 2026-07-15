@@ -13,6 +13,7 @@ import type {
 } from '@syrnike13/api-types'
 
 import type {
+  AuthorizationSnapshot,
   GatewayServerEvent,
   GroupJoinBundle,
   ReadyPayload,
@@ -37,6 +38,13 @@ import { serverChannelServerId } from '#/lib/channel-voice'
 function emptyState(): SyncState {
   return {
     ready: false,
+    authorization: {
+      revision: 0,
+      global: 0,
+      servers: {},
+      channels: {},
+      users: {},
+    },
     selectedServerId: null,
     servers: {},
     channels: {},
@@ -431,6 +439,13 @@ export const syncStore = {
 
     setState({
       ready: true,
+      authorization: payload.authorization ?? {
+        revision: 0,
+        global: 0,
+        servers: {},
+        channels: {},
+        users: {},
+      },
       servers,
       channels,
       users,
@@ -1137,6 +1152,7 @@ export const syncStore = {
           channel_unreads,
           voice_states,
           voice_calls,
+          authorization,
         } = event as ReadyPayload & { type: string }
         this.applyReady({
           users,
@@ -1147,7 +1163,15 @@ export const syncStore = {
           channel_unreads,
           voice_states,
           voice_calls,
+          authorization,
         })
+        break
+      }
+      case 'AuthorizationSnapshot': {
+        const snapshot = event.snapshot as AuthorizationSnapshot | undefined
+        if (snapshot && snapshot.revision > state.authorization.revision) {
+          setState({ authorization: snapshot })
+        }
         break
       }
       case 'VoiceChannelJoin': {

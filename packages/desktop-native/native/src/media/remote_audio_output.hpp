@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -11,6 +12,10 @@
 namespace livekit { class Track; }
 
 namespace syrnike::desktop_native::media {
+
+constexpr std::chrono::milliseconds remoteAudioRenderBufferDuration() noexcept {
+  return std::chrono::milliseconds(50);
+}
 
 struct RemoteAudioSettings {
   std::uint64_t revision = 0;

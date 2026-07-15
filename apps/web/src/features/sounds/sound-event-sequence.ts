@@ -36,7 +36,12 @@ function voiceMediaStateFromState(
     'screensharing',
   )
   const hasCamera = Object.prototype.hasOwnProperty.call(state, 'camera')
-  if (!hasScreensharing && !hasCamera) {
+  const hasSelfMuted = Object.prototype.hasOwnProperty.call(state, 'self_mute')
+  const hasSelfDeafened = Object.prototype.hasOwnProperty.call(
+    state,
+    'self_deaf',
+  )
+  if (!hasScreensharing && !hasCamera && !hasSelfMuted && !hasSelfDeafened) {
     return previous ? { ...previous } : null
   }
   return {
@@ -44,6 +49,12 @@ function voiceMediaStateFromState(
       ? Boolean(state.screensharing)
       : previous?.screensharing ?? false,
     camera: hasCamera ? Boolean(state.camera) : previous?.camera ?? false,
+    selfMuted: hasSelfMuted
+      ? Boolean(state.self_mute)
+      : previous?.selfMuted ?? false,
+    selfDeafened: hasSelfDeafened
+      ? Boolean(state.self_deaf)
+      : previous?.selfDeafened ?? false,
   }
 }
 
@@ -70,6 +81,8 @@ function seedVoiceMediaStates(voiceParticipants?: VoiceParticipantsByChannel) {
       cache.set(voiceMediaKey(channelId, participant.id), {
         screensharing: participant.screensharing,
         camera: participant.camera,
+        selfMuted: participant.self_mute,
+        selfDeafened: participant.self_deaf,
       })
     }
   }
@@ -86,6 +99,18 @@ function seedVoiceChannelIds(voiceParticipants?: VoiceParticipantsByChannel) {
     }
   }
   return channels
+}
+
+function seedKnownVoiceMemberships(
+  voiceParticipants?: VoiceParticipantsByChannel,
+) {
+  const users = new Set<string>()
+  for (const participants of Object.values(voiceParticipants ?? {})) {
+    for (const participant of Object.values(participants)) {
+      users.add(participant.id)
+    }
+  }
+  return users
 }
 
 function previousVoiceMediaState(
@@ -207,6 +232,8 @@ function deleteChannelVoiceMemberships(
 function updateVoiceChannelIds(
   event: GatewayServerEvent,
   channels: Map<string, string>,
+  knownMemberships: Set<string>,
+  currentUserId?: string | null,
 ) {
   if (event.type === 'Ready') {
     const voiceStates = Array.isArray(event.voice_states)
@@ -214,6 +241,7 @@ function updateVoiceChannelIds(
       : null
     if (!voiceStates) return
     channels.clear()
+    knownMemberships.clear()
     for (const entry of voiceStates) {
       const channelId =
         typeof entry.id === 'string'
@@ -227,15 +255,20 @@ function updateVoiceChannelIds(
       for (const participant of entry.participants) {
         if (!participant || typeof participant !== 'object') continue
         const userId = voiceStateUserId({ state: participant })
-        if (userId) channels.set(userId, channelId)
+        if (userId) {
+          channels.set(userId, channelId)
+          knownMemberships.add(userId)
+        }
       }
     }
+    if (currentUserId) knownMemberships.add(currentUserId)
     return
   }
 
   if (event.type === 'VoiceChannelLeave') {
     const channelId = voiceChannelIdFromJoin(event)
     const userId = voiceStateUserId(event)
+    if (userId) knownMemberships.add(userId)
     if (channelId && userId && channels.get(userId) === channelId) {
       channels.delete(userId)
     }
@@ -245,6 +278,7 @@ function updateVoiceChannelIds(
   if (event.type === 'VoiceChannelMove') {
     const userId = voiceStateUserId(event)
     if (!userId) return
+    knownMemberships.add(userId)
     if (typeof event.from === 'string' && channels.get(userId) === event.from) {
       channels.delete(userId)
     }
@@ -255,6 +289,7 @@ function updateVoiceChannelIds(
   if (event.type === 'VoiceChannelJoin') {
     const channelId = voiceChannelIdFromJoin(event)
     const userId = voiceStateUserId(event)
+    if (userId) knownMemberships.add(userId)
     if (channelId && userId) channels.set(userId, channelId)
     return
   }
@@ -263,6 +298,7 @@ function updateVoiceChannelIds(
     const channelId =
       typeof event.channel_id === 'string' ? event.channel_id : null
     const userId = voiceStateUserId(event)
+    if (userId) knownMemberships.add(userId)
     if (channelId && userId) channels.set(userId, channelId)
     return
   }
@@ -275,10 +311,35 @@ function updateVoiceChannelIds(
 function currentVoiceChannelIdForContext(
   context: SequenceSoundContext,
   channels: ReadonlyMap<string, string>,
+  knownMemberships: ReadonlySet<string>,
 ) {
   const currentUserId = context.currentUserId
   if (!currentUserId) return context.currentVoiceChannelId ?? null
+  if (knownMemberships.has(currentUserId)) {
+    return channels.get(currentUserId) ?? null
+  }
   return channels.get(currentUserId) ?? context.currentVoiceChannelId ?? null
+}
+
+function repeatsKnownVoiceMembership(
+  event: GatewayServerEvent,
+  channels: ReadonlyMap<string, string>,
+) {
+  const userId = voiceStateUserId(event)
+  if (!userId) return false
+
+  if (event.type === 'VoiceChannelJoin') {
+    const channelId = voiceChannelIdFromJoin(event)
+    return channelId != null && channels.get(userId) === channelId
+  }
+  if (event.type === 'VoiceChannelLeave') {
+    const channelId = voiceChannelIdFromJoin(event)
+    return channelId != null && channels.get(userId) !== channelId
+  }
+  if (event.type === 'VoiceChannelMove' && typeof event.to === 'string') {
+    return channels.get(userId) === event.to
+  }
+  return false
 }
 
 export function currentVoiceChannelIdFromParticipants(
@@ -297,21 +358,30 @@ export function createSoundEventResolver(
 ) {
   const voiceMediaStates = seedVoiceMediaStates(voiceParticipants)
   const voiceChannelIds = seedVoiceChannelIds(voiceParticipants)
+  const knownVoiceMemberships = seedKnownVoiceMemberships(voiceParticipants)
 
   function resolveSingle(
     event: GatewayServerEvent,
     context: SequenceSoundContext,
   ) {
-    const soundEvent = soundEventFromGatewayEvent(event, {
-      ...context,
-      currentVoiceChannelId: currentVoiceChannelIdForContext(
-        context,
-        voiceChannelIds,
-      ),
-      previousVoiceState: previousVoiceMediaState(event, voiceMediaStates),
-    })
+    const soundEvent = repeatsKnownVoiceMembership(event, voiceChannelIds)
+      ? null
+      : soundEventFromGatewayEvent(event, {
+          ...context,
+          currentVoiceChannelId: currentVoiceChannelIdForContext(
+            context,
+            voiceChannelIds,
+            knownVoiceMemberships,
+          ),
+          previousVoiceState: previousVoiceMediaState(event, voiceMediaStates),
+        })
     updateVoiceMediaStates(event, voiceMediaStates)
-    updateVoiceChannelIds(event, voiceChannelIds)
+    updateVoiceChannelIds(
+      event,
+      voiceChannelIds,
+      knownVoiceMemberships,
+      context.currentUserId,
+    )
     return soundEvent ? [soundEvent] : []
   }
 

@@ -34,10 +34,8 @@ import {
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
   canInviteToChannel,
-  ChannelPermission,
-  calculateServerPermissions,
-  hasChannelPermission,
-} from '#/lib/permissions'
+  canManageServer,
+} from '#/features/authorization/authorization'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
 import { cn } from '#/lib/utils'
@@ -92,16 +90,8 @@ export function ServerInviteDialog({
   const token = auth.session?.token
   const server = useSyncStore((s) => s.servers[serverId])
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
-  const canManageServer = server
-    ? hasChannelPermission(
-        calculateServerPermissions(
-          server,
-          member,
-          auth.user?._id,
-          auth.user?.privileged,
-        ),
-        ChannelPermission.ManageServer,
-      )
+  const canManageServerInvites = server
+    ? canManageServer(server)
     : false
 
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
@@ -171,7 +161,7 @@ export function ServerInviteDialog({
     const requestId = ++loadInvitesRequestRef.current
     setActiveInviteCode('')
     setInvites([])
-    if (!token || !canManageServer) return
+    if (!token || !canManageServerInvites) return
 
     try {
       const loadedInvites = await fetchServerInvites(token, serverId)
@@ -183,7 +173,7 @@ export function ServerInviteDialog({
         error instanceof Error ? error.message : 'Не удалось загрузить',
       )
     }
-  }, [canManageServer, serverId, token])
+  }, [canManageServerInvites, serverId, token])
 
   useEffect(() => {
     if (!open) return

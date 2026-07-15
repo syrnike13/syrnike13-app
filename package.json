@@ -7,6 +7,7 @@
     "version:sync": "node tooling/scripts/sync-version.mjs",
     "api-types:build": "pnpm --filter @syrnike13/api-types build",
     "api-types:generate": "pnpm --filter @syrnike13/api-types generate",
+    "permissions:generate": "node tooling/scripts/generate-permission-bits.mjs",
     "dev": "pnpm web:dev",
     "web:dev": "pnpm --filter @syrnike13/web dev",
     "web:dev:prod": "pnpm --filter @syrnike13/web dev:prod",

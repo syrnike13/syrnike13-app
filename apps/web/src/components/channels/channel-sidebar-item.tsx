@@ -13,7 +13,7 @@ import { useState, type MouseEvent } from 'react'
 import type { Channel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
-import { NotificationBadge } from '#/components/notifications/notification-badge'
+import { RailUnreadIndicator } from '#/components/layout/rail-icon-button'
 import { RestrictedTextChannelIcon } from '#/components/icons/restricted-text-channel-icon'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import { Button } from '#/components/ui/button'
@@ -61,7 +61,8 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   isServerVoiceChannel,
 } from '#/lib/channel-voice'
-import { canManageChannel, isChannelAccessRestricted } from '#/lib/permissions'
+import { canManageChannel } from '#/features/authorization/authorization'
+import { isChannelAccessRestricted } from '#/features/authorization/permission-draft'
 import { channelSettingsSearch } from '#/lib/channel-settings-navigation'
 import { writeClipboardText } from '#/lib/clipboard'
 import { inviteUrl } from '#/lib/invite-link'
@@ -313,12 +314,15 @@ export function ChannelSidebarItem({
     >
       <div
         className={cn(
-          'flex h-9 min-w-0 items-stretch rounded-md text-sm transition-colors',
+          'relative flex h-9 min-w-0 items-stretch rounded-md text-sm transition-colors',
           active
             ? 'bg-secondary text-secondary-foreground'
             : 'text-foreground hover:bg-accent hover:text-accent-foreground',
         )}
       >
+        {!active && notificationBadge.hasUnread ? (
+          <RailUnreadIndicator className="-left-2" />
+        ) : null}
         <Link
           to={channelRoute}
           params={{ channelId: channel._id }}
@@ -373,12 +377,6 @@ export function ChannelSidebarItem({
             >
               <HeadphonesIcon aria-hidden="true" className="size-3.5" />
             </span>
-          ) : null}
-          {!active ? (
-            <NotificationBadge
-              badge={notificationBadge}
-              mode={notificationBadge.urgent ? 'count' : 'dot'}
-            />
           ) : null}
         </Link>
         {serverVoice || (canManage && isServerChannel) ? (

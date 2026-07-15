@@ -8,6 +8,57 @@ const CHANNEL_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AF'
 const USER_ID = '01KT7DEM3B0T4B0BXGBXWDJ6AD'
 
 describe('syncStore voice events', () => {
+  it('replaces authorization atomically and ignores stale revisions', () => {
+    syncStore.reset()
+    syncStore.handleGatewayEvent({
+      type: 'Ready',
+      authorization: {
+        revision: 4,
+        global: 1,
+        servers: { server: 3 },
+        channels: { channel: 5 },
+        users: { user: 7 },
+      },
+    })
+    syncStore.handleGatewayEvent({
+      type: 'AuthorizationSnapshot',
+      snapshot: {
+        revision: 3,
+        global: 0,
+        servers: { stale: 1 },
+        channels: {},
+        users: {},
+      },
+    })
+
+    expect(syncStore.getState().authorization).toEqual({
+      revision: 4,
+      global: 1,
+      servers: { server: 3 },
+      channels: { channel: 5 },
+      users: { user: 7 },
+    })
+
+    syncStore.handleGatewayEvent({
+      type: 'AuthorizationSnapshot',
+      snapshot: {
+        revision: 5,
+        global: 0,
+        servers: {},
+        channels: { replacement: 9 },
+        users: {},
+      },
+    })
+
+    expect(syncStore.getState().authorization).toEqual({
+      revision: 5,
+      global: 0,
+      servers: {},
+      channels: { replacement: 9 },
+      users: {},
+    })
+  })
+
   it('does not emit when applying the same voice participant snapshot', () => {
     syncStore.reset()
     const participants = [

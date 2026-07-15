@@ -54,12 +54,13 @@ import {
 } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
+  canGrantServerPermission,
   canManageRole,
-  hasChannelPermission,
-  calculateServerPermissions,
-  ChannelPermission,
-} from '#/lib/permissions'
+  canManageServerPermissions,
+  canManageServerRoles,
+} from '#/features/authorization/authorization'
 import {
+  hasServerPermission,
   roleColourStyle,
   roleRanksPayload,
   SERVER_PERMISSION_GROUPS,
@@ -365,13 +366,11 @@ function DefaultPermissionsEditor({
   serverId,
   token,
   canEdit,
-  actorPermissions,
 }: {
   server: Server
   serverId: string
   token: string
   canEdit: boolean
-  actorPermissions: number
 }) {
   const [permissions, setPermissions] = useState(server.default_permissions)
   const [saving, setSaving] = useState(false)
@@ -436,12 +435,12 @@ function DefaultPermissionsEditor({
             </h4>
             <ul className="space-y-1">
               {group.permissions.map((permission) => {
-                const enabled = hasChannelPermission(
+                const enabled = hasServerPermission(
                   permissions,
                   permission.flag,
                 )
-                const actorHasPermission = hasChannelPermission(
-                  actorPermissions,
+                const actorHasPermission = canGrantServerPermission(
+                  server,
                   permission.flag,
                 )
                 return (
@@ -531,34 +530,18 @@ export function ServerSettingsRolesPanel({
   const token = auth.session?.token
   const userId = auth.user?._id
   const userPrivileged = Boolean(auth.user?.privileged)
-  const serverPermissions = server && userId
-    ? calculateServerPermissions(server, member, userId, userPrivileged)
-    : 0
-
   const canCreateRoles = server && userId
-    ? server.owner === userId ||
-      hasChannelPermission(
-        serverPermissions,
-        ChannelPermission.ManageRole,
-      )
+    ? canManageServerRoles(server)
     : false
 
   const canEditDefaultPermissions = server && userId
-    ? server.owner === userId ||
-      hasChannelPermission(
-        serverPermissions,
-        ChannelPermission.ManagePermissions,
-      )
+    ? canManageServerPermissions(server)
     : false
 
   const canReorderRoles = Boolean(
     server &&
       userId &&
-      (server.owner === userId ||
-        hasChannelPermission(
-          serverPermissions,
-          ChannelPermission.ManageRole,
-        )),
+      canManageServerRoles(server),
   )
 
   const effectiveSelectedId = useMemo(() => {
@@ -736,7 +719,6 @@ export function ServerSettingsRolesPanel({
                 serverId={serverId}
                 token={token}
                 canEdit={canEditDefaultPermissions}
-                actorPermissions={serverPermissions}
               />
             ) : (
               <ServerSettingsRoleEditor

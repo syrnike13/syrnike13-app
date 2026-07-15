@@ -44,7 +44,7 @@ import {
   type ChannelSidebarSection,
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
-import { canInviteToChannel, canManageServerChannels } from '#/lib/permissions'
+import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type ServerChannelListProps = {

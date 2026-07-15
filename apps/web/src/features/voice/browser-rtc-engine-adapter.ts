@@ -40,6 +40,7 @@ import { voiceListenerStore } from '#/features/voice/voice-listener-store'
 type ActiveBrowserVoice = {
   lease: VoiceLease
   room: Room
+  connected: boolean
   intentionalDisconnect: boolean
   microphonePublication: LocalTrackPublication | null
   microphoneStarting: boolean
@@ -133,6 +134,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     active = {
       lease,
       room,
+      connected: false,
       intentionalDisconnect: false,
       microphonePublication: null,
       microphoneStarting: false,
@@ -169,6 +171,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
       )
       this.assertCurrent(active)
       if (signal.aborted) throw abortError()
+      active.connected = true
       this.emitRoom(room)
       this.requestMediaReconcile()
     } catch (error) {
@@ -253,14 +256,18 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
     const { room } = active
     room.on(RoomEvent.Reconnecting, () => {
       if (this.active !== active) return
+      active.connected = false
       this.emitFor(active, { type: 'transientReconnectStarted' })
     })
     room.on(RoomEvent.Reconnected, () => {
       if (this.active !== active) return
+      active.connected = true
       this.emitFor(active, { type: 'transientReconnectSucceeded' })
+      this.requestMediaReconcile()
     })
     room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
       if (this.active !== active || active.intentionalDisconnect) return
+      active.connected = false
       this.emitFor(active, {
         type: 'terminalFailure',
         failure: {
@@ -352,7 +359,13 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   }
 
   private ensureMediaReconcile() {
-    if (this.mediaReconcile || !this.active || !this.desired) return
+    if (
+      this.mediaReconcile ||
+      !this.active?.connected ||
+      !this.desired
+    ) {
+      return
+    }
     this.mediaReconcile = this.reconcileMediaLoop().finally(() => {
       this.mediaReconcile = null
       if (
@@ -368,7 +381,7 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
   private async reconcileMediaLoop() {
     let handledRevision = -1
     while (
-      this.active &&
+      this.active?.connected &&
       this.desired &&
       handledRevision !== this.mediaRevision
     ) {

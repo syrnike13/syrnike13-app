@@ -1,6 +1,7 @@
 use authifier::AuthifierEvent;
 use iso8601_timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use syrnike_result::Error;
 
 use syrnike_models::v0::{
@@ -121,6 +122,15 @@ pub struct VoiceCall {
     pub declined_recipients: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct AuthorizationSnapshot {
+    pub revision: u64,
+    pub global: u64,
+    pub servers: HashMap<String, u64>,
+    pub channels: HashMap<String, u64>,
+    pub users: HashMap<String, u64>,
+}
+
 /// Fields provided in Ready payload
 #[derive(PartialEq, Debug, Clone, Deserialize)]
 pub struct ReadyPayloadFields {
@@ -134,6 +144,7 @@ pub struct ReadyPayloadFields {
     pub user_settings: Vec<String>,
     pub channel_unreads: bool,
     pub policy_changes: bool,
+    pub authorization: bool,
 }
 
 impl Default for ReadyPayloadFields {
@@ -149,6 +160,7 @@ impl Default for ReadyPayloadFields {
             user_settings: Vec::new(),
             channel_unreads: false,
             policy_changes: true,
+            authorization: true,
         }
     }
 }
@@ -198,11 +210,16 @@ pub enum EventV1 {
 
         #[serde(skip_serializing_if = "Option::is_none")]
         policy_changes: Option<Vec<PolicyChange>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        authorization: Option<AuthorizationSnapshot>,
     },
 
     /// Ping response
     Pong {
         data: Ping,
+    },
+    AuthorizationSnapshot {
+        snapshot: AuthorizationSnapshot,
     },
     /// New message
     Message(Message),

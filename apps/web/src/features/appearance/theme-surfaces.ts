@@ -16,6 +16,7 @@ export const THEME_SURFACE_VARIABLE_KEYS = [
   'theme-surface-input',
   'theme-surface-highest',
   'theme-surface-floating',
+  'theme-surface-solid',
 ] as const
 
 export type ThemeSurfaceVariableKey =
@@ -134,18 +135,39 @@ function overlaySurface(
   return `linear-gradient(rgb(${overlayRgb} / ${alpha}), rgb(${overlayRgb} / ${alpha})) fixed 0 0 / cover, ${backdrop} fixed 0 0 / cover`
 }
 
+function averageGradientColor(colors: readonly string[]): string {
+  return colors.slice(1).reduce(
+    (average, color, index) =>
+      mixColor(average, color, 100 / (index + 2)),
+    colors[0]!,
+  )
+}
+
+function solidSurface(
+  colors: readonly string[],
+  variant: 'light' | 'dark',
+  opacity: number,
+): string {
+  return mixColor(
+    averageGradientColor(colors),
+    variant === 'dark' ? 'black' : 'white',
+    clamp(opacity, 0, 1) * 100,
+  )
+}
+
 function darkSurfaceOpacities(saturation: number) {
   const mixAmount = clamp((saturation - 50) / 50, 0, 1)
   return {
     lowest: 0.54 + mixAmount * 0.12,
     appFrame: 0.42 + mixAmount * 0.4 * 0.7,
-    navigation: 0.54 + mixAmount * 0.12,
-    content: 0.54 + mixAmount * 0.25,
+    navigation: 0.58 + mixAmount * 0.12,
+    content: 0.56 + mixAmount * 0.25,
     chrome: 0.68 + mixAmount * 0.2,
     raised: 0.42 + mixAmount * 0.4 * 0.7,
     input: 0.95 + mixAmount * 0.4 * 0.65,
     highest: 0.39 + mixAmount * 0.4 * 0.65,
-    floating: 0.38 + mixAmount * 0.22,
+    floating: 0.44 + mixAmount * 0.22,
+    solid: 0.30 + mixAmount * 0.20,
   }
 }
 
@@ -155,12 +177,13 @@ function lightSurfaceOpacities(saturation: number) {
     lowest: 0.14 + mixAmount * 0.65,
     appFrame: 0.14 + mixAmount * 0.5 * 0.65,
     navigation: 0.20 + mixAmount * 0.65,
-    content: 0.54 + mixAmount * 0.24,
-    chrome:  0.54 + mixAmount * 0.24,
+    content: 0.60 + mixAmount * 0.24,
+    chrome:  0.60 + mixAmount * 0.24,
     raised: 0.325 + mixAmount * 0.5 * 0.65,
     input: 0.95 * (0.8 + mixAmount * 0.2),
     highest: 0.95 * (0.8 + mixAmount * 0.2),
     floating: 0.80 + mixAmount * 0.25,
+    solid: 0.88 + mixAmount * 0.18,
   }
 }
 
@@ -222,6 +245,11 @@ export function buildThemeSurfaceVariables(
       opacities.floating,
       backdrop,
     ),
+    'theme-surface-solid': solidSurface(
+      gradient.colors,
+      variant,
+      opacities.solid,
+    ),
   }
 }
 
@@ -239,6 +267,7 @@ export function buildSolidThemeSurfaceVariables(
     'theme-surface-input': tokens.input,
     'theme-surface-highest': tokens.input,
     'theme-surface-floating': tokens.secondary,
+    'theme-surface-solid': tokens.popover,
   }
 }
 

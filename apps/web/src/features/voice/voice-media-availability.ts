@@ -148,13 +148,9 @@ export function microphoneMediaControlState(options: {
 
   const title = unavailable
     ? options.availability.title
-    : options.inVoice
-      ? options.micMuted
-        ? 'Включить микрофон'
-        : 'Выключить микрофон'
-      : options.micMuted
-        ? 'Микрофон выключен (применится при входе в голос)'
-        : 'Выключить микрофон до входа в голос'
+    : options.micMuted
+      ? 'Включить микрофон'
+      : 'Выключить микрофон'
 
   return {
     disabled: Boolean(options.connecting) || unavailable,

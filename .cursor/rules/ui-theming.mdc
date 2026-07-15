@@ -35,8 +35,14 @@ alwaysApply: true
 - бренд → `primary`
 - presence → `apps/web/src/lib/presence.ts`
 
+## Поверхности градиентных тем
+
+- элементы без видимого градиента используют `gradient-surface-solid`; цвет берётся из равновесного Oklab-среднего всех stop-цветов и затемняется/осветляется через opacity категории
+- общие `PopoverContent`, `DialogContent` и `TooltipContent` используют `gradient-surface-solid`; portal-элементы с той же семантикой добавляют класс явно, а прозрачные lightbox явно отключают тематическую поверхность
+
 ## Исключения
 
 - цвета ролей/серверов из API, `role-colour-picker.tsx`, `avatar-tile-palette.ts`
 - meta/fallback hex (`theme-color`)
 - desktop native shell: прозрачный оверлей, `backgroundColor` окна до загрузки web
+- canvas VoiceStage и его popout: фиксированный чёрный фон, без `theme-surface-*` и `gradient-surface-*` на корневой поверхности

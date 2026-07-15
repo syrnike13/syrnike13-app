@@ -15,7 +15,7 @@ import {
   type ServerMemberEntry,
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { canViewChannel } from '#/lib/permissions'
+import { canViewChannelDraft } from '#/features/authorization/permission-draft'
 import { cn } from '#/lib/utils'
 
 type ChannelMemberSidebarProps = {
@@ -116,7 +116,7 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
     if (channel.channel_type !== 'TextChannel' || !server) return members
 
     return members.filter((entry) =>
-      canViewChannel(
+      canViewChannelDraft(
         server,
         channel,
         entry.member,

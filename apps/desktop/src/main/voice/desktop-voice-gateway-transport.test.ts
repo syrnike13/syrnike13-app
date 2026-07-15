@@ -128,4 +128,40 @@ describe('DesktopVoiceGatewayTransport', () => {
     expect(sockets).toHaveLength(2)
     transport.stop()
   })
+
+  it('records safe server error fields in control diagnostics', () => {
+    const diagnostics = vi.fn()
+    const socket = new FakeSocket()
+    const transport = new DesktopVoiceGatewayTransport({
+      createSocket: () => socket,
+      diagnostics,
+    })
+    transport.configure('wss://example.invalid/ws', 'session-token')
+    socket.open()
+    socket.event({
+      type: 'Error',
+      fatal: true,
+      scope: 'Session',
+      data: {
+        type: 'InvalidSession',
+        message: 'Session token is invalid.',
+        secret: 'must-not-be-logged',
+      },
+    })
+
+    expect(diagnostics).toHaveBeenCalledWith(
+      'control_event',
+      expect.objectContaining({
+        eventType: 'Error',
+        fatal: true,
+        errorScope: 'Session',
+        errorType: 'InvalidSession',
+        errorMessage: 'Session token is invalid.',
+      }),
+    )
+    expect(JSON.stringify(diagnostics.mock.calls)).not.toContain(
+      'must-not-be-logged',
+    )
+    transport.stop()
+  })
 })

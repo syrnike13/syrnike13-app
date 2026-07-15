@@ -87,6 +87,7 @@ export function MobileVoiceFloatingTile() {
     inVoiceSession,
     micEnabled: voiceSession.micEnabled,
     micPublishing: voiceSession.micPublishing,
+    deafened: voiceSession.deafened,
   })
   const soundOff = voiceSession.deafened
   const cameraOn = voiceMedia.cameraEnabled

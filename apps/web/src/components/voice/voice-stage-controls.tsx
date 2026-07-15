@@ -250,6 +250,7 @@ export function VoiceStageControls({
     inVoiceSession: inCall || connecting,
     micEnabled: voiceSession.micEnabled,
     micPublishing: voiceSession.micPublishing,
+    deafened: voiceSession.deafened,
   })
   const soundOff = voiceSession.deafened
   const cameraOn = voiceMedia.cameraEnabled
@@ -552,7 +553,7 @@ function VoiceStageMobileDrawerControlBar({
             )}
           </MobileDrawerIconButton>
           <MobileDrawerIconButton
-            title={soundOff ? 'Включить звук' : 'Отключить звук'}
+            title={soundOff ? 'Включить звук' : 'Выключить звук'}
             danger={soundOff}
             disabled={connecting}
             onClick={onToggleDeafen}
@@ -691,7 +692,7 @@ function VoiceStageOverlayControlBar({
         </StageIconButton>
 
         <StageIconButton
-          title={soundOff ? 'Включить звук' : 'Отключить звук'}
+          title={soundOff ? 'Включить звук' : 'Выключить звук'}
           danger={soundOff}
           disabled={connecting}
           onClick={onToggleDeafen}
@@ -849,7 +850,7 @@ function LegacyControlBar({
       </LegacyControlButton>
 
       <LegacyControlButton
-        title={soundOff ? 'Включить звук' : 'Отключить звук'}
+        title={soundOff ? 'Включить звук' : 'Выключить звук'}
         active={soundOff}
         disabled={connecting}
         compact={compact}

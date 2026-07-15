@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerHeaderMenu } from '#/components/servers/server-header-menu'
 import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   deleteOrLeaveServer: vi.fn(),
@@ -99,8 +100,26 @@ function upsertServer(owner = 'user-1') {
 }
 
 describe('ServerHeaderMenu', () => {
+  it('uses a translucent trigger background over a server banner', () => {
+    render(
+      <ServerHeaderMenu
+        serverId="server-1"
+        serverName="Server"
+        overBanner
+      />,
+    )
+
+    const triggerClass = screen.getByRole('button', {
+      name: 'Server',
+    }).className
+
+    expect(triggerClass).toContain('hover:bg-background/60')
+    expect(triggerClass).toContain('hover:backdrop-blur-sm')
+  })
+
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({ serverIds: ['server-1'] })
     upsertServer()
     mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
     mocks.navigate.mockResolvedValue(undefined)

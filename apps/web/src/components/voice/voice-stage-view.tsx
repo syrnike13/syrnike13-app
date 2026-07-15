@@ -65,7 +65,7 @@ import {
 } from '#/features/voice/use-voice-stage-chrome-visible'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
-import { canInviteToChannel } from '#/lib/permissions'
+import { canInviteToChannel } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type VoiceStageDmHeader = {
@@ -437,11 +437,10 @@ export function VoiceStageView({
   ) => (
     <div
       ref={surfaceRef}
+      data-voice-stage-surface={presentation}
       className={cn(
-        'relative flex min-h-0 min-w-0 flex-col overflow-hidden',
-        mediaItems.length === 0
-          ? 'gradient-stage-empty gradient-surface-content bg-black text-white'
-          : 'bg-black text-white',
+        // VoiceStage is a media canvas: its surface stays black in every theme.
+        'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-black text-white',
         presentation === 'popout' && 'h-[100dvh] w-full',
         presentation === 'embedded' && 'h-full min-h-0 flex-1',
         presentation === 'popout' &&

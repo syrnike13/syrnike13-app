@@ -18,7 +18,8 @@ import {
   isServerVoiceChannel,
   type ServerTextChannel,
 } from '#/lib/channel-voice'
-import { canViewChannel } from '#/lib/permissions'
+import { hasPermissionBit } from '#/lib/permission-bits'
+import { ServerPermission } from '#/lib/server-permissions'
 import type { ChannelUnreadState, SyncState } from './types'
 
 export const EMPTY_CHANNELS: Channel[] = []
@@ -159,8 +160,8 @@ const serverChannelsListCache = new Map<
   {
     server: Server | undefined
     channels: SyncState['channels']
+    authorization: SyncState['authorization']
     userId: string | undefined
-    userPrivileged: boolean
     list: ServerTextChannel[]
   }
 >()
@@ -171,14 +172,13 @@ export function listServerChannels(
   userId?: string,
 ): ServerTextChannel[] {
   const server = state.servers[serverId]
-  const userPrivileged = Boolean(userId && state.users[userId]?.privileged)
   const cached = serverChannelsListCache.get(serverId)
   if (
     cached &&
     cached.server === server &&
     cached.channels === state.channels &&
-    cached.userId === userId &&
-    cached.userPrivileged === userPrivileged
+    cached.authorization === state.authorization &&
+    cached.userId === userId
   ) {
     return cached.list
   }
@@ -213,14 +213,10 @@ export function listServerChannels(
   }
 
   if (userId && server) {
-    const member = state.members[`${serverId}:${userId}`]
     list = list.filter((channel) =>
-      canViewChannel(
-        server,
-        channel,
-        member,
-        userId,
-        userPrivileged,
+      hasPermissionBit(
+        state.authorization.channels[channel._id] ?? 0,
+        ServerPermission.ViewChannel,
       ),
     )
   }
@@ -228,8 +224,8 @@ export function listServerChannels(
   serverChannelsListCache.set(serverId, {
     server,
     channels: state.channels,
+    authorization: state.authorization,
     userId,
-    userPrivileged,
     list,
   })
   return list

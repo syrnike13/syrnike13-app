@@ -89,6 +89,15 @@ export type ReadyPayload = {
     recipients?: string[]
     declined_recipients?: string[]
   }>
+  authorization?: AuthorizationSnapshot
+}
+
+export type AuthorizationSnapshot = {
+  revision: number
+  global: number
+  servers: Record<string, number>
+  channels: Record<string, number>
+  users: Record<string, number>
 }
 
 export type ChannelUnreadState = {
@@ -98,6 +107,8 @@ export type ChannelUnreadState = {
 
 export type SyncState = {
   ready: boolean
+  /** Backend-authoritative effective permission masks for the current user. */
+  authorization: AuthorizationSnapshot
   selectedServerId: string | null
   servers: Record<string, Server>
   channels: Record<string, Channel>

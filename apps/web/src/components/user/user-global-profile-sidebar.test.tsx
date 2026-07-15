@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UserGlobalProfileSidebar } from '#/components/user/user-global-profile-sidebar'
 import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: null }),
@@ -28,6 +29,7 @@ vi.mock('#/components/servers/edit-member-roles-dialog', () => ({
 describe('UserGlobalProfileSidebar', () => {
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({ userIds: ['user-target'] })
     syncStore.upsertServer({
       _id: 'server-a',
       name: 'Alpha',

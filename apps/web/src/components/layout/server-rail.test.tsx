@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerRail } from '#/components/layout/server-rail'
 import { syncStore } from '#/features/sync/sync-store'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { serverIconUrl } from '#/lib/media'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: forwardRef<
@@ -48,12 +50,6 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/platform/use-platform', () => ({
-  usePlatform: () => ({
-    capabilities: { customWindowChrome: false },
-  }),
-}))
-
 vi.mock('#/components/servers/create-server-dialog', () => ({
   CreateServerDialog: () => null,
 }))
@@ -90,13 +86,169 @@ describe('ServerRail', () => {
   afterEach(() => {
     cleanup()
     syncStore.reset()
+    vi.unstubAllGlobals()
   })
 
   it('shows home notifications on the home rail button', () => {
-    render(<ServerRail variant="desktop" />)
+    const { container } = render(<ServerRail variant="desktop" />)
 
     expect(screen.getByTitle('Главная')).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()
+    expect(container.firstElementChild?.classList.contains('pt-1')).toBe(true)
+    expect(container.firstElementChild?.classList.contains('pb-3')).toBe(true)
+    expect(container.firstElementChild?.classList.contains('py-3')).toBe(false)
+  })
+
+  it('shows a server icon when the server has one', () => {
+    const icon = {
+      _id: 'server-icon-1',
+      tag: 'icons',
+      filename: 'server.png',
+      content_type: 'image/png',
+      metadata: {
+        type: 'Image',
+        width: 128,
+        height: 128,
+      },
+    } as const
+
+    syncStore.applyReady({
+      users: [],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Demo',
+          owner: 'current-user',
+          channels: [],
+          default_permissions: 0,
+          icon,
+        },
+      ],
+      channels: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+
+    render(<ServerRail variant="desktop" />)
+
+    const image = screen.getByTitle('Demo').querySelector('img')
+
+    expect(image?.getAttribute('src')).toBe(serverIconUrl(icon as never))
+    expect(image?.className).toContain('object-cover')
+    expect(screen.queryByText('DE')).toBeNull()
+  })
+
+  it('animates a GIF server icon only while the rail item is interactive', () => {
+    const icon = {
+      _id: 'server-icon-gif',
+      tag: 'icons',
+      filename: 'server.gif',
+      content_type: 'image/gif',
+      metadata: {
+        type: 'Image',
+        width: 128,
+        height: 128,
+        animated: true,
+      },
+    } as const
+
+    syncStore.applyReady({
+      users: [],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Demo',
+          owner: 'current-user',
+          channels: [],
+          default_permissions: 0,
+          icon,
+        },
+      ],
+      channels: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+
+    render(<ServerRail variant="desktop" />)
+
+    const serverLink = screen.getByTitle('Demo')
+    const image = serverLink.querySelector('img')
+
+    expect(image?.getAttribute('src')).toBe(serverIconUrl(icon as never))
+
+    fireEvent.pointerEnter(serverLink)
+    expect(image?.getAttribute('src')).toBe(
+      serverIconUrl(icon as never, { animated: true }),
+    )
+
+    fireEvent.pointerLeave(serverLink)
+    expect(image?.getAttribute('src')).toBe(serverIconUrl(icon as never))
+
+    fireEvent.focus(serverLink)
+    expect(image?.getAttribute('src')).toBe(
+      serverIconUrl(icon as never, { animated: true }),
+    )
+
+    fireEvent.blur(serverLink)
+    expect(image?.getAttribute('src')).toBe(serverIconUrl(icon as never))
+  })
+
+  it('keeps a GIF server icon static when reduced motion is enabled', async () => {
+    const mediaListener = vi.fn()
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: true,
+        addEventListener: mediaListener,
+        removeEventListener: vi.fn(),
+      })),
+    )
+    const icon = {
+      _id: 'server-icon-gif',
+      tag: 'icons',
+      filename: 'server.gif',
+      content_type: 'image/gif',
+      metadata: {
+        type: 'Image',
+        width: 128,
+        height: 128,
+        animated: true,
+      },
+    } as const
+
+    syncStore.applyReady({
+      users: [],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Demo',
+          owner: 'current-user',
+          channels: [],
+          default_permissions: 0,
+          icon,
+        },
+      ],
+      channels: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+
+    render(<ServerRail variant="desktop" />)
+    await waitFor(() => expect(mediaListener).toHaveBeenCalled())
+
+    const serverLink = screen.getByTitle('Demo')
+    const image = serverLink.querySelector('img')
+
+    fireEvent.pointerEnter(serverLink)
+    fireEvent.focus(serverLink)
+
+    expect(image?.getAttribute('src')).toBe(serverIconUrl(icon as never))
   })
 
   it('does not count unread direct messages on the home badge', () => {
@@ -302,6 +454,13 @@ describe('ServerRail', () => {
 
   it('shows a rail unread indicator instead of a badge on servers', () => {
     syncStore.applyReady({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: { 'text-1': ChannelPermission.ViewChannel },
+        users: {},
+      },
       users: [
         {
           _id: 'current-user',
@@ -355,6 +514,13 @@ describe('ServerRail', () => {
 
   it('keeps the unread rail indicator visible without hover', () => {
     syncStore.applyReady({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: { 'text-1': ChannelPermission.ViewChannel },
+        users: {},
+      },
       users: [
         {
           _id: 'current-user',

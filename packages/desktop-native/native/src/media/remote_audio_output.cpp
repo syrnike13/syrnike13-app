@@ -32,6 +32,7 @@ namespace syrnike::desktop_native::media {
 namespace {
 constexpr std::size_t kMaxQueuedSamplesPerTrack = 48'000; // one second at 48 kHz
 constexpr std::size_t kStreamFrameCapacity = 20;
+constexpr auto kHundredNanosecondsPerMillisecond = 10'000LL;
 using diagnostics::DiagnosticField;
 
 void logRemoteAudio(
@@ -345,6 +346,10 @@ class RemoteAudioOutput::Implementation {
   }
 
   void startRenderer() {
+    {
+      std::lock_guard lock(mutex_);
+      clearQueuedSamplesLocked();
+    }
     renderer_running_.store(true);
     logRemoteAudio("remote_audio_renderer_start_requested");
     renderer_ = std::jthread([this](std::stop_token token) { render(token); });
@@ -357,6 +362,8 @@ class RemoteAudioOutput::Implementation {
       renderer_.request_stop();
       renderer_.join();
     }
+    std::lock_guard lock(mutex_);
+    clearQueuedSamplesLocked();
   }
 
   void render(std::stop_token token) {
@@ -372,9 +379,11 @@ class RemoteAudioOutput::Implementation {
       if (FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
           reinterpret_cast<void**>(client.GetAddressOf())))) throw std::runtime_error("activate render device failed");
       auto format = desiredRenderFormat();
+      constexpr auto requested_buffer_duration = remoteAudioRenderBufferDuration();
       if (FAILED(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
           AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-          10'000'000, 0, &format, nullptr))) throw std::runtime_error("initialize render stream failed");
+          requested_buffer_duration.count() * kHundredNanosecondsPerMillisecond,
+          0, &format, nullptr))) throw std::runtime_error("initialize render stream failed");
       ComPtr<IAudioRenderClient> render_client;
       if (FAILED(client->GetService(IID_PPV_ARGS(&render_client)))) throw std::runtime_error("open render client failed");
       UINT32 capacity = 0;
@@ -382,7 +391,13 @@ class RemoteAudioOutput::Implementation {
       if (FAILED(client->Start())) throw std::runtime_error("start render failed");
       logRemoteAudio(
         "remote_audio_renderer_started",
-        {{"capacityFrames", static_cast<std::uint64_t>(capacity)}}
+        {
+          {"capacityFrames", static_cast<std::uint64_t>(capacity)},
+          {"capacityMs", static_cast<std::uint64_t>(
+            (static_cast<std::uint64_t>(capacity) * 1'000) / format.nSamplesPerSec
+          )},
+          {"requestedBufferMs", static_cast<std::uint64_t>(requested_buffer_duration.count())}
+        }
       );
       while (!token.stop_requested() && renderer_running_.load()) {
         UINT32 padding = 0;
@@ -467,6 +482,10 @@ class RemoteAudioOutput::Implementation {
       track.user_id,
       track.stream_source
     );
+  }
+
+  void clearQueuedSamplesLocked() {
+    for (auto& [_, track] : tracks_) track->samples.clear();
   }
 
   std::mutex mutex_;

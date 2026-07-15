@@ -1,5 +1,6 @@
 import type { Room } from 'livekit-client'
 import {
+  computeEffectiveMuted,
   isVoiceCommand,
   isVoiceSnapshot,
   type VoiceCommand,
@@ -136,6 +137,24 @@ export class VoiceTabOwner implements OwnedBrowserVoiceClient {
 
     if (isRetainedCommand(command)) {
       this.retainedCommands.set(command.type, command)
+    }
+
+    if (
+      !this.ownedClient &&
+      !this.ownerId &&
+      (command.type === 'setUserMuted' ||
+        command.type === 'setUserDeafened')
+    ) {
+      const snapshot = {
+        ...this.snapshotValue,
+        ...(command.type === 'setUserMuted'
+          ? { userMuted: command.muted }
+          : { userDeafened: command.deafened }),
+      }
+      this.publishLocalSnapshot({
+        ...snapshot,
+        effectiveMuted: computeEffectiveMuted(snapshot),
+      })
     }
 
     if (this.ownedClient) {
@@ -399,6 +418,8 @@ type RetainedCommand = Exclude<
   | { type: 'leave' }
   | { type: 'retryVoice' }
   | { type: 'retryMedia' }
+  | { type: 'setCamera' }
+  | { type: 'setScreen' }
 >
 
 function isRetainedCommand(command: VoiceCommand): command is RetainedCommand {
@@ -406,7 +427,9 @@ function isRetainedCommand(command: VoiceCommand): command is RetainedCommand {
     command.type !== 'join' &&
     command.type !== 'leave' &&
     command.type !== 'retryVoice' &&
-    command.type !== 'retryMedia'
+    command.type !== 'retryMedia' &&
+    command.type !== 'setCamera' &&
+    command.type !== 'setScreen'
   )
 }
 

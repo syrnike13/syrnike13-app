@@ -2,47 +2,11 @@ import {
   hasPermissionBit,
   maskPermissionBits,
   permissionAndNot,
-  permissionBit,
   permissionOr,
 } from '#/lib/permission-bits'
+import { ServerPermission } from '#/features/authorization/permission-bits.generated'
 
-const p = permissionBit
-
-export const ServerPermission = {
-  ManageChannel: p(0),
-  ManageServer: p(1),
-  ManagePermissions: p(2),
-  ManageRole: p(3),
-  ManageCustomisation: p(4),
-  KickMembers: p(6),
-  BanMembers: p(7),
-  TimeoutMembers: p(8),
-  AssignRoles: p(9),
-  ChangeNickname: p(10),
-  ManageNicknames: p(11),
-  ChangeAvatar: p(12),
-  RemoveAvatars: p(13),
-  ViewChannel: p(20),
-  ReadMessageHistory: p(21),
-  SendMessage: p(22),
-  ManageMessages: p(23),
-  ManageWebhooks: p(24),
-  InviteOthers: p(25),
-  SendEmbeds: p(26),
-  UploadFiles: p(27),
-  Masquerade: p(28),
-  React: p(29),
-  Connect: p(30),
-  Speak: p(31),
-  Video: p(32),
-  MuteMembers: p(33),
-  DeafenMembers: p(34),
-  MoveMembers: p(35),
-  Listen: p(36),
-  MentionEveryone: p(37),
-  MentionRoles: p(38),
-  BypassSlowmode: p(39),
-} as const
+export { ServerPermission }
 
 export type ServerPermissionName = keyof typeof ServerPermission
 
@@ -162,10 +126,10 @@ export function setPermissionTriState(
 
 export function getAllowedPermissionTriStates(
   baseline: PermissionOverrideField | null | undefined,
-  actorPermissions: number,
+  actorHasPermission: boolean,
   flag: number,
 ): PermissionTriState[] {
-  if (hasServerPermission(actorPermissions, flag)) {
+  if (actorHasPermission) {
     return PERMISSION_TRI_STATE_ORDER
   }
 

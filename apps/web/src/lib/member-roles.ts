@@ -1,6 +1,9 @@
 import type { Member, Role, Server } from '@syrnike13/api-types'
 
-import { canAssignRole } from '#/lib/permissions'
+import {
+  canAccessAdmin,
+  canAssignRole,
+} from '#/features/authorization/authorization'
 import { sortRolesByHierarchy } from '#/lib/server-permissions'
 
 export function listServerRoles(server: Server | undefined): Role[] {
@@ -16,15 +19,14 @@ export function canManageMemberRoles(
   targetMember: Member,
   actorPrivileged = false,
 ): boolean {
+  const actorIsPrivileged = canAccessAdmin()
   if (
-    !actorPrivileged &&
+    !actorIsPrivileged &&
     server.owner !== actorUserId &&
     actorUserId === targetMember._id.user
   ) {
     return false
   }
-
-  if (server.owner === actorUserId || actorPrivileged) return true
 
   return listServerRoles(server).some((role) =>
     canAssignRole(
@@ -45,8 +47,9 @@ export function canEditAnyMemberRole(
   targetMember: Member,
   actorPrivileged = false,
 ): boolean {
+  const actorIsPrivileged = canAccessAdmin()
   if (
-    !actorPrivileged &&
+    !actorIsPrivileged &&
     server.owner !== actorUserId &&
     actorUserId === targetMember._id.user
   ) {
@@ -73,28 +76,18 @@ export function canToggleMemberRole(
   actorUserId: string | undefined,
   targetMember: Member,
   role: Role,
-  enabled: boolean,
+  _enabled: boolean,
   actorPrivileged = false,
 ): boolean {
+  const actorIsPrivileged = canAccessAdmin()
   if (
-    !actorPrivileged &&
+    !actorIsPrivileged &&
     server.owner !== actorUserId &&
     actorUserId === targetMember._id.user
   ) {
     return false
   }
 
-  if (enabled) {
-    return canAssignRole(
-      server,
-      actorMember,
-      actorUserId,
-      role.rank ?? 0,
-      actorPrivileged,
-    )
-  }
-
-  if (server.owner === actorUserId || actorPrivileged) return true
   return canAssignRole(
     server,
     actorMember,

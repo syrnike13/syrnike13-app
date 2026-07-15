@@ -150,6 +150,7 @@ impl handshake::server::Callback for WebsocketHandshakeCallback {
                 user_settings: Vec::new(),
                 channel_unreads: false,
                 policy_changes: false,
+                authorization: false,
             }
         } else {
             ReadyPayloadFields::default()
@@ -191,6 +192,7 @@ impl handshake::server::Callback for WebsocketHandshakeCallback {
                                     }
                                 }
                                 "policy_changes" => ready_payload_fields.policy_changes = true,
+                                "authorization" => ready_payload_fields.authorization = true,
                                 _ => {}
                             }
                         }

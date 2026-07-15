@@ -132,7 +132,7 @@ class FakeOwnedClient implements OwnedBrowserVoiceClient {
   }
 }
 
-function harness() {
+function harness(snapshot: VoiceSnapshot = initialSnapshot()) {
   const hub = new ChannelHub()
   const locks = new ExclusiveLocks()
   let nextTab = 0
@@ -140,7 +140,7 @@ function harness() {
   const createOwner = () =>
     new VoiceTabOwner(
       'user-a',
-      initialSnapshot(),
+      snapshot,
       () => {
         const client = new FakeOwnedClient()
         clients.push(client)
@@ -164,6 +164,53 @@ async function waitUntil(predicate: () => boolean) {
 }
 
 describe('VoiceTabOwner', () => {
+  it('projects retained self controls before the first join', async () => {
+    const { createOwner } = harness()
+    const owner = createOwner()
+    const snapshots: VoiceSnapshot[] = []
+    owner.subscribe((snapshot) => snapshots.push(snapshot))
+
+    owner.dispatch({ type: 'setUserMuted', muted: false })
+    expect(owner.snapshot()).toMatchObject({
+      userMuted: false,
+      userDeafened: false,
+      effectiveMuted: false,
+    })
+    expect(snapshots.at(-1)).toBe(owner.snapshot())
+
+    owner.dispatch({ type: 'setUserDeafened', deafened: true })
+    expect(owner.snapshot()).toMatchObject({
+      userMuted: false,
+      userDeafened: true,
+      effectiveMuted: true,
+    })
+    expect(snapshots).toHaveLength(3)
+
+    owner.dispatch({ type: 'setUserDeafened', deafened: false })
+    expect(owner.snapshot().effectiveMuted).toBe(false)
+
+    await owner.dispose()
+  })
+
+  it.each([
+    ['server mute', { serverMuted: true }],
+    ['server deafen', { serverDeafened: true }],
+    ['system privacy mute', { systemPrivacyMuted: true }],
+    ['monitoring mute', { monitoringMuted: true }],
+    [
+      'released push-to-talk key',
+      { inputMode: 'push_to_talk' as const, pushToTalkHeld: false },
+    ],
+  ])('preserves effective mute from %s before join', async (_name, state) => {
+    const { createOwner } = harness({ ...initialSnapshot(), ...state })
+    const owner = createOwner()
+
+    owner.dispatch({ type: 'setUserMuted', muted: false })
+
+    expect(owner.snapshot().effectiveMuted).toBe(true)
+    await owner.dispose()
+  })
+
   it('explicitly transfers the one browser RTC owner between tabs', async () => {
     const { clients, createOwner } = harness()
     const first = createOwner()
@@ -189,6 +236,7 @@ describe('VoiceTabOwner', () => {
     const owner = createOwner()
 
     owner.dispatch({ type: 'setUserMuted', muted: false })
+    owner.dispatch({ type: 'setUserDeafened', deafened: true })
     owner.dispatch({
       type: 'configureOutput',
       deviceId: 'speakers',
@@ -199,10 +247,37 @@ describe('VoiceTabOwner', () => {
     await waitUntil(() => clients.length === 1)
     expect(clients[0].commands).toEqual([
       { type: 'setUserMuted', muted: false },
+      { type: 'setUserDeafened', deafened: true },
       { type: 'configureOutput', deviceId: 'speakers', volume: 1.5 },
       { type: 'join', channelId: 'A' },
     ])
 
+    await owner.dispose()
+  })
+
+  it('does not restore camera or screen sharing after leaving and rejoining', async () => {
+    const { clients, createOwner } = harness()
+    const owner = createOwner()
+
+    owner.dispatch({ type: 'join', channelId: 'A' })
+    await waitUntil(() => clients.length === 1)
+    owner.dispatch({ type: 'setCamera', enabled: true, deviceId: 'camera-a' })
+    owner.dispatch({
+      type: 'setScreen',
+      enabled: true,
+      audioEnabled: true,
+      width: 1_920,
+      height: 1_080,
+      fps: 60,
+      bitrate: 6_000_000,
+    })
+
+    owner.dispatch({ type: 'leave' })
+    await waitUntil(() => owner.snapshot().connection === 'disconnected')
+    owner.dispatch({ type: 'join', channelId: 'B' })
+    await waitUntil(() => clients.length === 2)
+
+    expect(clients[1].commands).toEqual([{ type: 'join', channelId: 'B' }])
     await owner.dispose()
   })
 

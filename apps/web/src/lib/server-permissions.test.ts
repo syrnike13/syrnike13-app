@@ -48,20 +48,20 @@ describe('server permission overrides', () => {
   })
 
   it('does not allow granting a missing permission from neutral', () => {
-    expect(getAllowedPermissionTriStates({ a: 0, d: 0 }, 0, 1)).toEqual([
+    expect(getAllowedPermissionTriStates({ a: 0, d: 0 }, false, 1)).toEqual([
       'neutral',
       'deny',
     ])
   })
 
   it('does not allow removing a deny for a missing permission', () => {
-    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, 0, 1)).toEqual([
+    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, false, 1)).toEqual([
       'deny',
     ])
   })
 
   it('allows removing an existing allow even when the actor lacks it', () => {
-    expect(getAllowedPermissionTriStates({ a: 1, d: 0 }, 0, 1)).toEqual([
+    expect(getAllowedPermissionTriStates({ a: 1, d: 0 }, false, 1)).toEqual([
       'neutral',
       'allow',
       'deny',
@@ -69,7 +69,7 @@ describe('server permission overrides', () => {
   })
 
   it('allows all states when the actor has the permission', () => {
-    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, 1, 1)).toEqual([
+    expect(getAllowedPermissionTriStates({ a: 0, d: 1 }, true, 1)).toEqual([
       'neutral',
       'allow',
       'deny',

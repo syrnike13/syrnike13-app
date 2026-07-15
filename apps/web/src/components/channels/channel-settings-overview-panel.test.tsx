@@ -16,6 +16,7 @@ import { ChannelSettingsOverviewPanel } from '#/components/channels/channel-sett
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 const mocks = vi.hoisted(() => ({
   deleteChannel: vi.fn(),
@@ -100,6 +101,10 @@ function renderWithDraft(
 describe('ChannelSettingsOverviewPanel', () => {
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-1'],
+      channelIds: ['channel-1', 'channel-2'],
+    })
     syncStore.upsertServer({
       _id: 'server-1',
       name: 'Server',

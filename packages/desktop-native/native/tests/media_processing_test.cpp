@@ -11,6 +11,7 @@
 #include "media/microphone_echo_reference.hpp"
 #include "media/microphone_metrics_cadence.hpp"
 #include "media/remote_audio_output.hpp"
+#include "media/remote_video_bridge.hpp"
 #include "media/runtime_config.hpp"
 #include "media/voice_gate.hpp"
 
@@ -114,6 +115,11 @@ int main() try {
   using syrnike::desktop_native::media::RemoteAudioSettings;
   using syrnike::desktop_native::media::normalizeRemoteAudioIdentity;
   using syrnike::desktop_native::media::resolveRemoteAudioGain;
+  require(
+    syrnike::desktop_native::media::remoteAudioRenderBufferDuration() ==
+      std::chrono::milliseconds(50),
+    "remote audio renderer no longer requests its low-latency shared buffer"
+  );
   const auto encoded_identity =
     "voice:v1|windows_native|client-a|epoch-a|voice-op-a|user-a";
   require(
@@ -140,6 +146,27 @@ int main() try {
   require(
     resolveRemoteAudioGain(remote_audio, encoded_identity, true) == 0.0F,
     "participant stream mute did not override its native gain"
+  );
+
+  using livekit::TrackSource;
+  using syrnike::desktop_native::media::remoteVideoSourceLabel;
+  require(
+    remoteVideoSourceLabel(TrackSource::SOURCE_SCREENSHARE, std::nullopt) == "screen",
+    "publication screen source was not preserved in remote video metadata"
+  );
+  require(
+    remoteVideoSourceLabel(
+      TrackSource::SOURCE_CAMERA,
+      TrackSource::SOURCE_SCREENSHARE
+    ) == "camera",
+    "publication camera source was not preserved in remote video metadata"
+  );
+  require(
+    remoteVideoSourceLabel(
+      TrackSource::SOURCE_UNKNOWN,
+      TrackSource::SOURCE_SCREENSHARE
+    ) == "screen",
+    "remote video source did not fall back to track metadata"
   );
 
   syrnike::voice::MicrophoneEchoReferenceBuffer reference(2);

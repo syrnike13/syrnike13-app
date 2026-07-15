@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { Member, Role, Server } from '@syrnike13/api-types'
 
 import {
@@ -6,7 +6,17 @@ import {
   canManageMemberRoles,
   canToggleMemberRole,
 } from '#/lib/member-roles'
-import { ChannelPermission } from '#/lib/permissions'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { installAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
+import { GlobalPermission } from '#/features/authorization/permission-bits.generated'
+import { syncStore } from '#/features/sync/sync-store'
+
+beforeEach(() => {
+  syncStore.reset()
+  installAuthorizationForTest({
+    servers: { 'server-1': ChannelPermission.AssignRoles },
+  })
+})
 
 function makeServer(overrides: Partial<Server> = {}): Server {
   return {
@@ -141,6 +151,10 @@ describe('canToggleMemberRole', () => {
 
 describe('member role edit affordances', () => {
   it('allows privileged users to edit roles without server membership', () => {
+    installAuthorizationForTest({
+      global: GlobalPermission.AccessAdmin,
+      servers: { 'server-1': ChannelPermission.AssignRoles },
+    })
     const role = makeRole()
     const server = makeServer({ roles: { [role._id]: role } })
     const target = makeMember({

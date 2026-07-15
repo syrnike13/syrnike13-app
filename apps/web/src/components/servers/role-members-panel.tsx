@@ -11,7 +11,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
-import { canAssignRole } from '#/lib/permissions'
+import { canAssignRole } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type RoleMembersPanelProps = {

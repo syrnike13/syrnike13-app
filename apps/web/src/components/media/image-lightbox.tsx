@@ -42,6 +42,7 @@ export function ImageLightbox({ file, open, onOpenChange }: ImageLightboxProps) 
       <DialogContent
         aria-describedby={undefined}
         showCloseButton={false}
+        themedSurface={false}
         overlayClassName="bg-black/85"
         className={cn(
           'fixed inset-0 top-0 left-0 z-[300] flex h-screen w-screen max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-hidden',

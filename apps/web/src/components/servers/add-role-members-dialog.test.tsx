@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AddRoleMembersDialog } from '#/components/servers/add-role-members-dialog'
 import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -64,6 +65,7 @@ function server(): Server {
 describe('AddRoleMembersDialog', () => {
   beforeEach(() => {
     syncStore.reset()
+    grantAllAuthorizationForTest({ serverIds: ['server-1'] })
     syncStore.upsertUsers([
       {
         _id: 'owner-user',
