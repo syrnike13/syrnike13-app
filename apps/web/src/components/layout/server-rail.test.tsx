@@ -48,12 +48,6 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/platform/use-platform', () => ({
-  usePlatform: () => ({
-    capabilities: { customWindowChrome: false },
-  }),
-}))
-
 vi.mock('#/components/servers/create-server-dialog', () => ({
   CreateServerDialog: () => null,
 }))
@@ -93,10 +87,13 @@ describe('ServerRail', () => {
   })
 
   it('shows home notifications on the home rail button', () => {
-    render(<ServerRail variant="desktop" />)
+    const { container } = render(<ServerRail variant="desktop" />)
 
     expect(screen.getByTitle('Главная')).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()
+    expect(container.firstElementChild?.classList.contains('pt-1')).toBe(true)
+    expect(container.firstElementChild?.classList.contains('pb-3')).toBe(true)
+    expect(container.firstElementChild?.classList.contains('py-3')).toBe(false)
   })
 
   it('does not count unread direct messages on the home badge', () => {

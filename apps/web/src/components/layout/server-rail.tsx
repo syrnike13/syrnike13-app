@@ -26,7 +26,6 @@ import {
   railServerScrollContentClass,
   shellLowestSurface,
 } from '#/components/layout/shell-chrome'
-import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
 
 type ServerRailVariant = 'desktop' | 'mobile'
@@ -58,7 +57,6 @@ export function ServerRail({
   reserveUserPanelSpace?: boolean
 }) {
   const auth = useAuth()
-  const { capabilities } = usePlatform()
   const ready = useSyncStore((s) => s.ready)
   const servers = useSyncStore(listServers)
   const homeBadge = useSyncStore((s) =>
@@ -82,7 +80,6 @@ export function ServerRail({
     !channelMatch &&
     (variant === 'desktop' || !selectedServerId)
 
-  const railPaddingClass = capabilities.customWindowChrome ? 'pb-3' : 'py-3'
   const railBottomReserveStyle = reserveUserPanelSpace
     ? { paddingBottom: USER_PANEL_RESERVE_PX }
     : undefined
@@ -92,7 +89,7 @@ export function ServerRail({
         <div
           className={cn(
             'flex h-full w-16 shrink-0 flex-col items-center',
-            railPaddingClass,
+            'pt-1 pb-3',
             shellLowestSurface,
           )}
           style={railBottomReserveStyle}
@@ -109,7 +106,7 @@ export function ServerRail({
     <div
       className={cn(
         'flex h-full w-16 shrink-0 flex-col',
-        railPaddingClass,
+        'pt-1 pb-3',
         shellLowestSurface,
       )}
       style={railBottomReserveStyle}
