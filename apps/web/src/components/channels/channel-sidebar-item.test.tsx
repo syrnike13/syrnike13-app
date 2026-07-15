@@ -517,7 +517,7 @@ describe('ChannelSidebarItem voice navigation', () => {
     expect(screen.getByTitle('Закрытый текстовый канал')).toBeTruthy()
   })
 
-  it('shows mention counts in inactive channel rows', () => {
+  it('shows mentions with the unread indicator and without a count badge', () => {
     const channel = {
       ...textServerChannel,
       last_message_id: 'message-3',
@@ -542,7 +542,86 @@ describe('ChannelSidebarItem voice navigation', () => {
       />,
     )
 
-    expect(screen.getByText('2')).toBeTruthy()
+    const item = document.querySelector('[data-channel-sidebar-item]')
+
+    expect(screen.queryByText('2')).toBeNull()
+    expect(
+      item
+        ?.querySelector('[data-slot="rail-indicator"]')
+        ?.hasAttribute('data-unread'),
+    ).toBe(true)
+    expect(item?.querySelector('[data-slot="badge"]')).toBeNull()
+  })
+
+  it.each([
+    ['text', textServerChannel],
+    ['voice', voiceChannel],
+  ])(
+    'shows unread %s channels with a static rail indicator instead of a dot',
+    (_, baseChannel) => {
+      const channel = {
+        ...baseChannel,
+        last_message_id: 'message-2',
+      } as Channel
+
+      upsertTextServerChannel(channel as typeof textServerChannel)
+      syncStore.setUnreads([
+        {
+          _id: { channel: channel._id, user: 'user-1' },
+          last_id: 'message-1',
+          mentions: [],
+        },
+      ])
+
+      render(
+        <ChannelSidebarItem
+          channel={channel}
+          activeChannelId="other-channel"
+          users={{}}
+          currentUserId="user-1"
+          unreads={{}}
+        />,
+      )
+
+      const item = document.querySelector('[data-channel-sidebar-item]')
+      const indicator = item?.querySelector('[data-slot="rail-indicator"]')
+
+      expect(indicator?.hasAttribute('data-unread')).toBe(true)
+      expect(indicator?.className).toContain('h-2')
+      expect(indicator?.className).toContain('opacity-100')
+      expect(indicator?.className).toContain('-left-2')
+      expect(indicator?.className).not.toContain('-left-1')
+      expect(indicator?.className).not.toContain('group-hover:')
+      expect(item?.querySelector('[data-slot="badge"]')).toBeNull()
+    },
+  )
+
+  it('does not show the unread indicator on the selected channel', () => {
+    const channel = {
+      ...textServerChannel,
+      last_message_id: 'message-2',
+    } satisfies Extract<Channel, { channel_type: 'TextChannel' }>
+
+    upsertTextServerChannel(channel)
+    syncStore.setUnreads([
+      {
+        _id: { channel: channel._id, user: 'user-1' },
+        last_id: 'message-1',
+        mentions: [],
+      },
+    ])
+
+    render(
+      <ChannelSidebarItem
+        channel={channel}
+        activeChannelId={channel._id}
+        users={{}}
+        currentUserId="user-1"
+        unreads={{}}
+      />,
+    )
+
+    expect(document.querySelector('[data-slot="rail-indicator"]')).toBeNull()
   })
 
   it('opens a delete confirmation dialog from the channel context menu', async () => {
