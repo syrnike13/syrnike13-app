@@ -99,6 +99,23 @@ function upsertServer(owner = 'user-1') {
 }
 
 describe('ServerHeaderMenu', () => {
+  it('uses a translucent trigger background over a server banner', () => {
+    render(
+      <ServerHeaderMenu
+        serverId="server-1"
+        serverName="Server"
+        overBanner
+      />,
+    )
+
+    const triggerClass = screen.getByRole('button', {
+      name: 'Server',
+    }).className
+
+    expect(triggerClass).toContain('hover:bg-background/60')
+    expect(triggerClass).toContain('hover:backdrop-blur-sm')
+  })
+
   beforeEach(() => {
     syncStore.reset()
     upsertServer()

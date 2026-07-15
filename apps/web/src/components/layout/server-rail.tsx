@@ -1,6 +1,7 @@
 import { useMatch } from '@tanstack/react-router'
 import { HashIcon, HomeIcon } from '#/components/icons'
 import type { Server } from '@syrnike13/api-types'
+import { useState } from 'react'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { ScrollArea } from '#/components/ui/scroll-area'
@@ -27,13 +28,34 @@ import {
   shellLowestSurface,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
+import { serverIconUrl } from '#/lib/media'
+import { useMediaQuery } from '#/hooks/use-media-query'
 
 type ServerRailVariant = 'desktop' | 'mobile'
 
-function ServerInitial({ name }: { name: string }) {
+function ServerIcon({
+  server,
+  animated,
+}: {
+  server: Server
+  animated: boolean
+}) {
+  const iconUrl = serverIconUrl(server.icon, { animated })
+
+  if (iconUrl) {
+    return (
+      <img
+        src={iconUrl}
+        alt=""
+        draggable={false}
+        className="size-full object-cover"
+      />
+    )
+  }
+
   return (
     <span className="text-xs font-semibold uppercase">
-      {name.trim().slice(0, 2) || '??'}
+      {server.name.trim().slice(0, 2) || '??'}
     </span>
   )
 }
@@ -74,6 +96,9 @@ export function ServerRail({
       ? channelMatch.params.channelId
       : undefined
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
+  const prefersReducedMotion = useMediaQuery(
+    '(prefers-reduced-motion: reduce)',
+  )
 
   const homeActive =
     Boolean(homeMatch) &&
@@ -155,6 +180,7 @@ export function ServerRail({
                 activeChannelId={activeChannelId}
                 variant={variant}
                 channelMatch={Boolean(channelMatch)}
+                prefersReducedMotion={prefersReducedMotion}
               />
             ))}
             {servers.length === 0 ? (
@@ -185,14 +211,17 @@ function ServerRailButton({
   activeChannelId,
   variant,
   channelMatch,
+  prefersReducedMotion,
 }: {
   server: Server
   currentUserId?: string
   activeChannelId?: string
   variant: ServerRailVariant
   channelMatch: boolean
+  prefersReducedMotion: boolean
 }) {
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
+  const [iconInteractionActive, setIconInteractionActive] = useState(false)
   const activeChannel = useSyncStore((s) =>
     activeChannelId ? s.channels[activeChannelId] : undefined,
   )
@@ -215,7 +244,10 @@ function ServerRailButton({
 
   const icon = (
     <span className="flex size-full items-center justify-center">
-      <ServerInitial name={server.name} />
+      <ServerIcon
+        server={server}
+        animated={iconInteractionActive && !prefersReducedMotion}
+      />
     </span>
   )
 
@@ -233,6 +265,10 @@ function ServerRailButton({
         to={channelTo}
         params={{ channelId: firstChannelId }}
         search={{ m: undefined }}
+        onPointerEnter={() => setIconInteractionActive(true)}
+        onPointerLeave={() => setIconInteractionActive(false)}
+        onFocus={() => setIconInteractionActive(true)}
+        onBlur={() => setIconInteractionActive(false)}
       >
         {icon}
       </RailIconButton>
@@ -248,6 +284,10 @@ function ServerRailButton({
       search={{ tab: 'online' }}
       replace={channelMatch}
       onClick={() => syncStore.setSelectedServerId(server._id)}
+      onPointerEnter={() => setIconInteractionActive(true)}
+      onPointerLeave={() => setIconInteractionActive(false)}
+      onFocus={() => setIconInteractionActive(true)}
+      onBlur={() => setIconInteractionActive(false)}
     >
       {icon}
     </RailIconButton>

@@ -44,6 +44,7 @@ import { cn } from '#/lib/utils'
 type ServerHeaderMenuProps = {
   serverId: string
   serverName: string
+  overBanner?: boolean
 }
 
 function ServerHeaderMenuItem({
@@ -79,6 +80,7 @@ function ServerHeaderMenuItem({
 export function ServerHeaderMenu({
   serverId,
   serverName,
+  overBanner = false,
 }: ServerHeaderMenuProps) {
   const auth = useAuth()
   const navigate = useNavigate()
@@ -162,7 +164,12 @@ export function ServerHeaderMenu({
             type="button"
             className={cn(
               'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent',
-              menuOpen && 'bg-accent',
+              overBanner &&
+                'hover:bg-background/60 hover:backdrop-blur-sm focus-visible:bg-background/60 focus-visible:backdrop-blur-sm',
+              menuOpen &&
+                (overBanner
+                  ? 'bg-background/60 backdrop-blur-sm'
+                  : 'bg-accent'),
             )}
             aria-expanded={menuOpen}
           >
