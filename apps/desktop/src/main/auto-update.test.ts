@@ -37,6 +37,10 @@ vi.mock('electron-updater', () => ({
   default: { autoUpdater: updater },
 }))
 
+vi.mock('./desktop-app-identity', () => ({
+  DESKTOP_RELEASE_METADATA: { autoUpdateEnabled: true },
+}))
+
 describe('desktop auto-update startup flow', () => {
   let dispose: (() => void) | undefined
 
