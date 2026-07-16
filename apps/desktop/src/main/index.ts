@@ -303,6 +303,12 @@ function setupTray() {
 
 async function createApp() {
   const loadUrl = await resolveAppUrl()
+  initializeDesktopAutoUpdate(
+    () => mainWindow,
+    () => {
+      quitting = true
+    },
+  )
   configureDesktopOverlay(loadUrl, () => mainWindow, {
     settings: desktopLocalSettings.overlay,
     persistSettings: saveOverlaySettings,
@@ -338,7 +344,6 @@ async function createApp() {
   mainWindow.on('restore', updateTrayMenu)
   mainWindow.once('ready-to-show', () => {
     setupTray()
-    initializeDesktopAutoUpdate(() => mainWindow)
   })
 }
 

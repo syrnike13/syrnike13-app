@@ -21,14 +21,16 @@ const STATUS_BY_STATE: Record<GatewayState, string> = {
 
 type GatewayLoadingScreenProps = {
   gatewayState: GatewayState
+  statusText?: string
 }
 
 export function GatewayLoadingScreen({
   gatewayState,
+  statusText,
 }: GatewayLoadingScreenProps) {
   const [visible, setVisible] = useState(false)
   const [fact, setFact] = useState<string>(INITIAL_FACT)
-  const status = STATUS_BY_STATE[gatewayState]
+  const status = statusText ?? STATUS_BY_STATE[gatewayState]
 
   useEffect(() => {
     setFact(pickGatewayLoadingFact())
@@ -65,6 +67,10 @@ export function GatewayLoadingScreen({
         <p className="mt-3 text-base leading-relaxed font-normal text-muted-foreground">
           {fact}
         </p>
+
+        {statusText ? (
+          <p className="mt-8 text-sm font-medium text-foreground">{status}</p>
+        ) : null}
       </div>
 
       <p className="sr-only">

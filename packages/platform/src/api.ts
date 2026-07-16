@@ -58,6 +58,7 @@ export type DesktopUpdateState =
   | { status: 'available'; version: string }
   | { status: 'downloading'; percent: number }
   | { status: 'ready'; version: string }
+  | { status: 'installing'; version: string }
   | { status: 'error'; message: string }
 
 export type HotkeyAction =

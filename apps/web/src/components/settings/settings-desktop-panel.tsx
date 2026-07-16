@@ -269,6 +269,8 @@ function formatUpdateStatus(state: DesktopUpdateState | null) {
       return `Загрузка… ${Math.round(state.percent)}%`
     case 'ready':
       return `Готово к установке: v${state.version}`
+    case 'installing':
+      return `Установка v${state.version}…`
     case 'error':
       return state.message
   }

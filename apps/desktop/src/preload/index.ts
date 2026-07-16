@@ -358,6 +358,7 @@ function isDesktopUpdateState(value: unknown): value is DesktopUpdateState {
       return true
     case 'available':
     case 'ready':
+    case 'installing':
       return typeof state.version === 'string'
     case 'downloading':
       return typeof state.percent === 'number'
