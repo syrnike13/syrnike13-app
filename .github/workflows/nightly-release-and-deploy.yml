@@ -334,8 +334,6 @@ jobs:
       VITE_PROXY_URL: https://beta.syrnike13.ru/january
       VITE_GIFBOX_URL: https://api.gifbox.me
       VITE_VOICE_NODE: worldwide
-      SYRNIKE_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_NIGHTLY_SENTRY_DSN || vars.DESKTOP_SENTRY_DSN }}
-      SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT: nightly
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -350,13 +348,6 @@ jobs:
       - run: pnpm version:sync
       - name: Build nightly desktop and native runtime
         run: pnpm --filter @syrnike13/desktop build
-      - name: Upload nightly Windows debug artifacts
-        if: runner.os == 'Windows'
-        run: pnpm --filter @syrnike13/desktop upload:debug-artifacts
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.DESKTOP_NIGHTLY_SENTRY_PROJECT || vars.DESKTOP_SENTRY_PROJECT }}
       - name: Package and verify nightly Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared

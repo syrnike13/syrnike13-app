@@ -392,9 +392,6 @@ jobs:
           - os: ubuntu-24.04
             artifact: desktop-linux
     runs-on: ${{ matrix.os }}
-    env:
-      SYRNIKE_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
-      SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT: production
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -402,13 +399,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Validate stable observability configuration
-        if: runner.os == 'Windows'
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
-        run: node -e "for (const key of ['SYRNIKE_DESKTOP_SENTRY_DSN','SENTRY_AUTH_TOKEN','SENTRY_ORG','SENTRY_PROJECT']) if (!process.env[key]) throw new Error('Missing stable observability setting ' + key)"
       - name: Install Linux packaging deps
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
@@ -416,14 +406,6 @@ jobs:
       - run: pnpm version:sync
       - name: Build desktop and native runtime
         run: pnpm desktop:build
-      - name: Upload Windows PDB and desktop source maps to Sentry
-        if: runner.os == 'Windows'
-        run: pnpm --filter @syrnike13/desktop upload:debug-artifacts
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
-          SYRNIKE_REQUIRE_SENTRY_UPLOAD: '1'
       - name: Package Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
