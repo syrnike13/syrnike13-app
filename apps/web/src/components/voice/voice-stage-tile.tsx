@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import { UserAvatar } from '#/components/user/user-avatar'
-import { createChannelInvite } from '#/features/api/servers-api'
+import { createChannelInvite } from '#/features/api/invites-api'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   VoiceOnAirBadge,
@@ -61,7 +61,7 @@ export function VoiceStageTile({
       className={cn(
         TILE_SURFACE,
         dimmed && 'opacity-50',
-        speaking && 'ring-2 ring-[#23a559] ring-offset-2 ring-offset-black',
+        speaking && 'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
         canFocus && 'cursor-pointer hover:brightness-110',
         focused && 'min-h-[min(50vh,24rem)]',
       )}
@@ -150,7 +150,7 @@ export function VoiceStageInviteTile({
     <article
       className={cn(
         TILE_SURFACE,
-        'flex flex-col items-center justify-center gap-2 border border-dashed border-white/15 bg-[#2b2d31]/80 p-4 text-center',
+        'flex flex-col items-center justify-center gap-2 border border-dashed border-white/15 bg-muted/80 p-4 text-center',
         compact && 'gap-1.5 p-3',
       )}
       style={{

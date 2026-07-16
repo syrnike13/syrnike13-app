@@ -43,7 +43,7 @@ class FakeResizeObserver {
 
 let intersectionObservers: FakeIntersectionObserver[] = []
 
-function renderMessageList(onLoadOlder: () => void) {
+function renderMessageList(onLoadOlder: () => void, scrollPaddingBottom?: number) {
   return render(
     <MessageList
       channelId={CHANNEL_ID}
@@ -74,6 +74,7 @@ function renderMessageList(onLoadOlder: () => void) {
       hasOlder
       loadingOlder={false}
       onLoadOlder={onLoadOlder}
+      scrollPaddingBottom={scrollPaddingBottom}
     />,
   )
 }
@@ -142,5 +143,14 @@ describe('MessageList older history loading', () => {
     })
 
     expect(onLoadOlder).toHaveBeenCalledOnce()
+  })
+
+  it('reserves the measured composer height instead of a fixed utility', () => {
+    const view = renderMessageList(vi.fn(), 236)
+    const scrollContent = view.container.querySelector(
+      '.flex.flex-col.px-4.pt-4',
+    ) as HTMLDivElement
+
+    expect(scrollContent.style.paddingBottom).toBe('236px')
   })
 })

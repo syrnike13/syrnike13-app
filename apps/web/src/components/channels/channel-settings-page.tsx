@@ -1,5 +1,10 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { LayoutTemplateIcon, ShieldFillIcon, XIcon } from '#/components/icons'
+import {
+  LayoutTemplateIcon,
+  LinkIcon,
+  ShieldFillIcon,
+  XIcon,
+} from '#/components/icons'
 import { useCallback, useEffect, type ReactNode } from 'react'
 
 import { ChannelSettingsPanelContent } from '#/components/channels/channel-settings-panels'
@@ -19,9 +24,16 @@ import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
+  isServerChannel,
+  runtimeChannelName,
+  serverChannelServerId,
+  type RuntimeChannel,
+} from '#/lib/channel-voice'
+import {
   canManageChannel,
   canManageChannelPermissions,
-} from '#/lib/permissions'
+  canManageChannelWebhooks,
+} from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type ChannelSettingsPageProps = {
@@ -108,29 +120,44 @@ export function ChannelSettingsPage({
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const channel = useSyncStore((s) => s.channels[channelId])
-  const server = useSyncStore((s) =>
-    channel && 'server' in channel && channel.server
-      ? s.servers[channel.server]
-      : undefined,
-  )
+  const settingsChannel = channel as RuntimeChannel | undefined
+  const serverId = serverChannelServerId(settingsChannel)
+  const server = useSyncStore((s) => (serverId ? s.servers[serverId] : undefined))
   const member = useSyncStore((s) =>
-    channel && 'server' in channel && channel.server && auth.user?._id
-      ? s.members[`${channel.server}:${auth.user._id}`]
+    serverId && auth.user?._id
+      ? s.members[`${serverId}:${auth.user._id}`]
       : undefined,
   )
 
-  const isServerChannel =
-    channel?.channel_type === 'TextChannel' ||
-    channel?.channel_type === 'VoiceChannel'
+  const isServerSettingsChannel = isServerChannel(settingsChannel)
 
   const canManage =
-    isServerChannel && channel
-      ? canManageChannel(server, channel, member, auth.user?._id)
+    isServerSettingsChannel && settingsChannel
+      ? canManageChannel(
+          server,
+          settingsChannel,
+          member,
+          auth.user?._id,
+        )
       : false
 
   const canManagePermissions =
-    isServerChannel && channel?.channel_type === 'TextChannel'
-      ? canManageChannelPermissions(server, channel, member, auth.user?._id)
+    isServerSettingsChannel && settingsChannel
+      ? canManageChannelPermissions(
+          server,
+          settingsChannel,
+          member,
+          auth.user?._id,
+        )
+      : false
+  const canManageWebhooks =
+    isServerSettingsChannel && settingsChannel.channel_type === 'TextChannel'
+      ? canManageChannelWebhooks(
+          server,
+          settingsChannel,
+          member,
+          auth.user?._id,
+        )
       : false
 
   const closeSettings = useCallback(() => {
@@ -142,16 +169,16 @@ export function ChannelSettingsPage({
   }, [highlightMessageId, hostChannelId, navigate, prefix])
 
   useEffect(() => {
-    if (!channel) return
+    if (!settingsChannel) return
 
-    if (!isServerChannel) {
+    if (!isServerSettingsChannel) {
       void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
       return
     }
 
     if (!server || !auth.user?._id) return
 
-    if (!canManage && !canManagePermissions) {
+    if (!canManage && !canManagePermissions && !canManageWebhooks) {
       void navigate({
         to: `${prefix}/c/$channelId`,
         params: { channelId: hostChannelId },
@@ -163,21 +190,22 @@ export function ChannelSettingsPage({
     auth.user?._id,
     canManage,
     canManagePermissions,
-    channel,
+    canManageWebhooks,
     channelId,
     highlightMessageId,
     hostChannelId,
-    isServerChannel,
+    isServerSettingsChannel,
     navigate,
     prefix,
     server,
+    settingsChannel,
   ])
 
   useEffect(() => {
-    if (channel && 'server' in channel && channel.server) {
-      syncStore.setSelectedServerId(channel.server)
+    if (serverId) {
+      syncStore.setSelectedServerId(serverId)
     }
-  }, [channel])
+  }, [serverId])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -198,7 +226,7 @@ export function ChannelSettingsPage({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [closeSettings])
 
-  if (!channel || !isServerChannel) {
+  if (!settingsChannel || !isServerSettingsChannel) {
     return null
   }
 
@@ -206,27 +234,34 @@ export function ChannelSettingsPage({
     return null
   }
 
-  if (!canManage && !canManagePermissions) {
+  if (!canManage && !canManagePermissions && !canManageWebhooks) {
     return null
   }
 
   let effectiveTab = tab
-  if (effectiveTab === 'overview' && !canManage && canManagePermissions) {
-    effectiveTab = 'permissions'
-  }
-  if (effectiveTab === 'permissions' && !canManagePermissions && canManage) {
-    effectiveTab = 'overview'
+  const canOpenRequestedTab =
+    (effectiveTab === 'overview' && canManage) ||
+    (effectiveTab === 'permissions' && canManagePermissions) ||
+    (effectiveTab === 'webhooks' && canManageWebhooks)
+  if (!canOpenRequestedTab) {
+    effectiveTab = canManage
+      ? 'overview'
+      : canManagePermissions
+        ? 'permissions'
+        : 'webhooks'
   }
 
   const channelLabel =
-    channel.channel_type === 'TextChannel' ? `#${channel.name}` : channel.name
+    settingsChannel.channel_type === 'TextChannel'
+      ? `#${settingsChannel.name}`
+      : (runtimeChannelName(settingsChannel) ?? settingsChannel._id)
 
   return (
     <div
-      className="relative grid h-full min-h-0 w-full overflow-hidden bg-background"
+      className="gradient-surface-content relative grid h-full min-h-0 w-full overflow-hidden bg-background"
       style={{ gridTemplateColumns: SETTINGS_GRID_COLUMNS }}
     >
-      <aside className="flex min-h-0 flex-col border-r border-border bg-muted/40">
+      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-muted/40">
         <div
           className="ml-auto flex h-full min-w-0 flex-col"
           style={{ width: SETTINGS_NAV_WIDTH }}
@@ -266,6 +301,20 @@ export function ChannelSettingsPage({
                   />
                 </NavSection>
               ) : null}
+
+              {canManageWebhooks ? (
+                <NavSection title="Инструменты">
+                  <SettingsNavLink
+                    hostChannelId={hostChannelId}
+                    channelId={channelId}
+                    tab="webhooks"
+                    activeTab={effectiveTab}
+                    highlightMessageId={highlightMessageId}
+                    icon={<LinkIcon className="size-4 shrink-0" />}
+                    label={CHANNEL_SETTINGS_TAB_LABELS.webhooks}
+                  />
+                </NavSection>
+              ) : null}
             </nav>
           </ScrollArea>
         </div>
@@ -278,7 +327,7 @@ export function ChannelSettingsPage({
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6 sm:px-8">
                 <div className="flex min-h-0 flex-1 flex-col">
                   <ChannelSettingsPanelContent
-                    channel={channel}
+                    channel={settingsChannel}
                     tab={effectiveTab}
                   />
                 </div>
@@ -290,7 +339,7 @@ export function ChannelSettingsPage({
               <ScrollArea className="min-h-0 flex-1">
                 <div className="scroll-pb-24 px-6 py-8 sm:px-8">
                   <ChannelSettingsPanelContent
-                    channel={channel}
+                    channel={settingsChannel}
                     tab={effectiveTab}
                   />
                 </div>

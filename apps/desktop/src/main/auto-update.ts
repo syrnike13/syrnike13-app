@@ -4,14 +4,16 @@ import electronUpdater from 'electron-updater'
 const { autoUpdater } = electronUpdater
 
 import { IPC, type DesktopUpdateState } from '@syrnike13/platform'
+import { DESKTOP_RELEASE_METADATA } from './desktop-app-identity'
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
-const INITIAL_CHECK_DELAY_MS = 10_000
 
 let currentState: DesktopUpdateState = { status: 'idle' }
 let getWindowRef: (() => BrowserWindow | null) | null = null
+let prepareToQuitRef: (() => void) | null = null
 let checkTimer: ReturnType<typeof setInterval> | null = null
 let started = false
+let startupCheckActive = false
 let inFlightUpdateCheck: Promise<DesktopUpdateState> | null = null
 
 function broadcastState() {
@@ -30,6 +32,7 @@ export function getDesktopUpdateState() {
 }
 
 export async function checkForDesktopUpdates() {
+  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) return currentState
   if (!app.isPackaged) return currentState
   if (inFlightUpdateCheck) return inFlightUpdateCheck
 
@@ -38,6 +41,7 @@ export async function checkForDesktopUpdates() {
     try {
       await autoUpdater.checkForUpdates()
     } catch (error) {
+      startupCheckActive = false
       setState({
         status: 'error',
         message:
@@ -58,14 +62,22 @@ export async function checkForDesktopUpdates() {
 }
 
 export function quitAndInstallDesktopUpdate() {
+  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) return
   if (!app.isPackaged) return
-  autoUpdater.quitAndInstall()
+  prepareToQuitRef?.()
+  autoUpdater.quitAndInstall(true, true)
 }
 
-export function initializeDesktopAutoUpdate(getWindow: () => BrowserWindow | null) {
+export function initializeDesktopAutoUpdate(
+  getWindow: () => BrowserWindow | null,
+  prepareToQuit: () => void,
+) {
+  if (!DESKTOP_RELEASE_METADATA.autoUpdateEnabled) return
   if (!app.isPackaged || started) return
   started = true
+  startupCheckActive = true
   getWindowRef = getWindow
+  prepareToQuitRef = prepareToQuit
 
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
@@ -80,6 +92,7 @@ export function initializeDesktopAutoUpdate(getWindow: () => BrowserWindow | nul
   })
 
   autoUpdater.on('update-not-available', () => {
+    startupCheckActive = false
     setState({ status: 'idle' })
   })
 
@@ -91,10 +104,17 @@ export function initializeDesktopAutoUpdate(getWindow: () => BrowserWindow | nul
   })
 
   autoUpdater.on('update-downloaded', (info) => {
+    if (startupCheckActive) {
+      startupCheckActive = false
+      setState({ status: 'installing', version: info.version })
+      quitAndInstallDesktopUpdate()
+      return
+    }
     setState({ status: 'ready', version: info.version })
   })
 
   autoUpdater.on('error', (error) => {
+    startupCheckActive = false
     console.error('[desktop] auto-update error', error)
     setState({
       status: 'error',
@@ -102,9 +122,7 @@ export function initializeDesktopAutoUpdate(getWindow: () => BrowserWindow | nul
     })
   })
 
-  setTimeout(() => {
-    void checkForDesktopUpdates()
-  }, INITIAL_CHECK_DELAY_MS)
+  void checkForDesktopUpdates()
 
   checkTimer = setInterval(() => {
     void checkForDesktopUpdates()

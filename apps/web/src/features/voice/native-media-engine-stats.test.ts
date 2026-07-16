@@ -12,10 +12,8 @@ describe('nativeMediaEngineStatsStore', () => {
     expect(second).toBe(first)
 
     nativeMediaEngineStatsStore.setNative({
-      wgc: 1,
-      dxgi: 0,
-      gdi_blt: 0,
-      gdi_print: 0,
+      wgc_gpu: 1,
+      dxgi_gpu: 0,
     })
 
     expect(nativeMediaEngineStatsStore.getState()).not.toBe(first)
@@ -26,9 +24,9 @@ describe('nativeMediaEngineStatsStore', () => {
     const state = nativeMediaEngineStatsStore.getState()
 
     expect(() => {
-      state.methods.wgc = 10
+      state.methods.wgc_gpu = 10
     }).toThrow(TypeError)
-    expect(nativeMediaEngineStatsStore.getState().methods.wgc).toBe(0)
+    expect(nativeMediaEngineStatsStore.getState().methods.wgc_gpu).toBe(0)
   })
 
   it('stores native screen capture bottleneck counters', () => {
@@ -36,12 +34,10 @@ describe('nativeMediaEngineStatsStore', () => {
 
     nativeMediaEngineStatsStore.setNative(
       {
-        wgc: 120,
-        dxgi: 0,
-        gdi_blt: 0,
-        gdi_print: 0,
+        wgc_gpu: 120,
+        dxgi_gpu: 0,
       },
-      'wgc',
+      'wgc_gpu',
       undefined,
       {
         width: 1920,
@@ -67,7 +63,7 @@ describe('nativeMediaEngineStatsStore', () => {
 
     expect(nativeMediaEngineStatsStore.getState()).toMatchObject({
       backend: 'native',
-      activeMethod: 'wgc',
+      activeMethod: 'wgc_gpu',
       videoNoFrameCount: 2,
       videoRepeatedFrameCount: 3,
       videoRecoverableLostCount: 1,

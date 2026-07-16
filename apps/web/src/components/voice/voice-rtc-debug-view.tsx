@@ -4,7 +4,9 @@ import { RtcDebugMetricChart } from '#/components/voice/voice-rtc-debug-chart'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import { useAuth } from '#/features/auth/auth-context'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
+import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import {
   RTC_DEBUG_BROWSER_UNAVAILABLE,
   formatRtcBitrate,
@@ -30,9 +32,11 @@ const sections: Array<{ id: DebugSection; label: string }> = [
 ]
 
 export function VoiceRtcDebugView() {
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceStage = useVoiceStage()
+  const voiceTelemetry = useVoiceTelemetry()
   const auth = useAuth()
-  const { setRtcDebugEnabled } = voice
+  const { setRtcDebugEnabled } = voiceTelemetry
   const [section, setSection] = useState<DebugSection>('general')
   const [nodeName, setNodeName] = useState<string | null>(null)
 
@@ -51,19 +55,19 @@ export function VoiceRtcDebugView() {
     }
   }, [])
 
-  const snapshot = voice.rtcDebugSnapshot
+  const snapshot = voiceTelemetry.rtcDebugSnapshot
 
   return (
-    <div className="flex min-h-0 flex-1 bg-[#1e1f24] text-[#f2f3f5]">
-      <aside className="w-72 shrink-0 border-r border-[#111214] bg-[#101114] px-8 py-10">
+    <div className="gradient-surface-content flex min-h-0 flex-1 bg-background text-foreground">
+      <aside className="gradient-surface-navigation w-72 shrink-0 border-r border-border bg-sidebar px-8 py-10 text-sidebar-foreground">
         <div className="mb-6">
           <h1 className="text-xl font-bold leading-none">General</h1>
-          <p className="mt-3 text-base text-white">
-            {voice.status === 'connected' ? 'Connected' : 'Disconnected'}
+          <p className="mt-3 text-base text-sidebar-foreground">
+            {voiceSession.status === 'connected' ? 'Connected' : 'Disconnected'}
           </p>
         </div>
 
-        <p className="mb-2 text-xs font-bold uppercase text-[#949ba4]">
+        <p className="mb-2 text-xs font-bold uppercase text-muted-foreground">
           Отладка RTC: DEFAULT
         </p>
         <nav className="space-y-1">
@@ -73,8 +77,9 @@ export function VoiceRtcDebugView() {
               type="button"
               onClick={() => setSection(item.id)}
               className={cn(
-                'flex h-9 w-full items-center rounded px-3 text-left text-sm font-semibold text-[#b5bac1] transition-colors hover:bg-[#2b2d31] hover:text-white',
-                section === item.id && 'bg-[#35363c] text-white',
+                'flex h-9 w-full items-center rounded px-3 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                section === item.id &&
+                  'bg-sidebar-accent text-sidebar-accent-foreground',
               )}
             >
               {item.label}
@@ -86,18 +91,18 @@ export function VoiceRtcDebugView() {
       <main className="min-w-0 flex-1">
         <ScrollArea className="h-full">
           <div className="mx-auto w-full max-w-5xl px-10 py-10">
-            {voice.status !== 'connected' ? (
+            {voiceSession.status !== 'connected' ? (
               <DebugEmptyState />
             ) : (
               <DebugSectionBody
                 section={section}
                 snapshot={snapshot}
-                history={voice.rtcDebugHistory}
+                history={voiceTelemetry.rtcDebugHistory}
                 nodeName={nodeName}
                 localIdentity={auth.user?._id ?? null}
-                channelId={voice.channelId}
-                participantCount={voice.participantCount}
-                stageMediaCount={voice.stageMediaItems.length}
+                channelId={voiceSession.channelId}
+                participantCount={voiceSession.participantCount}
+                stageMediaCount={voiceStage.stageMediaItems.length}
               />
             )}
           </div>
@@ -128,9 +133,9 @@ function DebugSectionBody({
 }) {
   if (!snapshot) {
     return (
-      <div className="rounded border border-dashed border-[#3d3f45] px-6 py-12 text-center">
+      <div className="rounded border border-dashed border-border px-6 py-12 text-center">
         <h2 className="text-base font-bold">Собираем RTC stats</h2>
-        <p className="mt-2 text-sm text-[#949ba4]">
+        <p className="mt-2 text-sm text-muted-foreground">
           Первый снимок обычно появляется через секунду после открытия экрана.
         </p>
       </div>
@@ -333,6 +338,12 @@ function RtpStreamCard({
       <MetricRow label="Jitter" value={formatRtcValue(stream.jitter)} />
       <MetricRow label="Quality Limitation Reason" value={stream.qualityLimitationReason ?? '—'} />
       <MetricRow label="Audio Level" value={formatRtcValue(stream.audioLevel)} />
+      <MetricRow label="Total Audio Energy" value={formatRtcValue(stream.totalAudioEnergy)} />
+      <MetricRow label="Samples Duration" value={formatRtcValue(stream.totalSamplesDuration)} />
+      <MetricRow label="Samples Received" value={formatRtcInteger(stream.totalSamplesReceived)} />
+      <MetricRow label="Concealed Samples" value={formatRtcInteger(stream.concealedSamples)} />
+      <MetricRow label="Silent Concealed Samples" value={formatRtcInteger(stream.silentConcealedSamples)} />
+      <MetricRow label="Jitter Buffer Emitted" value={formatRtcInteger(stream.jitterBufferEmittedCount)} />
     </MetricGroup>
   )
 }
@@ -526,8 +537,8 @@ function MetricGroup({
 }) {
   return (
     <section className="min-w-0">
-      <h3 className="mb-3 truncate text-sm font-bold text-white">{title}</h3>
-      <div className="divide-y divide-[#292b31]">{children}</div>
+      <h3 className="mb-3 truncate text-sm font-bold text-foreground">{title}</h3>
+      <div className="divide-y divide-border">{children}</div>
     </section>
   )
 }
@@ -543,9 +554,9 @@ function MetricRow({
 }) {
   return (
     <section className="min-w-0">
-      <div className="flex min-h-10 items-center justify-between gap-4 border-b border-[#292b31] py-2">
-        <div className="min-w-0 text-sm font-bold text-white">{label}</div>
-        <div className="max-w-[55%] truncate text-right text-sm tabular-nums text-[#aeb4bd]">
+      <div className="flex min-h-10 items-center justify-between gap-4 border-b border-border py-2">
+        <div className="min-w-0 text-sm font-bold text-foreground">{label}</div>
+        <div className="max-w-[55%] truncate text-right text-sm tabular-nums text-muted-foreground">
           {value}
         </div>
       </div>
@@ -555,7 +566,7 @@ function MetricRow({
 }
 
 function SectionHeader({ title }: { title: string }) {
-  return <h2 className="mb-6 text-base font-bold text-white">{title}</h2>
+  return <h2 className="mb-6 text-base font-bold text-foreground">{title}</h2>
 }
 
 function MediaTabs({
@@ -566,15 +577,15 @@ function MediaTabs({
   onChange: (tab: MediaTab) => void
 }) {
   return (
-    <div className="mb-7 flex gap-6 border-b border-[#292b31]">
+    <div className="mb-7 flex gap-6 border-b border-border">
       {(['audio', 'video'] as const).map((tab) => (
         <button
           key={tab}
           type="button"
           onClick={() => onChange(tab)}
           className={cn(
-            '-mb-px border-b-2 border-transparent pb-3 text-sm font-semibold text-[#b5bac1]',
-            value === tab && 'border-[#5865f2] text-[#7289ff]',
+            '-mb-px border-b-2 border-transparent pb-3 text-sm font-semibold text-muted-foreground',
+            value === tab && 'border-primary text-primary',
           )}
         >
           {tab === 'audio' ? 'Audio' : 'Video'}
@@ -586,7 +597,7 @@ function MediaTabs({
 
 function EmptyPanel({ text }: { text: string }) {
   return (
-    <div className="rounded border border-dashed border-[#3d3f45] px-6 py-12 text-center text-sm text-[#949ba4]">
+    <div className="rounded border border-dashed border-border px-6 py-12 text-center text-sm text-muted-foreground">
       {text}
     </div>
   )
@@ -594,9 +605,9 @@ function EmptyPanel({ text }: { text: string }) {
 
 function DebugEmptyState() {
   return (
-    <div className="rounded border border-dashed border-[#3d3f45] px-6 py-12 text-center">
+    <div className="rounded border border-dashed border-border px-6 py-12 text-center">
       <h2 className="text-base font-bold">Нет активного голосового подключения</h2>
-      <p className="mt-2 text-sm text-[#949ba4]">
+      <p className="mt-2 text-sm text-muted-foreground">
         Подключись к voice channel, затем открой эту страницу ещё раз из ping UI.
       </p>
     </div>

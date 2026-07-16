@@ -9057,6 +9057,7 @@ dependencies = [
  "axum-macros",
  "axum_typed_multipart",
  "ffprobe",
+ "httpdate",
  "image",
  "imagesize",
  "infer",
@@ -9215,6 +9216,7 @@ dependencies = [
  "ulid 1.2.1",
  "unicode-segmentation",
  "url-escape",
+ "uuid",
  "validator 0.16.1",
 ]
 
@@ -9264,6 +9266,7 @@ dependencies = [
  "syrnike-result",
  "ulid 1.2.1",
  "url",
+ "uuid",
  "validator 0.16.1",
  "vergen",
 ]
@@ -9362,6 +9365,7 @@ dependencies = [
  "rocket",
  "schemars",
  "serde",
+ "serde_json",
  "syrnike-config",
  "syrnike-permissions",
  "utoipa",

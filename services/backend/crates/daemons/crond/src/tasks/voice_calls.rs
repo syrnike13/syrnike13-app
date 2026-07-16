@@ -10,22 +10,38 @@ use syrnike_database::{
             voice_call_expire_effect, VoiceCallExpireEffect, VoiceCallState,
             VoiceCallStateMutation, VoiceCallStateMutationResult, GROUP_UNANSWERED_ACTIVE_SECONDS,
         },
-        delete_voice_channel, finish_voice_call_started_system_message, get_voice_channel_members,
-        list_active_voice_channel_ids, reconcile_voice_channel_members_with_call_cleanup,
-        UserVoiceChannel, VoiceClient,
+        cleanup_removed_voice_channel, delete_voice_channel,
+        finish_voice_call_started_system_message, get_voice_channel_members,
+        list_active_voice_channel_ids, reconcile_active_voice_permissions,
+        reconcile_pending_voice_transport_cleanups,
+        reconcile_voice_channel_members_with_call_cleanup, remove_orphaned_active_voice_channel,
+        resolve_active_voice_channel, UserVoiceChannel, VoiceClient,
     },
     Channel, Database, VoiceCallEndReason, AMQP,
 };
-use syrnike_result::Result;
+use syrnike_result::{ErrorType, Result};
 use tokio::time::sleep;
 
 const EXPIRED_VOICE_CALL_SWEEP_SECONDS: u64 = 5;
+const VOICE_PERMISSION_SWEEP_TICKS: u8 = 6;
+
 pub async fn task(db: Database, voice_client: VoiceClient, amqp: AMQP) -> Result<()> {
+    let mut permission_sweep_tick = 0;
+
     loop {
         if let Err(error) = sweep_voice_call_timeouts(&db, &voice_client, &amqp).await {
             syrnike_config::capture_internal_error!(&error);
             warn!("Failed to sweep voice call timeouts: {error:?}");
         }
+
+        if permission_sweep_tick == 0 {
+            if let Err(error) = reconcile_active_voice_permissions(&db, &voice_client).await {
+                syrnike_config::capture_internal_error!(&error);
+                warn!("Failed to sweep active voice permissions: {error:?}");
+            }
+        }
+        permission_sweep_tick = (permission_sweep_tick + 1) % VOICE_PERMISSION_SWEEP_TICKS;
+
         sleep(Duration::from_secs(EXPIRED_VOICE_CALL_SWEEP_SECONDS)).await;
     }
 }
@@ -37,12 +53,69 @@ async fn sweep_voice_call_timeouts(
 ) -> Result<()> {
     let now = Timestamp::now_utc();
 
+    if let Err(error) = reconcile_pending_voice_transport_cleanups(db, voice_client).await {
+        syrnike_config::capture_internal_error!(&error);
+        warn!("Failed to reconcile pending voice transport cleanups: {error:?}");
+    }
+
     for channel_id in list_active_voice_channel_ids().await? {
         let channel = UserVoiceChannel {
             id: channel_id.clone(),
             server_id: None,
         };
+
+        let removed_voice_channel = match db.fetch_channel(&channel_id).await {
+            Ok(stored_channel) if stored_channel.voice().is_none() => {
+                Some(UserVoiceChannel::from_channel(&stored_channel))
+            }
+            Err(error) if matches!(error.error_type, ErrorType::NotFound) => {
+                match resolve_active_voice_channel(&channel_id).await {
+                    Ok(channel) => Some(channel),
+                    Err(error) => {
+                        syrnike_config::capture_internal_error!(&error);
+                        warn!(
+                            "Failed to resolve deleted voice channel {channel_id} for cleanup: {error:?}"
+                        );
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+        if let Some(removed_voice_channel) = removed_voice_channel {
+            if let Err(error) =
+                cleanup_removed_voice_channel(db, voice_client, &removed_voice_channel).await
+            {
+                syrnike_config::capture_internal_error!(&error);
+                warn!("Failed to retry removed voice channel cleanup {channel_id}: {error:?}");
+            }
+            continue;
+        }
+
         if get_voice_channel_members(&channel).await?.is_none() {
+            match reconcile_voice_channel_members_with_call_cleanup(
+                db,
+                voice_client,
+                amqp,
+                &channel,
+            )
+            .await
+            {
+                Ok(Some(reconciliation))
+                    if reconciliation.livekit_members.is_empty()
+                        && reconciliation.stale_livekit_participants.is_empty() =>
+                {
+                    if let Err(error) = remove_orphaned_active_voice_channel(&channel).await {
+                        syrnike_config::capture_internal_error!(&error);
+                        warn!("Failed to remove orphaned voice channel {channel_id}: {error:?}");
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    syrnike_config::capture_internal_error!(&error);
+                    warn!("Failed to reconcile orphaned voice channel {channel_id}: {error:?}");
+                }
+            }
             continue;
         }
         if let Err(error) =

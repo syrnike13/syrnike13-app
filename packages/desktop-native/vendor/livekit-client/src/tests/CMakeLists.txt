@@ -1,0 +1,350 @@
+cmake_minimum_required(VERSION 3.20)
+
+# ============================================================================
+# Google Test Setup via FetchContent
+# ============================================================================
+
+include(FetchContent)
+include(warnings)
+
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        v1.14.0
+)
+
+# Prevent overriding the parent project's compiler/linker settings on Windows
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+# Don't install gtest when installing this project
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+
+# Skip GMock, not used currently
+set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+
+livekit_fetchcontent_makeavailable(googletest)
+livekit_collect_targets_in_directory(_livekit_googletest_targets "${googletest_BINARY_DIR}")
+foreach(_livekit_googletest_target IN LISTS _livekit_googletest_targets)
+  livekit_disable_warnings(${_livekit_googletest_target})
+endforeach()
+
+set(LIVEKIT_TEST_PROTOBUF_DEP_INCLUDE_DIRS ${Protobuf_INCLUDE_DIRS})
+if(TARGET absl::base)
+  livekit_get_interface_includes(absl::base _livekit_test_absl_inc)
+  if(_livekit_test_absl_inc)
+    list(APPEND LIVEKIT_TEST_PROTOBUF_DEP_INCLUDE_DIRS ${_livekit_test_absl_inc})
+  endif()
+endif()
+
+set(LIVEKIT_TEST_SYSTEM_INCLUDE_DIRS ${LIVEKIT_BINARY_DIR}/generated)
+if(TARGET spdlog::spdlog)
+  livekit_get_interface_includes(spdlog::spdlog _livekit_test_spdlog_inc)
+  if(_livekit_test_spdlog_inc)
+    list(APPEND LIVEKIT_TEST_SYSTEM_INCLUDE_DIRS ${_livekit_test_spdlog_inc})
+  endif()
+endif()
+if(TARGET GTest::gtest_main)
+  livekit_get_interface_includes(GTest::gtest_main _livekit_test_gtest_inc)
+  if(_livekit_test_gtest_inc)
+    list(APPEND LIVEKIT_TEST_SYSTEM_INCLUDE_DIRS ${_livekit_test_gtest_inc})
+  endif()
+endif()
+
+# Enable CTest
+enable_testing()
+include(GoogleTest)
+
+# ============================================================================
+# Benchmark Utilities (shared by all test types)
+# ============================================================================
+
+set(BENCHMARK_UTILS_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/benchmark_utils.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/benchmark/benchmark_utils.h"
+)
+
+# ============================================================================
+# Unit Tests
+# ============================================================================
+
+# Collect all unit test sources
+file(GLOB UNIT_TEST_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/unit/*.cpp"
+)
+
+if(UNIT_TEST_SOURCES)
+  add_executable(livekit_unit_tests
+    ${UNIT_TEST_SOURCES}
+    ${BENCHMARK_UTILS_SOURCES}
+  )
+
+  # liblivekit no longer re-exports protobuf/absl symbols (hidden visibility +
+  # --exclude-libs,ALL).  Tests that touch livekit::proto::* types or absl
+  # helpers must link the proto object library and the libprotobuf static
+  # archive directly.
+  if(TARGET livekit_proto)
+    target_sources(livekit_unit_tests PRIVATE $<TARGET_OBJECTS:livekit_proto>)
+  endif()
+
+  target_link_libraries(livekit_unit_tests
+    PRIVATE
+      livekit
+      spdlog::spdlog
+      ${LIVEKIT_PROTOBUF_TARGET}
+      GTest::gtest_main
+  )
+
+  target_include_directories(livekit_unit_tests
+    PRIVATE
+      ${LIVEKIT_ROOT_DIR}/include
+      ${LIVEKIT_ROOT_DIR}/src
+      ${LIVEKIT_ROOT_DIR}/src/trace
+      ${CMAKE_CURRENT_SOURCE_DIR}/benchmark
+      ${LIVEKIT_TEST_PROTOBUF_DEP_INCLUDE_DIRS}
+  )
+  target_include_directories(livekit_unit_tests SYSTEM PRIVATE
+    ${LIVEKIT_TEST_SYSTEM_INCLUDE_DIRS}
+  )
+
+  target_compile_definitions(livekit_unit_tests
+    PRIVATE
+      LIVEKIT_TEST_ACCESS
+      LIVEKIT_ROOT_DIR="${LIVEKIT_ROOT_DIR}"
+      SPDLOG_ACTIVE_LEVEL=${_SPDLOG_ACTIVE_LEVEL}
+      $<$<PLATFORM_ID:Windows>:_USE_MATH_DEFINES>
+  )
+
+  # Copy shared libraries to test executable directory
+  if(WIN32)
+    add_custom_command(TARGET livekit_unit_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_unit_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/livekit_ffi.dll"
+        $<TARGET_FILE_DIR:livekit_unit_tests>
+      COMMENT "Copying DLLs to unit test directory"
+    )
+  elseif(APPLE)
+    add_custom_command(TARGET livekit_unit_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_unit_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/liblivekit_ffi.dylib"
+        $<TARGET_FILE_DIR:livekit_unit_tests>
+      COMMENT "Copying dylibs to unit test directory"
+    )
+  else()
+    add_custom_command(TARGET livekit_unit_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_unit_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/liblivekit_ffi.so"
+        $<TARGET_FILE_DIR:livekit_unit_tests>
+      COMMENT "Copying shared libraries to unit test directory"
+    )
+  endif()
+
+  # Register tests with CTest
+  gtest_discover_tests(livekit_unit_tests
+    WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES
+      LABELS "unit"
+  )
+endif()
+
+# ============================================================================
+# Integration Tests
+# ============================================================================
+
+# Collect all integration test sources
+file(GLOB INTEGRATION_TEST_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/integration/*.cpp"
+)
+
+if(INTEGRATION_TEST_SOURCES)
+  add_executable(livekit_integration_tests
+    ${INTEGRATION_TEST_SOURCES}
+    ${BENCHMARK_UTILS_SOURCES}
+  )
+
+  # liblivekit no longer re-exports protobuf/absl symbols (hidden visibility +
+  # --exclude-libs,ALL).  Tests that touch livekit::proto::* types or absl
+  # helpers must link the proto object library and the libprotobuf static
+  # archive directly.
+  if(TARGET livekit_proto)
+    target_sources(livekit_integration_tests PRIVATE $<TARGET_OBJECTS:livekit_proto>)
+  endif()
+
+  target_link_libraries(livekit_integration_tests
+    PRIVATE
+      livekit
+      spdlog::spdlog
+      ${LIVEKIT_PROTOBUF_TARGET}
+      GTest::gtest_main
+  )
+
+  target_include_directories(livekit_integration_tests
+    PRIVATE
+      ${LIVEKIT_ROOT_DIR}/include
+      ${LIVEKIT_ROOT_DIR}/src
+      ${CMAKE_CURRENT_SOURCE_DIR}/benchmark
+      ${LIVEKIT_TEST_PROTOBUF_DEP_INCLUDE_DIRS}
+  )
+  target_include_directories(livekit_integration_tests SYSTEM PRIVATE
+    ${LIVEKIT_TEST_SYSTEM_INCLUDE_DIRS}
+  )
+
+  target_compile_definitions(livekit_integration_tests
+    PRIVATE
+      LIVEKIT_TEST_ACCESS
+      LIVEKIT_ROOT_DIR="${LIVEKIT_ROOT_DIR}"
+      SPDLOG_ACTIVE_LEVEL=${_SPDLOG_ACTIVE_LEVEL}
+      $<$<PLATFORM_ID:Windows>:_USE_MATH_DEFINES>
+  )
+
+  # Copy shared libraries to test executable directory
+  if(WIN32)
+    add_custom_command(TARGET livekit_integration_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_integration_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/livekit_ffi.dll"
+        $<TARGET_FILE_DIR:livekit_integration_tests>
+      COMMENT "Copying DLLs to integration test directory"
+    )
+  elseif(APPLE)
+    add_custom_command(TARGET livekit_integration_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_integration_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/liblivekit_ffi.dylib"
+        $<TARGET_FILE_DIR:livekit_integration_tests>
+      COMMENT "Copying dylibs to integration test directory"
+    )
+  else()
+    add_custom_command(TARGET livekit_integration_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_integration_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/liblivekit_ffi.so"
+        $<TARGET_FILE_DIR:livekit_integration_tests>
+      COMMENT "Copying shared libraries to integration test directory"
+    )
+  endif()
+
+  # Register tests with CTest
+  gtest_discover_tests(livekit_integration_tests
+    WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES
+      LABELS "integration"
+  )
+endif()
+
+# ============================================================================
+# Stress Tests
+# ============================================================================
+
+# Collect all stress test sources
+file(GLOB STRESS_TEST_SOURCES
+  "${CMAKE_CURRENT_SOURCE_DIR}/stress/*.cpp"
+)
+
+if(STRESS_TEST_SOURCES)
+  add_executable(livekit_stress_tests
+    ${STRESS_TEST_SOURCES}
+    ${BENCHMARK_UTILS_SOURCES}
+  )
+
+  target_link_libraries(livekit_stress_tests
+    PRIVATE
+      livekit
+      GTest::gtest_main
+  )
+
+  target_include_directories(livekit_stress_tests
+    PRIVATE
+      ${LIVEKIT_ROOT_DIR}/include
+      ${LIVEKIT_ROOT_DIR}/src
+      ${LIVEKIT_TEST_PROTOBUF_DEP_INCLUDE_DIRS}
+  )
+  target_include_directories(livekit_stress_tests SYSTEM PRIVATE
+    ${LIVEKIT_TEST_SYSTEM_INCLUDE_DIRS}
+  )
+
+  target_compile_definitions(livekit_stress_tests
+    PRIVATE
+      $<$<PLATFORM_ID:Windows>:_USE_MATH_DEFINES>
+  )
+
+  # Copy shared libraries to test executable directory
+  if(WIN32)
+    add_custom_command(TARGET livekit_stress_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_stress_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/livekit_ffi.dll"
+        $<TARGET_FILE_DIR:livekit_stress_tests>
+      COMMENT "Copying DLLs to stress test directory"
+    )
+  elseif(APPLE)
+    add_custom_command(TARGET livekit_stress_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_stress_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/liblivekit_ffi.dylib"
+        $<TARGET_FILE_DIR:livekit_stress_tests>
+      COMMENT "Copying dylibs to stress test directory"
+    )
+  else()
+    add_custom_command(TARGET livekit_stress_tests POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:livekit>
+        $<TARGET_FILE_DIR:livekit_stress_tests>
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE_DIR:livekit>/liblivekit_ffi.so"
+        $<TARGET_FILE_DIR:livekit_stress_tests>
+      COMMENT "Copying shared libraries to stress test directory"
+    )
+  endif()
+
+  # Register tests with CTest (longer timeout for stress tests)
+  gtest_discover_tests(livekit_stress_tests
+    WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES
+      LABELS "stress"
+      TIMEOUT 300
+  )
+endif()
+
+# ============================================================================
+# Combined test target
+# ============================================================================
+
+add_custom_target(run_all_tests
+  COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+  COMMENT "Running all tests"
+)
+
+if(TARGET livekit_unit_tests)
+  add_dependencies(run_all_tests livekit_unit_tests)
+endif()
+
+if(TARGET livekit_integration_tests)
+  add_dependencies(run_all_tests livekit_integration_tests)
+endif()
+
+if(TARGET livekit_stress_tests)
+  add_dependencies(run_all_tests livekit_stress_tests)
+endif()

@@ -8,7 +8,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { selectHomeNotificationBadge } from '#/features/notifications/notification-selectors'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { userStatusSubtitle } from '#/lib/presence'
 import { cn } from '#/lib/utils'
 
@@ -28,14 +28,14 @@ const gatewayLabels = {
 export function MobileUserPanel() {
   const auth = useAuth()
   const { openSettings } = useSettingsModal()
-  const voice = useVoice()
+  const voiceStage = useVoiceStage()
   const user = auth.user
   const homeBadge = useSyncStore((s) =>
     selectHomeNotificationBadge(s, auth.user?._id),
   )
 
   if (!user) return null
-  if (voice.stageFullscreen) return null
+  if (voiceStage.stageFullscreen) return null
 
   const displayName = user.display_name ?? user.username
   const gatewayConnected = auth.gatewayState === 'connected'
@@ -50,7 +50,7 @@ export function MobileUserPanel() {
       <div className="pointer-events-auto">
         <div className="relative h-14 w-full">
           <div
-            className="absolute top-1/2 right-0 left-6 flex h-10 -translate-y-1/2 items-center rounded-full bg-card pr-1.5 pl-11 shadow-lg ring-1 ring-shell-divider"
+            className="gradient-surface-floating absolute top-1/2 right-0 left-6 flex h-10 -translate-y-1/2 items-center rounded-full bg-card pr-1.5 pl-11 shadow-lg ring-1 ring-shell-divider"
             aria-hidden
           />
 
@@ -78,7 +78,7 @@ export function MobileUserPanel() {
                   gatewayConnected
                     ? 'text-muted-foreground'
                     : gatewayReconnecting
-                      ? 'text-amber-500'
+                      ? 'text-chart-2'
                       : 'text-destructive',
                 )}
               >

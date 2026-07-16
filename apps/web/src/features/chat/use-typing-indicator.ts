@@ -32,5 +32,12 @@ export function useTypingIndicator(channelId: string | undefined) {
     }, 4_000)
   }
 
-  return { notifyTyping }
+  function stopTyping() {
+    clearTimeout(timeoutRef.current)
+    if (!typingRef.current || !channelId) return
+    typingRef.current = false
+    eventsGateway.endTyping(channelId)
+  }
+
+  return { notifyTyping, stopTyping }
 }

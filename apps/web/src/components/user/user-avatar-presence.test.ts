@@ -2,10 +2,17 @@ import { describe, expect, it } from 'vitest'
 
 import {
   PRESENCE_BADGE_SIZE_SCALE,
+  presenceRingColorVar,
   resolveAvatarSizePx,
   resolvePresenceBadgeLayout,
   resolvePresenceBadgeLayoutForAvatar,
 } from '#/components/user/user-avatar-presence'
+
+describe('presenceRingColorVar', () => {
+  it('matches presence rings to popover surfaces', () => {
+    expect(presenceRingColorVar('border-popover')).toBe('var(--popover)')
+  })
+})
 
 describe('resolveAvatarSizePx', () => {
   it('parses tailwind size tokens', () => {

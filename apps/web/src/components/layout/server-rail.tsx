@@ -1,11 +1,14 @@
-import { Link, useMatch } from '@tanstack/react-router'
+import { useMatch } from '@tanstack/react-router'
 import { HashIcon, HomeIcon } from '#/components/icons'
 import type { Server } from '@syrnike13/api-types'
+import { useState } from 'react'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
-import { Button } from '#/components/ui/button'
 import { ScrollArea } from '#/components/ui/scroll-area'
+import { Squircle } from '#/components/ui/squircle'
 import { CreateServerDialog } from '#/components/servers/create-server-dialog'
+import { PeopleRailSection } from '#/components/layout/people-rail-section'
+import { RailIconButton } from '#/components/layout/rail-icon-button'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   selectHomeNotificationBadge,
@@ -16,23 +19,43 @@ import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { selectedServerIdForChannel } from '#/features/navigation/channel-server-context'
 import { USER_PANEL_RESERVE_PX } from '#/components/layout/left-sidebar-stack'
 import {
+  railColumnInsetClass,
   railIconButtonClass,
   railIconIdleClass,
-  shellNavSurface,
+  railIconSquircleProps,
+  railServerScrollAreaClass,
+  railServerScrollContentClass,
+  shellLowestSurface,
 } from '#/components/layout/shell-chrome'
-import { usePlatform } from '#/platform/use-platform'
 import { cn } from '#/lib/utils'
+import { serverIconUrl } from '#/lib/media'
+import { useMediaQuery } from '#/hooks/use-media-query'
 
 type ServerRailVariant = 'desktop' | 'mobile'
 
-function railButtonClass(active: boolean) {
-  return cn(railIconButtonClass, !active && railIconIdleClass)
-}
+function ServerIcon({
+  server,
+  animated,
+}: {
+  server: Server
+  animated: boolean
+}) {
+  const iconUrl = serverIconUrl(server.icon, { animated })
 
-function ServerInitial({ name }: { name: string }) {
+  if (iconUrl) {
+    return (
+      <img
+        src={iconUrl}
+        alt=""
+        draggable={false}
+        className="size-full object-cover"
+      />
+    )
+  }
+
   return (
     <span className="text-xs font-semibold uppercase">
-      {name.trim().slice(0, 2) || '??'}
+      {server.name.trim().slice(0, 2) || '??'}
     </span>
   )
 }
@@ -48,9 +71,16 @@ function ServerInitial({ name }: { name: string }) {
  *
  * Различие только в навигации и формуле «активности», вёрстка общая.
  */
-export function ServerRail({ variant }: { variant: ServerRailVariant }) {
+export function ServerRail({
+  variant,
+  reserveUserPanelSpace = true,
+  userPanelReservePx = USER_PANEL_RESERVE_PX,
+}: {
+  variant: ServerRailVariant
+  reserveUserPanelSpace?: boolean
+  userPanelReservePx?: number
+}) {
   const auth = useAuth()
-  const { capabilities } = usePlatform()
   const ready = useSyncStore((s) => s.ready)
   const servers = useSyncStore(listServers)
   const homeBadge = useSyncStore((s) =>
@@ -68,46 +98,55 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
       ? channelMatch.params.channelId
       : undefined
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
+  const prefersReducedMotion = useMediaQuery(
+    '(prefers-reduced-motion: reduce)',
+  )
 
   const homeActive =
     Boolean(homeMatch) &&
     !channelMatch &&
     (variant === 'desktop' || !selectedServerId)
 
-  const railPaddingClass = capabilities.customWindowChrome ? 'pb-3' : 'py-3'
+  const railBottomReserveStyle = reserveUserPanelSpace
+    ? { paddingBottom: userPanelReservePx }
+    : undefined
 
   if (!ready) {
     return (
-      <div
-        className={cn(
-          'flex h-full w-14 shrink-0 flex-col items-center',
-          railPaddingClass,
-          shellNavSurface,
-        )}
-        style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
-      >
-        <div className={cn(railIconButtonClass, 'animate-pulse bg-muted')} />
-      </div>
+        <div
+          className={cn(
+            'flex h-full w-16 shrink-0 flex-col items-center',
+            'pt-1 pb-3',
+            shellLowestSurface,
+          )}
+          style={railBottomReserveStyle}
+        >
+          <Squircle
+            {...railIconSquircleProps}
+            className={cn(railIconButtonClass, 'animate-pulse bg-muted')}
+          />
+        </div>
     )
   }
 
   return (
     <div
       className={cn(
-        'flex h-full w-14 shrink-0 flex-col items-center gap-2',
-        railPaddingClass,
-        shellNavSurface,
+        'flex h-full w-16 shrink-0 flex-col',
+        'pt-1 pb-3',
+        shellLowestSurface,
       )}
-      style={{ paddingBottom: USER_PANEL_RESERVE_PX }}
+      style={railBottomReserveStyle}
     >
-      <Button
-        size="icon"
-        variant={homeActive ? 'default' : 'ghost'}
-        className={railButtonClass(homeActive)}
-        title="Главная"
-        asChild
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col items-center gap-2',
+          railColumnInsetClass,
+        )}
       >
-        <Link
+        <RailIconButton
+          active={homeActive}
+          title="Главная"
           to={homeTo}
           search={{ tab: 'online' }}
           onClick={() => syncStore.setSelectedServerId(null)}
@@ -119,38 +158,51 @@ export function ServerRail({ variant }: { variant: ServerRailVariant }) {
               className="absolute -top-1 -right-1"
             />
           </span>
-        </Link>
-      </Button>
+        </RailIconButton>
 
-      <ScrollArea className="min-h-0 w-full flex-1 px-2">
-        <div className="flex flex-col items-center gap-2">
-          {servers.map((server) => (
-            <ServerRailButton
-              key={server._id}
-              server={server}
-              currentUserId={auth.user?._id}
-              activeChannelId={activeChannelId}
-              variant={variant}
-              homeMatch={Boolean(homeMatch)}
-              channelMatch={Boolean(channelMatch)}
-            />
-          ))}
-          {servers.length === 0 ? (
-            <div
-              className={cn(
-                railIconButtonClass,
-                railIconIdleClass,
-                'flex items-center justify-center text-foreground',
-              )}
-              title="Нет серверов"
-            >
-              <HashIcon className="size-4" />
-            </div>
-          ) : null}
+        <PeopleRailSection
+          variant={variant}
+          activeChannelId={activeChannelId}
+        />
 
-          <CreateServerDialog />
-        </div>
-      </ScrollArea>
+        <ScrollArea
+          className={cn('min-h-0 flex-1', railServerScrollAreaClass)}
+        >
+          <div
+            className={cn(
+              'flex flex-col items-center gap-2',
+              railServerScrollContentClass,
+            )}
+          >
+            {servers.map((server) => (
+              <ServerRailButton
+                key={server._id}
+                server={server}
+                currentUserId={auth.user?._id}
+                activeChannelId={activeChannelId}
+                variant={variant}
+                channelMatch={Boolean(channelMatch)}
+                prefersReducedMotion={prefersReducedMotion}
+              />
+            ))}
+            {servers.length === 0 ? (
+              <Squircle
+                {...railIconSquircleProps}
+                className={cn(
+                  railIconButtonClass,
+                  railIconIdleClass,
+                  'flex items-center justify-center text-foreground',
+                )}
+                title="Нет серверов"
+              >
+                <HashIcon className="size-4" />
+              </Squircle>
+            ) : null}
+
+            <CreateServerDialog />
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   )
 }
@@ -160,17 +212,18 @@ function ServerRailButton({
   currentUserId,
   activeChannelId,
   variant,
-  homeMatch,
   channelMatch,
+  prefersReducedMotion,
 }: {
   server: Server
   currentUserId?: string
   activeChannelId?: string
   variant: ServerRailVariant
-  homeMatch: boolean
   channelMatch: boolean
+  prefersReducedMotion: boolean
 }) {
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
+  const [iconInteractionActive, setIconInteractionActive] = useState(false)
   const activeChannel = useSyncStore((s) =>
     activeChannelId ? s.channels[activeChannelId] : undefined,
   )
@@ -188,15 +241,14 @@ function ServerRailButton({
 
   const active =
     variant === 'mobile'
-      ? homeMatch && !channelMatch && selectedServerId === server._id
-      : channelMatch && !homeMatch && contextualServerId === server._id
+      ? !channelMatch && selectedServerId === server._id
+      : Boolean(channelMatch) && contextualServerId === server._id
 
-  const content = (
-    <span className="relative flex size-full items-center justify-center">
-      <ServerInitial name={server.name} />
-      <NotificationBadge
-        badge={notificationBadge}
-        className="absolute -top-1 -right-1"
+  const icon = (
+    <span className="flex size-full items-center justify-center">
+      <ServerIcon
+        server={server}
+        animated={iconInteractionActive && !prefersReducedMotion}
       />
     </span>
   )
@@ -208,40 +260,38 @@ function ServerRailButton({
   // Mobile: ведём на home с установкой selectedServerId (sidebar каналов покажется рядом).
   if (firstChannelId && variant === 'desktop') {
     return (
-      <Button
-        size="icon"
-        variant={active ? 'default' : 'ghost'}
-        className={railButtonClass(active)}
+      <RailIconButton
+        active={active}
+        unread={notificationBadge.hasUnread}
         title={server.name}
-        asChild
+        to={channelTo}
+        params={{ channelId: firstChannelId }}
+        search={{ m: undefined }}
+        onPointerEnter={() => setIconInteractionActive(true)}
+        onPointerLeave={() => setIconInteractionActive(false)}
+        onFocus={() => setIconInteractionActive(true)}
+        onBlur={() => setIconInteractionActive(false)}
       >
-        <Link
-          to={channelTo}
-          params={{ channelId: firstChannelId }}
-          search={{ m: undefined }}
-        >
-          {content}
-        </Link>
-      </Button>
+        {icon}
+      </RailIconButton>
     )
   }
 
   return (
-    <Button
-      size="icon"
-      variant={active ? 'default' : 'ghost'}
-      className={railButtonClass(active)}
+    <RailIconButton
+      active={active}
+      unread={notificationBadge.hasUnread}
       title={server.name}
-      asChild
+      to={homeTo}
+      search={{ tab: 'online' }}
+      replace={channelMatch}
+      onClick={() => syncStore.setSelectedServerId(server._id)}
+      onPointerEnter={() => setIconInteractionActive(true)}
+      onPointerLeave={() => setIconInteractionActive(false)}
+      onFocus={() => setIconInteractionActive(true)}
+      onBlur={() => setIconInteractionActive(false)}
     >
-      <Link
-        to={homeTo}
-        search={{ tab: 'online' }}
-        replace={channelMatch}
-        onClick={() => syncStore.setSelectedServerId(server._id)}
-      >
-        {content}
-      </Link>
-    </Button>
+      {icon}
+    </RailIconButton>
   )
 }

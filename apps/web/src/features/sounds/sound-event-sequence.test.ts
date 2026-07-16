@@ -355,6 +355,121 @@ describe('sound event sequence resolver', () => {
     ).toEqual(['voice.user_leave', 'voice.user_join'])
   })
 
+  it('keeps server-wide voice membership events silent for users outside voice', () => {
+    const resolver = createSoundEventResolver()
+    const outsideVoice = { ...baseContext, currentVoiceChannelId: null }
+
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceChannelJoin',
+          id: VOICE_OPEN_ID,
+          state: voiceState(REMOTE_USER_ID),
+        },
+        outsideVoice,
+      ),
+    ).toEqual([])
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceChannelLeave',
+          id: VOICE_OPEN_ID,
+          user: REMOTE_USER_ID,
+        },
+        outsideVoice,
+      ),
+    ).toEqual([])
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceChannelMove',
+          user: REMOTE_USER_ID,
+          from: VOICE_OPEN_ID,
+          to: VOICE_OTHER_ID,
+        },
+        outsideVoice,
+      ),
+    ).toEqual([])
+  })
+
+  it('plays self controls after the gateway confirms the state change', () => {
+    const resolver = createSoundEventResolver({
+      [VOICE_OPEN_ID]: {
+        [CURRENT_USER_ID]: voiceState(CURRENT_USER_ID),
+      },
+    })
+
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceStateUpdate',
+          channel_id: VOICE_OPEN_ID,
+          state: { id: CURRENT_USER_ID, self_mute: true },
+        },
+        baseContext,
+      ),
+    ).toEqual(['voice.mute'])
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceStateUpdate',
+          channel_id: VOICE_OPEN_ID,
+          state: { id: CURRENT_USER_ID, self_mute: true },
+        },
+        baseContext,
+      ),
+    ).toEqual([])
+  })
+
+  it('does not broadcast a join sound when a participant restores the same voice membership', () => {
+    const resolver = createSoundEventResolver({
+      [VOICE_OPEN_ID]: {
+        [CURRENT_USER_ID]: voiceState(CURRENT_USER_ID),
+        [REMOTE_USER_ID]: voiceState(REMOTE_USER_ID),
+      },
+    })
+
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceChannelJoin',
+          id: VOICE_OPEN_ID,
+          state: voiceState(REMOTE_USER_ID),
+        },
+        baseContext,
+      ),
+    ).toEqual([])
+  })
+
+  it('does not fall back to a stale voice channel after the current user leaves', () => {
+    const resolver = createSoundEventResolver({
+      [VOICE_OPEN_ID]: {
+        [CURRENT_USER_ID]: voiceState(CURRENT_USER_ID),
+      },
+    })
+
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceChannelLeave',
+          id: VOICE_OPEN_ID,
+          user: CURRENT_USER_ID,
+        },
+        baseContext,
+      ),
+    ).toEqual([])
+    expect(
+      resolver.resolve(
+        {
+          type: 'VoiceChannelJoin',
+          id: VOICE_OPEN_ID,
+          state: voiceState(REMOTE_USER_ID),
+        },
+        baseContext,
+      ),
+    ).toEqual([])
+  })
+
   it('removes stale media state on leave before later snapshots arrive', () => {
     const resolver = createSoundEventResolver({
       [VOICE_OPEN_ID]: {

@@ -1,23 +1,41 @@
 name: Native Media Windows
 
 on:
+  workflow_call:
+    inputs:
+      release_channel:
+        description: Desktop release channel used by the package smoke test.
+        required: false
+        type: string
+        default: stable
   pull_request:
     paths:
       - .github/workflows/native-media-windows.yml
-      - apps/desktop/native/native-voice-win/**
+      - apps/desktop/electron-builder.config.cjs
+      - apps/desktop/package.json
+      - apps/desktop/scripts/**
+      - apps/desktop/src/main/native-runtime/**
       - apps/desktop/src/main/native-media-engine*
+      - apps/desktop/src/utility/**
+      - apps/desktop/tsup.config.ts
       - apps/web/src/features/voice/**
+      - packages/desktop-native/**
       - packages/platform/src/media*
+      - packages/platform/src/ipc*
+      - package.json
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  native-voice:
-    name: Native voice helper
-    runs-on: windows-2022
+  native-runtime:
+    name: DLL runtime, Electron ABI, and package
+    runs-on: windows-2025-vs2026
+    env:
+      SYRNIKE_DESKTOP_CHANNEL: ${{ inputs.release_channel || 'stable' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -25,13 +43,66 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Set up pinned vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
-      - name: Test desktop media TypeScript contract
+      - name: Build Debug DLL runtime
+        run: pnpm desktop-native:build:debug
+      - name: Test Debug native core
+        run: pnpm desktop-native:test:debug
+      - name: Build Release DLL runtime
+        run: pnpm desktop-native:build
+      - name: Test Release native core
+        run: pnpm desktop-native:test
+      - name: Verify staged DLL-only runtime
+        run: pnpm desktop-native:verify
+      - name: Typecheck desktop media contract
         run: pnpm desktop:typecheck
-      - name: Test web voice native media boundary
-        run: pnpm --filter @syrnike13/web exec vitest run --root ../.. apps/web/src/features/voice/native-screen-share-audio-bridge.test.ts apps/web/src/features/voice/native-microphone-publish.test.ts apps/web/src/features/voice/use-media-devices.test.ts apps/web/src/features/voice/voice-mic-preview.test.ts apps/web/src/features/voice/voice-mic-processor.test.ts apps/web/src/features/voice/voice-mic-processing.test.ts apps/web/src/features/voice/voice-capture.test.ts apps/desktop/src/main/native-media-engine.test.ts apps/desktop/src/main/native-media-engine-sidecar.test.ts packages/platform/src/media.test.ts packages/platform/src/ipc.test.ts
-      - name: Build native voice helper
-        run: pnpm --filter @syrnike13/desktop run build:native-voice
-      - name: Test native voice helper
-        run: ctest --test-dir apps/desktop/native/native-voice-win/build -C Release --output-on-failure
+      - name: Test desktop runtime behavior
+        run: pnpm desktop:test
+      - name: Build utility hosts
+        run: |
+          pnpm --filter @syrnike13/platform build
+          pnpm --filter @syrnike13/desktop exec tsup
+      - name: Smoke-test Electron ABI and utility handshakes
+        run: pnpm --filter @syrnike13/desktop-native smoke:electron
+      - name: Build web assets for packaged smoke
+        run: pnpm web:build
+      - name: Verify packaged web assets
+        run: pnpm --filter @syrnike13/desktop verify:web-dist
+      - name: Build and verify unpacked Windows package
+        run: pnpm --filter @syrnike13/desktop package:prepared
+      - name: Upload native debug symbols
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-runtime-windows-symbols-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            packages/desktop-native/build/**/*.pdb
+            packages/desktop-native/dist/win32-x64/native-manifest.json
+
+  native-core-asan:
+    name: Native core AddressSanitizer
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Set up pinned vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Debug native core with AddressSanitizer
+        run: pnpm desktop-native:build:asan
+      - name: Test AddressSanitizer native core
+        run: pnpm desktop-native:test:debug

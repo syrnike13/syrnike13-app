@@ -54,6 +54,7 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
                 ("swagger", _, _) => ("swagger", None),
                 ("safety", Some("report"), _) => ("safety_report", Some("report")),
                 ("safety", _, _) => ("safety", None),
+                ("telemetry", Some("native"), Method::Post) => ("native_telemetry", None),
                 _ => ("any", None),
             }
         } else {
@@ -75,6 +76,7 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
             "swagger" => 100,
             "safety" => 15,
             "safety_report" => 3,
+            "native_telemetry" => 100,
             _ => 20,
         }
     }

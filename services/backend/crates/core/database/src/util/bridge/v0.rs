@@ -63,21 +63,49 @@ impl From<crate::Invite> for Invite {
                 code,
                 creator,
                 channel,
+                created_at,
+                expires_at,
+                max_uses,
+                uses,
+                revoked_at,
+                revoked_by,
+                temporary,
             } => Invite::Group {
                 code,
                 creator,
                 channel,
+                created_at,
+                expires_at,
+                max_uses,
+                uses,
+                revoked_at,
+                revoked_by,
+                temporary,
             },
             crate::Invite::Server {
                 code,
                 server,
                 creator,
                 channel,
+                created_at,
+                expires_at,
+                max_uses,
+                uses,
+                revoked_at,
+                revoked_by,
+                temporary,
             } => Invite::Server {
                 code,
                 server,
                 creator,
                 channel,
+                created_at,
+                expires_at,
+                max_uses,
+                uses,
+                revoked_at,
+                revoked_by,
+                temporary,
             },
         }
     }
@@ -188,6 +216,7 @@ impl From<crate::Channel> for Channel {
                 last_message_id,
                 default_permissions,
                 role_permissions,
+                user_permissions,
                 nsfw,
                 voice,
                 slowmode,
@@ -200,6 +229,7 @@ impl From<crate::Channel> for Channel {
                 last_message_id,
                 default_permissions,
                 role_permissions,
+                user_permissions,
                 nsfw,
                 voice: voice.map(|voice| voice.into()),
                 slowmode,
@@ -254,6 +284,7 @@ impl From<Channel> for crate::Channel {
                 last_message_id,
                 default_permissions,
                 role_permissions,
+                user_permissions,
                 nsfw,
                 voice,
                 slowmode,
@@ -266,6 +297,7 @@ impl From<Channel> for crate::Channel {
                 last_message_id,
                 default_permissions,
                 role_permissions,
+                user_permissions,
                 nsfw,
                 voice: voice.map(|voice| voice.into()),
                 slowmode,
@@ -285,6 +317,7 @@ impl From<crate::PartialChannel> for PartialChannel {
             active: value.active,
             permissions: value.permissions,
             role_permissions: value.role_permissions,
+            user_permissions: value.user_permissions,
             default_permissions: value.default_permissions,
             last_message_id: value.last_message_id,
             voice: value.voice.map(|voice| voice.into()),
@@ -304,6 +337,7 @@ impl From<PartialChannel> for crate::PartialChannel {
             active: value.active,
             permissions: value.permissions,
             role_permissions: value.role_permissions,
+            user_permissions: value.user_permissions,
             default_permissions: value.default_permissions,
             last_message_id: value.last_message_id,
             voice: value.voice.map(|voice| voice.into()),
@@ -652,6 +686,7 @@ impl From<crate::Member> for Member {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }
@@ -667,6 +702,7 @@ impl From<Member> for crate::Member {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }
@@ -682,6 +718,7 @@ impl From<crate::PartialMember> for PartialMember {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }
@@ -697,6 +734,7 @@ impl From<PartialMember> for crate::PartialMember {
             timeout: value.timeout,
             can_publish: value.can_publish,
             can_receive: value.can_receive,
+            temporary: value.temporary,
         }
     }
 }

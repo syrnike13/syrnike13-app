@@ -9,10 +9,12 @@ import {
 import {
   cameraBroadcastIcon,
   parseScreenShareSurface,
+  readDesktopScreenShareBroadcastSource,
   readCameraBroadcastLabel,
   readScreenShareBroadcastSource,
   screenShareBroadcastIcon,
   screenShareSurfaceFallbackLabel,
+  rememberDesktopScreenShareBroadcastSource,
 } from '#/features/voice/voice-broadcast-source'
 
 describe('parseScreenShareSurface', () => {
@@ -33,7 +35,7 @@ describe('parseScreenShareSurface', () => {
 
 describe('screenShareSurfaceFallbackLabel', () => {
   it('returns a label for each supported surface', () => {
-    expect(screenShareSurfaceFallbackLabel('monitor')).toBe('Весь экран')
+    expect(screenShareSurfaceFallbackLabel('monitor')).toBe('Экран')
     expect(screenShareSurfaceFallbackLabel('window')).toBe('Окно')
     expect(screenShareSurfaceFallbackLabel('browser')).toBe('Вкладка браузера')
   })
@@ -85,6 +87,34 @@ describe('readScreenShareBroadcastSource', () => {
         getSettings: () => undefined as unknown as MediaTrackSettings,
       } as MediaStreamTrack),
     ).toEqual({
+      label: screenShareSurfaceFallbackLabel('window'),
+      surface: 'window',
+    })
+  })
+})
+
+describe('desktop screen-share source', () => {
+  it('remembers screens as monitor surfaces', () => {
+    rememberDesktopScreenShareBroadcastSource({
+      name: 'Screen 2 (1920x1080)',
+      type: 'screen',
+    })
+
+    expect(readDesktopScreenShareBroadcastSource()).toEqual({
+      label: 'Экран 2',
+      surface: 'monitor',
+    })
+  })
+
+  it('maps game and window sources to window surfaces', () => {
+    rememberDesktopScreenShareBroadcastSource({ name: 'Game', type: 'game' })
+    expect(readDesktopScreenShareBroadcastSource()?.surface).toBe('window')
+
+    rememberDesktopScreenShareBroadcastSource({
+      name: '  ',
+      type: 'window',
+    })
+    expect(readDesktopScreenShareBroadcastSource()).toEqual({
       label: screenShareSurfaceFallbackLabel('window'),
       surface: 'window',
     })

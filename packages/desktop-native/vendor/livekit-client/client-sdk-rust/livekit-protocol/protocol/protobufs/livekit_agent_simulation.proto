@@ -1,0 +1,231 @@
+// Copyright 2024 LiveKit, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package livekit;
+
+import "agent/livekit_agent_session.proto";
+import "google/protobuf/timestamp.proto";
+import "livekit_cloud_agent.proto";
+import "livekit_models.proto";
+
+option csharp_namespace = "LiveKit.Proto";
+option go_package = "github.com/livekit/protocol/livekit";
+option ruby_package = "LiveKit::Proto";
+
+message SimulationRunSummary {
+  int32 passed = 1;
+  int32 failed = 2;
+  string going_well = 3;
+  string to_improve = 4;
+  repeated Issue issues = 5;
+  map<string, livekit.agent.ChatContext> chat_history = 6;
+
+  message Issue {
+    string description = 1;
+    string suggestion = 2;
+    string label = 3;
+  }
+}
+
+message SimulationRun {
+  enum Status {
+    STATUS_PENDING_UPLOAD = 0;
+    STATUS_GENERATING = 1;
+    STATUS_RUNNING = 2;
+    STATUS_SUMMARIZING = 3;
+    STATUS_COMPLETED = 4;
+    STATUS_FAILED = 5;
+    STATUS_CANCELLED = 6;
+  }
+
+  message Job {
+    enum Status {
+      STATUS_PENDING = 0;
+      STATUS_RUNNING = 1;
+      STATUS_COMPLETED = 2;
+      STATUS_FAILED = 3;
+      STATUS_CANCELLED = 4;
+    }
+    string id = 1;
+    Status status = 2;
+    string instructions = 3;
+    string error = 4;
+    string agent_expectations = 5;
+    string label = 6;
+    repeated string tags = 7;
+    string room_name = 8;
+    reserved 9;  // was scenario_id (scenarios are no longer stored)
+    google.protobuf.Timestamp started_at = 10;
+    google.protobuf.Timestamp ended_at = 11;
+    string room_id = 12;
+    Usage usage = 13;
+
+    message Usage {
+      int32 text_turns_count = 1;
+      int32 audio_turns_count = 2;
+    }
+  }
+
+  message Create {
+    message Request {
+      reserved 3;  // was agent_description (input never consumed; description is derived from source)
+      reserved "agent_description";
+      string project_id = 1;
+      string agent_name = 2;
+      int32 num_simulations = 4;
+      string region = 6;
+
+      // When set, run these scenarios (loaded from a scenarios.yaml).
+      // When unset, generate num_simulations scenarios from the uploaded agent source.
+      optional ScenarioGroup scenario_group = 7;
+
+      // Maximum simulate jobs running in parallel for this run. Clamped to the
+      // project's concurrency quota; 0/unset uses the server default.
+      optional int32 concurrency = 8;
+
+      // Conversation mode for every job in this run; unspecified = TEXT.
+      SimulationMode mode = 9;
+    }
+    message Response {
+      string simulation_run_id = 1;
+      PresignedPostRequest presigned_post_request = 2;
+    }
+  }
+
+  message ConfirmSourceUpload {
+    message Request {
+      string project_id = 1;
+      string simulation_run_id = 2;
+      string code_entrypoint = 3;
+    }
+    message Response {}
+  }
+
+  message Get {
+    message Request {
+      string project_id = 1;
+      string simulation_run_id = 2;
+    }
+    message Response {
+      SimulationRun run = 1;
+    }
+  }
+
+  message List {
+    message Request {
+      string project_id = 1;
+      optional Status status = 2;
+      optional TokenPagination page_token = 3;
+    }
+    message Response {
+      repeated SimulationRun runs = 1;
+      TokenPagination next_page_token = 2;
+    }
+  }
+
+  message Cancel {
+    message Request {
+      string project_id = 1;
+      string simulation_run_id = 2;
+    }
+    message Response {}
+  }
+
+  string id = 1;
+  string project_id = 2;
+  Status status = 3;
+  string agent_description = 4;
+  string error = 5;
+  google.protobuf.Timestamp created_at = 6;
+  repeated Job jobs = 7;
+  SimulationRunSummary summary = 8;
+  string agent_name = 9;
+  ScenarioGroup scenario_group = 10;
+  google.protobuf.Timestamp ended_at = 11;
+  int32 job_count = 12;
+  int32 passed_count = 13;
+  int32 failed_count = 14;
+  int32 num_simulations = 15;
+  // Aggregate usage across all jobs in this run (sum of Job.usage).
+  Usage usage = 16;
+  // Maximum simulate jobs running in parallel for this run (0 = server default).
+  int32 concurrency = 17;
+  // Conversation mode for every job in this run; unspecified = TEXT.
+  SimulationMode mode = 18;
+
+  message Usage {
+    int32 text_turns_count = 1;
+    int32 audio_turns_count = 2;
+  }
+}
+
+// A single scenario, mirroring one entry in a scenarios.yaml file. Scenarios
+// are no longer stored server-side; the yaml file is the source of truth.
+message Scenario {
+  message CreateFromSession {
+    message Request {
+      string project_id = 1;
+      string room_id = 2;
+      string region = 3;
+    }
+    message Response {
+      Scenario scenario = 1;
+    }
+  }
+
+  string label = 1;
+  string instructions = 2;
+  string agent_expectations = 3;
+  // Set as participant attributes on the simulation participant's access token.
+  map<string, string> tags = 4;
+  // Arbitrary JSON-encoded object, surfaced to the agent under test as
+  // SimulationContext userdata (e.g. inputs and benchmark target state).
+  string userdata = 5;
+}
+
+// A named group of scenarios, mirroring a whole scenarios.yaml file.
+message ScenarioGroup {
+  string name = 1;
+  repeated Scenario scenarios = 2;
+}
+
+// How the simulated user interacts with the agent under test.
+enum SimulationMode {
+  SIMULATION_MODE_UNSPECIFIED = 0;
+  // The simulator chats over text streams (no audio).
+  SIMULATION_MODE_TEXT = 1;
+  // The simulator publishes/subscribes audio in the room.
+  SIMULATION_MODE_AUDIO = 2;
+}
+
+// Carried (protojson-encoded) in the simulation room's metadata so the agent
+// under test can read the scenario + run identity synchronously at connect.
+message SimulationDispatch {
+  string simulation_run_id = 1;
+  string job_id = 2;
+  Scenario scenario = 3;
+  SimulationMode mode = 4;
+}
+
+service AgentSimulation {
+  rpc CreateSimulationRun(SimulationRun.Create.Request) returns (SimulationRun.Create.Response);
+  rpc ConfirmSimulationSourceUpload(SimulationRun.ConfirmSourceUpload.Request) returns (SimulationRun.ConfirmSourceUpload.Response);
+  rpc GetSimulationRun(SimulationRun.Get.Request) returns (SimulationRun.Get.Response);
+  rpc ListSimulationRuns(SimulationRun.List.Request) returns (SimulationRun.List.Response);
+  rpc CancelSimulationRun(SimulationRun.Cancel.Request) returns (SimulationRun.Cancel.Response);
+
+  rpc CreateScenarioFromSession(Scenario.CreateFromSession.Request) returns (Scenario.CreateFromSession.Response);
+}

@@ -11,12 +11,16 @@ import type {
 import { getChannelLabel, isDmChannel, isTextChannel } from './channel-label'
 import {
   isIncomingVoiceCall,
-  isVoiceCallDismissed,
+  isOutgoingVoiceCall,
   isVoiceCallRingingDismissed,
 } from './voice-call-utils'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
-import { canViewChannel } from '#/lib/permissions'
-import type { SyncState } from './types'
+import {
+  isServerVoiceChannel,
+  type ServerTextChannel,
+} from '#/lib/channel-voice'
+import { hasPermissionBit } from '#/lib/permission-bits'
+import { ServerPermission } from '#/lib/server-permissions'
+import type { ChannelUnreadState, SyncState } from './types'
 
 export const EMPTY_CHANNELS: Channel[] = []
 export const EMPTY_MESSAGES: Message[] = []
@@ -101,21 +105,21 @@ function isCurrentUserInChannelVoice(
   )
 }
 
-function hasIncomingVoiceCall(
+function hasRelevantVoiceCall(
   state: SyncState,
   channelId: string,
   currentUserId?: string,
 ) {
   const call = state.voiceCalls[channelId]
-  if (isVoiceCallDismissed(call, state.dismissedVoiceCallKeys)) {
-    return false
-  }
   if (call?.phase === 'active') return true
   if (isVoiceCallRingingDismissed(call, state.dismissedVoiceCallKeys)) {
     return false
   }
 
-  return isIncomingVoiceCall(call, currentUserId)
+  return (
+    isIncomingVoiceCall(call, currentUserId) ||
+    isOutgoingVoiceCall(call, currentUserId)
+  )
 }
 
 export function shouldShowDmChannelInRail(
@@ -123,10 +127,12 @@ export function shouldShowDmChannelInRail(
   channel: Channel,
   currentUserId?: string,
 ) {
+  const unread = state.unreads[channel._id]
   return (
-    isChannelUnread(channel, state.unreads[channel._id]) ||
+    isChannelUnread(channel, unread) ||
+    channelUnreadMentionCount(unread) > 0 ||
     isCurrentUserInChannelVoice(state, channel._id, currentUserId) ||
-    hasIncomingVoiceCall(state, channel._id, currentUserId)
+    hasRelevantVoiceCall(state, channel._id, currentUserId)
   )
 }
 
@@ -154,8 +160,9 @@ const serverChannelsListCache = new Map<
   {
     server: Server | undefined
     channels: SyncState['channels']
+    authorization: SyncState['authorization']
     userId: string | undefined
-    list: Channel[]
+    list: ServerTextChannel[]
   }
 >()
 
@@ -163,13 +170,14 @@ export function listServerChannels(
   state: SyncState,
   serverId: string,
   userId?: string,
-): Channel[] {
+): ServerTextChannel[] {
   const server = state.servers[serverId]
   const cached = serverChannelsListCache.get(serverId)
   if (
     cached &&
     cached.server === server &&
     cached.channels === state.channels &&
+    cached.authorization === state.authorization &&
     cached.userId === userId
   ) {
     return cached.list
@@ -183,7 +191,7 @@ export function listServerChannels(
       channel.server === serverId,
   )
 
-  let list: Channel[]
+  let list: ServerTextChannel[]
   if (!server?.channels?.length) {
     list = channels.sort((a, b) => {
       const aVoice = isServerVoiceChannel(a)
@@ -205,15 +213,18 @@ export function listServerChannels(
   }
 
   if (userId && server) {
-    const member = state.members[`${serverId}:${userId}`]
     list = list.filter((channel) =>
-      canViewChannel(server, channel, member, userId),
+      hasPermissionBit(
+        state.authorization.channels[channel._id] ?? 0,
+        ServerPermission.ViewChannel,
+      ),
     )
   }
 
   serverChannelsListCache.set(serverId, {
     server,
     channels: state.channels,
+    authorization: state.authorization,
     userId,
     list,
   })
@@ -250,12 +261,19 @@ export function getChannelLastMessageId(channel: Channel): string | null {
 
 export function isChannelUnread(
   channel: Channel,
-  lastReadId: string | null | undefined,
+  unread: ChannelUnreadState | undefined,
 ): boolean {
   const lastMessageId = getChannelLastMessageId(channel)
   if (!lastMessageId) return false
+  const lastReadId = unread?.lastId
   if (!lastReadId) return true
   return lastReadId.localeCompare(lastMessageId) < 0
+}
+
+export function channelUnreadMentionCount(
+  unread: ChannelUnreadState | undefined,
+) {
+  return unread?.mentions.length ?? 0
 }
 
 function sortUsers(users: User[]) {
@@ -327,7 +345,9 @@ export function memberRoleEntries(
   }
 
   return entries.sort(
-    (a, b) => (server.roles?.[b.id]?.rank ?? 0) - (server.roles?.[a.id]?.rank ?? 0),
+    (a, b) =>
+      (server.roles?.[a.id]?.rank ?? Number.MAX_SAFE_INTEGER) -
+      (server.roles?.[b.id]?.rank ?? Number.MAX_SAFE_INTEGER),
   )
 }
 

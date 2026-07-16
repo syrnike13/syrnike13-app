@@ -85,7 +85,7 @@ describe('memberHoistRole', () => {
     })
 
     const role = memberHoistRole(server, makeMember('user-1', ['mod', 'admin']))
-    expect(role?.id).toBe('admin')
+    expect(role?.id).toBe('mod')
   })
 })
 
@@ -109,7 +109,7 @@ describe('memberDisplayColour', () => {
     })
 
     expect(memberDisplayColour(server, makeMember('user-1', ['low', 'high']))).toBe(
-      '#112233',
+      '#00ff00',
     )
   })
 })
@@ -150,13 +150,13 @@ describe('groupServerMembersForSidebar', () => {
     ])
     expect(sections[0]).toMatchObject({
       type: 'role',
-      role: { id: 'admin' },
-      members: [{ user: { _id: 'alice' } }],
+      role: { id: 'member' },
+      members: [{ user: { _id: 'bob' } }],
     })
     expect(sections[1]).toMatchObject({
       type: 'role',
-      role: { id: 'member' },
-      members: [{ user: { _id: 'bob' } }],
+      role: { id: 'admin' },
+      members: [{ user: { _id: 'alice' } }],
     })
     expect(sections[2]).toMatchObject({
       type: 'online',

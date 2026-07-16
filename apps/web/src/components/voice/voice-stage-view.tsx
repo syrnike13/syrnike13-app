@@ -10,7 +10,10 @@ import {
 import { MessageSquareIcon, ChevronDownIcon } from '#/components/icons'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import type { Channel, User } from '@syrnike13/api-types'
-import type { VoiceCallState } from '#/features/sync/voice-types'
+import type {
+  UserVoiceState,
+  VoiceCallState,
+} from '#/features/sync/voice-types'
 import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
@@ -39,7 +42,9 @@ import {
   resolveStageLayoutMode,
   type VoiceStageLayoutMode,
 } from '#/features/voice/voice-stage-mode'
-import { useVoice, type VoiceStageMediaItem } from '#/features/voice/voice-context'
+import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import {
   filterStageVideoMediaItems,
@@ -60,7 +65,7 @@ import {
 } from '#/features/voice/use-voice-stage-chrome-visible'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
-import { canInviteToChannel } from '#/lib/permissions'
+import { canInviteToChannel } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type VoiceStageDmHeader = {
@@ -88,6 +93,7 @@ type VoiceStageViewProps = {
 }
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
+const EMPTY_STAGE_MEDIA_ITEMS: readonly VoiceStageMediaItem[] = []
 
 export function VoiceStageView({
   channel,
@@ -105,7 +111,8 @@ export function VoiceStageView({
   headerTrailing,
 }: VoiceStageViewProps) {
   const auth = useAuth()
-  const voice = useVoice()
+  const voiceSession = useVoiceSession()
+  const voiceStage = useVoiceStage()
   const channelId = channel._id
   const users = useSyncStore((s) => s.users)
   const server = useSyncStore((s) =>
@@ -121,9 +128,9 @@ export function VoiceStageView({
   const storeParticipants = useSyncStore((s) =>
     getChannelVoiceParticipants(s, channelId, auth.user?._id),
   )
-  const inVoiceSession = isVoiceSessionInChannel(voice, channelId)
-  const inThisVoiceCall = voice.status === 'connected' && inVoiceSession
-  const connecting = voice.status === 'connecting' && inVoiceSession
+  const inVoiceSession = isVoiceSessionInChannel(voiceSession, channelId)
+  const inThisVoiceCall = voiceSession.status === 'connected' && inVoiceSession
+  const connecting = voiceSession.status === 'connecting' && inVoiceSession
   const isDmVoiceStage =
     channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
   const resolvedJoinLabel =
@@ -170,14 +177,17 @@ export function VoiceStageView({
     channelId,
     storeParticipants,
     inVoiceSession ? auth.user?._id : undefined,
-    inVoiceSession ? voice.micPublishing : undefined,
-    inVoiceSession ? voice.deafened : undefined,
+    inVoiceSession ? voiceSession.micPublishing : undefined,
+    inVoiceSession ? voiceSession.deafened : undefined,
   )
   const participantsById = useMemo(
     () => new Map(participants.map((participant) => [participant.id, participant])),
     [participants],
   )
-  const mediaItems = voice.stageMediaItems
+  const mediaItems =
+    voiceStage.stageChannelId === channelId
+      ? voiceStage.stageMediaItems
+      : EMPTY_STAGE_MEDIA_ITEMS
   const gridMediaItems = useMemo(
     () => sortStageMediaItemsForGrid(mediaItems),
     [mediaItems],
@@ -201,27 +211,30 @@ export function VoiceStageView({
     participants.length > 0
 
   useEffect(() => {
-    if (!voice.stageFocusNonce) return
-    const mediaId = voice.focusedMediaId
+    if (!voiceStage.stageFocusNonce) return
+    const mediaId = voiceStage.focusedMediaId
     if (!mediaId || !mediaIds.includes(mediaId)) return
     setRequestedMode('focus')
-  }, [mediaIds, voice.focusedMediaId, voice.stageFocusNonce])
+  }, [mediaIds, voiceStage.focusedMediaId, voiceStage.stageFocusNonce])
 
   const layoutMode = resolveStageLayoutMode({
     requestedMode,
-    focusedMediaId: voice.focusedMediaId,
+    focusedMediaId: voiceStage.focusedMediaId,
     visibleMediaIds: mediaIds,
   })
   const focusedItem =
     layoutMode === 'focus'
-      ? mediaItems.find((item) => item.id === voice.focusedMediaId) ?? null
+      ? mediaItems.find((item) => item.id === voiceStage.focusedMediaId) ?? null
       : null
   const focusedMediaHeader = useMemo(() => {
     if (!focusedItem) return null
     const kindLabel = stageMediaKindLabel(focusedItem.kind)
     if (!kindLabel) return null
 
-    const isLocal = isVoiceLocalUserId(focusedItem.userId, auth.user?._id)
+    const isLocal = isVoiceLocalUserId(
+      focusedItem.userId,
+      auth.user?._id ?? null,
+    )
     const user =
       users[focusedItem.userId] ?? (isLocal ? auth.user ?? undefined : undefined)
     const participant = participantsById.get(focusedItem.userId)
@@ -242,39 +255,57 @@ export function VoiceStageView({
     !mobileDrawer && (participants.length > 0 || mediaItems.length > 0)
   const canInvite =
     server && channel.channel_type === 'TextChannel'
-      ? canInviteToChannel(server, channel, member, auth.user?._id)
+      ? canInviteToChannel(
+          server,
+          channel,
+          member,
+          auth.user?._id,
+        )
       : false
   const showInviteSlot =
     canInvite &&
     layoutMode === 'grid' &&
-    !voice.stageFullscreen &&
+    !voiceStage.stageFullscreen &&
     shouldShowVoiceInviteSlot(participants.length)
+  const showEmptyStage =
+    participants.length === 0 &&
+    mediaItems.length === 0 &&
+    !(isDmVoiceStage && voiceCall)
+  const showRemoteJoinPreview =
+    useAvatarRosterLayout &&
+    !inThisVoiceCall &&
+    !connecting &&
+    !isDmVoiceStage
+  const showCenteredJoin =
+    !inThisVoiceCall &&
+    !connecting &&
+    (showEmptyStage || showRemoteJoinPreview)
 
   const focusMedia = useCallback(
     (mediaId: string) => {
       const next = nextStageLayoutModeForMediaClick({
         clickedMediaId: mediaId,
         currentMode: layoutMode,
-        focusedMediaId: voice.focusedMediaId,
+        focusedMediaId: voiceStage.focusedMediaId,
       })
-      voice.setFocusedMediaId(next.focusedMediaId)
+      voiceStage.setFocusedMediaId(next.focusedMediaId)
       setRequestedMode(next.mode)
     },
-    [layoutMode, voice],
+    [layoutMode, voiceStage],
   )
 
   useEffect(() => {
-    if (!voice.stageFullscreen) return
+    if (!voiceStage.stageFullscreen) return
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        voice.toggleStageFullscreen()
+        voiceStage.toggleStageFullscreen()
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [voice.stageFullscreen, voice])
+  }, [voiceStage])
 
   const closePopout = useCallback(() => {
     const win = popoutWindowRef.current
@@ -295,8 +326,8 @@ export function VoiceStageView({
     }
     if (!canToggleStageFullscreen) return
 
-    if (voice.stageFullscreen) {
-      voice.toggleStageFullscreen()
+    if (voiceStage.stageFullscreen) {
+      voiceStage.toggleStageFullscreen()
     }
 
     const childWindow = window.open(
@@ -321,7 +352,7 @@ export function VoiceStageView({
     closePopout,
     popoutOpen,
     popoutWindow,
-    voice,
+    voiceStage,
   ])
 
   const resolveParticipantDisplayName = useCallback(
@@ -336,7 +367,7 @@ export function VoiceStageView({
         participants={options?.rosterParticipants ?? participants}
         users={users}
         currentUser={auth.user}
-        speakingUserIds={voice.speakingUserIds}
+        speakingUserIds={voiceSession.speakingUserIds}
         displayName={resolveParticipantDisplayName}
         dimmedUserId={
           connecting && auth.user?._id ? auth.user._id : undefined
@@ -352,7 +383,7 @@ export function VoiceStageView({
       participants,
       resolveParticipantDisplayName,
       users,
-      voice.speakingUserIds,
+      voiceSession.speakingUserIds,
     ],
   )
 
@@ -362,7 +393,7 @@ export function VoiceStageView({
       variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
       onStreamAspectRatioChange?: (aspectRatio: number) => void,
     ) => {
-      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id)
+      const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id ?? null)
       return (
         <StageMediaTile
           key={item.id}
@@ -378,11 +409,11 @@ export function VoiceStageView({
           speaking={
             inThisVoiceCall &&
             item.kind !== 'screen' &&
-            voice.speakingUserIds.has(item.userId)
+            voiceSession.speakingUserIds.has(item.userId)
           }
           variant={variant}
           onFocus={focusMedia}
-          onSetSubscribed={voice.setStageMediaSubscribed}
+          onSetSubscribed={voiceStage.setStageMediaSubscribed}
           onStreamAspectRatioChange={onStreamAspectRatioChange}
         />
       )
@@ -394,8 +425,8 @@ export function VoiceStageView({
       inThisVoiceCall,
       participantsById,
       users,
-      voice.setStageMediaSubscribed,
-      voice.speakingUserIds,
+      voiceStage.setStageMediaSubscribed,
+      voiceSession.speakingUserIds,
     ],
   )
 
@@ -405,15 +436,17 @@ export function VoiceStageView({
   ) => (
     <div
       ref={surfaceRef}
+      data-voice-stage-surface={presentation}
       className={cn(
+        // VoiceStage is a media canvas: its surface stays black in every theme.
         'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-black text-white',
         presentation === 'popout' && 'h-[100dvh] w-full',
         presentation === 'embedded' && 'h-full min-h-0 flex-1',
         presentation === 'popout' &&
-          voice.stageFullscreen &&
+          voiceStage.stageFullscreen &&
           'fixed inset-0 z-[50]',
         presentation === 'embedded' &&
-          voice.stageFullscreen &&
+          voiceStage.stageFullscreen &&
           !popoutOpen &&
           !mobileDrawer &&
           'fixed inset-0 z-[300]',
@@ -440,8 +473,24 @@ export function VoiceStageView({
               displayName={resolveParticipantDisplayName}
             />
           ) : (
-            <EmptyVoiceStage canInvite={canInvite} />
+            <EmptyVoiceStage
+              title={title}
+              joinLabel={resolvedJoinLabel ?? 'Войти'}
+              onJoin={() => void voiceSession.join(channelId)}
+            />
           )
+        ) : showRemoteJoinPreview ? (
+          <VoiceStageJoinPreview
+            title={title}
+            participants={participants}
+            users={users}
+            currentUser={auth.user}
+            displayName={resolveParticipantDisplayName}
+            joinLabel={
+              resolvedJoinLabel ?? 'Присоединиться к голосовому каналу'
+            }
+            onJoin={() => void voiceSession.join(channelId)}
+          />
         ) : focusedItem ? (
           <VoiceStageFocusStage
             focusedItem={focusedItem}
@@ -634,7 +683,7 @@ export function VoiceStageView({
           voiceStageChromeMotion(chromeVisible, 'bottom'),
         )}
       >
-        {mobileDrawer ? (
+        {showCenteredJoin ? null : mobileDrawer ? (
           <VoiceStageControls
             channelId={channelId}
             inCall={inThisVoiceCall}
@@ -677,9 +726,9 @@ export function VoiceStageView({
                   onClick={toggleStagePopout}
                 />
                 <VoiceStageFullscreenButton
-                  active={voice.stageFullscreen}
+                  active={voiceStage.stageFullscreen}
                   disabled={!canToggleStageFullscreen}
-                  onClick={voice.toggleStageFullscreen}
+                  onClick={voiceStage.toggleStageFullscreen}
                 />
               </div>
             </div>
@@ -760,7 +809,7 @@ function VoiceStageWaitingCall({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-      <div className="rounded-full ring-2 ring-[#23a559] ring-offset-2 ring-offset-black">
+      <div className="rounded-full ring-2 ring-chart-3 ring-offset-2 ring-offset-background">
         <UserAvatar
           user={counterpart}
           className="size-28 sm:size-32 md:size-36"
@@ -782,15 +831,106 @@ function VoiceStageWaitingCall({
   )
 }
 
-function EmptyVoiceStage({ canInvite }: { canInvite: boolean }) {
+function EmptyVoiceStage({
+  title,
+  joinLabel,
+  onJoin,
+}: {
+  title: string
+  joinLabel: string
+  onJoin: () => void
+}) {
   return (
-    <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 text-center">
-      <p className="text-lg font-semibold">Никого нет в канале</p>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        {canInvite
-          ? 'Подключитесь к голосу или пригласите участников.'
-          : 'Подключитесь к голосу, чтобы начать разговор.'}
-      </p>
+    <div className="flex min-h-[min(50vh,20rem)] flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+      <h2 className="max-w-md truncate text-2xl font-bold">{title}</h2>
+      <p className="text-sm text-muted-foreground">В канале никого нет</p>
+      <Button type="button" size="lg" className="mt-2" onClick={onJoin}>
+        {joinLabel}
+      </Button>
+    </div>
+  )
+}
+
+function additionalParticipantLabel(count: number) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return `${count} участник`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} участника`
+  }
+  return `${count} участников`
+}
+
+function VoiceStageJoinPreview({
+  title,
+  participants,
+  users,
+  currentUser,
+  displayName,
+  joinLabel,
+  onJoin,
+}: {
+  title: string
+  participants: readonly UserVoiceState[]
+  users: Record<string, User | undefined>
+  currentUser?: User | null
+  displayName: (userId: string) => string
+  joinLabel: string
+  onJoin: () => void
+}) {
+  const visibleParticipants = participants.slice(0, 4)
+  const hiddenParticipantCount = participants.length - visibleParticipants.length
+  const firstParticipantName = displayName(participants[0].id)
+  const status =
+    participants.length === 1
+      ? `${firstParticipantName} сейчас в голосовом чате`
+      : `${firstParticipantName} и ещё ${additionalParticipantLabel(
+          participants.length - 1,
+        )} сейчас в голосовом чате`
+
+  return (
+    <div className="grid min-h-[min(50vh,24rem)] flex-1 place-items-center px-4 text-center">
+      <div className="flex translate-y-3 flex-col items-center gap-4">
+        <div className="grid h-24 w-44 place-items-center rounded-xl bg-muted/80 px-5">
+          <ul
+            className="flex -space-x-3"
+            aria-label="Участники голосового канала"
+          >
+            {visibleParticipants.map((participant) => {
+              const user =
+                users[participant.id] ??
+                (participant.id === currentUser?._id
+                  ? currentUser ?? undefined
+                  : undefined)
+              return (
+                <li key={participant.id} title={displayName(participant.id)}>
+                  <UserAvatar
+                    user={user}
+                    className="size-12 ring-2 ring-muted"
+                    fallbackClassName="size-12 text-sm"
+                    showPresence={false}
+                  />
+                </li>
+              )
+            })}
+            {hiddenParticipantCount > 0 ? (
+              <li
+                className="relative grid size-12 place-items-center rounded-full bg-accent text-sm font-semibold text-accent-foreground ring-2 ring-muted"
+                aria-label={`И ещё ${additionalParticipantLabel(hiddenParticipantCount)}`}
+              >
+                +{hiddenParticipantCount}
+              </li>
+            ) : null}
+          </ul>
+        </div>
+        <div className="space-y-1.5">
+          <h2 className="max-w-md truncate text-3xl font-bold">{title}</h2>
+          <p className="max-w-lg text-sm text-muted-foreground">{status}</p>
+        </div>
+        <Button type="button" size="lg" className="mt-1" onClick={onJoin}>
+          {joinLabel}
+        </Button>
+      </div>
     </div>
   )
 }

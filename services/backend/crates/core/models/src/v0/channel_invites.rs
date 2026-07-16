@@ -1,5 +1,8 @@
 use super::{Channel, File, Member, Server, User};
 
+#[cfg(feature = "validator")]
+use validator::Validate;
+
 auto_derived!(
     /// Invite
     #[serde(tag = "type")]
@@ -15,6 +18,20 @@ auto_derived!(
             creator: String,
             /// Id of the server channel this invite points to
             channel: String,
+            /// Invite creation time in milliseconds since Unix epoch
+            created_at: u64,
+            /// Invite expiry time in milliseconds since Unix epoch
+            expires_at: Option<u64>,
+            /// Maximum number of successful joins
+            max_uses: Option<u64>,
+            /// Number of successful joins through this invite
+            uses: u64,
+            /// Invite revocation time in milliseconds since Unix epoch
+            revoked_at: Option<u64>,
+            /// Id of user who revoked this invite
+            revoked_by: Option<String>,
+            /// Whether membership should be temporary
+            temporary: bool,
         },
         /// Invite to a group channel
         Group {
@@ -25,7 +42,37 @@ auto_derived!(
             creator: String,
             /// Id of the group channel this invite points to
             channel: String,
+            /// Invite creation time in milliseconds since Unix epoch
+            created_at: u64,
+            /// Invite expiry time in milliseconds since Unix epoch
+            expires_at: Option<u64>,
+            /// Maximum number of successful joins
+            max_uses: Option<u64>,
+            /// Number of successful joins through this invite
+            uses: u64,
+            /// Invite revocation time in milliseconds since Unix epoch
+            revoked_at: Option<u64>,
+            /// Id of user who revoked this invite
+            revoked_by: Option<String>,
+            /// Whether membership should be temporary
+            temporary: bool,
         },
+    }
+
+    /// Information for new channel invite
+    #[cfg_attr(feature = "validator", derive(Validate))]
+    pub struct DataCreateInvite {
+        /// Invite lifetime in seconds. Zero means no expiry.
+        #[cfg_attr(feature = "validator", validate(range(min = 0, max = 604800)))]
+        pub max_age_seconds: Option<u64>,
+        /// Maximum number of successful joins. Zero means unlimited.
+        #[cfg_attr(feature = "validator", validate(range(min = 0, max = 100)))]
+        pub max_uses: Option<u64>,
+        /// Whether membership should be temporary
+        pub temporary: Option<bool>,
+        /// Audit log reason
+        #[cfg_attr(feature = "validator", validate(length(max = 512)))]
+        pub reason: Option<String>,
     }
 
     /// Public invite response

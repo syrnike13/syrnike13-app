@@ -37,6 +37,8 @@ export function ServerChannelSearchPopover({
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
+  const channels = useSyncStore((s) => s.channels)
+  const server = useSyncStore((s) => s.servers[serverId])
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<ServerMessageSearchHit[]>([])
@@ -105,7 +107,7 @@ export function ServerChannelSearchPopover({
         {variant === 'strip' ? (
           <button
             type="button"
-            className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+            className="gradient-surface-input flex h-8 w-full items-center gap-2 rounded-md border border-input bg-muted/40 px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
           >
             <SearchIcon className="size-4 shrink-0" />
             <span className="truncate">Поиск</span>
@@ -172,7 +174,10 @@ export function ServerChannelSearchPopover({
                   </p>
                   {hit.message.content ? (
                     <div className="line-clamp-2 text-sm">
-                      {renderMessageContent(hit.message.content, users, emojis)}
+                      {renderMessageContent(hit.message.content, users, emojis, {
+                        channels,
+                        roles: server?.roles,
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm italic text-muted-foreground">

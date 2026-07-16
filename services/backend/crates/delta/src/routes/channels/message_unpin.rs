@@ -25,12 +25,15 @@ pub async fn message_unpin(
         return Err(create_error!(NotFound));
     }
 
-    if !matches!(channel, Channel::DirectMessage { .. }) {
-        let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
-        calculate_channel_permissions(&mut query)
-            .await
-            .throw_if_lacking_channel_permission(ChannelPermission::ManageMessages)?;
-    }
+    let required_permission = if matches!(&channel, Channel::DirectMessage { .. }) {
+        ChannelPermission::ViewChannel
+    } else {
+        ChannelPermission::ManageMessages
+    };
+    let mut query = DatabasePermissionQuery::new(db, &user).channel(&channel);
+    calculate_channel_permissions(&mut query)
+        .await
+        .throw_if_lacking_channel_permission(required_permission)?;
 
     let mut message = msg.as_message_in_channel(db, channel.id()).await?;
 
@@ -94,7 +97,7 @@ mod test {
 
         let channel = &channels[0];
 
-        Member::create(&harness.db, &server, &user, Some(channels.clone()))
+        Member::create(&harness.db, &server, &user, Some(channels.clone()), false)
             .await
             .expect("Failed to create member");
         let member = Reference::from_unchecked(&user.id)

@@ -6,6 +6,7 @@ use base64::{prelude::BASE64_STANDARD, Engine};
 
 use crate::EncryptionRepository;
 
+#[derive(Clone)]
 pub struct EncryptionKey {
     key: String,
 }

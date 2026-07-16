@@ -36,6 +36,7 @@ rocket = { workspace = true, optional = true }
 # Serialisation
 syrnike_optional_struct = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+serde_json = { workspace = true }
 iso8601-timestamp = { workspace = true, features = ["schema", "bson"] }
 
 # Spec Generation

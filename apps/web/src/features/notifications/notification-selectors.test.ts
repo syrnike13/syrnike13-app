@@ -1,7 +1,8 @@
 import type { Channel, User } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import type { SyncState } from '#/features/sync/types'
+import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
+import { ChannelPermission } from '#/features/authorization/authorization'
 
 import {
   selectChannelNotificationBadge,
@@ -53,9 +54,17 @@ function serverChannel(
   } as Channel
 }
 
+function unread(
+  lastId: string | null,
+  mentions: string[] = [],
+): ChannelUnreadState {
+  return { lastId, mentions }
+}
+
 function state(overrides: Partial<SyncState> = {}): SyncState {
   return {
     ready: true,
+    authorization: { revision: 0, global: 0, servers: {}, channels: {}, users: {} },
     selectedServerId: null,
     servers: {},
     channels: {},
@@ -95,7 +104,7 @@ describe('notification selectors', () => {
     })
   })
 
-  it('counts incoming friend requests and unread personal chats for home', () => {
+  it('counts only incoming friend requests for home (unread DMs live in people rail)', () => {
     const syncState = state({
       users: {
         [CURRENT_USER_ID]: user(CURRENT_USER_ID, 'User'),
@@ -115,14 +124,39 @@ describe('notification selectors', () => {
         ),
       },
       unreads: {
-        'dm-unread': 'message-1',
-        'dm-read': 'message-2',
-        'server-unread': 'message-1',
+        'dm-unread': unread('message-1'),
+        'dm-read': unread('message-2'),
+        'server-unread': unread('message-1'),
       },
     })
 
     expect(selectHomeNotificationBadge(syncState, CURRENT_USER_ID)).toEqual({
-      count: 3,
+      count: 2,
+      hasUnread: true,
+      urgent: false,
+    })
+  })
+
+  it('keeps personal channel notifications out of the home badge', () => {
+    const syncState = state({
+      users: {
+        [CURRENT_USER_ID]: user(CURRENT_USER_ID, 'User'),
+        'friend-a': user('friend-a', 'Friend'),
+        'friend-b': user('friend-b', 'Friend'),
+        'request-a': user('request-a', 'Incoming'),
+      },
+      channels: {
+        'dm-mention': dmChannel('dm-mention', 'friend-a', 'message-3'),
+        'dm-unread': dmChannel('dm-unread', 'friend-b', 'message-2'),
+      },
+      unreads: {
+        'dm-mention': unread('message-3', ['message-2', 'message-3']),
+        'dm-unread': unread('message-1'),
+      },
+    })
+
+    expect(selectHomeNotificationBadge(syncState, CURRENT_USER_ID)).toEqual({
+      count: 1,
       hasUnread: true,
       urgent: false,
     })
@@ -130,6 +164,17 @@ describe('notification selectors', () => {
 
   it('counts unread server channels for a server badge', () => {
     const syncState = state({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: {
+          read: ChannelPermission.ViewChannel,
+          'unread-a': ChannelPermission.ViewChannel,
+          'unread-b': ChannelPermission.ViewChannel,
+        },
+        users: {},
+      },
       servers: {
         'server-1': {
           _id: 'server-1',
@@ -150,10 +195,10 @@ describe('notification selectors', () => {
         ),
       },
       unreads: {
-        read: 'message-2',
-        'unread-a': 'message-1',
-        'unread-b': null,
-        'other-server-unread': null,
+        read: unread('message-2'),
+        'unread-a': unread('message-1'),
+        'unread-b': unread(null),
+        'other-server-unread': unread(null),
       },
     })
 
@@ -166,6 +211,49 @@ describe('notification selectors', () => {
     })
   })
 
+  it('marks server badges urgent when visible channels contain mentions', () => {
+    const syncState = state({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: {
+          'mention-a': ChannelPermission.ViewChannel,
+          'mention-b': ChannelPermission.ViewChannel,
+          unread: ChannelPermission.ViewChannel,
+        },
+        users: {},
+      },
+      servers: {
+        'server-1': {
+          _id: 'server-1',
+          name: 'Server One',
+          owner: CURRENT_USER_ID,
+          channels: ['mention-a', 'mention-b', 'unread'],
+          default_permissions: 0,
+        },
+      },
+      channels: {
+        'mention-a': serverChannel('mention-a', 'server-1', 'message-2'),
+        'mention-b': serverChannel('mention-b', 'server-1', 'message-3'),
+        unread: serverChannel('unread', 'server-1', 'message-4'),
+      },
+      unreads: {
+        'mention-a': unread('message-1', ['message-2']),
+        'mention-b': unread('message-1', ['message-2', 'message-3']),
+        unread: unread('message-1'),
+      },
+    })
+
+    expect(
+      selectServerNotificationBadge(syncState, 'server-1', CURRENT_USER_ID),
+    ).toEqual({
+      count: 3,
+      hasUnread: true,
+      urgent: true,
+    })
+  })
+
   it('returns a channel badge from unread state', () => {
     const channel = serverChannel('unread', 'server-1', 'message-2')
     const syncState = state({
@@ -173,7 +261,7 @@ describe('notification selectors', () => {
         unread: channel,
       },
       unreads: {
-        unread: 'message-1',
+        unread: unread('message-1'),
       },
     })
 
@@ -181,6 +269,24 @@ describe('notification selectors', () => {
       count: 1,
       hasUnread: true,
       urgent: false,
+    })
+  })
+
+  it('returns an urgent channel badge for mention unreads', () => {
+    const channel = serverChannel('mention', 'server-1', 'message-2')
+    const syncState = state({
+      channels: {
+        mention: channel,
+      },
+      unreads: {
+        mention: unread('message-1', ['message-2', 'message-3']),
+      },
+    })
+
+    expect(selectChannelNotificationBadge(syncState, channel)).toEqual({
+      count: 2,
+      hasUnread: true,
+      urgent: true,
     })
   })
 })

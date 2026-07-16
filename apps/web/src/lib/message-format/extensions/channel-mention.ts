@@ -20,12 +20,16 @@ export const ChannelMentionNode = Node.create({
     return [{ tag: 'span[data-channel-mention]' }]
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       'span',
       mergeAttributes(HTMLAttributes, { 'data-channel-mention': '' }),
-      0,
+      `<#${node.attrs.id ?? ''}>`,
     ]
+  },
+
+  renderText({ node }) {
+    return `<#${node.attrs.id ?? ''}>`
   },
 
   addNodeView() {

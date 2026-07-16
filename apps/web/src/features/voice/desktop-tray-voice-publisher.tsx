@@ -5,12 +5,12 @@ import { useSyncStore } from '#/features/sync/sync-store'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { usePlatform } from '#/platform/use-platform'
 
-import { useVoice } from './voice-context'
+import { useVoiceSession } from './voice-session-context'
 import { deriveDesktopTrayVoiceState } from './voice-tray-state'
 
 export function DesktopTrayVoicePublisher() {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const { desktop } = usePlatform()
 
   const localParticipant = useSyncStore((state) => {
@@ -23,7 +23,7 @@ export function DesktopTrayVoicePublisher() {
     () =>
       deriveDesktopTrayVoiceState({
         channelId: voice.channelId,
-        currentUserId: auth.user?._id,
+        currentUserId: auth.user?._id ?? null,
         localParticipant,
         speakingUserIds: voice.speakingUserIds,
       }),

@@ -17,6 +17,7 @@ mod root;
 mod safety;
 mod servers;
 mod sync;
+pub(crate) mod telemetry;
 mod users;
 mod voice_call_member_sync;
 mod webhooks;
@@ -44,6 +45,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/policy" => policy::routes(),
             "/push" => push::routes(),
             "/sync" => sync::routes(),
+            "/telemetry" => telemetry::routes(),
             "/webhooks" => webhooks::routes()
         };
     } else {
@@ -65,7 +67,8 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/onboard" => onboard::routes(),
             "/policy" => policy::routes(),
             "/push" => push::routes(),
-            "/sync" => sync::routes()
+            "/sync" => sync::routes(),
+            "/telemetry" => telemetry::routes()
         };
     }
 
@@ -168,7 +171,8 @@ fn custom_openapi_spec() -> OpenApi {
             "tags": [
               "Server Information",
               "Server Members",
-              "Server Permissions"
+              "Server Permissions",
+              "Server Audit Log"
             ]
           },
           {
@@ -331,6 +335,13 @@ fn custom_openapi_spec() -> OpenApi {
             Tag {
                 name: "Server Permissions".to_owned(),
                 description: Some("Manage permissions for servers".to_owned()),
+                ..Default::default()
+            },
+            Tag {
+                name: "Server Audit Log".to_owned(),
+                description: Some(
+                    "Inspect server moderation and administration audit events".to_owned(),
+                ),
                 ..Default::default()
             },
             Tag {

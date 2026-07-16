@@ -2,13 +2,14 @@ import type { DesktopOverlayState } from '@syrnike13/platform'
 
 import { HeadphoneOffIcon, MicOffIcon } from '#/components/icons'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
+import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { cn } from '#/lib/utils'
 
 export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
   if (!state.visible || !state.snapshot.active) return null
 
   return (
-    <main className="min-h-screen bg-transparent p-5 text-white">
+    <main className="h-screen overflow-hidden bg-transparent p-5 text-foreground">
       <section data-overlay-panel className="w-[296px] overflow-hidden">
         <div className="space-y-1">
           {state.snapshot.participants.map((participant) => (
@@ -16,7 +17,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
               key={participant.userId}
               data-participant-row
               className={cn(
-                'flex min-h-10 items-center gap-2 rounded-md px-1 py-1.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-opacity',
+                'flex min-h-10 items-center gap-2 rounded-md px-1 py-1 transition-opacity',
                 !participant.speaking && 'opacity-55',
               )}
             >
@@ -29,7 +30,7 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                 className={cn(
                   'size-8',
                   participant.speaking &&
-                    'ring-2 ring-[#23a559] ring-offset-2 ring-offset-[#111318]',
+                    'ring-2 ring-chart-3 ring-offset-2 ring-offset-background',
                 )}
               >
                 {participant.avatarUrl ? (
@@ -42,30 +43,33 @@ export function DesktopOverlayHud({ state }: { state: DesktopOverlayState }) {
                     draggable={false}
                   />
                 ) : null}
-                <AvatarFallback className="bg-[#5865f2] text-xs font-bold text-white">
+                <AvatarFallback className="bg-primary text-xs font-bold text-primary-foreground">
                   {initials(participant.displayName)}
                 </AvatarFallback>
               </Avatar>
-              <span
-                data-status-icons
-                className="flex shrink-0 items-center gap-1 text-white/80"
-              >
-                {participant.muted ? (
-                  <span title="Микрофон отключён">
-                    <MicOffIcon className="size-4" />
-                  </span>
-                ) : null}
-                {participant.deafened ? (
-                  <span title="Звук отключён">
-                    <HeadphoneOffIcon className="size-4" />
-                  </span>
-                ) : null}
-              </span>
-              <span
-                data-participant-name
-                className="min-w-0 flex-1 truncate text-sm font-semibold text-white/90"
-              >
-                {participant.displayName}
+              <span className="flex min-w-0 items-center gap-1 rounded-full bg-background/75 px-2 py-0.5 shadow-sm">
+                <span
+                  data-participant-name
+                  className="min-w-0 truncate text-sm font-semibold text-foreground"
+                >
+                  {participant.displayName}
+                </span>
+                <span
+                  data-status-icons
+                  className="flex shrink-0 items-center gap-1 text-muted-foreground"
+                >
+                  {participant.muted ? (
+                    <span title="Микрофон отключён">
+                      <MicOffIcon className="size-4" />
+                    </span>
+                  ) : null}
+                  {participant.deafened ? (
+                    <span title="Звук отключён">
+                      <HeadphoneOffIcon className="size-4" />
+                    </span>
+                  ) : null}
+                </span>
+                {participant.screensharing ? <VoiceOnAirBadge /> : null}
               </span>
             </div>
           ))}

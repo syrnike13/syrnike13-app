@@ -17,6 +17,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '#/components/ui/dialog'
+import { Input } from '#/components/ui/input'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import {
   buildCommandItems,
@@ -148,7 +149,11 @@ export function CommandPalette() {
     }
 
     const snapshot = syncStore.getState()
-    const channelIds = messageSearchChannelIds(snapshot, activeChannelId)
+    const channelIds = messageSearchChannelIds(
+      snapshot,
+      activeChannelId,
+      auth.user?._id,
+    )
     let cancelled = false
     const timer = window.setTimeout(() => {
       setSearchingMessages(true)
@@ -224,14 +229,14 @@ export function CommandPalette() {
           Поиск по каналам, друзьям и сообщениям. Ctrl+K
         </DialogDescription>
         <div className="flex items-center gap-3 border-b px-4">
-          <input
+          <Input
             ref={inputRef}
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Куда перейти? Кого найти?"
-            className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 md:text-sm [&::-webkit-search-cancel-button]:hidden"
+            className="h-12 flex-1 rounded-none border-0 px-0 shadow-none focus-visible:ring-0 [&::-webkit-search-cancel-button]:hidden"
           />
           <kbd className="hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">
             Esc

@@ -2,14 +2,14 @@ import type { ReactNode } from 'react'
 
 import { cn } from '#/lib/utils'
 
-/** Высота плавающей панели аккаунта (+ полоска войса) + отступ снизу. */
+/** Место под плавающую панель аккаунта и нижний отступ. */
 export const USER_PANEL_RESERVE_PX = 120
 
-/** Колонка списка каналов: было w-60 (240px), w-72 — 288px. */
-export const CHANNEL_SIDEBAR_WIDTH_CLASS = 'w-72' as const
+/** Место под Telegram-промо, панель аккаунта и нижний отступ. */
+export const USER_PANEL_WITH_TELEGRAM_PROMO_RESERVE_PX = 168
 
-/** Рельс + сайдбар; right-2 — такой же зазор, как у left-2 на обёртке. */
-export const USER_PANEL_SPAN_WIDTH = 'calc(3.5rem + 18rem - 0.5rem)'
+/** Колонка списка каналов: было w-60 (240px), w-72 — 288px. */
+export const CHANNEL_SIDEBAR_WIDTH_CLASS = 'w-82' as const
 
 type LeftSidebarStackProps = {
   children: ReactNode

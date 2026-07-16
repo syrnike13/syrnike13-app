@@ -9,11 +9,17 @@ import type {
   DesktopUpdateState,
   DesktopVersions,
   DesktopWindowPreferences,
+  DesktopObservabilitySettings,
 } from '@syrnike13/platform'
 
 const DEFAULT_WINDOW_PREFERENCES: DesktopWindowPreferences = {
   closeToTray: true,
   openAtLogin: true,
+}
+
+const DEFAULT_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
+  anonymousNativeMetrics: true,
+  nativeCrashReports: false,
 }
 
 export function SettingsDesktopPanel() {
@@ -25,6 +31,9 @@ export function SettingsDesktopPanel() {
   const [checkingUpdates, setCheckingUpdates] = useState(false)
   const [savingCloseToTray, setSavingCloseToTray] = useState(false)
   const [savingOpenAtLogin, setSavingOpenAtLogin] = useState(false)
+  const [observability, setObservability] =
+    useState<DesktopObservabilitySettings | null>(null)
+  const [savingObservability, setSavingObservability] = useState(false)
 
   useEffect(() => {
     if (!desktop) return
@@ -37,6 +46,9 @@ export function SettingsDesktopPanel() {
     })
     void desktop.updates.getState().then((value) => {
       if (!cancelled) setUpdateState(value)
+    })
+    void desktop.settings.load().then((value) => {
+      if (!cancelled) setObservability(value.observability)
     })
     const unsubscribe = desktop.updates.onStateChange((value) => {
       if (!cancelled) setUpdateState(value)
@@ -175,6 +187,42 @@ export function SettingsDesktopPanel() {
         </SettingsRow>
       </SettingsBlock>
 
+      <SettingsBlock
+        title="Конфиденциальность и диагностика"
+        description="Эти настройки относятся только к нативным функциям Windows: микрофону, демонстрации экрана, горячим клавишам и оверлею."
+      >
+        <SettingsRow
+          label="Анонимная статистика стабильности"
+          hint="Отправляет только агрегированные счётчики запусков, сбоев и времени операций. Не отправляет токены, адреса комнат, ID пользователей, названия окон и устройств, пути, содержимое аудио или экрана."
+        >
+          <Switch
+            checked={
+              observability?.anonymousNativeMetrics ??
+              DEFAULT_OBSERVABILITY_SETTINGS.anonymousNativeMetrics
+            }
+            disabled={!observability || savingObservability}
+            onCheckedChange={(checked) => {
+              void updateObservability({ anonymousNativeMetrics: checked })
+            }}
+          />
+        </SettingsRow>
+        <SettingsRow
+          label="Полные отчёты о сбоях"
+          hint="Могут содержать фрагменты памяти процесса. Выключены по умолчанию, отправляются только после вашего согласия. Изменение вступит в силу после перезапуска приложения."
+        >
+          <Switch
+            checked={
+              observability?.nativeCrashReports ??
+              DEFAULT_OBSERVABILITY_SETTINGS.nativeCrashReports
+            }
+            disabled={!observability || savingObservability}
+            onCheckedChange={(checked) => {
+              void updateObservability({ nativeCrashReports: checked })
+            }}
+          />
+        </SettingsRow>
+      </SettingsBlock>
+
       <SettingsBlock title="Активность">
         <SettingsRow
           label="Статус"
@@ -183,6 +231,28 @@ export function SettingsDesktopPanel() {
       </SettingsBlock>
     </div>
   )
+
+  async function updateObservability(
+    patch: Partial<DesktopObservabilitySettings>,
+  ) {
+    if (!desktop || !observability || savingObservability) return
+    const previous = observability
+    setObservability({ ...observability, ...patch })
+    setSavingObservability(true)
+    try {
+      const settings = await desktop.settings.update({ observability: patch })
+      setObservability(settings.observability)
+    } catch (error) {
+      setObservability(previous)
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось сохранить настройки диагностики',
+      )
+    } finally {
+      setSavingObservability(false)
+    }
+  }
 }
 
 function formatUpdateStatus(state: DesktopUpdateState | null) {
@@ -199,6 +269,8 @@ function formatUpdateStatus(state: DesktopUpdateState | null) {
       return `Загрузка… ${Math.round(state.percent)}%`
     case 'ready':
       return `Готово к установке: v${state.version}`
+    case 'installing':
+      return `Установка v${state.version}…`
     case 'error':
       return state.message
   }

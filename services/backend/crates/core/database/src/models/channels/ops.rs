@@ -36,6 +36,14 @@ pub trait AbstractChannels: Sync + Send {
         permissions: OverrideField,
     ) -> Result<()>;
 
+    /// Insert channel member permissions
+    async fn set_channel_user_permission(
+        &self,
+        channel_id: &str,
+        user_id: &str,
+        permissions: OverrideField,
+    ) -> Result<()>;
+
     // Update channel
     async fn update_channel(
         &self,

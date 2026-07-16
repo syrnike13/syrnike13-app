@@ -9,6 +9,7 @@ use syrnike_config::FilesS3;
 
 use crate::{EncryptionRepository, FileStorageRepository};
 
+#[derive(Clone)]
 pub struct S3Storage<ER: EncryptionRepository> {
     client: Client,
     encryption: ER,

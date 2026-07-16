@@ -1,0 +1,281 @@
+name: syrnike13-nightly
+
+x-json-log-rotation: &json-log-rotation
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  database:
+    image: docker.io/mongo
+    logging: *json-log-rotation
+    environment:
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
+    restart: always
+    volumes:
+      - ./data/db:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh localhost:27017/test --quiet --eval 'db.runCommand({ ping: 1 }).ok' >/dev/null"]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: docker.io/eqalpha/keydb
+    logging: *json-log-rotation
+    restart: always
+
+  rabbit:
+    image: docker.io/rabbitmq:4
+    logging: *json-log-rotation
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbituser
+      RABBITMQ_DEFAULT_PASS: rabbitpass
+    volumes:
+      - ./data/rabbit:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  minio:
+    image: docker.io/minio/minio
+    logging: *json-log-rotation
+    command: server /data
+    volumes:
+      - ./data/minio:/data
+    environment:
+      MINIO_ROOT_USER: minioautumn
+      MINIO_ROOT_PASSWORD: minioautumn
+      MINIO_DOMAIN: minio
+    networks:
+      default:
+        aliases:
+          - syrnike-uploads.minio
+          - attachments.minio
+          - avatars.minio
+          - backgrounds.minio
+          - icons.minio
+          - banners.minio
+          - emojis.minio
+    restart: always
+
+  api:
+    image: ghcr.io/syrnike13/app-api:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-api
+    restart: always
+
+  events:
+    image: ghcr.io/syrnike13/app-events:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-events
+    restart: always
+
+  autumn:
+    image: ghcr.io/syrnike13/app-file-server:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      createbuckets:
+        condition: service_started
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-autumn
+    restart: always
+
+  january:
+    image: ghcr.io/syrnike13/app-proxy:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-january
+    restart: always
+
+  gifbox:
+    image: ghcr.io/syrnike13/app-gifbox:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-gifbox
+    restart: always
+
+  crond:
+    image: ghcr.io/syrnike13/app-crond:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  pushd:
+    image: ghcr.io/syrnike13/app-pushd:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    restart: always
+
+  voice-ingress:
+    image: ghcr.io/syrnike13/app-voice-ingress:nightly
+    logging: *json-log-rotation
+    env_file: secrets.env
+    depends_on:
+      database:
+        condition: service_healthy
+      rabbit:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - type: bind
+        source: ./Syrnike.toml
+        target: /Syrnike.toml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-voice-ingress
+    restart: always
+
+  livekit:
+    image: ghcr.io/syrnike13/app-livekit-server:nightly
+    logging: *json-log-rotation
+    depends_on:
+      redis:
+        condition: service_started
+    command: --config /etc/livekit.yml
+    ports:
+      - "7882:7882"
+      - "3479:3479/udp"
+      - "30101-30200:30101-30200/udp"
+      - "50101-50200:50101-50200/udp"
+    volumes:
+      - type: bind
+        source: ./livekit.yml
+        target: /etc/livekit.yml
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-livekit
+    restart: always
+
+  createbuckets:
+    image: docker.io/minio/mc
+    logging: *json-log-rotation
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      while ! /usr/bin/mc ready minio; do
+        /usr/bin/mc alias set minio http://minio:9000 minioautumn minioautumn;
+        echo 'Waiting minio...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/syrnike-uploads;
+      exit 0;
+      "
+
+  web:
+    image: ghcr.io/syrnike13/app-web:nightly
+    logging: *json-log-rotation
+    env_file: .env.web
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-web
+    restart: always
+
+  admin:
+    image: ghcr.io/syrnike13/app-admin:nightly
+    logging: *json-log-rotation
+    env_file: .env.web
+    networks:
+      default:
+      edge:
+        aliases:
+          - syrnike13-nightly-admin
+    restart: always
+
+networks:
+  edge:
+    name: "${SYRNIKE_EDGE_NETWORK:-syrnike13-edge}"
+    external: true

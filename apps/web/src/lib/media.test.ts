@@ -4,6 +4,8 @@ import type { File } from '@syrnike13/api-types'
 import {
   attachmentOriginalUrl,
   isAnimatedGifFile,
+  serverBannerUrl,
+  serverIconUrl,
   userAvatarUrl,
   userBannerUrl,
 } from '#/lib/media'
@@ -94,6 +96,24 @@ describe('profile media urls', () => {
 
     expect(userBannerUrl(banner, { animated: true })).toBe(
       'https://syrnike13.ru/autumn/backgrounds/banner-1',
+    )
+  })
+})
+
+describe('server media urls', () => {
+  it('uses static previews for server icons and animated originals for banners when requested', () => {
+    const icon = imageFile()
+    const banner = imageFile({
+      _id: 'banner-1',
+      tag: 'backgrounds',
+      filename: 'server banner.gif',
+    })
+
+    expect(serverIconUrl(icon)).toBe(
+      'https://syrnike13.ru/autumn/avatars/file-1',
+    )
+    expect(serverBannerUrl(banner, { animated: true })).toBe(
+      'https://syrnike13.ru/autumn/backgrounds/banner-1/server%20banner.gif',
     )
   })
 })

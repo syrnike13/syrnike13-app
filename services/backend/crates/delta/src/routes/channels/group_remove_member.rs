@@ -1,6 +1,4 @@
-use syrnike_database::{
-    util::reference::Reference, voice::VoiceClient, Channel, Database, User, AMQP,
-};
+use syrnike_database::{util::reference::Reference, Channel, Database, User, AMQP};
 use syrnike_permissions::ChannelPermission;
 use syrnike_result::{create_error, Result};
 
@@ -18,7 +16,6 @@ use super::voice_call_cleanup::{
 #[delete("/<group_id>/recipients/<member_id>")]
 pub async fn remove_member(
     db: &State<Database>,
-    voice_client: &State<VoiceClient>,
     amqp: &State<AMQP>,
     user: User,
     group_id: Reference<'_>,
@@ -61,8 +58,7 @@ pub async fn remove_member(
         return Err(create_error!(InvalidOperation));
     };
 
-    remove_group_member_from_voice_call(db, voice_client, amqp, &channel, &removed_member_id)
-        .await?;
+    remove_group_member_from_voice_call(db, amqp, &channel, &removed_member_id).await?;
 
     Ok(EmptyResponse)
 }

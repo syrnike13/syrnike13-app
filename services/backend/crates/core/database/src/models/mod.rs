@@ -13,6 +13,7 @@ mod policy_changes;
 mod ratelimit_events;
 mod safety_reports;
 mod safety_snapshots;
+mod server_audit_logs;
 mod server_bans;
 mod server_members;
 mod servers;
@@ -34,6 +35,7 @@ pub use policy_changes::*;
 pub use ratelimit_events::*;
 pub use safety_reports::*;
 pub use safety_snapshots::*;
+pub use server_audit_logs::*;
 pub use server_bans::*;
 pub use server_members::*;
 pub use servers::*;
@@ -63,6 +65,7 @@ pub trait AbstractDatabase:
     + ratelimit_events::AbstractRatelimitEvents
     + safety_reports::AbstractReport
     + safety_snapshots::AbstractSnapshot
+    + server_audit_logs::AbstractServerAuditLogs
     + server_bans::AbstractServerBans
     + server_members::AbstractServerMembers
     + servers::AbstractServers

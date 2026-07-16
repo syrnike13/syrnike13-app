@@ -23,6 +23,7 @@ describe('createVoiceRoomOptions', () => {
   beforeEach(() => {
     vi.mocked(getSyrnikeDesktop).mockReturnValue(null)
     voicePreferenceStore.setVoiceGateEnabled(true)
+    voicePreferenceStore.setAutomaticGainControl(false)
   })
 
   it('captures microphone audio as mono voice', () => {
@@ -36,6 +37,12 @@ describe('createVoiceRoomOptions', () => {
 
     expect(options.audioCaptureDefaults?.noiseSuppression).toBe(false)
     expect(options.audioCaptureDefaults?.autoGainControl).toBe(false)
+  })
+
+  it('enables browser AGC when requested', () => {
+    voicePreferenceStore.setAutomaticGainControl(true)
+
+    expect(createVoiceRoomOptions().audioCaptureDefaults?.autoGainControl).toBe(true)
   })
 
   it('does not configure browser audio capture defaults on Windows desktop', () => {
@@ -221,6 +228,7 @@ describe('screenShareCaptureOptions', () => {
     const options = screenShareCaptureOptions('high60')
 
     expect(options.publish.videoCodec).toBe('h264')
+    expect(options.publish.screenShareEncoding?.maxBitrate).toBe(10_000_000)
   })
 
   it('falls back to vp8 when automatic codec capabilities are unavailable', () => {

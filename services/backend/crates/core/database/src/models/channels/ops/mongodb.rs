@@ -143,6 +143,27 @@ impl AbstractChannels for MongoDb {
             .map_err(|_| create_database_error!("update_one", "channel"))
     }
 
+    /// Insert channel member permissions
+    async fn set_channel_user_permission(
+        &self,
+        channel: &str,
+        user: &str,
+        permissions: OverrideField,
+    ) -> Result<()> {
+        self.col::<Document>(COL)
+            .update_one(
+                doc! { "_id": channel },
+                doc! {
+                    "$set": {
+                        "user_permissions.".to_owned() + user: permissions
+                    }
+                },
+            )
+            .await
+            .map(|_| ())
+            .map_err(|_| create_database_error!("update_one", "channel"))
+    }
+
     // Update channel
     async fn update_channel(
         &self,

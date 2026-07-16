@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerChannelList } from '#/components/channels/server-channel-list'
 import { syncStore } from '#/features/sync/sync-store'
+import { grantAllAuthorizationForTest } from '#/features/authorization/authorization-test-utils'
 import { UNCATEGORIZED_SECTION_ID } from '#/lib/channel-sidebar-layout'
 
 const mocks = vi.hoisted(() => ({
@@ -65,7 +66,6 @@ vi.mock('#/features/auth/auth-context', () => ({
 vi.mock('#/features/api/servers-api', () => ({
   editServer: (...args: Parameters<typeof mocks.editServer>) =>
     mocks.editServer(...args),
-  createChannelInvite: vi.fn(),
 }))
 
 vi.mock('#/components/channels/channel-sidebar-item', () => ({
@@ -102,6 +102,10 @@ describe('ServerChannelList', () => {
     mocks.editServer.mockClear()
     mocks.onDragEnd = null
     syncStore.reset()
+    grantAllAuthorizationForTest({
+      serverIds: ['server-a'],
+      channelIds: ['channel-a', 'channel-b'],
+    })
     syncStore.upsertServer({
       _id: 'server-a',
       name: 'Alpha',

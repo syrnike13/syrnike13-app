@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import {
   DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   type DesktopOverlaySettings,
+  type DesktopOverlayState,
 } from '@syrnike13/platform'
 
 import {
@@ -12,6 +13,22 @@ import {
 import { Switch } from '#/components/ui/switch'
 import { usePlatform } from '#/platform/use-platform'
 
+export function overlayStateNeedsSettingsReload(
+  previous: DesktopOverlayState | null,
+  next: DesktopOverlayState,
+) {
+  if (!previous) return Boolean(next.target)
+  if (previous.available !== next.available) return true
+  if (!next.target) return false
+  if (!previous.target) return true
+  return (
+    previous.target.gameId !== next.target.gameId ||
+    previous.target.processName !== next.target.processName ||
+    previous.target.processPath !== next.target.processPath ||
+    previous.target.title !== next.target.title
+  )
+}
+
 export function SettingsOverlayPanel() {
   const { desktop, os } = usePlatform()
   const [settings, setSettings] = useState<DesktopOverlaySettings | null>(null)
@@ -20,6 +37,7 @@ export function SettingsOverlayPanel() {
   useEffect(() => {
     if (!desktop || os !== 'win32') return
     let cancelled = false
+    let previousOverlayState: DesktopOverlayState | null = null
 
     const loadSettings = () => {
       void desktop.settings
@@ -40,7 +58,22 @@ export function SettingsOverlayPanel() {
     }
 
     loadSettings()
-    const unsubscribe = desktop.overlay.onStateChange(loadSettings)
+    const unsubscribe = desktop.overlay.onStateChange((nextOverlayState) => {
+      setSettings((current) =>
+        current && current.enabled !== nextOverlayState.enabled
+          ? { ...current, enabled: nextOverlayState.enabled }
+          : current,
+      )
+      if (
+        overlayStateNeedsSettingsReload(
+          previousOverlayState,
+          nextOverlayState,
+        )
+      ) {
+        loadSettings()
+      }
+      previousOverlayState = nextOverlayState
+    })
     return () => {
       cancelled = true
       unsubscribe()

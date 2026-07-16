@@ -1,10 +1,12 @@
 mod channel;
+mod global;
 mod server;
 mod user;
 
 pub use channel::*;
+pub use global::*;
 pub use server::*;
-use syrnike_result::{create_error, Result};
+use syrnike_result::{Result, create_error};
 pub use user::*;
 
 /// Holds a permission value to manipulate.
@@ -111,6 +113,22 @@ impl PermissionValue {
 
         Ok(())
     }
+}
+
+pub fn apply_channel_role_overrides<I>(permissions: &mut PermissionValue, overrides: I)
+where
+    I: IntoIterator<Item = Override>,
+{
+    let mut allow = 0_u64;
+    let mut deny = 0_u64;
+
+    for override_value in overrides {
+        allow |= override_value.allow;
+        deny |= override_value.deny;
+    }
+
+    permissions.revoke(deny);
+    permissions.allow(allow);
 }
 
 impl From<i64> for PermissionValue {

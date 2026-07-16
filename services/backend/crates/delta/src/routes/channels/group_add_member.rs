@@ -1,3 +1,4 @@
+use log::warn;
 use syrnike_database::{
     util::{permissions::DatabasePermissionQuery, reference::Reference},
     Channel, Database, User, AMQP,
@@ -8,7 +9,7 @@ use syrnike_result::{create_error, Result};
 use rocket::State;
 use rocket_empty::EmptyResponse;
 
-use crate::routes::voice_call_member_sync::send_active_group_voice_call_to_new_member;
+use crate::routes::voice_call_member_sync::send_group_voice_call_to_new_member;
 
 /// # Add Member to Group
 ///
@@ -51,7 +52,13 @@ pub async fn add_member(
                 .add_user_to_group(db, amqp, &member, &user.id)
                 .await?;
 
-            send_active_group_voice_call_to_new_member(&member.id, &channel).await?;
+            if let Err(error) = send_group_voice_call_to_new_member(&member.id, &channel).await {
+                syrnike_config::capture_internal_error!(&error);
+                warn!(
+                    "Failed to send group voice call to newly added user {}: {error:?}",
+                    member.id
+                );
+            }
 
             Ok(EmptyResponse)
         }

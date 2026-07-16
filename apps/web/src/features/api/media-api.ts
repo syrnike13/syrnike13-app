@@ -2,10 +2,15 @@ import { config } from '#/lib/config'
 
 export type UploadProgressHandler = (progress: number) => void
 
+export type UploadAttachmentOptions = {
+  onProgress?: UploadProgressHandler
+  signal?: AbortSignal
+}
+
 export function uploadAttachment(
   token: string,
   file: File,
-  onProgress?: UploadProgressHandler,
+  options: UploadAttachmentOptions = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const body = new FormData()
@@ -16,32 +21,65 @@ export function uploadAttachment(
     xhr.setRequestHeader('X-Session-Token', token)
     xhr.responseType = 'json'
 
+    let settled = false
+    const settle = (result: { id: string } | { error: Error }) => {
+      if (settled) return
+      settled = true
+      options.signal?.removeEventListener('abort', handleSignalAbort)
+
+      if ('id' in result) {
+        resolve(result.id)
+      } else {
+        reject(result.error)
+      }
+    }
+    const rejectAbort = () =>
+      settle({ error: new DOMException('Загрузка отменена', 'AbortError') })
+    const handleSignalAbort = () => {
+      xhr.abort()
+      rejectAbort()
+    }
+
     xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(event.loaded / event.total)
+      if (event.lengthComputable && event.total > 0) {
+        options.onProgress?.(
+          Math.min(1, Math.max(0, event.loaded / event.total)),
+        )
       }
     })
 
-    xhr.addEventListener('loadend', () => {
+    xhr.addEventListener('load', () => {
       if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300) {
         const response = xhr.response as { id?: string }
         if (response?.id) {
-          resolve(response.id)
+          settle({ id: response.id })
           return
         }
       }
-      reject(new Error('Не удалось загрузить файл'))
+      settle({ error: new Error('Не удалось загрузить файл') })
     })
 
     xhr.addEventListener('error', () => {
-      reject(new Error('Ошибка сети при загрузке'))
+      settle({ error: new Error('Ошибка сети при загрузке') })
     })
+    xhr.addEventListener('abort', rejectAbort)
 
+    if (options.signal?.aborted) {
+      rejectAbort()
+      return
+    }
+
+    options.signal?.addEventListener('abort', handleSignalAbort, { once: true })
     xhr.send(body)
   })
 }
 
-export type MediaUploadTag = 'avatars' | 'backgrounds' | 'badges'
+export type MediaUploadTag =
+  | 'avatars'
+  | 'backgrounds'
+  | 'icons'
+  | 'banners'
+  | 'badges'
 
 export function uploadMediaFile(
   token: string,

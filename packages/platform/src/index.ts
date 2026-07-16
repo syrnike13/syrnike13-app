@@ -1,4 +1,5 @@
 export type {
+  LiveKitNativePublisherCredentials,
   NativeMediaAudioMode,
   NativeMediaScreenAudioMode,
   NativeMediaEncoderBackend,
@@ -16,20 +17,28 @@ export type {
   NativeMediaScreenEngineSessionSummary,
   NativeMediaMicrophoneSessionStartOptions,
   NativeMicrophoneMetricsEvent,
-  NativeMicrophoneRuntimeConfig,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
+  NativeMicrophonePipelineConfig,
+  NativeMicrophonePreviewStateEvent,
   NativeMediaSession,
   NativeMediaSessionKind,
   NativeMediaSessionStatus,
   NativeMediaSessionStartOptions,
-  NativeMediaSidecarLostEvent,
+  NativeMediaRuntimeLostEvent,
   NativeMediaScreenSessionStartOptions,
   NativeMediaScreenSessionPrepareOptions,
   NativeMediaState,
   NativeMediaStateEvent,
   NativeMediaStatsEvent,
   NativeMediaTarget,
+  ScreenSourceSpec,
+} from './media'
+export {
+  assertLiveKitNativePublisherCredentials,
+  assertScreenSourceSpec,
+  isLiveKitNativePublisherCredentials,
+  isScreenSourceSpec,
+  parseLiveKitNativePublisherCredentials,
+  parseScreenSourceSpec,
 } from './media'
 export type {
   DesktopOverlayBounds,
@@ -39,7 +48,14 @@ export type {
   DesktopOverlayState,
 } from './overlay'
 export {
+  DESKTOP_OVERLAY_MAX_AVATAR_URL_LENGTH,
+  DESKTOP_OVERLAY_MAX_CHANNEL_ID_LENGTH,
+  DESKTOP_OVERLAY_MAX_CHANNEL_LABEL_LENGTH,
+  DESKTOP_OVERLAY_MAX_DISPLAY_NAME_LENGTH,
+  DESKTOP_OVERLAY_MAX_PARTICIPANTS,
+  DESKTOP_OVERLAY_MAX_USER_ID_LENGTH,
   EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
+  desktopOverlaySnapshotsEqual,
   normalizeDesktopOverlaySnapshot,
 } from './overlay'
 export type {
@@ -69,8 +85,11 @@ export type {
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
 export { IPC, type IpcChannel } from './ipc'
 export {
+  APPEARANCE_GRADIENT_MAX_COLORS,
+  APPEARANCE_GRADIENT_MIN_COLORS,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
   DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   DEFAULT_DESKTOP_SOUND_SETTINGS,
   DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
@@ -79,10 +98,13 @@ export {
   DEFAULT_THEME_ID,
   SOUND_AUTHOR_PACK_IDS,
   normalizeAppearanceColorMode,
+  normalizeAppearanceGradientSettings,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
+  normalizeDesktopObservabilitySettings,
+  normalizeDesktopObservabilitySettingsPatch,
   normalizeDesktopOverlaySettings,
   normalizeDesktopOverlaySettingsPatch,
   normalizeDesktopSoundSettings,
@@ -90,10 +112,13 @@ export {
   normalizeDesktopVoiceListenerSettings,
   normalizeDesktopVoiceSettings,
   type AppearanceColorMode,
+  type AppearanceGradientSettings,
   type AppearanceSettings,
   type AppearanceSettingsPatch,
   type DesktopLocalSettings,
   type DesktopLocalSettingsPatch,
+  type DesktopObservabilitySettings,
+  type DesktopObservabilitySettingsPatch,
   type DesktopOverlayGameSettings,
   type DesktopOverlaySettings,
   type DesktopOverlaySettingsPatch,
@@ -108,3 +133,48 @@ export {
   type DesktopVoiceSettingsPatch,
   type SoundAuthorPackId,
 } from './settings'
+export type {
+  VoiceAuthorityAdapter,
+  VoiceAuthorityEvent,
+  VoiceCancellation,
+  VoiceReservationRequest,
+  VoiceSelfStateUpdate,
+} from './voice/voice-authority'
+export {
+  GatewayVoiceAuthorityAdapter,
+  type GatewayVoiceAuthorityAdapterOptions,
+  type VoiceGatewayTransport,
+  type VoiceGatewayTransportState,
+} from './voice/gateway-voice-authority-adapter'
+export type {
+  RtcEngineAdapter,
+  VoiceDisconnectCause,
+  VoiceEngineEvent,
+} from './voice/voice-engine'
+export { VoiceDirector, type VoiceDirectorOptions } from './voice/voice-director'
+export type {
+  AuthoritativeVoiceSnapshot,
+  VoiceCommand,
+  VoiceConnectionState,
+  VoiceCredential,
+  VoiceFailure,
+  VoiceInputMode,
+  VoiceLease,
+  VoiceMediaDesiredState,
+  VoiceMediaError,
+  VoiceMediaKind,
+  VoiceMediaSnapshot,
+  VoiceMediaState,
+  VoiceMembership,
+  VoiceRtcEngine,
+  VoiceRemoteAudioSettings,
+  VoiceSnapshot,
+} from './voice/voice-types'
+export {
+  computeEffectiveMuted,
+  createInactiveMediaSnapshot,
+  createInitialVoiceMediaDesiredState,
+  isVoiceCommand,
+  isVoiceRemoteAudioSettings,
+  isVoiceSnapshot,
+} from './voice/voice-types'

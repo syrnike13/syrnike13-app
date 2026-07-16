@@ -10,11 +10,15 @@ import {
 import { NativeScrollbarEnhancer } from '#/components/native-scrollbar-enhancer'
 import { ThemeColorMeta } from '#/components/appearance/theme-color-meta'
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from '#/features/appearance/appearance-bootstrap'
+import { getDefaultThemeCss } from '#/features/appearance/theme-default-css'
 import { AppearanceProvider } from '#/features/appearance/appearance-context'
 import { Toaster } from '#/components/ui/sonner'
+import { SquircleNoScript } from '#/components/ui/squircle'
 import { AuthProvider } from '#/features/auth/auth-context'
 import { SyncProvider } from '#/features/sync/sync-provider'
+import { AgentationDevtools } from '#/integrations/agentation-devtools'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
+import { DesktopStartupUpdateGate } from '#/features/desktop/desktop-startup-update-gate'
 
 import appCss from '../styles.css?url'
 
@@ -43,7 +47,7 @@ const contentSecurityPolicy = [
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://js.hcaptcha.com https://*.hcaptcha.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
-  "img-src 'self' https: data: blob:",
+  "img-src 'self' http://localhost:* http://127.0.0.1:* https: data: blob:",
   "media-src 'self' https: data: blob:",
   "connect-src 'self' http://localhost:* http://127.0.0.1:* https: ws: wss:",
   "frame-src 'self' https://*.hcaptcha.com",
@@ -134,7 +138,6 @@ function RootComponent() {
     return (
       <AppearanceProvider>
         <ThemeColorMeta />
-        <NativeScrollbarEnhancer />
         <Outlet />
       </AppearanceProvider>
     )
@@ -144,13 +147,16 @@ function RootComponent() {
     <TanstackQueryProvider client={queryClient}>
       <AppearanceProvider>
         <ThemeColorMeta />
-        <AuthProvider>
-          <SyncProvider>
-            <NativeScrollbarEnhancer />
-            <Outlet />
-            <Toaster richColors closeButton />
-          </SyncProvider>
-        </AuthProvider>
+        <DesktopStartupUpdateGate>
+          <AuthProvider>
+            <SyncProvider>
+              <NativeScrollbarEnhancer />
+              <Outlet />
+              <Toaster richColors closeButton />
+              <AgentationDevtools />
+            </SyncProvider>
+          </AuthProvider>
+        </DesktopStartupUpdateGate>
       </AppearanceProvider>
     </TanstackQueryProvider>
   )
@@ -161,10 +167,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="ru" suppressHydrationWarning>
       <head>
         <meta httpEquiv="Content-Security-Policy" content={contentSecurityPolicy} />
+        <style dangerouslySetInnerHTML={{ __html: getDefaultThemeCss() }} />
         <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
+        <SquircleNoScript />
         {children}
         <Scripts />
       </body>

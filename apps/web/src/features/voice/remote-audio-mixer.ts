@@ -10,10 +10,7 @@ import {
   rmsFromFloatTimeDomain,
   rmsToDb,
 } from '#/features/voice/voice-gate-level'
-import { logVoiceDebugAgent } from '#/features/voice/voice-debug-agent-log'
-
-const CLIENT_SPEAKING_THRESHOLD_DB = -58
-const CLIENT_SPEAKING_CLOSE_HOLD_MS = 180
+import { advanceSpeakingPolicy } from '#/features/voice/speaking-activity-policy'
 
 type AudioContextConstructor = typeof AudioContext
 
@@ -52,6 +49,7 @@ type RemoteAudioMixerEntry = {
 
 export type RemoteAudioMixerOptions = {
   onSpeakingUserIdsChange?: (userIds: ReadonlySet<string>) => void
+  onOutputError?: (error: Error) => void
 }
 
 export type RemoteAudioMixerSnapshot = {
@@ -81,18 +79,21 @@ function clampRemoteGain(gain: number) {
   )
 }
 
-function applyOutputDevice(context: AudioContext, deviceId: string | undefined) {
+async function applyOutputDevice(context: AudioContext, deviceId: string | undefined) {
   const sink = context as AudioContext & AudioSinkIdTarget
-  if (!deviceId || !sink.setSinkId) return
-  void sink.setSinkId(deviceId).catch(() => {})
+  if (deviceId === undefined || !sink.setSinkId) return
+  await sink.setSinkId(deviceId)
 }
 
-function applyElementOutputDevice(
+async function applyElementOutputDevice(
   element: HTMLAudioElement,
   deviceId: string | undefined,
 ) {
-  if (!deviceId || !('setSinkId' in element)) return
-  void element.setSinkId(deviceId).catch(() => {})
+  if (deviceId === undefined) return
+  if (!('setSinkId' in element)) {
+    throw new Error('Audio output device selection is not supported')
+  }
+  await element.setSinkId(deviceId)
 }
 
 function registerMixer(mixer: RemoteAudioMixer) {
@@ -118,24 +119,31 @@ export class RemoteAudioMixer {
   #speakingUserIds = new Set<string>()
   #speakingFrame: number | null = null
   #outputDeviceId: string | undefined
+  #outputRetryArmed = false
   #disposed = false
   readonly #onSpeakingUserIdsChange:
     | ((userIds: ReadonlySet<string>) => void)
     | undefined
+  readonly #onOutputError: ((error: Error) => void) | undefined
 
   constructor(options: RemoteAudioMixerOptions = {}) {
     this.#onSpeakingUserIdsChange = options.onSpeakingUserIdsChange
+    this.#onOutputError = options.onOutputError
     registerMixer(this)
   }
 
-  setOutputDevice(deviceId: string | undefined) {
+  async setOutputDevice(deviceId: string | undefined) {
+    const previousDeviceId = this.#outputDeviceId
     this.#outputDeviceId = deviceId
-    if (this.#context) {
-      applyOutputDevice(this.#context, deviceId)
-    }
-    if (this.#outputElement) {
-      applyElementOutputDevice(this.#outputElement, deviceId)
-    }
+    const sinkId = deviceId ?? (previousDeviceId ? '' : undefined)
+    await Promise.all([
+      this.#context
+        ? applyOutputDevice(this.#context, sinkId)
+        : Promise.resolve(),
+      this.#outputElement
+        ? applyElementOutputDevice(this.#outputElement, sinkId)
+        : Promise.resolve(),
+    ])
   }
 
   addTrack(track: RemoteAudioMixerTrack) {
@@ -146,29 +154,6 @@ export class RemoteAudioMixer {
     this.removeTrack(track.trackId)
 
     const stream = new MediaStream([track.mediaStreamTrack])
-    const audioSettings = track.mediaStreamTrack.getSettings?.() ?? {}
-    logVoiceDebugAgent({
-      hypothesis: 'H4-audio-frame-gaps',
-      event: 'remote-audio-track-add',
-      source: track.source,
-      contextState: context.state,
-      contextSampleRate: context.sampleRate,
-      contextBaseLatency: context.baseLatency,
-      contextOutputLatency: (context as AudioContext & {
-        outputLatency?: number
-      }).outputLatency,
-      trackReadyState: track.mediaStreamTrack.readyState,
-      trackMuted: track.mediaStreamTrack.muted,
-      trackSettings: {
-        sampleRate: audioSettings.sampleRate,
-        channelCount: audioSettings.channelCount,
-        latency: audioSettings.latency,
-        echoCancellation: audioSettings.echoCancellation,
-        noiseSuppression: audioSettings.noiseSuppression,
-        autoGainControl: audioSettings.autoGainControl,
-      },
-    })
-
     try {
       const sourceNode = context.createMediaStreamSource(stream)
       const gainNode = context.createGain()
@@ -197,7 +182,7 @@ export class RemoteAudioMixer {
         quietSince: null,
       })
       this.#scheduleSpeakingAnalysis()
-      void context.resume().catch(() => {})
+      void context.resume().catch((error) => this.#reportOutputError(error))
       return true
     } catch {
       return false
@@ -226,7 +211,10 @@ export class RemoteAudioMixer {
     }
   }
 
-  applyVolumes(globallyDeafened: boolean) {
+  async applyVolumes(
+    globallyDeafened: boolean,
+    outputVolume = voicePreferenceStore.getState().outputVolume,
+  ) {
     let speakingChanged = false
     for (const entry of this.#entries.values()) {
       const channelMuted =
@@ -237,23 +225,22 @@ export class RemoteAudioMixer {
         entry.source === 'stream'
           ? voiceListenerStore.getStreamVolume(entry.userId)
           : voiceListenerStore.getUserVolume(entry.userId)
-      const prefs = voicePreferenceStore.getState()
       const gain =
         globallyDeafened || channelMuted
           ? 0
-          : clampRemoteGain(channelVolume * prefs.outputVolume)
+          : clampRemoteGain(channelVolume * outputVolume)
       entry.gainNode.gain.value = gain
       if (gain <= 0 && entry.speaking) {
         entry.speaking = false
         entry.quietSince = null
         speakingChanged = true
       }
-      this.#startOutput()
     }
     if (speakingChanged) {
       this.#publishSpeakingUsersIfChanged()
     }
     this.#scheduleSpeakingAnalysis()
+    await this.#startOutput()
   }
 
   clear() {
@@ -272,6 +259,7 @@ export class RemoteAudioMixer {
     this.#outputElement?.remove()
     this.#outputElement = null
     this.#outputNode = null
+    this.#disarmOutputRetry()
     void this.#context?.close().catch(() => {})
     this.#context = null
   }
@@ -299,7 +287,9 @@ export class RemoteAudioMixer {
     if (!Context) return null
     const context = new Context()
     this.#context = context
-    applyOutputDevice(context, this.#outputDeviceId)
+    void applyOutputDevice(context, this.#outputDeviceId).catch((error) =>
+      this.#reportOutputError(error),
+    )
     return context
   }
 
@@ -318,21 +308,51 @@ export class RemoteAudioMixer {
     element.style.display = 'none'
     document.body.appendChild(element)
     this.#outputElement = element
-    applyElementOutputDevice(element, this.#outputDeviceId)
-    this.#startOutput()
+    void applyElementOutputDevice(element, this.#outputDeviceId).catch((error) =>
+      this.#reportOutputError(error),
+    )
+    void this.#startOutput().catch(() => undefined)
     return this.#outputNode
   }
 
-  #startOutput() {
+  async #startOutput() {
     const context = this.#context
     const element = this.#outputElement
     if (!context || !element) return
-    void context.resume().catch((error) => {
-      console.error('[voice-audio-mixer] failed to resume audio context', error)
-    })
-    void element.play().catch((error) => {
-      console.error('[voice-audio-mixer] failed to play mixer output', error)
-    })
+    try {
+      await context.resume()
+      await element.play()
+      this.#disarmOutputRetry()
+    } catch (error) {
+      this.#armOutputRetry()
+      this.#reportOutputError(error)
+      throw error
+    }
+  }
+
+  #armOutputRetry() {
+    if (this.#disposed || this.#outputRetryArmed) return
+    this.#outputRetryArmed = true
+    document.addEventListener('pointerdown', this.#retryOutputFromGesture, true)
+    document.addEventListener('keydown', this.#retryOutputFromGesture, true)
+  }
+
+  #disarmOutputRetry() {
+    if (!this.#outputRetryArmed) return
+    this.#outputRetryArmed = false
+    document.removeEventListener('pointerdown', this.#retryOutputFromGesture, true)
+    document.removeEventListener('keydown', this.#retryOutputFromGesture, true)
+  }
+
+  #retryOutputFromGesture = () => {
+    this.#disarmOutputRetry()
+    void this.#startOutput().catch(() => undefined)
+  }
+
+  #reportOutputError(error: unknown) {
+    this.#onOutputError?.(
+      error instanceof Error ? error : new Error('Remote audio output failed'),
+    )
   }
 
   #scheduleSpeakingAnalysis() {
@@ -360,7 +380,18 @@ export class RemoteAudioMixer {
     for (const entry of this.#entries.values()) {
       if (entry.source !== 'mic') continue
 
-      const speaking = this.#entrySpeaking(entry, now)
+      entry.analyserNode.getFloatTimeDomainData(entry.analyserSamples)
+      const next = advanceSpeakingPolicy({
+        state: entry,
+        levelDb: rmsToDb(rmsFromFloatTimeDomain(entry.analyserSamples)),
+        enabled:
+          entry.gainNode.gain.value > 0 &&
+          !entry.mediaStreamTrack.muted &&
+          entry.mediaStreamTrack.readyState === 'live',
+        now,
+      })
+      entry.quietSince = next.quietSince
+      const speaking = next.speaking
       if (entry.speaking !== speaking) {
         entry.speaking = speaking
         changed = true
@@ -370,32 +401,6 @@ export class RemoteAudioMixer {
     if (changed) {
       this.#publishSpeakingUsersIfChanged()
     }
-  }
-
-  #entrySpeaking(entry: RemoteAudioMixerEntry, now: number) {
-    if (
-      entry.gainNode.gain.value <= 0 ||
-      entry.mediaStreamTrack.muted ||
-      entry.mediaStreamTrack.readyState !== 'live'
-    ) {
-      entry.quietSince = null
-      return false
-    }
-
-    entry.analyserNode.getFloatTimeDomainData(entry.analyserSamples)
-    const levelDb = rmsToDb(rmsFromFloatTimeDomain(entry.analyserSamples))
-    if (levelDb >= CLIENT_SPEAKING_THRESHOLD_DB) {
-      entry.quietSince = null
-      return true
-    }
-
-    if (!entry.speaking) {
-      entry.quietSince = null
-      return false
-    }
-
-    entry.quietSince ??= now
-    return now - entry.quietSince < CLIENT_SPEAKING_CLOSE_HOLD_MS
   }
 
   #publishSpeakingUsersIfChanged() {

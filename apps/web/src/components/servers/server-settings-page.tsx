@@ -1,25 +1,45 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
+  BanIcon,
+  BellIcon,
   LayoutTemplateIcon,
+  LinkIcon,
   ShieldFillIcon,
+  ShieldIcon,
   SmileFillIcon,
+  Trash2Icon,
   UsersFillIcon,
   XIcon,
 } from '#/components/icons'
-import { useCallback, useEffect, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
 import {
   SERVER_SETTINGS_TAB_LABELS,
+  SERVER_SETTINGS_TABS,
   type ServerSettingsTab,
 } from '#/components/servers/server-settings-types'
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { ScrollArea } from '#/components/ui/scroll-area'
+import { deleteOrLeaveServer } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { getServerMenuPermissions } from '#/lib/permissions'
+import {
+  canOpenServerSettings,
+  canViewServerSettingsTab,
+  getServerSettingsAccess,
+} from '#/features/authorization/authorization'
 import { DraftProvider } from '#/components/settings/draft-controller-context'
 import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { cn } from '#/lib/utils'
@@ -93,13 +113,25 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingServer, setDeletingServer] = useState(false)
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
   )
-  const menuPermissions = server
-    ? getServerMenuPermissions(server, channels, member, auth.user?._id)
+  const settingsAccess = server
+    ? getServerSettingsAccess(
+        server,
+        member,
+        auth.user?._id,
+      )
     : null
+  const canOpenSettings = settingsAccess
+    ? canOpenServerSettings(settingsAccess)
+    : false
+  const canViewCurrentTab = settingsAccess
+    ? canViewServerSettingsTab(settingsAccess, tab)
+    : false
   const closeSettings = useCallback(() => {
     const textChannel = channels.find(
       (channel) => channel.channel_type === 'TextChannel',
@@ -115,12 +147,53 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     void navigate({ to: prefix, search: { tab: 'online' } })
   }, [channels, navigate, prefix])
 
+  async function deleteOwnedServer() {
+    const token = auth.session?.token
+    if (!token || !server || server.owner !== auth.user?._id) return
+
+    setDeletingServer(true)
+    try {
+      await deleteOrLeaveServer(token, serverId)
+      syncStore.removeServer(serverId)
+      syncStore.setSelectedServerId(null)
+      setDeleteDialogOpen(false)
+      toast.success('Сервер удалён')
+      await navigate({ to: prefix, search: { tab: 'online' } })
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось удалить сервер',
+      )
+    } finally {
+      setDeletingServer(false)
+    }
+  }
+
   useEffect(() => {
     if (!server) return
-    if (!menuPermissions?.settings) {
+    if (!settingsAccess || !canOpenSettings) {
       void navigate({ to: prefix, search: { tab: 'online' }, replace: true })
+      return
     }
-  }, [menuPermissions?.settings, navigate, prefix, server])
+    if (!canViewCurrentTab) {
+      const firstTab = SERVER_SETTINGS_TABS.find((candidate) =>
+        canViewServerSettingsTab(settingsAccess, candidate),
+      )
+      void navigate({
+        to: `${prefix}/servers/$serverId/settings`,
+        params: { serverId },
+        search: { tab: firstTab ?? 'overview' },
+        replace: true,
+      })
+    }
+  }, [
+    canOpenSettings,
+    canViewCurrentTab,
+    navigate,
+    prefix,
+    server,
+    serverId,
+    settingsAccess,
+  ])
 
   useEffect(() => {
     syncStore.setSelectedServerId(serverId)
@@ -145,16 +218,22 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [closeSettings])
 
-  if (!server || !menuPermissions?.settings) {
+  if (!server || !settingsAccess || !canOpenSettings || !canViewCurrentTab) {
     return null
   }
 
+  const canViewTab = (candidate: ServerSettingsTab) =>
+    canViewServerSettingsTab(settingsAccess, candidate)
+  const canViewMembersSection =
+    canViewTab('roles') || canViewTab('members') || canViewTab('bans')
+  const canViewAdminSection = canViewTab('invites') || canViewTab('audit')
+
   return (
     <div
-      className="relative grid h-full min-h-0 w-full overflow-hidden bg-background"
+      className="gradient-surface-content relative grid h-full min-h-0 w-full overflow-hidden bg-background"
       style={{ gridTemplateColumns: SETTINGS_GRID_COLUMNS }}
     >
-      <aside className="flex min-h-0 flex-col border-r border-border bg-muted/40">
+      <aside className="gradient-surface-navigation flex min-h-0 flex-col border-r border-border bg-muted/40">
         <div
           className="ml-auto flex h-full min-w-0 flex-col"
           style={{ width: SETTINGS_NAV_WIDTH }}
@@ -168,41 +247,107 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           <ScrollArea className="min-h-0 flex-1">
             <nav className="flex flex-col gap-3 p-2">
               <NavSection>
-                <SettingsNavLink
-                  serverId={serverId}
-                  tab="general"
-                  activeTab={tab}
-                  icon={<LayoutTemplateIcon className="size-4 shrink-0" />}
-                  label={SERVER_SETTINGS_TAB_LABELS.general}
-                />
+                {canViewTab('overview') ? (
+                  <SettingsNavLink
+                    serverId={serverId}
+                    tab="overview"
+                    activeTab={tab}
+                    icon={<LayoutTemplateIcon className="size-4 shrink-0" />}
+                    label={SERVER_SETTINGS_TAB_LABELS.overview}
+                  />
+                ) : null}
+                {canViewTab('engagement') ? (
+                  <SettingsNavLink
+                    serverId={serverId}
+                    tab="engagement"
+                    activeTab={tab}
+                    icon={<BellIcon className="size-4 shrink-0" />}
+                    label={SERVER_SETTINGS_TAB_LABELS.engagement}
+                  />
+                ) : null}
               </NavSection>
 
-              <NavSection title="Выражение">
-                <SettingsNavLink
-                  serverId={serverId}
-                  tab="emoji"
-                  activeTab={tab}
-                  icon={<SmileFillIcon className="size-4 shrink-0" />}
-                  label={SERVER_SETTINGS_TAB_LABELS.emoji}
-                />
-              </NavSection>
+              {canViewTab('emoji') ? (
+                <NavSection title="Выражение">
+                  <SettingsNavLink
+                    serverId={serverId}
+                    tab="emoji"
+                    activeTab={tab}
+                    icon={<SmileFillIcon className="size-4 shrink-0" />}
+                    label={SERVER_SETTINGS_TAB_LABELS.emoji}
+                  />
+                </NavSection>
+              ) : null}
 
-              <NavSection title="Участники">
-                <SettingsNavLink
-                  serverId={serverId}
-                  tab="roles"
-                  activeTab={tab}
-                  icon={<ShieldFillIcon className="size-4 shrink-0" />}
-                  label={SERVER_SETTINGS_TAB_LABELS.roles}
-                />
-                <SettingsNavLink
-                  serverId={serverId}
-                  tab="members"
-                  activeTab={tab}
-                  icon={<UsersFillIcon className="size-4 shrink-0" />}
-                  label={SERVER_SETTINGS_TAB_LABELS.members}
-                />
-              </NavSection>
+              {canViewMembersSection ? (
+                <NavSection title="Участники">
+                  {canViewTab('roles') ? (
+                    <SettingsNavLink
+                      serverId={serverId}
+                      tab="roles"
+                      activeTab={tab}
+                      icon={<ShieldFillIcon className="size-4 shrink-0" />}
+                      label={SERVER_SETTINGS_TAB_LABELS.roles}
+                    />
+                  ) : null}
+                  {canViewTab('members') ? (
+                    <SettingsNavLink
+                      serverId={serverId}
+                      tab="members"
+                      activeTab={tab}
+                      icon={<UsersFillIcon className="size-4 shrink-0" />}
+                      label={SERVER_SETTINGS_TAB_LABELS.members}
+                    />
+                  ) : null}
+                  {canViewTab('bans') ? (
+                    <SettingsNavLink
+                      serverId={serverId}
+                      tab="bans"
+                      activeTab={tab}
+                      icon={<BanIcon className="size-4 shrink-0" />}
+                      label={SERVER_SETTINGS_TAB_LABELS.bans}
+                    />
+                  ) : null}
+                </NavSection>
+              ) : null}
+
+              {canViewAdminSection ? (
+                <NavSection title="Администрирование">
+                  {canViewTab('invites') ? (
+                    <SettingsNavLink
+                      serverId={serverId}
+                      tab="invites"
+                      activeTab={tab}
+                      icon={<LinkIcon className="size-4 shrink-0" />}
+                      label={SERVER_SETTINGS_TAB_LABELS.invites}
+                    />
+                  ) : null}
+                  {canViewTab('audit') ? (
+                    <SettingsNavLink
+                      serverId={serverId}
+                      tab="audit"
+                      activeTab={tab}
+                      icon={<ShieldIcon className="size-4 shrink-0" />}
+                      label={SERVER_SETTINGS_TAB_LABELS.audit}
+                    />
+                  ) : null}
+                </NavSection>
+              ) : null}
+
+              {server.owner === auth.user?._id ? (
+                <div className="border-t border-border/60 pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={deletingServer}
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2Icon className="size-4 shrink-0" />
+                    Удалить сервер
+                  </Button>
+                </div>
+              ) : null}
             </nav>
           </ScrollArea>
         </div>
@@ -217,7 +362,6 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                   <ServerSettingsPanelContent serverId={serverId} tab={tab} />
                 </div>
               </div>
-              <UnsavedChangesBar saveLabel="Сохранить" />
             </div>
           ) : (
             <ScrollArea className="min-h-0 flex-1">
@@ -226,6 +370,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
               </div>
             </ScrollArea>
           )}
+          <UnsavedChangesBar saveLabel="Сохранить" />
         </DraftProvider>
       </div>
 
@@ -246,6 +391,43 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           esc
         </span>
       </div>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deletingServer) {
+            setDeleteDialogOpen(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удалить сервер «{server.name}»?</DialogTitle>
+            <DialogDescription>
+              Сервер, каналы и участники будут удалены для всех. Это действие
+              невозможно отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingServer}
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingServer}
+              onClick={() => void deleteOwnedServer()}
+            >
+              Удалить сервер
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

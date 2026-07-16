@@ -1,16 +1,85 @@
-import type { AppearanceSettings } from '@syrnike13/platform'
+import type {
+  AppearanceGradientSettings,
+  AppearanceSettings,
+} from '@syrnike13/platform'
 import { DEFAULT_THEME_ID } from '@syrnike13/platform'
 
 import { THEME_CATALOG, type ThemeDefinition, type ThemeVariant } from '#/features/appearance/theme-catalog-data'
-import { THEME_TOKEN_KEYS, type ThemeTokens } from '#/features/appearance/theme-tokens'
+import {
+  BRAND_LOCKED_THEME_TOKEN_KEYS,
+  THEME_TOKEN_KEYS,
+  type ThemeTokens,
+} from '#/features/appearance/theme-tokens'
+import { cssColorToHex } from '#/features/appearance/theme-color-conversion'
+import {
+  buildSolidThemeSurfaceVariables,
+  buildThemeSurfaceVariables,
+  tintThemeTokensForGradient,
+  type ThemeSurfaceVariables,
+} from '#/features/appearance/theme-surfaces'
 
-export { THEME_CATALOG, THEME_TOKEN_KEYS }
+export { BRAND_LOCKED_THEME_TOKEN_KEYS, THEME_CATALOG, THEME_TOKEN_KEYS }
 export type { ThemeDefinition, ThemeTokens, ThemeVariant }
 
 export type ThemePreviewColors = {
   background: string
   primary: string
   sidebar: string
+}
+
+export const DEFAULT_THEME_GRADIENT_SATURATION = 74
+export const DEFAULT_THEME_GRADIENT_ANGLE = 0
+
+function defaultThemeGradient(
+  theme: ThemeDefinition,
+  variant: ThemeVariant,
+): AppearanceGradientSettings {
+  const configured = theme.gradients?.[variant]
+  if (configured) {
+    return {
+      ...configured,
+      colors: [...configured.colors],
+    }
+  }
+
+  const tokens =
+    theme.variants[variant] ??
+    theme.variants[getAvailableVariants(theme)[0] ?? 'dark']!
+  const first = cssColorToHex(tokens.primary) ?? '#5865F2'
+  const second =
+    cssColorToHex(variant === 'dark' ? tokens.foreground : tokens.background) ??
+    (variant === 'dark' ? '#F4F4F5' : '#FFFFFF')
+
+  return {
+    colors: [first, second],
+    angle: DEFAULT_THEME_GRADIENT_ANGLE,
+    saturation: DEFAULT_THEME_GRADIENT_SATURATION,
+  }
+}
+
+export function resolveThemeGradient(
+  settings: AppearanceSettings,
+  prefersDark = false,
+): AppearanceGradientSettings {
+  const theme = getThemeById(settings.themeId)
+  const variant = resolveThemeVariant(settings, prefersDark)
+  return theme.customizable && settings.gradient
+    ? settings.gradient
+    : defaultThemeGradient(theme, variant)
+}
+
+export function themeGradientForPreview(
+  theme: ThemeDefinition,
+  variant: ThemeVariant,
+  customGradient?: AppearanceGradientSettings | null,
+): AppearanceGradientSettings {
+  return theme.customizable && customGradient
+    ? customGradient
+    : defaultThemeGradient(theme, variant)
+}
+
+export function themeUsesGradient(theme: ThemeDefinition): boolean {
+  return theme.kind === 'gradient'
 }
 
 export function getThemeById(themeId: string): ThemeDefinition {
@@ -68,15 +137,56 @@ export function resolveThemeVariant(
   return resolveSystemVariant(prefersDark, theme)
 }
 
+function syrnikeBaseTokens(variant: ThemeVariant): ThemeTokens {
+  return getThemeById(DEFAULT_THEME_ID).variants[variant]!
+}
+
+export function applyBrandLockedThemeTokens(
+  tokens: ThemeTokens,
+  variant: ThemeVariant,
+): ThemeTokens {
+  const base = syrnikeBaseTokens(variant)
+  const resolved = { ...tokens }
+  for (const key of BRAND_LOCKED_THEME_TOKEN_KEYS) {
+    resolved[key] = base[key]
+  }
+  return resolved
+}
+
 export function getThemeTokens(
   settings: AppearanceSettings,
   prefersDark = false,
 ): ThemeTokens {
   const theme = getThemeById(settings.themeId)
   const variant = resolveThemeVariant(settings, prefersDark)
-  return theme.variants[variant]!
+  const tokens = applyBrandLockedThemeTokens(theme.variants[variant]!, variant)
+  if (!themeUsesGradient(theme)) return tokens
+
+  return tintThemeTokensForGradient(
+    tokens,
+    resolveThemeGradient(settings, prefersDark),
+    variant,
+  )
 }
 
+export function getThemeSurfaceVariables(
+  settings: AppearanceSettings,
+  prefersDark = false,
+): ThemeSurfaceVariables {
+  const theme = getThemeById(settings.themeId)
+  const variant = resolveThemeVariant(settings, prefersDark)
+  const tokens = getThemeTokens(settings, prefersDark)
+  if (!themeUsesGradient(theme)) {
+    return buildSolidThemeSurfaceVariables(tokens)
+  }
+
+  return buildThemeSurfaceVariables(
+    resolveThemeGradient(settings, prefersDark),
+    variant,
+  )
+}
+
+/** Цвета превью в каталоге тем — из палитры темы, без brand-lock (чтобы палитры различались). */
 export function themePreviewColors(
   theme: ThemeDefinition,
   variant: ThemeVariant,
@@ -87,7 +197,7 @@ export function themePreviewColors(
     const fallbackTokens = fallback ? theme.variants[fallback] : null
     return {
       background: fallbackTokens?.background ?? 'oklch(0.3 0 0)',
-      primary: fallbackTokens?.primary ?? 'oklch(0.6 0.2 280)',
+      primary: fallbackTokens?.primary ?? syrnikeBaseTokens(variant).primary,
       sidebar: fallbackTokens?.sidebar ?? 'oklch(0.25 0 0)',
     }
   }

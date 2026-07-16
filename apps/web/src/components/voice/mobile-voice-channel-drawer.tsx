@@ -7,7 +7,11 @@ import { useMobileVoiceChannelDrawer } from '#/features/navigation/mobile-voice-
 import { useAuth } from '#/features/auth/auth-context'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
-import { useVoice } from '#/features/voice/voice-context'
+import {
+  consumeVoiceChannelChatOpenRequest,
+  subscribeVoiceChannelChatOpen,
+} from '#/features/voice/voice-channel-chat-intent'
+import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { isVoiceSessionInChannel } from '#/features/voice/voice-mic-status'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 import { cn } from '#/lib/utils'
@@ -20,7 +24,7 @@ import { cn } from '#/lib/utils'
  */
 export function MobileVoiceChannelDrawer() {
   const auth = useAuth()
-  const voice = useVoice()
+  const voice = useVoiceSession()
   const { channelId, openVoiceChannelDrawer, closeVoiceChannelDrawer } =
     useMobileVoiceChannelDrawer()
   const channel = useSyncStore((s) =>
@@ -51,8 +55,21 @@ export function MobileVoiceChannelDrawer() {
   useEffect(() => {
     if (!open) {
       setChatOpen(false)
+      return
     }
-  }, [open])
+    if (channelId && consumeVoiceChannelChatOpenRequest(channelId)) {
+      setChatOpen(true)
+    }
+  }, [channelId, open])
+
+  useEffect(() => {
+    if (!channelId) return
+    return subscribeVoiceChannelChatOpen((requestedChannelId) => {
+      if (requestedChannelId !== channelId) return
+      consumeVoiceChannelChatOpenRequest(channelId)
+      setChatOpen(true)
+    })
+  }, [channelId])
 
   const title =
     channel && auth.user
@@ -100,11 +117,12 @@ export function MobileVoiceChannelDrawer() {
             {chatOpen ? (
               <div
                 className={cn(
-                  'flex min-h-0 flex-col border-t border-shell-divider bg-background',
+                  'gradient-surface-content flex min-h-0 flex-col border-t border-shell-divider bg-background',
                   fullscreen ? 'flex-1' : 'flex-1',
                 )}
               >
                 <ChannelChatPanel
+                  key={channel._id}
                   channelId={channel._id}
                   onClose={() => setChatOpen(false)}
                 />

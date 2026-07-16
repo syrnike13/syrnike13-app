@@ -1,0 +1,123 @@
+/*
+ * Copyright 2026 LiveKit
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#pragma once
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+
+#include "livekit/data_track_error.h"
+#include "livekit/data_track_info.h"
+#include "livekit/data_track_stream.h"
+#include "livekit/ffi_handle.h"
+#include "livekit/result.h"
+#include "livekit/visibility.h"
+
+namespace livekit {
+
+namespace proto {
+class OwnedRemoteDataTrack;
+}
+
+/// Track-level options that configure how the incoming-frame pipeline
+/// reassembles packets for a remote data track.
+///
+/// Applied via RemoteDataTrack::setPipelineOptions().
+struct DataTrackPipelineOptions {
+  /// Maximum number of partial frames the depacketizer will track
+  /// concurrently for this track.
+  ///
+  /// Defaults to 1. Higher values give more out-of-order tolerance for
+  /// high-frequency senders at the cost of additional buffering. Zero is
+  /// not a valid value; if a value of zero is provided, it will be
+  /// clamped to one. Leave unset to keep the current value.
+  std::optional<std::uint32_t> max_partial_frames{std::nullopt};
+};
+
+/// Represents a data track published by a remote participant.
+///
+/// Discovered via the DataTrackPublishedEvent room event. Unlike
+/// audio/video tracks, remote data tracks require an explicit subscribe()
+/// call to begin receiving frames.
+///
+/// Typical usage:
+///
+///   // In RoomDelegate::onDataTrackPublished callback:
+///   auto sub_result = remoteDataTrack->subscribe();
+///   if (sub_result) {
+///     auto sub = sub_result.value();
+///     DataTrackFrame frame;
+///     while (sub->read(frame)) {
+///       // process frame
+///     }
+///   }
+class RemoteDataTrack {
+public:
+  ~RemoteDataTrack() = default;
+
+  RemoteDataTrack(const RemoteDataTrack&) = delete;
+  RemoteDataTrack& operator=(const RemoteDataTrack&) = delete;
+
+  /// Metadata about this data track.
+  const DataTrackInfo& info() const noexcept { return info_; }
+
+  /// Identity of the remote participant who published this track.
+  const std::string& publisherIdentity() const noexcept { return publisher_identity_; }
+
+  /// Whether the track is still published by the remote participant.
+  LIVEKIT_API bool isPublished() const;
+
+  /// @brief Configures options for the pipeline handling incoming packets for
+  /// this track.
+  ///
+  /// These options apply to all current and future subscriptions of this
+  /// track, and may be set at any time. New options take effect with the
+  /// next received packet.
+  ///
+  /// @param options Pipeline options to apply to this remote data track.
+  LIVEKIT_API void setPipelineOptions(const DataTrackPipelineOptions& options);
+
+#ifdef LIVEKIT_TEST_ACCESS
+  /// Test-only accessor for exercising lower-level FFI subscription paths.
+  uintptr_t testFfiHandleId() const noexcept { return ffiHandleId(); }
+#endif
+
+  /// Subscribe to this remote data track.
+  ///
+  /// Returns a DataTrackStream that delivers frames via blocking
+  /// read(). Destroy the stream to unsubscribe.
+  LIVEKIT_API Result<std::shared_ptr<DataTrackStream>, SubscribeDataTrackError> subscribe(
+      const DataTrackStream::Options& options = {});
+
+private:
+  friend class Room;
+
+  explicit RemoteDataTrack(const proto::OwnedRemoteDataTrack& owned);
+
+  uintptr_t ffiHandleId() const noexcept { return handle_.get(); }
+  /// RAII wrapper for the Rust-owned FFI resource.
+  FfiHandle handle_;
+
+  /// Metadata snapshot taken at construction time.
+  DataTrackInfo info_;
+
+  /// Identity string of the remote participant who published this track.
+  std::string publisher_identity_;
+};
+
+} // namespace livekit

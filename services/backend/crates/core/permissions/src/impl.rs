@@ -1,15 +1,11 @@
 use crate::{
-    ChannelPermission, ChannelType, PermissionQuery, PermissionValue, RelationshipStatus,
-    UserPermission, ALLOW_IN_TIMEOUT, DEFAULT_PERMISSION_DIRECT_MESSAGE,
+    apply_channel_role_overrides, ChannelPermission, ChannelType, PermissionQuery, PermissionValue,
+    RelationshipStatus, UserPermission, ALLOW_IN_TIMEOUT, DEFAULT_PERMISSION_DIRECT_MESSAGE,
     DEFAULT_PERMISSION_SAVED_MESSAGES, DEFAULT_PERMISSION_VIEW_ONLY,
 };
 
 /// Calculate permissions against a user
 pub async fn calculate_user_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
-    if query.are_we_privileged().await {
-        return u64::MAX.into();
-    }
-
     if query.are_the_users_same().await {
         return u64::MAX.into();
     }
@@ -47,7 +43,7 @@ pub async fn calculate_user_permissions<P: PermissionQuery>(query: &mut P) -> Pe
 
 /// Calculate permissions against a server
 pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
-    if query.are_we_privileged().await || query.are_we_server_owner().await {
+    if query.are_we_server_owner().await {
         return ChannelPermission::GrantAllSafe.into();
     }
 
@@ -79,10 +75,6 @@ pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> 
 
 /// Calculate permissions against a channel
 pub async fn calculate_channel_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
-    if query.are_we_privileged().await {
-        return ChannelPermission::GrantAllSafe.into();
-    }
-
     match query.get_channel_type().await {
         ChannelType::SavedMessages => {
             if query.do_we_own_the_channel().await {
@@ -125,8 +117,13 @@ pub async fn calculate_channel_permissions<P: PermissionQuery>(query: &mut P) ->
                 let mut permissions = calculate_server_permissions(query).await;
                 permissions.apply(query.get_default_channel_permissions().await);
 
-                for role_override in query.get_our_channel_role_overrides().await {
-                    permissions.apply(role_override);
+                apply_channel_role_overrides(
+                    &mut permissions,
+                    query.get_our_channel_role_overrides().await,
+                );
+
+                if let Some(user_override) = query.get_our_channel_user_override().await {
+                    permissions.apply(user_override);
                 }
 
                 if query.are_we_timed_out().await {

@@ -44,6 +44,7 @@ export function isVoiceConnectionReady(options: {
 export type VoiceMicIssue = {
   label: string
   hint: string
+  retryable?: boolean
 }
 
 export function describeMicDeviceError(error: unknown): VoiceMicIssue {
@@ -93,7 +94,11 @@ export function isMicVisuallyMuted(options: {
   inVoiceSession: boolean
   micEnabled: boolean
   micPublishing: boolean
+  deafened: boolean
 }) {
+  if (options.deafened) {
+    return true
+  }
   if (options.inVoiceSession) {
     return !options.micPublishing
   }
@@ -106,7 +111,10 @@ export function shouldResetMicPreferenceOnIssue(options: {
   micIssue: VoiceMicIssue | null
 }) {
   return Boolean(
-    options.micIssue && options.wantsMic && !options.micPublishing,
+    options.micIssue &&
+      options.micIssue.retryable !== true &&
+      options.wantsMic &&
+      !options.micPublishing,
   )
 }
 
@@ -118,10 +126,5 @@ export function micControlTitle(options: {
   if (options.micIssue) {
     return options.micIssue.hint
   }
-  if (options.inVoice) {
-    return options.micMuted ? 'Включить микрофон' : 'Выключить микрофон'
-  }
-  return options.micMuted
-    ? 'Микрофон выключен (применится при входе в голос)'
-    : 'Выключить микрофон до входа в голос'
+  return options.micMuted ? 'Включить микрофон' : 'Выключить микрофон'
 }

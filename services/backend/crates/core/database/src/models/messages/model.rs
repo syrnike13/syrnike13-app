@@ -296,6 +296,10 @@ impl Message {
             limits.message_length,
         )?;
 
+        if let Some(content) = data.content.as_deref() {
+            Self::validate_content(db, content).await?;
+        }
+
         idempotency
             .consume_nonce(data.nonce)
             .await
@@ -495,6 +499,14 @@ impl Message {
                 match db.fetch_message(&id).await {
                     // Referenced message exists
                     Ok(message) => {
+                        if message.channel != channel.id() {
+                            if fail_if_not_exists.unwrap_or(true) {
+                                return Err(create_error!(NotFound));
+                            }
+
+                            continue;
+                        }
+
                         if mention && allow_mentions {
                             user_mentions.insert(message.author.to_owned());
                         }
@@ -801,7 +813,7 @@ impl Message {
     pub fn contains_mass_push_mention(&self) -> bool {
         let ping = if let Some(flags) = self.flags {
             let flags = MessageFlagsValue(flags);
-            flags.has(MessageFlags::MentionsEveryone)
+            flags.has(MessageFlags::MentionsEveryone) || flags.has(MessageFlags::MentionsOnline)
         } else {
             false
         };
@@ -816,6 +828,10 @@ impl Message {
         partial: PartialMessage,
         remove: Vec<FieldsMessage>,
     ) -> Result<()> {
+        if let Some(content) = partial.content.as_deref() {
+            Self::validate_content(db, content).await?;
+        }
+
         self.apply_options(partial.clone());
 
         for field in &remove {
@@ -1028,6 +1044,17 @@ impl Message {
         }
     }
 
+    /// Validate custom emojis in message content.
+    async fn validate_content(db: &Database, content: &str) -> Result<()> {
+        for emoji in syrnike_parser::parse_message(content).emojis {
+            if !Emoji::can_use(db, &emoji).await? {
+                return Err(create_error!(InvalidOperation));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Delete a message
     pub async fn delete(self, db: &Database) -> Result<()> {
         let file_ids: Vec<String> = self
@@ -1200,5 +1227,26 @@ impl Interactions {
     /// Check if default initialisation of fields
     pub fn is_default(&self) -> bool {
         !self.restrict_reactions && self.reactions.is_none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flags_with(flag: MessageFlags) -> u32 {
+        let mut flags = MessageFlagsValue(0);
+        flags.set(flag, true);
+        flags.0
+    }
+
+    #[test]
+    fn online_mention_counts_as_mass_push_mention() {
+        let message = Message {
+            flags: Some(flags_with(MessageFlags::MentionsOnline)),
+            ..Default::default()
+        };
+
+        assert!(message.contains_mass_push_mention());
     }
 }

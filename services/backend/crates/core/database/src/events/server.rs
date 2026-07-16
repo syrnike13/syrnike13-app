@@ -2,6 +2,48 @@ use serde::{Deserialize, Serialize};
 
 use super::client::Ping;
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum VoiceStateUpdateRequest {
+    RequestSnapshot,
+    UpdateFlags {
+        operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
+    },
+    Disconnect {
+        operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
+    },
+    Join {
+        operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
+    },
+    RefreshCredentials {
+        operation_id: String,
+        rtc_engine: String,
+        client_instance_id: String,
+        connection_epoch: String,
+    },
+}
+
+impl VoiceStateUpdateRequest {
+    pub fn operation_id(&self) -> Option<&str> {
+        match self {
+            Self::RequestSnapshot => None,
+            Self::UpdateFlags { operation_id, .. }
+            | Self::Disconnect { operation_id, .. }
+            | Self::Join { operation_id, .. }
+            | Self::RefreshCredentials { operation_id, .. } => Some(operation_id.as_str()),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
@@ -24,39 +66,51 @@ pub enum ClientMessage {
     },
     VoiceStateUpdate {
         nonce: Option<String>,
-        operation_id: Option<String>,
         channel_id: Option<String>,
         self_mute: bool,
         self_deaf: bool,
         node: Option<String>,
         recipients: Option<Vec<String>>,
         suppress_call_notifications: Option<bool>,
-        refresh_credentials: Option<bool>,
+        request: VoiceStateUpdateRequest,
     },
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ClientMessage;
+    use super::{ClientMessage, VoiceStateUpdateRequest};
 
     #[test]
-    fn voice_state_update_deserializes_operation_id() {
+    fn voice_state_update_deserializes_refresh_request() {
         let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
             "type": "VoiceStateUpdate",
             "nonce": "nonce-1",
-            "operation_id": "op-join",
             "channel_id": "channel-1",
             "self_mute": false,
             "self_deaf": false,
             "node": "node-1",
-            "refresh_credentials": true
+            "request": {
+                "mode": "refresh_credentials",
+                "operation_id": "op-join",
+                "rtc_engine": "web",
+                "client_instance_id": "client-1",
+                "connection_epoch": "epoch-1"
+            }
         }))
         .expect("voice state update deserializes");
 
-        let ClientMessage::VoiceStateUpdate { operation_id, .. } = message else {
+        let ClientMessage::VoiceStateUpdate { request, .. } = message else {
             panic!("expected VoiceStateUpdate");
         };
 
-        assert_eq!(operation_id, Some("op-join".to_string()));
+        assert_eq!(
+            request,
+            VoiceStateUpdateRequest::RefreshCredentials {
+                operation_id: "op-join".to_string(),
+                rtc_engine: "web".to_string(),
+                client_instance_id: "client-1".to_string(),
+                connection_epoch: "epoch-1".to_string(),
+            }
+        );
     }
 }

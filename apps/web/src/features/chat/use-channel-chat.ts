@@ -40,7 +40,7 @@ export function useChannelChat({
   const auth = useAuth()
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
-  const { notifyTyping } = useTypingIndicator(channelId)
+  const { notifyTyping, stopTyping } = useTypingIndicator(channelId)
   const channel = useSyncStore((s) => s.channels[channelId])
   const users = useSyncStore((s) => s.users)
   const messages = useSyncStore((s) => getChannelMessages(s, channelId))
@@ -247,5 +247,6 @@ export function useChannelChat({
     editingMessage,
     listHighlightMessageId,
     notifyTyping,
+    stopTyping,
   }
 }

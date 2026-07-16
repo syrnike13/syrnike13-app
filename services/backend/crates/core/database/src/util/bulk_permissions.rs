@@ -1,8 +1,8 @@
 use std::{collections::HashMap, hash::RandomState};
 
 use syrnike_permissions::{
-    ChannelPermission, ChannelType, Override, OverrideField, PermissionValue, ALLOW_IN_TIMEOUT,
-    DEFAULT_PERMISSION_DIRECT_MESSAGE,
+    apply_channel_role_overrides, ChannelPermission, ChannelType, Override, OverrideField,
+    PermissionValue, ALLOW_IN_TIMEOUT, DEFAULT_PERMISSION_DIRECT_MESSAGE,
 };
 
 use crate::{Channel, Database, Member, Server, User};
@@ -166,7 +166,8 @@ impl<'z> BulkDatabasePermissionQuery<'z> {
         }
     }
 
-    /// Get the ordered role overrides (from lowest to highest) for this member in this channel
+    /// Get all role overrides for this member in this channel.
+    /// Channel role overrides are resolved as a set, not by role rank.
     #[allow(dead_code)]
     async fn get_channel_role_overrides(&mut self) -> &HashMap<String, OverrideField> {
         if let Some(channel) = &self.channel {
@@ -188,20 +189,22 @@ async fn calculate_members_permissions<'a>(
 ) -> HashMap<String, PermissionValue> {
     let mut resp = HashMap::new();
 
-    let (_, channel_role_permissions, channel_default_permissions) = match query
-        .channel
-        .as_ref()
-        .expect("A channel must be assigned to calculate channel permissions")
-        .clone()
-    {
-        Channel::TextChannel {
-            id,
-            role_permissions,
-            default_permissions,
-            ..
-        } => (id, role_permissions, default_permissions),
-        _ => panic!("Calculation of member permissions must be done on a server channel"),
-    };
+    let (_, channel_role_permissions, channel_user_permissions, channel_default_permissions) =
+        match query
+            .channel
+            .as_ref()
+            .expect("A channel must be assigned to calculate channel permissions")
+            .clone()
+        {
+            Channel::TextChannel {
+                id,
+                role_permissions,
+                user_permissions,
+                default_permissions,
+                ..
+            } => (id, role_permissions, user_permissions, default_permissions),
+            _ => panic!("Calculation of member permissions must be done on a server channel"),
+        };
 
     if query.users.is_none() {
         let ids: Vec<String> = query
@@ -264,14 +267,6 @@ async fn calculate_members_permissions<'a>(
 
         let member = *member.unwrap();
 
-        if user.privileged {
-            resp.insert(
-                user.id.clone(),
-                PermissionValue::from(ChannelPermission::GrantAllSafe),
-            );
-            continue;
-        }
-
         if user.id == query.server.owner {
             resp.insert(
                 user.id.clone(),
@@ -287,23 +282,21 @@ async fn calculate_members_permissions<'a>(
             permission.apply(defaults.into());
         }
 
-        // Get the applicable role overrides
-        let mut roles = channel_role_permissions
+        let role_overrides = channel_role_permissions
             .iter()
             .filter(|(id, _)| member.roles.contains(id))
             .filter_map(|(id, permission)| {
-                query.server.roles.get(id).map(|role| {
-                    let v: Override = (*permission).into();
-                    (role.rank, v)
-                })
+                query
+                    .server
+                    .roles
+                    .contains_key(id)
+                    .then_some((*permission).into())
             })
-            .collect::<Vec<(i64, Override)>>();
+            .collect::<Vec<Override>>();
+        apply_channel_role_overrides(&mut permission, role_overrides);
 
-        roles.sort_by(|a, b| b.0.cmp(&a.0));
-        let overrides = roles.into_iter().map(|(_, v)| v);
-
-        for role_override in overrides {
-            permission.apply(role_override)
+        if let Some(user_override) = channel_user_permissions.get(&member.id.user) {
+            permission.apply((*user_override).into());
         }
 
         resp.insert(user.id.clone(), permission);
@@ -314,7 +307,7 @@ async fn calculate_members_permissions<'a>(
 
 /// Calculates a member's server permissions
 fn calculate_server_permissions(server: &Server, user: &User, member: &Member) -> PermissionValue {
-    if user.privileged || server.owner == user.id {
+    if server.owner == user.id {
         return ChannelPermission::GrantAllSafe.into();
     }
 
@@ -342,4 +335,77 @@ fn calculate_server_permissions(server: &Server, user: &User, member: &Member) -
     }
 
     permissions
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::calculate_server_permissions;
+    use crate::{Member, MemberCompositeKey, Server, User};
+    use syrnike_permissions::ChannelPermission;
+
+    fn server(owner: &str, default_permissions: i64) -> Server {
+        Server {
+            id: "server-1".to_string(),
+            owner: owner.to_string(),
+            name: "Server".to_string(),
+            description: None,
+            channels: vec![],
+            categories: None,
+            system_messages: None,
+            roles: HashMap::new(),
+            default_permissions,
+            icon: None,
+            banner: None,
+            flags: None,
+            nsfw: false,
+            analytics: false,
+            discoverable: false,
+        }
+    }
+
+    fn member(user_id: &str) -> Member {
+        Member {
+            id: MemberCompositeKey {
+                server: "server-1".to_string(),
+                user: user_id.to_string(),
+            },
+            ..Member::default()
+        }
+    }
+
+    #[test]
+    fn project_admin_uses_server_scoped_permissions() {
+        let user = User {
+            id: "admin".to_string(),
+            privileged: true,
+            ..User::default()
+        };
+        let expected = ChannelPermission::ViewChannel as u64;
+
+        let permissions = calculate_server_permissions(
+            &server("owner", expected as i64),
+            &user,
+            &member(&user.id),
+        );
+
+        assert_eq!(permissions.into_raw(), expected);
+        assert!(!permissions.has_channel_permission(ChannelPermission::ManageServer));
+    }
+
+    #[test]
+    fn server_owner_still_receives_all_server_permissions() {
+        let user = User {
+            id: "owner".to_string(),
+            privileged: false,
+            ..User::default()
+        };
+
+        let permissions =
+            calculate_server_permissions(&server(&user.id, 0), &user, &member(&user.id));
+
+        assert!(permissions.has_channel_permission(ChannelPermission::ManageServer));
+        assert!(permissions.has_channel_permission(ChannelPermission::ManagePermissions));
+    }
 }

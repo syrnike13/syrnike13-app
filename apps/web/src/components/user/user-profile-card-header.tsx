@@ -11,6 +11,7 @@ import { UserProfileStatusBubble } from '#/components/user/user-profile-status-b
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
+import { useUserBadges } from '#/features/users/use-user-badges'
 import { syncStore } from '#/features/sync/sync-store'
 import {
   canEditAnyMemberRole,
@@ -83,7 +84,12 @@ export function UserProfileCardHeader({
         server &&
           member &&
           actorUserId &&
-          canEditAnyMemberRole(server, actorMember, actorUserId, member),
+          canEditAnyMemberRole(
+            server,
+            actorMember,
+            actorUserId,
+            member,
+          ),
       ),
     [actorMember, actorUserId, member, server],
   )
@@ -101,6 +107,7 @@ export function UserProfileCardHeader({
     animated: true,
   })
   const profileBio = profileQuery.data?.content?.trim()
+  const badges = useUserBadges(user._id, user.badges)
 
   async function removeRole(roleId: string) {
     if (!token || !actorUserId || !server || !member) return
@@ -285,7 +292,7 @@ export function UserProfileCardHeader({
           {user.display_name ? `@${user.username}` : user.username}
         </p>
         <UserBadges
-          badges={user.badges}
+          badges={badges}
           size={layout === 'compact' ? 'sm' : 'md'}
           className="mt-2"
         />

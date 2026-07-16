@@ -19,9 +19,9 @@ export function VoiceCallBanner({
   onDismiss,
 }: VoiceCallBannerProps) {
   return (
-    <div className="shrink-0 border-b border-shell-divider bg-[#1e1f22]/95 px-3 py-2">
+    <div className="gradient-surface-raised shrink-0 border-b border-shell-divider bg-card/95 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#23a559]/15 text-[#23a559]">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-chart-3/15 text-chart-3">
           <HeadphonesIcon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
@@ -33,7 +33,7 @@ export function VoiceCallBanner({
         <Button
           type="button"
           size="sm"
-          className="h-8 shrink-0 bg-[#23a559] text-white hover:bg-[#1f944f]"
+          className="h-8 shrink-0 bg-chart-3 text-primary-foreground hover:bg-chart-3/90"
           onClick={onJoin}
         >
           <HeadphonesIcon className="size-4" />

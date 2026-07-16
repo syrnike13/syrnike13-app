@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AppWindowIcon,
-  CheckIcon,
   Gamepad2Icon,
   Loader2Icon,
   MonitorIcon,
@@ -10,44 +9,43 @@ import { toast } from 'sonner'
 import type {
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSource,
-  DesktopDisplayMediaSourceType,
 } from '@syrnike13/platform'
 
 import { Button } from '#/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
-import { rejectNativePickerSelection } from '#/features/voice/native-screen-share-session'
-import { cn } from '#/lib/utils'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '#/components/ui/tabs'
 import { usePlatform } from '#/platform/use-platform'
 import { Switch } from '#/components/ui/switch'
+import {
+  desktopScreenShareSourceLabel,
+  rememberDesktopScreenShareBroadcastSource,
+} from '#/features/voice/voice-broadcast-source'
 
-type SourceTab = DesktopDisplayMediaSourceType
+type SourceTab = 'screen' | 'applications'
 
 const SOURCE_TABS: Array<{
   value: SourceTab
   label: string
   icon: typeof MonitorIcon
 }> = [
-  { value: 'screen', label: 'Экраны', icon: MonitorIcon },
-  { value: 'game', label: 'Игры', icon: Gamepad2Icon },
-  { value: 'window', label: 'Окна', icon: AppWindowIcon },
+  { value: 'screen', label: 'Экран', icon: MonitorIcon },
+  { value: 'applications', label: 'Приложения', icon: AppWindowIcon },
 ]
 
 const EMPTY_TAB_TEXT: Record<SourceTab, string> = {
   screen: 'Экраны не найдены',
-  game: 'Запустите игру с видимым окном',
-  window: 'Окна не найдены',
-}
-
-function sourceProcessName(source: DesktopDisplayMediaSource) {
-  if (!source.processPath) return null
-  const normalized = source.processPath.replaceAll('\\', '/')
-  return normalized.split('/').at(-1) || null
+  applications: 'Приложения не найдены',
 }
 
 export function sourceAudioLabel(source: DesktopDisplayMediaSource) {
@@ -69,21 +67,21 @@ export function DesktopScreenSharePicker() {
     null,
   )
   const [sources, setSources] = useState<DesktopDisplayMediaSource[]>([])
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<SourceTab>('screen')
   const [audioRequested, setAudioRequested] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const [submittingSourceId, setSubmittingSourceId] = useState<string | null>(
+    null,
+  )
 
   useEffect(() => {
     if (!desktop) return
     return desktop.media.onRequest((nextRequest) => {
       setRequest(nextRequest)
       setSources([])
-      setSelectedSourceId(null)
       setActiveTab('screen')
       setAudioRequested(nextRequest.audioRequested)
-      setSubmitting(false)
+      setSubmittingSourceId(null)
     })
   }, [desktop])
 
@@ -97,12 +95,11 @@ export function DesktopScreenSharePicker() {
       .then((nextSources) => {
         if (cancelled) return
         setSources(nextSources)
-        const preferred =
-          nextSources.find((source) => source.type === 'screen') ??
-          nextSources[0] ??
-          null
-        setSelectedSourceId(preferred?.id ?? null)
-        setActiveTab(preferred?.type ?? 'screen')
+        setActiveTab(
+          nextSources.some((source) => source.type === 'screen')
+            ? 'screen'
+            : 'applications',
+        )
       })
       .catch((error) => {
         if (cancelled) return
@@ -121,118 +118,115 @@ export function DesktopScreenSharePicker() {
     }
   }, [desktop, request])
 
-  const filteredSources = useMemo(
-    () => sources.filter((source) => source.type === activeTab),
-    [activeTab, sources],
+  const screenSources = useMemo(
+    () => sources.filter((source) => source.type === 'screen'),
+    [sources],
   )
-  const selectedSource = useMemo(
-    () => sources.find((source) => source.id === selectedSourceId) ?? null,
-    [selectedSourceId, sources],
+  const applicationSources = useMemo(
+    () => sources.filter((source) => source.type !== 'screen'),
+    [sources],
   )
-  const selectedAudioAvailable = canRequestSourceAudio(selectedSource)
-
-  useEffect(() => {
-    if (!selectedAudioAvailable && audioRequested) {
-      setAudioRequested(false)
-    }
-  }, [audioRequested, selectedAudioAvailable])
-
   const cancelRequest = useCallback(() => {
     const activeRequest = request
     setRequest(null)
     setSources([])
-    setSelectedSourceId(null)
-    setSubmitting(false)
+    setSubmittingSourceId(null)
     if (desktop && activeRequest) {
-      if (activeRequest.nativeVideo) {
-        rejectNativePickerSelection(new Error('Screen share picker cancelled'))
-      }
       void desktop.media.cancelRequest(activeRequest.id)
     }
   }, [desktop, request])
 
-  const selectSource = useCallback(async () => {
-    if (!desktop || !request || !selectedSourceId) return
+  const selectSource = useCallback(
+    async (source: DesktopDisplayMediaSource) => {
+      if (!desktop || !request) return
 
-    setSubmitting(true)
-    try {
-      const selected = await desktop.media.selectDisplaySource(
-        request.id,
-        selectedSourceId,
-        audioRequested && selectedAudioAvailable,
-      )
-      if (!selected) {
-        toast.error('Источник демонстрации больше недоступен')
-        setSubmitting(false)
-        return
+      setSubmittingSourceId(source.id)
+      try {
+        const selected = await desktop.media.selectDisplaySource(
+          request.id,
+          source.id,
+          audioRequested && canRequestSourceAudio(source),
+        )
+        if (!selected) {
+          toast.error('Источник демонстрации больше недоступен')
+          setSubmittingSourceId(null)
+          return
+        }
+        rememberDesktopScreenShareBroadcastSource(source)
+        setRequest(null)
+        setSources([])
+        setSubmittingSourceId(null)
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Не удалось начать демонстрацию',
+        )
+        setSubmittingSourceId(null)
       }
-      setRequest(null)
-      setSources([])
-      setSelectedSourceId(null)
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось начать демонстрацию',
-      )
-      setSubmitting(false)
-    }
-  }, [audioRequested, desktop, request, selectedAudioAvailable, selectedSourceId])
+    },
+    [audioRequested, desktop, request],
+  )
 
   const open = Boolean(request)
+  const submitting = submittingSourceId !== null
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && cancelRequest()}>
-      <DialogContent className="grid max-h-[min(44rem,92vh)] max-w-[min(58rem,94vw)] grid-rows-[auto_auto_1fr_auto] gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-5 py-4 pr-12 text-left">
-          <DialogTitle className="text-base">Демонстрация экрана</DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        showCloseButton={false}
+        className="grid aspect-[4/3] w-[min(96vw,66.667vh)] max-w-none grid-rows-[1fr_auto] gap-0 overflow-hidden p-0 sm:max-w-none"
+      >
+        <DialogTitle className="sr-only">Демонстрация экрана</DialogTitle>
+        <DialogDescription className="sr-only">
+          Выберите экран или приложение, которое хотите показать участникам
+          голосового канала.
+        </DialogDescription>
 
-        <div className="flex items-center gap-1 border-b border-border bg-muted/20 px-4 py-2">
-          {SOURCE_TABS.map((tab) => {
-            const Icon = tab.icon
-            const count = sources.filter((source) => source.type === tab.value)
-              .length
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                className={cn(
-                  'inline-flex h-8 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-                  activeTab === tab.value && 'bg-accent text-foreground',
-                )}
-                onClick={() => setActiveTab(tab.value)}
-              >
-                <Icon className="size-4" />
-                <span>{tab.label}</span>
-                <span className="text-xs text-muted-foreground">{count}</span>
-              </button>
-            )
-          })}
-        </div>
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as SourceTab)}
+          className="min-h-0 gap-0"
+        >
+          <TabsList className="mt-4 ml-4 w-[calc(100%-5rem)] shrink-0">
+            {SOURCE_TABS.map((tab) => {
+              const Icon = tab.icon
+              const count =
+                tab.value === 'screen'
+                  ? screenSources.length
+                  : applicationSources.length
+              return (
+                <TabsTrigger key={tab.value} value={tab.value}>
+                  <Icon />
+                  <span>{tab.label}</span>
+                  <span className="text-xs text-muted-foreground">{count}</span>
+                </TabsTrigger>
+              )
+            })}
+          </TabsList>
 
-        <div className="min-h-0 overflow-y-auto px-4 py-4">
-          {loading ? (
-            <div className="grid min-h-64 place-items-center text-muted-foreground">
-              <Loader2Icon className="size-6 animate-spin" />
-            </div>
-          ) : filteredSources.length > 0 ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
-              {filteredSources.map((source) => (
-                <DisplaySourceTile
-                  key={source.id}
-                  source={source}
-                  selected={source.id === selectedSourceId}
-                  onSelect={() => setSelectedSourceId(source.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-              {EMPTY_TAB_TEXT[activeTab]}
-            </div>
-          )}
-        </div>
+          <TabsContent value="screen" className="min-h-0 overflow-y-auto p-4">
+            <DisplaySourceGrid
+              sources={screenSources}
+              submittingSourceId={submittingSourceId}
+              loading={loading}
+              emptyText={EMPTY_TAB_TEXT.screen}
+              onShare={selectSource}
+            />
+          </TabsContent>
+          <TabsContent
+            value="applications"
+            className="min-h-0 overflow-y-auto p-4"
+          >
+            <DisplaySourceGrid
+              sources={applicationSources}
+              submittingSourceId={submittingSourceId}
+              loading={loading}
+              emptyText={EMPTY_TAB_TEXT.applications}
+              onShare={selectSource}
+            />
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter className="flex-row items-center justify-between border-t border-border px-4 py-3">
           {request?.nativeVideo ? (
@@ -240,47 +234,83 @@ export function DesktopScreenSharePicker() {
               <Switch
                 checked={audioRequested}
                 onCheckedChange={setAudioRequested}
-                disabled={submitting || !selectedAudioAvailable}
+                disabled={submitting}
               />
               <span>Звук</span>
             </label>
           ) : (
             <span />
           )}
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={cancelRequest}
-              disabled={submitting}
-            >
-              Отмена
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void selectSource()}
-              disabled={!selectedSourceId || submitting}
-            >
-              {submitting ? <Loader2Icon className="size-4 animate-spin" /> : null}
-              Поделиться
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={cancelRequest}
+            disabled={submitting}
+          >
+            Отмена
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
+function DisplaySourceGrid({
+  sources,
+  submittingSourceId,
+  loading,
+  emptyText,
+  onShare,
+}: {
+  sources: DesktopDisplayMediaSource[]
+  submittingSourceId: string | null
+  loading: boolean
+  emptyText: string
+  onShare: (source: DesktopDisplayMediaSource) => void
+}) {
+  if (loading) {
+    return (
+      <div className="grid min-h-64 place-items-center text-muted-foreground">
+        <Loader2Icon className="size-6 animate-spin" />
+      </div>
+    )
+  }
+
+  if (sources.length === 0) {
+    return (
+      <div className="grid min-h-64 place-items-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
+        {emptyText}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {sources.map((source) => (
+        <DisplaySourceTile
+          key={source.id}
+          source={source}
+          submitting={source.id === submittingSourceId}
+          disabled={submittingSourceId !== null}
+          onShare={() => onShare(source)}
+        />
+      ))}
+    </div>
+  )
+}
+
 function DisplaySourceTile({
   source,
-  selected,
-  onSelect,
+  submitting,
+  disabled,
+  onShare,
 }: {
   source: DesktopDisplayMediaSource
-  selected: boolean
-  onSelect: () => void
+  submitting: boolean
+  disabled: boolean
+  onShare: () => void
 }) {
-  const processName = sourceProcessName(source)
+  const sourceLabel = desktopScreenShareSourceLabel(source)
   const FallbackIcon =
     source.type === 'screen'
       ? MonitorIcon
@@ -289,33 +319,46 @@ function DisplaySourceTile({
         : AppWindowIcon
 
   return (
-    <button
-      type="button"
-      className={cn(
-        'group grid min-w-0 gap-2 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none',
-        selected && 'border-ring bg-accent/40',
-      )}
-      onClick={onSelect}
-    >
-      <div className="relative aspect-video overflow-hidden rounded bg-muted">
-        {source.thumbnailDataUrl ? (
-          <img
-            src={source.thumbnailDataUrl}
-            alt=""
-            className="size-full object-cover"
-            draggable={false}
-          />
-        ) : (
-          <div className="grid size-full place-items-center text-muted-foreground">
-            <FallbackIcon className="size-8" />
+    <div className="grid min-w-0 gap-2">
+      <button
+        type="button"
+        aria-label={`Демонстрировать ${sourceLabel}`}
+        className="group min-w-0 rounded-md border border-border bg-card p-2 text-left transition-colors hover:border-ring/70 hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:outline-none"
+        disabled={disabled}
+        onClick={onShare}
+      >
+        <div className="relative aspect-video overflow-hidden rounded bg-muted">
+          {source.thumbnailDataUrl ? (
+            <img
+              src={source.thumbnailDataUrl}
+              alt=""
+              className="size-full object-cover"
+              draggable={false}
+            />
+          ) : (
+            <div className="grid size-full place-items-center text-muted-foreground">
+              <FallbackIcon className="size-8" />
+            </div>
+          )}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/70 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            <Button
+              asChild
+              size="sm"
+              className="bg-foreground text-background"
+            >
+              <span aria-hidden="true">
+                {submitting ? (
+                  <Loader2Icon
+                    data-icon="inline-start"
+                    className="animate-spin"
+                  />
+                ) : null}
+                Демонстрировать
+              </span>
+            </Button>
           </div>
-        )}
-        {selected ? (
-          <span className="absolute top-2 right-2 grid size-6 place-items-center rounded-full bg-primary text-primary-foreground shadow">
-            <CheckIcon className="size-4" />
-          </span>
-        ) : null}
-      </div>
+        </div>
+      </button>
       <div className="flex min-w-0 items-center gap-2 px-1 pb-1">
         {source.appIconDataUrl ? (
           <img
@@ -327,14 +370,8 @@ function DisplaySourceTile({
         ) : (
           <FallbackIcon className="size-4 shrink-0 text-muted-foreground" />
         )}
-        <span className="truncate text-sm font-medium">{source.name}</span>
+        <span className="truncate text-sm font-medium">{sourceLabel}</span>
       </div>
-      <div className="flex min-w-0 items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
-        <span className="truncate">{sourceAudioLabel(source)}</span>
-        {processName ? (
-          <span className="max-w-24 shrink-0 truncate">{processName}</span>
-        ) : null}
-      </div>
-    </button>
+    </div>
   )
 }

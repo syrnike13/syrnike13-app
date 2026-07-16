@@ -1,10 +1,3 @@
-import { spawn, type ChildProcessByStdio } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
-import readline from 'node:readline'
-import type { Readable } from 'node:stream'
-
-import { app } from 'electron'
 import type {
   DesktopOverlayGameTarget,
   DesktopOverlaySettings,
@@ -12,6 +5,7 @@ import type {
 
 import { OVERLAY_EXCLUDED_PROCESS_NAMES } from './overlay-game-exclusions'
 import { POPULAR_GAME_PROCESS_NAMES } from './overlay-game-processes'
+import { hooksRuntimeController } from './native-runtime/hooks-runtime-controller'
 
 export type OverlayForegroundWindow = {
   pid: number
@@ -48,7 +42,13 @@ const PROTECTED_GAME_SIGNATURES = [
   },
 ]
 
-let helper: ChildProcessByStdio<null, Readable, Readable> | null = null
+const DETECTED_GAME_LAST_SEEN_WRITE_INTERVAL_MS = 5 * 60 * 1_000
+
+let targetListener: ((target: DesktopOverlayGameTarget | null) => void) | null = null
+
+function handleForegroundWindow(window: OverlayForegroundWindow | null) {
+  targetListener?.(buildOverlayGameTarget(window, process.pid))
+}
 
 export function startOverlayGameDetector(
   onTargetChanged: (target: DesktopOverlayGameTarget | null) => void,
@@ -58,41 +58,28 @@ export function startOverlayGameDetector(
     return
   }
 
-  const helperPath = resolveOverlayDetectorPath()
-  if (!helperPath) {
+  if (!hooksRuntimeController.isAvailable('overlay')) {
     onTargetChanged(null)
     return
   }
 
-  helper?.kill()
-  const nextHelper = spawn(helperPath, [], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
-  helper = nextHelper
-
-  const lines = readline.createInterface({ input: nextHelper.stdout })
-  lines.on('line', (line) => {
-    onTargetChanged(
-      buildOverlayGameTarget(parseOverlayForegroundWindow(line), process.pid),
+  if (targetListener) {
+    targetListener = onTargetChanged
+    return
+  }
+  targetListener = onTargetChanged
+  void hooksRuntimeController.startOverlay(handleForegroundWindow).catch((error) => {
+    console.warn(
+      '[overlay-detector] native runtime failed to start',
+      error instanceof Error ? error.message : 'unknown error',
     )
-  })
-
-  nextHelper.stderr.resume()
-  nextHelper.on('error', (error) => {
-    console.error('[overlay-detector] spawn error', error)
-    if (helper === nextHelper) helper = null
-    onTargetChanged(null)
-  })
-  nextHelper.on('exit', () => {
-    if (helper === nextHelper) helper = null
     onTargetChanged(null)
   })
 }
 
 export function disposeOverlayGameDetector() {
-  helper?.kill()
-  helper = null
+  targetListener = null
+  void hooksRuntimeController.stopOverlay(handleForegroundWindow)
 }
 
 export function buildOverlayGameTarget(
@@ -164,6 +151,15 @@ export function rememberDetectedOverlayGame(
   lastSeenAt: number,
 ): DesktopOverlaySettings {
   const existing = settings.games.find((game) => game.id === target.gameId)
+  if (
+    existing &&
+    existing.processName === target.processName &&
+    existing.processPath === target.processPath &&
+    existing.title === target.title &&
+    lastSeenAt - existing.lastSeenAt < DETECTED_GAME_LAST_SEEN_WRITE_INTERVAL_MS
+  ) {
+    return settings
+  }
   const nextGame = {
     id: target.gameId,
     processName: target.processName,
@@ -185,74 +181,4 @@ export function rememberDetectedOverlayGame(
 
 function overlayGameId(processPath: string | null, processName: string) {
   return (processPath || processName).replaceAll('\\', '/').toLowerCase()
-}
-
-function parseOverlayForegroundWindow(line: string) {
-  try {
-    const parsed = JSON.parse(line) as Partial<OverlayForegroundWindow>
-    if (
-      typeof parsed.pid !== 'number' ||
-      typeof parsed.processName !== 'string' ||
-      typeof parsed.title !== 'string' ||
-      typeof parsed.className !== 'string' ||
-      typeof parsed.visible !== 'boolean' ||
-      typeof parsed.fullscreenLike !== 'boolean' ||
-      !parsed.bounds ||
-      typeof parsed.bounds !== 'object'
-    ) {
-      return null
-    }
-
-    const bounds = parsed.bounds as Partial<OverlayForegroundWindow['bounds']>
-    if (
-      typeof bounds.x !== 'number' ||
-      typeof bounds.y !== 'number' ||
-      typeof bounds.width !== 'number' ||
-      typeof bounds.height !== 'number'
-    ) {
-      return null
-    }
-
-    return {
-      pid: parsed.pid,
-      processName: parsed.processName,
-      processPath:
-        typeof parsed.processPath === 'string' && parsed.processPath.length > 0
-          ? parsed.processPath
-          : null,
-      title: parsed.title,
-      className: parsed.className,
-      visible: parsed.visible,
-      fullscreenLike: parsed.fullscreenLike,
-      bounds: {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-      },
-    }
-  } catch {
-    return null
-  }
-}
-
-function resolveOverlayDetectorPath() {
-  const helperName = 'syrnike-overlay-detector-win.exe'
-  const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'native', helperName)]
-    : [
-        path.resolve(app.getAppPath(), 'out/native', helperName),
-        path.resolve(
-          app.getAppPath(),
-          'native/overlay-detector-win/build/Release',
-          helperName,
-        ),
-        path.resolve(
-          app.getAppPath(),
-          'native/overlay-detector-win/build/Debug',
-          helperName,
-        ),
-      ]
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null
 }

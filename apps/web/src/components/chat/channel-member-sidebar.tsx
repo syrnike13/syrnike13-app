@@ -15,6 +15,7 @@ import {
   type ServerMemberEntry,
 } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
+import { canViewChannelDraft } from '#/features/authorization/permission-draft'
 import { cn } from '#/lib/utils'
 
 type ChannelMemberSidebarProps = {
@@ -111,13 +112,26 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
     return ids
   })
 
+  const visibleMembers = useMemo(() => {
+    if (channel.channel_type !== 'TextChannel' || !server) return members
+
+    return members.filter((entry) =>
+      canViewChannelDraft(
+        server,
+        channel,
+        entry.member,
+        entry.user._id,
+      ),
+    )
+  }, [channel, members, server])
+
   const sidebarItems = useMemo(() => {
-    const sections = groupServerMembersForSidebar(server, members)
+    const sections = groupServerMembersForSidebar(server, visibleMembers)
     return flattenMemberListSections(sections)
-  }, [members, server])
+  }, [server, visibleMembers])
 
   return (
-    <aside className="hidden min-h-0 w-52 shrink-0 flex-col border-l border-shell-divider bg-card text-card-foreground lg:flex">
+    <aside className="theme-surface-content gradient-surface-content hidden min-h-0 w-52 shrink-0 flex-col border-l border-shell-divider text-card-foreground lg:flex">
       <ScrollArea className="min-h-0 flex-1">
         <ul className="flex flex-col gap-0.5 p-2">
           {sidebarItems.map((item) =>
@@ -141,7 +155,7 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
               />
             ),
           )}
-          {members.length === 0 ? (
+          {visibleMembers.length === 0 ? (
             <li className="px-2 py-4 text-center text-xs text-muted-foreground">
               Нет участников
             </li>

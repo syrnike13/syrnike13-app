@@ -40,12 +40,20 @@ vi.mock('#/components/ui/avatar', () => ({
     <span>{children}</span>
   ),
   AvatarBadge: ({
+    children,
     className,
     title,
+    'aria-label': ariaLabel,
   }: {
+    children?: ReactNode
     className?: string
     title?: string
-  }) => <span className={className} title={title} />,
+    'aria-label'?: string
+  }) => (
+    <span className={className} title={title} aria-label={ariaLabel}>
+      {children}
+    </span>
+  ),
 }))
 
 const baseUser = {
@@ -165,5 +173,37 @@ describe('UserAvatar animation modes', () => {
       'https://syrnike13.ru/autumn/avatars/avatar-1/avatar.gif',
     )
     expect(animatedOverlay(container)?.className).toContain('opacity-100')
+  })
+})
+
+describe('UserAvatar notification badge', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('shows unread count in the presence badge slot', () => {
+    render(
+      <UserAvatar
+        user={user()}
+        showPresence={false}
+        notificationBadge={{ count: 3, hasUnread: true, urgent: false }}
+      />,
+    )
+
+    const badge = screen.getByLabelText('3 уведомлений')
+    expect(badge.textContent).toBe('3')
+    expect(badge.style.backgroundColor).toBe('var(--destructive-contrast)')
+  })
+
+  it('hides presence when a notification badge is shown', () => {
+    render(
+      <UserAvatar
+        user={user({ relationship: 'Friend' })}
+        notificationBadge={{ count: 1, hasUnread: true, urgent: false }}
+      />,
+    )
+
+    expect(screen.getByLabelText('1 уведомлений')).toBeTruthy()
+    expect(screen.queryByTitle('В сети')).toBeNull()
   })
 })

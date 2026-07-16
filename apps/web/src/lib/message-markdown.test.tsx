@@ -6,6 +6,7 @@ import { renderMessageContent } from '#/lib/message-markdown'
 const userId = '01KTF53K42MTGBMD6XSHVC55A4'
 const roleId = '01KTF53K42MTGBMD6XSHVC55A5'
 const channelId = '01KTF53K42MTGBMD6XSHVC55A6'
+const emojiId = '01KTF53K42MTGBMD6XSHVC55A7'
 
 describe('renderMessageContent', () => {
   it('renders user mentions instead of raw ids', () => {
@@ -59,6 +60,16 @@ describe('renderMessageContent', () => {
     expect(html).not.toContain(channelId)
   })
 
+  it('renders custom emoji with an inline wrapper', () => {
+    const html = renderToStaticMarkup(
+      <>{renderMessageContent(`Привет :${emojiId}:`)}</>,
+    )
+
+    expect(html).toMatch(/<p[^>]*>.*<span/)
+    expect(html).toContain(`alt="emoji"`)
+    expect(html).not.toMatch(/<p[^>]*>.*<div/)
+  })
+
   it('renders markdown headings', () => {
     const html = renderToStaticMarkup(
       <>{renderMessageContent('# 123\n## 456')}</>,
@@ -85,5 +96,22 @@ describe('renderMessageContent', () => {
     expect(html).toContain('p:only-child]:inline')
     expect(html).toContain('Первый пункт')
     expect(html).toContain('Второй пункт')
+  })
+
+  it('keeps an inline mention renderable inside a spoiler', () => {
+    const html = renderToStaticMarkup(
+      <>
+        {renderMessageContent(`||<@${userId}>||`, {
+          [userId]: {
+            _id: userId,
+            username: 'alice',
+            display_name: 'Alice',
+          } as never,
+        })}
+      </>,
+    )
+
+    expect(html).toContain('@Alice')
+    expect(html).not.toContain(userId)
   })
 })

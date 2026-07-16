@@ -17,23 +17,34 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { PlusIcon, Trash2Icon } from '#/components/icons'
+import {
+  MoreHorizontalIcon,
+  PlusIcon,
+  ShieldOffIcon,
+  Trash2Icon,
+} from '#/components/icons'
 import { toast } from 'sonner'
 
 import { FxImage } from '#/components/ui/fx-image'
 import { ServerSettingsRoleEditor } from '#/components/servers/server-settings-role-editor'
+import { PermissionStateButton } from '#/components/servers/permission-state-button'
 import {
   useDraftRegistration,
   type DraftController,
 } from '#/components/settings/draft-controller-context'
 import { Button } from '#/components/ui/button'
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from '#/components/ui/context-menu'
-import { Switch } from '#/components/ui/switch'
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
+import {
+  FloatingMenu,
+  FloatingMenuItem,
+} from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import {
   createServerRole,
@@ -43,16 +54,17 @@ import {
 } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import {
+  canGrantServerPermission,
   canManageRole,
-  hasChannelPermission,
-  calculateServerPermissions,
-  ChannelPermission,
-} from '#/lib/permissions'
+  canManageServerPermissions,
+  canManageServerRoles,
+} from '#/features/authorization/authorization'
 import {
+  hasServerPermission,
   roleColourStyle,
   roleRanksPayload,
   SERVER_PERMISSION_GROUPS,
-  sortRolesByRankDesc,
+  sortRolesByHierarchy,
   toggleServerPermission,
 } from '#/lib/server-permissions'
 import { roleIconUrl } from '#/lib/media'
@@ -62,7 +74,7 @@ const DEFAULT_PERMISSIONS_ID = '__default_permissions__'
 const NEW_ROLE_NAME = 'Новая роль'
 
 const ROLE_SIDEBAR_ROW_BASE =
-  'flex h-9 w-full items-center gap-2 rounded-md border px-3 text-left text-sm font-medium transition-colors'
+  'flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left transition-colors'
 
 function roleSidebarRowStateClass(selected: boolean) {
   return selected
@@ -86,9 +98,22 @@ function upsertServerRole(serverId: string, role: Role) {
   })
 }
 
+function formatMemberCount(count: number) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+
+  if (mod10 === 1 && mod100 !== 11) return `${count} участник`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} участника`
+  }
+  return `${count} участников`
+}
+
 function SortableRoleListItem({
   role,
   selected,
+  memberCount,
+  manageable,
   canDrag,
   canDelete,
   onSelect,
@@ -96,11 +121,17 @@ function SortableRoleListItem({
 }: {
   role: Role
   selected: boolean
+  memberCount: number
+  manageable: boolean
   canDrag: boolean
   canDelete: boolean
   onSelect: () => void
   onDelete: () => void
 }) {
+  const [menuPosition, setMenuPosition] = useState<{
+    x: number
+    y: number
+  } | null>(null)
   const {
     attributes,
     listeners,
@@ -125,6 +156,7 @@ function SortableRoleListItem({
       style={style}
       role="button"
       tabIndex={0}
+      aria-label={role.name}
       className={cn(
         ROLE_SIDEBAR_ROW_BASE,
         roleSidebarRowStateClass(selected),
@@ -148,36 +180,70 @@ function SortableRoleListItem({
           className="size-5"
         />
       ) : null}
-      <span className="truncate" style={roleColourStyle(role.colour)}>
-        {role.name}
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-sm font-medium"
+          style={roleColourStyle(role.colour)}
+        >
+          {role.name}
+        </span>
+        <span className="block truncate text-[11px] font-normal text-muted-foreground">
+          <span>{formatMemberCount(memberCount)}</span>
+        </span>
       </span>
+      {!manageable ? (
+        <span
+          className="shrink-0 text-muted-foreground"
+          title="Только просмотр"
+        >
+          <ShieldOffIcon className="size-4" />
+        </span>
+      ) : null}
+      {canDelete ? (
+        <>
+          <button
+            type="button"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={`Действия роли ${role.name}`}
+            aria-haspopup="menu"
+            aria-expanded={menuPosition ? true : undefined}
+            onClick={(event) => {
+              event.stopPropagation()
+              onSelect()
+              const rect = event.currentTarget.getBoundingClientRect()
+              setMenuPosition({
+                x: Math.max(8, rect.right - 192),
+                y: rect.bottom + 4,
+              })
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <MoreHorizontalIcon className="size-4" />
+          </button>
+          <FloatingMenu
+            open={Boolean(menuPosition)}
+            x={menuPosition?.x ?? 0}
+            y={menuPosition?.y ?? 0}
+            onClose={() => setMenuPosition(null)}
+            className="w-48"
+          >
+            <FloatingMenuItem
+              destructive
+              onClick={() => {
+                setMenuPosition(null)
+                onDelete()
+              }}
+            >
+              <Trash2Icon className="size-4" />
+              Удалить роль
+            </FloatingMenuItem>
+          </FloatingMenu>
+        </>
+      ) : null}
     </div>
   )
 
-  if (!canDelete) {
-    return row
-  }
-
-  return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        if (open) onSelect()
-      }}
-    >
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent className="z-[60] w-48">
-        <ContextMenuItem
-          variant="destructive"
-          onSelect={() => {
-            onDelete()
-          }}
-        >
-          <Trash2Icon className="size-4" />
-          Удалить роль
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  )
+  return row
 }
 
 function SortableRolesList({
@@ -185,6 +251,7 @@ function SortableRolesList({
   server,
   member,
   userId,
+  memberCounts,
   selectedId,
   reordering,
   canReorder,
@@ -196,6 +263,7 @@ function SortableRolesList({
   server: Server
   member: Member | undefined
   userId: string
+  memberCounts: Record<string, number>
   selectedId: string | null
   reordering: boolean
   canReorder: boolean
@@ -219,6 +287,15 @@ function SortableRolesList({
     const oldIndex = roles.findIndex((role) => role._id === active.id)
     const newIndex = roles.findIndex((role) => role._id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
+
+    const activeRole = roles[oldIndex]
+    const overRole = roles[newIndex]
+    if (
+      !canManageRole(server, member, userId, activeRole.rank ?? 0) ||
+      !canManageRole(server, member, userId, overRole.rank ?? 0)
+    ) {
+      return
+    }
 
     didDragRef.current = true
     onReorder(arrayMove(roles, oldIndex, newIndex))
@@ -245,17 +322,25 @@ function SortableRolesList({
         <div className="space-y-1">
           {roles.map((role) => {
             const roleRank = role.rank ?? 0
+            const manageable = canManageRole(
+              server,
+              member,
+              userId,
+              roleRank,
+            )
             const canDrag =
               canReorder &&
-              canManageRole(server, member, userId, roleRank) &&
+              manageable &&
               !reordering
-            const canDelete = canManageRole(server, member, userId, roleRank)
+            const canDelete = manageable
 
             return (
               <SortableRoleListItem
                 key={role._id}
                 role={role}
                 selected={selectedId === role._id}
+                memberCount={memberCounts[role._id] ?? 0}
+                manageable={manageable}
                 canDrag={canDrag}
                 canDelete={canDelete}
                 onSelect={() => selectRole(role._id)}
@@ -343,8 +428,12 @@ function DefaultPermissionsEditor({
             </h4>
             <ul className="space-y-1">
               {group.permissions.map((permission) => {
-                const enabled = hasChannelPermission(
+                const enabled = hasServerPermission(
                   permissions,
+                  permission.flag,
+                )
+                const actorHasPermission = canGrantServerPermission(
+                  server,
                   permission.flag,
                 )
                 return (
@@ -353,17 +442,22 @@ function DefaultPermissionsEditor({
                     className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
                   >
                     <span className="text-sm">{permission.label}</span>
-                    <Switch
-                      checked={enabled}
-                      disabled={!canEdit}
-                      onCheckedChange={(checked) =>
-                        setPermissions((current) =>
-                          toggleServerPermission(
+                    <PermissionStateButton
+                      label={permission.label}
+                      state={enabled ? 'allow' : 'neutral'}
+                      allowedStates={['neutral', 'allow']}
+                      disabled={!canEdit || (!actorHasPermission && !enabled)}
+                      onChange={(next) =>
+                        setPermissions((current) => {
+                          if (next === 'allow' && !actorHasPermission) {
+                            return current
+                          }
+                          return toggleServerPermission(
                             current,
                             permission.flag,
-                            checked,
-                          ),
-                        )
+                            next === 'allow',
+                          )
+                        })
                       }
                     />
                   </li>
@@ -385,43 +479,61 @@ export function ServerSettingsRolesPanel({
   const member = useSyncStore((s) =>
     auth.user?._id ? s.members[`${serverId}:${auth.user._id}`] : undefined,
   )
+  const roleMemberCounts = useSyncStore((state) => {
+    const counts: Record<string, number> = {}
+    for (const entry of Object.values(state.members)) {
+      if (entry._id.server !== serverId) continue
+      for (const roleId of entry.roles ?? []) {
+        counts[roleId] = (counts[roleId] ?? 0) + 1
+      }
+    }
+    return counts
+  })
 
-  const roles = useMemo(
-    () => (server?.roles ? sortRolesByRankDesc(Object.values(server.roles)) : []),
+  const sortedRoles = useMemo(
+    () =>
+      server?.roles ? sortRolesByHierarchy(Object.values(server.roles)) : [],
     [server?.roles],
   )
 
   const [selectedId, setSelectedId] = useState(DEFAULT_PERMISSIONS_ID)
   const [creating, setCreating] = useState(false)
   const [reordering, setReordering] = useState(false)
+  const [optimisticRoleIds, setOptimisticRoleIds] = useState<string[] | null>(
+    null,
+  )
+  const reorderingRequestRef = useRef(false)
+  const [rolePendingDeletion, setRolePendingDeletion] = useState<Role | null>(
+    null,
+  )
+  const [deletingRole, setDeletingRole] = useState(false)
+
+  const roles = useMemo(() => {
+    if (!optimisticRoleIds) return sortedRoles
+
+    const rolesById = new Map(sortedRoles.map((role) => [role._id, role]))
+    const optimisticRoles = optimisticRoleIds
+      .map((roleId) => rolesById.get(roleId))
+      .filter((role): role is Role => Boolean(role))
+
+    if (optimisticRoles.length !== sortedRoles.length) return sortedRoles
+    return optimisticRoles
+  }, [optimisticRoleIds, sortedRoles])
 
   const token = auth.session?.token
   const userId = auth.user?._id
-
   const canCreateRoles = server && userId
-    ? server.owner === userId ||
-      hasChannelPermission(
-        calculateServerPermissions(server, member, userId),
-        ChannelPermission.ManageRole,
-      )
+    ? canManageServerRoles(server)
     : false
 
   const canEditDefaultPermissions = server && userId
-    ? server.owner === userId ||
-      hasChannelPermission(
-        calculateServerPermissions(server, member, userId),
-        ChannelPermission.ManagePermissions,
-      )
+    ? canManageServerPermissions(server)
     : false
 
   const canReorderRoles = Boolean(
     server &&
       userId &&
-      (server.owner === userId ||
-        hasChannelPermission(
-          calculateServerPermissions(server, member, userId),
-          ChannelPermission.ManageRole,
-        )),
+      canManageServerRoles(server),
   )
 
   const effectiveSelectedId = useMemo(() => {
@@ -456,40 +568,68 @@ export function ServerSettingsRolesPanel({
     }
   }
 
-  async function removeRole(role: Role) {
+  function requestRoleDeletion(role: Role) {
     if (!token || !userId) return
-    if (!canManageRole(server, member, userId, role.rank ?? 0)) return
-
     if (
-      !window.confirm(`Удалить роль «${role.name}»? Это действие необратимо.`)
+      !canManageRole(server, member, userId, role.rank ?? 0)
     ) {
       return
     }
 
+    setRolePendingDeletion(role)
+  }
+
+  async function confirmRoleDeletion() {
+    if (!token || !userId || !rolePendingDeletion) return
+    if (
+      !canManageRole(
+        server,
+        member,
+        userId,
+        rolePendingDeletion.rank ?? 0,
+      )
+    ) {
+      return
+    }
+
+    setDeletingRole(true)
     try {
-      await deleteServerRole(token, serverId, role._id)
+      await deleteServerRole(token, serverId, rolePendingDeletion._id)
       const currentServer = syncStore.getState().servers[serverId]
       if (currentServer?.roles) {
-        const { [role._id]: _, ...remainingRoles } = currentServer.roles
+        const {
+          [rolePendingDeletion._id]: _,
+          ...remainingRoles
+        } = currentServer.roles
         syncStore.upsertServer({ ...currentServer, roles: remainingRoles })
       }
-      if (effectiveSelectedId === role._id) {
-        setSelectedId(DEFAULT_PERMISSIONS_ID)
-      }
+      setSelectedId((current) =>
+        current === rolePendingDeletion._id ? DEFAULT_PERMISSIONS_ID : current,
+      )
+      setRolePendingDeletion(null)
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось удалить роль',
       )
+    } finally {
+      setDeletingRole(false)
     }
   }
 
   async function persistRoleOrder(reordered: Role[]) {
     if (!token || !canReorderRoles) return
 
+    const nextOrder = reordered.map((role) => role._id)
+    const currentOrder = roles.map((role) => role._id)
+    if (nextOrder.join('\0') === currentOrder.join('\0')) return
+    if (reorderingRequestRef.current) return
+
+    reorderingRequestRef.current = true
+    setOptimisticRoleIds(nextOrder)
     setReordering(true)
     try {
       const updated = await editServerRoleRanks(token, serverId, {
-        ranks: roleRanksPayload(reordered.map((role) => role._id)),
+        ranks: roleRanksPayload(nextOrder),
       })
       syncStore.upsertServer(updated)
     } catch (error) {
@@ -497,6 +637,8 @@ export function ServerSettingsRolesPanel({
         error instanceof Error ? error.message : 'Не удалось изменить порядок',
       )
     } finally {
+      reorderingRequestRef.current = false
+      setOptimisticRoleIds(null)
       setReordering(false)
     }
   }
@@ -543,12 +685,13 @@ export function ServerSettingsRolesPanel({
                 server={server}
                 member={member}
                 userId={userId}
+                memberCounts={roleMemberCounts}
                 selectedId={effectiveSelectedId}
                 reordering={reordering}
                 canReorder={canReorderRoles}
                 onSelect={setSelectedId}
                 onReorder={(reordered) => void persistRoleOrder(reordered)}
-                onDeleteRole={(role) => void removeRole(role)}
+                onDeleteRole={requestRoleDeletion}
               />
             )}
           </div>
@@ -574,12 +717,49 @@ export function ServerSettingsRolesPanel({
                 token={token}
                 userId={userId}
                 member={member}
-                onDeleted={() => setSelectedId(DEFAULT_PERMISSIONS_ID)}
+                onDeleteRequested={() => requestRoleDeletion(selectedRole)}
               />
             )}
           </div>
         </div>
       </div>
+      <Dialog
+        open={rolePendingDeletion !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingRole) {
+            setRolePendingDeletion(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Удалить роль «{rolePendingDeletion?.name}»?
+            </DialogTitle>
+            <DialogDescription>
+              Участники потеряют эту роль. Это действие необратимо.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingRole}
+              onClick={() => setRolePendingDeletion(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingRole}
+              onClick={() => void confirmRoleDeletion()}
+            >
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -68,3 +68,6 @@ access_key_id = "minioautumn"
 secret_access_key = "minioautumn"
 # Bucket to upload to by default
 default_bucket = "syrnike-uploads"
+
+[features]
+webhooks_enabled = true

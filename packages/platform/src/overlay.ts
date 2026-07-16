@@ -5,6 +5,7 @@ export type DesktopOverlayParticipant = {
   speaking: boolean
   muted: boolean
   deafened: boolean
+  screensharing: boolean
 }
 
 export type DesktopOverlaySnapshot = {
@@ -37,6 +38,13 @@ export type DesktopOverlayState = {
   snapshot: DesktopOverlaySnapshot
 }
 
+export const DESKTOP_OVERLAY_MAX_PARTICIPANTS = 8
+export const DESKTOP_OVERLAY_MAX_CHANNEL_ID_LENGTH = 128
+export const DESKTOP_OVERLAY_MAX_CHANNEL_LABEL_LENGTH = 120
+export const DESKTOP_OVERLAY_MAX_USER_ID_LENGTH = 128
+export const DESKTOP_OVERLAY_MAX_DISPLAY_NAME_LENGTH = 80
+export const DESKTOP_OVERLAY_MAX_AVATAR_URL_LENGTH = 2_048
+
 export const EMPTY_DESKTOP_OVERLAY_SNAPSHOT: DesktopOverlaySnapshot = {
   active: false,
   channelId: null,
@@ -53,15 +61,23 @@ export function normalizeDesktopOverlaySnapshot(
 
   const snapshot = value as Partial<DesktopOverlaySnapshot>
   const active = snapshot.active === true
-  const channelId = stringOrNull(snapshot.channelId)
-  const channelLabel = stringOrNull(snapshot.channelLabel)
+  const channelId = cappedStringOrNull(
+    snapshot.channelId,
+    DESKTOP_OVERLAY_MAX_CHANNEL_ID_LENGTH,
+  )
+  const channelLabel = cappedStringOrNull(
+    snapshot.channelLabel,
+    DESKTOP_OVERLAY_MAX_CHANNEL_LABEL_LENGTH,
+  )
 
   if (!active || !channelId || !channelLabel) {
     return EMPTY_DESKTOP_OVERLAY_SNAPSHOT
   }
 
   const participants = Array.isArray(snapshot.participants)
-    ? snapshot.participants.flatMap(normalizeDesktopOverlayParticipant)
+    ? snapshot.participants
+        .slice(0, DESKTOP_OVERLAY_MAX_PARTICIPANTS)
+        .flatMap(normalizeDesktopOverlayParticipant)
     : []
 
   if (participants.length === 0) return EMPTY_DESKTOP_OVERLAY_SNAPSHOT
@@ -85,25 +101,71 @@ function normalizeDesktopOverlayParticipant(
     !nonEmptyString(participant.displayName) ||
     typeof participant.speaking !== 'boolean' ||
     typeof participant.muted !== 'boolean' ||
-    typeof participant.deafened !== 'boolean'
+    typeof participant.deafened !== 'boolean' ||
+    typeof participant.screensharing !== 'boolean'
   ) {
     return []
   }
 
   return [
     {
-      userId: participant.userId,
-      displayName: participant.displayName,
-      avatarUrl: stringOrNull(participant.avatarUrl),
+      userId: participant.userId.slice(0, DESKTOP_OVERLAY_MAX_USER_ID_LENGTH),
+      displayName: participant.displayName.slice(
+        0,
+        DESKTOP_OVERLAY_MAX_DISPLAY_NAME_LENGTH,
+      ),
+      avatarUrl: cappedStringOrNull(
+        participant.avatarUrl,
+        DESKTOP_OVERLAY_MAX_AVATAR_URL_LENGTH,
+      ),
       speaking: participant.speaking,
       muted: participant.muted,
       deafened: participant.deafened,
+      screensharing: participant.screensharing,
     },
   ]
 }
 
-function stringOrNull(value: unknown) {
-  return typeof value === 'string' && value.length > 0 ? value : null
+export function desktopOverlaySnapshotsEqual(
+  left: DesktopOverlaySnapshot,
+  right: DesktopOverlaySnapshot,
+) {
+  if (
+    left === right ||
+    (left.active === right.active &&
+      left.channelId === right.channelId &&
+      left.channelLabel === right.channelLabel &&
+      left.participants === right.participants)
+  ) {
+    return true
+  }
+  if (
+    left.active !== right.active ||
+    left.channelId !== right.channelId ||
+    left.channelLabel !== right.channelLabel ||
+    left.participants.length !== right.participants.length
+  ) {
+    return false
+  }
+
+  return left.participants.every((participant, index) => {
+    const other = right.participants[index]
+    return (
+      participant.userId === other.userId &&
+      participant.displayName === other.displayName &&
+      participant.avatarUrl === other.avatarUrl &&
+      participant.speaking === other.speaking &&
+      participant.muted === other.muted &&
+      participant.deafened === other.deafened &&
+      participant.screensharing === other.screensharing
+    )
+  })
+}
+
+function cappedStringOrNull(value: unknown, maxLength: number) {
+  return typeof value === 'string' && value.length > 0
+    ? value.slice(0, maxLength)
+    : null
 }
 
 function nonEmptyString(value: unknown): value is string {

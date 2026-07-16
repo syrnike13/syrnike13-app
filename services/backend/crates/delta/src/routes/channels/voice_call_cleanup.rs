@@ -89,20 +89,12 @@ pub(crate) async fn stop_ringing_for_removed_group_member(
 
 pub(crate) async fn remove_group_member_from_voice_call(
     db: &Database,
-    voice_client: &VoiceClient,
     amqp: &AMQP,
     channel: &Channel,
     member_id: &str,
 ) -> Result<()> {
     let user_voice_channel = UserVoiceChannel::from_channel(channel);
-    remove_user_from_voice_channel_with_call_cleanup(
-        db,
-        voice_client,
-        amqp,
-        &user_voice_channel,
-        member_id,
-    )
-    .await
+    remove_user_from_voice_channel_with_call_cleanup(db, amqp, &user_voice_channel, member_id).await
 }
 
 pub(crate) async fn delete_group_voice_call(

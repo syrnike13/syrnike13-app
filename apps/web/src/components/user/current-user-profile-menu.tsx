@@ -15,12 +15,12 @@ import {
 } from '#/components/user/profile-menu-row'
 import { PresenceStatusSelect } from '#/components/user/presence-status-select'
 import { useAuth } from '#/features/auth/auth-context'
+import { canAccessAdmin } from '#/features/authorization/authorization'
 import { fetchUserProfile } from '#/features/api/users-api'
 import { queryKeys } from '#/lib/api/query-keys'
 import { userBannerUrl } from '#/lib/media'
 import { userProfileBannerClassName } from '#/lib/user-profile-banner'
 import { useSettingsModal } from '#/features/settings/settings-modal-context'
-import { cn } from '#/lib/utils'
 
 type CurrentUserProfileMenuProps = {
   user: User
@@ -187,13 +187,13 @@ export function CurrentUserProfileMenu({
             />
             <span className="truncate">Редактировать профиль</span>
           </button>
-          {auth.user?.privileged ? (
+          {canAccessAdmin() ? (
             <button
               type="button"
               className={profileMenuRowClass}
               onClick={() => {
                 onClose?.()
-                void navigate({ to: '/admin/badges' })
+                void navigate({ to: '/admin' })
               }}
             >
               <SettingsIcon

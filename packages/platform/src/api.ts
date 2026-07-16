@@ -1,21 +1,14 @@
 import type {
   NativeMediaDeviceInfo,
-  NativeMicrophoneRuntimeConfig,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
   NativeMicrophoneMetricsEvent,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaSession,
-  NativeMediaSessionStartOptions,
-  NativeMediaState,
-  NativeMediaStateEvent,
-  NativeMediaStatsEvent,
+  NativeMicrophonePreviewStateEvent,
 } from './media'
 import type {
   DesktopOverlaySnapshot,
   DesktopOverlayState,
 } from './overlay'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
+import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
 
 /** Где выполняется UI: браузер или оболочка Electron. */
 export type SyrnikeRuntime = 'web' | 'desktop'
@@ -65,6 +58,7 @@ export type DesktopUpdateState =
   | { status: 'available'; version: string }
   | { status: 'downloading'; percent: number }
   | { status: 'ready'; version: string }
+  | { status: 'installing'; version: string }
   | { status: 'error'; message: string }
 
 export type HotkeyAction =
@@ -142,7 +136,7 @@ export type DesktopDisplayMediaSource = {
 export type DesktopDisplayMediaRequest = {
   id: string
   audioRequested: boolean
-  /** Видео идёт через нативный sidecar, не через desktopCapturer. */
+  /** Видео идёт через native runtime, не через desktopCapturer. */
   nativeVideo?: boolean
 }
 
@@ -154,22 +148,16 @@ export type DesktopDisplayMediaSelection = {
 
 export type {
   NativeMediaEncoderBackend,
+  LiveKitNativePublisherCredentials,
   NativeMediaDeviceInfo,
   NativeMediaFrameMethod,
   NativeMediaFrameStats,
   NativeMediaLoopbackMode,
-  NativeMediaSession,
-  NativeMediaSidecarLostEvent,
-  NativeMediaScreenSessionPrepareOptions,
-  NativeMediaSessionKind,
-  NativeMediaSessionStartOptions,
-  NativeMicrophonePreviewSession,
-  NativeMicrophonePreviewStartOptions,
-  NativeMediaScreenSessionStartOptions,
-  NativeMediaState,
-  NativeMediaStateEvent,
-  NativeMediaStatsEvent,
+  NativeMediaLiveKitCredentials,
+  NativeMicrophonePipelineConfig,
+  NativeMicrophonePreviewStateEvent,
   NativeMediaTarget,
+  ScreenSourceSpec,
 } from './media'
 
 /**
@@ -199,6 +187,11 @@ export interface SyrnikeDesktopApi {
   }
   tray: {
     setVoiceState(state: DesktopTrayVoiceState): Promise<void>
+  }
+  voice: {
+    dispatch(command: VoiceCommand): Promise<VoiceSnapshot>
+    getSnapshot(): Promise<VoiceSnapshot>
+    onSnapshot(handler: (snapshot: VoiceSnapshot) => void): () => void
   }
   auth: {
     loadSession(): Promise<DesktopStoredSession | null>
@@ -242,39 +235,32 @@ export interface SyrnikeDesktopApi {
     ): Promise<boolean>
     cancelRequest(requestId: string): Promise<void>
     openDisplayPicker(audioRequested: boolean): Promise<DesktopDisplayMediaRequest>
-    listDevices(kind: 'audioinput'): Promise<NativeMediaDeviceInfo[]>
-    startMicrophonePreview(
-      options: NativeMicrophonePreviewStartOptions,
-    ): Promise<NativeMicrophonePreviewSession>
-    stopMicrophonePreview(sessionId?: string): Promise<void>
+    listDevices(
+      kind: 'audioinput' | 'audiooutput' | 'videoinput',
+    ): Promise<NativeMediaDeviceInfo[]>
+    startMicrophonePreview(): Promise<void>
+    stopMicrophonePreview(): Promise<void>
+    setRemoteVideoDemand(
+      sessionId: string,
+      generation: number,
+      trackId: string,
+      demanded: boolean,
+    ): Promise<void>
+    setLocalScreenPreviewDemand(demand: {
+      demanded: boolean
+      width: number
+      height: number
+      fps: number
+    }): Promise<void>
     onRequest(handler: (request: DesktopDisplayMediaRequest) => void): () => void
     onDisplayPickerResolved(
       handler: (payload: DesktopDisplayMediaSelection) => void,
     ): () => void
-    prepareScreenSession(
-      options: NativeMediaScreenSessionPrepareOptions,
-    ): Promise<void>
-    disconnectPreparedScreenSession(): Promise<void>
-    startSession(options: NativeMediaSessionStartOptions): Promise<NativeMediaSession>
-    cancelPendingStarts(kind?: import('./media').NativeMediaSessionKind): Promise<void>
-    configureMicrophoneRuntime(
-      sessionId: string,
-      config: NativeMicrophoneRuntimeConfig,
-    ): Promise<void>
-    setMicrophoneMuted(sessionId: string, muted: boolean): Promise<void>
-    stopSession(sessionId?: string): Promise<void>
-    getState(): Promise<NativeMediaState>
-    onStats(handler: (event: NativeMediaStatsEvent) => void): () => void
     onMicrophoneMetrics(
       handler: (event: NativeMicrophoneMetricsEvent) => void,
     ): () => void
-    onStateChange(handler: (event: NativeMediaStateEvent) => void): () => void
-    onStreamEnded(handler: (sessionId: string) => void): () => void
-    onStreamError(
-      handler: (event: { sessionId: string; message: string }) => void,
-    ): () => void
-    onSidecarLost(
-      handler: (event: import('./media').NativeMediaSidecarLostEvent) => void,
+    onMicrophonePreviewState(
+      handler: (event: NativeMicrophonePreviewStateEvent) => void,
     ): () => void
   }
 }

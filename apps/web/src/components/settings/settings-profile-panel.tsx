@@ -517,7 +517,7 @@ function ProfilePreviewCard({
   onEditStatus: () => void
 }) {
   return (
-    <div className="overflow-visible rounded-xl border border-border bg-card shadow-sm">
+    <div className="gradient-surface-card overflow-visible rounded-xl border border-border bg-card shadow-sm">
       <ProfileMediaContextMenu
         editLabel="Изменить баннер"
         removeLabel="Удалить баннер"

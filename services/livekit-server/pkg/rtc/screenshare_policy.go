@@ -23,7 +23,7 @@ import (
 const (
 	screenShareMaxWidth   = 1920
 	screenShareMaxHeight  = 1080
-	screenShareMaxBitrate = 8_000_000
+	screenShareMaxBitrate = 10_000_000
 	screenShareMaxLayers  = 2
 )
 
@@ -78,7 +78,9 @@ func isAllowedScreenShareLayer(layer *livekit.VideoLayer) bool {
 		return layer.Width <= 960 && layer.Height <= 540
 	case 2_500_000:
 		return layer.Width <= screenShareMaxWidth && layer.Height <= screenShareMaxHeight
-	case 2_000_000, 4_000_000, 8_000_000:
+	case 3_000_000:
+		return layer.Width <= 1280 && layer.Height <= 720
+	case 2_000_000, 4_000_000, 6_000_000, 8_000_000, 10_000_000:
 		return layer.Width <= screenShareMaxWidth && layer.Height <= screenShareMaxHeight
 	default:
 		return false

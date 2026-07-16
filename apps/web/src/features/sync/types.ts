@@ -2,8 +2,12 @@ import type {
   Channel,
   ChannelUnread,
   Emoji,
+  FieldsMember,
+  FieldsRole,
+  FieldsServer,
   Member,
   Message,
+  Role,
   Server,
   User,
 } from '@syrnike13/api-types'
@@ -15,12 +19,57 @@ import type {
   VoiceParticipantsByChannel,
 } from './voice-types'
 
+export type ServerCreateEvent = {
+  type: 'ServerCreate'
+  id: string
+  server: Server
+  member: Member
+  channels: Channel[]
+  emojis: Emoji[]
+  voice_states: ChannelVoiceState[]
+}
+
+export type ServerUpdateEvent = {
+  type: 'ServerUpdate'
+  id: string
+  data: Partial<Server>
+  clear?: FieldsServer[]
+}
+
+export type ServerRoleUpdateEvent = {
+  type: 'ServerRoleUpdate'
+  id: string
+  role_id: string
+  data: Partial<Role>
+  clear?: FieldsRole[]
+}
+
+export type ServerMemberUpdateEvent = {
+  type: 'ServerMemberUpdate'
+  id: { server: string; user: string }
+  data: Partial<Member>
+  clear?: FieldsMember[]
+}
+
 export type GatewayServerEvent = {
   type?: string
   channel_id?: string
   state?: Partial<UserVoiceState> & { user?: string; user_id?: string }
   // Gateway events are raw JSON. Event-specific branches normalize the shape.
   [key: string]: any
+}
+
+export type ServerJoinBundle = {
+  server: Server
+  member: Member
+  channels: Channel[]
+  emojis?: Emoji[]
+  voiceStates?: ChannelVoiceState[]
+}
+
+export type GroupJoinBundle = {
+  channel: Channel
+  users: User[]
 }
 
 export type ReadyPayload = {
@@ -40,10 +89,26 @@ export type ReadyPayload = {
     recipients?: string[]
     declined_recipients?: string[]
   }>
+  authorization?: AuthorizationSnapshot
+}
+
+export type AuthorizationSnapshot = {
+  revision: number
+  global: number
+  servers: Record<string, number>
+  channels: Record<string, number>
+  users: Record<string, number>
+}
+
+export type ChannelUnreadState = {
+  lastId: string | null
+  mentions: string[]
 }
 
 export type SyncState = {
   ready: boolean
+  /** Backend-authoritative effective permission masks for the current user. */
+  authorization: AuthorizationSnapshot
   selectedServerId: string | null
   servers: Record<string, Server>
   channels: Record<string, Channel>
@@ -53,8 +118,8 @@ export type SyncState = {
   emojis: Record<string, Emoji>
   /** channelId -> messageId -> message */
   messages: Record<string, Record<string, Message>>
-  /** channelId -> last read message id (current user) */
-  unreads: Record<string, string | null>
+  /** channelId -> unread state for current user */
+  unreads: Record<string, ChannelUnreadState>
   /** channelId -> user ids currently typing */
   typingUsers: Record<string, string[]>
   /** channelId -> userId -> голосовое состояние */

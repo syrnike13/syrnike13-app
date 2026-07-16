@@ -15,9 +15,9 @@ import { shouldUseNativeMicrophone } from '#/features/voice/native-microphone-pu
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
-  configureNativeMicrophoneRuntime,
-  NATIVE_MICROPHONE_MONITOR_SESSION_ID,
-} from './native-microphone-runtime-config'
+  configureNativeMicrophonePipeline,
+} from './native-microphone-pipeline-config'
+import { nativeMicrophonePipelineConfig } from './native-microphone-publish'
 
 const DEFAULT_METRICS: VoiceGateMetrics = {
   inputDb: VOICE_GATE_DB_MIN,
@@ -53,16 +53,24 @@ export function useVoiceGateMeter(
     if (!active) return
     if (!shouldUseNativeMicrophone()) return
 
-    configureNativeMicrophoneRuntime(NATIVE_MICROPHONE_MONITOR_SESSION_ID, {
-      noiseSuppression: prefs.noiseSuppression,
-      echoCancellation: prefs.echoCancellation,
-      inputVolume: prefs.inputVolume,
-      voiceGateEnabled: prefs.voiceGateEnabled,
-      voiceGateThresholdDb: prefs.voiceGateThresholdDb,
-      voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
-    })
+    configureNativeMicrophonePipeline(
+      nativeMicrophonePipelineConfig({
+        bypassSystemAudioInputProcessing:
+          prefs.bypassSystemAudioInputProcessing,
+        automaticGainControl: prefs.automaticGainControl,
+        noiseSuppression: prefs.noiseSuppression,
+        echoCancellation: prefs.echoCancellation,
+        inputVolume: prefs.inputVolume,
+        voiceGateEnabled: prefs.voiceGateEnabled,
+        voiceGateThresholdDb: prefs.voiceGateThresholdDb,
+        voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
+      }, inputDeviceId),
+    )
   }, [
     active,
+    inputDeviceId,
+    prefs.bypassSystemAudioInputProcessing,
+    prefs.automaticGainControl,
     prefs.noiseSuppression,
     prefs.echoCancellation,
     prefs.inputVolume,
@@ -149,6 +157,7 @@ export function useVoiceGateMeter(
     inputDeviceId,
     outputRef,
     prefs.echoCancellation,
+    prefs.automaticGainControl,
   ])
 
   return outputRef

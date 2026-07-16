@@ -16,14 +16,17 @@ import {
 import { getSyrnikeDesktop } from '#/platform/runtime'
 
 import {
-  clearNativeMicrophoneRuntimeConfig,
-  configureNativeMicrophoneRuntime,
-} from './native-microphone-runtime-config'
+  applyNativeMicrophonePipeline,
+  configureNativeMicrophonePipeline,
+} from './native-microphone-pipeline-config'
+import { nativeMicrophonePipelineConfig } from './native-microphone-publish'
 
 export const MIC_PREVIEW_METER_BAR_COUNT = 32
 
 export type MicPreviewPreferences = Pick<
   VoicePreferenceState,
+  | 'bypassSystemAudioInputProcessing'
+  | 'automaticGainControl'
   | 'echoCancellation'
   | 'noiseSuppression'
   | 'voiceGateEnabled'
@@ -39,6 +42,7 @@ type MicPreviewOptions = {
   prefs: MicPreviewPreferences
   onLevels: (levels: readonly number[]) => void
   onGateMetrics?: (metrics: VoiceGateMetrics) => void
+  onEnded?: (message?: string) => void
 }
 
 export function meterLevelsFromRms(rms: number, barCount: number) {
@@ -98,26 +102,42 @@ export async function startMicPreview({
   prefs,
   onLevels,
   onGateMetrics,
+  onEnded,
 }: MicPreviewOptions) {
   const desktop = getSyrnikeDesktop()
   if (desktop?.platform.os === 'win32') {
-    const startNative = (nextPrefs: MicPreviewPreferences) =>
-      desktop.media.startMicrophonePreview({
-        deviceId: inputDeviceId,
-        sampleRate: 48_000,
-        channels: 1,
-        noiseSuppression: nextPrefs.noiseSuppression,
-        echoCancellation: nextPrefs.echoCancellation,
-        inputVolume: nextPrefs.inputVolume,
-        voiceGateEnabled: nextPrefs.voiceGateEnabled,
-        voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
-        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
-      })
+    const configureNative = async (nextPrefs: MicPreviewPreferences) => {
+      await applyNativeMicrophonePipeline(
+        nativeMicrophonePipelineConfig(
+          nextPrefs,
+          inputDeviceId,
+        ),
+      )
+    }
 
-    let session = await startNative(prefs)
     let stopped = false
-    const unsubscribeMetrics = desktop.media.onMicrophoneMetrics((event) => {
-      if (event.sessionId !== session.sessionId) return
+    let running = false
+    let unsubscribeMetrics = () => {}
+    let unsubscribeState = () => {}
+    const finishFromRuntime = (message?: string) => {
+      if (stopped || !running) return
+      stopped = true
+      running = false
+      unsubscribeMetrics()
+      unsubscribeState()
+      onLevels(Array.from({ length: MIC_PREVIEW_METER_BAR_COUNT }, () => 0))
+      onEnded?.(message)
+    }
+
+    unsubscribeState = desktop.media.onMicrophonePreviewState((event) => {
+      if (event.status === 'running') {
+        running = true
+        return
+      }
+      finishFromRuntime(event.status === 'error' ? event.message : undefined)
+    })
+    unsubscribeMetrics = desktop.media.onMicrophoneMetrics((event) => {
+      if (stopped) return
       onLevels(meterLevelsFromRms(dbToRms(event.inputDb), MIC_PREVIEW_METER_BAR_COUNT))
       onGateMetrics?.({
         inputDb: event.inputDb,
@@ -126,33 +146,43 @@ export async function startMicPreview({
       })
     })
 
-    const configureNative = (nextPrefs: MicPreviewPreferences) => {
+    try {
+      await configureNative(prefs)
+      await desktop.media.startMicrophonePreview()
+      running = true
+    } catch (error) {
+      stopped = true
+      unsubscribeMetrics()
+      unsubscribeState()
+      throw error
+    }
+
+    const queueNative = (nextPrefs: MicPreviewPreferences) => {
       if (stopped) return
-      configureNativeMicrophoneRuntime(session.sessionId, {
-        noiseSuppression: nextPrefs.noiseSuppression,
-        echoCancellation: nextPrefs.echoCancellation,
-        inputVolume: nextPrefs.inputVolume,
-        voiceGateEnabled: nextPrefs.voiceGateEnabled,
-        voiceGateThresholdDb: nextPrefs.voiceGateThresholdDb,
-        voiceGateAutoThreshold: nextPrefs.voiceGateAutoThreshold,
-      })
+      configureNativeMicrophonePipeline(
+        nativeMicrophonePipelineConfig(
+          nextPrefs,
+          inputDeviceId,
+        ),
+      )
     }
 
     return {
       setOutputVolume(_volume: number) {},
       async setOutputDevice(_deviceId?: string) {},
       updateGatePreferences(nextPrefs: MicPreviewPreferences) {
-        configureNative(nextPrefs)
+        queueNative(nextPrefs)
       },
       async restartProcessing(nextPrefs: MicPreviewPreferences) {
-        configureNative(nextPrefs)
+        queueNative(nextPrefs)
       },
       stop() {
         if (stopped) return
         stopped = true
+        running = false
         unsubscribeMetrics()
-        clearNativeMicrophoneRuntimeConfig(session.sessionId)
-        void desktop.media.stopMicrophonePreview(session.sessionId)
+        unsubscribeState()
+        void desktop.media.stopMicrophonePreview()
       },
     }
   }

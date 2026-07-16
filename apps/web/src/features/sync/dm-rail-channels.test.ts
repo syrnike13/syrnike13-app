@@ -1,7 +1,7 @@
 import type { Channel } from '@syrnike13/api-types'
 import { describe, expect, it } from 'vitest'
 
-import type { SyncState } from '#/features/sync/types'
+import type { ChannelUnreadState, SyncState } from '#/features/sync/types'
 import { voiceCallUiKey } from './voice-call-utils'
 
 import { listVisibleDmRailChannels } from './selectors'
@@ -36,12 +36,20 @@ function dmChannel(
   } as Channel
 }
 
+function unreadState(
+  lastId: string | null,
+  mentions: string[] = [],
+): ChannelUnreadState {
+  return { lastId, mentions }
+}
+
 function state(
   channels: Channel[],
   overrides: Partial<SyncState> = {},
 ): SyncState {
   return {
     ready: true,
+    authorization: { revision: 0, global: 0, servers: {}, channels: {}, users: {} },
     selectedServerId: null,
     servers: {},
     channels: Object.fromEntries(channels.map((channel) => [channel._id, channel])),
@@ -105,14 +113,31 @@ describe('listVisibleDmRailChannels', () => {
     const visible = listVisibleDmRailChannels(
       state([unread, read], {
         unreads: {
-          'dm-unread': 'message-1',
-          'dm-read': 'message-2',
+          'dm-unread': unreadState('message-1'),
+          'dm-read': unreadState('message-2'),
         },
       }),
       CURRENT_USER_ID,
     )
 
     expect(visible.map((channel) => channel._id)).toEqual(['dm-unread'])
+  })
+
+  it('shows direct messages with mention unreads even after the last message is read', () => {
+    const mentioned = dmChannel('dm-mentioned', 'friend-a', 'message-2')
+    const read = dmChannel('dm-read', 'friend-b', 'message-2')
+
+    const visible = listVisibleDmRailChannels(
+      state([mentioned, read], {
+        unreads: {
+          'dm-mentioned': unreadState('message-2', ['message-2']),
+          'dm-read': unreadState('message-2'),
+        },
+      }),
+      CURRENT_USER_ID,
+    )
+
+    expect(visible.map((channel) => channel._id)).toEqual(['dm-mentioned'])
   })
 
   it('shows direct messages where the current user is in a voice session', () => {
@@ -167,6 +192,29 @@ describe('listVisibleDmRailChannels', () => {
     expect(visible.map((channel) => channel._id)).toEqual(['dm-ringing'])
   })
 
+  it('shows direct messages with an outgoing voice call for the current user', () => {
+    const outgoing = dmChannel('dm-outgoing', 'friend-a')
+    const unrelated = dmChannel('dm-idle', 'friend-b')
+
+    const visible = listVisibleDmRailChannels(
+      state([outgoing, unrelated], {
+        voiceCalls: {
+          'dm-outgoing': {
+            channelId: 'dm-outgoing',
+            initiatorId: CURRENT_USER_ID,
+            phase: 'ringing',
+            startedAt: '2026-06-12T10:00:00.000Z',
+            recipients: ['friend-a'],
+            declinedRecipients: [],
+          },
+        },
+      }),
+      CURRENT_USER_ID,
+    )
+
+    expect(visible.map((channel) => channel._id)).toEqual(['dm-outgoing'])
+  })
+
   it('hides direct messages with a dismissed incoming voice call', () => {
     const ringing = dmChannel('dm-ringing', 'friend-a')
     const call = {
@@ -193,7 +241,7 @@ describe('listVisibleDmRailChannels', () => {
     expect(visible).toEqual([])
   })
 
-  it('hides an active voice call after dismissing the same ringing call', () => {
+  it('shows an active voice call after dismissing the same ringing call', () => {
     const activeCall = dmChannel('dm-active-call', 'friend-a')
     const startedAt = '2026-06-12T10:00:00.000Z'
     const dismissedRingingCall = {
@@ -222,7 +270,7 @@ describe('listVisibleDmRailChannels', () => {
       CURRENT_USER_ID,
     )
 
-    expect(visible).toEqual([])
+    expect(visible.map((channel) => channel._id)).toEqual(['dm-active-call'])
   })
 
   it('shows direct messages with an active voice call', () => {

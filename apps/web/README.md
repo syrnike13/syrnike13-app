@@ -12,14 +12,15 @@ React-фронтенд мессенджера syrnike13.
 
 ## Бэкенд
 
-По умолчанию — продакшен **syrnike13.ru**:
+По умолчанию для `pnpm web:dev` — nightly **beta.syrnike13.ru**:
 
 | Переменная | Значение |
 |------------|----------|
-| `VITE_API_URL` | `https://syrnike13.ru/api` |
-| `VITE_WS_URL` | `wss://syrnike13.ru/ws` |
-| `VITE_MEDIA_URL` | `https://syrnike13.ru/autumn` |
-| `VITE_PROXY_URL` | `https://syrnike13.ru/january` |
+| `VITE_API_URL` | `https://beta.syrnike13.ru/api` |
+| `VITE_RELEASE_CHANNEL` | `nightly` |
+| `VITE_WS_URL` | `wss://beta.syrnike13.ru/ws` |
+| `VITE_MEDIA_URL` | `https://beta.syrnike13.ru/autumn` |
+| `VITE_PROXY_URL` | `https://beta.syrnike13.ru/january` |
 
 Скопируйте `.env.example` → `.env` при необходимости.
 

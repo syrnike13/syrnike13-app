@@ -44,6 +44,7 @@ function member(
 function state(overrides: Partial<SyncState> = {}): SyncState {
   return {
     ready: true,
+    authorization: { revision: 0, global: 0, servers: {}, channels: {}, users: {} },
     selectedServerId: null,
     servers: {},
     channels: {},

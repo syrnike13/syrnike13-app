@@ -17,16 +17,19 @@ import {
 } from '#/components/ui/popover'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { uploadAttachment } from '#/features/api/media-api'
+import { uploadMediaFile } from '#/features/api/media-api'
 import {
-  deleteServerRole,
   editServerRole,
   setServerRolePermissions,
 } from '#/features/api/servers-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { roleIconUrl } from '#/lib/media'
-import { canManageRole } from '#/lib/permissions'
 import {
+  canGrantServerPermission,
+  canManageRole,
+} from '#/features/authorization/authorization'
+import {
+  getAllowedPermissionTriStates,
   getPermissionTriState,
   overrideFieldFromRole,
   overrideFieldToApi,
@@ -77,7 +80,7 @@ export function ServerSettingsRoleEditor({
   token,
   userId,
   member,
-  onDeleted,
+  onDeleteRequested,
 }: {
   server: Server
   serverId: string
@@ -85,7 +88,7 @@ export function ServerSettingsRoleEditor({
   token: string
   userId: string
   member: Member | undefined
-  onDeleted: () => void
+  onDeleteRequested: () => void
 }) {
   const canEditRole = canManageRole(
     server,
@@ -111,7 +114,6 @@ export function ServerSettingsRoleEditor({
   const [iconFile, setIconFile] = useState<File | null>(null)
   const [removeIcon, setRemoveIcon] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const memberCount = useSyncStore((state) =>
@@ -230,19 +232,20 @@ export function ServerSettingsRoleEditor({
       ) {
         let iconAttachmentId: string | undefined
         if (iconFile) {
-          iconAttachmentId = await uploadAttachment(token, iconFile)
+          iconAttachmentId = await uploadMediaFile(token, 'icons', iconFile)
         }
+        const trimmedColour = colour.trim()
 
         const updatedRole = await editServerRole(token, serverId, role._id, {
           ...(nameChanged ? { name: trimmedName } : {}),
-          ...(colourChanged ? { colour: colour.trim() || null } : {}),
+          ...(colourChanged && trimmedColour ? { colour: trimmedColour } : {}),
           ...(hoistChanged ? { hoist } : {}),
           ...(mentionableChanged ? { mentionable } : {}),
           ...(iconAttachmentId ? { icon: iconAttachmentId } : {}),
-          ...((colourChanged && !colour.trim()) || removeIcon
+          ...((colourChanged && !trimmedColour) || removeIcon
             ? {
                 remove: [
-                  ...(colourChanged && !colour.trim()
+                  ...(colourChanged && !trimmedColour
                     ? (['Colour'] as const)
                     : []),
                   ...(removeIcon ? (['Icon'] as const) : []),
@@ -306,31 +309,6 @@ export function ServerSettingsRoleEditor({
 
   useDraftRegistration(draftRegistration)
 
-  async function remove() {
-    if (
-      !window.confirm(`Удалить роль «${role.name}»? Это действие необратимо.`)
-    ) {
-      return
-    }
-
-    setDeleting(true)
-    try {
-      await deleteServerRole(token, serverId, role._id)
-      const currentServer = syncStore.getState().servers[serverId]
-      if (currentServer?.roles) {
-        const { [role._id]: _, ...roles } = currentServer.roles
-        syncStore.upsertServer({ ...currentServer, roles })
-      }
-      onDeleted()
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить роль',
-      )
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="space-y-0">
@@ -356,10 +334,9 @@ export function ServerSettingsRoleEditor({
                   type="button"
                   variant="ghost"
                   className="h-9 w-full justify-start px-2 font-normal text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  disabled={deleting}
                   onClick={() => {
                     setMenuOpen(false)
-                    void remove()
+                    onDeleteRequested()
                   }}
                 >
                   <Trash2Icon className="size-4" />
@@ -527,30 +504,39 @@ export function ServerSettingsRoleEditor({
                 {group.title}
               </h4>
               <ul className="space-y-1">
-                {group.permissions.map((permission) => (
-                  <li
-                    key={permission.flag}
-                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
-                  >
-                    <span className="text-sm">{permission.label}</span>
-                    <PermissionStateButton
-                      state={getPermissionTriState(
-                        permissions,
-                        permission.flag,
-                      )}
-                      disabled={!canEditPermissions}
-                      onChange={(next) =>
-                        setPermissions((current) =>
-                          setPermissionTriState(
-                            current,
-                            permission.flag,
-                            next,
-                          ),
-                        )
-                      }
-                    />
-                  </li>
-                ))}
+                {group.permissions.map((permission) => {
+                  const allowedStates = getAllowedPermissionTriStates(
+                    role.permissions,
+                    canGrantServerPermission(server, permission.flag),
+                    permission.flag,
+                  )
+                  return (
+                    <li
+                      key={permission.flag}
+                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40"
+                    >
+                      <span className="text-sm">{permission.label}</span>
+                      <PermissionStateButton
+                        label={permission.label}
+                        state={getPermissionTriState(
+                          permissions,
+                          permission.flag,
+                        )}
+                        allowedStates={allowedStates}
+                        disabled={!canEditPermissions}
+                        onChange={(next) =>
+                          setPermissions((current) =>
+                            setPermissionTriState(
+                              current,
+                              permission.flag,
+                              next,
+                            ),
+                          )
+                        }
+                      />
+                    </li>
+                  )
+                })}
               </ul>
             </section>
           ))}

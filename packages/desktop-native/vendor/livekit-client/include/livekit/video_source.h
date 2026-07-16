@@ -1,0 +1,113 @@
+/*
+ * Copyright 2025 LiveKit
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#pragma once
+
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "livekit/ffi_handle.h"
+#include "livekit/visibility.h"
+
+namespace livekit {
+
+class VideoFrame;
+
+/// Rotation of a video frame.
+///
+/// Mirrors proto_video.VideoRotation but kept as a public SDK enum.
+enum class VideoRotation {
+  VIDEO_ROTATION_0 = 0,
+  VIDEO_ROTATION_90 = 90,
+  VIDEO_ROTATION_180 = 180,
+  VIDEO_ROTATION_270 = 270,
+};
+
+/// Optional packet-trailer metadata carried alongside a video frame.
+///
+/// Each field is independently optional. Enable the corresponding features in
+/// @ref TrackPublishOptions before publishing the track.
+struct VideoFrameMetadata {
+  /// User-supplied capture time in microseconds.
+  std::optional<std::uint64_t> user_timestamp_us;
+  /// Monotonically increasing frame identifier.
+  std::optional<std::uint32_t> frame_id;
+  /// Free-form data to attach to the frame.
+  std::optional<std::vector<std::uint8_t>> user_data;
+};
+
+/// Capture options for a single outbound video frame.
+struct VideoCaptureOptions {
+  std::int64_t timestamp_us = 0;
+  VideoRotation rotation = VideoRotation::VIDEO_ROTATION_0;
+  /// Optional per-frame metadata (timestamps, frame IDs, user data).
+  std::optional<VideoFrameMetadata> metadata;
+};
+
+/// Represents a real-time video source that can accept frames from the
+/// application and feed them into the LiveKit core.
+class LIVEKIT_API VideoSource {
+public:
+  /// Create a new native video source with a fixed resolution.
+  ///
+  /// @param width   Width in pixels.
+  /// @param height  Height in pixels.
+  ///
+  /// @throws std::runtime_error if the FFI call fails or the response
+  ///         does not contain the expected new_video_source field.
+  VideoSource(int width, int height, bool is_screencast = false);
+  virtual ~VideoSource() = default;
+
+  VideoSource(const VideoSource&) = delete;
+  VideoSource& operator=(const VideoSource&) = delete;
+  VideoSource(VideoSource&&) noexcept = default;
+  VideoSource& operator=(VideoSource&&) noexcept = default;
+
+  /// Source resolution as declared at construction.
+  int width() const noexcept { return width_; }
+  int height() const noexcept { return height_; }
+
+  /// Underlying FFI handle ID (0 if invalid).
+  std::uint64_t ffiHandleId() const noexcept { return handle_.get(); }
+
+  /// Push a VideoFrame into the FFI video source.
+  ///
+  /// @param frame    Video frame to send.
+  /// @param options  Timestamp, rotation, and optional metadata for this frame.
+  void captureFrame(const VideoFrame& frame, const VideoCaptureOptions& options);
+
+  /// Backward-compatible convenience overload for timestamp + rotation only.
+  void captureFrame(const VideoFrame& frame, std::int64_t timestamp_us = 0,
+                    VideoRotation rotation = VideoRotation::VIDEO_ROTATION_0);
+
+protected:
+  /// Selects the accepted frame transport for derived native sources.
+  enum class SourceMode {
+    Default,
+    D3D11Hardware,
+  };
+
+  /// Creates a native source with an explicit frame transport contract.
+  VideoSource(int width, int height, bool is_screencast, SourceMode mode);
+
+private:
+  FfiHandle handle_; // owned FFI handle
+  int width_{0};
+  int height_{0};
+};
+
+} // namespace livekit

@@ -30,6 +30,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { editServer } from '#/features/api/servers-api'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
+import type { ChannelUnreadState } from '#/features/sync/types'
 import {
   applyChannelDragResult,
   afterCategoryDroppableId,
@@ -43,7 +44,7 @@ import {
   type ChannelSidebarSection,
   type ServerChannel,
 } from '#/lib/channel-sidebar-layout'
-import { canInviteToChannel, canManageServerChannels } from '#/lib/permissions'
+import { canInviteToChannel, canManageServerChannels } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type ServerChannelListProps = {
@@ -51,7 +52,7 @@ type ServerChannelListProps = {
   activeChannelId?: string
   users: Record<string, User>
   currentUserId?: string
-  unreads: Record<string, string | null | undefined>
+  unreads: Record<string, ChannelUnreadState | undefined>
 }
 
 function collapsedStorageKey(serverId: string, categoryId: string) {
@@ -206,7 +207,7 @@ function ChannelDroppableList({
   activeChannelId?: string
   users: Record<string, User>
   currentUserId?: string
-  unreads: Record<string, string | null | undefined>
+  unreads: Record<string, ChannelUnreadState | undefined>
   canManage: boolean
   canInvite: (channel: ServerChannel) => boolean
   canDrag: boolean
@@ -301,7 +302,7 @@ function ChannelSectionList({
   activeChannelId?: string
   users: Record<string, User>
   currentUserId?: string
-  unreads: Record<string, string | null | undefined>
+  unreads: Record<string, ChannelUnreadState | undefined>
   canManage: boolean
   canInvite: (channel: ServerChannel) => boolean
   canDrag: boolean
@@ -432,12 +433,21 @@ export function ServerChannelList({
   ) as ServerChannel[]
 
   const canManage = server
-    ? canManageServerChannels(server, member, auth.user?._id)
+    ? canManageServerChannels(
+        server,
+        member,
+        auth.user?._id,
+      )
     : false
   const canInvite = useCallback(
     (channel: ServerChannel) =>
       server
-        ? canInviteToChannel(server, channel, member, auth.user?._id)
+        ? canInviteToChannel(
+            server,
+            channel,
+            member,
+            auth.user?._id,
+          )
         : false,
     [auth.user?._id, member, server],
   )

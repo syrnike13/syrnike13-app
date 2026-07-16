@@ -40,10 +40,8 @@ export type NativeMediaEngineDebugState = {
 }
 
 const emptyMethods = (): NativeMediaFrameStats => ({
-  wgc: 0,
-  dxgi: 0,
-  gdi_blt: 0,
-  gdi_print: 0,
+  wgc_gpu: 0,
+  dxgi_gpu: 0,
 })
 
 function snapshot(

@@ -108,12 +108,12 @@ function ProfileLoadErrorScreen({
   retry: () => Promise<void>
 }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#313338] px-6 text-[#f2f3f5]">
+    <div className="gradient-surface-content fixed inset-0 z-[200] flex items-center justify-center bg-background px-6 text-foreground">
       <div className="flex w-full max-w-md flex-col items-center text-center">
-        <p className="text-xs font-bold tracking-[0.12em] text-[#f2f3f5] uppercase">
+        <p className="text-xs font-bold tracking-[0.12em] text-foreground uppercase">
           Профиль недоступен
         </p>
-        <p className="mt-3 text-base leading-relaxed text-[#dbdee1]">
+        <p className="mt-3 text-base leading-relaxed text-muted-foreground">
           {message || 'Не удалось загрузить профиль'}
         </p>
         <Button

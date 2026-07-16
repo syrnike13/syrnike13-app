@@ -3,7 +3,7 @@ import type { Channel, Server } from '@syrnike13/api-types'
 import { Volume2BoldIcon } from '#/components/icons'
 import { RestrictedVoiceChannelIcon } from '#/components/icons/restricted-voice-channel-icon'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
-import { isChannelAccessRestricted } from '#/lib/permissions'
+import { isChannelAccessRestricted } from '#/features/authorization/permission-draft'
 import { cn } from '#/lib/utils'
 
 type VoiceChannelIconProps = {

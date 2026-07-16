@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useEffect,
+  useId,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -8,6 +9,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
 } from 'react'
+import Placeholder from '@tiptap/extension-placeholder'
+import { TextSelection } from '@tiptap/pm/state'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { SuggestionProps } from '@tiptap/suggestion'
 
@@ -38,6 +41,7 @@ type ComposerEditorProps = {
   editorClassName?: string
   formatContext: MessageFormatContext
   mentionItems: (query: string) => MentionSuggestionItem[]
+  channelItems?: (query: string) => MentionSuggestionItem[]
   onValueChange: (value: string) => void
   onPasteFiles?: (files: FileList) => void
   onKeyDown?: (event: ReactKeyboardEvent) => void
@@ -56,6 +60,7 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       editorClassName,
       formatContext,
       mentionItems,
+      channelItems,
       onValueChange,
       onPasteFiles,
       onKeyDown,
@@ -65,15 +70,37 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
     ref,
   ) {
     const editorRootRef = useRef<HTMLDivElement>(null)
+    const mentionMenuId = `composer-mentions-${useId().replaceAll(':', '')}`
     const mentionMenuAnchorRef = menuAnchorRef ?? editorRootRef
     const lastEmittedRef = useRef(value)
+    const editorClassNameRef = useRef(editorClassName)
     const mentionItemsRef = useRef(mentionItems)
+    const channelItemsRef = useRef(channelItems)
+    const onPasteFilesRef = useRef(onPasteFiles)
+    const onValueChangeRef = useRef(onValueChange)
+    const placeholderRef = useRef(placeholder)
+    const valueRef = useRef(value)
     mentionItemsRef.current = mentionItems
+    channelItemsRef.current = channelItems
+    editorClassNameRef.current = editorClassName
+    onPasteFilesRef.current = onPasteFiles
+    onValueChangeRef.current = onValueChange
+    placeholderRef.current = placeholder
+    valueRef.current = value
 
     const [mentionSuggestion, setMentionSuggestion] =
       useState<MentionSuggestionState | null>(null)
     const mentionSuggestionRef = useRef<MentionSuggestionState | null>(null)
     const selectedIndexRef = useRef(0)
+    const onKeyDownRef = useRef(onKeyDown)
+
+    onKeyDownRef.current = onKeyDown
+
+    const closeMentionSuggestion = () => {
+      mentionSuggestionRef.current = null
+      selectedIndexRef.current = 0
+      setMentionSuggestion(null)
+    }
 
     const syncMentionSuggestion = (
       props: SuggestionProps<MentionSuggestionItem>,
@@ -100,6 +127,13 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       const props = mentionSuggestionRef.current
       if (!props?.items.length) return false
 
+      if (
+        event.key === 'Enter' &&
+        (event.isComposing || event.keyCode === 229)
+      ) {
+        return false
+      }
+
       if (event.key === 'ArrowDown') {
         event.preventDefault()
         const nextIndex = (selectedIndexRef.current + 1) % props.items.length
@@ -124,6 +158,8 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       }
 
       if (event.key === 'Escape') {
+        event.preventDefault()
+        closeMentionSuggestion()
         return true
       }
 
@@ -132,23 +168,36 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
 
     const extensions = useMemo(
       () =>
-        createMessageExtensions({
-          placeholder,
-          mentionSuggestion: {
-            items: ({ query }) => mentionItemsRef.current(query),
-            render: () => ({
-              onStart: (props) => syncMentionSuggestion(props, 0),
-              onUpdate: (props) => syncMentionSuggestion(props, 0),
-              onExit: () => {
-                mentionSuggestionRef.current = null
-                selectedIndexRef.current = 0
-                setMentionSuggestion(null)
-              },
-              onKeyDown: ({ event }) => handleMentionKeyDown(event),
-            }),
-          },
-        }),
-      [placeholder],
+        [
+          ...createMessageExtensions({
+            mentionSuggestion: {
+              items: ({ query }) => mentionItemsRef.current(query),
+              render: () => ({
+                onStart: (props) => syncMentionSuggestion(props, 0),
+                onUpdate: (props) => syncMentionSuggestion(props, 0),
+                onExit: closeMentionSuggestion,
+                onKeyDown: ({ event }) => handleMentionKeyDown(event),
+              }),
+            },
+            channelSuggestion: {
+              name: 'channelSuggestion',
+              char: '#',
+              items: ({ query }) => channelItemsRef.current?.(query) ?? [],
+              render: () => ({
+                onStart: (props) => syncMentionSuggestion(props, 0),
+                onUpdate: (props) => syncMentionSuggestion(props, 0),
+                onExit: closeMentionSuggestion,
+                onKeyDown: ({ event }) => handleMentionKeyDown(event),
+              }),
+            },
+          }),
+          Placeholder.configure({
+            placeholder: () => placeholderRef.current ?? '',
+            emptyEditorClass: 'is-editor-empty',
+            showOnlyWhenEditable: false,
+          }),
+        ],
+      [],
     )
 
     const editor = useEditor({
@@ -157,46 +206,100 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       editable: !disabled,
       content: deserializeMessageContent(value),
       editorProps: {
-        attributes: {
-          class: cn(
-            'tiptap max-h-40 min-h-9 w-full overflow-y-auto px-2 py-2 text-base leading-6 break-words outline-none md:text-sm',
-            editorClassName,
-          ),
+        attributes: () => {
+          const activeMention = mentionSuggestionRef.current
+
+          return {
+            class: cn(
+              'tiptap max-h-40 min-h-9 w-full overflow-y-auto px-2 py-2 text-base leading-6 break-words outline-none md:text-sm',
+              editorClassNameRef.current,
+            ),
+            role: 'textbox',
+            'aria-label': 'Сообщение',
+            'aria-multiline': 'true',
+            'aria-autocomplete': 'list',
+            ...(activeMention?.items.length
+              ? {
+                  'aria-controls': mentionMenuId,
+                  'aria-activedescendant': `${mentionMenuId}-option-${activeMention.selectedIndex}`,
+                }
+              : {}),
+          }
         },
-        handleKeyDown: (_view, event) => {
+        handleKeyDown: (view, event) => {
           if (mentionSuggestionRef.current) {
             if (handleMentionKeyDown(event)) {
               return true
             }
           }
 
-          if (event.key === 'Enter' && !event.shiftKey) {
-            onKeyDown?.(event as unknown as ReactKeyboardEvent)
+          const isSelectAll =
+            (event.code === 'KeyA' || event.key.toLowerCase() === 'a') &&
+            (event.ctrlKey || event.metaKey)
+          const onlyBlock = view.state.doc.firstChild
+          const isEmptyDocument =
+            view.state.doc.childCount === 1 &&
+            onlyBlock?.isTextblock === true &&
+            onlyBlock.content.size === 0
+
+          if (isSelectAll && isEmptyDocument) {
+            event.preventDefault()
+            view.dispatch(
+              view.state.tr.setSelection(TextSelection.atStart(view.state.doc)),
+            )
+            return true
+          }
+
+          if (event.key === 'Escape' && onKeyDownRef.current) {
+            event.preventDefault()
+            onKeyDownRef.current(event as unknown as ReactKeyboardEvent)
+            return true
+          }
+
+          if (
+            event.key === 'Enter' &&
+            !event.shiftKey &&
+            !event.isComposing &&
+            event.keyCode !== 229
+          ) {
+            event.preventDefault()
+            onKeyDownRef.current?.(event as unknown as ReactKeyboardEvent)
             return true
           }
           return false
         },
         handlePaste: (_view, event) => {
           const files = event.clipboardData?.files
-          if (files && files.length > 0 && onPasteFiles) {
+          const pasteFiles = onPasteFilesRef.current
+          if (files && files.length > 0 && pasteFiles) {
             event.preventDefault()
-            onPasteFiles(files)
+            pasteFiles(files)
             return true
           }
           return false
         },
       },
       onUpdate: ({ editor: currentEditor }) => {
+        if (currentEditor.isEmpty && !currentEditor.state.selection.empty) {
+          currentEditor.commands.setTextSelection(1)
+        }
+
         const wire = serializeMessageContent(currentEditor.getJSON())
+        if (valueRef.current !== lastEmittedRef.current) return
         lastEmittedRef.current = wire
-        onValueChange(wire)
+        onValueChangeRef.current(wire)
       },
-    })
+    }, [])
 
     useEffect(() => {
       if (!editor) return
       editor.setEditable(!disabled)
     }, [disabled, editor])
+
+    useEffect(() => {
+      if (!editor) return
+      editor.view.dispatch(editor.state.tr)
+    }, [editor, editorClassName, mentionSuggestion, placeholder])
 
     useEffect(() => {
       if (!editor || value === lastEmittedRef.current) return
@@ -237,10 +340,11 @@ export const ComposerEditor = forwardRef<ComposerEditorHandle, ComposerEditorPro
       <MessageFormatProvider value={formatContext}>
         <div
           ref={editorRootRef}
-          className={cn('relative min-h-0 min-w-0 flex-1', className)}
+          className={cn('relative min-h-9 min-w-0 flex-1', className)}
         >
           {mentionSuggestion ? (
             <MentionSuggestionMenu
+              id={mentionMenuId}
               suggestion={mentionSuggestion}
               anchorRef={mentionMenuAnchorRef}
               surfaceClassName={menuSurfaceClassName}

@@ -111,6 +111,30 @@ impl AbstractChannels for ReferenceDb {
         }
     }
 
+    /// Insert channel member permissions
+    async fn set_channel_user_permission(
+        &self,
+        channel_id: &str,
+        user_id: &str,
+        permissions: OverrideField,
+    ) -> Result<()> {
+        let mut channels = self.channels.lock().await;
+
+        if let Some(channel) = channels.get_mut(channel_id) {
+            match channel {
+                Channel::TextChannel {
+                    user_permissions, ..
+                } => {
+                    user_permissions.insert(String::from(user_id), permissions);
+                    Ok(())
+                }
+                _ => Err(create_error!(NotFound)),
+            }
+        } else {
+            Err(create_error!(NotFound))
+        }
+    }
+
     // Update channel
     async fn update_channel(
         &self,

@@ -20,12 +20,17 @@ export const MassMentionNode = Node.create({
     return [{ tag: 'span[data-mass-mention]' }]
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
+    const label = node.attrs.kind === 'online' ? '@online' : '@everyone'
     return [
       'span',
       mergeAttributes(HTMLAttributes, { 'data-mass-mention': '' }),
-      0,
+      label,
     ]
+  },
+
+  renderText({ node }) {
+    return node.attrs.kind === 'online' ? '@online' : '@everyone'
   },
 
   addNodeView() {

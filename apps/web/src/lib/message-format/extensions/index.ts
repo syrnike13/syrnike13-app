@@ -17,6 +17,7 @@ import { UserMentionNode } from '#/lib/message-format/extensions/user-mention'
 export type CreateMessageExtensionsOptions = {
   placeholder?: string
   mentionSuggestion?: MentionSuggestionConfig
+  channelSuggestion?: MentionSuggestionConfig
 }
 
 export function createMessageExtensions(
@@ -51,12 +52,16 @@ export function createMessageExtensions(
       Placeholder.configure({
         placeholder: options.placeholder,
         emptyEditorClass: 'is-editor-empty',
+        showOnlyWhenEditable: false,
       }),
     )
   }
 
   if (options.mentionSuggestion) {
     extensions.push(createMentionSuggestionExtension(options.mentionSuggestion))
+  }
+  if (options.channelSuggestion) {
+    extensions.push(createMentionSuggestionExtension(options.channelSuggestion))
   }
 
   return extensions

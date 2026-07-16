@@ -10,7 +10,7 @@ import {
 } from '#/components/ui/popover'
 import { summarizeVoicePingHistory } from '#/features/voice/voice-ping-history'
 import { resolveVoiceNodeName } from '#/features/voice/voice-node'
-import { useVoice } from '#/features/voice/voice-context'
+import { useVoiceTelemetry } from '#/features/voice/voice-telemetry-context'
 import { cn } from '#/lib/utils'
 
 type VoicePingPopoverContentProps = {
@@ -20,7 +20,7 @@ type VoicePingPopoverContentProps = {
 export function VoicePingPopoverContent({
   className,
 }: VoicePingPopoverContentProps) {
-  const voice = useVoice()
+  const voiceTelemetry = useVoiceTelemetry()
   const [nodeName, setNodeName] = useState<string | null>(null)
 
   useEffect(() => {
@@ -33,8 +33,10 @@ export function VoicePingPopoverContent({
     }
   }, [])
 
-  const { averageMs, lastMs } = summarizeVoicePingHistory(voice.voicePingHistory)
-  const lastDisplay = voice.voicePingMs ?? lastMs
+  const { averageMs, lastMs } = summarizeVoicePingHistory(
+    voiceTelemetry.voicePingHistory,
+  )
+  const lastDisplay = voiceTelemetry.voicePingMs ?? lastMs
 
   return (
     <PopoverContent
@@ -54,7 +56,7 @@ export function VoicePingPopoverContent({
 
       <div className="space-y-3 px-3 py-3">
         <div className="rounded-md bg-muted/35 px-1 py-1">
-          <VoicePingChart history={voice.voicePingHistory} />
+          <VoicePingChart history={voiceTelemetry.voicePingHistory} />
         </div>
 
         {nodeName ? (

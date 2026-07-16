@@ -65,6 +65,8 @@ const DEFAULT_SOUND_FILES: Partial<Record<SoundEventId, string>> = {
   'call.ended': 'user-leave.ogg',
   'screen_share.started': 'screen-share-started.ogg',
   'screen_share.stopped': 'screen-share-stopped.ogg',
+  'screen_share.viewer_join': 'screen-share-viewer-join.ogg',
+  'screen_share.viewer_leave': 'screen-share-viewer-leave.ogg',
 }
 
 function clipsForFiles(

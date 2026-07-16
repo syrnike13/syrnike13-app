@@ -10,6 +10,8 @@ Desktop.ini
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
+.codex-runlogs/
+.codex-runs/
 .codex-run-logs/
 .tmp-*
 .tmp-bin/
@@ -37,6 +39,7 @@ release/
 coverage/
 .turbo/
 .vite/
+.syrnike-build-cache/
 .tanstack/
 .nitro/
 .output/
@@ -66,6 +69,7 @@ __pycache__/
 !.env.*.example
 !apps/web/env/
 !apps/web/env/.env.localbackend
+!apps/web/env/.env.nightly
 !apps/web/env/.env.production
 secrets.env
 *.pem
@@ -73,6 +77,7 @@ secrets.env
 
 # Local runtime config
 /Syrnike.toml
+/services/backend/Syrnike.overrides.toml
 /Revolt.toml
 /Revolt.*.toml
 /Rocket.toml
@@ -83,8 +88,15 @@ secrets.env
 /data/
 /data*/
 /.data/
+/tmp/
+/output/
+/.tmp-*/
+/.tmp-*
+
+.superpowers/
+.worktrees/
 
 # Generated native helper artifacts
 /apps/desktop/native/music-presence-win/
 
-.superpowers/
+.playwright-mcp

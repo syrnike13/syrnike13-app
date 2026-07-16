@@ -32,6 +32,7 @@ describe('isMicVisuallyMuted', () => {
         inVoiceSession: true,
         micEnabled: true,
         micPublishing: false,
+        deafened: false,
       }),
     ).toBe(true)
   })
@@ -42,8 +43,42 @@ describe('isMicVisuallyMuted', () => {
         inVoiceSession: false,
         micEnabled: true,
         micPublishing: false,
+        deafened: false,
       }),
     ).toBe(false)
+  })
+
+  it('shows an enabled microphone as muted while deafened', () => {
+    expect(
+      isMicVisuallyMuted({
+        inVoiceSession: false,
+        micEnabled: true,
+        micPublishing: false,
+        deafened: true,
+      }),
+    ).toBe(true)
+  })
+
+  it('restores an enabled microphone visual after undeafening', () => {
+    expect(
+      isMicVisuallyMuted({
+        inVoiceSession: false,
+        micEnabled: true,
+        micPublishing: false,
+        deafened: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('keeps a disabled microphone visually muted after undeafening', () => {
+    expect(
+      isMicVisuallyMuted({
+        inVoiceSession: false,
+        micEnabled: false,
+        micPublishing: false,
+        deafened: false,
+      }),
+    ).toBe(true)
   })
 })
 
@@ -108,6 +143,20 @@ describe('shouldResetMicPreferenceOnIssue', () => {
         wantsMic: true,
         micPublishing: false,
         micIssue: null,
+      }),
+    ).toBe(false)
+  })
+
+  it('preserves user intent for retryable native runtime failures', () => {
+    expect(
+      shouldResetMicPreferenceOnIssue({
+        wantsMic: true,
+        micPublishing: false,
+        micIssue: {
+          label: 'Микрофон временно недоступен',
+          hint: 'Track publication timed out',
+          retryable: true,
+        },
       }),
     ).toBe(false)
   })

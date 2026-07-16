@@ -1,0 +1,527 @@
+/*
+ * Copyright 2025 LiveKit
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an “AS IS” BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "livekit/local_participant.h"
+
+#include <chrono>
+#include <stdexcept>
+
+#include "data_track.pb.h"
+#include "ffi.pb.h"
+#include "ffi_client.h"
+#include "livekit/ffi_handle.h"
+#include "livekit/local_audio_track.h"
+#include "livekit/local_data_track.h"
+#include "livekit/local_track_publication.h"
+#include "livekit/local_video_track.h"
+#include "livekit/room_delegate.h"
+#include "livekit/track.h"
+#include "participant.pb.h"
+#include "room.pb.h"
+#include "room_proto_converter.h"
+#include "track.pb.h"
+#include "track_proto_converter.h"
+
+namespace {
+
+std::shared_ptr<livekit::LocalTrackPublication> localTrackPublication(const std::shared_ptr<livekit::Track>& t) {
+  if (!t) {
+    return nullptr;
+  }
+  if (auto v = std::dynamic_pointer_cast<livekit::LocalVideoTrack>(t)) {
+    return v->publication();
+  }
+  if (auto a = std::dynamic_pointer_cast<livekit::LocalAudioTrack>(t)) {
+    return a->publication();
+  }
+  return nullptr;
+}
+
+} // namespace
+
+namespace livekit {
+
+using proto::FfiRequest;
+using proto::FfiResponse;
+
+LocalParticipant::LocalParticipant(FfiHandle handle, std::string sid, std::string name, std::string identity,
+                                   std::string metadata, std::unordered_map<std::string, std::string> attributes,
+                                   ParticipantKind kind, DisconnectReason reason)
+    : Participant(std::move(handle), std::move(sid), std::move(name), std::move(identity), std::move(metadata),
+                  std::move(attributes), kind, reason) {}
+
+void LocalParticipant::publishData(const std::vector<std::uint8_t>& payload, bool reliable,
+                                   const std::vector<std::string>& destination_identities, const std::string& topic) {
+  if (payload.empty()) {
+    return;
+  }
+
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::publishData: invalid FFI handle");
+  }
+
+  // Use async FFI API and block until completion.
+  auto fut = FfiClient::instance().publishDataAsync(static_cast<std::uint64_t>(handle_id), payload.data(),
+                                                    static_cast<std::uint64_t>(payload.size()), reliable,
+                                                    destination_identities, topic);
+
+  fut.get();
+}
+
+void LocalParticipant::publishDtmf(int code, const std::string& digit) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::publishDtmf: invalid FFI handle");
+  }
+
+  // TODO, should we take destination as inputs?
+  const std::vector<std::string> destination_identities;
+  auto fut = FfiClient::instance().publishSipDtmfAsync(static_cast<std::uint64_t>(handle_id),
+                                                       static_cast<std::uint32_t>(code), digit, destination_identities);
+
+  fut.get();
+}
+
+void LocalParticipant::setMetadata(const std::string& metadata) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::setMetadata: invalid FFI handle");
+  }
+  auto fut = FfiClient::instance().setLocalMetadataAsync(static_cast<std::uint64_t>(handle_id), metadata);
+
+  fut.get();
+}
+
+void LocalParticipant::setName(const std::string& name) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::setName: invalid FFI handle");
+  }
+
+  // No async helper defined for SetLocalName in FfiClient yet, so keep using
+  // the direct request.
+  FfiRequest req;
+  auto* msg = req.mutable_set_local_name();
+  msg->set_local_participant_handle(static_cast<std::uint64_t>(handle_id));
+  msg->set_name(name);
+
+  (void)FfiClient::instance().sendRequest(req);
+}
+
+void LocalParticipant::setAttributes(const std::unordered_map<std::string, std::string>& attributes) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::setAttributes: invalid FFI handle");
+  }
+
+  // No async helper defined for SetLocalAttributes in FfiClient yet.
+  FfiRequest req;
+  auto* msg = req.mutable_set_local_attributes();
+  msg->set_local_participant_handle(static_cast<std::uint64_t>(handle_id));
+
+  for (const auto& kv : attributes) {
+    auto* entry = msg->add_attributes();
+    entry->set_key(kv.first);
+    entry->set_value(kv.second);
+  }
+
+  (void)FfiClient::instance().sendRequest(req);
+}
+
+// ----------------------------------------------------------------------------
+// Subscription permissions
+// ----------------------------------------------------------------------------
+
+void LocalParticipant::setTrackSubscriptionPermissions(
+    bool allow_all_participants, const std::vector<ParticipantTrackPermission>& participant_permissions) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error(
+        "LocalParticipant::setTrackSubscriptionPermissions: invalid FFI "
+        "handle");
+  }
+
+  // No dedicated async helper; do it directly.
+  FfiRequest req;
+  auto* msg = req.mutable_set_track_subscription_permissions();
+  msg->set_local_participant_handle(static_cast<std::uint64_t>(handle_id));
+  msg->set_all_participants_allowed(allow_all_participants);
+
+  for (const auto& perm : participant_permissions) {
+    auto* p = msg->add_permissions();
+    p->CopyFrom(toProto(perm));
+  }
+
+  (void)FfiClient::instance().sendRequest(req);
+}
+
+// ----------------------------------------------------------------------------
+// Track publish / unpublish
+// ----------------------------------------------------------------------------
+
+void LocalParticipant::publishTrack(const std::shared_ptr<Track>& track, const TrackPublishOptions& options) {
+  if (!track) {
+    throw std::invalid_argument("LocalParticipant::publishTrack: track is null");
+  }
+
+  auto participant_handle = ffiHandleId();
+  if (participant_handle == 0) {
+    throw std::runtime_error("LocalParticipant::publishTrack: invalid participant FFI handle");
+  }
+
+  auto track_handle = track->ffiHandleId();
+  if (track_handle == 0) {
+    throw std::runtime_error("LocalParticipant::publishTrack: invalid track FFI handle");
+  }
+  auto fut = FfiClient::instance().publishTrackAsync(static_cast<std::uint64_t>(participant_handle),
+                                                     static_cast<std::uint64_t>(track_handle), options);
+
+  // Will throw if the async op fails (error in callback).
+  const proto::OwnedTrackPublication owned_pub = fut.get();
+
+  // Construct a LocalTrackPublication from the proto publication.
+  auto publication = std::make_shared<LocalTrackPublication>(owned_pub);
+
+  const std::string sid = publication->sid();
+  {
+    const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+    published_tracks_by_sid_[sid] = std::weak_ptr<Track>(track);
+    publication_sid_aliases_.erase(sid);
+    track->setPublication(publication);
+  }
+}
+
+std::shared_ptr<LocalVideoTrack> LocalParticipant::publishVideoTrack(const std::string& name,
+                                                                     const std::shared_ptr<VideoSource>& source,
+                                                                     TrackSource track_source) {
+  auto track = LocalVideoTrack::createLocalVideoTrack(name, source);
+  TrackPublishOptions opts;
+  opts.source = track_source;
+  publishTrack(track, opts);
+  return track;
+}
+
+std::shared_ptr<LocalAudioTrack> LocalParticipant::publishAudioTrack(const std::string& name,
+                                                                     const std::shared_ptr<AudioSource>& source,
+                                                                     TrackSource track_source) {
+  auto track = LocalAudioTrack::createLocalAudioTrack(name, source);
+  TrackPublishOptions opts;
+  opts.source = track_source;
+  publishTrack(track, opts);
+  return track;
+}
+
+void LocalParticipant::unpublishTrack(const std::string& track_sid) {
+  if (track_sid.empty()) {
+    return;
+  }
+
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::unpublishTrack: invalid FFI handle");
+  }
+
+  std::string current_sid = track_sid;
+  {
+    const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+    for (std::size_t depth = 0; depth <= publication_sid_aliases_.size(); ++depth) {
+      const auto alias = publication_sid_aliases_.find(current_sid);
+      if (alias == publication_sid_aliases_.end() || alias->second == current_sid) {
+        break;
+      }
+      current_sid = alias->second;
+    }
+  }
+
+  auto fut = FfiClient::instance().unpublishTrackAsync(static_cast<std::uint64_t>(handle_id), current_sid,
+                                                       /*stop_on_unpublish=*/true);
+
+  fut.get();
+
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+  if (auto it = published_tracks_by_sid_.find(current_sid); it != published_tracks_by_sid_.end()) {
+    if (auto t = it->second.lock()) {
+      t->setPublication(nullptr);
+    }
+    published_tracks_by_sid_.erase(it);
+  }
+  for (auto it = publication_sid_aliases_.begin(); it != publication_sid_aliases_.end();) {
+    if (it->first == track_sid || it->first == current_sid || it->second == current_sid) {
+      it = publication_sid_aliases_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+LocalParticipant::PublicationMap LocalParticipant::trackPublications() const {
+  PublicationMap out;
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+  for (auto it = published_tracks_by_sid_.begin(); it != published_tracks_by_sid_.end();) {
+    auto t = it->second.lock();
+    if (!t) {
+      it = published_tracks_by_sid_.erase(it);
+      continue;
+    }
+    if (auto pub = localTrackPublication(t)) {
+      out.emplace(it->first, std::move(pub));
+    }
+    ++it;
+  }
+  return out;
+}
+
+void LocalParticipant::handleTrackRepublished(const std::string& previous_sid,
+                                              const proto::TrackPublicationInfo& info) {
+  if (previous_sid.empty() || info.sid().empty()) {
+    return;
+  }
+
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+  auto existing = published_tracks_by_sid_.find(previous_sid);
+  if (existing == published_tracks_by_sid_.end()) {
+    return;
+  }
+  auto track = existing->second.lock();
+  if (!track) {
+    published_tracks_by_sid_.erase(existing);
+    return;
+  }
+  auto publication = localTrackPublication(track);
+  if (!publication) {
+    return;
+  }
+
+  publication->updateInfo(info);
+  published_tracks_by_sid_.erase(existing);
+  published_tracks_by_sid_[info.sid()] = track;
+  for (auto& [alias, target] : publication_sid_aliases_) {
+    if (target == previous_sid) {
+      target = info.sid();
+    }
+  }
+  publication_sid_aliases_[previous_sid] = info.sid();
+}
+
+Result<std::shared_ptr<LocalDataTrack>, PublishDataTrackError> LocalParticipant::publishDataTrack(
+    const std::string& name) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    return Result<std::shared_ptr<LocalDataTrack>, PublishDataTrackError>::failure(
+        PublishDataTrackError{PublishDataTrackErrorCode::INVALID_HANDLE,
+                              "LocalParticipant::publishDataTrack: invalid FFI "
+                              "handle"});
+  }
+
+  auto fut = FfiClient::instance().publishDataTrackAsync(static_cast<std::uint64_t>(handle_id), name);
+
+  auto result = fut.get();
+  if (!result) {
+    return Result<std::shared_ptr<LocalDataTrack>, PublishDataTrackError>::failure(std::move(result).error());
+  }
+
+  return Result<std::shared_ptr<LocalDataTrack>, PublishDataTrackError>::success(
+      std::shared_ptr<LocalDataTrack>(new LocalDataTrack(result.value())));
+}
+
+void LocalParticipant::unpublishDataTrack(const std::shared_ptr<LocalDataTrack>& track) {
+  if (!track) {
+    return;
+  }
+
+  track->unpublishDataTrack();
+}
+
+std::string LocalParticipant::performRpc(const std::string& destination_identity, const std::string& method,
+                                         const std::string& payload, const std::optional<double>& response_timeout) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::performRpc: invalid FFI handle");
+  }
+
+  std::uint32_t timeout_ms = 0;
+  bool has_timeout = false;
+  if (response_timeout.has_value()) {
+    timeout_ms = static_cast<std::uint32_t>(response_timeout.value() * 1000.0);
+    has_timeout = true;
+  }
+
+  auto fut = FfiClient::instance().performRpcAsync(
+      static_cast<std::uint64_t>(handle_id), destination_identity, method, payload,
+      has_timeout ? std::optional<std::uint32_t>(timeout_ms) : std::nullopt);
+  return fut.get();
+}
+
+void LocalParticipant::registerRpcMethod(const std::string& method_name, RpcHandler handler) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::registerRpcMethod: invalid FFI handle");
+  }
+  rpc_handlers_[method_name] = std::move(handler);
+  FfiRequest req;
+  auto* msg = req.mutable_register_rpc_method();
+  msg->set_local_participant_handle(static_cast<std::uint64_t>(handle_id));
+  msg->set_method(method_name);
+
+  (void)FfiClient::instance().sendRequest(req);
+}
+
+void LocalParticipant::unregisterRpcMethod(const std::string& method_name) {
+  auto handle_id = ffiHandleId();
+  if (handle_id == 0) {
+    throw std::runtime_error("LocalParticipant::unregisterRpcMethod: invalid FFI handle");
+  }
+  rpc_handlers_.erase(method_name);
+  FfiRequest req;
+  auto* msg = req.mutable_unregister_rpc_method();
+  msg->set_local_participant_handle(static_cast<std::uint64_t>(handle_id));
+  msg->set_method(method_name);
+
+  (void)FfiClient::instance().sendRequest(req);
+}
+
+void LocalParticipant::shutdown() {
+  // Mark as shutting down and wait for all active invocations to complete
+  {
+    std::unique_lock<std::mutex> lock(rpc_state_->mutex);
+    rpc_state_->shutting_down = true;
+    // Wait up to 5 seconds for active RPC invocations to complete.
+    // If timeout expires, proceed anyway - late responses will fail but
+    // at least we won't block shutdown indefinitely.
+    rpc_state_->cv.wait_for(lock, std::chrono::seconds(5), [this] { return rpc_state_->active_invocations == 0; });
+  }
+
+  auto handle_id = ffiHandleId();
+  // If handle is invalid, just clear local handlers - FFI cleanup not possible
+  if (handle_id == 0) {
+    rpc_handlers_.clear();
+    return;
+  }
+
+  // Unregister all RPC methods with FFI and clear local handlers
+  for (const auto& pair : rpc_handlers_) {
+    FfiRequest req;
+    auto* msg = req.mutable_unregister_rpc_method();
+    msg->set_local_participant_handle(static_cast<std::uint64_t>(handle_id));
+    msg->set_method(pair.first);
+    (void)FfiClient::instance().sendRequest(req);
+  }
+  rpc_handlers_.clear();
+}
+
+void LocalParticipant::handleRpcMethodInvocation(uint64_t invocation_id, const std::string& method,
+                                                 const std::string& request_id, const std::string& caller_identity,
+                                                 const std::string& payload, double response_timeout_sec) {
+  // Capture shared state so it outlives LocalParticipant if needed
+  auto state = rpc_state_;
+
+  // Track this invocation and check if we're shutting down
+  {
+    const std::scoped_lock<std::mutex> lock(state->mutex);
+    if (state->shutting_down) {
+      // Already shutting down, don't process new invocations
+      return;
+    }
+    state->active_invocations++;
+  }
+
+  // RAII guard to decrement counter and notify on exit.
+  // Captures shared_ptr to state so mutex stays valid even if
+  // LocalParticipant is destroyed during handler execution.
+  struct InvocationGuard {
+    std::shared_ptr<RpcInvocationState> state;
+    ~InvocationGuard() {
+      const std::scoped_lock<std::mutex> lock(state->mutex);
+      state->active_invocations--;
+      if (state->active_invocations == 0) {
+        state->cv.notify_all();
+      }
+    }
+  } const guard{state};
+
+  std::optional<RpcError> response_error;
+  std::optional<std::string> response_payload;
+  const RpcInvocationData params{request_id, caller_identity, payload, response_timeout_sec};
+  auto it = rpc_handlers_.find(method);
+  if (it == rpc_handlers_.end()) {
+    // No handler registered → built-in UNSUPPORTED_METHOD
+    response_error = RpcError::builtIn(RpcError::ErrorCode::UNSUPPORTED_METHOD);
+  } else {
+    try {
+      // Invoke user handler: may return payload or throw RpcError
+      response_payload = it->second(params);
+    } catch (const RpcError& err) {
+      // Handler explicitly signalled an RPC error: forward as-is
+      response_error = err;
+    } catch (const std::exception& ex) {
+      // Any other exception: wrap as built-in APPLICATION_ERROR
+      response_error = RpcError::builtIn(RpcError::ErrorCode::APPLICATION_ERROR, ex.what());
+    } catch (...) {
+      response_error = RpcError::builtIn(RpcError::ErrorCode::APPLICATION_ERROR, "unknown error");
+    }
+  }
+
+  // Check again if shutdown started during handler execution
+  {
+    const std::scoped_lock<std::mutex> lock(state->mutex);
+    if (state->shutting_down) {
+      // Shutdown started, don't send response - handle may be invalid
+      return;
+    }
+  }
+
+  FfiRequest req;
+  auto* msg = req.mutable_rpc_method_invocation_response();
+  msg->set_local_participant_handle(ffiHandleId());
+  msg->set_invocation_id(invocation_id);
+  if (response_error.has_value()) {
+    auto* err_proto = msg->mutable_error();
+    err_proto->CopyFrom(response_error->toProto());
+  }
+  if (response_payload.has_value()) {
+    msg->set_payload(*response_payload);
+  }
+  FfiClient::instance().sendRequest(req);
+}
+
+std::shared_ptr<TrackPublication> LocalParticipant::findTrackPublication(const std::string& sid) const {
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+  std::string current_sid = sid;
+  for (std::size_t depth = 0; depth <= publication_sid_aliases_.size(); ++depth) {
+    const auto alias = publication_sid_aliases_.find(current_sid);
+    if (alias == publication_sid_aliases_.end() || alias->second == current_sid) {
+      break;
+    }
+    current_sid = alias->second;
+  }
+  auto it = published_tracks_by_sid_.find(current_sid);
+  if (it == published_tracks_by_sid_.end()) {
+    return nullptr;
+  }
+  auto t = it->second.lock();
+  if (!t) {
+    published_tracks_by_sid_.erase(it);
+    return nullptr;
+  }
+  auto pub = localTrackPublication(t);
+  if (!pub) {
+    return nullptr;
+  }
+  return std::static_pointer_cast<TrackPublication>(pub);
+}
+
+} // namespace livekit

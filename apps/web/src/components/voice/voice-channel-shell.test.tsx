@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { Channel, User } from '@syrnike13/api-types'
+import { useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { VoiceChannelShell } from './voice-channel-shell'
 import { syncStore } from '#/features/sync/sync-store'
+import { requestVoiceChannelChatOpen } from '#/features/voice/voice-channel-chat-intent'
 
 const CURRENT_USER_ID = 'current-user'
 const TARGET_USER_ID = 'target-user'
@@ -34,13 +36,42 @@ vi.mock('#/features/auth/auth-context', () => ({
 }))
 
 vi.mock('#/components/voice/voice-stage-view', () => ({
-  VoiceStageView: ({ title }: { title: string }) => (
-    <div data-testid="voice-stage-view">{title}</div>
+  VoiceStageView: ({
+    title,
+    chatOpen,
+    onToggleChat,
+    showChatToggle = true,
+  }: {
+    title: string
+    chatOpen: boolean
+    onToggleChat: () => void
+    showChatToggle?: boolean
+  }) => (
+    <div
+      data-testid="voice-stage-view"
+      data-chat-toggle={showChatToggle ? 'visible' : 'hidden'}
+    >
+      <span data-testid="voice-stage-title">{title}</span>
+      {showChatToggle ? (
+        <button type="button" onClick={onToggleChat}>
+          {chatOpen ? 'Скрыть чат' : 'Открыть чат'}
+        </button>
+      ) : null}
+    </div>
   ),
 }))
 
 vi.mock('#/components/chat/channel-chat-panel', () => ({
-  ChannelChatPanel: () => <div data-testid="channel-chat-panel" />,
+  ChannelChatPanel: ({ channelId }: { channelId: string }) => {
+    const mountedChannelId = useRef(channelId).current
+    return (
+      <div
+        data-testid="channel-chat-panel"
+        data-channel-id={channelId}
+        data-mounted-channel-id={mountedChannelId}
+      />
+    )
+  },
 }))
 
 function directMessageChannel(): Channel {
@@ -68,10 +99,33 @@ function groupChannel(): Channel {
   } as Channel
 }
 
+function legacyVoiceChannel(
+  id = 'voice-1',
+  name = 'Voice',
+): Channel {
+  return {
+    _id: id,
+    channel_type: 'VoiceChannel',
+    server: 'server-1',
+    name,
+    default_permissions: null,
+    role_permissions: {},
+    voice: { max_users: null },
+  } as unknown as Channel
+}
+
 function renderShell(channel: Channel) {
   syncStore.applyReady({
     users: [currentUser, targetUser],
-    servers: [],
+    servers: [
+      {
+        _id: 'server-1',
+        name: 'Server',
+        owner: CURRENT_USER_ID,
+        channels: [channel._id],
+        default_permissions: 0,
+      } as never,
+    ],
     channels: [channel],
     members: [],
     emojis: [],
@@ -95,12 +149,84 @@ describe('VoiceChannelShell', () => {
   it('renders direct message calls as a voice stage', () => {
     renderShell(directMessageChannel())
 
-    expect(screen.getByTestId('voice-stage-view').textContent).toBe('test_isa')
+    expect(screen.getByTestId('voice-stage-view').textContent).toContain(
+      'test_isa',
+    )
   })
 
   it('renders group calls as a voice stage', () => {
     renderShell(groupChannel())
 
-    expect(screen.getByTestId('voice-stage-view').textContent).toBe('Команда')
+    expect(screen.getByTestId('voice-stage-view').textContent).toContain(
+      'Команда',
+    )
+  })
+
+  it('opens the side chat panel when a chat open request arrives', () => {
+    renderShell(groupChannel())
+
+    expect(screen.queryByTestId('channel-chat-panel')).toBeNull()
+
+    act(() => {
+      requestVoiceChannelChatOpen('group-1')
+    })
+
+    expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
+  })
+
+  it('opens the side chat panel from a pending request on mount', () => {
+    requestVoiceChannelChatOpen('group-1')
+    renderShell(groupChannel())
+
+    expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
+  })
+  it('shows the chat toggle in a server voice stage', () => {
+    renderShell(legacyVoiceChannel())
+
+    expect(screen.getByTestId('voice-stage-title').textContent).toBe('Voice')
+    expect(
+      screen.getByTestId('voice-stage-view').getAttribute('data-chat-toggle'),
+    ).toBe('visible')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть чат' }))
+
+    expect(screen.getByTestId('channel-chat-panel')).toBeTruthy()
+    expect(screen.queryByTestId('channel-settings-dialog')).toBeNull()
+  })
+
+  it('remounts the side chat when the opened voice channel changes', () => {
+    const channelA = legacyVoiceChannel('voice-a', 'A')
+    const channelB = legacyVoiceChannel('voice-b', 'B')
+    syncStore.applyReady({
+      users: [currentUser, targetUser],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Server',
+          owner: CURRENT_USER_ID,
+          channels: [channelA._id, channelB._id],
+          default_permissions: 0,
+        } as never,
+      ],
+      channels: [channelA, channelB],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    })
+    requestVoiceChannelChatOpen(channelA._id)
+
+    const { rerender } = render(
+      <VoiceChannelShell channelId={channelA._id} />,
+    )
+    expect(
+      screen.getByTestId('channel-chat-panel').dataset.mountedChannelId,
+    ).toBe(channelA._id)
+
+    rerender(<VoiceChannelShell channelId={channelB._id} />)
+
+    const panel = screen.getByTestId('channel-chat-panel')
+    expect(panel.dataset.channelId).toBe(channelB._id)
+    expect(panel.dataset.mountedChannelId).toBe(channelB._id)
   })
 })

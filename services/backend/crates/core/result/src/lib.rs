@@ -153,6 +153,7 @@ pub enum ErrorType {
     },
     InternalError,
     InvalidOperation,
+    InvalidInvite,
     InvalidCredentials,
     InvalidProperty,
     InvalidSession,

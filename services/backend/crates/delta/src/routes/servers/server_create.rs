@@ -1,10 +1,10 @@
 use syrnike_config::config;
 use syrnike_database::{Database, Member, Server, User};
 use syrnike_models::v0;
-use syrnike_result::{create_error, Result};
+use syrnike_result::{Result, create_error};
 
-use rocket::serde::json::Json;
 use rocket::State;
+use rocket::serde::json::Json;
 use validator::Validate;
 
 /// # Create Server
@@ -49,7 +49,7 @@ pub async fn create_server(
     user.can_acquire_server(db).await?;
 
     let (server, channels) = Server::create(db, data, &user, true).await?;
-    let (member, channels) = Member::create(db, &server, &user, Some(channels)).await?;
+    let (member, channels) = Member::create(db, &server, &user, Some(channels), false).await?;
 
     Ok(Json(v0::CreateServerLegacyResponse {
         server: server.into(),

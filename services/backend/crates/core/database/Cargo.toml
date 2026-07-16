@@ -25,7 +25,7 @@ rocket-impl = [
 ]
 axum-impl = ["axum", "syrnike-result/axum"]
 redis-is-patched = ["syrnike-presence/redis-is-patched"]
-voice = ["livekit-api", "livekit-protocol", "livekit-runtime"]
+voice = ["livekit-api", "livekit-protocol", "livekit-runtime", "uuid"]
 
 # Default Features
 default = ["mongodb", "async-std-runtime", "tasks"]
@@ -101,3 +101,4 @@ lapin = { workspace = true, features = ["tokio"] }
 livekit-api = { workspace = true, features = ["rustls-tls-native-roots"], optional = true }
 livekit-protocol = { workspace = true, optional = true }
 livekit-runtime = { workspace = true, features = ["tokio"], optional = true }
+uuid = { workspace = true, optional = true }

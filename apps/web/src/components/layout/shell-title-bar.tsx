@@ -7,6 +7,7 @@ import {
   SHELL_TITLEBAR_MACOS_INSET_PX,
   SHELL_TITLEBAR_MACOS_NAV_BUTTON_PX,
   SHELL_TITLEBAR_WIN32_BUTTON_WIDTH_PX,
+  shellLowestSurface,
   shellTitleBarDragClass,
 } from '#/components/layout/shell-chrome'
 import {
@@ -25,7 +26,7 @@ function MacShellTitleBar({ heightPx }: { heightPx: number }) {
 
   return (
     <header
-      className="relative shrink-0 overflow-visible bg-background text-foreground"
+      className={cn('relative shrink-0 overflow-visible', shellLowestSurface)}
       style={{ height: heightPx }}
     >
       <ShellTitleBarDragRegion className="h-full w-full" />
@@ -57,7 +58,10 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
 
   return (
     <header
-      className="shell-title-bar-windows relative shrink-0 overflow-hidden bg-background text-foreground"
+      className={cn(
+        'shell-title-bar-windows relative shrink-0 overflow-hidden',
+        shellLowestSurface,
+      )}
       style={headerStyle}
     >
       <ShellTitleBarDragRegion className="absolute inset-0" />
@@ -74,13 +78,26 @@ function WindowsShellTitleBar({ heightPx }: { heightPx: number }) {
 function LinuxShellTitleBar({ heightPx }: { heightPx: number }) {
   return (
     <header
-      className="relative shrink-0 overflow-hidden bg-background text-foreground"
+      className={cn('relative shrink-0 overflow-hidden', shellLowestSurface)}
       style={{ height: heightPx }}
     >
       <ShellTitleBarDragRegion className="absolute inset-0" />
       <div className="absolute inset-y-0 right-0 z-10">
         <ShellWindowControls heightPx={heightPx} />
       </div>
+    </header>
+  )
+}
+
+function WebShellTitleBar() {
+  return (
+    <header
+      className={cn(
+        'relative flex h-9 shrink-0 items-center px-2',
+        shellLowestSurface,
+      )}
+    >
+      <ShellHistoryNavButtons />
     </header>
   )
 }
@@ -97,7 +114,8 @@ const titleBarByOs: Record<
 export function ShellTitleBar() {
   const { capabilities, desktop } = usePlatform()
 
-  if (!capabilities.customWindowChrome || !desktop) return null
+  if (!desktop) return <WebShellTitleBar />
+  if (!capabilities.customWindowChrome) return null
 
   const os = desktop.platform.os
   const heightPx = getShellTitleBarHeightPx(os)

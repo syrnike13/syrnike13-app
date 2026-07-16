@@ -2,47 +2,11 @@ import {
   hasPermissionBit,
   maskPermissionBits,
   permissionAndNot,
-  permissionBit,
   permissionOr,
 } from '#/lib/permission-bits'
+import { ServerPermission } from '#/features/authorization/permission-bits.generated'
 
-const p = permissionBit
-
-export const ServerPermission = {
-  ManageChannel: p(0),
-  ManageServer: p(1),
-  ManagePermissions: p(2),
-  ManageRole: p(3),
-  ManageCustomisation: p(4),
-  KickMembers: p(6),
-  BanMembers: p(7),
-  TimeoutMembers: p(8),
-  AssignRoles: p(9),
-  ChangeNickname: p(10),
-  ManageNicknames: p(11),
-  ChangeAvatar: p(12),
-  RemoveAvatars: p(13),
-  ViewChannel: p(20),
-  ReadMessageHistory: p(21),
-  SendMessage: p(22),
-  ManageMessages: p(23),
-  ManageWebhooks: p(24),
-  InviteOthers: p(25),
-  SendEmbeds: p(26),
-  UploadFiles: p(27),
-  Masquerade: p(28),
-  React: p(29),
-  Connect: p(30),
-  Speak: p(31),
-  Video: p(32),
-  MuteMembers: p(33),
-  DeafenMembers: p(34),
-  MoveMembers: p(35),
-  Listen: p(36),
-  MentionEveryone: p(37),
-  MentionRoles: p(38),
-  BypassSlowmode: p(39),
-} as const
+export { ServerPermission }
 
 export type ServerPermissionName = keyof typeof ServerPermission
 
@@ -51,6 +15,12 @@ export type PermissionOverrideField = { a: number; d: number }
 export type PermissionOverride = { allow: number; deny: number }
 
 export type PermissionTriState = 'neutral' | 'allow' | 'deny'
+
+export const PERMISSION_TRI_STATE_ORDER: PermissionTriState[] = [
+  'neutral',
+  'allow',
+  'deny',
+]
 
 export type PermissionDefinition = {
   flag: number
@@ -154,6 +124,27 @@ export function setPermissionTriState(
   return { a: allow, d: deny }
 }
 
+export function getAllowedPermissionTriStates(
+  baseline: PermissionOverrideField | null | undefined,
+  actorHasPermission: boolean,
+  flag: number,
+): PermissionTriState[] {
+  if (actorHasPermission) {
+    return PERMISSION_TRI_STATE_ORDER
+  }
+
+  const baselineState = getPermissionTriState(baseline, flag)
+  if (baselineState === 'deny') {
+    return ['deny']
+  }
+
+  if (baselineState === 'neutral') {
+    return ['neutral', 'deny']
+  }
+
+  return PERMISSION_TRI_STATE_ORDER
+}
+
 export function overrideFieldToApi(
   override: PermissionOverrideField,
 ): PermissionOverride {
@@ -201,12 +192,12 @@ export function roleColourStyle(colour: string | null | undefined) {
   return { color: normalizeRoleColour(colour) }
 }
 
-export function sortRolesByRankDesc<T extends { rank?: number | null }>(
+export function sortRolesByHierarchy<T extends { rank?: number | null }>(
   roles: T[],
 ): T[] {
-  return [...roles].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
+  return [...roles].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0))
 }
 
 export function roleRanksPayload(roleIdsHighestFirst: string[]): string[] {
-  return [...roleIdsHighestFirst].reverse()
+  return roleIdsHighestFirst
 }

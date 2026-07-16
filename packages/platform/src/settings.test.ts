@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_DESKTOP_LOCAL_SETTINGS,
+  DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
   DEFAULT_SOUND_AUTHOR_PACK_ID,
+  normalizeAppearanceGradientSettings,
   normalizeDesktopLocalSettings,
   normalizeDesktopLocalSettingsPatch,
 } from './settings'
@@ -13,6 +15,47 @@ describe('desktop local settings contract', () => {
     expect(normalizeDesktopLocalSettings(undefined)).toEqual(
       DEFAULT_DESKTOP_LOCAL_SETTINGS,
     )
+  })
+
+  it('migrates legacy microphone defaults without changing other settings', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 1,
+        voice: {
+          preferredAudioInputDevice: 'legacy-mic',
+          inputVolume: 0.42,
+          noiseSuppression: false,
+          echoCancellation: true,
+          automaticGainControl: false,
+        },
+        appearance: { themeId: 'night' },
+      }),
+    ).toMatchObject({
+      version: 2,
+      voice: {
+        preferredAudioInputDevice: 'legacy-mic',
+        inputVolume: 0.42,
+        noiseSuppression: false,
+        echoCancellation: false,
+        automaticGainControl: true,
+      },
+      appearance: { themeId: 'night' },
+    })
+  })
+
+  it('preserves explicit microphone processing values after migration', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 2,
+        voice: {
+          echoCancellation: true,
+          automaticGainControl: false,
+        },
+      }).voice,
+    ).toMatchObject({
+      echoCancellation: true,
+      automaticGainControl: false,
+    })
   })
 
   it('keeps saved voice and listener settings', () => {
@@ -26,6 +69,8 @@ describe('desktop local settings contract', () => {
           preferredVideoDevice: 'camera-1',
           inputVolume: 0.42,
           outputVolume: 1.7,
+          bypassSystemAudioInputProcessing: false,
+          automaticGainControl: true,
           noiseSuppression: false,
           echoCancellation: false,
           voiceGateEnabled: true,
@@ -49,6 +94,8 @@ describe('desktop local settings contract', () => {
         deafened: true,
         preferredAudioInputDevice: 'mic-1',
         outputVolume: 1.7,
+        bypassSystemAudioInputProcessing: false,
+        automaticGainControl: true,
         noiseSuppression: false,
         screenShareQuality: 'high60',
       },
@@ -107,12 +154,16 @@ describe('desktop local settings contract', () => {
     expect(
       normalizeDesktopLocalSettingsPatch({
         voice: {
+          bypassSystemAudioInputProcessing: false,
+          automaticGainControl: true,
           noiseSuppression: false,
           outputVolume: 5,
         },
       }),
     ).toEqual({
       voice: {
+        bypassSystemAudioInputProcessing: false,
+        automaticGainControl: true,
         noiseSuppression: false,
         outputVolume: 3,
       },
@@ -170,6 +221,29 @@ describe('desktop local settings contract', () => {
     })
   })
 
+  it('defaults native metrics on and full crash reports off', () => {
+    expect(normalizeDesktopLocalSettings({}).observability).toEqual(
+      DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
+    )
+  })
+
+  it('accepts only boolean observability settings', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        observability: {
+          anonymousNativeMetrics: false,
+          nativeCrashReports: true,
+          roomUrl: 'wss://private.example',
+        },
+      }),
+    ).toEqual({
+      observability: {
+        anonymousNativeMetrics: false,
+        nativeCrashReports: true,
+      },
+    })
+  })
+
   it('normalizes overlay patches without filling unrelated namespaces', () => {
     expect(
       normalizeDesktopLocalSettingsPatch({
@@ -210,6 +284,48 @@ describe('desktop local settings contract', () => {
         appearance: {},
       }).appearance,
     ).toEqual(DEFAULT_APPEARANCE_SETTINGS)
+  })
+
+  it('normalizes custom appearance gradients', () => {
+    expect(
+      normalizeAppearanceGradientSettings({
+        colors: ['#5865f2', ' #f4f4f5 ', 'invalid'],
+        angle: 999,
+        saturation: -10,
+      }),
+    ).toEqual({
+      colors: ['#5865F2', '#F4F4F5'],
+      angle: 360,
+      saturation: 0,
+    })
+  })
+
+  it('keeps valid gradient patches and ignores malformed ones', () => {
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        appearance: {
+          gradient: {
+            colors: ['#112233', '#AABBCC'],
+            angle: 45,
+            saturation: 80,
+          },
+        },
+      }),
+    ).toEqual({
+      appearance: {
+        gradient: {
+          colors: ['#112233', '#AABBCC'],
+          angle: 45,
+          saturation: 80,
+        },
+      },
+    })
+
+    expect(
+      normalizeDesktopLocalSettingsPatch({
+        appearance: { gradient: { colors: ['nope'] } },
+      }),
+    ).toEqual({})
   })
 
   it('ignores malformed non-empty overlay games patches', () => {

@@ -21,14 +21,16 @@ const STATUS_BY_STATE: Record<GatewayState, string> = {
 
 type GatewayLoadingScreenProps = {
   gatewayState: GatewayState
+  statusText?: string
 }
 
 export function GatewayLoadingScreen({
   gatewayState,
+  statusText,
 }: GatewayLoadingScreenProps) {
   const [visible, setVisible] = useState(false)
   const [fact, setFact] = useState<string>(INITIAL_FACT)
-  const status = STATUS_BY_STATE[gatewayState]
+  const status = statusText ?? STATUS_BY_STATE[gatewayState]
 
   useEffect(() => {
     setFact(pickGatewayLoadingFact())
@@ -40,7 +42,7 @@ export function GatewayLoadingScreen({
     <div
       className={cn(
         'fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden',
-        'bg-[#313338] px-6 text-[#f2f3f5] transition-opacity duration-300',
+        'gradient-surface-content bg-background px-6 text-foreground transition-opacity duration-300',
         visible ? 'opacity-100' : 'opacity-0',
       )}
       role="status"
@@ -58,13 +60,17 @@ export function GatewayLoadingScreen({
           draggable={false}
         />
 
-        <p className="mt-10 text-xs font-bold tracking-[0.12em] text-[#f2f3f5] uppercase">
+        <p className="mt-10 text-xs font-bold tracking-[0.12em] text-foreground uppercase">
           А вы знали?
         </p>
 
-        <p className="mt-3 text-base leading-relaxed font-normal text-[#dbdee1]">
+        <p className="mt-3 text-base leading-relaxed font-normal text-muted-foreground">
           {fact}
         </p>
+
+        {statusText ? (
+          <p className="mt-8 text-sm font-medium text-foreground">{status}</p>
+        ) : null}
       </div>
 
       <p className="sr-only">

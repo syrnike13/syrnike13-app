@@ -1,5 +1,5 @@
 import type { Emoji, Member, Message, Server, User } from '@syrnike13/api-types'
-import { PhoneFilledIcon, PhoneOffIcon, PinIcon } from '#/components/icons'
+import { PhoneFilledIcon, PhoneOffIcon, PinIcon, ReplyIcon } from '#/components/icons'
 import { useMemo, type ReactElement } from 'react'
 
 import {
@@ -12,6 +12,12 @@ import { InlineReplyQuote } from '#/components/chat/message-reply-preview'
 import { MessageHoverToolbar } from '#/components/chat/message-hover-toolbar'
 import { MessageAttachments } from '#/components/chat/message-attachments'
 import { MessageReactions } from '#/components/chat/message-reactions'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '#/components/ui/context-menu'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { UserProfilePopover } from '#/components/user/user-profile-popover'
 import {
@@ -188,7 +194,7 @@ function VoiceCallSystemCard({
         <div
           className={cn(
             'flex size-10 items-center justify-center',
-            successfulCall ? 'text-[#23a559]' : 'text-muted-foreground',
+            successfulCall ? 'text-chart-3' : 'text-muted-foreground',
           )}
           aria-label={successfulCall ? 'Успешный звонок' : 'Неуспешный звонок'}
         >
@@ -245,6 +251,85 @@ function MessageAuthorProfileTrigger({
     >
       {children}
     </UserProfilePopover>
+  )
+}
+
+function systemUserLabel(userId: string, users: Record<string, User>) {
+  const user = users[userId]
+  return user?.display_name ?? user?.username ?? 'Пользователь'
+}
+
+function systemMessageText(
+  system: NonNullable<Message['system']>,
+  users: Record<string, User>,
+) {
+  switch (system.type) {
+    case 'text':
+      return system.content
+    case 'user_added':
+      return `${systemUserLabel(system.by, users)} добавляет ${systemUserLabel(system.id, users)}`
+    case 'user_remove':
+      return `${systemUserLabel(system.by, users)} удаляет ${systemUserLabel(system.id, users)}`
+    case 'user_joined':
+      return `${systemUserLabel(system.id, users)} присоединяется к серверу`
+    case 'user_left':
+      return `${systemUserLabel(system.id, users)} покидает сервер`
+    case 'user_kicked':
+      return `${systemUserLabel(system.id, users)} исключён из сервера`
+    case 'user_banned':
+      return `${systemUserLabel(system.id, users)} заблокирован на сервере`
+    case 'channel_renamed':
+      return `${systemUserLabel(system.by, users)} переименовывает канал в «${system.name}»`
+    case 'channel_description_changed':
+      return `${systemUserLabel(system.by, users)} изменяет описание канала`
+    case 'channel_icon_changed':
+      return `${systemUserLabel(system.by, users)} изменяет значок канала`
+    case 'channel_ownership_changed':
+      return `${systemUserLabel(system.from, users)} передаёт владение ${systemUserLabel(system.to, users)}`
+    case 'message_pinned':
+      return `${systemUserLabel(system.by, users)} закрепляет сообщение`
+    case 'message_unpinned':
+      return `${systemUserLabel(system.by, users)} открепляет сообщение`
+    case 'call_started':
+      return ''
+  }
+}
+
+function StandardSystemMessageRow({
+  message,
+  users,
+}: {
+  message: Message
+  users: Record<string, User>
+}) {
+  if (!message.system || message.system.type === 'call_started') return null
+
+  const timestamp = formatMessageTimestamp(messageCreatedAt(message))
+
+  return (
+    <article
+      data-message-id={message._id}
+      className={cn(
+        'group relative -mx-4 flex min-h-10 items-center gap-3 py-2 text-sm',
+        MESSAGE_ROW_PADDING_X,
+        'hover:bg-muted/40',
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-base text-muted-foreground"
+      >
+        •
+      </span>
+      <p className="min-w-0 text-muted-foreground">
+        <span className="text-foreground">
+          {systemMessageText(message.system, users)}
+        </span>{' '}
+        <time className="text-[11px] font-medium" dateTime={timestamp}>
+          {timestamp}
+        </time>
+      </p>
+    </article>
   )
 }
 
@@ -340,7 +425,11 @@ export function MessageRow({
     )
   }
 
-  return (
+  if (message.system) {
+    return <StandardSystemMessageRow message={message} users={users} />
+  }
+
+  const row = (
     <article
       data-message-id={message._id}
       className={cn(
@@ -351,7 +440,7 @@ export function MessageRow({
         highlighted && 'bg-primary/10 hover:bg-primary/15',
         mentionsCurrentUser &&
           !highlighted &&
-          'bg-amber-400/10 hover:bg-amber-400/15',
+          'bg-chart-2/10 hover:bg-chart-2/15',
       )}
     >
       {compact ? (
@@ -512,5 +601,19 @@ export function MessageRow({
         ) : null}
       </div>
     </article>
+  )
+
+  if (!onReply) return row
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="w-36">
+        <ContextMenuItem onSelect={() => onReply(message)}>
+          <ReplyIcon className="size-4" />
+          Ответить
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }

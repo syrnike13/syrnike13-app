@@ -272,4 +272,34 @@ describe('overlay game detector policy', () => {
       ],
     })
   })
+
+  it('does not rewrite unchanged detected-game settings on geometry updates', () => {
+    const settings = {
+      enabled: true,
+      games: [
+        {
+          id: 'c:/games/raid.exe',
+          processName: 'raid.exe',
+          processPath: 'C:/Games/Raid.exe',
+          title: 'Raid',
+          enabled: true,
+          lastSeenAt: 1_000,
+        },
+      ],
+    }
+
+    expect(
+      rememberDetectedOverlayGame(
+        settings,
+        buildOverlayGameTarget(
+          {
+            ...foregroundWindow,
+            bounds: { x: 200, y: 100, width: 1280, height: 720 },
+          },
+          100,
+        )!,
+        2_000,
+      ),
+    ).toBe(settings)
+  })
 })

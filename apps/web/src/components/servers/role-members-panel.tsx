@@ -11,7 +11,7 @@ import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { canToggleMemberRole } from '#/lib/member-roles'
-import { canAssignRole } from '#/lib/permissions'
+import { canAssignRole } from '#/features/authorization/authorization'
 import { cn } from '#/lib/utils'
 
 type RoleMembersPanelProps = {
@@ -23,6 +23,8 @@ type RoleMembersPanelProps = {
 type MemberEntry = { member: Member; user: User | undefined }
 
 function memberDisplayName(user: User | undefined, member: Member) {
+  const nickname = member.nickname?.trim()
+  if (nickname) return nickname
   if (user?.display_name) return user.display_name
   if (user?.username) return user.username
   return member._id.user
@@ -66,7 +68,12 @@ export function RoleMembersPanel({
 
   const canAddMembers = Boolean(
     actorUserId &&
-      canAssignRole(server, actorMember, actorUserId, role.rank ?? 0),
+      canAssignRole(
+        server,
+        actorMember,
+        actorUserId,
+        role.rank ?? 0,
+      ),
   )
 
   const withRole = useMemo(() => {

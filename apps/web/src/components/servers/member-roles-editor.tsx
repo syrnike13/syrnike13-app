@@ -71,7 +71,14 @@ export function MemberRolesEditor({
         )
       )
     })
-  }, [actorMember, assignedRoleIds, roles, server, targetMember, userId])
+  }, [
+    actorMember,
+    assignedRoleIds,
+    roles,
+    server,
+    targetMember,
+    userId,
+  ])
 
   const filteredRoles = useMemo(() => {
     const query = roleSearch.trim().toLowerCase()
@@ -81,7 +88,12 @@ export function MemberRolesEditor({
   }, [editableRoles, roleSearch])
 
   const canManage = userId
-    ? canEditAnyMemberRole(server, actorMember, userId, targetMember)
+    ? canEditAnyMemberRole(
+        server,
+        actorMember,
+        userId,
+        targetMember,
+      )
     : false
 
   async function toggleRole(roleId: string, enabled: boolean) {

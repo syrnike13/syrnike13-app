@@ -15,6 +15,7 @@ export const THEME_TOKEN_KEYS = [
   'accent-foreground',
   'destructive',
   'destructive-foreground',
+  'destructive-contrast',
   'border',
   'input',
   'ring',
@@ -39,6 +40,23 @@ export const THEME_TOKEN_KEYS = [
 export type ThemeTokenKey = (typeof THEME_TOKEN_KEYS)[number]
 export type ThemeTokens = Record<ThemeTokenKey, string>
 
+/** Не меняются при смене темы — всегда из палитры СЫРНИКИ (light/dark). */
+export const BRAND_LOCKED_THEME_TOKEN_KEYS = [
+  'primary',
+  'primary-foreground',
+  'destructive',
+  'destructive-foreground',
+  'destructive-contrast',
+  'ring',
+  'chart-1',
+  'chart-2',
+  'chart-3',
+  'chart-4',
+  'chart-5',
+] as const satisfies readonly ThemeTokenKey[]
+
+export type BrandLockedThemeTokenKey = (typeof BRAND_LOCKED_THEME_TOKEN_KEYS)[number]
+
 export type ThemeSemanticPalette = {
   background: string
   foreground: string
@@ -53,6 +71,7 @@ export type ThemeSemanticPalette = {
   accentForeground: string
   destructive: string
   destructiveForeground: string
+  destructiveContrast: string
   border: string
   input: string
   ring: string
@@ -91,6 +110,7 @@ export type ShadcnColorVariables = {
   accentForeground: string
   destructive: string
   destructiveForeground: string
+  destructiveContrast: string
   border: string
   input: string
   ring: string
@@ -144,6 +164,7 @@ export function createThemeTokens(
     'accent-foreground': colors.accentForeground,
     destructive: colors.destructive,
     'destructive-foreground': colors.destructiveForeground,
+    'destructive-contrast': colors.destructiveContrast,
     border: colors.border,
     input: colors.input,
     ring: colors.ring,
@@ -183,6 +204,7 @@ export function buildThemeTokens(palette: ThemeSemanticPalette): ThemeTokens {
     'accent-foreground': palette.accentForeground,
     destructive: palette.destructive,
     'destructive-foreground': palette.destructiveForeground,
+    'destructive-contrast': palette.destructiveContrast,
     border: palette.border,
     input: palette.input,
     ring: palette.ring,

@@ -5,6 +5,7 @@ import {
   useRef,
   type ComponentProps,
   type RefObject,
+  type CSSProperties,
 } from 'react'
 import type { Message, User } from '@syrnike13/api-types'
 import { Loader2Icon } from '#/components/icons'
@@ -54,6 +55,7 @@ type MessageListProps = {
   serverId?: string
   /** Доп. отступ снизу, когда композер плавает над лентой */
   scrollPaddingClassName?: string
+  scrollPaddingBottom?: number
   /** Подсветить сообщение в ленте (ответ, deep link). */
   highlightMessageId?: string
   messages: Message[]
@@ -120,6 +122,7 @@ export function MessageList({
   channelId,
   serverId,
   scrollPaddingClassName,
+  scrollPaddingBottom,
   highlightMessageId,
   messages,
   users,
@@ -335,6 +338,11 @@ export function MessageList({
           'flex h-0 min-h-0 flex-1 items-center justify-center overflow-hidden p-8 text-sm text-muted-foreground',
           scrollPaddingClassName,
         )}
+        style={
+          scrollPaddingBottom == null
+            ? undefined
+            : ({ paddingBottom: scrollPaddingBottom } satisfies CSSProperties)
+        }
       >
         Сообщений пока нет. Напишите первым.
       </div>
@@ -351,6 +359,11 @@ export function MessageList({
           'flex flex-col px-4 pt-4',
           scrollPaddingClassName,
         )}
+        style={
+          scrollPaddingBottom == null
+            ? undefined
+            : ({ paddingBottom: scrollPaddingBottom } satisfies CSSProperties)
+        }
       >
         <div ref={topSentinelRef} className="h-px shrink-0" aria-hidden />
 

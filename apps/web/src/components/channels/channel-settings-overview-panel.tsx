@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Channel } from '@syrnike13/api-types'
+import { useNavigate } from '@tanstack/react-router'
+import { Trash2Icon } from '#/components/icons'
+import type { DataEditChannel, FieldsChannel } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
+import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 import {
@@ -12,13 +23,16 @@ import {
   SelectValue,
 } from '#/components/ui/select'
 import { Slider } from '#/components/ui/slider'
+import { Textarea } from '#/components/ui/textarea'
 import { SettingsToggleRow } from '#/components/settings/settings-panels'
 import {
   useDraftRegistration,
   type DraftController,
 } from '#/components/settings/draft-controller-context'
 import { useAuth } from '#/features/auth/auth-context'
-import { editChannel } from '#/features/api/channels-api'
+import { deleteChannel, editChannel } from '#/features/api/channels-api'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
+import { pickDefaultChannelId } from '#/features/sync/selectors'
 import {
   buildVoiceChannelVoicePatch,
   channelAudioBitrateKbps,
@@ -27,14 +41,12 @@ import {
   MAX_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
   MIN_VOICE_CHANNEL_AUDIO_BITRATE_KBPS,
 } from '#/lib/channel-audio-bitrate'
-import { isServerVoiceChannel } from '#/lib/channel-voice'
+import {
+  isServerVoiceChannel,
+  type ServerChannel,
+} from '#/lib/channel-voice'
 import { syncStore } from '#/features/sync/sync-store'
 import { cn } from '#/lib/utils'
-
-type ServerChannel = Extract<
-  Channel,
-  { channel_type: 'TextChannel' | 'VoiceChannel' }
->
 
 const SLOWMODE_OPTIONS = [
   { value: 0, label: 'Выкл.' },
@@ -96,11 +108,16 @@ export function ChannelSettingsOverviewPanel({
   channel: ServerChannel
 }) {
   const auth = useAuth()
+  const navigate = useNavigate()
+  const prefix = useAppRoutePrefix()
   const voiceChannel = isServerVoiceChannel(channel)
   const textChannel = channel.channel_type === 'TextChannel'
   const [name, setName] = useState(channel.name)
   const [slowmode, setSlowmode] = useState(
     textChannel ? (channel.slowmode ?? 0) : 0,
+  )
+  const [topic, setTopic] = useState(
+    textChannel ? (channel.description ?? '') : '',
   )
   const [nsfw, setNsfw] = useState(textChannel ? Boolean(channel.nsfw) : false)
   const [audioBitrateKbps, setAudioBitrateKbps] = useState(() =>
@@ -110,11 +127,14 @@ export function ChannelSettingsOverviewPanel({
     channelMaxUsers(channel),
   )
   const [saving, setSaving] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingChannel, setDeletingChannel] = useState(false)
 
   useEffect(() => {
     setName(channel.name)
     if (textChannel) {
       setSlowmode(channel.slowmode ?? 0)
+      setTopic(channel.description ?? '')
       setNsfw(Boolean(channel.nsfw))
     }
     if (voiceChannel) {
@@ -125,6 +145,8 @@ export function ChannelSettingsOverviewPanel({
 
   const isDirty = useMemo(() => {
     const trimmedName = name.trim()
+    const currentTopic = textChannel ? (channel.description ?? '') : ''
+    const topicChanged = textChannel && topic.trim() !== currentTopic.trim()
     const nameChanged = trimmedName !== channel.name
     const slowmodeChanged = textChannel && slowmode !== (channel.slowmode ?? 0)
     const nsfwChanged = textChannel && nsfw !== Boolean(channel.nsfw)
@@ -135,6 +157,7 @@ export function ChannelSettingsOverviewPanel({
 
     return (
       nameChanged ||
+      topicChanged ||
       slowmodeChanged ||
       nsfwChanged ||
       audioBitrateChanged ||
@@ -148,6 +171,7 @@ export function ChannelSettingsOverviewPanel({
     nsfw,
     slowmode,
     textChannel,
+    topic,
     voiceChannel,
   ])
 
@@ -155,6 +179,7 @@ export function ChannelSettingsOverviewPanel({
     setName(channel.name)
     if (textChannel) {
       setSlowmode(channel.slowmode ?? 0)
+      setTopic(channel.description ?? '')
       setNsfw(Boolean(channel.nsfw))
     }
     if (voiceChannel) {
@@ -167,6 +192,7 @@ export function ChannelSettingsOverviewPanel({
   const save = useCallback(async (): Promise<boolean> => {
     const token = auth.session?.token
     const trimmedName = name.trim()
+    const trimmedTopic = topic.trim()
     if (!token || !trimmedName) {
       toast.error('Укажите название канала')
       return false
@@ -175,6 +201,8 @@ export function ChannelSettingsOverviewPanel({
     if (!isDirty) return true
 
     const nameChanged = trimmedName !== channel.name
+    const currentTopic = textChannel ? (channel.description ?? '') : ''
+    const topicChanged = textChannel && trimmedTopic !== currentTopic.trim()
     const slowmodeChanged = textChannel && slowmode !== (channel.slowmode ?? 0)
     const nsfwChanged = textChannel && nsfw !== Boolean(channel.nsfw)
     const audioBitrateChanged =
@@ -184,19 +212,33 @@ export function ChannelSettingsOverviewPanel({
 
     setSaving(true)
     try {
-      const updated = await editChannel(token, channel._id, {
-        ...(nameChanged ? { name: trimmedName } : {}),
-        ...(slowmodeChanged ? { slowmode } : {}),
-        ...(nsfwChanged ? { nsfw } : {}),
-        ...(voiceChannel && (audioBitrateChanged || maxUsersChanged)
-          ? buildVoiceChannelVoicePatch(channel, {
-              ...(audioBitrateChanged
-                ? { audio_bitrate_kbps: audioBitrateKbps }
-                : {}),
-              ...(maxUsersChanged ? { max_users: maxUsers } : {}),
-            })
-          : {}),
-      })
+      const patch: DataEditChannel = {}
+      const remove: FieldsChannel[] = []
+
+      if (nameChanged) patch.name = trimmedName
+      if (topicChanged) {
+        if (trimmedTopic) {
+          patch.description = trimmedTopic
+        } else {
+          remove.push('Description')
+        }
+      }
+      if (slowmodeChanged) patch.slowmode = slowmode
+      if (nsfwChanged) patch.nsfw = nsfw
+      if (voiceChannel && (audioBitrateChanged || maxUsersChanged)) {
+        Object.assign(
+          patch,
+          buildVoiceChannelVoicePatch(channel, {
+            ...(audioBitrateChanged
+              ? { audio_bitrate_kbps: audioBitrateKbps }
+              : {}),
+            ...(maxUsersChanged ? { max_users: maxUsers } : {}),
+          }),
+        )
+      }
+      if (remove.length) patch.remove = remove
+
+      const updated = await editChannel(token, channel._id, patch)
       syncStore.patchChannel(channel._id, updated)
       return true
     } catch (error) {
@@ -217,6 +259,7 @@ export function ChannelSettingsOverviewPanel({
     nsfw,
     slowmode,
     textChannel,
+    topic,
     voiceChannel,
   ])
 
@@ -232,8 +275,42 @@ export function ChannelSettingsOverviewPanel({
 
   useDraftRegistration(draftRegistration)
 
+  async function deleteCurrentChannel() {
+    const token = auth.session?.token
+    if (!token) return
+
+    setDeletingChannel(true)
+    try {
+      await deleteChannel(token, channel._id)
+      syncStore.removeChannel(channel._id)
+      setDeleteDialogOpen(false)
+      toast.success('Канал удалён')
+
+      const fallback = pickDefaultChannelId(
+        syncStore.getState(),
+        auth.user?._id,
+      )
+      if (fallback) {
+        await navigate({
+          to: `${prefix}/c/$channelId`,
+          params: { channelId: fallback },
+          search: { m: undefined },
+        })
+      } else {
+        await navigate({ to: prefix, search: { tab: 'online' } })
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось удалить канал',
+      )
+    } finally {
+      setDeletingChannel(false)
+    }
+  }
+
   return (
-    <div>
+    <>
+      <div>
       <div className="mb-6">
         <h2 className="text-xl font-semibold">Обзор</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -255,6 +332,27 @@ export function ChannelSettingsOverviewPanel({
             />
           </div>
         </SettingsField>
+
+        {textChannel ? (
+          <SettingsField
+            label="Тема канала"
+            description="Коротко опишите, для чего этот канал."
+          >
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="channel-topic" className="sr-only">
+                Тема канала
+              </Label>
+              <Textarea
+                id="channel-topic"
+                value={topic}
+                rows={3}
+                maxLength={1024}
+                placeholder="О чём этот канал"
+                onChange={(event) => setTopic(event.target.value)}
+              />
+            </div>
+          </SettingsField>
+        ) : null}
 
         {textChannel ? (
           <SettingsField label="Медленный режим">
@@ -353,7 +451,68 @@ export function ChannelSettingsOverviewPanel({
             />
           </SettingsField>
         ) : null}
+
+        <SettingsField
+          label="Опасная зона"
+          description="Удаление канала невозможно отменить."
+          className="mt-6"
+        >
+          <div className="flex flex-col gap-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium text-destructive">Удалить канал</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Канал и его сообщения будут удалены для всех.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={saving || deletingChannel}
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2Icon className="size-4" />
+              Удалить канал
+            </Button>
+          </div>
+        </SettingsField>
       </div>
-    </div>
+      </div>
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deletingChannel) {
+            setDeleteDialogOpen(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удалить канал «{channel.name}»?</DialogTitle>
+            <DialogDescription>
+              Канал и его сообщения будут удалены для всех. Это действие
+              невозможно отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingChannel}
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingChannel}
+              onClick={() => void deleteCurrentChannel()}
+            >
+              Удалить канал
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

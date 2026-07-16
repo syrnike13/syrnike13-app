@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { Message, User } from '@syrnike13/api-types'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MessageRow } from '#/components/chat/message-row'
 
@@ -45,6 +45,15 @@ function renderCallMessage(message: Message) {
   )
 }
 
+function textMessage(): Message {
+  return {
+    _id: MESSAGE_ID,
+    channel: CHANNEL_ID,
+    author: CALLER_ID,
+    content: 'hello',
+  } as Message
+}
+
 describe('MessageRow system call messages', () => {
   afterEach(() => {
     cleanup()
@@ -82,5 +91,32 @@ describe('MessageRow system call messages', () => {
     expect(screen.getByLabelText('Неуспешный звонок')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'test_isa' })).toBeTruthy()
     expect(screen.getByText(/начал звонок · Пропущен · 3 мин/)).toBeTruthy()
+  })
+})
+
+describe('MessageRow context menu', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('opens a reply action on right click', async () => {
+    const onReply = vi.fn()
+    const message = textMessage()
+
+    render(
+      <MessageRow
+        message={message}
+        channelId={CHANNEL_ID}
+        users={{ [CALLER_ID]: caller }}
+        emojis={{}}
+        messagesById={{ [message._id]: message }}
+        onReply={onReply}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('hello'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Ответить' }))
+
+    expect(onReply).toHaveBeenCalledWith(message)
   })
 })

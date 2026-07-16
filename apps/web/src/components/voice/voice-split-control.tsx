@@ -17,11 +17,14 @@ type SegmentState = {
   danger?: boolean
 }
 
-const splitControlDangerMainClass =
-  'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/30 group-hover/media:text-[#ff6b6b]'
+export const splitControlDangerMainClass =
+  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/30 group-hover/media:text-destructive'
 
-const splitControlDangerChevronClass =
-  'bg-[#ed4245]/20 text-[#ff5c5c] group-hover/media:bg-[#ed4245]/12 group-hover/media:text-[#ff6b6b]'
+export const splitControlDangerChevronClass =
+  'bg-destructive/20 text-destructive group-hover/media:bg-destructive/12 group-hover/media:text-destructive'
+
+export const splitControlDangerStandaloneClass =
+  'bg-destructive/20 text-destructive hover:bg-destructive/30 hover:text-destructive'
 
 export function splitControlMainButtonClass(
   surface: VoiceSplitControlSurface,

@@ -12,7 +12,12 @@ import {
   CardTitle,
 } from '#/components/ui/card'
 import { useAuth } from '#/features/auth/auth-context'
-import { fetchPublicInvite, isServerInviteJoin, joinInvite } from '#/features/api/invites-api'
+import {
+  fetchPublicInvite,
+  isGroupInviteJoin,
+  isServerInviteJoin,
+  joinInvite,
+} from '#/features/api/invites-api'
 import { syncStore } from '#/features/sync/sync-store'
 import { loadSession } from '#/lib/session'
 
@@ -41,11 +46,8 @@ function InviteJoinPage() {
 
     try {
       const response = await joinInvite(token, code)
+      syncStore.applyInviteJoinResponse(response)
       if (isServerInviteJoin(response)) {
-        syncStore.upsertServer(response.server)
-        for (const channel of response.channels) {
-          syncStore.upsertChannel(channel)
-        }
         syncStore.setSelectedServerId(response.server._id)
         const channel = response.channels[0]
         if (channel) {
@@ -61,8 +63,17 @@ function InviteJoinPage() {
         return
       }
 
-      toast.success('Приглашение принято')
-      await navigate({ to: '/app', search: { tab: 'online' } })
+      if (isGroupInviteJoin(response)) {
+        toast.success('Приглашение принято')
+        await navigate({
+          to: '/app/c/$channelId',
+          params: { channelId: response.channel._id },
+          search: { m: undefined },
+        })
+        return
+      }
+
+      toast.error('Неизвестный тип приглашения')
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось принять',

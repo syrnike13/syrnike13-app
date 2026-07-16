@@ -3,6 +3,7 @@ import {
   DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   EMPTY_DESKTOP_OVERLAY_SNAPSHOT,
   IPC,
+  desktopOverlaySnapshotsEqual,
   normalizeDesktopOverlaySnapshot,
   type DesktopOverlayGameTarget,
   type DesktopOverlaySettings,
@@ -17,8 +18,27 @@ import {
   startOverlayGameDetector,
 } from './overlay-game-detector'
 
-const OVERLAY_WIDTH = 320
-const OVERLAY_HEIGHT = 420
+export const DESKTOP_OVERLAY_PANEL_WIDTH = 296
+export const DESKTOP_OVERLAY_WINDOW_PADDING = 20
+export const DESKTOP_OVERLAY_TARGET_INSET = 16
+export const DESKTOP_OVERLAY_PARTICIPANT_HEIGHT = 40
+export const DESKTOP_OVERLAY_PARTICIPANT_GAP = 4
+export const DESKTOP_OVERLAY_WINDOW_WIDTH =
+  DESKTOP_OVERLAY_PANEL_WIDTH + DESKTOP_OVERLAY_WINDOW_PADDING * 2
+export const DESKTOP_OVERLAY_RECOVERY_LIMIT = 3
+export const DESKTOP_OVERLAY_RECOVERY_WINDOW_MS = 30_000
+const DESKTOP_OVERLAY_RECOVERY_DELAY_MS = 250
+
+type OverlayPoint = { x: number; y: number }
+type OverlayCoordinateSpace = {
+  toDipPoint: (point: OverlayPoint) => OverlayPoint
+  getScaleFactor: (dipPoint: OverlayPoint) => number
+}
+
+const IDENTITY_OVERLAY_COORDINATE_SPACE: OverlayCoordinateSpace = {
+  toDipPoint: (point) => point,
+  getScaleFactor: () => 1,
+}
 
 let overlayWindow: BrowserWindow | null = null
 let overlayLoadUrl: string | null = null
@@ -26,6 +46,9 @@ let getMainWindowRef: (() => BrowserWindow | null) | null = null
 let persistOverlaySettings:
   | ((settings: DesktopOverlaySettings) => Promise<void>)
   | null = null
+let detectorRunning = false
+let overlayRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+let overlayRecoveryFailures: number[] = []
 let overlayState = createDesktopOverlayState(process.platform)
 let overlaySettings: DesktopOverlaySettings = {
   ...DEFAULT_DESKTOP_OVERLAY_SETTINGS,
@@ -60,6 +83,89 @@ export function updateDesktopOverlaySnapshot(
           isOverlayGameEnabled(state.target.gameId, settings),
       ),
   }
+}
+
+export function shouldRunDesktopOverlayDetector(
+  state: DesktopOverlayState,
+  settings: DesktopOverlaySettings,
+) {
+  return (
+    state.available && state.enabled && settings.enabled && state.snapshot.active
+  )
+}
+
+export function calculateDesktopOverlayWindowBounds(
+  targetBounds: DesktopOverlayGameTarget['bounds'],
+  participantCount: number,
+  coordinateSpace: OverlayCoordinateSpace = IDENTITY_OVERLAY_COORDINATE_SPACE,
+) {
+  // Use one point strictly inside the target to select a single display and
+  // scale. An exclusive bottom-right point can belong to the adjacent display
+  // for fullscreen windows, which would mix two DPI coordinate spaces.
+  const anchorOffset = {
+    x: Math.min(
+      DESKTOP_OVERLAY_TARGET_INSET,
+      Math.max(0, targetBounds.width - 1),
+    ),
+    y: Math.min(
+      DESKTOP_OVERLAY_TARGET_INSET,
+      Math.max(0, targetBounds.height - 1),
+    ),
+  }
+  const convertedAnchor = coordinateSpace.toDipPoint({
+    x: targetBounds.x + anchorOffset.x,
+    y: targetBounds.y + anchorOffset.y,
+  })
+  const scaleFactor = Math.max(
+    0.01,
+    coordinateSpace.getScaleFactor(convertedAnchor),
+  )
+  const topLeft = {
+    x: Math.round(convertedAnchor.x - anchorOffset.x / scaleFactor),
+    y: Math.round(convertedAnchor.y - anchorOffset.y / scaleFactor),
+  }
+  const targetWidth = Math.max(1, Math.round(targetBounds.width / scaleFactor))
+  const targetHeight = Math.max(
+    1,
+    Math.round(targetBounds.height / scaleFactor),
+  )
+  const width = Math.min(
+    DESKTOP_OVERLAY_WINDOW_WIDTH,
+    Math.max(1, targetWidth - DESKTOP_OVERLAY_TARGET_INSET),
+  )
+  const rows = Math.max(1, participantCount)
+  const contentHeight =
+    rows * DESKTOP_OVERLAY_PARTICIPANT_HEIGHT +
+    Math.max(0, rows - 1) * DESKTOP_OVERLAY_PARTICIPANT_GAP
+  const desiredHeight = contentHeight + DESKTOP_OVERLAY_WINDOW_PADDING * 2
+  const height = Math.min(
+    desiredHeight,
+    Math.max(1, targetHeight - DESKTOP_OVERLAY_TARGET_INSET),
+  )
+
+  return {
+    x: Math.min(
+      topLeft.x + DESKTOP_OVERLAY_TARGET_INSET,
+      topLeft.x + targetWidth - width,
+    ),
+    y: Math.min(
+      topLeft.y + DESKTOP_OVERLAY_TARGET_INSET,
+      topLeft.y + targetHeight - height,
+    ),
+    width,
+    height,
+  }
+}
+
+export function nextDesktopOverlayRecoveryFailures(
+  failures: readonly number[],
+  now: number,
+): number[] | null {
+  const recent = failures.filter(
+    (failureAt) => now - failureAt < DESKTOP_OVERLAY_RECOVERY_WINDOW_MS,
+  )
+  if (recent.length >= DESKTOP_OVERLAY_RECOVERY_LIMIT) return null
+  return [...recent, now]
 }
 
 export function updateDesktopOverlayEnabled(
@@ -112,7 +218,7 @@ export function configureDesktopOverlay(
   if (options?.settings) {
     setDesktopOverlaySettings(options.settings)
   }
-  startOverlayGameDetector(handleOverlayGameTarget)
+  syncOverlayGameDetectorDemand()
 }
 
 export function getDesktopOverlayState() {
@@ -125,6 +231,7 @@ export function setDesktopOverlayEnabled(enabled: boolean) {
     enabled,
     overlaySettings,
   )
+  syncOverlayGameDetectorDemand()
   applyDesktopOverlayVisibility()
   emitDesktopOverlayState()
   return overlayState
@@ -144,6 +251,7 @@ export function setDesktopOverlaySettings(settings: DesktopOverlaySettings) {
     overlayState.target,
     overlaySettings,
   )
+  syncOverlayGameDetectorDemand()
   applyDesktopOverlayVisibility()
   emitDesktopOverlayState()
   return overlaySettings
@@ -163,11 +271,16 @@ export function setDesktopOverlayGameTarget(
 }
 
 export function setDesktopOverlaySnapshot(snapshot: DesktopOverlaySnapshot) {
+  const normalized = normalizeDesktopOverlaySnapshot(snapshot)
+  if (desktopOverlaySnapshotsEqual(overlayState.snapshot, normalized)) {
+    return overlayState
+  }
   overlayState = updateDesktopOverlaySnapshot(
     overlayState,
-    snapshot,
+    normalized,
     overlaySettings,
   )
+  syncOverlayGameDetectorDemand()
   applyDesktopOverlayVisibility()
   emitDesktopOverlayState()
   return overlayState
@@ -189,9 +302,9 @@ export function canSetDesktopOverlaySnapshot(webContents: WebContents) {
 }
 
 export function disposeDesktopOverlay() {
-  overlayWindow?.destroy()
+  destroyOverlayWindow()
   disposeOverlayGameDetector()
-  overlayWindow = null
+  detectorRunning = false
   overlayLoadUrl = null
   getMainWindowRef = null
   persistOverlaySettings = null
@@ -215,6 +328,28 @@ function handleOverlayGameTarget(target: DesktopOverlayGameTarget | null) {
   }
 
   setDesktopOverlayGameTarget(target)
+}
+
+function syncOverlayGameDetectorDemand() {
+  const shouldRun = shouldRunDesktopOverlayDetector(
+    overlayState,
+    overlaySettings,
+  )
+  if (shouldRun === detectorRunning) return
+
+  detectorRunning = shouldRun
+  if (shouldRun) {
+    startOverlayGameDetector(handleOverlayGameTarget)
+    return
+  }
+
+  disposeOverlayGameDetector()
+  overlayState = {
+    ...overlayState,
+    target: null,
+    visible: false,
+  }
+  destroyOverlayWindow()
 }
 
 function canShowDesktopOverlay(
@@ -248,11 +383,14 @@ function applyDesktopOverlayVisibility() {
 
 function ensureOverlayWindow() {
   if (!overlayState.available || !overlayLoadUrl) return null
+  if (overlayRecoveryTimer) return null
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow
 
-  overlayWindow = new BrowserWindow({
-    width: OVERLAY_WIDTH,
-    height: OVERLAY_HEIGHT,
+  const win = new BrowserWindow({
+    width: DESKTOP_OVERLAY_WINDOW_WIDTH,
+    height:
+      DESKTOP_OVERLAY_WINDOW_PADDING * 2 +
+      DESKTOP_OVERLAY_PARTICIPANT_HEIGHT,
     show: false,
     frame: false,
     transparent: true,
@@ -275,20 +413,87 @@ function ensureOverlayWindow() {
     },
   })
 
-  overlayWindow.setIgnoreMouseEvents(true)
-  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-  overlayWindow.on('closed', () => {
-    overlayWindow = null
+  overlayWindow = win
+  win.setIgnoreMouseEvents(true)
+  win.setAlwaysOnTop(true, 'screen-saver')
+  win.on('closed', () => {
+    if (overlayWindow === win) overlayWindow = null
   })
-  void overlayWindow.loadURL(new URL('/desktop/overlay', overlayLoadUrl).toString())
+  win.webContents.on('did-fail-load', (_event, _code, description, _url, isMainFrame) => {
+    if (!isMainFrame) return
+    console.warn('[desktop-overlay] renderer failed to load', description)
+    scheduleOverlayWindowRecovery(win)
+  })
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.warn('[desktop-overlay] renderer process gone', details.reason)
+    scheduleOverlayWindowRecovery(win)
+  })
+  win.on('unresponsive', () => {
+    console.warn('[desktop-overlay] renderer became unresponsive')
+    scheduleOverlayWindowRecovery(win)
+  })
+  win.webContents.on('did-finish-load', () => emitDesktopOverlayState())
+  void win
+    .loadURL(new URL('/desktop/overlay', overlayLoadUrl).toString())
+    .catch((error) => {
+      console.warn('[desktop-overlay] renderer load rejected', error)
+      scheduleOverlayWindowRecovery(win)
+    })
 
-  return overlayWindow
+  return win
+}
+
+function scheduleOverlayWindowRecovery(win: BrowserWindow) {
+  if (overlayWindow !== win || win.isDestroyed()) return
+  const nextFailures = nextDesktopOverlayRecoveryFailures(
+    overlayRecoveryFailures,
+    Date.now(),
+  )
+  overlayWindow = null
+  win.destroy()
+  if (!nextFailures) {
+    console.error('[desktop-overlay] renderer recovery limit reached')
+    const retryAt =
+      (overlayRecoveryFailures[0] ?? Date.now()) +
+      DESKTOP_OVERLAY_RECOVERY_WINDOW_MS
+    scheduleOverlayWindowRecoveryAttempt(Math.max(1, retryAt - Date.now()))
+    return
+  }
+
+  overlayRecoveryFailures = nextFailures
+  scheduleOverlayWindowRecoveryAttempt(DESKTOP_OVERLAY_RECOVERY_DELAY_MS)
+}
+
+function scheduleOverlayWindowRecoveryAttempt(delayMs: number) {
+  overlayRecoveryTimer = setTimeout(() => {
+    overlayRecoveryTimer = null
+    if (overlayState.visible) applyDesktopOverlayVisibility()
+  }, delayMs)
+}
+
+function destroyOverlayWindow() {
+  if (overlayRecoveryTimer) clearTimeout(overlayRecoveryTimer)
+  overlayRecoveryTimer = null
+  overlayRecoveryFailures = []
+  const win = overlayWindow
+  overlayWindow = null
+  if (win && !win.isDestroyed()) win.destroy()
 }
 
 function positionOverlayWindow(win: BrowserWindow) {
   const target = overlayState.target
   if (target) {
-    win.setBounds(target.bounds)
+    win.setBounds(
+      calculateDesktopOverlayWindowBounds(
+        target.bounds,
+        overlayState.snapshot.participants.length,
+        {
+          toDipPoint: (point) => screen.screenToDipPoint(point),
+          getScaleFactor: (dipPoint) =>
+            screen.getDisplayNearestPoint(dipPoint).scaleFactor,
+        },
+      ),
+    )
     return
   }
 
@@ -296,8 +501,10 @@ function positionOverlayWindow(win: BrowserWindow) {
   win.setBounds({
     x: display.workArea.x,
     y: display.workArea.y,
-    width: OVERLAY_WIDTH,
-    height: OVERLAY_HEIGHT,
+    width: DESKTOP_OVERLAY_WINDOW_WIDTH,
+    height:
+      DESKTOP_OVERLAY_WINDOW_PADDING * 2 +
+      DESKTOP_OVERLAY_PARTICIPANT_HEIGHT,
   })
 }
 

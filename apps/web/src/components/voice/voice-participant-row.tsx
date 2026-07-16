@@ -59,7 +59,7 @@ export function VoiceParticipantRow({
     dimmed && 'opacity-50',
     voiceElsewhere && 'text-muted-foreground',
     isSpeaking &&
-      'bg-gradient-to-r from-[#23a559]/25 via-[#23a559]/10 to-transparent',
+      'bg-gradient-to-r from-chart-3/25 via-chart-3/10 to-transparent',
   )
 
   const content = (
@@ -68,7 +68,7 @@ export function VoiceParticipantRow({
         className={cn(
           'relative shrink-0 rounded-full',
           isSpeaking &&
-            'ring-2 ring-[#23a559] ring-offset-1 ring-offset-background',
+            'ring-2 ring-chart-3 ring-offset-1 ring-offset-background',
         )}
       >
         <UserAvatar
@@ -91,6 +91,14 @@ export function VoiceParticipantRow({
         {displayName}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
+        <VoiceParticipantIcons
+          muted={muted}
+          deafened={deafened}
+          serverMuted={participant.server_muted}
+          serverDeafened={participant.server_deafened}
+          listenerMuted={listenerMuted}
+          camera={participant.camera}
+        />
         {participant.screensharing ? (
           <VoiceOnAirBadge
             onDoubleClick={
@@ -104,14 +112,6 @@ export function VoiceParticipantRow({
             }
           />
         ) : null}
-        <VoiceParticipantIcons
-          muted={muted}
-          deafened={deafened}
-          serverMuted={participant.server_muted}
-          serverDeafened={participant.server_deafened}
-          listenerMuted={listenerMuted}
-          camera={participant.camera}
-        />
       </span>
     </>
   )

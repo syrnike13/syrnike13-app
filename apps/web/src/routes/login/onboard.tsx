@@ -18,11 +18,14 @@ import { Label } from '#/components/ui/label'
 import { useAuth } from '#/features/auth/auth-context'
 import { usernameSchema } from '#/features/auth/schemas'
 import { postLoginPath } from '#/lib/auth-post-login-path'
-import { loadSession } from '#/lib/session'
+import { loadPersistedSession } from '#/lib/session'
 
 export const Route = createFileRoute('/login/onboard')({
-  beforeLoad: () => {
-    if (typeof window !== 'undefined' && !loadSession()) {
+  beforeLoad: async () => {
+    if (
+      typeof window !== 'undefined' &&
+      !(await loadPersistedSession())
+    ) {
       throw redirect({ to: '/login' })
     }
   },
@@ -77,14 +80,14 @@ function OnboardPage() {
 
   if (!auth.hydrated || !auth.session || !auth.onboardingChecked) {
     return (
-      <div className="flex min-h-svh items-center justify-center">
+      <div className="gradient-surface-content flex min-h-svh items-center justify-center bg-background">
         <Loader2Icon className="size-8 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
+    <div className="gradient-surface-content flex min-h-svh flex-col items-center justify-center bg-background px-6 py-12">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Выберите ник</CardTitle>

@@ -10,8 +10,22 @@ function participantWithAudioTrack(audioTrack: unknown) {
   }
 }
 
+function processingPreferences() {
+  const prefs = voicePreferenceStore.getState()
+  return {
+    automaticGainControl: prefs.automaticGainControl,
+    echoCancellation: prefs.echoCancellation,
+    noiseSuppression: prefs.noiseSuppression,
+    inputVolume: prefs.inputVolume,
+    voiceGateEnabled: prefs.voiceGateEnabled,
+    voiceGateThresholdDb: prefs.voiceGateThresholdDb,
+    voiceGateAutoThreshold: prefs.voiceGateAutoThreshold,
+  }
+}
+
 describe('applyMicProcessing', () => {
   beforeEach(() => {
+    voicePreferenceStore.setAutomaticGainControl(false)
     voicePreferenceStore.setVoiceGateEnabled(true)
     voicePreferenceStore.setVoiceGateThresholdDb(-28)
     voicePreferenceStore.setInputVolume(1)
@@ -27,7 +41,10 @@ describe('applyMicProcessing', () => {
       setProcessor: vi.fn(async (_processor: unknown) => {}),
     }
 
-    await applyMicProcessing(participantWithAudioTrack(audioTrack) as never)
+    await applyMicProcessing(
+      participantWithAudioTrack(audioTrack) as never,
+      processingPreferences(),
+    )
 
     expect(audioTrack.setProcessor).toHaveBeenCalledTimes(1)
     const appliedProcessor = audioTrack.setProcessor.mock.calls[0]?.[0] as
@@ -43,6 +60,27 @@ describe('applyMicProcessing', () => {
     )
   })
 
+  it('applies automatic gain control as a live capture constraint', async () => {
+    voicePreferenceStore.setAutomaticGainControl(true)
+    const audioTrack = {
+      mediaStreamTrack: {
+        applyConstraints: vi.fn(async () => {}),
+      },
+      getProcessor: vi.fn(() => null),
+      stopProcessor: vi.fn(async () => {}),
+      setProcessor: vi.fn(async () => {}),
+    }
+
+    await applyMicProcessing(
+      participantWithAudioTrack(audioTrack) as never,
+      processingPreferences(),
+    )
+
+    expect(audioTrack.mediaStreamTrack.applyConstraints).toHaveBeenCalledWith(
+      expect.objectContaining({ autoGainControl: true }),
+    )
+  })
+
   it('still applies the processor when only gate remains active', async () => {
     voicePreferenceStore.setInputVolume(1)
 
@@ -55,7 +93,10 @@ describe('applyMicProcessing', () => {
       setProcessor: vi.fn(async () => {}),
     }
 
-    await applyMicProcessing(participantWithAudioTrack(audioTrack) as never)
+    await applyMicProcessing(
+      participantWithAudioTrack(audioTrack) as never,
+      processingPreferences(),
+    )
 
     expect(audioTrack.setProcessor).toHaveBeenCalledTimes(1)
   })
@@ -73,7 +114,10 @@ describe('applyMicProcessing', () => {
     }
 
     await expect(
-      applyMicProcessing(participantWithAudioTrack(audioTrack) as never),
+      applyMicProcessing(
+        participantWithAudioTrack(audioTrack) as never,
+        processingPreferences(),
+      ),
     ).resolves.toBeUndefined()
 
     expect(audioTrack.setProcessor).toHaveBeenCalledTimes(1)

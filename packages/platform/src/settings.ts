@@ -18,6 +18,8 @@ export type DesktopVoiceSettings = {
   preferredVideoDevice?: string
   inputVolume: number
   outputVolume: number
+  bypassSystemAudioInputProcessing: boolean
+  automaticGainControl: boolean
   noiseSuppression: boolean
   echoCancellation: boolean
   voiceGateEnabled: boolean
@@ -62,22 +64,38 @@ export type DesktopSoundSettings = {
   easterEnabled: boolean
 }
 
-export type { AppearanceSettings, AppearanceSettingsPatch, AppearanceColorMode } from './appearance'
+export type DesktopObservabilitySettings = {
+  /** Anonymous counters and timings for the Windows native runtime. */
+  anonymousNativeMetrics: boolean
+  /** Full native crash dumps. They can contain process memory and require opt-in. */
+  nativeCrashReports: boolean
+}
+
+export type {
+  AppearanceColorMode,
+  AppearanceGradientSettings,
+  AppearanceSettings,
+  AppearanceSettingsPatch,
+} from './appearance'
 export {
+  APPEARANCE_GRADIENT_MAX_COLORS,
+  APPEARANCE_GRADIENT_MIN_COLORS,
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_THEME_ID,
   normalizeAppearanceColorMode,
+  normalizeAppearanceGradientSettings,
   normalizeAppearanceSettings,
   normalizeAppearanceSettingsPatch,
 } from './appearance'
 
 export type DesktopLocalSettings = {
-  version: 1
+  version: 2
   voice: DesktopVoiceSettings
   voiceListener: DesktopVoiceListenerSettings
   overlay: DesktopOverlaySettings
   appearance: AppearanceSettings
   sounds: DesktopSoundSettings
+  observability: DesktopObservabilitySettings
 }
 
 export type DesktopVoiceSettingsPatch = Partial<DesktopVoiceSettings>
@@ -85,6 +103,8 @@ export type DesktopVoiceListenerSettingsPatch =
   Partial<DesktopVoiceListenerSettings>
 export type DesktopOverlaySettingsPatch = Partial<DesktopOverlaySettings>
 export type DesktopSoundSettingsPatch = Partial<DesktopSoundSettings>
+export type DesktopObservabilitySettingsPatch =
+  Partial<DesktopObservabilitySettings>
 
 export type DesktopLocalSettingsPatch = {
   voice?: DesktopVoiceSettingsPatch
@@ -92,6 +112,7 @@ export type DesktopLocalSettingsPatch = {
   overlay?: DesktopOverlaySettingsPatch
   appearance?: AppearanceSettingsPatch
   sounds?: DesktopSoundSettingsPatch
+  observability?: DesktopObservabilitySettingsPatch
 }
 
 const VOICE_VOLUME_MAX = 3
@@ -103,8 +124,10 @@ export const DEFAULT_DESKTOP_VOICE_SETTINGS: DesktopVoiceSettings = {
   deafened: false,
   inputVolume: 1,
   outputVolume: 1,
+  bypassSystemAudioInputProcessing: true,
+  automaticGainControl: true,
   noiseSuppression: true,
-  echoCancellation: true,
+  echoCancellation: false,
   voiceGateEnabled: true,
   voiceGateThresholdDb: DEFAULT_VOICE_GATE_THRESHOLD_DB,
   voiceGateAutoThreshold: true,
@@ -134,13 +157,19 @@ export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
   easterEnabled: true,
 }
 
+export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
+  anonymousNativeMetrics: true,
+  nativeCrashReports: false,
+}
+
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
-  version: 1,
+  version: 2,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
   appearance: DEFAULT_APPEARANCE_SETTINGS,
   sounds: DEFAULT_DESKTOP_SOUND_SETTINGS,
+  observability: DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
 }
 
 function objectRecord(value: unknown) {
@@ -267,6 +296,14 @@ export function normalizeDesktopVoiceSettings(
       0,
       VOICE_VOLUME_MAX,
     ),
+    bypassSystemAudioInputProcessing: booleanOrDefault(
+      settings.bypassSystemAudioInputProcessing,
+      defaults.bypassSystemAudioInputProcessing,
+    ),
+    automaticGainControl: booleanOrDefault(
+      settings.automaticGainControl,
+      defaults.automaticGainControl,
+    ),
     noiseSuppression: booleanOrDefault(
       settings.noiseSuppression,
       defaults.noiseSuppression,
@@ -356,6 +393,23 @@ export function normalizeDesktopSoundSettings(
   }
 }
 
+export function normalizeDesktopObservabilitySettings(
+  value: unknown,
+  defaults: DesktopObservabilitySettings = DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
+): DesktopObservabilitySettings {
+  const settings = objectRecord(value)
+  return {
+    anonymousNativeMetrics: booleanOrDefault(
+      settings.anonymousNativeMetrics,
+      defaults.anonymousNativeMetrics,
+    ),
+    nativeCrashReports: booleanOrDefault(
+      settings.nativeCrashReports,
+      defaults.nativeCrashReports,
+    ),
+  }
+}
+
 function normalizeDesktopOverlayGameSettings(
   value: unknown,
 ): DesktopOverlayGameSettings[] {
@@ -388,13 +442,22 @@ export function normalizeDesktopLocalSettings(
   defaults: DesktopLocalSettings = DEFAULT_DESKTOP_LOCAL_SETTINGS,
 ): DesktopLocalSettings {
   const settings = objectRecord(value)
+  const voice = normalizeDesktopVoiceSettings(settings.voice, defaults.voice)
+  if (settings.version !== 2) {
+    voice.echoCancellation = false
+    voice.automaticGainControl = true
+  }
   return {
-    version: 1,
-    voice: normalizeDesktopVoiceSettings(settings.voice, defaults.voice),
+    version: 2,
+    voice,
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
     appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
     sounds: normalizeDesktopSoundSettings(settings.sounds, defaults.sounds),
+    observability: normalizeDesktopObservabilitySettings(
+      settings.observability,
+      defaults.observability,
+    ),
   }
 }
 
@@ -428,6 +491,18 @@ export function normalizeDesktopVoiceSettingsPatch(
   }
   if ('outputVolume' in patch) {
     next.outputVolume = clampNumber(patch.outputVolume, 1, 0, VOICE_VOLUME_MAX)
+  }
+  if (
+    'bypassSystemAudioInputProcessing' in patch &&
+    typeof patch.bypassSystemAudioInputProcessing === 'boolean'
+  ) {
+    next.bypassSystemAudioInputProcessing = patch.bypassSystemAudioInputProcessing
+  }
+  if (
+    'automaticGainControl' in patch &&
+    typeof patch.automaticGainControl === 'boolean'
+  ) {
+    next.automaticGainControl = patch.automaticGainControl
   }
   if (
     'noiseSuppression' in patch &&
@@ -552,6 +627,26 @@ export function normalizeDesktopSoundSettingsPatch(
   return Object.keys(next).length > 0 ? next : undefined
 }
 
+export function normalizeDesktopObservabilitySettingsPatch(
+  value: unknown,
+): DesktopObservabilitySettingsPatch | undefined {
+  const patch = objectRecord(value)
+  const next: DesktopObservabilitySettingsPatch = {}
+  if (
+    'anonymousNativeMetrics' in patch &&
+    typeof patch.anonymousNativeMetrics === 'boolean'
+  ) {
+    next.anonymousNativeMetrics = patch.anonymousNativeMetrics
+  }
+  if (
+    'nativeCrashReports' in patch &&
+    typeof patch.nativeCrashReports === 'boolean'
+  ) {
+    next.nativeCrashReports = patch.nativeCrashReports
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 export function normalizeDesktopLocalSettingsPatch(
   value: unknown,
 ): DesktopLocalSettingsPatch {
@@ -564,10 +659,14 @@ export function normalizeDesktopLocalSettingsPatch(
   const overlay = normalizeDesktopOverlaySettingsPatch(patch.overlay)
   const appearance = normalizeAppearanceSettingsPatch(patch.appearance)
   const sounds = normalizeDesktopSoundSettingsPatch(patch.sounds)
+  const observability = normalizeDesktopObservabilitySettingsPatch(
+    patch.observability,
+  )
   if (voice) next.voice = voice
   if (voiceListener) next.voiceListener = voiceListener
   if (overlay) next.overlay = overlay
   if (appearance) next.appearance = appearance
   if (sounds) next.sounds = sounds
+  if (observability) next.observability = observability
   return next
 }

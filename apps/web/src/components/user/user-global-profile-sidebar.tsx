@@ -29,6 +29,7 @@ import { FloatingMenuItem } from '#/components/ui/floating-menu'
 import { useAuth } from '#/features/auth/auth-context'
 import { editServerMember } from '#/features/api/servers-api'
 import { fetchUserProfile } from '#/features/api/users-api'
+import { useUserBadges } from '#/features/users/use-user-badges'
 import {
   acceptIncomingFriendRequest,
   cancelOutgoingFriendRequest,
@@ -49,6 +50,7 @@ import {
 } from '#/lib/member-roles'
 import { FxImage } from '#/components/ui/fx-image'
 import { cn } from '#/lib/utils'
+import { canMessageUser } from '#/features/authorization/authorization'
 
 type UserGlobalProfileSidebarProps = {
   user: User
@@ -58,6 +60,7 @@ type UserGlobalProfileSidebarProps = {
   onOpenDm: () => void
   onCopyId: () => void
   onBlock: () => void
+  onUnblock: () => void
   onEditProfile: () => void
 }
 
@@ -88,13 +91,14 @@ export function UserGlobalProfileSidebar({
   onOpenDm,
   onCopyId,
   onBlock,
+  onUnblock,
   onEditProfile,
 }: UserGlobalProfileSidebarProps) {
   const auth = useAuth()
   const token = auth.session?.token
   const displayName = user.display_name ?? user.username
   const customStatus = user.status?.text?.trim()
-  const canDirectMessage = !isSelf && !user.bot
+  const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
 
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false)
   const [removingRoleId, setRemovingRoleId] = useState<string | null>(null)
@@ -123,7 +127,12 @@ export function UserGlobalProfileSidebar({
         server &&
           member &&
           actorUserId &&
-          canEditAnyMemberRole(server, actorMember, actorUserId, member),
+          canEditAnyMemberRole(
+            server,
+            actorMember,
+            actorUserId,
+            member,
+          ),
       ),
     [actorMember, actorUserId, member, server],
   )
@@ -139,12 +148,24 @@ export function UserGlobalProfileSidebar({
     animated: true,
   })
   const profileBio = profileQuery.data?.content?.trim()
+  const badges = useUserBadges(user._id, user.badges)
 
   async function removeRole(roleId: string) {
     if (!token || !actorUserId || !server || !member) return
     const role = server.roles?.[roleId]
     if (!role) return
-    if (!canToggleMemberRole(server, actorMember, actorUserId, member, role, false)) return
+    if (
+      !canToggleMemberRole(
+        server,
+        actorMember,
+        actorUserId,
+        member,
+        role,
+        false,
+      )
+    ) {
+      return
+    }
     setRemovingRoleId(roleId)
     try {
       const nextRoles = (member.roles ?? []).filter((id) => id !== roleId)
@@ -224,7 +245,7 @@ export function UserGlobalProfileSidebar({
         <p className="truncate text-sm text-muted-foreground">
           {user.display_name ? `@${user.username}` : user.username}
         </p>
-        <UserBadges badges={user.badges} className="mt-2" />
+        <UserBadges badges={badges} className="mt-2" />
 
         {/* Action buttons */}
         <div className="mt-3 flex gap-1.5">
@@ -350,10 +371,17 @@ export function UserGlobalProfileSidebar({
                     <CopyIcon className="size-3.5" />
                     Копировать ID
                   </FloatingMenuItem>
-                  <FloatingMenuItem onClick={onBlock}>
-                    <BanIcon className="size-3.5" />
-                    Заблокировать
-                  </FloatingMenuItem>
+                  {user.relationship === 'Blocked' ? (
+                    <FloatingMenuItem onClick={onUnblock}>
+                      <BanIcon className="size-3.5" />
+                      Разблокировать
+                    </FloatingMenuItem>
+                  ) : (
+                    <FloatingMenuItem onClick={onBlock}>
+                      <BanIcon className="size-3.5" />
+                      Заблокировать
+                    </FloatingMenuItem>
+                  )}
                 </PopoverContent>
               </Popover>
             </>

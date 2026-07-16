@@ -28,7 +28,7 @@ export function VoiceControlTooltip({
       <TooltipContent
         side="top"
         sideOffset={8}
-        className={cn('z-[430]', contentClassName)}
+        className={contentClassName}
       >
         {content ?? title}
       </TooltipContent>

@@ -16,6 +16,8 @@ export const UI_SOUND_EVENTS = [
   'call.ended',
   'screen_share.started',
   'screen_share.stopped',
+  'screen_share.viewer_join',
+  'screen_share.viewer_leave',
   'camera.started',
   'camera.stopped',
 ] as const
@@ -40,6 +42,8 @@ export const UI_SOUND_EVENT_LABELS: Record<SoundEventId, string> = {
   'call.ended': 'Звонок завершен',
   'screen_share.started': 'Стрим включен',
   'screen_share.stopped': 'Стрим выключен',
+  'screen_share.viewer_join': 'Пользователь зашел на ваш стрим',
+  'screen_share.viewer_leave': 'Пользователь вышел с вашего стрима',
   'camera.started': 'Камера включена',
   'camera.stopped': 'Камера выключена',
 }

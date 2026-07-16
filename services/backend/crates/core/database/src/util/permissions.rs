@@ -29,11 +29,6 @@ pub struct DatabasePermissionQuery<'a> {
 impl PermissionQuery for DatabasePermissionQuery<'_> {
     // * For calculating user permission
 
-    /// Is our perspective user privileged?
-    async fn are_we_privileged(&mut self) -> bool {
-        self.perspective.privileged
-    }
-
     /// Is our perspective user a bot?
     async fn are_we_a_bot(&mut self) -> bool {
         self.perspective.bot.is_some()
@@ -248,7 +243,8 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
         }
     }
 
-    /// Get the ordered role overrides (from lowest to highest) for this member in this channel
+    /// Get all role overrides for this member in this channel.
+    /// Channel role overrides are resolved as a set, not by role rank.
     async fn get_our_channel_role_overrides(&mut self) -> Vec<Override> {
         if let Some(channel) = &self.channel {
             match channel {
@@ -286,6 +282,26 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
             }
         } else {
             vec![]
+        }
+    }
+
+    /// Get the user-specific override for this member in this channel.
+    async fn get_our_channel_user_override(&mut self) -> Option<Override> {
+        if let Some(channel) = &self.channel {
+            match channel {
+                Cow::Borrowed(Channel::TextChannel {
+                    user_permissions, ..
+                })
+                | Cow::Owned(Channel::TextChannel {
+                    user_permissions, ..
+                }) => {
+                    let user_id = self.member.as_ref().map(|member| &member.id.user)?;
+                    user_permissions.get(user_id).copied().map(Override::from)
+                }
+                _ => None,
+            }
+        } else {
+            None
         }
     }
 

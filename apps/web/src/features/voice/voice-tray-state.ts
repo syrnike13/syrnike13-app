@@ -4,7 +4,7 @@ import type { UserVoiceState } from '#/features/sync/voice-types'
 
 export function deriveDesktopTrayVoiceState(input: {
   channelId: string | null
-  currentUserId: string | null | undefined
+  currentUserId: string | null
   localParticipant: UserVoiceState | null | undefined
   speakingUserIds: ReadonlySet<string>
 }): DesktopTrayVoiceState {
