@@ -437,7 +437,6 @@ export function ServerChannelList({
         server,
         member,
         auth.user?._id,
-        auth.user?.privileged,
       )
     : false
   const canInvite = useCallback(
@@ -448,10 +447,9 @@ export function ServerChannelList({
             channel,
             member,
             auth.user?._id,
-            auth.user?.privileged,
           )
         : false,
-    [auth.user?._id, auth.user?.privileged, member, server],
+    [auth.user?._id, member, server],
   )
 
   const computedSections = useMemo(

@@ -2,7 +2,7 @@ use syrnike_database::{Member, Server, User};
 use syrnike_result::{create_error, Result};
 
 pub fn bypasses_hierarchy(user: &User, server: &Server) -> bool {
-    user.privileged || user.id == server.owner
+    user.id == server.owner
 }
 
 pub fn role_is_at_or_above_actor(actor_rank: Option<i64>, role_rank: i64) -> bool {
@@ -36,4 +36,53 @@ pub fn ensure_member_below_actor(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::bypasses_hierarchy;
+    use syrnike_database::{Server, User};
+
+    fn server(owner: &str) -> Server {
+        Server {
+            id: "server-1".to_string(),
+            owner: owner.to_string(),
+            name: "Server".to_string(),
+            description: None,
+            channels: vec![],
+            categories: None,
+            system_messages: None,
+            roles: HashMap::new(),
+            default_permissions: 0,
+            icon: None,
+            banner: None,
+            flags: None,
+            nsfw: false,
+            analytics: false,
+            discoverable: false,
+        }
+    }
+
+    #[test]
+    fn project_admin_does_not_bypass_server_hierarchy() {
+        let user = User {
+            id: "admin".to_string(),
+            privileged: true,
+            ..User::default()
+        };
+
+        assert!(!bypasses_hierarchy(&user, &server("owner")));
+    }
+
+    #[test]
+    fn server_owner_still_bypasses_server_hierarchy() {
+        let user = User {
+            id: "owner".to_string(),
+            ..User::default()
+        };
+
+        assert!(bypasses_hierarchy(&user, &server(&user.id)));
+    }
 }

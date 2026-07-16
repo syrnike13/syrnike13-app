@@ -73,7 +73,6 @@ export function RoleMembersPanel({
         actorMember,
         actorUserId,
         role.rank ?? 0,
-        auth.user?.privileged,
       ),
   )
 
@@ -107,7 +106,6 @@ export function RoleMembersPanel({
         targetMember,
         role,
         false,
-        auth.user?.privileged,
       )
     ) {
       return
@@ -145,7 +143,6 @@ export function RoleMembersPanel({
           member,
           role,
           false,
-          auth.user?.privileged,
         ),
     )
 

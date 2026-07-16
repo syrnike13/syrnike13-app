@@ -124,7 +124,6 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
         server,
         member,
         auth.user?._id,
-        auth.user?.privileged,
       )
     : null
   const canOpenSettings = settingsAccess

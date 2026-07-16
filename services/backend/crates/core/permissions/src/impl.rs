@@ -6,10 +6,6 @@ use crate::{
 
 /// Calculate permissions against a user
 pub async fn calculate_user_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
-    if query.are_we_privileged().await {
-        return u64::MAX.into();
-    }
-
     if query.are_the_users_same().await {
         return u64::MAX.into();
     }
@@ -47,7 +43,7 @@ pub async fn calculate_user_permissions<P: PermissionQuery>(query: &mut P) -> Pe
 
 /// Calculate permissions against a server
 pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
-    if query.are_we_privileged().await || query.are_we_server_owner().await {
+    if query.are_we_server_owner().await {
         return ChannelPermission::GrantAllSafe.into();
     }
 
@@ -79,10 +75,6 @@ pub async fn calculate_server_permissions<P: PermissionQuery>(query: &mut P) -> 
 
 /// Calculate permissions against a channel
 pub async fn calculate_channel_permissions<P: PermissionQuery>(query: &mut P) -> PermissionValue {
-    if query.are_we_privileged().await {
-        return ChannelPermission::GrantAllSafe.into();
-    }
-
     match query.get_channel_type().await {
         ChannelType::SavedMessages => {
             if query.do_we_own_the_channel().await {

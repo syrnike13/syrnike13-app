@@ -45,7 +45,6 @@ type UserContextMenuVoiceControlsProps = {
   server?: Server
   actorMember?: Member
   actorUserId?: string
-  actorPrivileged?: boolean
   targetMember?: Member
   voiceChannelId?: string
   moveVoiceChannels?: Channel[]
@@ -63,7 +62,6 @@ function canUseVoiceMoveTarget(
   channel: Channel,
   _actorMember: Member | undefined,
   _actorUserId: string,
-  _actorPrivileged = false,
 ) {
   if (!isServerVoiceMoveTarget(channel)) return false
 
@@ -76,7 +74,6 @@ export function UserContextMenuVoiceControls({
   server,
   actorMember,
   actorUserId,
-  actorPrivileged,
   targetMember,
   voiceChannelId,
   moveVoiceChannels = [],
@@ -93,7 +90,6 @@ export function UserContextMenuVoiceControls({
       actorMember,
       actorUserId,
       targetMember,
-      actorPrivileged,
     )
   const canServerDeafen =
     server &&
@@ -102,7 +98,6 @@ export function UserContextMenuVoiceControls({
       actorMember,
       actorUserId,
       targetMember,
-      actorPrivileged,
     )
   const canServerMove =
     server &&
@@ -112,7 +107,6 @@ export function UserContextMenuVoiceControls({
       actorMember,
       actorUserId,
       targetMember,
-      actorPrivileged,
     )
   const moveTargets =
     server && actorUserId
@@ -123,7 +117,6 @@ export function UserContextMenuVoiceControls({
             channel,
             actorMember,
             actorUserId,
-            actorPrivileged,
           )
         })
       : []

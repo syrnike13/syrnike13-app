@@ -120,13 +120,11 @@ export function ServerInviteDialog({
               channel,
               member,
               auth.user?._id,
-              auth.user?.privileged,
             ),
           )
         : [],
     [
       auth.user?._id,
-      auth.user?.privileged,
       member,
       server,
       textChannels,

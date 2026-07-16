@@ -92,14 +92,12 @@ function UserRolesContextMenuSub({
   server,
   actorMember,
   actorUserId,
-  actorPrivileged,
   targetMember,
   token,
 }: {
   server: Server
   actorMember: Member | undefined
   actorUserId: string | undefined
-  actorPrivileged: boolean
   targetMember: Member
   token: string | undefined
 }) {
@@ -120,7 +118,6 @@ function UserRolesContextMenuSub({
             targetMember,
             role,
             true,
-            actorPrivileged,
           )
           const canRemove = canToggleMemberRole(
             server,
@@ -129,7 +126,6 @@ function UserRolesContextMenuSub({
             targetMember,
             role,
             false,
-            actorPrivileged,
           )
 
           return { role, assigned, canAdd, canRemove }
@@ -137,7 +133,6 @@ function UserRolesContextMenuSub({
         .filter(({ assigned, canAdd }) => assigned || canAdd),
     [
       actorMember,
-      actorPrivileged,
       actorUserId,
       assignedRoleIds,
       roles,
@@ -160,7 +155,6 @@ function UserRolesContextMenuSub({
         targetMember,
         role,
         enabled,
-        actorPrivileged,
       )
     ) {
       return
@@ -332,7 +326,6 @@ export function UserContextMenuContent({
       actorMember,
       auth.user?._id,
       targetMember,
-      auth.user?.privileged,
     )
   const canBan =
     server &&
@@ -341,7 +334,6 @@ export function UserContextMenuContent({
       actorMember,
       auth.user?._id,
       targetMember,
-      auth.user?.privileged,
     )
   const canBlock = !isSelf
   const canDirectMessage = !isSelf && !user.bot && canMessageUser(user._id)
@@ -473,7 +465,6 @@ export function UserContextMenuContent({
           server={server}
           actorMember={actorMember}
           actorUserId={auth.user?._id}
-          actorPrivileged={auth.user?.privileged}
           targetMember={targetMember}
           voiceChannelId={targetVoiceChannelId}
           moveVoiceChannels={moveVoiceChannels}
@@ -506,7 +497,6 @@ export function UserContextMenuContent({
           server={server}
           actorMember={actorMember}
           actorUserId={auth.user?._id}
-          actorPrivileged={Boolean(auth.user?.privileged)}
           targetMember={targetMember}
           token={token}
         />

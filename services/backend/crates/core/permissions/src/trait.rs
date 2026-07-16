@@ -4,9 +4,6 @@ use crate::{ChannelType, Override, RelationshipStatus};
 pub trait PermissionQuery {
     // * For calculating user permission
 
-    /// Is our perspective user privileged?
-    async fn are_we_privileged(&mut self) -> bool;
-
     /// Is our perspective user a bot?
     async fn are_we_a_bot(&mut self) -> bool;
 

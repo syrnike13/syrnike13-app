@@ -90,7 +90,6 @@ export function AddRoleMembersDialog({
           member,
           role,
           true,
-          auth.user?.privileged,
         )
       ) {
         continue
@@ -117,7 +116,6 @@ export function AddRoleMembersDialog({
   }, [
     actorMember,
     actorUserId,
-    auth.user?.privileged,
     query,
     role,
     server,

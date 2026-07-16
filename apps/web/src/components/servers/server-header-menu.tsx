@@ -97,7 +97,6 @@ export function ServerHeaderMenu({
         channels,
         member,
         auth.user?._id,
-        auth.user?.privileged,
       )
     : null
   const [menuOpen, setMenuOpen] = useState(false)

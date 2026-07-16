@@ -79,7 +79,6 @@ export function ServerSettingsRoleEditor({
   role,
   token,
   userId,
-  userPrivileged,
   member,
   onDeleteRequested,
 }: {
@@ -88,7 +87,6 @@ export function ServerSettingsRoleEditor({
   role: Role
   token: string
   userId: string
-  userPrivileged: boolean
   member: Member | undefined
   onDeleteRequested: () => void
 }) {
@@ -97,14 +95,13 @@ export function ServerSettingsRoleEditor({
     member,
     userId,
     role.rank ?? 0,
-    { privileged: userPrivileged },
   )
   const canEditPermissions = canManageRole(
     server,
     member,
     userId,
     role.rank ?? 0,
-    { permissions: true, privileged: userPrivileged },
+    { permissions: true },
   )
   const [activeTab, setActiveTab] = useState<RoleEditorTab>('display')
   const [name, setName] = useState(role.name)

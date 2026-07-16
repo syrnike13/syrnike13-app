@@ -65,10 +65,9 @@ export function serverPermissionDraft(
   server: Server,
   member: Member | undefined,
   userId: string | undefined,
-  privileged = false,
 ) {
   if (!userId) return 0
-  if (server.owner === userId || privileged) return GRANT_ALL_SAFE
+  if (server.owner === userId) return GRANT_ALL_SAFE
   if (!member) return 0
 
   let permissions = maskPermissionBits(server.default_permissions)
@@ -90,14 +89,13 @@ export function channelPermissionDraft(
   channel: ServerChannel,
   member: Member | undefined,
   userId: string | undefined,
-  privileged = false,
 ) {
   if (!userId) return 0
-  if (server.owner === userId || privileged) return GRANT_ALL_SAFE
+  if (server.owner === userId) return GRANT_ALL_SAFE
   if (!member) return 0
 
   let permissions = applyPermissionDraftOverride(
-    serverPermissionDraft(server, member, userId, privileged),
+    serverPermissionDraft(server, member, userId),
     channel.default_permissions,
   )
   const roleOverrides = (member.roles ?? [])
@@ -122,10 +120,9 @@ export function canViewChannelDraft(
   channel: ServerTextChannel,
   member: Member | undefined,
   userId: string | undefined,
-  privileged = false,
 ) {
   return hasPermissionBit(
-    channelPermissionDraft(server, channel, member, userId, privileged),
+    channelPermissionDraft(server, channel, member, userId),
     ServerPermission.ViewChannel,
   )
 }

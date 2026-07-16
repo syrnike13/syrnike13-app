@@ -57,7 +57,6 @@ function ChannelPermissionEditor({
   server: _server,
   member: _member,
   userId: _userId,
-  userPrivileged: _userPrivileged,
   token,
   roleId,
   userTargetId,
@@ -69,7 +68,6 @@ function ChannelPermissionEditor({
   server: Server
   member: Member | undefined
   userId: string
-  userPrivileged: boolean
   token: string
   roleId: string | null
   userTargetId?: string
@@ -286,7 +284,6 @@ export function ChannelSettingsPermissionsPanel({
 
   const token = auth.session?.token
   const userId = auth.user?._id
-  const userPrivileged = Boolean(auth.user?.privileged)
 
   const effectiveSelectedId = useMemo(() => {
     if (selectedId === DEFAULT_PERMISSIONS_ID) return DEFAULT_PERMISSIONS_ID
@@ -325,7 +322,6 @@ export function ChannelSettingsPermissionsPanel({
         member,
         userId,
         {},
-        userPrivileged,
       ),
   )
 
@@ -337,7 +333,6 @@ export function ChannelSettingsPermissionsPanel({
           member,
           userId,
           { roleRank: selectedRole.rank ?? 0 },
-          userPrivileged,
         )
       : false
   const canEditSelectedUser = Boolean(
@@ -353,7 +348,6 @@ export function ChannelSettingsPermissionsPanel({
           userId: selectedUserEntry.user._id,
           roleRank: getMemberRank(server, selectedUserEntry.member),
         },
-        userPrivileged,
       ),
   )
 
@@ -430,7 +424,6 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
-                userPrivileged={userPrivileged}
                 token={token}
                 roleId={null}
                 roleName="@everyone"
@@ -444,7 +437,6 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
-                userPrivileged={userPrivileged}
                 token={token}
                 roleId={selectedRole._id}
                 roleName={selectedRole.name}
@@ -460,7 +452,6 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
-                userPrivileged={userPrivileged}
                 token={token}
                 roleId={null}
                 userTargetId={selectedUserEntry.user._id}
@@ -477,7 +468,6 @@ export function ChannelSettingsPermissionsPanel({
                 server={server}
                 member={member}
                 userId={userId}
-                userPrivileged={userPrivileged}
                 token={token}
                 roleId={null}
                 roleName="@everyone"

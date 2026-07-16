@@ -260,7 +260,6 @@ export function VoiceStageView({
           channel,
           member,
           auth.user?._id,
-          auth.user?.privileged,
         )
       : false
   const showInviteSlot =

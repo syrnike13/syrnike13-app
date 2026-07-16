@@ -29,11 +29,6 @@ pub struct DatabasePermissionQuery<'a> {
 impl PermissionQuery for DatabasePermissionQuery<'_> {
     // * For calculating user permission
 
-    /// Is our perspective user privileged?
-    async fn are_we_privileged(&mut self) -> bool {
-        self.perspective.privileged
-    }
-
     /// Is our perspective user a bot?
     async fn are_we_a_bot(&mut self) -> bool {
         self.perspective.bot.is_some()
