@@ -17,10 +17,16 @@ import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '#/components/ui/button'
 import type { SendMessageInput } from '#/features/api/messages-api'
 import type { Channel, User } from '@syrnike13/api-types'
-import { memberDisplayColour } from '#/features/sync/member-list-groups'
+import {
+  memberDisplayColour,
+  normalizeRoleColour,
+} from '#/features/sync/member-list-groups'
 import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
-import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
+import {
+  MAX_MENTION_SUGGESTION_ITEMS,
+  type MentionSuggestionItem,
+} from '#/lib/message-format/extensions/mention-suggestion'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
@@ -80,6 +86,33 @@ type MessageComposerProps = {
   /** Плавает над лентой (как UserPanel). */
   floating?: boolean
   onHeightChange?: (height: number) => void
+}
+
+const RESERVED_NON_PARTICIPANT_SLOTS = 2
+
+function limitMentionSuggestionGroups(
+  participants: MentionSuggestionItem[],
+  otherItems: MentionSuggestionItem[],
+): MentionSuggestionItem[] {
+  if (otherItems.length === 0) {
+    return participants.slice(0, MAX_MENTION_SUGGESTION_ITEMS)
+  }
+  if (participants.length === 0) {
+    return otherItems.slice(0, MAX_MENTION_SUGGESTION_ITEMS)
+  }
+
+  const reservedOtherSlots = Math.min(
+    RESERVED_NON_PARTICIPANT_SLOTS,
+    otherItems.length,
+  )
+  const visibleParticipants = participants.slice(
+    0,
+    MAX_MENTION_SUGGESTION_ITEMS - reservedOtherSlots,
+  )
+  const remainingSlots =
+    MAX_MENTION_SUGGESTION_ITEMS - visibleParticipants.length
+
+  return [...visibleParticipants, ...otherItems.slice(0, remainingSlots)]
 }
 
 export function MessageComposer({
@@ -240,42 +273,7 @@ export function MessageComposer({
     () =>
       (query: string): MentionSuggestionItem[] => {
         const q = query.toLowerCase()
-        const items: MentionSuggestionItem[] = []
         const isTextChannel = channel?.channel_type === 'TextChannel'
-
-        if (isTextChannel && canMassMention) {
-          if (!q || 'everyone'.startsWith(q)) {
-            items.push({
-              kind: 'everyone',
-              label: '@everyone',
-              description: 'все в канале',
-            })
-          }
-          if (!q || 'online'.startsWith(q)) {
-            items.push({
-              kind: 'online',
-              label: '@online',
-              description: 'кто в сети',
-            })
-          }
-        }
-
-        if (isTextChannel && server?.roles) {
-          for (const role of Object.values(server.roles)
-            .filter(
-              (role) =>
-                (role.mentionable || canMentionRoles) &&
-                (!q || role.name.toLowerCase().includes(q)),
-            )
-            .slice(0, 5)) {
-            items.push({
-              kind: 'role',
-              id: role._id,
-              label: `@${role.name}`,
-              description: 'роль сервера',
-            })
-          }
-        }
 
         const filteredUsers = q
           ? mentionable
@@ -296,6 +294,7 @@ export function MessageComposer({
               .slice(0, 8)
           : mentionable.slice(0, 8)
 
+        const participantItems: MentionSuggestionItem[] = []
         for (const user of filteredUsers) {
           const member =
             serverId && members[`${serverId}:${user._id}`]
@@ -304,7 +303,7 @@ export function MessageComposer({
           const serverName =
             member?.nickname?.trim() || user.display_name || user.username
 
-          items.push({
+          participantItems.push({
             kind: 'user',
             id: user._id,
             user,
@@ -317,7 +316,49 @@ export function MessageComposer({
           })
         }
 
-        return items
+        if (!q) {
+          return participantItems.slice(0, MAX_MENTION_SUGGESTION_ITEMS)
+        }
+
+        const matchingItems: MentionSuggestionItem[] = []
+        if (isTextChannel && canMassMention) {
+          if ('everyone'.startsWith(q)) {
+            matchingItems.push({
+              kind: 'everyone',
+              label: '@everyone',
+              description: 'Оповестить всех участников канала',
+            })
+          }
+          if ('online'.startsWith(q)) {
+            matchingItems.push({
+              kind: 'online',
+              label: '@online',
+              description: 'Оповестить участников в сети',
+            })
+          }
+        }
+
+        if (isTextChannel && server?.roles) {
+          for (const role of Object.values(server.roles)
+            .filter(
+              (role) =>
+                (role.mentionable || canMentionRoles) &&
+                role.name.toLowerCase().includes(q),
+            )
+            .slice(0, 5)) {
+            matchingItems.push({
+              kind: 'role',
+              id: role._id,
+              label: `@${role.name}`,
+              description: 'Оповестить участников с этой ролью',
+              colour: role.colour
+                ? normalizeRoleColour(role.colour)
+                : undefined,
+            })
+          }
+        }
+
+        return limitMentionSuggestionGroups(participantItems, matchingItems)
       },
     [
       canMassMention,
@@ -350,7 +391,7 @@ export function MessageComposer({
             kind: 'channel' as const,
             id: candidate._id,
             label: `#${candidate.name}`,
-            description: 'текстовый канал',
+            description: 'Упомянуть текстовый канал',
           }))
       },
     [channels, serverId],

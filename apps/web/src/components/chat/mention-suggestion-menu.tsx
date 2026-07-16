@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { SuggestionProps } from '@tiptap/suggestion'
-import { HashIcon, UsersIcon, WifiIcon } from '#/components/icons'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
@@ -17,19 +16,6 @@ type MentionSuggestionMenuProps = {
   suggestion: MentionSuggestionState
   anchorRef: RefObject<HTMLElement | null>
   surfaceClassName?: string
-}
-
-function MentionKindIcon({
-  kind,
-}: {
-  kind: 'everyone' | 'online' | 'role' | 'channel'
-}) {
-  const Icon = kind === 'online' ? WifiIcon : kind === 'channel' ? HashIcon : UsersIcon
-  return (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-      <Icon className="size-4" />
-    </span>
-  )
 }
 
 function MentionSuggestionRow({
@@ -56,7 +42,7 @@ function MentionSuggestionRow({
       aria-selected={selected}
       tabIndex={-1}
       className={cn(
-        'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left transition-colors',
+        'flex h-10 w-full items-center gap-3 rounded-md px-3 text-left transition-colors',
         selected
           ? 'bg-accent text-accent-foreground'
           : 'hover:bg-accent/70',
@@ -71,35 +57,31 @@ function MentionSuggestionRow({
         <UserAvatar
           user={item.user}
           className="size-8"
-          showPresence={false}
+          showPresence
+          presenceRingClassName="border-popover"
         />
-      ) : (
-        <MentionKindIcon kind={item.kind} />
-      )}
+      ) : null}
 
-      <span className="min-w-0 flex-1">
-        {item.kind === 'user' ? (
-          <>
-            <span
-              className="block truncate text-sm font-medium leading-tight"
-              style={item.nameColour ? { color: item.nameColour } : undefined}
-            >
-              {item.serverName}
-            </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              @{item.username}
-            </span>
-          </>
-        ) : (
-          <>
-            <span className="block truncate text-sm font-medium text-primary leading-tight">
-              {item.label}
-            </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {item.description}
-            </span>
-          </>
+      <span
+        className={cn(
+          'min-w-0 flex-1 truncate text-sm font-medium leading-none',
+          item.kind !== 'user' && item.kind !== 'role' && 'text-foreground',
         )}
+        style={
+          item.kind === 'user'
+            ? item.nameColour
+              ? { color: item.nameColour }
+              : undefined
+            : item.kind === 'role' && item.colour
+              ? { color: item.colour }
+              : undefined
+        }
+      >
+        {item.kind === 'user' ? item.serverName : item.label}
+      </span>
+
+      <span className="ml-4 max-w-[55%] shrink-0 truncate text-right text-xs text-muted-foreground">
+        {item.kind === 'user' ? `@${item.username}` : item.description}
       </span>
     </button>
   )
@@ -152,6 +134,41 @@ export function MentionSuggestionMenu({
 
   if (!coords || suggestion.items.length === 0) return null
 
+  const participantEntries: Array<{
+    item: MentionSuggestionItem
+    index: number
+  }> = []
+  const otherEntries: Array<{
+    item: MentionSuggestionItem
+    index: number
+  }> = []
+
+  for (const [index, item] of suggestion.items.entries()) {
+    const entry = { item, index }
+    if (item.kind === 'user') participantEntries.push(entry)
+    else otherEntries.push(entry)
+  }
+
+  const renderEntry = ({
+    item,
+    index,
+  }: {
+    item: MentionSuggestionItem
+    index: number
+  }) => (
+    <MentionSuggestionRow
+      key={'id' in item ? `${item.kind}:${item.id}` : item.kind}
+      item={item}
+      id={`${id}-option-${index}`}
+      selected={index === suggestion.selectedIndex}
+      buttonRef={
+        index === suggestion.selectedIndex ? selectedItemRef : undefined
+      }
+      onHighlight={() => suggestion.onHighlightIndex?.(index)}
+      onSelect={() => suggestion.command(item)}
+    />
+  )
+
   return createPortal(
     <div
       ref={menuRef}
@@ -159,7 +176,7 @@ export function MentionSuggestionMenu({
       role="listbox"
       aria-label="Упоминания"
       className={cn(
-        'gradient-surface-solid pointer-events-auto fixed z-[300] flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded-lg border border-shell-divider p-1 shadow-lg ring-1 ring-shell-divider',
+        'gradient-surface-solid pointer-events-auto fixed z-[300] flex flex-col overflow-hidden rounded-lg border border-border/20 p-1 shadow-lg',
         surfaceClassName,
       )}
       style={{
@@ -170,19 +187,30 @@ export function MentionSuggestionMenu({
       }}
       onMouseDown={(event) => event.preventDefault()}
     >
-      {suggestion.items.map((item, index) => (
-        <MentionSuggestionRow
-          key={item.kind === 'user' ? item.id : item.kind}
-          item={item}
-          id={`${id}-option-${index}`}
-          selected={index === suggestion.selectedIndex}
-          buttonRef={
-            index === suggestion.selectedIndex ? selectedItemRef : undefined
-          }
-          onHighlight={() => suggestion.onHighlightIndex?.(index)}
-          onSelect={() => suggestion.command(item)}
-        />
-      ))}
+      {participantEntries.length > 0 ? (
+        <div role="group" aria-label="Участники">
+          <div
+            role="presentation"
+            className="px-3 py-1.5 text-xs font-medium text-muted-foreground"
+          >
+            Участники
+          </div>
+          {participantEntries.map(renderEntry)}
+        </div>
+      ) : null}
+
+      {otherEntries.length > 0 ? (
+        <div
+          role="group"
+          aria-label="Другие упоминания"
+          className={cn(
+            participantEntries.length > 0 &&
+              'mt-1 border-t border-border/20 pt-1',
+          )}
+        >
+          {otherEntries.map(renderEntry)}
+        </div>
+      ) : null}
     </div>,
     document.body,
   )

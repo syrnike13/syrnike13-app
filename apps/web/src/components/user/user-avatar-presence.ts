@@ -137,6 +137,8 @@ export function presenceRingColorVar(presenceRingClassName: string) {
       return 'var(--secondary)'
     case 'border-background':
       return 'var(--background)'
+    case 'border-popover':
+      return 'var(--popover)'
     default:
       return 'var(--card)'
   }

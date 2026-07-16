@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { createRef } from 'react'
+import type { User } from '@syrnike13/api-types'
 import {
   act,
   cleanup,
@@ -199,14 +200,21 @@ describe('MentionSuggestionMenu accessibility', () => {
     const suggestion = {
       items: [
         {
+          kind: 'user',
+          id: 'user-1',
+          user: {
+            _id: 'user-1',
+            username: 'neo',
+            display_name: 'Neo',
+            avatar: null,
+          } as unknown as User,
+          serverName: 'Neo',
+          username: 'neo',
+        },
+        {
           kind: 'everyone',
           label: '@everyone',
           description: 'Все участники',
-        },
-        {
-          kind: 'online',
-          label: '@online',
-          description: 'Участники онлайн',
         },
       ],
       selectedIndex: 1,
@@ -227,10 +235,22 @@ describe('MentionSuggestionMenu accessibility', () => {
     const options = screen.getAllByRole('option')
 
     expect(listbox.id).toBe('composer-mentions-test')
+    expect(listbox.className).toContain('overflow-hidden')
+    expect(listbox.className).not.toContain('overflow-y-auto')
     expect(options.map((option) => option.id)).toEqual([
       'composer-mentions-test-option-0',
       'composer-mentions-test-option-1',
     ])
+    expect(
+      screen
+        .getByRole('group', { name: 'Участники' })
+        .contains(options[0] ?? null),
+    ).toBe(true)
+    expect(
+      screen
+        .getByRole('group', { name: 'Другие упоминания' })
+        .contains(options[1] ?? null),
+    ).toBe(true)
     expect(options[0]?.getAttribute('aria-selected')).toBe('false')
     expect(options[1]?.getAttribute('aria-selected')).toBe('true')
 

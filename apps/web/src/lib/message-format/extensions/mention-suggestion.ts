@@ -3,6 +3,8 @@ import { Extension } from '@tiptap/core'
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
 
+export const MAX_MENTION_SUGGESTION_ITEMS = 6
+
 export type MentionSuggestionItem =
   | {
       kind: 'user'
@@ -22,6 +24,7 @@ export type MentionSuggestionItem =
       id: string
       label: string
       description: string
+      colour?: string
     }
   | {
       kind: 'channel'
@@ -50,7 +53,8 @@ export function createMentionSuggestionExtension(
           pluginKey: new PluginKey(config.name ?? 'mentionSuggestion'),
           char: config.char ?? '@',
           allowSpaces: false,
-          items: ({ query }) => config.items({ query }),
+          items: ({ query }) =>
+            config.items({ query }).slice(0, MAX_MENTION_SUGGESTION_ITEMS),
           render: config.render,
           command: ({ editor, range, props }) => {
             const mention =
