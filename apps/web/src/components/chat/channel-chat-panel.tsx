@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { MessageSquareIcon, XIcon } from '#/components/icons'
 
 import { ChannelPinnedDialog } from '#/components/chat/channel-pinned-dialog'
@@ -22,9 +22,9 @@ import { getChannelLabel, getDmRecipientId } from '#/features/sync/channel-label
 import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,
-  FLOATING_BAR_SCROLL_PAD_CLASS,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
+import { canMessageUser } from '#/features/authorization/authorization'
 
 type ChannelChatPanelProps = {
   channelId: string
@@ -37,6 +37,7 @@ export function ChannelChatPanel({
   highlightMessageId,
   onClose,
 }: ChannelChatPanelProps) {
+  const [composerHeight, setComposerHeight] = useState(56)
   const chat = useChannelChat({
     channelId,
     highlightMessageId,
@@ -63,6 +64,7 @@ export function ChannelChatPanel({
     editingMessage,
     listHighlightMessageId,
     notifyTyping,
+    stopTyping,
   } = chat
 
   if (!channel) {
@@ -82,14 +84,15 @@ export function ChannelChatPanel({
     ? users[dmRecipientId]?.relationship
     : undefined
   const dmMessagesBlocked =
-    dmRecipientRelationship === 'Blocked' ||
-    dmRecipientRelationship === 'BlockedOther'
+    Boolean(dmRecipientId && !canMessageUser(dmRecipientId))
   const dmDisabledPlaceholder =
     dmRecipientRelationship === 'Blocked'
       ? 'Вы заблокировали этого пользователя'
       : dmRecipientRelationship === 'BlockedOther'
         ? 'Пользователь заблокировал вас'
-        : undefined
+        : dmMessagesBlocked
+          ? 'Вы не можете отправлять сообщения этому пользователю'
+          : undefined
 
   return (
     <aside className="gradient-surface-content flex h-full min-h-0 w-full flex-col border-l border-shell-divider bg-background">
@@ -123,10 +126,7 @@ export function ChannelChatPanel({
         <MessageList
           channelId={channelId}
           serverId={serverIdForSelection ?? undefined}
-          scrollPaddingClassName={cn(
-            FLOATING_BAR_SCROLL_PAD_CLASS,
-            replyTo && 'pb-[88px]',
-          )}
+          scrollPaddingBottom={composerHeight + 48}
           highlightMessageId={listHighlightMessageId}
           messages={messages}
           users={users}
@@ -188,6 +188,7 @@ export function ChannelChatPanel({
             channel={channel}
             users={users}
             floating
+            onHeightChange={setComposerHeight}
             disabled={
               !token || auth.gatewayState !== 'connected' || dmMessagesBlocked
             }
@@ -197,6 +198,7 @@ export function ChannelChatPanel({
             editingMessage={editingMessage}
             onCancelAction={() => setComposerAction(null)}
             onTyping={notifyTyping}
+            onStopTyping={stopTyping}
             onSend={async (input) => {
               if (!token) return
               await sendChannelMessage(token, channelId, input)

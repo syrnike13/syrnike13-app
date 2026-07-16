@@ -16,6 +16,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { renderMessageContent } from '#/lib/message-markdown'
 import { cn } from '#/lib/utils'
+import { serverChannelServerId } from '#/lib/channel-voice'
 
 type ChannelSearchDialogProps = {
   channelId: string
@@ -37,6 +38,11 @@ export function ChannelSearchDialog({
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
+  const channels = useSyncStore((s) => s.channels)
+  const serverId = serverChannelServerId(channels[channelId])
+  const server = useSyncStore((s) =>
+    serverId ? s.servers[serverId] : undefined,
+  )
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Message[]>([])
@@ -176,7 +182,10 @@ export function ChannelSearchDialog({
                   </p>
                   {message.content ? (
                     <div className="line-clamp-2 text-sm">
-                      {renderMessageContent(message.content, users, emojis)}
+                      {renderMessageContent(message.content, users, emojis, {
+                        channels,
+                        roles: server?.roles,
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm italic text-muted-foreground">

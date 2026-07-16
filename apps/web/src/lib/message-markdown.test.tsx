@@ -97,4 +97,21 @@ describe('renderMessageContent', () => {
     expect(html).toContain('Первый пункт')
     expect(html).toContain('Второй пункт')
   })
+
+  it('keeps an inline mention renderable inside a spoiler', () => {
+    const html = renderToStaticMarkup(
+      <>
+        {renderMessageContent(`||<@${userId}>||`, {
+          [userId]: {
+            _id: userId,
+            username: 'alice',
+            display_name: 'Alice',
+          } as never,
+        })}
+      </>,
+    )
+
+    expect(html).toContain('@Alice')
+    expect(html).not.toContain(userId)
+  })
 })

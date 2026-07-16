@@ -37,6 +37,8 @@ export function ServerChannelSearchPopover({
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const emojis = useSyncStore((s) => s.emojis)
+  const channels = useSyncStore((s) => s.channels)
+  const server = useSyncStore((s) => s.servers[serverId])
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<ServerMessageSearchHit[]>([])
@@ -172,7 +174,10 @@ export function ServerChannelSearchPopover({
                   </p>
                   {hit.message.content ? (
                     <div className="line-clamp-2 text-sm">
-                      {renderMessageContent(hit.message.content, users, emojis)}
+                      {renderMessageContent(hit.message.content, users, emojis, {
+                        channels,
+                        roles: server?.roles,
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm italic text-muted-foreground">

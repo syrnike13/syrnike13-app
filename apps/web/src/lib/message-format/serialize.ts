@@ -27,7 +27,8 @@ function serializeMarkedText(text: string, marks: JSONContent['marks']): string 
     if (!mark) continue
 
     if (markType === 'link') {
-      result = mark.attrs?.href ?? result
+      const href = mark.attrs?.href
+      if (typeof href === 'string' && result === href) result = href
       continue
     }
 
@@ -46,27 +47,15 @@ function serializeInlineNode(node: JSONContent): string {
     return '\n'
   }
 
-  if (node.type === 'userMention') {
-    return `<@${node.attrs?.id ?? ''}>`
-  }
+  let value = ''
+  if (node.type === 'userMention') value = `<@${node.attrs?.id ?? ''}>`
+  else if (node.type === 'roleMention') value = `<%${node.attrs?.id ?? ''}>`
+  else if (node.type === 'channelMention') value = `<#${node.attrs?.id ?? ''}>`
+  else if (node.type === 'massMention') {
+    value = node.attrs?.kind === 'online' ? '@online' : '@everyone'
+  } else if (node.type === 'customEmoji') value = `:${node.attrs?.id ?? ''}:`
 
-  if (node.type === 'roleMention') {
-    return `<%${node.attrs?.id ?? ''}>`
-  }
-
-  if (node.type === 'channelMention') {
-    return `<#${node.attrs?.id ?? ''}>`
-  }
-
-  if (node.type === 'massMention') {
-    return node.attrs?.kind === 'online' ? '@online' : '@everyone'
-  }
-
-  if (node.type === 'customEmoji') {
-    return `:${node.attrs?.id ?? ''}:`
-  }
-
-  return ''
+  return serializeMarkedText(value, node.marks)
 }
 
 function serializeParagraph(node: JSONContent): string {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { SuggestionProps } from '@tiptap/suggestion'
-import { UsersIcon, WifiIcon } from '#/components/icons'
+import { HashIcon, UsersIcon, WifiIcon } from '#/components/icons'
 
 import { UserAvatar } from '#/components/user/user-avatar'
 import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
@@ -13,13 +13,18 @@ export type MentionSuggestionState = SuggestionProps<MentionSuggestionItem> & {
 }
 
 type MentionSuggestionMenuProps = {
+  id: string
   suggestion: MentionSuggestionState
   anchorRef: RefObject<HTMLElement | null>
   surfaceClassName?: string
 }
 
-function MassMentionIcon({ kind }: { kind: 'everyone' | 'online' }) {
-  const Icon = kind === 'online' ? WifiIcon : UsersIcon
+function MentionKindIcon({
+  kind,
+}: {
+  kind: 'everyone' | 'online' | 'role' | 'channel'
+}) {
+  const Icon = kind === 'online' ? WifiIcon : kind === 'channel' ? HashIcon : UsersIcon
   return (
     <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
       <Icon className="size-4" />
@@ -33,17 +38,23 @@ function MentionSuggestionRow({
   onSelect,
   onHighlight,
   buttonRef,
+  id,
 }: {
   item: MentionSuggestionItem
   selected: boolean
   onSelect: () => void
   onHighlight: () => void
   buttonRef?: React.Ref<HTMLButtonElement>
+  id: string
 }) {
   return (
     <button
       ref={buttonRef}
+      id={id}
       type="button"
+      role="option"
+      aria-selected={selected}
+      tabIndex={-1}
       className={cn(
         'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left transition-colors',
         selected
@@ -63,7 +74,7 @@ function MentionSuggestionRow({
           showPresence={false}
         />
       ) : (
-        <MassMentionIcon kind={item.kind} />
+        <MentionKindIcon kind={item.kind} />
       )}
 
       <span className="min-w-0 flex-1">
@@ -95,6 +106,7 @@ function MentionSuggestionRow({
 }
 
 export function MentionSuggestionMenu({
+  id,
   suggestion,
   anchorRef,
   surfaceClassName = 'bg-popover text-popover-foreground',
@@ -143,6 +155,9 @@ export function MentionSuggestionMenu({
   return createPortal(
     <div
       ref={menuRef}
+      id={id}
+      role="listbox"
+      aria-label="Упоминания"
       className={cn(
         'gradient-surface-solid pointer-events-auto fixed z-[300] flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded-lg border border-shell-divider p-1 shadow-lg ring-1 ring-shell-divider',
         surfaceClassName,
@@ -159,6 +174,7 @@ export function MentionSuggestionMenu({
         <MentionSuggestionRow
           key={item.kind === 'user' ? item.id : item.kind}
           item={item}
+          id={`${id}-option-${index}`}
           selected={index === suggestion.selectedIndex}
           buttonRef={
             index === suggestion.selectedIndex ? selectedItemRef : undefined

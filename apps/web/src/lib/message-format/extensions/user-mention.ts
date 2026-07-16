@@ -20,12 +20,16 @@ export const UserMentionNode = Node.create({
     return [{ tag: 'span[data-user-mention]' }]
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       'span',
       mergeAttributes(HTMLAttributes, { 'data-user-mention': '' }),
-      0,
+      `<@${node.attrs.id ?? ''}>`,
     ]
+  },
+
+  renderText({ node }) {
+    return `<@${node.attrs.id ?? ''}>`
   },
 
   addNodeView() {

@@ -25,6 +25,21 @@ function resetInlineRegexes() {
   CUSTOM_EMOJI_ID_RE.lastIndex = 0
 }
 
+function isEscapedAt(value: string, index: number) {
+  let slashes = 0
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === '\\'; cursor--) {
+    slashes += 1
+  }
+  return slashes % 2 === 1
+}
+
+function nextUnescapedMatch(regex: RegExp, value: string) {
+  regex.lastIndex = 0
+  let match = regex.exec(value)
+  while (match && isEscapedAt(value, match.index)) match = regex.exec(value)
+  return match
+}
+
 function findNextFormattingMatch(rest: string): InlineMatch | null {
   const candidates: InlineMatch[] = []
 
@@ -72,7 +87,7 @@ function findNextFormattingMatch(rest: string): InlineMatch | null {
     })
   }
 
-  const code = CODE_RE.exec(rest)
+  const code = nextUnescapedMatch(CODE_RE, rest)
   if (code?.index !== undefined) {
     candidates.push({
       index: code.index,
@@ -94,7 +109,7 @@ function findNextFormattingMatch(rest: string): InlineMatch | null {
     })
   }
 
-  const mass = MASS_MENTION_RE.exec(rest)
+  const mass = nextUnescapedMatch(MASS_MENTION_RE, rest)
   if (mass?.index !== undefined) {
     candidates.push({
       index: mass.index,
@@ -115,8 +130,8 @@ function findNextEntityOrEmojiMatch(rest: string): InlineMatch | null {
   MESSAGE_ENTITY_RE.lastIndex = 0
   CUSTOM_EMOJI_ID_RE.lastIndex = 0
 
-  const entity = MESSAGE_ENTITY_RE.exec(rest)
-  const emoji = CUSTOM_EMOJI_ID_RE.exec(rest)
+  const entity = nextUnescapedMatch(MESSAGE_ENTITY_RE, rest)
+  const emoji = nextUnescapedMatch(CUSTOM_EMOJI_ID_RE, rest)
 
   const candidates: InlineMatch[] = []
 
@@ -166,12 +181,12 @@ function parseFormattedText(text: string): JSONContent[] {
   while (rest.length > 0) {
     const next = findNextFormattingMatch(rest)
     if (!next) {
-      if (rest) nodes.push(textNode(rest))
+      if (rest) nodes.push(...parseEntityOnly(rest))
       break
     }
 
     if (next.index > 0) {
-      nodes.push(textNode(rest.slice(0, next.index)))
+      nodes.push(...parseEntityOnly(rest.slice(0, next.index)))
     }
 
     if (next.type === 'link') {
@@ -202,7 +217,6 @@ function parseFormattedText(text: string): JSONContent[] {
 }
 
 function wrapBold(node: JSONContent): JSONContent {
-  if (node.type !== 'text') return node
   return {
     ...node,
     marks: [...(node.marks ?? []), { type: 'bold' }],
@@ -210,7 +224,6 @@ function wrapBold(node: JSONContent): JSONContent {
 }
 
 function wrapItalic(node: JSONContent): JSONContent {
-  if (node.type !== 'text') return node
   return {
     ...node,
     marks: [...(node.marks ?? []), { type: 'italic' }],
@@ -218,7 +231,6 @@ function wrapItalic(node: JSONContent): JSONContent {
 }
 
 function wrapStrike(node: JSONContent): JSONContent {
-  if (node.type !== 'text') return node
   return {
     ...node,
     marks: [...(node.marks ?? []), { type: 'strike' }],
@@ -226,26 +238,25 @@ function wrapStrike(node: JSONContent): JSONContent {
 }
 
 function wrapSpoiler(node: JSONContent): JSONContent {
-  if (node.type !== 'text') return node
   return {
     ...node,
     marks: [...(node.marks ?? []), { type: 'spoiler' }],
   }
 }
 
-export function parseInlineLine(line: string): JSONContent[] {
+function parseEntityOnly(line: string): JSONContent[] {
   const nodes: JSONContent[] = []
   let rest = line
 
   while (rest.length > 0) {
     const next = findNextEntityOrEmojiMatch(rest)
     if (!next) {
-      nodes.push(...parseFormattedText(rest))
+      nodes.push(textNode(rest))
       break
     }
 
     if (next.index > 0) {
-      nodes.push(...parseFormattedText(rest.slice(0, next.index)))
+      nodes.push(textNode(rest.slice(0, next.index)))
     }
 
     if (next.type === 'userMention') {
@@ -266,4 +277,30 @@ export function parseInlineLine(line: string): JSONContent[] {
   }
 
   return nodes
+}
+
+const INLINE_CODE_RE = /(`+)(.+?)\1/g
+
+export function parseInlineLine(line: string): JSONContent[] {
+  const nodes: JSONContent[] = []
+  let cursor = 0
+  INLINE_CODE_RE.lastIndex = 0
+  let match = INLINE_CODE_RE.exec(line)
+
+  while (match) {
+    if (isEscapedAt(line, match.index)) {
+      match = INLINE_CODE_RE.exec(line)
+      continue
+    }
+
+    if (match.index > cursor) {
+      nodes.push(...parseFormattedText(line.slice(cursor, match.index)))
+    }
+    nodes.push({ type: 'text', text: match[2]!, marks: [{ type: 'code' }] })
+    cursor = match.index + match[0].length
+    match = INLINE_CODE_RE.exec(line)
+  }
+
+  if (cursor < line.length) nodes.push(...parseFormattedText(line.slice(cursor)))
+  return nodes.length > 0 ? nodes : [{ type: 'text', text: '' }]
 }

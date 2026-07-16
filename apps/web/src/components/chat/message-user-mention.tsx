@@ -16,6 +16,7 @@ type MessageUserMentionProps = {
   serverName?: string
   member?: Member
   currentUserId?: string
+  interactive?: boolean
 }
 
 export function MessageUserMention({
@@ -26,13 +27,19 @@ export function MessageUserMention({
   serverName,
   member,
   currentUserId,
+  interactive = true,
 }: MessageUserMentionProps) {
-  const label = user?.display_name ?? user?.username ?? userId
+  const label =
+    member?.nickname?.trim() || user?.display_name || user?.username || userId
   const nameColour =
     server && member ? memberDisplayColour(server, member) : undefined
 
   if (!user) {
     return <span className={defaultMentionClassName}>@{userId}</span>
+  }
+
+  if (!interactive) {
+    return <MentionPill label={`@${label}`} nameColour={nameColour} />
   }
 
   const roles =
@@ -52,7 +59,7 @@ export function MessageUserMention({
         type="button"
         className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
-        <MentionPill label={label} nameColour={nameColour} />
+        <MentionPill label={`@${label}`} nameColour={nameColour} />
       </button>
     </UserProfilePopover>
   )

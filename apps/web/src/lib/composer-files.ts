@@ -2,6 +2,10 @@ export type PendingComposerFile = {
   id: string
   file: File
   previewUrl?: string
+  attachmentId?: string
+  progress?: number
+  status: 'pending' | 'uploading' | 'uploaded' | 'error'
+  error?: string
 }
 
 export function createPendingFiles(fileList: FileList | File[]): PendingComposerFile[] {
@@ -13,6 +17,7 @@ export function createPendingFiles(fileList: FileList | File[]): PendingComposer
     const entry: PendingComposerFile = {
       id: crypto.randomUUID(),
       file,
+      status: 'pending',
     }
     if (file.type.startsWith('image/')) {
       entry.previewUrl = URL.createObjectURL(file)
