@@ -302,13 +302,28 @@ export class NativeVideoRegistry {
     if (
       entry &&
       (metadata.sessionId !== entry.metadata.sessionId ||
-        metadata.rendererEpoch !== entry.metadata.rendererEpoch ||
         metadata.generation !== entry.metadata.generation)
     ) {
       this.removeTrack(metadata.trackId)
       entry = undefined
     }
-    if (entry && metadata.sequence <= entry.metadata.sequence) {
+    const rendererEpochChanged = Boolean(
+      entry && metadata.rendererEpoch !== entry.metadata.rendererEpoch,
+    )
+    if (entry && rendererEpochChanged) {
+      entry.pendingFrame?.close()
+      entry.pendingFrame = null
+      if (entry.drawRequest !== null) {
+        window.cancelAnimationFrame(entry.drawRequest)
+        entry.drawRequest = null
+      }
+      // The publication adapter is intentionally stable across renderer
+      // reloads. Keep the mounted canvas consumers on the same entry; replacing
+      // it would leave React attached to an orphaned consumers map because the
+      // adapter identity did not change.
+      entry.metadata = metadata
+    }
+    if (entry && !rendererEpochChanged && metadata.sequence <= entry.metadata.sequence) {
       frame.close()
       return
     }

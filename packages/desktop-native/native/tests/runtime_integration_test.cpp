@@ -3,6 +3,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -29,7 +30,10 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
   bool hasRuntimeError() const {
     std::lock_guard lock(mutex_);
     for (const auto& event : events_) {
-      if (event.type == "runtimeError") return true;
+      if (event.type == "runtimeError" &&
+          event.request_id != "stale-remote-video-demand") {
+        return true;
+      }
     }
     return false;
   }
@@ -45,6 +49,16 @@ class CollectingSink final : public syrnike::desktop_native::EventSink {
       }
       return false;
     });
+  }
+
+  std::optional<syrnike::desktop_native::RuntimeEvent> replyFor(
+    const std::string& request_id
+  ) const {
+    std::lock_guard lock(mutex_);
+    for (const auto& event : events_) {
+      if (event.type == "reply" && event.request_id == request_id) return event;
+    }
+    return std::nullopt;
   }
 
   bool waitForPreviewFailure() {
@@ -144,6 +158,23 @@ int main() try {
     if (media_sink->count("remoteVideoTrackRemoved") != 0 ||
         media_sink->count("remoteVideoFailed") != 0) {
       throw std::runtime_error("stale remote video lifecycle event escaped generation fence");
+    }
+
+    syrnike::desktop_native::MediaCommand stale_demand;
+    stale_demand.type = "setRemoteVideoDemand";
+    stale_demand.request_id = "stale-remote-video-demand";
+    stale_demand.session_id = "retired-voice-session";
+    stale_demand.generation = 9;
+    stale_demand.track_id = "stale-screen-track";
+    stale_demand.demanded = true;
+    if (!runtime.dispatch(std::move(stale_demand)) ||
+        !media_sink->waitForReply("stale-remote-video-demand")) {
+      throw std::runtime_error("stale remote video demand did not receive a reply");
+    }
+    const auto stale_demand_reply = media_sink->replyFor("stale-remote-video-demand");
+    if (!stale_demand_reply || !stale_demand_reply->error ||
+        stale_demand_reply->error->code != "stale_generation") {
+      throw std::runtime_error("stale remote video demand escaped generation fence");
     }
 
     syrnike::desktop_native::MediaCommand screen_stalled;

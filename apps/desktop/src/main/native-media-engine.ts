@@ -182,7 +182,7 @@ function createVideoBridge(
 ) {
   return new NativeSharedTextureBridge({
     getWindow,
-    release: (frame) => {
+    release: async (frame) => {
       const runtime = supervisor.getSnapshot()
       if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
       const identity = {
@@ -194,7 +194,7 @@ function createVideoBridge(
       const command = local
         ? { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
-      void supervisor.request(command, 2_000).catch(() => undefined)
+      await supervisor.request(command, 2_000)
     },
     onTrackStalled: local
       ? undefined

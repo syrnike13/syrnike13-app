@@ -578,6 +578,9 @@ class MediaRuntime::Implementation {
       return;
     }
     if (command.type == "setRemoteVideoDemand") {
+      if (!desired_voice_.isCurrent(command.session_id, command.generation)) {
+        throw std::runtime_error("stale remote video demand generation");
+      }
       livekit_client_->setRemoteVideoDemand(command.track_id, command.demanded);
       emitter_.emit(reply(command));
       return;

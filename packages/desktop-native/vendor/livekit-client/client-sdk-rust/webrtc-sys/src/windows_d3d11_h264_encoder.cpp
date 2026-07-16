@@ -2,6 +2,7 @@
 #include "livekit/windows_d3d11_h264_encoder.h"
 
 #include <codecapi.h>
+#include <d3d10.h>
 #include <d3d11_1.h>
 #include <dxgi1_2.h>
 #include <icodecapi.h>
@@ -19,6 +20,7 @@
 #include <cstdio>
 #include <deque>
 #include <mutex>
+#include <new>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -144,14 +146,79 @@ bool EnumerateHardwareH264(IMFActivate*** activations, UINT32* count) {
          *count > 0;
 }
 
+// The keyed mutex protects the capture pool slot only while the MFT can still
+// read the input texture. Tying it to an output access unit is incorrect: a
+// hardware encoder may retain, drop, or release an input sample without
+// producing a one-to-one output. IMFTrackedSample reports the actual end of
+// input ownership, so every slot is returned even when the driver drops input.
+class TrackedInputLease final : public IMFAsyncCallback {
+ public:
+  TrackedInputLease(
+      ComPtr<IDXGIKeyedMutex> keyed_mutex,
+      uint64_t release_key,
+      webrtc::scoped_refptr<D3D11TextureFrameBuffer> frame_buffer)
+      : keyed_mutex_(std::move(keyed_mutex)),
+        release_key_(release_key),
+        frame_buffer_(std::move(frame_buffer)) {}
+
+  HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
+    if (!object)
+      return E_POINTER;
+    if (iid == __uuidof(IUnknown) || iid == __uuidof(IMFAsyncCallback)) {
+      *object = static_cast<IMFAsyncCallback*>(this);
+      AddRef();
+      return S_OK;
+    }
+    *object = nullptr;
+    return E_NOINTERFACE;
+  }
+
+  ULONG STDMETHODCALLTYPE AddRef() override { return ++references_; }
+
+  ULONG STDMETHODCALLTYPE Release() override {
+    const ULONG remaining = --references_;
+    if (remaining == 0)
+      delete this;
+    return remaining;
+  }
+
+  HRESULT STDMETHODCALLTYPE GetParameters(DWORD*, DWORD*) override {
+    return E_NOTIMPL;
+  }
+
+  HRESULT STDMETHODCALLTYPE Invoke(IMFAsyncResult*) override {
+    Complete();
+    return S_OK;
+  }
+
+  void Complete() noexcept {
+    if (completed_.exchange(true))
+      return;
+    const HRESULT release_result =
+        keyed_mutex_ ? keyed_mutex_->ReleaseSync(release_key_) : E_POINTER;
+    if (FAILED(release_result)) {
+      TraceEncoder("ReleaseTrackedInputLease", release_result);
+      frame_buffer_->ReleaseLease(true);
+    } else {
+      frame_buffer_->ReleaseLease(false);
+    }
+    frame_buffer_ = nullptr;
+    keyed_mutex_.Reset();
+  }
+
+ private:
+  ~TrackedInputLease() { Complete(); }
+
+  std::atomic<ULONG> references_{1};
+  std::atomic_bool completed_{false};
+  ComPtr<IDXGIKeyedMutex> keyed_mutex_;
+  uint64_t release_key_ = 0;
+  webrtc::scoped_refptr<D3D11TextureFrameBuffer> frame_buffer_;
+};
+
 class MfH264Encoder final : public webrtc::VideoEncoder {
   enum class SubmitResult { kSubmitted, kRetry, kFailed };
 
-  struct PendingLease {
-    ComPtr<IDXGIKeyedMutex> keyed_mutex;
-    uint64_t release_key;
-    webrtc::scoped_refptr<D3D11TextureFrameBuffer> frame_buffer;
-  };
   struct InputJob {
     ComPtr<IMFSample> sample;
     LONGLONG sample_time = 0;
@@ -160,14 +227,14 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     int64_t ntp_time_ms = 0;
     webrtc::VideoRotation rotation = webrtc::kVideoRotation_0;
     bool keyframe = false;
-    PendingLease lease;
+    ComPtr<TrackedInputLease> lease;
   };
   struct PendingOutput {
     uint32_t rtp_timestamp = 0;
     int64_t capture_time_ms = 0;
     int64_t ntp_time_ms = 0;
     webrtc::VideoRotation rotation = webrtc::kVideoRotation_0;
-    PendingLease lease;
+    ComPtr<TrackedInputLease> lease;
   };
 
  public:
@@ -280,9 +347,12 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     ComPtr<IMFMediaBuffer> surface;
     hr = MFCreateDXGISurfaceBuffer(__uuidof(ID3D11Texture2D), texture.Get(), 0,
                                    FALSE, &surface);
+    ComPtr<IMFTrackedSample> tracked_sample;
     ComPtr<IMFSample> sample;
     if (SUCCEEDED(hr))
-      hr = MFCreateSample(&sample);
+      hr = MFCreateTrackedSample(&tracked_sample);
+    if (SUCCEEDED(hr))
+      hr = tracked_sample.As(&sample);
     if (SUCCEEDED(hr))
       hr = sample->AddBuffer(surface.Get());
     const LONGLONG sample_time =
@@ -291,22 +361,36 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       hr = sample->SetSampleTime(sample_time);
     if (SUCCEEDED(hr))
       hr = sample->SetSampleDuration(10'000'000 / fps_);
-    if (FAILED(hr)) {
-      const HRESULT release_result =
-          keyed_mutex->ReleaseSync(native->release_key());
-      if (FAILED(release_result)) {
-        TraceEncoder("ReleaseInputLease", release_result);
-        native->ReleaseLease(true);
+    ComPtr<TrackedInputLease> lease;
+    if (SUCCEEDED(hr)) {
+      lease.Attach(new (std::nothrow) TrackedInputLease(
+          keyed_mutex, native->release_key(),
+          webrtc::scoped_refptr<D3D11TextureFrameBuffer>(native)));
+      if (!lease) {
+        hr = E_OUTOFMEMORY;
       } else {
-        native->ReleaseLease(false);
+        hr = tracked_sample->SetAllocator(lease.Get(), nullptr);
+      }
+    }
+    if (FAILED(hr)) {
+      if (lease) {
+        lease->Complete();
+      } else {
+        const HRESULT release_result =
+            keyed_mutex->ReleaseSync(native->release_key());
+        if (FAILED(release_result)) {
+          TraceEncoder("ReleaseInputLease", release_result);
+          native->ReleaseLease(true);
+        } else {
+          native->ReleaseLease(false);
+        }
       }
       return WEBRTC_VIDEO_CODEC_ERROR;
     }
     input_jobs_.push_back(InputJob{
         sample, sample_time, frame.rtp_timestamp(), frame.render_time_ms(),
         frame.ntp_time_ms(), frame.rotation(), keyframe,
-        PendingLease{keyed_mutex, native->release_key(),
-                     webrtc::scoped_refptr<D3D11TextureFrameBuffer>(native)}});
+        std::move(lease)});
     cv_.notify_one();
     return WEBRTC_VIDEO_CODEC_OK;
   }
@@ -350,6 +434,10 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     device1_ = CreateDeviceForLuid(adapter_luid);
     if (!device1_ || FAILED(device1_.As(&device_)))
       return false;
+    ComPtr<ID3D10Multithread> multithread;
+    if (FAILED(device_.As(&multithread)))
+      return false;
+    multithread->SetMultithreadProtected(TRUE);
     device_->SetExceptionMode(0);
 
     IMFActivate** raw = nullptr;
@@ -572,7 +660,6 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       codec_info.codecSpecific.H264.idr_frame = clean != FALSE;
       PendingOutput completed = std::move(pending_outputs_.front());
       pending_outputs_.pop_front();
-      ReleaseLease(completed.lease);
       webrtc::EncodedImageCallback* callback = nullptr;
       {
         std::lock_guard lock(mutex_);
@@ -620,22 +707,6 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       output.pEvents->Release();
     if (output.pSample && output.pSample != supplied)
       output.pSample->Release();
-  }
-
-  static void ReleaseLease(PendingLease& lease) {
-    if (!lease.frame_buffer)
-      return;
-    const HRESULT release_result =
-        lease.keyed_mutex ? lease.keyed_mutex->ReleaseSync(lease.release_key)
-                          : E_POINTER;
-    if (FAILED(release_result)) {
-      TraceEncoder("ReleasePendingLease", release_result);
-      lease.frame_buffer->ReleaseLease(true);
-    } else {
-      lease.frame_buffer->ReleaseLease(false);
-    }
-    lease.frame_buffer = nullptr;
-    lease.keyed_mutex.Reset();
   }
 
   SubmitResult Submit(InputJob&& job) {
@@ -777,7 +848,8 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
             }
           }
         } else if (submit_result == SubmitResult::kFailed) {
-          ReleaseLease(job.lease);
+          if (job.lease)
+            job.lease->Complete();
           FailWorker("Submit");
           break;
         } else if (asynchronous_) {
@@ -834,6 +906,12 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       encoder_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
       encoder_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
     }
+    // Drain/flush does not guarantee that every hardware MFT has released its
+    // D3D11 input surfaces. Stop the transform before force-releasing leases,
+    // otherwise the capture pool may overwrite a texture still owned by the
+    // GPU driver during an encoder failure.
+    if (shutdown_)
+      shutdown_->Shutdown();
     ReleaseAllLeases();
   }
 
@@ -844,9 +922,11 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
       abandoned.swap(input_jobs_);
     }
     for (auto& job : abandoned)
-      ReleaseLease(job.lease);
+      if (job.lease)
+        job.lease->Complete();
     for (auto& entry : pending_outputs_)
-      ReleaseLease(entry.lease);
+      if (entry.lease)
+        entry.lease->Complete();
     pending_outputs_.clear();
   }
 

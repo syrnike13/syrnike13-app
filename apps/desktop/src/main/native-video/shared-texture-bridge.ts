@@ -25,7 +25,7 @@ export type NativeSharedVideoRelease = Pick<
 
 export type SharedTextureBridgeDependencies = {
   getWindow(): BrowserWindow | null
-  release(frame: NativeSharedVideoRelease): void
+  release(frame: NativeSharedVideoRelease): void | Promise<void>
   importTexture?: typeof sharedTexture.importSharedTexture
   sendTexture?: typeof sharedTexture.sendSharedTexture
   maxInFlight?: number
@@ -76,7 +76,7 @@ export class NativeSharedTextureBridge {
 
   async deliver(frame: NativeSharedVideoFrame) {
     if (this.disposed || !this.isValid(frame)) {
-      this.dependencies.release(frame)
+      this.releaseNativeFrame(frame)
       return false
     }
     if (this.runtimeEpoch === null) {
@@ -95,19 +95,19 @@ export class NativeSharedTextureBridge {
     ].join(':')
     const previous = this.latestSequence.get(trackKey) ?? -1
     if (frame.sequence <= previous) {
-      this.dependencies.release(frame)
+      this.releaseNativeFrame(frame)
       return false
     }
     this.latestSequence.set(trackKey, frame.sequence)
 
     const window = this.dependencies.getWindow()
     if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
-      this.dependencies.release(frame)
+      this.releaseNativeFrame(frame)
       return false
     }
     const maximum = Math.max(1, this.dependencies.maxInFlight ?? 3)
     if (this.activeTrackReferences(trackKey) >= maximum) {
-      this.dependencies.release(frame)
+      this.releaseNativeFrame(frame)
       return false
     }
     const key = `${trackKey}:${frame.sequence}`
@@ -127,7 +127,7 @@ export class NativeSharedTextureBridge {
       })
     } catch (error) {
       this.reportFailure('import', frame, error)
-      this.dependencies.release(frame)
+      this.releaseNativeFrame(frame)
       return false
     }
     const entry: Entry = {
@@ -213,7 +213,22 @@ export class NativeSharedTextureBridge {
     if (!entry) return
     if (entry.stallTimer) clearTimeout(entry.stallTimer)
     this.inFlight.delete(key)
-    this.dependencies.release(entry.frame)
+    this.releaseNativeFrame(entry.frame)
+  }
+
+  private releaseNativeFrame(frame: NativeSharedVideoRelease, attempt = 0) {
+    const retry = () => {
+      const timer = setTimeout(
+        () => this.releaseNativeFrame(frame, attempt + 1),
+        Math.min(1_000, 100 * 2 ** Math.min(attempt, 4)),
+      )
+      timer.unref?.()
+    }
+    try {
+      void Promise.resolve(this.dependencies.release(frame)).catch(retry)
+    } catch {
+      retry()
+    }
   }
 
   private activeTrackReferences(trackKey: string) {

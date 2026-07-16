@@ -65,6 +65,27 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.imported).toHaveBeenCalledTimes(2)
   })
 
+  it('retries a lost native release acknowledgement until it succeeds', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = harness()
+      h.release
+        .mockRejectedValueOnce(new Error('runtime busy'))
+        .mockRejectedValueOnce(new Error('reply lost'))
+        .mockResolvedValueOnce(undefined)
+      await h.bridge.deliver(frame(1))
+
+      h.callbacks[0]()
+      await vi.advanceTimersByTimeAsync(100)
+      await vi.advanceTimersByTimeAsync(200)
+
+      expect(h.release).toHaveBeenCalledTimes(3)
+      expect(h.release).toHaveBeenNthCalledWith(3, frame(1))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('bounds references per track so a stalled camera cannot starve a screen', async () => {
     const h = harness(1)
     await h.bridge.deliver(frame(1, 'camera'))

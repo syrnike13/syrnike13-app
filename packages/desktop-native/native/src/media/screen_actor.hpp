@@ -3,6 +3,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "../common/runtime_types.hpp"
 #include "../common/sequenced_emitter.hpp"
@@ -10,6 +11,25 @@
 #include "screen_publication_controller.hpp"
 
 namespace syrnike::desktop_native::media {
+
+class EncoderBackpressureStallDetector final {
+ public:
+  bool observe(
+    std::chrono::steady_clock::time_point now,
+    std::chrono::steady_clock::duration timeout
+  ) {
+    if (!started_at_) {
+      started_at_ = now;
+      return false;
+    }
+    return now - *started_at_ >= timeout;
+  }
+
+  void noteProgress() noexcept { started_at_.reset(); }
+
+ private:
+  std::optional<std::chrono::steady_clock::time_point> started_at_;
+};
 
 class ScreenActor final {
  public:

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -485,7 +486,19 @@ class ScreenActor::Implementation {
   ) {
     if (!track) return std::nullopt;
     try {
-      const auto records = track->getStats().get();
+      auto stats_future = track->getStats();
+      if (stats_future.wait_for(std::chrono::milliseconds(250)) !=
+          std::future_status::ready) {
+        logScreen(
+          "screen_rtp_stats_timeout",
+          {
+            {"sessionId", session_id},
+            {"generation", generation}
+          }
+        );
+        return std::nullopt;
+      }
+      const auto records = stats_future.get();
       std::uint64_t packets_sent = 0;
       std::uint64_t bytes_sent = 0;
       std::uint64_t frames_sent = 0;
@@ -593,8 +606,7 @@ class ScreenActor::Implementation {
     const auto started = next_frame;
     auto last_rtp_progress_at = started;
     std::optional<std::uint64_t> last_rtp_frames_sent;
-    std::optional<std::chrono::steady_clock::time_point>
-      encoder_backpressure_started_at;
+    EncoderBackpressureStallDetector encoder_backpressure_stall;
     bool rtp_stall_reported = false;
     std::uint64_t frames = 0;
     std::uint64_t method_wgc_gpu = 0;
@@ -646,9 +658,6 @@ class ScreenActor::Implementation {
           failure.diagnostic_suppressed = preview_failure.suppressed;
           post_(std::move(failure));
         }
-        if (capture.status != ScreenGpuFrameStatus::EncoderBackpressure) {
-          encoder_backpressure_started_at.reset();
-        }
         if (capture.status == ScreenGpuFrameStatus::NewFrame) {
           auto lease = std::make_unique<ScreenTextureLease>(capturer, captured);
           const auto timestamp = captured.timestamp_us != 0
@@ -656,18 +665,15 @@ class ScreenActor::Implementation {
             : std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - started).count();
           if (source->capture(std::move(lease), timestamp)) {
+            encoder_backpressure_stall.noteProgress();
             ++frames;
             if (method == "wgc_gpu") ++method_wgc_gpu;
             else if (method == "dxgi_gpu") ++method_dxgi_gpu;
           }
         } else if (capture.status == ScreenGpuFrameStatus::EncoderBackpressure) {
           const auto now = std::chrono::steady_clock::now();
-          if (!encoder_backpressure_started_at) {
-            encoder_backpressure_started_at = now;
-          } else if (
-            !rtp_stall_reported &&
-            now - *encoder_backpressure_started_at >= std::chrono::seconds(2)
-          ) {
+          if (!rtp_stall_reported && encoder_backpressure_stall.observe(
+                now, std::chrono::seconds(2))) {
             MediaCommand stalled;
             stalled.type = "__screenRtpStalled";
             stalled.session_id = session_id;
@@ -688,6 +694,7 @@ class ScreenActor::Implementation {
             }
           }
         } else if (capture.status == ScreenGpuFrameStatus::RecoverableLost) {
+          encoder_backpressure_stall.noteProgress();
           logScreen(
             "screen_capture_restarted_after_stall",
             {

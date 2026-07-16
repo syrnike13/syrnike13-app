@@ -539,6 +539,14 @@ void Room::onEvent(const FfiEvent& event) {
           }
           break;
         }
+        case proto::RoomEvent::kLocalTrackRepublished: {
+          const std::scoped_lock<std::mutex> guard(lock_);
+          if (local_participant_) {
+            const auto& republished = re.local_track_republished();
+            local_participant_->handleTrackRepublished(republished.previous_sid(), republished.info());
+          }
+          break;
+        }
         case proto::RoomEvent::kLocalTrackUnpublished: {
           LocalTrackUnpublishedEvent ev;
           {

@@ -168,6 +168,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<VoiceSnapshot>(INITIAL_SNAPSHOT)
   const [room, setRoom] = useState<Room | null>(null)
   const [roomRevision, setRoomRevision] = useState(0)
+  const [nativeDemandRetryRevision, setNativeDemandRetryRevision] = useState(0)
   const [stageMediaFilters, setStageMediaFiltersState] = useState(
     readStageMediaFilters,
   )
@@ -186,6 +187,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     new Map<string, ReturnType<typeof setTimeout>>(),
   )
   const nativeScreenDemandRef = useRef(new Map<string, boolean>())
+  const nativeDemandRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
@@ -782,6 +784,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         if (nativeScreenDemandRef.current.get(demandKey) === demanded) {
           nativeScreenDemandRef.current.delete(demandKey)
         }
+        if (nativeDemandRetryTimerRef.current == null) {
+          nativeDemandRetryTimerRef.current = setTimeout(() => {
+            nativeDemandRetryTimerRef.current = null
+            setNativeDemandRetryRevision((revision) => revision + 1)
+          }, 250)
+        }
       })
     }
 
@@ -790,7 +798,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         nativeScreenDemandRef.current.delete(demandKey)
       }
     }
-  }, [channelId, desktop, nativeVideoPublications, roomRevision])
+  }, [
+    channelId,
+    desktop,
+    nativeDemandRetryRevision,
+    nativeVideoPublications,
+    roomRevision,
+  ])
+
+  useEffect(() => () => {
+    if (nativeDemandRetryTimerRef.current != null) {
+      clearTimeout(nativeDemandRetryTimerRef.current)
+      nativeDemandRetryTimerRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (!channelId) return

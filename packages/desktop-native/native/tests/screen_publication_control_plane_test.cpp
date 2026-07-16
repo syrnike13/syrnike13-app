@@ -18,6 +18,7 @@
 #include "common/sequenced_emitter.hpp"
 #include "media/livekit_publication_client.hpp"
 #include "media/media_runtime.hpp"
+#include "media/screen_actor.hpp"
 #include "media/screen_publication_controller.hpp"
 
 namespace {
@@ -461,6 +462,27 @@ void verifyManualStopCancelsPendingStallRestart() {
 }  // namespace
 
 int main() try {
+  {
+    using syrnike::desktop_native::media::EncoderBackpressureStallDetector;
+    EncoderBackpressureStallDetector detector;
+    const auto started = std::chrono::steady_clock::now();
+    require(
+      !detector.observe(started, 2s),
+      "encoder backpressure detector fired on the first observation"
+    );
+    // NoFrame is deliberately not progress: an alternating
+    // Backpressure/NoFrame capture must still trip the stall detector.
+    require(
+      detector.observe(started + 2s, 2s),
+      "idle capture observations masked continuous encoder backpressure"
+    );
+    detector.noteProgress();
+    require(
+      !detector.observe(started + 3s, 2s),
+      "encoder progress did not reset the backpressure detector"
+    );
+  }
+
   using syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
   using syrnike::desktop_native::media::MediaRuntime;
 

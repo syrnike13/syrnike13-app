@@ -291,6 +291,38 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     })
   })
 
+  it('keeps the mounted remote canvas across a renderer epoch rollover', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+    const publicationTrack = registry.listPublications()[0]!.track!
+    const consumer = canvasStub()
+    publicationTrack.attachCanvas(consumer.canvas)
+    const pending = new FakeVideoFrame()
+    deliver(registry, remoteFrameMessage(2, pending))
+
+    const afterReload = new FakeVideoFrame()
+    const message = remoteFrameMessage(1, afterReload)
+    message.metadata.rendererEpoch = 1
+    deliver(registry, message)
+    runtimeWindow.flushAnimationFrames()
+
+    expect(pending.close).toHaveBeenCalledOnce()
+    expect(registry.listPublications()[0]!.track).toBe(publicationTrack)
+    expect(registry.listTracks()[0]).toMatchObject({
+      rendererEpoch: 1,
+      consumerCount: 1,
+    })
+    expect(consumer.drawImage).toHaveBeenCalledWith(
+      afterReload,
+      0,
+      0,
+      640,
+      360,
+    )
+    expect(afterReload.close).toHaveBeenCalledOnce()
+  })
+
   it('ignores a removed event from the previous session', () => {
     const registry = new NativeVideoRegistry()
     const publication = publicationMessage('available')
