@@ -348,6 +348,16 @@ add_test(
   COMMAND syrnike-native-hooks-runtime-lifecycle-tests
 )
 
+add_executable(syrnike-native-d3d11-gpu-completion-tests
+  tests/d3d11_gpu_completion_test.cpp
+)
+syrnike_native_target(syrnike-native-d3d11-gpu-completion-tests)
+target_link_libraries(syrnike-native-d3d11-gpu-completion-tests PRIVATE d3d11 dxgi)
+add_test(
+  NAME syrnike-native-d3d11-gpu-completion-tests
+  COMMAND syrnike-native-d3d11-gpu-completion-tests
+)
+
 # Manual, non-gating benchmark. Run the executable directly; its hardware paths
 # report SKIP rather than silently falling back when the adapter lacks support.
 add_executable(syrnike-native-screen-streaming-benchmark

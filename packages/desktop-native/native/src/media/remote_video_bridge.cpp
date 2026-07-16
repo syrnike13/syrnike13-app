@@ -10,16 +10,20 @@
 #include <livekit/video_stream.h>
 
 #include <algorithm>
+#include <chrono>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
 
 #include "../common/diagnostic_log.hpp"
+#include "d3d11_gpu_completion.hpp"
 
 namespace syrnike::desktop_native::media {
 namespace {
 constexpr std::size_t max_in_flight = 3;
+constexpr auto gpu_completion_timeout = std::chrono::milliseconds(500);
 
 void logRemoteVideoFailure(
   const std::string& track_id,
@@ -81,6 +85,13 @@ class D3DSharedTextureUploader {
       nullptr, 0, D3D11_SDK_VERSION, &device_, &level, &context_
     );
     if (FAILED(result)) throwHResult("D3D11 device creation failed", result);
+    completion_ = std::make_unique<D3d11GpuCompletion>(device_.Get(), context_.Get());
+    if (FAILED(completion_->initializationResult())) {
+      throwHResult(
+        "D3D11 upload completion query creation failed",
+        completion_->initializationResult()
+      );
+    }
   }
 
   std::pair<std::uint64_t, std::shared_ptr<SharedFrame>> upload(
@@ -110,10 +121,13 @@ class D3DSharedTextureUploader {
       texture.Get(), 0, nullptr, frame.data(),
       static_cast<UINT>(frame.width() * 4), 0
     );
-    // The renderer opens this resource on a different D3D device. Flush the
-    // producer context before exporting the handle so Electron cannot observe
-    // the texture before the upload command has been submitted.
-    context_->Flush();
+    // Electron's BGRA import does not accept a keyed mutex or producer fence.
+    // Wait for the upload itself, not merely command submission, before the
+    // handle becomes visible to another D3D device.
+    const auto completion_result = completion_->wait(gpu_completion_timeout);
+    if (FAILED(completion_result)) {
+      throwHResult("D3D11 shared texture upload did not complete", completion_result);
+    }
     ComPtr<IDXGIResource1> resource;
     const auto query_result = texture.As(&resource);
     if (FAILED(query_result)) throwHResult("DXGI resource query failed", query_result);
@@ -154,6 +168,7 @@ class D3DSharedTextureUploader {
  private:
   ComPtr<ID3D11Device> device_;
   ComPtr<ID3D11DeviceContext> context_;
+  std::unique_ptr<D3d11GpuCompletion> completion_;
 };
 #endif
 }  // namespace
