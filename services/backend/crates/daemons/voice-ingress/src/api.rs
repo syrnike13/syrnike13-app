@@ -833,7 +833,7 @@ mod tests {
             video_resolution: [1280, 720],
             video_aspect_ratio: [0.3, 2.5],
             screen_share_resolution: [1920, 1080],
-            screen_share_bitrate: 8_000_000,
+            screen_share_bitrate: 10_000_000,
             file_upload_size_limit: HashMap::new(),
         }
     }

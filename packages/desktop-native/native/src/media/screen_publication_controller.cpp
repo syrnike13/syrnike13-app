@@ -37,10 +37,7 @@ void logScreen(
 }
 
 int screenBitrate(int requested) {
-  if (requested <= 625'000) return 625'000;
-  if (requested <= 2'500'000) return 2'500'000;
-  if (requested <= 4'000'000) return 4'000'000;
-  return 8'000'000;
+  return std::clamp(requested, 625'000, 10'000'000);
 }
 
 std::string screenFailureCode(std::string_view message) {

@@ -300,7 +300,7 @@ export function screenShareCaptureOptions(
           contentHint: 'motion' as const,
         },
         publish: publish({
-          maxBitrate: fitScreenShareBitrateToLimits(8_000_000, limits),
+          maxBitrate: fitScreenShareBitrateToLimits(10_000_000, limits),
           maxFramerate: 60,
           priority: 'high',
         }),

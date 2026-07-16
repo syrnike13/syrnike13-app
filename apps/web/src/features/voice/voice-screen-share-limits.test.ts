@@ -28,12 +28,12 @@ describe('resolveScreenShareCaptureLimits', () => {
           new_user: {
             video_resolution: [1280, 720],
             screen_share_resolution: [1920, 1080],
-            screen_share_bitrate: 8_000_000,
+            screen_share_bitrate: 10_000_000,
           },
           default: {
             video_resolution: [1280, 720],
             screen_share_resolution: [1920, 1080],
-            screen_share_bitrate: 8_000_000,
+            screen_share_bitrate: 10_000_000,
           },
         },
       },
@@ -43,7 +43,7 @@ describe('resolveScreenShareCaptureLimits', () => {
       maxWidth: 1920,
       maxHeight: 1080,
       maxPixels: 1920 * 1080,
-      maxBitrate: 8_000_000,
+      maxBitrate: 10_000_000,
     })
   })
 
@@ -54,7 +54,7 @@ describe('resolveScreenShareCaptureLimits', () => {
       maxWidth: 1920,
       maxHeight: 1080,
       maxPixels: 1920 * 1080,
-      maxBitrate: 8_000_000,
+      maxBitrate: 10_000_000,
     })
   })
 

@@ -19,6 +19,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <new>
 #include <thread>
@@ -39,6 +40,22 @@ namespace livekit_ffi {
 using Microsoft::WRL::ComPtr;
 
 namespace {
+
+constexpr uint64_t kScreenShareBitrateHeadroomPercent = 30;
+
+UINT32 ScreenShareEncoderBitrate(uint64_t target_bitrate_bps,
+                                 uint64_t max_bitrate_bps) {
+  const uint64_t ceiling = max_bitrate_bps > 0
+                               ? std::min<uint64_t>(
+                                     max_bitrate_bps,
+                                     std::numeric_limits<UINT32>::max())
+                               : std::numeric_limits<UINT32>::max();
+  const uint64_t target =
+      std::clamp<uint64_t>(target_bitrate_bps, 1, ceiling);
+  const uint64_t boosted =
+      target + target * kScreenShareBitrateHeadroomPercent / 100;
+  return static_cast<UINT32>(std::min(boosted, ceiling));
+}
 
 void TraceEncoder(const char* operation,
                   HRESULT result = S_OK,
@@ -250,7 +267,12 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     width_ = codec->width;
     height_ = codec->height;
     fps_ = std::max<UINT32>(1, codec->maxFramerate);
-    bitrate_bps_ = std::max<UINT32>(1, codec->startBitrate) * 1000;
+    max_bitrate_bps_ = codec->maxBitrate > 0
+                           ? static_cast<uint64_t>(codec->maxBitrate) * 1000
+                           : std::numeric_limits<UINT32>::max();
+    bitrate_bps_ = ScreenShareEncoderBitrate(
+        static_cast<uint64_t>(codec->startBitrate) * 1000,
+        max_bitrate_bps_);
     if (!IsWindowsD3D11HardwareH264Supported())
       return WEBRTC_VIDEO_CODEC_ERROR;
     return WEBRTC_VIDEO_CODEC_OK;
@@ -397,8 +419,8 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
 
   void SetRates(const RateControlParameters& parameters) override {
     std::lock_guard lock(mutex_);
-    const UINT32 bitrate = static_cast<UINT32>(
-        std::max<uint64_t>(1, parameters.bitrate.get_sum_bps()));
+    const UINT32 bitrate = ScreenShareEncoderBitrate(
+        parameters.bitrate.get_sum_bps(), max_bitrate_bps_);
     const UINT32 fps =
         static_cast<UINT32>(std::max(1.0, parameters.framerate_fps));
     if (bitrate != bitrate_bps_) {
@@ -957,6 +979,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   std::thread worker_;
   webrtc::EncodedImageCallback* callback_ = nullptr;
   UINT32 width_ = 0, height_ = 0, fps_ = 30, bitrate_bps_ = 2'000'000;
+  uint64_t max_bitrate_bps_ = std::numeric_limits<UINT32>::max();
   bool mf_started_ = false;
   MFT_OUTPUT_STREAM_INFO output_info_{};
   ComPtr<ID3D11Device> device_;

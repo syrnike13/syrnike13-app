@@ -228,6 +228,7 @@ describe('screenShareCaptureOptions', () => {
     const options = screenShareCaptureOptions('high60')
 
     expect(options.publish.videoCodec).toBe('h264')
+    expect(options.publish.screenShareEncoding?.maxBitrate).toBe(10_000_000)
   })
 
   it('falls back to vp8 when automatic codec capabilities are unavailable', () => {

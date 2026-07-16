@@ -273,7 +273,7 @@ video_aspect_ratio = [0.3, 2.5]
 screen_share_resolution = [1920, 1080]
 
 # Maximum bitrate (bits per second) of screen share streams in voice calls
-screen_share_bitrate = 8_000_000
+screen_share_bitrate = 10_000_000
 
 [features.limits.new_user.file_upload_size_limit]
 # Maximum file size limits (in bytes)
@@ -319,7 +319,7 @@ video_aspect_ratio = [0.3, 2.5]
 screen_share_resolution = [1920, 1080]
 
 # Maximum bitrate (bits per second) of screen share streams in voice calls
-screen_share_bitrate = 8_000_000
+screen_share_bitrate = 10_000_000
 
 [features.limits.default.file_upload_size_limit]
 # Maximum file size limits (in bytes)
