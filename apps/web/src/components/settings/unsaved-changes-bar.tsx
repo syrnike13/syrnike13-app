@@ -15,11 +15,13 @@ const EXIT_MS = 220
 type UnsavedChangesBarProps = {
   saveLabel?: string
   className?: string
+  placement?: 'overlay' | 'flow'
 }
 
 export function UnsavedChangesBar({
   saveLabel = 'Сохранить',
   className,
+  placement = 'overlay',
 }: UnsavedChangesBarProps) {
   const ctx = useDraftContext()
   const controller = ctx?.controller
@@ -111,7 +113,10 @@ export function UnsavedChangesBar({
   return (
     <div
       className={cn(
-        'profile-unsaved-bar pointer-events-none absolute inset-x-6 bottom-4 z-20 flex justify-center',
+        'profile-unsaved-bar pointer-events-none z-20 flex justify-center',
+        placement === 'overlay'
+          ? 'absolute inset-x-6 bottom-4'
+          : 'relative mt-4 w-full',
         className,
       )}
       data-phase={phase}

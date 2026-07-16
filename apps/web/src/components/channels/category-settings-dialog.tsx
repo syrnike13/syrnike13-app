@@ -4,6 +4,11 @@ import { toast } from 'sonner'
 
 import { Button } from '#/components/ui/button'
 import {
+  DraftProvider,
+  useDraftRegistration,
+} from '#/components/settings/draft-controller-context'
+import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -25,6 +30,16 @@ type CategorySettingsDialogProps = {
 }
 
 export function CategorySettingsDialog({
+  ...props
+}: CategorySettingsDialogProps) {
+  return (
+    <DraftProvider>
+      <CategorySettingsDialogContent {...props} />
+    </DraftProvider>
+  )
+}
+
+function CategorySettingsDialogContent({
   serverId,
   category,
   open,
@@ -32,17 +47,20 @@ export function CategorySettingsDialog({
 }: CategorySettingsDialogProps) {
   const auth = useAuth()
   const [title, setTitle] = useState(category.title)
+  const [savedTitle, setSavedTitle] = useState(category.title)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmingDeletion, setConfirmingDeletion] = useState(false)
 
-  async function save() {
+  const isDirty = title.trim() !== savedTitle.trim()
+
+  async function save(): Promise<boolean> {
     const token = auth.session?.token
     const trimmed = title.trim()
-    if (!token || !trimmed) return
+    if (!token || !trimmed) return false
 
     const server = syncStore.getState().servers[serverId]
-    if (!server) return
+    if (!server) return false
 
     setSaving(true)
     try {
@@ -51,16 +69,35 @@ export function CategorySettingsDialog({
       )
       const updated = await editServer(token, serverId, { categories })
       syncStore.upsertServer(updated)
+      setTitle(trimmed)
+      setSavedTitle(trimmed)
       toast.success('Категория обновлена')
-      onOpenChange(false)
+      return true
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось сохранить',
       )
+      return false
     } finally {
       setSaving(false)
     }
   }
+
+  function resetDraft() {
+    setTitle(savedTitle)
+    return true
+  }
+
+  useDraftRegistration(
+    open && !confirmingDeletion
+      ? {
+          isDirty,
+          isSaving: saving,
+          save,
+          reset: resetDraft,
+        }
+      : null,
+  )
 
   async function removeCategory() {
     const token = auth.session?.token
@@ -94,6 +131,7 @@ export function CategorySettingsDialog({
       onOpenChange={(nextOpen) => {
         if (nextOpen) {
           setTitle(category.title)
+          setSavedTitle(category.title)
           setConfirmingDeletion(false)
         } else if (!deleting) {
           setConfirmingDeletion(false)
@@ -101,7 +139,7 @@ export function CategorySettingsDialog({
         onOpenChange(nextOpen)
       }}
     >
-      <DialogContent>
+      <DialogContent className="overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {confirmingDeletion
@@ -151,9 +189,6 @@ export function CategorySettingsDialog({
                   onChange={(event) => setTitle(event.target.value)}
                 />
               </div>
-              <Button type="submit" disabled={saving || !title.trim()}>
-                Сохранить
-              </Button>
             </form>
             <Button
               type="button"
@@ -163,6 +198,7 @@ export function CategorySettingsDialog({
             >
               Удалить категорию
             </Button>
+            <UnsavedChangesBar placement="flow" />
           </>
         )}
       </DialogContent>

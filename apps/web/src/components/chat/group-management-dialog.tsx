@@ -4,6 +4,11 @@ import type { Channel, User } from '@syrnike13/api-types'
 import { toast } from 'sonner'
 
 import { LogOutIcon, SettingsIcon, UserMinusIcon } from '#/components/icons'
+import {
+  DraftProvider,
+  useDraftRegistration,
+} from '#/components/settings/draft-controller-context'
+import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { UserAvatar } from '#/components/user/user-avatar'
 import { Button } from '#/components/ui/button'
 import {
@@ -39,6 +44,16 @@ type GroupManagementDialogProps = {
 }
 
 export function GroupManagementDialog({
+  ...props
+}: GroupManagementDialogProps) {
+  return (
+    <DraftProvider>
+      <GroupManagementDialogContent {...props} />
+    </DraftProvider>
+  )
+}
+
+function GroupManagementDialogContent({
   channel,
 }: GroupManagementDialogProps) {
   const auth = useAuth()
@@ -48,7 +63,11 @@ export function GroupManagementDialog({
   const [open, setOpen] = useState(false)
   const [members, setMembers] = useState<User[]>([])
   const [name, setName] = useState(channel.name)
+  const [savedName, setSavedName] = useState(channel.name)
   const [description, setDescription] = useState(channel.description ?? '')
+  const [savedDescription, setSavedDescription] = useState(
+    channel.description ?? '',
+  )
   const [iconFile, setIconFile] = useState<File | null>(null)
   const [removeIcon, setRemoveIcon] = useState(false)
   const [loadingMembers, setLoadingMembers] = useState(false)
@@ -62,7 +81,9 @@ export function GroupManagementDialog({
   useEffect(() => {
     if (!open) return
     setName(channel.name)
+    setSavedName(channel.name)
     setDescription(channel.description ?? '')
+    setSavedDescription(channel.description ?? '')
     setIconFile(null)
     setRemoveIcon(false)
   }, [channel.description, channel.icon, channel.name, open])
@@ -112,12 +133,18 @@ export function GroupManagementDialog({
     [currentUserId, memberIds, users],
   )
 
-  async function saveProfile() {
-    if (!token) return
+  const isProfileDirty =
+    name.trim() !== savedName.trim() ||
+    description.trim() !== savedDescription.trim() ||
+    iconFile !== null ||
+    (removeIcon && Boolean(channel.icon))
+
+  async function saveProfile(): Promise<boolean> {
+    if (!token) return false
     const trimmedName = name.trim()
     if (!trimmedName) {
       toast.error('Название группы не может быть пустым')
-      return
+      return false
     }
 
     setBusy(true)
@@ -138,16 +165,44 @@ export function GroupManagementDialog({
       }
 
       const updated = await editChannel(token, channel._id, data)
+      if (updated.channel_type !== 'Group') {
+        throw new Error('Сервер вернул некорректный тип канала')
+      }
       syncStore.upsertChannel(updated)
+      setName(updated.name)
+      setSavedName(updated.name)
+      setDescription(updated.description ?? '')
+      setSavedDescription(updated.description ?? '')
       setIconFile(null)
       setRemoveIcon(false)
       toast.success('Группа обновлена')
+      return true
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Не удалось сохранить')
+      return false
     } finally {
       setBusy(false)
     }
   }
+
+  function resetProfileDraft() {
+    setName(savedName)
+    setDescription(savedDescription)
+    setIconFile(null)
+    setRemoveIcon(false)
+    return true
+  }
+
+  useDraftRegistration(
+    open
+      ? {
+          isDirty: isProfileDirty,
+          isSaving: busy,
+          save: saveProfile,
+          reset: resetProfileDraft,
+        }
+      : null,
+  )
 
   async function addMember(user: User) {
     if (!token) return
@@ -283,7 +338,7 @@ export function GroupManagementDialog({
                     disabled={busy}
                     onClick={() => {
                       setIconFile(null)
-                      setRemoveIcon(true)
+                      setRemoveIcon(Boolean(channel.icon))
                     }}
                   >
                     Удалить иконку
@@ -312,9 +367,6 @@ export function GroupManagementDialog({
                 onChange={(event) => setDescription(event.target.value)}
               />
             </div>
-            <Button type="button" disabled={busy} onClick={() => void saveProfile()}>
-              Сохранить профиль
-            </Button>
           </section>
 
           <section className="space-y-3 border-t border-border pt-5">
@@ -397,6 +449,7 @@ export function GroupManagementDialog({
             </Button>
           </section>
         </div>
+        <UnsavedChangesBar placement="flow" />
       </DialogContent>
     </Dialog>
   )
