@@ -23,7 +23,6 @@ import { useSettingsModal } from '#/features/settings/settings-modal-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { isMicVisuallyMuted } from '#/features/voice/voice-mic-status'
-import { APP_LOGO_SRC } from '#/lib/brand'
 import { userStatusSubtitle } from '#/lib/presence'
 import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
 import { FLOATING_BAR_HEIGHT_CLASS } from '#/components/layout/shell-chrome'
@@ -295,11 +294,11 @@ export function UserPanel({
               className="relative isolate flex h-[104px] flex-col justify-between gap-2 overflow-hidden px-3 pb-3 pt-3"
             >
               <img
-                src={APP_LOGO_SRC}
+                src="/telegram-promo-cat.png"
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                className="pointer-events-none absolute -bottom-3 -left-4 size-20 rotate-6 object-contain [image-rendering:pixelated]"
+                className="pointer-events-none absolute -bottom-10 -left-8 size-30 rotate-6 object-contain [image-rendering:pixelated]"
               />
               <p className="relative z-10 max-w-[250px] text-sm font-semibold leading-5 text-foreground">
                 Спойлеры, анонсы и.. Сырники!
