@@ -12,6 +12,7 @@
 - For bugs, look for the architectural cause, not only the immediate failure.
 - If an architectural change seems necessary, explain the problem and ask for consent before changing architecture.
 - Prefer simple, maintainable, production-friendly solutions. Keep APIs small and behavior explicit.
+- For manual-save UI, do not render permanent inline save buttons. Register dirty state with the shared draft controller and show `UnsavedChangesBar` only when changes exist, with both save and reset actions.
 
 ## GitHub Workflow
 

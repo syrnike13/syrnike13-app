@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useNavigate } from '@tanstack/react-router'
-import { Trash2Icon } from '#/components/icons'
+import { PencilIcon, Trash2Icon } from '#/components/icons'
 import type {
   DataEditServer,
   Emoji,
@@ -16,6 +15,7 @@ import { ServerSettingsInvitesPanel } from '#/components/servers/server-settings
 import { ServerSettingsMembersPanel } from '#/components/servers/server-settings-members-panel'
 import { ServerSettingsRolesPanel } from '#/components/servers/server-settings-roles-panel'
 import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
+import { useDraftRegistration } from '#/components/settings/draft-controller-context'
 import { Button } from '#/components/ui/button'
 import {
   Dialog,
@@ -25,6 +25,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '#/components/ui/dropdown-menu'
 import { FxImage } from '#/components/ui/fx-image'
 import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
@@ -41,12 +48,10 @@ import { useAuth } from '#/features/auth/auth-context'
 import { uploadEmoji, uploadMediaFile } from '#/features/api/media-api'
 import {
   createServerEmoji,
-  deleteOrLeaveServer,
   deleteServerEmoji,
   editServer,
   fetchServerEmojis,
 } from '#/features/api/servers-api'
-import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
 import { syncStore, useSyncStore } from '#/features/sync/sync-store'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
@@ -136,6 +141,177 @@ function buildSystemMessageChannels(channelId: string): SystemMessageChannels {
   }
 }
 
+function ServerProfilePreview({
+  name,
+  description,
+  iconUrl,
+  bannerUrl,
+  serverInitial,
+  iconRemoved,
+  bannerRemoved,
+  saving,
+  onUploadIcon,
+  onRemoveIcon,
+  onRestoreIcon,
+  onUploadBanner,
+  onRemoveBanner,
+  onRestoreBanner,
+}: {
+  name: string
+  description: string
+  iconUrl: string | null
+  bannerUrl: string | null
+  serverInitial: string
+  iconRemoved: boolean
+  bannerRemoved: boolean
+  saving: boolean
+  onUploadIcon: () => void
+  onRemoveIcon: () => void
+  onRestoreIcon: () => void
+  onUploadBanner: () => void
+  onRemoveBanner: () => void
+  onRestoreBanner: () => void
+}) {
+  const previewName = name.trim() || 'Название сервера'
+  const previewDescription =
+    description.trim() || 'Описание сервера появится здесь.'
+
+  return (
+    <aside aria-label="Предпросмотр профиля сервера">
+      <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        Предпросмотр
+      </p>
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Открыть меню баннера сервера"
+              disabled={saving}
+              className="group/banner relative block h-28 w-full cursor-pointer overflow-hidden bg-linear-to-br from-primary/30 via-accent to-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default"
+            >
+              {bannerUrl ? (
+                <FxImage
+                  src={bannerUrl}
+                  alt="Предпросмотр баннера сервера"
+                  wrapperClassName="size-full"
+                  className="size-full"
+                />
+              ) : null}
+              <span
+                aria-hidden="true"
+                className="absolute inset-0 flex items-center justify-center gap-1.5 bg-background/55 text-xs font-medium text-foreground opacity-0 transition-opacity group-hover/banner:opacity-100 group-focus-visible/banner:opacity-100 group-data-[state=open]/banner:opacity-100 motion-reduce:transition-none"
+              >
+                <PencilIcon className="size-4" />
+                Изменить
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" side="bottom">
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                aria-label="Загрузить баннер"
+                onSelect={onUploadBanner}
+                disabled={saving}
+              >
+                Загрузить
+              </DropdownMenuItem>
+              {bannerRemoved ? (
+                <DropdownMenuItem
+                  aria-label="Вернуть баннер"
+                  onSelect={onRestoreBanner}
+                  disabled={saving}
+                >
+                  Вернуть
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  aria-label="Удалить баннер"
+                  variant="destructive"
+                  disabled={saving || !bannerUrl}
+                  onSelect={onRemoveBanner}
+                >
+                  <Trash2Icon />
+                  Удалить
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="relative px-4 pb-5 pt-11">
+          <div className="absolute -top-8 left-4 z-10">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Открыть меню иконки сервера"
+                  disabled={saving}
+                  className="group/icon relative flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-4 border-card bg-primary text-xl font-semibold text-primary-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+                >
+                  {iconUrl ? (
+                    <FxImage
+                      src={iconUrl}
+                      alt="Предпросмотр иконки сервера"
+                      wrapperClassName="size-full"
+                      className="size-full"
+                    />
+                  ) : (
+                    <span>{serverInitial}</span>
+                  )}
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-0 flex items-center justify-center bg-background/60 text-foreground opacity-0 transition-opacity group-hover/icon:opacity-100 group-focus-visible/icon:opacity-100 group-data-[state=open]/icon:opacity-100 motion-reduce:transition-none"
+                  >
+                    <PencilIcon className="size-4" />
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="right">
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    aria-label="Загрузить иконку"
+                    onSelect={onUploadIcon}
+                    disabled={saving}
+                  >
+                    Загрузить
+                  </DropdownMenuItem>
+                  {iconRemoved ? (
+                    <DropdownMenuItem
+                      aria-label="Вернуть иконку"
+                      onSelect={onRestoreIcon}
+                      disabled={saving}
+                    >
+                      Вернуть
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      aria-label="Удалить иконку"
+                      variant="destructive"
+                      disabled={saving || !iconUrl}
+                      onSelect={onRemoveIcon}
+                    >
+                      <Trash2Icon />
+                      Удалить
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <h3 className="truncate text-lg font-semibold text-card-foreground">
+            {previewName}
+          </h3>
+          <p className="mt-1 min-h-10 break-words text-sm leading-5 text-muted-foreground">
+            {previewDescription}
+          </p>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
 function ServerSettingsGeneralPanel({
   serverId,
   serverName,
@@ -144,20 +320,10 @@ function ServerSettingsGeneralPanel({
   serverName: string
 }) {
   const auth = useAuth()
-  const navigate = useNavigate()
-  const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
-  const systemMessageChannels = useSyncStore((s) =>
-    listServerChannels(s, serverId).filter(
-      (channel) => !isServerVoiceChannel(channel),
-    ),
-  )
   const [name, setName] = useState(serverName)
   const [description, setDescription] = useState(
     getServerDescription(server) ?? '',
-  )
-  const [systemMessagesChannelId, setSystemMessagesChannelId] = useState(() =>
-    systemMessageChannelValue(server?.system_messages),
   )
   const [iconFile, setIconFile] = useState<File | null>(null)
   const [bannerFile, setBannerFile] = useState<File | null>(null)
@@ -166,17 +332,12 @@ function ServerSettingsGeneralPanel({
   const [removeIcon, setRemoveIcon] = useState(false)
   const [removeBanner, setRemoveBanner] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingServer, setDeletingServer] = useState(false)
   const iconInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setName(serverName)
     setDescription(getServerDescription(server) ?? '')
-    setSystemMessagesChannelId(
-      systemMessageChannelValue(server?.system_messages),
-    )
     setIconFile(null)
     setBannerFile(null)
     setIconPreviewUrl(null)
@@ -221,31 +382,21 @@ function ServerSettingsGeneralPanel({
     if (bannerInputRef.current) bannerInputRef.current.value = ''
   }
 
-  async function saveSettings() {
+  async function saveSettings(): Promise<boolean> {
     const token = auth.session?.token
     const trimmedName = name.trim()
     const trimmedDescription = description.trim()
-    if (!token || !trimmedName) return
+    if (!token || !trimmedName) return false
 
     const currentDescription = getServerDescription(server) ?? ''
-    const currentSystemMessagesChannelId = systemMessageChannelValue(
-      server?.system_messages,
-    )
     const nameChanged = trimmedName !== serverName
     const descriptionChanged = trimmedDescription !== currentDescription
-    const systemMessagesChanged =
-      systemMessagesChannelId !== currentSystemMessagesChannelId
     const mediaChanged = Boolean(
       iconFile || bannerFile || removeIcon || removeBanner,
     )
 
-    if (
-      !nameChanged &&
-      !descriptionChanged &&
-      !systemMessagesChanged &&
-      !mediaChanged
-    ) {
-      return
+    if (!nameChanged && !descriptionChanged && !mediaChanged) {
+      return true
     }
 
     setSaving(true)
@@ -259,15 +410,6 @@ function ServerSettingsGeneralPanel({
           patch.description = trimmedDescription
         } else {
           remove.push('Description')
-        }
-      }
-      if (systemMessagesChanged) {
-        if (systemMessagesChannelId === SYSTEM_MESSAGES_NONE) {
-          remove.push('SystemMessages')
-        } else if (systemMessagesChannelId !== SYSTEM_MESSAGES_MIXED) {
-          patch.system_messages = buildSystemMessageChannels(
-            systemMessagesChannelId,
-          )
         }
       }
       if (iconFile) {
@@ -288,40 +430,18 @@ function ServerSettingsGeneralPanel({
       setBannerFile(null)
       setIconPreviewUrl(null)
       setBannerPreviewUrl(null)
-      setSystemMessagesChannelId(
-        systemMessageChannelValue(updated.system_messages),
-      )
       setRemoveIcon(false)
       setRemoveBanner(false)
       if (iconInputRef.current) iconInputRef.current.value = ''
       if (bannerInputRef.current) bannerInputRef.current.value = ''
+      return true
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Не удалось сохранить',
       )
+      return false
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function deleteOwnedServer() {
-    const token = auth.session?.token
-    if (!token || !server || server.owner !== auth.user?._id) return
-
-    setDeletingServer(true)
-    try {
-      await deleteOrLeaveServer(token, serverId)
-      syncStore.removeServer(serverId)
-      syncStore.setSelectedServerId(null)
-      setDeleteDialogOpen(false)
-      toast.success('Сервер удалён')
-      await navigate({ to: prefix, search: { tab: 'online' } })
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Не удалось удалить сервер',
-      )
-    } finally {
-      setDeletingServer(false)
     }
   }
 
@@ -333,6 +453,31 @@ function ServerSettingsGeneralPanel({
     : bannerPreviewUrl ??
       serverBannerUrl(server?.banner ?? null, { animated: true })
   const serverInitial = name.trim().slice(0, 1).toUpperCase() || 'S'
+  const isDirty =
+    name.trim() !== serverName ||
+    description.trim() !== (getServerDescription(server) ?? '') ||
+    Boolean(iconFile || bannerFile || removeIcon || removeBanner)
+
+  function resetDraft() {
+    setName(serverName)
+    setDescription(getServerDescription(server) ?? '')
+    setIconFile(null)
+    setBannerFile(null)
+    setIconPreviewUrl(null)
+    setBannerPreviewUrl(null)
+    setRemoveIcon(false)
+    setRemoveBanner(false)
+    if (iconInputRef.current) iconInputRef.current.value = ''
+    if (bannerInputRef.current) bannerInputRef.current.value = ''
+    return true
+  }
+
+  useDraftRegistration({
+    isDirty,
+    isSaving: saving,
+    save: saveSettings,
+    reset: resetDraft,
+  })
 
   return (
     <form
@@ -341,170 +486,179 @@ function ServerSettingsGeneralPanel({
         void saveSettings()
       }}
     >
-      <SettingsField label="Название">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="server-rename" className="sr-only">
-            Название
-          </Label>
-          <Input
-            id="server-rename"
-            value={name}
-            maxLength={32}
-            onChange={(event) => setName(event.target.value)}
-          />
+      <section className="pb-6">
+        <div>
+          <h2 className="text-xl font-semibold">Профиль сервера</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
+            Настройте, как сервер выглядит в списке, приглашениях и профиле.
+          </p>
         </div>
-      </SettingsField>
 
-      <SettingsField
-        label="Иконка сервера"
-        description="Квадратная картинка для списка серверов и заголовков."
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted text-2xl font-semibold text-muted-foreground">
-            {iconUrl ? (
-              <FxImage
-                src={iconUrl}
-                alt="Иконка сервера"
-                wrapperClassName="size-full"
-                className="size-full"
+        <div className="mt-6 grid gap-8 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+          <div className="min-w-0 space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="server-rename">Название</Label>
+              <Input
+                id="server-rename"
+                value={name}
+                maxLength={32}
+                onChange={(event) => setName(event.target.value)}
               />
-            ) : (
-              <span>{serverInitial}</span>
-            )}
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <Label htmlFor="server-icon">Иконка сервера</Label>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <Label htmlFor="server-description">Описание</Label>
+                <span className="text-xs text-muted-foreground">
+                  {description.length}/1024
+                </span>
+              </div>
+              <Textarea
+                id="server-description"
+                value={description}
+                rows={5}
+                maxLength={1024}
+                placeholder="Расскажите, о чём этот сервер"
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </div>
+
             <Input
               ref={iconInputRef}
               id="server-icon"
               type="file"
               accept="image/*"
               disabled={saving}
+              aria-label="Иконка сервера"
+              className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0]
                 if (file) selectIconFile(file)
               }}
             />
-            <p className="text-sm text-muted-foreground">
-              {iconFile
-                ? `Выбран файл: ${iconFile.name}`
-                : removeIcon
-                  ? 'Иконка будет удалена после сохранения.'
-                  : 'PNG, JPG или GIF.'}
-            </p>
-            {iconFile || (server?.icon && !removeIcon) ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-fit text-destructive hover:text-destructive"
-                disabled={saving}
-                onClick={clearIconDraft}
-              >
-                <Trash2Icon className="size-4" />
-                Удалить иконку
-              </Button>
-            ) : null}
-            {removeIcon ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                disabled={saving}
-                onClick={() => setRemoveIcon(false)}
-              >
-                Вернуть иконку
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </SettingsField>
-
-      <SettingsField
-        label="Баннер сервера"
-        description="Широкая обложка для профиля сервера."
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex h-32 w-full max-w-xl items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-sm font-medium text-muted-foreground">
-            {bannerUrl ? (
-              <FxImage
-                src={bannerUrl}
-                alt="Баннер сервера"
-                wrapperClassName="h-full w-full"
-                className="h-full w-full"
-              />
-            ) : (
-              <span>Баннер сервера</span>
-            )}
-          </div>
-          <div className="flex max-w-xl flex-col gap-2">
-            <Label htmlFor="server-banner">Баннер сервера</Label>
             <Input
               ref={bannerInputRef}
               id="server-banner"
               type="file"
               accept="image/*"
               disabled={saving}
+              aria-label="Баннер сервера"
+              className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0]
                 if (file) selectBannerFile(file)
               }}
             />
-            <p className="text-sm text-muted-foreground">
-              {bannerFile
-                ? `Выбран файл: ${bannerFile.name}`
-                : removeBanner
-                  ? 'Баннер будет удалён после сохранения.'
-                  : 'Лучше смотрятся широкие изображения.'}
-            </p>
-            {bannerFile || (server?.banner && !removeBanner) ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-fit text-destructive hover:text-destructive"
-                disabled={saving}
-                onClick={clearBannerDraft}
-              >
-                <Trash2Icon className="size-4" />
-                Удалить баннер
-              </Button>
-            ) : null}
-            {removeBanner ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-fit"
-                disabled={saving}
-                onClick={() => setRemoveBanner(false)}
-              >
-                Вернуть баннер
-              </Button>
-            ) : null}
           </div>
-        </div>
-      </SettingsField>
 
-      <SettingsField
-        label="Описание"
-        description="Расскажите участникам, о чём этот сервер."
-      >
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="server-description" className="sr-only">
-            Описание
-          </Label>
-          <Textarea
-            id="server-description"
-            value={description}
-            rows={4}
-            maxLength={1024}
-            placeholder="О сервере"
-            onChange={(event) => setDescription(event.target.value)}
+          <ServerProfilePreview
+            name={name}
+            description={description}
+            iconUrl={iconUrl}
+            bannerUrl={bannerUrl}
+            serverInitial={serverInitial}
+            iconRemoved={removeIcon}
+            bannerRemoved={removeBanner}
+            saving={saving}
+            onUploadIcon={() => iconInputRef.current?.click()}
+            onRemoveIcon={clearIconDraft}
+            onRestoreIcon={() => setRemoveIcon(false)}
+            onUploadBanner={() => bannerInputRef.current?.click()}
+            onRemoveBanner={clearBannerDraft}
+            onRestoreBanner={() => setRemoveBanner(false)}
           />
         </div>
-      </SettingsField>
+      </section>
+
+    </form>
+  )
+}
+
+function ServerSettingsEngagementPanel({ serverId }: { serverId: string }) {
+  const auth = useAuth()
+  const server = useSyncStore((s) => s.servers[serverId])
+  const systemMessageChannels = useSyncStore((s) =>
+    listServerChannels(s, serverId).filter(
+      (channel) => !isServerVoiceChannel(channel),
+    ),
+  )
+  const [systemMessagesChannelId, setSystemMessagesChannelId] = useState(() =>
+    systemMessageChannelValue(server?.system_messages),
+  )
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setSystemMessagesChannelId(
+      systemMessageChannelValue(server?.system_messages),
+    )
+  }, [server?.system_messages])
+
+  async function saveSettings(): Promise<boolean> {
+    const token = auth.session?.token
+    if (!token || !server) return false
+
+    const currentValue = systemMessageChannelValue(server.system_messages)
+    if (systemMessagesChannelId === currentValue) return true
+
+    const patch: DataEditServer = {}
+    if (systemMessagesChannelId === SYSTEM_MESSAGES_NONE) {
+      patch.remove = ['SystemMessages']
+    } else if (systemMessagesChannelId !== SYSTEM_MESSAGES_MIXED) {
+      patch.system_messages = buildSystemMessageChannels(
+        systemMessagesChannelId,
+      )
+    }
+
+    setSaving(true)
+    try {
+      const updated = await editServer(token, serverId, patch)
+      syncStore.upsertServer(updated)
+      setSystemMessagesChannelId(
+        systemMessageChannelValue(updated.system_messages),
+      )
+      return true
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось сохранить',
+      )
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const isDirty =
+    systemMessagesChannelId !==
+    systemMessageChannelValue(server?.system_messages)
+
+  function resetDraft() {
+    setSystemMessagesChannelId(
+      systemMessageChannelValue(server?.system_messages),
+    )
+    return true
+  }
+
+  useDraftRegistration({
+    isDirty,
+    isSaving: saving,
+    save: saveSettings,
+    reset: resetDraft,
+  })
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        void saveSettings()
+      }}
+    >
+      <div>
+        <h2 className="text-xl font-semibold">Вовлеченность</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-5 text-muted-foreground">
+          Настройте события, которые помогают участникам следить за жизнью
+          сервера.
+        </p>
+      </div>
 
       <SettingsField
         label="Системные сообщения"
@@ -542,73 +696,6 @@ function ServerSettingsGeneralPanel({
         </div>
       </SettingsField>
 
-      <div className="pt-2">
-        <Button type="submit" disabled={saving || !name.trim()}>
-          Сохранить
-        </Button>
-      </div>
-
-      {server?.owner === auth.user?._id ? (
-        <SettingsField
-          label="Опасная зона"
-          description="Удаление сервера невозможно отменить."
-          className="mt-6"
-        >
-          <div className="flex flex-col gap-4 rounded-md border border-destructive/30 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="font-medium text-destructive">Удалить сервер</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Сервер, каналы и участники будут удалены для всех.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={saving || deletingServer}
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <Trash2Icon className="size-4" />
-              Удалить сервер
-            </Button>
-          </div>
-        </SettingsField>
-      ) : null}
-      <Dialog
-        open={deleteDialogOpen}
-        onOpenChange={(open) => {
-          if (!open && !deletingServer) {
-            setDeleteDialogOpen(false)
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Удалить сервер «{server?.name}»?</DialogTitle>
-            <DialogDescription>
-              Сервер, каналы и участники будут удалены для всех. Это действие
-              невозможно отменить.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={deletingServer}
-              onClick={() => setDeleteDialogOpen(false)}
-            >
-              Отмена
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={deletingServer}
-              onClick={() => void deleteOwnedServer()}
-            >
-              Удалить сервер
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </form>
   )
 }
@@ -832,6 +919,8 @@ export function ServerSettingsPanelContent({
           serverName={serverName}
         />
       )
+    case 'engagement':
+      return <ServerSettingsEngagementPanel serverId={serverId} />
     case 'emoji':
       return <ServerSettingsEmojiPanel serverId={serverId} />
     case 'roles':

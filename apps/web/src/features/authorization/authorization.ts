@@ -26,6 +26,7 @@ export type ServerMenuPermissions = {
 
 export type ServerSettingsAccess = {
   overview: boolean
+  engagement: boolean
   emoji: boolean
   roles: boolean
   members: boolean
@@ -355,6 +356,7 @@ export function getServerSettingsAccess(
   const has = (permission: number) => serverHas(server, permission)
   return {
     overview: has(ChannelPermission.ManageServer),
+    engagement: has(ChannelPermission.ManageServer),
     emoji: has(ChannelPermission.ManageCustomisation),
     roles:
       has(ChannelPermission.ManageRole) ||

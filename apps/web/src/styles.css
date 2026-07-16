@@ -335,128 +335,61 @@ html {
   animation: gateway-logo-wobble 1.6s ease-in-out infinite;
 }
 
-@keyframes profile-unsaved-bar-in {
-  from {
-    opacity: 0;
-    transform: translateY(calc(100% + 1.25rem));
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes profile-unsaved-bar-out-save {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(calc(100% + 1.25rem));
-  }
-}
-
-@keyframes profile-unsaved-bar-out-reset {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  40% {
-    opacity: 0.85;
-    transform: translateY(0.35rem) scale(0.98);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(calc(100% + 0.75rem)) scale(0.94);
-  }
-}
-
-@keyframes profile-unsaved-bar-ack-reset {
-  from {
-    opacity: 0.6;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes profile-unsaved-check-pop {
-  0% {
-    opacity: 0;
-    transform: scale(0.35);
-  }
-  65% {
-    opacity: 1;
-    transform: scale(1.12);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes profile-unsaved-undo-pop {
-  0% {
-    opacity: 0;
-    transform: rotate(-70deg) scale(0.35);
-  }
-  60% {
-    opacity: 1;
-    transform: rotate(12deg) scale(1.1);
-  }
-  100% {
-    opacity: 1;
-    transform: rotate(0deg) scale(1);
-  }
-}
-
-@keyframes profile-unsaved-reset-btn-flash {
-  0% {
-    transform: scale(1);
-  }
-  45% {
-    transform: scale(0.94);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.profile-unsaved-bar-enter {
-  animation: profile-unsaved-bar-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.profile-unsaved-bar-exit-save {
-  animation: profile-unsaved-bar-out-save 0.38s cubic-bezier(0.4, 0, 0.2, 1) both;
-}
-
-.profile-unsaved-bar-exit-reset {
-  animation: profile-unsaved-bar-out-reset 0.32s cubic-bezier(0.45, 0, 0.75, 0.2) both;
-}
-
-.profile-unsaved-bar-ack-reset {
-  animation: profile-unsaved-bar-ack-reset 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.profile-unsaved-check {
-  animation: profile-unsaved-check-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.profile-unsaved-undo {
-  animation: profile-unsaved-undo-pop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.profile-unsaved-reset-panel {
+.profile-unsaved-bar {
+  opacity: 1;
+  transform: translateY(0);
   transition:
-    padding 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-    gap 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    transform 280ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform, opacity;
 }
 
-.profile-unsaved-reset-btn:active:not(:disabled) {
-  animation: profile-unsaved-reset-btn-flash 0.22s ease-out;
+.profile-unsaved-bar[data-phase='exiting'] {
+  opacity: 0;
+  transform: translateY(calc(100% + 2rem));
+  transition-duration: 220ms, 160ms;
+}
+
+@starting-style {
+  .profile-unsaved-bar {
+    opacity: 0;
+    transform: translateY(calc(100% + 2rem));
+  }
+}
+
+@keyframes profile-unsaved-feedback-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.profile-unsaved-feedback {
+  animation: profile-unsaved-feedback-in 180ms cubic-bezier(0.23, 1, 0.32, 1)
+    both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-unsaved-bar,
+  .profile-unsaved-bar[data-phase='exiting'] {
+    transform: none;
+    transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .profile-unsaved-bar {
+      opacity: 0;
+      transform: none;
+    }
+  }
+
+  .profile-unsaved-feedback {
+    animation-name: none;
+  }
 }
 
 .shell-title-bar-drag {

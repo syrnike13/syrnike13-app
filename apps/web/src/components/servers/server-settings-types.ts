@@ -1,5 +1,6 @@
 export type ServerSettingsTab =
   | 'overview'
+  | 'engagement'
   | 'emoji'
   | 'roles'
   | 'members'
@@ -9,6 +10,7 @@ export type ServerSettingsTab =
 
 export const SERVER_SETTINGS_TABS: ServerSettingsTab[] = [
   'overview',
+  'engagement',
   'emoji',
   'roles',
   'members',
@@ -32,6 +34,7 @@ export function parseServerSettingsTab(
 
 export const SERVER_SETTINGS_TAB_LABELS: Record<ServerSettingsTab, string> = {
   overview: 'Профиль сервера',
+  engagement: 'Вовлеченность',
   emoji: 'Emoji',
   roles: 'Роли',
   members: 'Участники',

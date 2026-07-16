@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { CheckIcon, Loader2Icon, Undo2Icon } from '#/components/icons'
 
 import { useDraftContext } from '#/components/settings/draft-controller-context'
+import { Button } from '#/components/ui/button'
 import { cn } from '#/lib/utils'
 
 type ExitKind = 'save' | 'reset'
 type BarPhase = 'hidden' | 'shown' | 'saving' | 'ack' | 'exiting'
 
-const SAVE_ACK_MS = 700
-const RESET_ACK_MS = 520
-const SAVE_EXIT_MS = 380
-const RESET_EXIT_MS = 320
+const SAVE_ACK_MS = 850
+const RESET_ACK_MS = 720
+const EXIT_MS = 220
 
 type UnsavedChangesBarProps = {
   saveLabel?: string
@@ -49,10 +49,18 @@ export function UnsavedChangesBar({
       return
     }
 
+    if (isDirty && phase === 'exiting') {
+      clearTimers()
+      setPhase('shown')
+      setExitKind(null)
+      return
+    }
+
     if (!isDirty && phase === 'shown') {
       clearTimers()
-      setPhase('hidden')
+      setPhase('exiting')
       setExitKind(null)
+      schedule(() => setPhase('hidden'), EXIT_MS)
     }
   }, [isDirty, phase])
 
@@ -65,12 +73,11 @@ export function UnsavedChangesBar({
     setExitKind(kind)
     setPhase('ack')
     const ackMs = kind === 'save' ? SAVE_ACK_MS : RESET_ACK_MS
-    const exitMs = kind === 'save' ? SAVE_EXIT_MS : RESET_EXIT_MS
     schedule(() => setPhase('exiting'), ackMs)
     schedule(() => {
       setPhase('hidden')
       setExitKind(null)
-    }, ackMs + exitMs)
+    }, ackMs + EXIT_MS)
   }
 
   async function handleSave() {
@@ -98,67 +105,60 @@ export function UnsavedChangesBar({
   }
 
   const saving = phase === 'saving'
-  const showSaveAck = phase === 'ack' && exitKind === 'save'
-  const showResetAck = phase === 'ack' && exitKind === 'reset'
-  const exiting = phase === 'exiting'
-
+  const showingFeedback = phase === 'ack' || phase === 'exiting'
+  const showSaveAck = showingFeedback && exitKind === 'save'
+  const showResetAck = showingFeedback && exitKind === 'reset'
   return (
     <div
       className={cn(
-        'pointer-events-none absolute inset-x-6 bottom-4 z-20 flex justify-center',
-        phase === 'shown' || phase === 'saving'
-          ? 'profile-unsaved-bar-enter'
-          : exiting && exitKind === 'reset'
-            ? 'profile-unsaved-bar-exit-reset'
-            : exiting
-              ? 'profile-unsaved-bar-exit-save'
-              : showResetAck
-                ? 'profile-unsaved-bar-ack-reset'
-                : null,
+        'profile-unsaved-bar pointer-events-none absolute inset-x-6 bottom-4 z-20 flex justify-center',
         className,
       )}
+      data-phase={phase}
       role="status"
       aria-live="polite"
     >
       <div
         className={cn(
-          'gradient-surface-raised pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3 text-foreground shadow-md',
+          'gradient-surface-solid pointer-events-auto flex w-full max-w-none items-center justify-between gap-3 rounded-lg border border-border/80 bg-popover px-4 py-3 text-popover-foreground shadow-lg',
           (showSaveAck || showResetAck) && 'justify-center',
-          showResetAck && 'profile-unsaved-reset-panel',
         )}
       >
         {showSaveAck ? (
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <span className="profile-unsaved-check flex size-6 items-center justify-center rounded-full bg-chart-3/20">
+          <div className="profile-unsaved-feedback flex items-center gap-2 text-sm font-medium">
+            <span className="flex size-6 items-center justify-center rounded-full bg-chart-3/15">
               <CheckIcon className="size-4 text-chart-3" />
             </span>
             Изменения сохранены
           </div>
         ) : showResetAck ? (
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground/90">
-            <span className="profile-unsaved-undo flex size-6 items-center justify-center rounded-full bg-primary/15">
-              <Undo2Icon className="size-4 text-primary" />
+          <div className="profile-unsaved-feedback flex items-center gap-2 text-sm font-medium">
+            <span className="flex size-6 items-center justify-center rounded-full bg-accent">
+              <Undo2Icon className="size-4 text-accent-foreground" />
             </span>
             Изменения отменены
           </div>
         ) : (
           <>
-            <p className="min-w-0 flex-1 text-sm leading-snug text-foreground/90">
+            <p className="min-w-0 flex-1 text-sm font-medium leading-snug">
               Есть несохранённые изменения
             </p>
             <div className="flex shrink-0 items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 disabled={saving}
-                className="profile-unsaved-reset-btn rounded px-2 py-1 text-sm font-medium text-primary transition-opacity hover:underline disabled:opacity-50"
+                className="text-muted-foreground transition-colors hover:text-foreground"
                 onClick={handleReset}
               >
                 Сбросить
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                size="sm"
                 disabled={saving}
-                className="inline-flex min-w-[7.5rem] items-center justify-center gap-1.5 rounded bg-chart-3 px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-chart-3/90 disabled:opacity-70"
+                className="min-w-[7.5rem] transition-colors"
                 onClick={() => void handleSave()}
               >
                 {saving ? (
@@ -169,7 +169,7 @@ export function UnsavedChangesBar({
                 ) : (
                   saveLabel
                 )}
-              </button>
+              </Button>
             </div>
           </>
         )}

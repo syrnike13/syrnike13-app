@@ -1,15 +1,18 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   BanIcon,
+  BellIcon,
   LayoutTemplateIcon,
   LinkIcon,
   ShieldFillIcon,
   ShieldIcon,
   SmileFillIcon,
+  Trash2Icon,
   UsersFillIcon,
   XIcon,
 } from '#/components/icons'
-import { useCallback, useEffect, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
 import {
@@ -18,7 +21,16 @@ import {
   type ServerSettingsTab,
 } from '#/components/servers/server-settings-types'
 import { Button } from '#/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
 import { ScrollArea } from '#/components/ui/scroll-area'
+import { deleteOrLeaveServer } from '#/features/api/servers-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { listServerChannels } from '#/features/sync/selectors'
@@ -101,6 +113,8 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
   const navigate = useNavigate()
   const prefix = useAppRoutePrefix()
   const server = useSyncStore((s) => s.servers[serverId])
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingServer, setDeletingServer] = useState(false)
   const member = useSyncStore((s) => s.members[`${serverId}:${auth.user?._id}`])
   const channels = useSyncStore((s) =>
     listServerChannels(s, serverId, auth.user?._id),
@@ -133,6 +147,27 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
     }
     void navigate({ to: prefix, search: { tab: 'online' } })
   }, [channels, navigate, prefix])
+
+  async function deleteOwnedServer() {
+    const token = auth.session?.token
+    if (!token || !server || server.owner !== auth.user?._id) return
+
+    setDeletingServer(true)
+    try {
+      await deleteOrLeaveServer(token, serverId)
+      syncStore.removeServer(serverId)
+      syncStore.setSelectedServerId(null)
+      setDeleteDialogOpen(false)
+      toast.success('Сервер удалён')
+      await navigate({ to: prefix, search: { tab: 'online' } })
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Не удалось удалить сервер',
+      )
+    } finally {
+      setDeletingServer(false)
+    }
+  }
 
   useEffect(() => {
     if (!server) return
@@ -222,6 +257,15 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                     label={SERVER_SETTINGS_TAB_LABELS.overview}
                   />
                 ) : null}
+                {canViewTab('engagement') ? (
+                  <SettingsNavLink
+                    serverId={serverId}
+                    tab="engagement"
+                    activeTab={tab}
+                    icon={<BellIcon className="size-4 shrink-0" />}
+                    label={SERVER_SETTINGS_TAB_LABELS.engagement}
+                  />
+                ) : null}
               </NavSection>
 
               {canViewTab('emoji') ? (
@@ -290,6 +334,21 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                   ) : null}
                 </NavSection>
               ) : null}
+
+              {server.owner === auth.user?._id ? (
+                <div className="border-t border-border/60 pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={deletingServer}
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2Icon className="size-4 shrink-0" />
+                    Удалить сервер
+                  </Button>
+                </div>
+              ) : null}
             </nav>
           </ScrollArea>
         </div>
@@ -304,7 +363,6 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
                   <ServerSettingsPanelContent serverId={serverId} tab={tab} />
                 </div>
               </div>
-              <UnsavedChangesBar saveLabel="Сохранить" />
             </div>
           ) : (
             <ScrollArea className="min-h-0 flex-1">
@@ -313,6 +371,7 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
               </div>
             </ScrollArea>
           )}
+          <UnsavedChangesBar saveLabel="Сохранить" />
         </DraftProvider>
       </div>
 
@@ -333,6 +392,43 @@ export function ServerSettingsPage({ serverId, tab }: ServerSettingsPageProps) {
           esc
         </span>
       </div>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deletingServer) {
+            setDeleteDialogOpen(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Удалить сервер «{server.name}»?</DialogTitle>
+            <DialogDescription>
+              Сервер, каналы и участники будут удалены для всех. Это действие
+              невозможно отменить.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deletingServer}
+              onClick={() => setDeleteDialogOpen(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deletingServer}
+              onClick={() => void deleteOwnedServer()}
+            >
+              Удалить сервер
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
