@@ -17,6 +17,16 @@ constexpr std::chrono::milliseconds remoteAudioRenderBufferDuration() noexcept {
   return std::chrono::milliseconds(50);
 }
 
+constexpr std::uint16_t remoteAudioRenderChannels() noexcept { return 2; }
+
+constexpr std::chrono::milliseconds remoteAudioPlayoutStartDuration() noexcept {
+  return std::chrono::milliseconds(20);
+}
+
+constexpr std::chrono::milliseconds remoteAudioMaxQueuedDuration() noexcept {
+  return std::chrono::milliseconds(200);
+}
+
 struct RemoteAudioSettings {
   std::uint64_t revision = 0;
   std::unordered_map<std::string, float> user_volumes;
@@ -31,6 +41,7 @@ float resolveRemoteAudioGain(
   std::string_view participant_identity,
   bool stream_source
 );
+float remoteAudioLimiterTargetGain(float peak) noexcept;
 
 // Owns all receive-side AudioStreams and the single WASAPI mix renderer.
 // Every operation is synchronous with respect to ownership: after removeTrack

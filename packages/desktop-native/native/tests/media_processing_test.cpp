@@ -14,6 +14,7 @@
 #include "media/remote_audio_output.hpp"
 #include "media/remote_video_bridge.hpp"
 #include "media/runtime_config.hpp"
+#include "media/screen_audio_capture.hpp"
 #include "media/voice_gate.hpp"
 
 namespace {
@@ -165,6 +166,34 @@ int main() try {
     syrnike::desktop_native::media::remoteAudioRenderBufferDuration() ==
       std::chrono::milliseconds(50),
     "remote audio renderer no longer requests its low-latency shared buffer"
+  );
+  require(
+    syrnike::desktop_native::media::remoteAudioRenderChannels() == 2,
+    "remote audio renderer no longer preserves stereo"
+  );
+  require(
+    syrnike::desktop_native::media::remoteAudioPlayoutStartDuration() ==
+      std::chrono::milliseconds(20),
+    "remote audio playout lost its underrun protection"
+  );
+  require(
+    syrnike::desktop_native::media::remoteAudioMaxQueuedDuration() ==
+      std::chrono::milliseconds(200),
+    "remote audio queue is no longer latency bounded"
+  );
+  require(
+    syrnike::voice::kScreenAudioFramesPerPacket == 480,
+    "screen audio is no longer packetized into LiveKit 10 ms frames"
+  );
+  require(
+    syrnike::desktop_native::media::remoteAudioLimiterTargetGain(0.9F) == 1.0F,
+    "remote audio limiter changes signals below its ceiling"
+  );
+  require(
+    std::abs(
+      syrnike::desktop_native::media::remoteAudioLimiterTargetGain(1.96F) - 0.5F
+    ) < 0.001F,
+    "remote audio limiter does not prevent digital clipping"
   );
   const auto encoded_identity =
     "voice:v1|windows_native|client-a|epoch-a|voice-op-a|user-a";
