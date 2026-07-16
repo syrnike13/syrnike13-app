@@ -57,12 +57,21 @@ export function rememberDesktopScreenShareBroadcastSource(
   const surface: ScreenShareSurface =
     source.type === 'screen' ? 'monitor' : 'window'
   desktopScreenShareSource = {
-    label: friendlyScreenShareLabel(source.name, surface),
+    label: desktopScreenShareSourceLabel(source),
     surface,
     ...(source.appIconDataUrl
       ? { appIconDataUrl: source.appIconDataUrl }
       : undefined),
   }
+}
+
+export function desktopScreenShareSourceLabel(
+  source: Pick<DesktopDisplayMediaSource, 'name' | 'type'>,
+) {
+  return friendlyScreenShareLabel(
+    source.name,
+    source.type === 'screen' ? 'monitor' : 'window',
+  )
 }
 
 function friendlyScreenShareLabel(
