@@ -12,6 +12,7 @@ export type ScreenShareSurface = 'monitor' | 'window' | 'browser'
 export type ScreenShareBroadcastSource = {
   label: string
   surface: ScreenShareSurface
+  appIconDataUrl?: string
 }
 
 type DisplaySurfaceSettings = MediaTrackSettings & {
@@ -32,7 +33,7 @@ export function parseScreenShareSurface(
 export function screenShareSurfaceFallbackLabel(surface: ScreenShareSurface) {
   switch (surface) {
     case 'monitor':
-      return 'Весь экран'
+      return 'Экран'
     case 'browser':
       return 'Вкладка браузера'
     case 'window':
@@ -45,19 +46,49 @@ export function readScreenShareBroadcastSource(
 ): ScreenShareBroadcastSource {
   const settings = track?.getSettings?.() as DisplaySurfaceSettings | undefined
   const surface = parseScreenShareSurface(settings?.displaySurface)
-  const label = track?.label?.trim() || screenShareSurfaceFallbackLabel(surface)
+  const label = friendlyScreenShareLabel(track?.label, surface)
   return { label, surface }
 }
 
 export function rememberDesktopScreenShareBroadcastSource(
-  source: Pick<DesktopDisplayMediaSource, 'name' | 'type'>,
+  source: Pick<DesktopDisplayMediaSource, 'name' | 'type'> &
+    Partial<Pick<DesktopDisplayMediaSource, 'appIconDataUrl'>>,
 ) {
   const surface: ScreenShareSurface =
     source.type === 'screen' ? 'monitor' : 'window'
   desktopScreenShareSource = {
-    label: source.name.trim() || screenShareSurfaceFallbackLabel(surface),
+    label: friendlyScreenShareLabel(source.name, surface),
     surface,
+    ...(source.appIconDataUrl
+      ? { appIconDataUrl: source.appIconDataUrl }
+      : undefined),
   }
+}
+
+function friendlyScreenShareLabel(
+  value: string | undefined,
+  surface: ScreenShareSurface,
+) {
+  const label = value?.trim()
+  if (!label) return screenShareSurfaceFallbackLabel(surface)
+
+  const internalScreen = /^screen:(\d+)(?::\d+)*$/i.exec(label)
+  if (internalScreen) {
+    return `Экран ${Number(internalScreen[1]) + 1}`
+  }
+
+  const numberedScreen = /^(?:screen|экран)\s+(\d+)(?:\s+\([^)]*\))?$/i.exec(
+    label,
+  )
+  if (numberedScreen) {
+    return `Экран ${numberedScreen[1]}`
+  }
+
+  if (/^(?:window|web-contents):\d+(?::\d+)*$/i.test(label)) {
+    return 'Окно'
+  }
+
+  return label
 }
 
 export function readDesktopScreenShareBroadcastSource() {
