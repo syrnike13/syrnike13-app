@@ -235,7 +235,7 @@ export function UserPanel({
         <div
           data-telegram-promo-hover=""
           className={cn(
-            'absolute inset-x-0 bottom-14 z-20 grid overflow-hidden rounded-t-[10px] border-x border-t border-shell-divider',
+            'absolute inset-x-0 bottom-[calc(100%-3.25rem)] z-20 grid overflow-hidden rounded-t-[10px] border-x border-t border-shell-divider',
             'telegram-promo-surface bg-secondary bg-linear-to-r from-sidebar-ring/25 via-accent/60 to-sidebar-ring/15 text-foreground',
             'transition-[grid-template-rows] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]',
             telegramPromoOpen
