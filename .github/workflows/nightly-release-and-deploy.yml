@@ -382,10 +382,21 @@ jobs:
       - desktop
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - name: Download nightly Windows desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          path: desktop-artifacts
-          pattern: desktop-nightly-*
+          name: desktop-nightly-windows
+          path: desktop-artifacts/desktop-nightly-windows
+      - name: Download nightly macOS desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-nightly-macos
+          path: desktop-artifacts/desktop-nightly-macos
+      - name: Download nightly Linux desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-nightly-linux
+          path: desktop-artifacts/desktop-nightly-linux
       - name: Delete previous nightly release
         env:
           GH_TOKEN: ${{ github.token }}
