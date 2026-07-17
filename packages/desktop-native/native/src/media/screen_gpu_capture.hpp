@@ -43,6 +43,24 @@ enum class ScreenGpuFrameStatus {
   FatalError,
 };
 
+class DxgiFallbackPolicy final {
+ public:
+  [[nodiscard]] bool shouldFallback(ScreenGpuFrameStatus status) noexcept {
+    if (status == ScreenGpuFrameStatus::FatalError) {
+      consecutive_recoveries_ = 0;
+      return true;
+    }
+    if (status == ScreenGpuFrameStatus::RecoverableLost) {
+      return ++consecutive_recoveries_ >= 3;
+    }
+    consecutive_recoveries_ = 0;
+    return false;
+  }
+
+ private:
+  std::uint32_t consecutive_recoveries_ = 0;
+};
+
 struct ScreenGpuFrame {
   std::uint64_t sequence = 0;
   std::uint64_t timestamp_us = 0;
