@@ -514,6 +514,7 @@ void benchmark_hardware_encoder(
   };
   const auto total_begin = Clock::now();
   size_t submitted = 0;
+  bool forced_late_join_keyframe = false;
   for (size_t frame = 0; frame < frames; ++frame) {
     if (asynchronous && !wait_for_async_input()) {
       throw std::runtime_error(std::string(codec) +
@@ -549,6 +550,12 @@ void benchmark_hardware_encoder(
     lease.Attach(new TrackedBenchmarkInput(&slot_available[slot]));
     check(tracked_sample->SetAllocator(lease.Get(), nullptr),
           "Track encoder input sample");
+    if (frames > 1 && frame == frames / 2) {
+      check(set_codec_uint32(encoder.Get(), CODECAPI_AVEncVideoForceKeyFrame,
+                             TRUE),
+            "Force late-join keyframe");
+      forced_late_join_keyframe = true;
+    }
     auto submit_begin = Clock::now();
     hr = encoder->ProcessInput(0, sample.Get(), 0);
     auto submit_end = Clock::now();
@@ -604,6 +611,10 @@ void benchmark_hardware_encoder(
   if (!output_units || !encoded_bytes)
     throw std::runtime_error(std::string(codec) +
                              " hardware encoder produced no access units");
+  if (forced_late_join_keyframe && keyframes < 2)
+    throw std::runtime_error(
+        std::string(codec) +
+        " hardware encoder did not produce the requested late-join keyframe");
   const double total_ms =
       std::chrono::duration<double, std::milli>(total_end - total_begin)
           .count();
@@ -623,7 +634,7 @@ void benchmark_hardware_encoder(
       << " cpu_copy_bytes_per_frame=0\n";
   std::cout << "ASSERT hardware_encode codec=" << codec
             << " nonempty_access_units=pass clean_shutdown=pass"
-               " tracked_input_lifetime=pass\n";
+               " tracked_input_lifetime=pass late_join_keyframe=pass\n";
 }
 } // namespace
 
