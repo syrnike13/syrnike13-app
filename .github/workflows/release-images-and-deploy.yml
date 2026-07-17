@@ -452,9 +452,21 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - name: Download Windows desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          path: desktop-artifacts
+          name: desktop-windows
+          path: desktop-artifacts/desktop-windows
+      - name: Download macOS desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-macos
+          path: desktop-artifacts/desktop-macos
+      - name: Download Linux desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-linux
+          path: desktop-artifacts/desktop-linux
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
@@ -491,9 +503,21 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - name: Download Windows desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          path: desktop-artifacts
+          name: desktop-windows
+          path: desktop-artifacts/desktop-windows
+      - name: Download macOS desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-macos
+          path: desktop-artifacts/desktop-macos
+      - name: Download Linux desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-linux
+          path: desktop-artifacts/desktop-linux
       - name: Validate configuration
         run: |
           set -euo pipefail
