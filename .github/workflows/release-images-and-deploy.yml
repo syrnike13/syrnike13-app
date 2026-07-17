@@ -412,8 +412,6 @@ jobs:
       - name: Package desktop
         if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
-      - name: Start desktop rollout at five percent
-        run: node tooling/scripts/set-desktop-update-stage.mjs apps/desktop/release 5 --if-present
       - name: Retain release native symbols
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -589,8 +587,8 @@ jobs:
               exit 1
             fi
             FEED_STAGE="$(printf '%s\n' "$FEED" | awk -F': *' '$1 == "stagingPercentage" { print $2; exit }')"
-            if [ "$FEED_STAGE" != "5" ]; then
-              echo "Desktop update feed ${FEED_FILE} staging mismatch: expected 5, got ${FEED_STAGE:-<missing>}"
+            if [ -n "$FEED_STAGE" ] && [ "$FEED_STAGE" != "100" ]; then
+              echo "Desktop update feed ${FEED_FILE} must be available to all users; got stagingPercentage ${FEED_STAGE}"
               exit 1
             fi
           done
