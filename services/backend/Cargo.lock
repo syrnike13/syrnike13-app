@@ -9231,6 +9231,7 @@ dependencies = [
  "bitfield",
  "chrono",
  "dashmap",
+ "flate2",
  "futures",
  "impl_ops",
  "iso8601-timestamp",

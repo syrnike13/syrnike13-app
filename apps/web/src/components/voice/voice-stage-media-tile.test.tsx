@@ -132,6 +132,7 @@ describe('StageMediaTile', () => {
 
   it('replaces the loader with a retry action after subscription exhaustion', () => {
     const onSetSubscribed = vi.fn()
+    const onFocus = vi.fn()
     render(
       <StageMediaTile
         item={{
@@ -141,7 +142,7 @@ describe('StageMediaTile', () => {
         }}
         displayName="Remote User"
         variant="grid"
-        onFocus={vi.fn()}
+        onFocus={onFocus}
         onSetSubscribed={onSetSubscribed}
       />,
     )
@@ -150,7 +151,11 @@ describe('StageMediaTile', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'Не удалось подключиться к демонстрации после 10 попыток',
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    const retry = screen.getByRole('button', { name: 'Повторить' })
+    fireEvent.keyDown(retry, { key: ' ' })
+    expect(onFocus).not.toHaveBeenCalled()
+
+    fireEvent.click(retry)
     expect(onSetSubscribed).toHaveBeenCalledWith('remote-user:screen', true)
   })
 

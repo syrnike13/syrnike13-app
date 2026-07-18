@@ -1,6 +1,9 @@
 use syrnike_result::{create_error, Result};
 
-use crate::{DiagnosticReport, DiagnosticReportQuery, DiagnosticReportStatus, ReferenceDb};
+use crate::{
+    DiagnosticReport, DiagnosticReportQuery, DiagnosticReportStatus, DiagnosticReportStorageState,
+    ReferenceDb,
+};
 
 use super::AbstractDiagnosticReports;
 
@@ -16,11 +19,29 @@ impl AbstractDiagnosticReports for ReferenceDb {
         }
     }
 
+    async fn finalize_diagnostic_report(
+        &self,
+        id: &str,
+        encryption_iv: String,
+        expires_at: u64,
+    ) -> Result<()> {
+        let mut reports = self.diagnostic_reports.lock().await;
+        let report = reports.get_mut(id).ok_or_else(|| create_error!(NotFound))?;
+        if report.storage_state != DiagnosticReportStorageState::Pending {
+            return Err(create_error!(NotFound));
+        }
+        report.storage_state = DiagnosticReportStorageState::Available;
+        report.encryption_iv = Some(encryption_iv);
+        report.expires_at = expires_at;
+        Ok(())
+    }
+
     async fn fetch_diagnostic_report(&self, id: &str) -> Result<DiagnosticReport> {
         self.diagnostic_reports
             .lock()
             .await
             .get(id)
+            .filter(|report| report.storage_state == DiagnosticReportStorageState::Available)
             .cloned()
             .ok_or_else(|| create_error!(NotFound))
     }
@@ -34,6 +55,7 @@ impl AbstractDiagnosticReports for ReferenceDb {
             .lock()
             .await
             .values()
+            .filter(|report| report.storage_state == DiagnosticReportStorageState::Available)
             .filter(|report| query.user_id.as_ref().is_none_or(|v| &report.user_id == v))
             .filter(|report| query.source.as_ref().is_none_or(|v| &report.source == v))
             .filter(|report| {
@@ -75,6 +97,9 @@ impl AbstractDiagnosticReports for ReferenceDb {
     ) -> Result<()> {
         let mut reports = self.diagnostic_reports.lock().await;
         let report = reports.get_mut(id).ok_or_else(|| create_error!(NotFound))?;
+        if report.storage_state != DiagnosticReportStorageState::Available {
+            return Err(create_error!(NotFound));
+        }
         report.status = status;
         report.notes = notes;
         Ok(())
@@ -105,7 +130,10 @@ impl AbstractDiagnosticReports for ReferenceDb {
 #[cfg(test)]
 mod tests {
     use super::AbstractDiagnosticReports;
-    use crate::{DiagnosticReport, DiagnosticReportQuery, DiagnosticReportStatus, ReferenceDb};
+    use crate::{
+        DiagnosticReport, DiagnosticReportQuery, DiagnosticReportStatus,
+        DiagnosticReportStorageState, ReferenceDb,
+    };
 
     fn report(id: &str, created_at: u64, user_id: &str) -> DiagnosticReport {
         DiagnosticReport {
@@ -123,9 +151,10 @@ mod tests {
             description: String::new(),
             bucket_id: "bucket".to_owned(),
             object_key: format!("diagnostics/{id}.jsonl.gz"),
-            encryption_iv: "iv".to_owned(),
+            encryption_iv: Some("iv".to_owned()),
             size_bytes: 100,
             sha256: "hash".to_owned(),
+            storage_state: DiagnosticReportStorageState::Available,
             status: DiagnosticReportStatus::New,
             notes: String::new(),
         }
@@ -162,5 +191,35 @@ mod tests {
             db.fetch_expired_diagnostic_reports(11).await.unwrap().len(),
             1
         );
+    }
+
+    #[async_std::test]
+    async fn hides_pending_reports_until_storage_is_finalized() {
+        let db = ReferenceDb::default();
+        let mut pending = report("pending", 1, "user-a");
+        pending.storage_state = DiagnosticReportStorageState::Pending;
+        pending.encryption_iv = None;
+        db.insert_diagnostic_report(&pending).await.unwrap();
+
+        assert!(db.fetch_diagnostic_report("pending").await.is_err());
+        assert!(db
+            .fetch_diagnostic_reports(DiagnosticReportQuery {
+                limit: 50,
+                ..Default::default()
+            })
+            .await
+            .unwrap()
+            .is_empty());
+
+        db.finalize_diagnostic_report("pending", "iv".to_owned(), 100)
+            .await
+            .unwrap();
+        let available = db.fetch_diagnostic_report("pending").await.unwrap();
+        assert_eq!(
+            available.storage_state,
+            DiagnosticReportStorageState::Available
+        );
+        assert_eq!(available.encryption_iv.as_deref(), Some("iv"));
+        assert_eq!(available.expires_at, 100);
     }
 }

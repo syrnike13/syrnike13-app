@@ -182,6 +182,7 @@ function FailedScreenStreamTile({
           type="button"
           size="sm"
           variant="secondary"
+          onKeyDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
             onRetry()

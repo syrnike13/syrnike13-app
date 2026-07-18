@@ -353,7 +353,6 @@ export class NativeMediaController {
       )
       const demand = this.remoteVideoDemands.get(key)
       if (demand?.demanded) {
-        demand.lastFrameAt = Date.now()
         if (!demand.recoveryTimer) this.armRemoteVideoRecovery(key, demand)
       }
       return

@@ -8,6 +8,14 @@ auto_derived!(
 );
 
 auto_derived!(
+    #[serde(rename_all = "snake_case")]
+    pub enum DiagnosticReportStorageState {
+        Pending,
+        Available,
+    }
+);
+
+auto_derived!(
     /// Metadata for one encrypted client diagnostic bundle stored in S3.
     pub struct DiagnosticReport {
         #[serde(rename = "_id")]
@@ -25,9 +33,10 @@ auto_derived!(
         pub description: String,
         pub bucket_id: String,
         pub object_key: String,
-        pub encryption_iv: String,
+        pub encryption_iv: Option<String>,
         pub size_bytes: u64,
         pub sha256: String,
+        pub storage_state: DiagnosticReportStorageState,
         pub status: DiagnosticReportStatus,
         #[serde(default)]
         pub notes: String,

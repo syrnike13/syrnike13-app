@@ -2,7 +2,10 @@ use bson::Document;
 use futures::TryStreamExt;
 use syrnike_result::{create_error, Result};
 
-use crate::{DiagnosticReport, DiagnosticReportQuery, DiagnosticReportStatus, MongoDb};
+use crate::{
+    DiagnosticReport, DiagnosticReportQuery, DiagnosticReportStatus, DiagnosticReportStorageState,
+    MongoDb,
+};
 
 use super::AbstractDiagnosticReports;
 
@@ -14,9 +17,42 @@ impl AbstractDiagnosticReports for MongoDb {
         query!(self, insert_one, COL, report).map(|_| ())
     }
 
+    async fn finalize_diagnostic_report(
+        &self,
+        id: &str,
+        encryption_iv: String,
+        expires_at: u64,
+    ) -> Result<()> {
+        let pending = bson::to_bson(&DiagnosticReportStorageState::Pending)
+            .map_err(|_| create_database_error!("serialize", COL))?;
+        let available = bson::to_bson(&DiagnosticReportStorageState::Available)
+            .map_err(|_| create_database_error!("serialize", COL))?;
+        let result = self
+            .col::<Document>(COL)
+            .update_one(
+                doc! { "_id": id, "storage_state": pending },
+                doc! {
+                    "$set": {
+                        "storage_state": available,
+                        "encryption_iv": encryption_iv,
+                        "expires_at": expires_at as i64,
+                    }
+                },
+            )
+            .await
+            .map_err(|_| create_database_error!("update_one", COL))?;
+        if result.matched_count == 0 {
+            Err(create_error!(NotFound))
+        } else {
+            Ok(())
+        }
+    }
+
     async fn fetch_diagnostic_report(&self, id: &str) -> Result<DiagnosticReport> {
+        let available = bson::to_bson(&DiagnosticReportStorageState::Available)
+            .map_err(|_| create_database_error!("serialize", COL))?;
         self.col::<DiagnosticReport>(COL)
-            .find_one(doc! { "_id": id })
+            .find_one(doc! { "_id": id, "storage_state": available })
             .await
             .map_err(|_| create_database_error!("find_one", COL))?
             .ok_or_else(|| create_error!(NotFound))
@@ -31,9 +67,11 @@ impl AbstractDiagnosticReports for MongoDb {
         let mut filter = query_filter(query)?;
 
         if let Some(before_id) = before {
+            let available = bson::to_bson(&DiagnosticReportStorageState::Available)
+                .map_err(|_| create_database_error!("serialize", COL))?;
             let Some(before_entry) = self
                 .col::<DiagnosticReport>(COL)
-                .find_one(doc! { "_id": before_id })
+                .find_one(doc! { "_id": before_id, "storage_state": available })
                 .await
                 .map_err(|_| create_database_error!("find_one", COL))?
             else {
@@ -69,12 +107,14 @@ impl AbstractDiagnosticReports for MongoDb {
         status: DiagnosticReportStatus,
         notes: String,
     ) -> Result<()> {
+        let available = bson::to_bson(&DiagnosticReportStorageState::Available)
+            .map_err(|_| create_database_error!("serialize", COL))?;
         let status =
             bson::to_bson(&status).map_err(|_| create_database_error!("serialize", COL))?;
         let result = self
             .col::<Document>(COL)
             .update_one(
-                doc! { "_id": id },
+                doc! { "_id": id, "storage_state": available },
                 doc! { "$set": { "status": status, "notes": notes } },
             )
             .await
@@ -103,7 +143,10 @@ impl AbstractDiagnosticReports for MongoDb {
 }
 
 fn query_filter(query: DiagnosticReportQuery) -> Result<Document> {
-    let mut filter = Document::new();
+    let mut filter = doc! {
+        "storage_state": bson::to_bson(&DiagnosticReportStorageState::Available)
+            .map_err(|_| create_database_error!("serialize", COL))?
+    };
     if let Some(value) = query.user_id {
         filter.insert("user_id", value);
     }

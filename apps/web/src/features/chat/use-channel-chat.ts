@@ -146,11 +146,13 @@ export function useChannelChat({
         setHasOlder(older.length >= MESSAGE_PAGE_SIZE)
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось загрузить сообщения',
-      )
+      if (activeChannelIdRef.current === requestChannelId) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : 'Не удалось загрузить сообщения',
+        )
+      }
     } finally {
       if (activeChannelIdRef.current === requestChannelId) {
         setLoadingOlder(false)

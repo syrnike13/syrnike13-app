@@ -29,6 +29,18 @@ describe('diagnostic reporter', () => {
     expect(serialized).not.toContain('private.example')
   })
 
+  it('redacts POSIX paths and file URLs from uploaded event text', () => {
+    recordDiagnosticEvent('renderer', 'renderer_error', {
+      message: 'failed at /Users/alice/private.txt',
+      stack: 'at load (file:///home/alice/app/secrets.ts:42:7)',
+    })
+
+    const serialized = diagnosticEventsJsonForTests()
+    expect(serialized).toContain('[redacted-path]')
+    expect(serialized).not.toContain('/Users/alice')
+    expect(serialized).not.toContain('file:///home/alice')
+  })
+
   it('replaces an oversized event instead of growing the bundle without bound', () => {
     recordDiagnosticEvent('voice', 'oversized', {
       samples: Array.from({ length: 50 }, (_, index) => ({

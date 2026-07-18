@@ -528,12 +528,26 @@ function isSubscriptionFailedMessage(value: unknown): value is {
   }
 } {
   if (!value || typeof value !== 'object') return false
-  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
-  return candidate.type === 'syrnike-native-video-subscription-failed' &&
-    typeof candidate.metadata?.trackId === 'string' &&
-    typeof candidate.metadata.sessionId === 'string' &&
-    Number.isSafeInteger(candidate.metadata.generation) &&
-    typeof candidate.metadata.message === 'string'
+  if (
+    !('type' in value) ||
+    !('metadata' in value) ||
+    value.type !== 'syrnike-native-video-subscription-failed' ||
+    !value.metadata ||
+    typeof value.metadata !== 'object'
+  ) {
+    return false
+  }
+  const metadata = value.metadata
+  return (
+    'trackId' in metadata &&
+    typeof metadata.trackId === 'string' &&
+    'sessionId' in metadata &&
+    typeof metadata.sessionId === 'string' &&
+    'generation' in metadata &&
+    Number.isSafeInteger(metadata.generation) &&
+    'message' in metadata &&
+    typeof metadata.message === 'string'
+  )
 }
 
 function isPublicationMessage(value: unknown): value is {

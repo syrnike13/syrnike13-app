@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Track, type Room } from 'livekit-client'
+import { Track } from 'livekit-client'
 
-import { buildStageItems } from './voice-provider'
+import { buildStageItems, type StageRoom } from './voice-stage-items'
 
 describe('desktop voice stage channel scope', () => {
   it('does not add native publications owned by users in another voice channel', () => {
@@ -56,7 +56,7 @@ describe('desktop voice stage channel scope', () => {
 
     expect(items).toContainEqual(expect.objectContaining({
       id: 'remote:screen',
-      subscribed: false,
+      subscribed: true,
       track: null,
       error: 'Не удалось подключиться к демонстрации после 10 попыток',
     }))
@@ -109,7 +109,7 @@ describe('desktop voice stage channel scope', () => {
         trackPublications: new Map(),
       },
       remoteParticipants: new Map([['remote', remoteParticipant]]),
-    } as unknown as Room
+    } satisfies StageRoom
 
     const items = buildStageItems({
       room,

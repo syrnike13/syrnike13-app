@@ -150,6 +150,7 @@ describe('NativeMediaController retained tools', () => {
         height: 720,
         ntHandle: new Uint8Array(8),
       })
+      harness.controller.markRemoteVideoFrameDelivered('voice', 3, 'screen')
 
       await vi.advanceTimersByTimeAsync(1_000)
       harness.event({
@@ -166,9 +167,46 @@ describe('NativeMediaController retained tools', () => {
         height: 720,
         ntHandle: new Uint8Array(8),
       })
+      harness.controller.markRemoteVideoFrameDelivered('voice', 3, 'screen')
       await vi.advanceTimersByTimeAsync(1_000)
 
       expect(harness.request).not.toHaveBeenCalled()
+      await harness.controller.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('recovers when frames decode but never reach the renderer', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = createHarness(1_000)
+      await harness.controller.setRemoteVideoDemand('voice', 3, 'screen', true)
+      harness.request.mockClear()
+      harness.event({
+        type: 'remoteVideoFrame',
+        sequence: 1,
+        sessionId: 'voice',
+        generation: 3,
+        trackId: 'screen',
+        participantIdentity: 'remote',
+        source: 'screen',
+        frameSequence: 1,
+        timestampUs: 1_000,
+        width: 1280,
+        height: 720,
+        ntHandle: new Uint8Array(8),
+      })
+
+      await vi.advanceTimersByTimeAsync(1_250)
+
+      expect(harness.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'setRemoteVideoDemand',
+          demanded: false,
+        }),
+        expect.any(Number),
+      )
       await harness.controller.dispose()
     } finally {
       vi.useRealTimers()

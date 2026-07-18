@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -19,6 +19,7 @@ import {
   type DiagnosticReportStatus,
 } from '#/features/api/admin-api'
 import { useAuth } from '#/features/auth/auth-context'
+import { ApiError } from '#/lib/api/client'
 import { queryKeys } from '#/lib/api/query-keys'
 
 export const Route = createFileRoute('/_admin/diagnostics/$reportId')({
@@ -38,12 +39,14 @@ function DiagnosticReportPage() {
   const [status, setStatus] = useState<DiagnosticReportStatus>('new')
   const [notes, setNotes] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const initializedReportIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!report.data) return
+    if (!report.data || initializedReportIdRef.current === reportId) return
+    initializedReportIdRef.current = reportId
     setStatus(report.data.status)
     setNotes(report.data.notes)
-  }, [report.data])
+  }, [report.data, reportId])
 
   const update = useMutation({
     mutationFn: () => updateAdminDiagnosticReport(token!, reportId, { status, notes }),
@@ -74,6 +77,16 @@ function DiagnosticReportPage() {
 
   if (report.isLoading) {
     return <AdminPage title="Диагностический отчёт"><AdminEmpty><Loader2Icon className="mr-2 inline size-4 animate-spin" />Загрузка</AdminEmpty></AdminPage>
+  }
+  if (report.isError) {
+    const notFound = report.error instanceof ApiError && report.error.status === 404
+    return (
+      <AdminPage title="Диагностический отчёт">
+        <AdminEmpty>
+          {notFound ? 'Отчёт не найден' : 'Не удалось загрузить диагностический отчёт'}
+        </AdminEmpty>
+      </AdminPage>
+    )
   }
   if (!report.data) {
     return <AdminPage title="Диагностический отчёт"><AdminEmpty>Отчёт не найден</AdminEmpty></AdminPage>

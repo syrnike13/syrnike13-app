@@ -1,4 +1,10 @@
-import type { SyrnikeDesktopApi } from '@syrnike13/platform'
+import {
+  DIAGNOSTIC_SCHEMA,
+  DIAGNOSTIC_SCHEMA_VERSION,
+  type DiagnosticEnvelope,
+  type DiagnosticJsonValue,
+  type SyrnikeDesktopApi,
+} from '@syrnike13/platform'
 
 import { apiRequest } from '#/lib/api/client'
 import { config } from '#/lib/config'
@@ -6,21 +12,6 @@ import { loadDesktopLocalSettings } from '#/features/settings/desktop-local-sett
 import { readBrowserDiagnosticReportsEnabled } from './diagnostic-preferences'
 
 type DiagnosticSeverity = 'warning' | 'error' | 'fatal'
-
-type DiagnosticEvent = {
-  timestamp: number
-  area: string
-  event: string
-  data?: DiagnosticValue
-}
-
-type DiagnosticValue =
-  | null
-  | boolean
-  | number
-  | string
-  | DiagnosticValue[]
-  | { [key: string]: DiagnosticValue }
 
 export type SendDiagnosticReportOptions = {
   token: string
@@ -47,19 +38,26 @@ const events: string[] = []
 let eventBufferBytes = 0
 
 export function recordDiagnosticEvent(area: string, event: string, data?: unknown) {
-  const record: DiagnosticEvent = {
-    timestamp: Date.now(),
-    area: safeIdentifier(area, 'unknown'),
-    event: safeIdentifier(event, 'unknown'),
+  const record: DiagnosticEnvelope = {
+    schema: DIAGNOSTIC_SCHEMA,
+    version: DIAGNOSTIC_SCHEMA_VERSION,
+    record_type: 'event',
+    timestamp_ms: Date.now(),
+    source: 'renderer',
+    event: `${safeIdentifier(area, 'unknown')}.${safeIdentifier(event, 'unknown')}`,
+    data: {},
   }
   const sanitized = sanitizeDiagnosticValue(data)
-  if (sanitized !== undefined) record.data = sanitized
+  if (sanitized !== undefined) record.data.payload = sanitized
   let serialized = JSON.stringify(record)
   let bytes = utf8Bytes(serialized)
   if (bytes > MAX_EVENT_BYTES) {
     serialized = JSON.stringify({
-      timestamp: record.timestamp,
-      area: record.area,
+      schema: DIAGNOSTIC_SCHEMA,
+      version: DIAGNOSTIC_SCHEMA_VERSION,
+      record_type: 'event',
+      timestamp_ms: record.timestamp_ms,
+      source: 'renderer',
       event: record.event,
       data: { omitted: 'event_too_large' },
     })
@@ -79,16 +77,16 @@ export async function sendDiagnosticReport(
   const automaticKey = options.automatic
     ? `${options.area}:${options.triggerCode}`
     : null
-  if (options.automatic) {
+  if (automaticKey) {
     if (options.desktop) {
       const settings = await loadDesktopLocalSettings()
       if (!settings?.observability.diagnosticReports) return null
     } else if (!readBrowserDiagnosticReportsEnabled()) {
       return null
     }
-    const previous = automaticReports.get(automaticKey!) ?? 0
+    const previous = automaticReports.get(automaticKey) ?? 0
     if (Date.now() - previous < AUTOMATIC_COOLDOWN_MS) return null
-    automaticReports.set(automaticKey!, Date.now())
+    automaticReports.set(automaticKey, Date.now())
   }
 
   try {
@@ -97,17 +95,28 @@ export async function sendDiagnosticReport(
       triggerCode: options.triggerCode,
       context: options.context,
     })
-    const manifest = {
-      type: 'manifest',
-      version: 1,
-      generatedAt: new Date().toISOString(),
-      source: options.desktop ? 'desktop' : 'web',
-      appVersion: config.appVersion,
-      releaseChannel: config.releaseChannel,
-      platform: options.desktop?.platform.os ?? browserPlatform(),
-      area: safeIdentifier(options.area, 'client'),
-      severity: options.severity,
-      triggerCode: safeIdentifier(options.triggerCode, 'unknown_error'),
+    const reportSource = options.desktop ? 'desktop' : 'web'
+    const platform = options.desktop?.platform.os ?? browserPlatform()
+    const area = safeIdentifier(options.area, 'client')
+    const triggerCode = safeIdentifier(options.triggerCode, 'unknown_error')
+    const releaseChannel = normalizedReleaseChannel(config.releaseChannel)
+    const appVersion = safeIdentifier(config.appVersion, 'unknown')
+    const manifest: DiagnosticEnvelope = {
+      schema: DIAGNOSTIC_SCHEMA,
+      version: DIAGNOSTIC_SCHEMA_VERSION,
+      record_type: 'manifest',
+      timestamp_ms: Date.now(),
+      source: options.desktop ? 'renderer' : 'web',
+      event: 'report_manifest',
+      data: {
+        source: reportSource,
+        release_channel: releaseChannel,
+        app_version: appVersion,
+        platform: safeIdentifier(platform, 'unknown'),
+        area,
+        severity: options.severity,
+        trigger_code: triggerCode,
+      },
     }
     const jsonl = [JSON.stringify(manifest), ...events].join('\n')
     const compressed = options.desktop
@@ -119,14 +128,14 @@ export async function sendDiagnosticReport(
       token: options.token,
       body: {
         version: 1,
-        source: manifest.source,
-        release_channel: normalizedReleaseChannel(config.releaseChannel),
-        app_version: safeIdentifier(config.appVersion, 'unknown'),
-        platform: safeIdentifier(manifest.platform, 'unknown'),
-        area: manifest.area,
+        source: reportSource,
+        release_channel: releaseChannel,
+        app_version: appVersion,
+        platform: safeIdentifier(platform, 'unknown'),
+        area,
         severity: options.severity,
-        trigger_code: manifest.triggerCode,
-        description: (options.description ?? '').slice(0, 1_000),
+        trigger_code: triggerCode,
+        description: sanitizeText(options.description ?? '').slice(0, 1_000),
         payload: bytesToBase64(compressed),
       },
     })
@@ -150,7 +159,10 @@ export function clearDiagnosticEventsForTests() {
   automaticReports.clear()
 }
 
-function sanitizeDiagnosticValue(value: unknown, depth = 0): DiagnosticValue | undefined {
+function sanitizeDiagnosticValue(
+  value: unknown,
+  depth = 0,
+): DiagnosticJsonValue | undefined {
   if (value == null) return null
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
@@ -163,7 +175,7 @@ function sanitizeDiagnosticValue(value: unknown, depth = 0): DiagnosticValue | u
     })
   }
   if (typeof value !== 'object') return undefined
-  const result: Record<string, DiagnosticValue> = {}
+  const result: Record<string, DiagnosticJsonValue> = {}
   for (const [key, nested] of Object.entries(value).slice(0, 80)) {
     if (SENSITIVE_KEY.test(key) || key === '__proto__' || key === 'constructor') continue
     const sanitized = sanitizeDiagnosticValue(nested, depth + 1)
@@ -175,8 +187,13 @@ function sanitizeDiagnosticValue(value: unknown, depth = 0): DiagnosticValue | u
 function sanitizeText(value: string) {
   return value
     .replace(/\b(?:Bearer\s+)?[A-Za-z0-9_-]{32,}\b/gi, '[redacted]')
+    .replace(/\bfile:\/\/[^\s"'<>]+/gi, '[redacted-path]')
     .replace(/\b[A-Za-z]:[\\/][^\r\n"']+/g, '[redacted-path]')
     .replace(/https?:\/\/[^\s"']+/g, '[redacted-url]')
+    .replace(
+      /(^|[\s("'=])\/(?:[^/\s"'<>]+\/)*[^/\s"'<>]+/g,
+      '$1[redacted-path]',
+    )
     .slice(0, MAX_STRING_LENGTH)
 }
 

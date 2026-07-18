@@ -42,6 +42,7 @@ function DiagnosticsPage() {
   return (
     <AdminPage title="Диагностика">
       <form
+        key={diagnosticFiltersKey(filters)}
         className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_10rem_10rem_auto]"
         onSubmit={(event: FormEvent<HTMLFormElement>) => {
           event.preventDefault()
@@ -171,4 +172,18 @@ function statusLabel(status: 'new' | 'investigating' | 'resolved') {
   if (status === 'new') return 'Новый'
   if (status === 'investigating') return 'В работе'
   return 'Решён'
+}
+
+function diagnosticFiltersKey(filters: {
+  user_id?: string
+  area?: string
+  status?: string
+  release_channel?: string
+}) {
+  return [
+    filters.user_id ?? '',
+    filters.area ?? '',
+    filters.status ?? '',
+    filters.release_channel ?? '',
+  ].join('\u0000')
 }

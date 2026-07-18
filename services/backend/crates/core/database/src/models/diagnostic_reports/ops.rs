@@ -9,6 +9,12 @@ mod reference;
 #[async_trait]
 pub trait AbstractDiagnosticReports: Sync + Send {
     async fn insert_diagnostic_report(&self, report: &DiagnosticReport) -> Result<()>;
+    async fn finalize_diagnostic_report(
+        &self,
+        id: &str,
+        encryption_iv: String,
+        expires_at: u64,
+    ) -> Result<()>;
     async fn fetch_diagnostic_report(&self, id: &str) -> Result<DiagnosticReport>;
     async fn fetch_diagnostic_reports(
         &self,

@@ -24,14 +24,23 @@ Chat content and media content are never collected. Desktop reports may include
 the latest bounded native media JSONL sessions when the same opt-in has enabled
 native diagnostics; changing this setting requires an application restart.
 
-The client gzip-compresses the JSONL bundle and sends it through an authenticated
-backend endpoint. The backend validates metadata and compressed size, encrypts
-the object through the existing files storage abstraction, and stores searchable
-metadata linked to the authenticated account. Privileged admin endpoints list,
-inspect, download, and update report status and notes.
+Every JSONL line uses the versioned `syrnike.diagnostic` envelope with a record
+type, timestamp, source, event name, and object payload. The first record is a
+manifest whose metadata must match the authenticated upload request. Desktop
+bundle creation normalizes legacy native log lines into this envelope before
+upload.
 
-Reports expire after 30 days. The cron daemon removes the storage object before
-deleting its database record, so a transient storage failure remains retryable.
+The client gzip-compresses the JSONL bundle and sends it through an authenticated
+backend endpoint. The backend applies compressed and decompressed size limits,
+fully decodes the gzip stream, validates every envelope, and only then permits
+storage. It creates a short-lived `pending` database record before uploading the
+encrypted object and marks it `available` after S3 returns the encryption IV.
+Privileged admin endpoints only expose available reports.
+
+Available reports expire after 30 days, while incomplete pending uploads expire
+after one hour. The cron daemon removes the storage object before deleting either
+kind of database record and keeps running after transient database or storage
+failures, so cleanup remains discoverable and retryable.
 
 ## Consequences
 

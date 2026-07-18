@@ -120,6 +120,14 @@ pub async fn create_database(db: &MongoDb) {
             {
                 "key": { "expires_at": 1_i32 },
                 "name": "expires_at"
+            },
+            {
+                "key": { "storage_state": 1_i32, "created_at": -1_i32, "_id": -1_i32 },
+                "name": "storage_created_id"
+            },
+            {
+                "key": { "storage_state": 1_i32, "expires_at": 1_i32 },
+                "name": "storage_expires_at"
             }
         ]
     })

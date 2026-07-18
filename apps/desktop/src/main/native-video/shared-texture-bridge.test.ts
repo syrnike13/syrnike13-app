@@ -166,6 +166,20 @@ describe('NativeSharedTextureBridge', () => {
     expect(h.release).toHaveBeenCalledTimes(1)
   })
 
+  it('does not carry delivery failures into a reloaded renderer', async () => {
+    const h = harness()
+    h.importTexture.mockImplementation(() => {
+      throw new Error('renderer unavailable')
+    })
+
+    expect(await h.bridge.deliver(frame(1, 'screen'))).toBe(false)
+    expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(false)
+    h.bridge.rendererReloaded()
+    expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
+
+    expect(h.onTrackStalled).not.toHaveBeenCalled()
+  })
+
   it('releases a removed local preview only after the Electron GPU fence', async () => {
     const h = harness()
     const local = { ...frame(1, 'screen'), local: true }

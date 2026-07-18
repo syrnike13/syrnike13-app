@@ -66,6 +66,8 @@ export class NativeSharedTextureBridge {
   rendererReloaded() {
     this.rendererEpoch += 1
     this.releaseMainReferences()
+    this.deliveryFailures.clear()
+    this.lastDeliveryRecoveryAt.clear()
   }
 
   removeTrack(sessionId: string, generation: number, trackId: string) {
@@ -177,7 +179,9 @@ export class NativeSharedTextureBridge {
       return true
     } catch (error) {
       this.reportFailure('send', frame, error)
-      this.recordDeliveryFailure(trackKey, frame)
+      if (rendererEpoch === this.rendererEpoch) {
+        this.recordDeliveryFailure(trackKey, frame)
+      }
       return false
     } finally {
       this.releaseEntryMainReference(key, entry)

@@ -9,7 +9,7 @@ use syrnike_database::{
     Database, DiagnosticReport, DiagnosticReportQuery, DiagnosticReportStatus, User,
 };
 use syrnike_files::fetch_from_s3;
-use syrnike_result::Result;
+use syrnike_result::{create_error, Result};
 
 use super::require_privileged;
 
@@ -115,8 +115,12 @@ pub async fn update(
 ) -> Result<Json<DiagnosticReportResponse>> {
     require_privileged(&user)?;
     let data = data.into_inner();
-    let notes = data.notes.chars().take(4_000).collect();
-    db.update_diagnostic_report(&id, parse_status(&data.status)?, notes)
+    if data.notes.chars().count() > 4_000 {
+        return Err(create_error!(FailedValidation {
+            error: "diagnostic report notes are too long".to_owned()
+        }));
+    }
+    db.update_diagnostic_report(&id, parse_status(&data.status)?, data.notes)
         .await?;
     Ok(Json(db.fetch_diagnostic_report(&id).await?.into()))
 }
@@ -177,7 +181,11 @@ impl revolt_rocket_okapi::response::OpenApiResponderInner for DiagnosticDownload
 pub async fn download(db: &State<Database>, user: User, id: String) -> Result<DiagnosticDownload> {
     require_privileged(&user)?;
     let report = db.fetch_diagnostic_report(&id).await?;
-    let body = fetch_from_s3(&report.bucket_id, &report.object_key, &report.encryption_iv).await?;
+    let encryption_iv = report
+        .encryption_iv
+        .as_deref()
+        .ok_or_else(|| create_error!(InternalError))?;
+    let body = fetch_from_s3(&report.bucket_id, &report.object_key, encryption_iv).await?;
     Ok(DiagnosticDownload {
         body,
         filename: format!("syrnike13-diagnostic-{}.jsonl.gz", report.id),

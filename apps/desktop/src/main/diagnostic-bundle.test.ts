@@ -33,11 +33,17 @@ describe('desktop diagnostic bundle', () => {
     )
 
     const compressed = await createDesktopDiagnosticBundle(
-      '{"type":"manifest"}\n{"event":"voice_failed"}',
+      '{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}',
     )
     const value = gunzipSync(compressed).toString('utf8')
     expect(value).toContain('voice_failed')
     expect(value).toContain('screen_started')
+    for (const line of value.split('\n')) {
+      expect(JSON.parse(line)).toMatchObject({
+        schema: 'syrnike.diagnostic',
+        version: 1,
+      })
+    }
   })
 
   it('rejects unbounded renderer input', async () => {

@@ -12,7 +12,6 @@ import {
   type Room,
   type RemoteParticipant,
   type RemoteTrackPublication,
-  type VideoTrack,
 } from 'livekit-client'
 import {
   VoiceDirector,
@@ -48,10 +47,7 @@ import {
   writeStageMediaFilters,
 } from '#/features/voice/voice-stage-filters'
 import {
-  buildStageMediaItems,
   stageMediaItemId,
-  type StageMediaFilters,
-  type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
 import {
   applyStageScreenPublicationSubscription,
@@ -86,8 +82,8 @@ import {
 } from '#/features/voice/voice-telemetry-context'
 import type {
   VoiceStageMediaItem,
-  VoiceStageMediaPublication,
 } from '#/features/voice/voice-context'
+import { buildStageItems } from '#/features/voice/voice-stage-items'
 import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
 import {
   attachRtcRatesToScreenShares,
@@ -922,6 +918,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     if (snapshot.connection !== 'connected' || !room) {
       rtcDebugSnapshotRef.current = null
       diagnosticRtcHistoryRef.current = []
+      stalledLocalScreenSamplesRef.current = 0
+      stalledRemoteScreenSamplesRef.current = 0
       setRtcDebugSnapshot(null)
       setRtcDebugHistory([])
       return
@@ -939,7 +937,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
         if (!active) return
         const previous = rtcDebugSnapshotRef.current
-        const next: RtcDebugSnapshot = attachRtcRatesToScreenShares(
+        const next = attachRtcRatesToScreenShares(
           previous
             ? { ...current, rates: deriveRtcRates(previous, current) }
             : current,
@@ -1384,153 +1382,6 @@ function mediaIssue(snapshot: VoiceSnapshot): VoiceMicIssue | null {
     hint: error.message,
     retryable: error.retryable,
   }
-}
-
-export function buildStageItems(options: {
-  room: Room | null
-  participants: readonly { id: string }[]
-  currentUserId: string | null
-  filters: StageMediaFilters
-  watchedRemoteScreenIds: ReadonlySet<string>
-  nativeTracks: readonly NativeVideoRegistryTrack[]
-  nativePublications: readonly NativeVideoRegistryPublication[]
-  localScreenPreview: {
-    userId: string
-    track: NativeVideoRegistryTrack['track']
-  } | null
-  setNativeDemand: (
-    sessionId: string,
-    generation: number,
-    trackId: string,
-    demanded: boolean,
-  ) => unknown
-}): VoiceStageMediaItem[] {
-  const participantIds = new Set(options.participants.map(({ id }) => id))
-  const tracks: StageMediaTrackEntry<VideoTrack, VoiceStageMediaPublication>[] = []
-  if (options.localScreenPreview) {
-    participantIds.add(options.localScreenPreview.userId)
-    tracks.push({
-      userId: options.localScreenPreview.userId,
-      source: 'screen',
-      track: options.localScreenPreview.track as unknown as VideoTrack,
-      publication: {
-        source: Track.Source.ScreenShare,
-        isMuted: false,
-        isSubscribed: true,
-      },
-      subscribed: true,
-      live: true,
-    })
-  }
-  for (const native of options.nativeTracks) {
-    if (native.source === 'screen') continue
-    const userId = baseVoiceIdentity(native.participantIdentity)
-    if (!participantIds.has(userId)) continue
-    tracks.push({
-      userId,
-      source: 'camera',
-      track: native.track as unknown as VideoTrack,
-      publication: {
-        source: Track.Source.Camera,
-        isMuted: false,
-        isSubscribed: true,
-      },
-      subscribed: true,
-      live: true,
-    })
-  }
-  for (const publication of options.nativePublications) {
-    const userId = baseVoiceIdentity(publication.participantIdentity)
-    if (!participantIds.has(userId)) continue
-    const mediaId = stageMediaItemId(userId, 'screen')
-    const demanded = shouldSubscribeStageScreen({
-      isLocal: false,
-      mediaId,
-      watchedRemoteScreenIds: options.watchedRemoteScreenIds,
-    })
-    const subscribed = demanded && !publication.error
-    tracks.push({
-      userId,
-      source: 'screen',
-      track: subscribed ? publication.track as unknown as VideoTrack : null,
-      publication: {
-        source: Track.Source.ScreenShare,
-        isMuted: false,
-        isSubscribed: subscribed,
-        setSubscribed: (demanded) => {
-          void options.setNativeDemand(
-            publication.sessionId,
-            publication.generation,
-            publication.demandTrackId,
-            demanded,
-          )
-        },
-      },
-      subscribed,
-      live: true,
-      error: publication.error,
-    })
-  }
-  if (options.room) {
-    participantIds.add(baseVoiceIdentity(options.room.localParticipant.identity))
-    const roomParticipants = [
-      options.room.localParticipant,
-      ...options.room.remoteParticipants.values(),
-    ]
-    for (const participant of roomParticipants) {
-      const userId = baseVoiceIdentity(participant.identity)
-      const isLocal = participant === options.room.localParticipant
-      if (!isLocal && !participantIds.has(userId)) continue
-      if (isLocal) participantIds.add(userId)
-      for (const publication of participant.trackPublications.values()) {
-        const source =
-          publication.source === Track.Source.ScreenShare
-            ? 'screen'
-            : publication.source === Track.Source.Camera
-              ? 'camera'
-              : null
-        if (!source) continue
-        const subscribed = source === 'screen'
-          ? shouldSubscribeStageScreen({
-            isLocal,
-            mediaId: stageMediaItemId(userId, 'screen'),
-            watchedRemoteScreenIds: options.watchedRemoteScreenIds,
-          })
-          : publication.isSubscribed
-        tracks.push({
-          userId,
-          source,
-          track: subscribed ? publication.videoTrack ?? null : null,
-          publication,
-          subscribed,
-          live: !publication.isMuted,
-          error:
-            source === 'screen' && subscribed
-              ? browserScreenSubscriptionError(publication)
-              : undefined,
-        })
-      }
-    }
-  }
-  return buildStageMediaItems({
-    participants: [...participantIds].map((id) => ({ id })),
-    currentUserId: options.currentUserId,
-    tracks,
-    filters: options.filters,
-  })
-}
-
-function browserScreenSubscriptionError(
-  publication: RemoteTrackPublication,
-) {
-  const error = (
-    publication as RemoteTrackPublication & { subscriptionError?: unknown }
-  ).subscriptionError
-  if (error == null) return undefined
-  const detail = error instanceof Error ? error.message : String(error)
-  return detail
-    ? `Не удалось подключиться к демонстрации: ${detail}`
-    : 'Не удалось подключиться к демонстрации'
 }
 
 function nativeScreenDemandKey(

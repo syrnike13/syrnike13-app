@@ -137,6 +137,15 @@ export function registerNativeMediaRuntimeIpc(
             event.trackId,
           )
         }
+      }).catch((error) => {
+        diagnosticSink({
+          scope: 'native-video',
+          event: 'frame_delivery_rejected',
+          kind: local ? 'local-preview' : 'remote-video',
+          stage: 'renderer-delivery',
+          generation: event.generation,
+          message: safeErrorMessage(error),
+        })
       })
       return
     }

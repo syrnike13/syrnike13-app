@@ -250,7 +250,7 @@ export function MessageList({
   // держим ленту у нижней границы, пока измерение не стабилизируется
   // (бюджет ~1.5 с), либо пока пользователь сам не начнёт скроллить.
   useEffect(() => {
-    if (!lastMessageId || initialScrollDoneRef.current) return
+    if (loadingOlder || !lastMessageId || initialScrollDoneRef.current) return
 
     const root = scrollRef.current
     if (!root) return
@@ -265,11 +265,6 @@ export function MessageList({
     }
 
     const tick = () => {
-      // Идёт подгрузка истории — скроллом управляет эффект восстановления.
-      if (wasLoadingOlder.current) {
-        raf = requestAnimationFrame(tick)
-        return
-      }
       scrollToTail('auto')
       frames += 1
       if (isNearBottom(root, 4)) {
@@ -298,7 +293,7 @@ export function MessageList({
       root.removeEventListener('wheel', cancelOnUserScroll)
       root.removeEventListener('touchmove', cancelOnUserScroll)
     }
-  }, [channelId, lastMessageId, useVirtual])
+  }, [channelId, lastMessageId, loadingOlder, useVirtual])
 
   // Автоскролл при новом сообщении в хвосте, если пользователь внизу ленты.
   useEffect(() => {
