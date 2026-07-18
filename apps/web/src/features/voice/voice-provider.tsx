@@ -90,6 +90,7 @@ import type {
 } from '#/features/voice/voice-context'
 import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
 import {
+  attachRtcRatesToScreenShares,
   appendRtcDebugSample,
   collectVoiceRtcDebugSnapshot,
   deriveRtcRates,
@@ -185,7 +186,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
   const diagnosticRtcHistoryRef = useRef<RtcDebugSnapshot[]>([])
-  const stalledScreenSamplesRef = useRef(0)
+  const stalledLocalScreenSamplesRef = useRef(0)
+  const stalledRemoteScreenSamplesRef = useRef(0)
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const watchedScreenViewerChannelsRef = useRef(new Map<string, string>())
   const pendingScreenWatchIdsRef = useRef(new Set<string>())
@@ -407,6 +409,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     room.on(RoomEvent.ParticipantDisconnected, refresh)
     room.on(RoomEvent.TrackSubscribed, refresh)
     room.on(RoomEvent.TrackUnsubscribed, refresh)
+    room.on(RoomEvent.TrackSubscriptionFailed, refresh)
     room.on(RoomEvent.TrackPublished, onTrackPublished)
     room.on(RoomEvent.TrackUnpublished, onTrackUnpublished)
     room.on(RoomEvent.TrackMuted, refresh)
@@ -416,6 +419,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.off(RoomEvent.ParticipantDisconnected, refresh)
       room.off(RoomEvent.TrackSubscribed, refresh)
       room.off(RoomEvent.TrackUnsubscribed, refresh)
+      room.off(RoomEvent.TrackSubscriptionFailed, refresh)
       room.off(RoomEvent.TrackPublished, onTrackPublished)
       room.off(RoomEvent.TrackUnpublished, onTrackUnpublished)
       room.off(RoomEvent.TrackMuted, refresh)
@@ -935,16 +939,18 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
         if (!active) return
         const previous = rtcDebugSnapshotRef.current
-        const next: RtcDebugSnapshot = previous
-          ? { ...current, rates: deriveRtcRates(previous, current) }
-          : current
+        const next: RtcDebugSnapshot = attachRtcRatesToScreenShares(
+          previous
+            ? { ...current, rates: deriveRtcRates(previous, current) }
+            : current,
+        )
         rtcDebugSnapshotRef.current = next
         diagnosticRtcHistoryRef.current = appendRtcDebugSample(
           diagnosticRtcHistoryRef.current,
           next,
         )
         recordDiagnosticEvent('rtc', 'sample', next)
-        const stalledScreen = next.screenShares.some(
+        const stalledLocalScreen = next.screenShares.some(
           (screen) =>
             screen.isLocal &&
             screen.live &&
@@ -955,11 +961,24 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 screen.sentBitrate <= 1_000 &&
                 screen.fps === 0)),
         )
-        stalledScreenSamplesRef.current = stalledScreen
-          ? stalledScreenSamplesRef.current + 1
+        const stalledRemoteScreen = next.screenShares.some(
+          (screen) =>
+            !screen.isLocal &&
+            screen.live &&
+            screen.subscribed === true &&
+            (!screen.trackReady ||
+              (screen.receivedBitrate != null &&
+                screen.receivedBitrate <= 1_000 &&
+                (screen.fps ?? 0) === 0)),
+        )
+        stalledLocalScreenSamplesRef.current = stalledLocalScreen
+          ? stalledLocalScreenSamplesRef.current + 1
+          : 0
+        stalledRemoteScreenSamplesRef.current = stalledRemoteScreen
+          ? stalledRemoteScreenSamplesRef.current + 1
           : 0
         if (
-          stalledScreenSamplesRef.current === 3 &&
+          stalledLocalScreenSamplesRef.current === 3 &&
           auth.session?.token
         ) {
           void sendDiagnosticReport({
@@ -968,6 +987,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             area: 'screen',
             severity: 'error',
             triggerCode: 'screen_publication_stalled',
+            context: next,
+            automatic: true,
+          }).catch(() => undefined)
+        }
+        if (
+          stalledRemoteScreenSamplesRef.current === 3 &&
+          auth.session?.token
+        ) {
+          void sendDiagnosticReport({
+            token: auth.session.token,
+            desktop,
+            area: 'screen',
+            severity: 'error',
+            triggerCode: 'screen_subscription_stalled',
             context: next,
             automatic: true,
           }).catch(() => undefined)
@@ -1471,6 +1504,10 @@ export function buildStageItems(options: {
           publication,
           subscribed,
           live: !publication.isMuted,
+          error:
+            source === 'screen' && subscribed
+              ? browserScreenSubscriptionError(publication)
+              : undefined,
         })
       }
     }
@@ -1481,6 +1518,19 @@ export function buildStageItems(options: {
     tracks,
     filters: options.filters,
   })
+}
+
+function browserScreenSubscriptionError(
+  publication: RemoteTrackPublication,
+) {
+  const error = (
+    publication as RemoteTrackPublication & { subscriptionError?: unknown }
+  ).subscriptionError
+  if (error == null) return undefined
+  const detail = error instanceof Error ? error.message : String(error)
+  return detail
+    ? `Не удалось подключиться к демонстрации: ${detail}`
+    : 'Не удалось подключиться к демонстрации'
 }
 
 function nativeScreenDemandKey(

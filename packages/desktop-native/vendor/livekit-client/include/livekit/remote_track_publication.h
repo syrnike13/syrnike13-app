@@ -16,6 +16,9 @@
 
 #pragma once
 
+#include <atomic>
+#include <mutex>
+
 #include "livekit/track_publication.h"
 #include "livekit/visibility.h"
 
@@ -32,12 +35,24 @@ public:
   /// safe to accept proto::OwnedTrackPublication.
   explicit RemoteTrackPublication(const proto::OwnedTrackPublication& owned);
 
-  bool subscribed() const noexcept { return subscribed_; }
+  /// @brief Returns whether the FFI layer has attached a remote track.
+  bool subscribed() const noexcept { return subscribed_.load(std::memory_order_acquire); }
 
+  /// @brief Requests a subscription state change from the FFI layer.
   void setSubscribed(bool subscribed);
 
 private:
-  bool subscribed_{false};
+  friend class Room;
+#ifdef LIVEKIT_TEST_ACCESS
+  friend class RoomCallbackTest;
+#endif
+
+  bool subscriptionDesired() const noexcept { return subscription_desired_.load(std::memory_order_acquire); }
+  void setSubscriptionState(bool subscribed) noexcept { subscribed_.store(subscribed, std::memory_order_release); }
+
+  std::mutex subscription_command_lock_;
+  std::atomic_bool subscription_desired_{false};
+  std::atomic_bool subscribed_{false};
 };
 
 } // namespace livekit

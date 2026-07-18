@@ -17,6 +17,7 @@ type RtcDebugRoomLike = {
 
 type RtcDebugMediaTrack = {
   mediaStreamTrack?: {
+    id?: string
     contentHint?: string
     getSettings?: () => MediaTrackSettings
   } | null
@@ -77,6 +78,7 @@ export type RtcDebugRtpStreamSnapshot = {
   kind: 'audio' | 'video'
   ssrc?: number
   mid?: string
+  trackIdentifier?: string
   codec?: string
   bitrate?: number
   targetBitrate?: number
@@ -115,6 +117,8 @@ export type RtcDebugScreenShareSnapshot = {
   subscribed?: boolean
   live: boolean
   publicationId?: string
+  rtpStreamId?: string
+  trackReady: boolean
   codec?: string
   maxBitrate?: number
   maxFramerate?: number
@@ -241,7 +245,7 @@ export async function collectVoiceRtcDebugSnapshot(
 
   snapshot.screenShares = stageMediaItems
     .filter((item) => item.kind === 'screen')
-    .map((item) => screenShareSnapshot(item))
+    .map((item) => screenShareSnapshot(item, snapshot.outbound, snapshot.inbound))
 
   return snapshot
 }
@@ -313,6 +317,27 @@ export function deriveRtcRates(
   }
 
   return rates
+}
+
+export function attachRtcRatesToScreenShares(
+  snapshot: RtcDebugSnapshot,
+): RtcDebugSnapshot {
+  if (!snapshot.rates) return snapshot
+  return {
+    ...snapshot,
+    screenShares: snapshot.screenShares.map((screen) => {
+      if (!screen.rtpStreamId) return screen
+      return screen.isLocal
+        ? {
+            ...screen,
+            sentBitrate: snapshot.rates?.outbound[screen.rtpStreamId],
+          }
+        : {
+            ...screen,
+            receivedBitrate: snapshot.rates?.inbound[screen.rtpStreamId],
+          }
+    }),
+  }
 }
 
 export function appendRtcDebugSample<T extends { timestamp: number }>(
@@ -427,6 +452,7 @@ function rtpStreamSnapshot(
     kind,
     ssrc: numberValue(stat.ssrc),
     mid: stringValue(stat.mid),
+    trackIdentifier: stringValue(stat.trackIdentifier),
     codec: formatCodec(codec),
     targetBitrate: numberValue(stat.targetBitrate),
     packetsLost: numberValue(stat.packetsLost),
@@ -466,9 +492,12 @@ function rtpStreamSnapshot(
 
 function screenShareSnapshot(
   item: RtcDebugStageMediaItem,
+  outbound: readonly RtcDebugRtpStreamSnapshot[],
+  inbound: readonly RtcDebugRtpStreamSnapshot[],
 ): RtcDebugScreenShareSnapshot {
   const publication = item.publication
   const track = item.track?.mediaStreamTrack
+  const rtpStream = screenShareRtpStream(item, outbound, inbound)
   const settings = track?.getSettings?.()
   const browserSettings = settings as
     | (MediaTrackSettings & {
@@ -490,6 +519,8 @@ function screenShareSnapshot(
     subscribed: item.subscribed,
     live: item.live,
     publicationId: publication?.trackSid ?? publication?.sid,
+    rtpStreamId: rtpStream?.id,
+    trackReady: Boolean(track),
     codec: options?.videoCodec ?? options?.codec,
     maxBitrate: encoding?.maxBitrate,
     maxFramerate: encoding?.maxFramerate,
@@ -508,6 +539,11 @@ function screenShareSnapshot(
     logicalSurface: browserSettings?.logicalSurface,
     resizeMode: stringValue(browserSettings?.resizeMode),
     contentHint: track?.contentHint,
+    fps: rtpStream?.framesPerSecond,
+    frameWidth: rtpStream?.frameWidth,
+    frameHeight: rtpStream?.frameHeight,
+    packetsLost: rtpStream?.packetsLost,
+    qualityLimitationReason: rtpStream?.qualityLimitationReason,
     captureBackend: nativeStats?.backend,
     captureMethod:
       nativeStats?.backend === 'native'
@@ -607,6 +643,26 @@ function screenShareSnapshot(
       nativeStats?.backend === 'native' ? nativeStats.methods.wgc_gpu : hybridUnavailable,
     hybridVideohookFrames: hybridUnavailable,
   }
+}
+
+function screenShareRtpStream(
+  item: RtcDebugStageMediaItem,
+  outbound: readonly RtcDebugRtpStreamSnapshot[],
+  inbound: readonly RtcDebugRtpStreamSnapshot[],
+) {
+  const streams = (item.isLocal ? outbound : inbound).filter(
+    (stream) =>
+      stream.kind === 'video' &&
+      stream.pcRole === (item.isLocal ? 'publisher' : 'subscriber'),
+  )
+  const trackId = item.track?.mediaStreamTrack?.id
+  if (trackId) {
+    const matching = streams.find(
+      (stream) => stream.trackIdentifier === trackId,
+    )
+    if (matching) return matching
+  }
+  return streams.length === 1 ? streams[0] : undefined
 }
 
 function mediaKind(stat: RtcStatsLike): 'audio' | 'video' {

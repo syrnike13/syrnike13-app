@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Track, type Room } from 'livekit-client'
 
 import { buildStageItems } from './voice-provider'
 
@@ -88,6 +89,49 @@ describe('desktop voice stage channel scope', () => {
       'screen',
       false,
     )
+  })
+
+  it('exposes a browser screen subscription failure instead of loading forever', () => {
+    const publication = {
+      source: Track.Source.ScreenShare,
+      isSubscribed: false,
+      isMuted: false,
+      videoTrack: null,
+      subscriptionError: 'server_rejected',
+    }
+    const remoteParticipant = {
+      identity: 'remote',
+      trackPublications: new Map([['screen', publication]]),
+    }
+    const room = {
+      localParticipant: {
+        identity: 'local',
+        trackPublications: new Map(),
+      },
+      remoteParticipants: new Map([['remote', remoteParticipant]]),
+    } as unknown as Room
+
+    const items = buildStageItems({
+      room,
+      participants: [{ id: 'remote' }],
+      currentUserId: 'local',
+      filters: {
+        showOwnStream: true,
+        showRemoteStreams: true,
+        showParticipantsWithoutMedia: true,
+      },
+      watchedRemoteScreenIds: new Set(['remote:screen']),
+      nativeTracks: [],
+      nativePublications: [],
+      localScreenPreview: null,
+      setNativeDemand: vi.fn(),
+    })
+
+    expect(items).toContainEqual(expect.objectContaining({
+      id: 'remote:screen',
+      track: null,
+      error: 'Не удалось подключиться к демонстрации: server_rejected',
+    }))
   })
 })
 
