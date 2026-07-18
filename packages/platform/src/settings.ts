@@ -67,6 +67,8 @@ export type DesktopSoundSettings = {
 export type DesktopObservabilitySettings = {
   /** Anonymous counters and timings for the Windows native runtime. */
   anonymousNativeMetrics: boolean
+  /** Redacted structured diagnostic bundles uploaded after typed failures. */
+  diagnosticReports: boolean
   /** Full native crash dumps. They can contain process memory and require opt-in. */
   nativeCrashReports: boolean
 }
@@ -159,6 +161,7 @@ export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
 
 export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
   anonymousNativeMetrics: true,
+  diagnosticReports: false,
   nativeCrashReports: false,
 }
 
@@ -403,6 +406,10 @@ export function normalizeDesktopObservabilitySettings(
       settings.anonymousNativeMetrics,
       defaults.anonymousNativeMetrics,
     ),
+    diagnosticReports: booleanOrDefault(
+      settings.diagnosticReports,
+      defaults.diagnosticReports,
+    ),
     nativeCrashReports: booleanOrDefault(
       settings.nativeCrashReports,
       defaults.nativeCrashReports,
@@ -637,6 +644,12 @@ export function normalizeDesktopObservabilitySettingsPatch(
     typeof patch.anonymousNativeMetrics === 'boolean'
   ) {
     next.anonymousNativeMetrics = patch.anonymousNativeMetrics
+  }
+  if (
+    'diagnosticReports' in patch &&
+    typeof patch.diagnosticReports === 'boolean'
+  ) {
+    next.diagnosticReports = patch.diagnosticReports
   }
   if (
     'nativeCrashReports' in patch &&

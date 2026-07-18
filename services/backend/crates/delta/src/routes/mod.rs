@@ -9,6 +9,7 @@ mod auth_account;
 mod bots;
 mod channels;
 mod customisation;
+mod diagnostics;
 mod invites;
 mod onboard;
 mod policy;
@@ -37,6 +38,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/servers" => servers::routes(),
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
+            "/diagnostics" => diagnostics::routes(),
             "/safety" => safety::routes(),
             "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),
@@ -60,6 +62,7 @@ pub fn mount(config: Settings, mut rocket: Rocket<Build>) -> Rocket<Build> {
             "/servers" => servers::routes(),
             "/invites" => invites::routes(),
             "/custom" => customisation::routes(),
+            "/diagnostics" => diagnostics::routes(),
             "/safety" => safety::routes(),
             "/auth/account" => auth_account::routes(),
             "/auth/session" => rocket_authifier::routes::session::routes(),

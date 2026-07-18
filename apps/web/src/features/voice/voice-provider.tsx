@@ -105,6 +105,10 @@ import {
 } from '#/features/voice/voice-screen-viewer-sounds'
 import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
+import {
+  recordDiagnosticEvent,
+  sendDiagnosticReport,
+} from '#/features/diagnostics/diagnostic-reporter'
 
 type VoiceClient = {
   dispatch(command: VoiceCommand): void
@@ -180,6 +184,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     useState<RtcDebugSnapshot | null>(null)
   const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
+  const diagnosticRtcHistoryRef = useRef<RtcDebugSnapshot[]>([])
+  const stalledScreenSamplesRef = useRef(0)
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const watchedScreenViewerChannelsRef = useRef(new Map<string, string>())
   const pendingScreenWatchIdsRef = useRef(new Set<string>())
@@ -526,14 +532,29 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [snapshot.connection, snapshot.intentChannelId])
 
   useEffect(() => {
+    recordDiagnosticEvent('voice', 'session_snapshot', snapshot)
+  }, [snapshot])
+
+  useEffect(() => {
     const failureKey = snapshot.failure
       ? `${snapshot.failure.code}:${snapshot.operationId ?? ''}`
       : null
     if (failureKey && failureKey !== previousFailureRef.current) {
       toast.error(snapshot.failure?.message ?? 'Не удалось подключиться к голосу')
+      if (auth.session?.token && snapshot.failure) {
+        void sendDiagnosticReport({
+          token: auth.session.token,
+          desktop,
+          area: 'voice',
+          severity: 'error',
+          triggerCode: snapshot.failure.code,
+          context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
+          automatic: true,
+        }).catch(() => undefined)
+      }
     }
     previousFailureRef.current = failureKey
-  }, [snapshot.failure, snapshot.operationId])
+  }, [auth.session?.token, desktop, snapshot])
 
   useEffect(() => {
     const mediaFailure = ([
@@ -553,6 +574,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       } else {
         toast.error(error?.message ?? 'Медиа недоступно')
       }
+      if (auth.session?.token && error && mediaFailure) {
+        void sendDiagnosticReport({
+          token: auth.session.token,
+          desktop,
+          area: mediaFailure[0] === 'screen_audio' ? 'screen' : mediaFailure[0],
+          severity: error.code === 'output_device_fallback' ? 'warning' : 'error',
+          triggerCode: error.code,
+          context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
+          automatic: true,
+        }).catch(() => undefined)
+      }
     }
     previousMediaFailureRef.current = failureKey
   }, [
@@ -562,6 +594,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     snapshot.output.error,
     snapshot.screen.error,
     snapshot.screenAudio.error,
+    auth.session?.token,
+    desktop,
+    snapshot,
   ])
 
   const dispatchVoice = useCallback(async (command: VoiceCommand) => {
@@ -882,12 +917,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (snapshot.connection !== 'connected' || !room) {
       rtcDebugSnapshotRef.current = null
+      diagnosticRtcHistoryRef.current = []
       setRtcDebugSnapshot(null)
       setRtcDebugHistory([])
       return
     }
-    if (!rtcDebugEnabled) return
-
     let active = true
     let sampling = false
 
@@ -905,20 +939,58 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           ? { ...current, rates: deriveRtcRates(previous, current) }
           : current
         rtcDebugSnapshotRef.current = next
-        setRtcDebugSnapshot(next)
-        setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
+        diagnosticRtcHistoryRef.current = appendRtcDebugSample(
+          diagnosticRtcHistoryRef.current,
+          next,
+        )
+        recordDiagnosticEvent('rtc', 'sample', next)
+        const stalledScreen = next.screenShares.some(
+          (screen) =>
+            screen.isLocal &&
+            screen.live &&
+            ((screen.captureVideoPublished === true &&
+              screen.captureVideoFrames === 0) ||
+              (screen.captureVideoNoFrameCount ?? 0) >= 3 ||
+              (screen.sentBitrate != null &&
+                screen.sentBitrate <= 1_000 &&
+                screen.fps === 0)),
+        )
+        stalledScreenSamplesRef.current = stalledScreen
+          ? stalledScreenSamplesRef.current + 1
+          : 0
+        if (
+          stalledScreenSamplesRef.current === 3 &&
+          auth.session?.token
+        ) {
+          void sendDiagnosticReport({
+            token: auth.session.token,
+            desktop,
+            area: 'screen',
+            severity: 'error',
+            triggerCode: 'screen_publication_stalled',
+            context: next,
+            automatic: true,
+          }).catch(() => undefined)
+        }
+        if (rtcDebugEnabled) {
+          setRtcDebugSnapshot(next)
+          setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
+        }
       } finally {
         sampling = false
       }
     }
 
     void sample()
-    const interval = window.setInterval(() => void sample(), 1_000)
+    const interval = window.setInterval(
+      () => void sample(),
+      rtcDebugEnabled ? 1_000 : 5_000,
+    )
     return () => {
       active = false
       window.clearInterval(interval)
     }
-  }, [room, rtcDebugEnabled, snapshot.connection])
+  }, [auth.session?.token, desktop, room, rtcDebugEnabled, snapshot.connection])
 
   const setStageMediaFilters = useCallback<
     VoiceStageContextValue['setStageMediaFilters']

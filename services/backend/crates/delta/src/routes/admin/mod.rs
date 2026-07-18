@@ -4,6 +4,7 @@ use syrnike_database::User;
 use syrnike_result::{create_error, Result};
 
 mod badges;
+mod diagnostics;
 mod user_badges;
 mod users;
 
@@ -25,5 +26,9 @@ pub fn routes() -> (Vec<Route>, OpenApi) {
         user_badges::list,
         user_badges::assign,
         user_badges::remove,
+        diagnostics::list,
+        diagnostics::fetch,
+        diagnostics::update,
+        diagnostics::download,
     ]
 }

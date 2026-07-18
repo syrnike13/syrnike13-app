@@ -35,6 +35,8 @@ uuid = { workspace = true }
 # serde
 serde_json = { workspace = true }
 serde = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
 validator = { workspace = true, features = ["derive"] }
 iso8601-timestamp = { workspace = true }
 
@@ -76,6 +78,7 @@ syrnike-database = { workspace = true, features = [
     "redis-is-patched",
     "voice",
 ] }
+syrnike-files = { workspace = true }
 syrnike-models = { workspace = true, features = [
     "schemas",
     "validator",

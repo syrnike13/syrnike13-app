@@ -24,6 +24,12 @@ import type { SettingsSection } from '#/features/settings/settings-modal-context
 import { changeAccountPassword } from '#/features/api/account-api'
 import { useAuth } from '#/features/auth/auth-context'
 import { cn } from '#/lib/utils'
+import { usePlatform } from '#/platform/use-platform'
+import {
+  readBrowserDiagnosticReportsEnabled,
+  writeBrowserDiagnosticReportsEnabled,
+} from '#/features/diagnostics/diagnostic-preferences'
+import { sendDiagnosticReport } from '#/features/diagnostics/diagnostic-reporter'
 
 const SECTION_TITLES: Record<SettingsSection, string> = {
   profile: 'Профиль',
@@ -146,10 +152,15 @@ export function settingsSectionTitle(section: SettingsSection) {
 
 export function SettingsAccountPanel() {
   const auth = useAuth()
+  const { desktop } = usePlatform()
   const user = auth.user
   const [passwordSaving, setPasswordSaving] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [diagnosticReports, setDiagnosticReports] = useState(
+    readBrowserDiagnosticReportsEnabled,
+  )
+  const [sendingDiagnosticReport, setSendingDiagnosticReport] = useState(false)
 
   return (
     <div className="space-y-2">
@@ -230,6 +241,59 @@ export function SettingsAccountPanel() {
           </code>
         </SettingsRow>
       </SettingsBlock>
+
+      {!desktop ? (
+        <SettingsBlock
+          title="Конфиденциальность и диагностика"
+          description="Настройка хранится только в этом браузере."
+        >
+          <SettingsToggleRow
+            label="Автоматические диагностические отчёты"
+            hint="При сбое голоса или демонстрации экрана отправляет ограниченный структурированный пакет без токенов, сообщений, аудио и изображения экрана."
+            checked={diagnosticReports}
+            onCheckedChange={(checked) => {
+              setDiagnosticReports(checked)
+              writeBrowserDiagnosticReportsEnabled(checked)
+            }}
+          />
+          <SettingsRow
+            label="Отправить отчёт сейчас"
+            hint="Отправляет текущий ограниченный журнал и возвращает ID отчёта для поддержки."
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!auth.session?.token || sendingDiagnosticReport}
+              onClick={() => {
+                if (!auth.session?.token) return
+                setSendingDiagnosticReport(true)
+                void sendDiagnosticReport({
+                  token: auth.session.token,
+                  desktop: null,
+                  area: 'client',
+                  severity: 'warning',
+                  triggerCode: 'manual_report',
+                  description: 'Manual diagnostic report',
+                })
+                  .then((report) => {
+                    if (report) toast.success(`Отчёт отправлен: ${report.id}`)
+                  })
+                  .catch((error) => {
+                    toast.error(
+                      error instanceof Error
+                        ? error.message
+                        : 'Не удалось отправить диагностический отчёт',
+                    )
+                  })
+                  .finally(() => setSendingDiagnosticReport(false))
+              }}
+            >
+              {sendingDiagnosticReport ? 'Отправка…' : 'Отправить'}
+            </Button>
+          </SettingsRow>
+        </SettingsBlock>
+      ) : null}
     </div>
   )
 }

@@ -178,6 +178,15 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       ) as Promise<DesktopLocalSettings>
     },
   },
+  diagnostics: {
+    async createBundle(rendererJsonl: string) {
+      const value = await ipcRenderer.invoke(
+        IPC.diagnosticsCreateBundle,
+        rendererJsonl,
+      )
+      return new Uint8Array(value)
+    },
+  },
   updates: {
     getState() {
       return ipcRenderer.invoke(IPC.updatesGetState)

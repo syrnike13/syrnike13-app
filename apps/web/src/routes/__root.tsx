@@ -19,6 +19,7 @@ import { SyncProvider } from '#/features/sync/sync-provider'
 import { AgentationDevtools } from '#/integrations/agentation-devtools'
 import TanstackQueryProvider from '#/integrations/tanstack-query/root-provider'
 import { DesktopStartupUpdateGate } from '#/features/desktop/desktop-startup-update-gate'
+import { DiagnosticErrorReporter } from '#/features/diagnostics/diagnostic-error-reporter'
 
 import appCss from '../styles.css?url'
 
@@ -149,6 +150,7 @@ function RootComponent() {
         <ThemeColorMeta />
         <DesktopStartupUpdateGate>
           <AuthProvider>
+            <DiagnosticErrorReporter />
             <SyncProvider>
               <NativeScrollbarEnhancer />
               <Outlet />

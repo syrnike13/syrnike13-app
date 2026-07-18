@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 53; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 54; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1438,6 +1438,32 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             )
             .await
             .expect("Failed to add invite lifecycle fields.");
+    };
+
+    if revision <= 53 {
+        info!("Running migration [revision 53 / 18-07-2026]: Add diagnostic reports.");
+
+        db.db().create_collection("diagnostic_reports").await.ok();
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "diagnostic_reports",
+                "indexes": [
+                    {
+                        "key": { "created_at": -1_i32, "_id": -1_i32 },
+                        "name": "created_id"
+                    },
+                    {
+                        "key": { "user_id": 1_i32, "created_at": -1_i32 },
+                        "name": "user_created"
+                    },
+                    {
+                        "key": { "expires_at": 1_i32 },
+                        "name": "expires_at"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create diagnostic_reports indexes.");
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

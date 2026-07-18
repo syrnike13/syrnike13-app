@@ -221,7 +221,7 @@ describe('desktop local settings contract', () => {
     })
   })
 
-  it('defaults native metrics on and full crash reports off', () => {
+  it('defaults native metrics on and detailed reports off', () => {
     expect(normalizeDesktopLocalSettings({}).observability).toEqual(
       DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
     )
@@ -232,6 +232,7 @@ describe('desktop local settings contract', () => {
       normalizeDesktopLocalSettingsPatch({
         observability: {
           anonymousNativeMetrics: false,
+          diagnosticReports: true,
           nativeCrashReports: true,
           roomUrl: 'wss://private.example',
         },
@@ -239,6 +240,7 @@ describe('desktop local settings contract', () => {
     ).toEqual({
       observability: {
         anonymousNativeMetrics: false,
+        diagnosticReports: true,
         nativeCrashReports: true,
       },
     })

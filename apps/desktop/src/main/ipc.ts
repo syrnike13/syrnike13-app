@@ -49,6 +49,7 @@ import {
   broadcastDesktopVoiceSnapshot,
   desktopVoiceService,
 } from './voice/desktop-voice-service'
+import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -186,6 +187,10 @@ export function registerDesktopIpc(
     setDesktopOverlaySettings(settings.overlay)
     return settings
   })
+
+  ipcMain.handle(IPC.diagnosticsCreateBundle, (_event, rendererJsonl: string) =>
+    createDesktopDiagnosticBundle(rendererJsonl),
+  )
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
 
