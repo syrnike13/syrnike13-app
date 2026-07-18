@@ -68,7 +68,10 @@ export function useChannelChat({
           .map((message) => message.user)
           .filter((user): user is NonNullable<typeof user> => Boolean(user)),
       ])
-      setHasOlder(loaded.length >= MESSAGE_PAGE_SIZE)
+      // Запрос мог завершиться после переключения на другой канал.
+      if (activeChannelIdRef.current === channelId) {
+        setHasOlder(loaded.length >= MESSAGE_PAGE_SIZE)
+      }
       return loaded
     },
     enabled: enabled && !!token && !!channel,
@@ -82,11 +85,15 @@ export function useChannelChat({
   const messagesRef = useRef(messages)
   messagesRef.current = messages
   const lastAckedMessageIdRef = useRef<string | null>(null)
+  /** Канал, которому принадлежат async-завершения запросов (защита от гонок при смене канала). */
+  const activeChannelIdRef = useRef(channelId)
+  activeChannelIdRef.current = channelId
   const lastMessageId = messages.at(-1)?._id
 
   useEffect(() => {
     setComposerAction(null)
     setHasOlder(true)
+    setLoadingOlder(false)
     lastAckedMessageIdRef.current = null
   }, [channelId])
 
@@ -117,11 +124,12 @@ export function useChannelChat({
     const oldestId = currentMessages[0]?._id
     if (!oldestId) return
 
+    const requestChannelId = channelId
     setLoadingOlder(true)
     try {
       const { messages: older, users: extraUsers } = await fetchChannelMessages(
         token,
-        channelId,
+        requestChannelId,
         { before: oldestId },
       )
 
@@ -132,8 +140,11 @@ export function useChannelChat({
           .filter((user): user is NonNullable<typeof user> => Boolean(user)),
       ])
 
-      syncStore.prependChannelMessages(channelId, older)
-      setHasOlder(older.length >= MESSAGE_PAGE_SIZE)
+      syncStore.prependChannelMessages(requestChannelId, older)
+      // Канал мог смениться, пока запрос был в полёте, — не трогаем чужое состояние.
+      if (activeChannelIdRef.current === requestChannelId) {
+        setHasOlder(older.length >= MESSAGE_PAGE_SIZE)
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -141,7 +152,9 @@ export function useChannelChat({
           : 'Не удалось загрузить сообщения',
       )
     } finally {
-      setLoadingOlder(false)
+      if (activeChannelIdRef.current === requestChannelId) {
+        setLoadingOlder(false)
+      }
     }
   }, [channelId, enabled, loadingOlder, token])
 
