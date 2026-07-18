@@ -58,6 +58,17 @@ export function registerNativeMediaIpc(
       case 'microphonePreviewState':
         win.webContents.send(IPC.mediaMicrophonePreviewState, message.event)
         return
+      case 'remoteVideoSubscriptionFailed':
+        win.webContents.send(
+          'syrnike-desktop:media:remote-video-subscription-failed',
+          {
+            sessionId: message.sessionId,
+            generation: message.generation,
+            trackId: message.trackId,
+            message: message.message,
+          },
+        )
+        return
     }
   })
 

@@ -46,6 +46,8 @@ jobs:
     uses: ./.github/workflows/native-media-windows.yml
     with:
       release_channel: nightly
+      desktop_build_version: ${{ needs.version.outputs.nightly_version }}
+      symbol_retention_days: 14
 
   web:
     name: Publish nightly web image
@@ -346,24 +348,31 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
-      - name: Build nightly desktop and native runtime
+      - name: Download verified Windows native runtime
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: native-runtime-windows-nightly-${{ github.sha }}
+          path: .
+      - name: Verify downloaded Windows native runtime
+        if: runner.os == 'Windows'
+        run: pnpm desktop-native:verify
+      - name: Build nightly desktop
+        if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop build
+      - name: Build nightly Windows desktop with verified native runtime
+        if: runner.os == 'Windows'
+        run: |
+          pnpm --filter @syrnike13/web build
+          pnpm --filter @syrnike13/desktop verify:web-dist
+          pnpm --filter @syrnike13/platform build
+          pnpm --filter @syrnike13/desktop exec tsup
       - name: Package and verify nightly Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Package and verify nightly desktop
         if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
-      - name: Retain nightly native symbols
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-nightly-windows-symbols-${{ github.sha }}
-          retention-days: 14
-          if-no-files-found: error
-          path: |
-            packages/desktop-native/build/**/*.pdb
-            packages/desktop-native/dist/win32-x64/native-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

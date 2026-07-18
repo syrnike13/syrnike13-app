@@ -604,9 +604,8 @@ class ScreenActor::Implementation {
     auto next_frame = std::chrono::steady_clock::now();
     auto next_rtp_stats_at = next_frame + std::chrono::seconds(1);
     const auto started = next_frame;
-    auto last_rtp_progress_at = started;
-    std::optional<std::uint64_t> last_rtp_frames_sent;
     EncoderBackpressureStallDetector encoder_backpressure_stall;
+    OutboundRtpStallDetector outbound_rtp_stall;
     bool rtp_stall_reported = false;
     std::uint64_t frames = 0;
     std::uint64_t method_wgc_gpu = 0;
@@ -734,13 +733,12 @@ class ScreenActor::Implementation {
         const auto now = std::chrono::steady_clock::now();
         if (now >= next_rtp_stats_at) {
           const auto stats = sampleOutboundStats(session_id, generation, track);
-          if (stats && stats->available && stats->active) {
-            if (!last_rtp_frames_sent ||
-                stats->frames_sent > *last_rtp_frames_sent) {
-              last_rtp_progress_at = now;
-            } else if (!rtp_stall_reported && stats->frames_sent > 0 &&
-                       now - last_rtp_progress_at >=
-                         std::chrono::seconds(5)) {
+          if (stats && stats->available) {
+            if (!rtp_stall_reported && outbound_rtp_stall.observe(
+                  now,
+                  stats->active,
+                  stats->frames_sent,
+                  std::chrono::seconds(5))) {
               MediaCommand stalled;
               stalled.type = "__screenRtpStalled";
               stalled.session_id = session_id;
@@ -760,7 +758,6 @@ class ScreenActor::Implementation {
                 running->store(false);
               }
             }
-            last_rtp_frames_sent = stats->frames_sent;
           }
           next_rtp_stats_at = now + std::chrono::seconds(1);
         }

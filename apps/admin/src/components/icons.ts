@@ -2,6 +2,8 @@ export {
   RiAddLine as PlusIcon,
   RiArrowLeftLine as ArrowLeftIcon,
   RiAwardLine as AwardIcon,
+  RiBugLine as BugIcon,
+  RiDownloadLine as DownloadIcon,
   RiCheckLine as CheckIcon,
   RiCheckboxCircleLine as CircleCheckIcon,
   RiCloseCircleLine as OctagonXIcon,

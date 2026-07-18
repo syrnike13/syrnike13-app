@@ -312,6 +312,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
     ReleaseMftLocked();
     stopping_ = false;
     failed_ = false;
+    keyframe_pending_ = false;
     if (uninitialize_com)
       CoUninitialize();
     return WEBRTC_VIDEO_CODEC_OK;
@@ -342,13 +343,20 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
         return WEBRTC_VIDEO_CODEC_ERROR;
       }
     }
-    if (input_jobs_.size() >= kMaxQueuedInputs) {
-      return WEBRTC_VIDEO_CODEC_NO_OUTPUT;
-    }
-    const bool keyframe =
+    const bool keyframe_requested =
         frame_types &&
         std::find(frame_types->begin(), frame_types->end(),
                   webrtc::VideoFrameType::kVideoFrameKey) != frame_types->end();
+    // A PLI/FIR is delivered through frame_types, but the hardware input queue
+    // can be full on that exact Encode call. Keep the request sticky until a
+    // frame is actually accepted into our queue; otherwise a late subscriber
+    // may never receive an IDR while a busy screen stream keeps returning
+    // WEBRTC_VIDEO_CODEC_NO_OUTPUT.
+    keyframe_pending_ = keyframe_pending_ || keyframe_requested;
+    if (input_jobs_.size() >= kMaxQueuedInputs) {
+      return WEBRTC_VIDEO_CODEC_NO_OUTPUT;
+    }
+    const bool keyframe = keyframe_pending_;
 
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<IDXGIKeyedMutex> keyed_mutex;
@@ -413,6 +421,8 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
         sample, sample_time, frame.rtp_timestamp(), frame.render_time_ms(),
         frame.ntp_time_ms(), frame.rotation(), keyframe,
         std::move(lease)});
+    if (keyframe)
+      keyframe_pending_ = false;
     cv_.notify_one();
     return WEBRTC_VIDEO_CODEC_OK;
   }
@@ -993,6 +1003,7 @@ class MfH264Encoder final : public webrtc::VideoEncoder {
   bool stopping_ = false;
   bool failed_ = false;
   bool rates_dirty_ = false;
+  bool keyframe_pending_ = false;
   std::deque<InputJob> input_jobs_;
   std::deque<PendingOutput> pending_outputs_;
 };

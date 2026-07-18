@@ -76,6 +76,10 @@ pub async fn create_database(db: &MongoDb) {
         .await
         .expect("Failed to create safety_reports collection.");
 
+    db.create_collection("diagnostic_reports")
+        .await
+        .expect("Failed to create diagnostic_reports collection.");
+
     db.create_collection("safety_snapshots")
         .await
         .expect("Failed to create safety_snapshots collection.");
@@ -101,6 +105,34 @@ pub async fn create_database(db: &MongoDb) {
         )
         .await
         .expect("Failed to create pubsub collection.");
+
+    db.run_command(doc! {
+        "createIndexes": "diagnostic_reports",
+        "indexes": [
+            {
+                "key": { "created_at": -1_i32, "_id": -1_i32 },
+                "name": "created_id"
+            },
+            {
+                "key": { "user_id": 1_i32, "created_at": -1_i32 },
+                "name": "user_created"
+            },
+            {
+                "key": { "expires_at": 1_i32 },
+                "name": "expires_at"
+            },
+            {
+                "key": { "storage_state": 1_i32, "created_at": -1_i32, "_id": -1_i32 },
+                "name": "storage_created_id"
+            },
+            {
+                "key": { "storage_state": 1_i32, "expires_at": 1_i32 },
+                "name": "storage_expires_at"
+            }
+        ]
+    })
+    .await
+    .expect("Failed to create diagnostic_reports indexes.");
 
     db.run_command(doc! {
         "createIndexes": "users",

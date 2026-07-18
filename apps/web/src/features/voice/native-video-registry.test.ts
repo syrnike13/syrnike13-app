@@ -263,6 +263,43 @@ describe('NativeVideoRegistry canvas lifecycle', () => {
     )
   })
 
+  it('keeps a terminal subscription fenced while a manual retry starts', () => {
+    const registry = new NativeVideoRegistry()
+    deliver(registry, publicationMessage('available'))
+    deliver(registry, remoteFrameMessage(1, new FakeVideoFrame()))
+
+    deliver(registry, {
+      type: 'syrnike-native-video-subscription-failed',
+      metadata: {
+        trackId: 'remote-screen',
+        sessionId: 'session',
+        generation: 1,
+        message: 'Не удалось подключиться к демонстрации после 10 попыток',
+      },
+    })
+
+    expect(registry.listPublications()[0]).toMatchObject({
+      track: null,
+      error: 'Не удалось подключиться к демонстрации после 10 попыток',
+    })
+
+    const late = new FakeVideoFrame()
+    deliver(registry, remoteFrameMessage(2, late))
+    expect(late.close).toHaveBeenCalledOnce()
+    expect(registry.getTrack('remote-screen')).toBeNull()
+
+    registry.beginSubscriptionRetry('session', 1, 'remote-screen')
+    expect(registry.listPublications()[0]).not.toHaveProperty('error')
+    const beforeReannounce = new FakeVideoFrame()
+    deliver(registry, remoteFrameMessage(3, beforeReannounce))
+    expect(beforeReannounce.close).toHaveBeenCalledOnce()
+    expect(registry.getTrack('remote-screen')).toBeNull()
+
+    deliver(registry, publicationMessage('available'))
+
+    expect(registry.listPublications()[0]).not.toHaveProperty('error')
+  })
+
   it('removes publication availability on unpublish and fences late frames', () => {
     const registry = new NativeVideoRegistry()
     deliver(registry, publicationMessage('available'))

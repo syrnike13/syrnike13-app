@@ -691,9 +691,11 @@ void Room::onEvent(const FfiEvent& event) {
               LK_LOG_WARN("track_subscribed with unsupported kind: {}", static_cast<int>(track_info.kind()));
               break;
             }
-            // Attach to publication, mark subscribed
+            // This event reports actual FFI state. Do not call
+            // setSubscribed() here: that method sends a new command and can
+            // reorder with application-driven subscribe/unsubscribe requests.
             rpublication->setTrack(remote_track);
-            rpublication->setSubscribed(true);
+            rpublication->setSubscriptionState(true);
           }
 
           // Emit remote track_subscribed-style callback
@@ -735,10 +737,19 @@ void Room::onEvent(const FfiEvent& event) {
               break;
             }
             auto publication = pubIt->second;
+            // A subscribe command can overtake an older unsubscribe event. In
+            // that case, clearing publication->track() here would detach the
+            // newly subscribed replacement. Desired command state is distinct
+            // from actual event state so this check never sends another FFI
+            // command from the callback thread.
+            if (publication->subscriptionDesired()) {
+              LK_LOG_DEBUG("ignoring stale track_unsubscribed for demanded publication sid {}", track_sid);
+              break;
+            }
             unsub_source = publication->source();
             auto track = publication->track();
             publication->setTrack(nullptr);
-            publication->setSubscribed(false);
+            publication->setSubscriptionState(false);
             ev.participant = rparticipant;
             ev.publication = publication;
             ev.track = track;

@@ -202,6 +202,9 @@ export interface SyrnikeDesktopApi {
     load(): Promise<DesktopLocalSettings>
     update(patch: DesktopLocalSettingsPatch): Promise<DesktopLocalSettings>
   }
+  diagnostics: {
+    createBundle(rendererJsonl: string): Promise<Uint8Array>
+  }
   updates: {
     getState(): Promise<DesktopUpdateState>
     check(): Promise<DesktopUpdateState>

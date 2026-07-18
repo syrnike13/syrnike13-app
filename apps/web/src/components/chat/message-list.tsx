@@ -152,6 +152,8 @@ export function MessageList({
   const wasLoadingOlder = useRef(false)
   const scrollHeightBeforeLoad = useRef(0)
   const anchorMessageIdRef = useRef<string | null>(null)
+  /** Первичный скролл к последнему сообщению завершён (для этого канала). */
+  const initialScrollDoneRef = useRef(false)
 
   const feedItems = useMemo(() => buildMessageFeedItems(messages), [messages])
   const useVirtual = feedItems.length >= VIRTUAL_THRESHOLD
@@ -201,6 +203,9 @@ export function MessageList({
     canLoadOlderRef.current = false
     stickToBottomRef.current = true
     prevLastMessageIdRef.current = undefined
+    wasLoadingOlder.current = false
+    anchorMessageIdRef.current = null
+    initialScrollDoneRef.current = false
   }, [channelId])
 
   useEffect(() => {
@@ -240,17 +245,67 @@ export function MessageList({
       : undefined,
   }
 
+  // Первичный скролл к последнему сообщению. В виртуальном режиме позиции
+  // сначала считаются по оценкам высоты, поэтому одного scrollToIndex мало:
+  // держим ленту у нижней границы, пока измерение не стабилизируется
+  // (бюджет ~1.5 с), либо пока пользователь сам не начнёт скроллить.
+  useEffect(() => {
+    if (loadingOlder || !lastMessageId || initialScrollDoneRef.current) return
+
+    const root = scrollRef.current
+    if (!root) return
+
+    let raf = 0
+    let frames = 0
+    let stableFrames = 0
+
+    const finish = () => {
+      initialScrollDoneRef.current = true
+      stickToBottomRef.current = true
+    }
+
+    const tick = () => {
+      scrollToTail('auto')
+      frames += 1
+      if (isNearBottom(root, 4)) {
+        stableFrames += 1
+      } else {
+        stableFrames = 0
+      }
+      if (stableFrames >= 3 || frames >= 90) {
+        finish()
+        return
+      }
+      raf = requestAnimationFrame(tick)
+    }
+
+    const cancelOnUserScroll = () => {
+      finish()
+      cancelAnimationFrame(raf)
+    }
+
+    raf = requestAnimationFrame(tick)
+    root.addEventListener('wheel', cancelOnUserScroll, { passive: true })
+    root.addEventListener('touchmove', cancelOnUserScroll, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(raf)
+      root.removeEventListener('wheel', cancelOnUserScroll)
+      root.removeEventListener('touchmove', cancelOnUserScroll)
+    }
+  }, [channelId, lastMessageId, loadingOlder, useVirtual])
+
+  // Автоскролл при новом сообщении в хвосте, если пользователь внизу ленты.
   useEffect(() => {
     if (!lastMessageId) return
 
     const prevLastMessageId = prevLastMessageIdRef.current
     prevLastMessageIdRef.current = lastMessageId
 
-    const isInitialTail = prevLastMessageId === undefined
-    const isNewTailMessage = prevLastMessageId !== lastMessageId
-
-    if (!isInitialTail && !isNewTailMessage) return
-    if (!stickToBottomRef.current && !isInitialTail) return
+    // Первичный скролл для канала делает эффект выше.
+    if (prevLastMessageId === undefined) return
+    if (prevLastMessageId === lastMessageId) return
+    if (!stickToBottomRef.current) return
     if (wasLoadingOlder.current) return
 
     const run = () => scrollToTail('auto')
@@ -287,9 +342,15 @@ export function MessageList({
     }
 
     if (!wasLoadingOlder.current) return
+    wasLoadingOlder.current = false
+    const anchorId = anchorMessageIdRef.current
+    anchorMessageIdRef.current = null
+
+    // Подгрузка сработала, пока пользователь был внизу (например, автозаполнение
+    // вьюпорта на короткой ленте), — остаёмся на последних сообщениях.
+    if (stickToBottomRef.current) return
 
     const items = feedItemsForScrollRef.current
-    const anchorId = anchorMessageIdRef.current
 
     const scrollToIndex = scrollToIndexRef.current
     if (useVirtual && anchorId && scrollToIndex) {
@@ -302,9 +363,6 @@ export function MessageList({
         scrollRef.current.scrollHeight - scrollHeightBeforeLoad.current
       scrollRef.current.scrollTop += delta
     }
-
-    wasLoadingOlder.current = false
-    anchorMessageIdRef.current = null
   }, [loadingOlder, useVirtual, messages])
 
   useEffect(() => {

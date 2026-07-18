@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   appendRtcDebugSample,
+  attachRtcRatesToScreenShares,
   collectVoiceRtcDebugSnapshot,
   deriveRtcRates,
   RTC_DEBUG_BROWSER_UNAVAILABLE,
@@ -107,6 +108,7 @@ describe('voice rtc debug', () => {
           bytesSent: 500_000,
           packetsSent: 450,
           framesEncoded: 120,
+          trackIdentifier: 'screen-media-track',
           framesPerSecond: 60,
           frameWidth: 1920,
           frameHeight: 1080,
@@ -145,6 +147,7 @@ describe('voice rtc debug', () => {
           live: true,
           track: {
             mediaStreamTrack: {
+              id: 'screen-media-track',
               contentHint: 'motion',
               getSettings: () => ({
                 width: 1920,
@@ -201,6 +204,9 @@ describe('voice rtc debug', () => {
       maxBitrate: 8_000_000,
       captureWidth: 1920,
       captureHeight: 1080,
+      rtpStreamId: 'publisher:out-video',
+      trackReady: true,
+      fps: 60,
       hybridDxgiFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
     })
   })
@@ -451,6 +457,36 @@ describe('voice rtc debug', () => {
       outbound: { out: 8_000 },
       inbound: { in: 16_000 },
     })
+  })
+
+  it('attaches a remote screen bitrate to its matching inbound RTP stream', () => {
+    const snapshot = attachRtcRatesToScreenShares({
+      timestamp: 2_000,
+      transport: {},
+      outbound: [],
+      inbound: [],
+      screenShares: [{
+        id: 'remote:screen',
+        ownerUserId: 'remote',
+        isLocal: false,
+        subscribed: true,
+        live: true,
+        trackReady: true,
+        rtpStreamId: 'subscriber:in-screen',
+        hybridDxgiFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+        hybridGdiBitBltFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+        hybridGdiPrintWindowFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+        hybridGraphicsCaptureFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+        hybridVideohookFrames: RTC_DEBUG_BROWSER_UNAVAILABLE,
+      }],
+      rates: {
+        transport: {},
+        outbound: {},
+        inbound: { 'subscriber:in-screen': 2_500_000 },
+      },
+    })
+
+    expect(snapshot.screenShares[0]?.receivedBitrate).toBe(2_500_000)
   })
 
   it('keeps only the last 180 debug samples', () => {

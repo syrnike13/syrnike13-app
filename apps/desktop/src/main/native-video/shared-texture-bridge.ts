@@ -30,6 +30,8 @@ export type SharedTextureBridgeDependencies = {
   sendTexture?: typeof sharedTexture.sendSharedTexture
   maxInFlight?: number
   stallTimeoutMs?: number
+  deliveryFailureThreshold?: number
+  deliveryFailureCooldownMs?: number
   onTrackStalled?: (frame: NativeSharedVideoFrame) => void | Promise<void>
 }
 
@@ -48,6 +50,8 @@ type Entry = {
 export class NativeSharedTextureBridge {
   private readonly inFlight = new Map<string, Entry>()
   private readonly latestSequence = new Map<string, number>()
+  private readonly deliveryFailures = new Map<string, number>()
+  private readonly lastDeliveryRecoveryAt = new Map<string, number>()
   private rendererEpoch = 0
   private runtimeEpoch: number | null = null
   private disposed = false
@@ -62,6 +66,8 @@ export class NativeSharedTextureBridge {
   rendererReloaded() {
     this.rendererEpoch += 1
     this.releaseMainReferences()
+    this.deliveryFailures.clear()
+    this.lastDeliveryRecoveryAt.clear()
   }
 
   removeTrack(sessionId: string, generation: number, trackId: string) {
@@ -71,6 +77,12 @@ export class NativeSharedTextureBridge {
     }
     for (const key of this.latestSequence.keys()) {
       if (key.startsWith(prefix)) this.latestSequence.delete(key)
+    }
+    for (const key of this.deliveryFailures.keys()) {
+      if (key.startsWith(prefix)) this.deliveryFailures.delete(key)
+    }
+    for (const key of this.lastDeliveryRecoveryAt.keys()) {
+      if (key.startsWith(prefix)) this.lastDeliveryRecoveryAt.delete(key)
     }
   }
 
@@ -86,6 +98,8 @@ export class NativeSharedTextureBridge {
       this.rendererEpoch += 1
       this.releaseMainReferences()
       this.latestSequence.clear()
+      this.deliveryFailures.clear()
+      this.lastDeliveryRecoveryAt.clear()
     }
     const trackKey = [
       frame.sessionId,
@@ -127,6 +141,7 @@ export class NativeSharedTextureBridge {
       })
     } catch (error) {
       this.reportFailure('import', frame, error)
+      this.recordDeliveryFailure(trackKey, frame)
       this.releaseNativeFrame(frame)
       return false
     }
@@ -160,9 +175,13 @@ export class NativeSharedTextureBridge {
           rendererEpoch,
         },
       )
+      this.deliveryFailures.delete(trackKey)
       return true
     } catch (error) {
       this.reportFailure('send', frame, error)
+      if (rendererEpoch === this.rendererEpoch) {
+        this.recordDeliveryFailure(trackKey, frame)
+      }
       return false
     } finally {
       this.releaseEntryMainReference(key, entry)
@@ -174,6 +193,8 @@ export class NativeSharedTextureBridge {
     this.disposed = true
     this.releaseMainReferences()
     this.latestSequence.clear()
+    this.deliveryFailures.clear()
+    this.lastDeliveryRecoveryAt.clear()
     this.runtimeEpoch = null
   }
 
@@ -257,6 +278,34 @@ export class NativeSharedTextureBridge {
         .catch((error) => this.reportFailure('recover', entry.frame, error))
     } catch (error) {
       this.reportFailure('recover', entry.frame, error)
+    }
+  }
+
+  private recordDeliveryFailure(
+    trackKey: string,
+    frame: NativeSharedVideoFrame,
+  ) {
+    const failures = (this.deliveryFailures.get(trackKey) ?? 0) + 1
+    this.deliveryFailures.set(trackKey, failures)
+    const threshold = Math.max(
+      1,
+      this.dependencies.deliveryFailureThreshold ?? 3,
+    )
+    if (failures < threshold) return
+
+    this.deliveryFailures.set(trackKey, 0)
+    const now = Date.now()
+    const cooldown = Math.max(
+      1_000,
+      this.dependencies.deliveryFailureCooldownMs ?? 5_000,
+    )
+    if (now - (this.lastDeliveryRecoveryAt.get(trackKey) ?? 0) < cooldown) return
+    this.lastDeliveryRecoveryAt.set(trackKey, now)
+    try {
+      void Promise.resolve(this.dependencies.onTrackStalled?.(frame))
+        .catch((error) => this.reportFailure('recover', frame, error))
+    } catch (error) {
+      this.reportFailure('recover', frame, error)
     }
   }
 

@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -64,8 +65,12 @@ public:
   uintptr_t ffiHandleId() const noexcept { return handle_.get(); }
 
   /// Associated Track (if attached).
-  std::shared_ptr<Track> track() const noexcept { return track_; }
-  void setTrack(const std::shared_ptr<Track>& track) noexcept { track_ = track; }
+  std::shared_ptr<Track> track() const noexcept {
+    return std::atomic_load_explicit(&track_, std::memory_order_acquire);
+  }
+  void setTrack(const std::shared_ptr<Track>& track) noexcept {
+    std::atomic_store_explicit(&track_, track, std::memory_order_release);
+  }
 
 protected:
   TrackPublication(FfiHandle handle, std::string sid, std::string name, TrackKind kind, TrackSource source,

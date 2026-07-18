@@ -5,6 +5,8 @@ import { SettingsBlock, SettingsRow } from '#/components/settings/settings-panel
 import { Button } from '#/components/ui/button'
 import { Switch } from '#/components/ui/switch'
 import { usePlatform } from '#/platform/use-platform'
+import { useAuth } from '#/features/auth/auth-context'
+import { sendDiagnosticReport } from '#/features/diagnostics/diagnostic-reporter'
 import type {
   DesktopUpdateState,
   DesktopVersions,
@@ -19,10 +21,12 @@ const DEFAULT_WINDOW_PREFERENCES: DesktopWindowPreferences = {
 
 const DEFAULT_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
   anonymousNativeMetrics: true,
+  diagnosticReports: false,
   nativeCrashReports: false,
 }
 
 export function SettingsDesktopPanel() {
+  const auth = useAuth()
   const { desktop } = usePlatform()
   const [versions, setVersions] = useState<DesktopVersions | null>(null)
   const [windowPreferences, setWindowPreferences] =
@@ -34,6 +38,7 @@ export function SettingsDesktopPanel() {
   const [observability, setObservability] =
     useState<DesktopObservabilitySettings | null>(null)
   const [savingObservability, setSavingObservability] = useState(false)
+  const [sendingDiagnosticReport, setSendingDiagnosticReport] = useState(false)
 
   useEffect(() => {
     if (!desktop) return
@@ -207,6 +212,21 @@ export function SettingsDesktopPanel() {
           />
         </SettingsRow>
         <SettingsRow
+          label="Автоматические диагностические отчёты"
+          hint="При сбое голоса, демонстрации экрана, глобальной ошибке интерфейса или необработанном отклонении Promise отправляет ограниченный структурированный пакет без токенов, адресов комнат, содержимого сообщений, аудио и экрана. Изменение подробных native-логов вступит в силу после перезапуска приложения."
+        >
+          <Switch
+            checked={
+              observability?.diagnosticReports ??
+              DEFAULT_OBSERVABILITY_SETTINGS.diagnosticReports
+            }
+            disabled={!observability || savingObservability}
+            onCheckedChange={(checked) => {
+              void updateObservability({ diagnosticReports: checked })
+            }}
+          />
+        </SettingsRow>
+        <SettingsRow
           label="Полные отчёты о сбоях"
           hint="Могут содержать фрагменты памяти процесса. Выключены по умолчанию, отправляются только после вашего согласия. Изменение вступит в силу после перезапуска приложения."
         >
@@ -220,6 +240,42 @@ export function SettingsDesktopPanel() {
               void updateObservability({ nativeCrashReports: checked })
             }}
           />
+        </SettingsRow>
+        <SettingsRow
+          label="Отправить отчёт сейчас"
+          hint="Собирает текущий ограниченный журнал renderer и последние redacted native-логи, затем показывает ID отчёта для обращения в поддержку."
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!auth.session?.token || !desktop || sendingDiagnosticReport}
+            onClick={() => {
+              if (!auth.session?.token || !desktop) return
+              setSendingDiagnosticReport(true)
+              void sendDiagnosticReport({
+                token: auth.session.token,
+                desktop,
+                area: 'client',
+                severity: 'warning',
+                triggerCode: 'manual_report',
+                description: 'Manual diagnostic report',
+              })
+                .then((report) => {
+                  if (report) toast.success(`Отчёт отправлен: ${report.id}`)
+                })
+                .catch((error) => {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : 'Не удалось отправить диагностический отчёт',
+                  )
+                })
+                .finally(() => setSendingDiagnosticReport(false))
+            }}
+          >
+            {sendingDiagnosticReport ? 'Отправка…' : 'Отправить'}
+          </Button>
         </SettingsRow>
       </SettingsBlock>
 

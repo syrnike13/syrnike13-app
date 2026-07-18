@@ -482,6 +482,35 @@ int main() try {
       "encoder progress did not reset the backpressure detector"
     );
   }
+  {
+    using syrnike::desktop_native::media::OutboundRtpStallDetector;
+    OutboundRtpStallDetector detector;
+    const auto started = std::chrono::steady_clock::now();
+    require(
+      !detector.observe(started, false, 0, 5s),
+      "inactive RTP output started a stall watchdog"
+    );
+    require(
+      !detector.observe(started + 1s, true, 0, 5s),
+      "first active zero-frame RTP sample fired immediately"
+    );
+    require(
+      detector.observe(started + 6s, true, 0, 5s),
+      "active RTP output with no first frame was not detected"
+    );
+    require(
+      !detector.observe(started + 7s, true, 1, 5s),
+      "first sent RTP frame did not reset the stall watchdog"
+    );
+    require(
+      !detector.observe(started + 20s, false, 1, 5s),
+      "inactive RTP output was treated as stalled"
+    );
+    require(
+      !detector.observe(started + 21s, true, 1, 5s),
+      "RTP watchdog retained inactive time after a viewer returned"
+    );
+  }
 
   using syrnike::desktop_native::media::DeterministicFakeLiveKitPublicationClient;
   using syrnike::desktop_native::media::MediaRuntime;

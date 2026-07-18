@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { NativeSharedTextureBridge, type NativeSharedVideoFrame } from './shared-texture-bridge'
+import {
+  NativeSharedTextureBridge,
+  type NativeSharedVideoFrame,
+  type SharedTextureBridgeDependencies,
+} from './shared-texture-bridge'
+
+type ImportTextureOptions = Parameters<
+  NonNullable<SharedTextureBridgeDependencies['importTexture']>
+>[0]
 
 function frame(sequence: number, trackId = 'camera'): NativeSharedVideoFrame {
   return { sessionId: 's', generation: 2, trackId, participantIdentity: 'p', source: trackId === 'screen' ? 'screen' : 'camera', local: false, sequence, width: 640, height: 360, timestampUs: sequence * 1_000, runtimeEpoch: 0, ntHandle: Buffer.alloc(8) }
@@ -16,16 +24,28 @@ function harness(maxInFlight = 3, onTrackStalled = vi.fn()) {
     subtle: {} as Electron.SharedTextureImportedSubtle,
   }))
   const sendTexture = vi.fn(async () => undefined)
+  const importTexture = vi.fn((options: ImportTextureOptions) => {
+    callbacks.push(options.allReferencesReleased!)
+    return imported() as never
+  })
   const bridge = new NativeSharedTextureBridge({
     getWindow: () => ({ isDestroyed: () => false, webContents: { isDestroyed: () => false, mainFrame: {} } }) as never,
     release,
     maxInFlight,
     stallTimeoutMs: 1_000,
     onTrackStalled,
-    importTexture: vi.fn((options) => { callbacks.push(options.allReferencesReleased!); return imported() as never }),
+    importTexture,
     sendTexture,
   })
-  return { bridge, callbacks, release, imported, sendTexture, onTrackStalled }
+  return {
+    bridge,
+    callbacks,
+    release,
+    imported,
+    importTexture,
+    sendTexture,
+    onTrackStalled,
+  }
 }
 
 describe('NativeSharedTextureBridge', () => {
@@ -111,6 +131,31 @@ describe('NativeSharedTextureBridge', () => {
     }
   })
 
+  it('restarts a track after repeated shared-texture import failures', async () => {
+    const h = harness()
+    h.importTexture.mockImplementation(() => {
+      throw new Error('device lost')
+    })
+
+    expect(await h.bridge.deliver(frame(1, 'screen'))).toBe(false)
+    expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(false)
+    expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
+
+    expect(h.onTrackStalled).toHaveBeenCalledTimes(1)
+    expect(h.onTrackStalled).toHaveBeenCalledWith(frame(3, 'screen'))
+  })
+
+  it('does not restart a track for an isolated texture delivery failure', async () => {
+    const h = harness()
+    h.importTexture
+      .mockImplementationOnce(() => { throw new Error('device busy') })
+
+    expect(await h.bridge.deliver(frame(1, 'screen'))).toBe(false)
+    expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(true)
+
+    expect(h.onTrackStalled).not.toHaveBeenCalled()
+  })
+
   it('releases references on renderer reload without bypassing the fence', async () => {
     const h = harness()
     await h.bridge.deliver(frame(1))
@@ -119,6 +164,20 @@ describe('NativeSharedTextureBridge', () => {
     expect(await h.bridge.deliver(frame(2))).toBe(true)
     h.callbacks[0]()
     expect(h.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not carry delivery failures into a reloaded renderer', async () => {
+    const h = harness()
+    h.importTexture.mockImplementation(() => {
+      throw new Error('renderer unavailable')
+    })
+
+    expect(await h.bridge.deliver(frame(1, 'screen'))).toBe(false)
+    expect(await h.bridge.deliver(frame(2, 'screen'))).toBe(false)
+    h.bridge.rendererReloaded()
+    expect(await h.bridge.deliver(frame(3, 'screen'))).toBe(false)
+
+    expect(h.onTrackStalled).not.toHaveBeenCalled()
   })
 
   it('releases a removed local preview only after the Electron GPU fence', async () => {

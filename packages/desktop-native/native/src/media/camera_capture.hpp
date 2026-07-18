@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -15,6 +16,27 @@ struct CameraFrame {
   std::uint32_t height = 0;
   std::vector<std::uint8_t> bgra;
 };
+
+struct CameraFormat {
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  std::uint32_t frame_rate_numerator = 0;
+  std::uint32_t frame_rate_denominator = 1;
+
+  bool operator==(const CameraFormat&) const = default;
+};
+
+std::vector<CameraFormat> rankCameraOutputFormats(
+  CameraFormat requested,
+  std::vector<CameraFormat> native_formats
+);
+
+std::vector<std::uint8_t> copyCameraBgraRows(
+  const std::uint8_t* scanline_zero,
+  std::ptrdiff_t stride,
+  std::uint32_t width,
+  std::uint32_t height
+);
 
 class CameraCapture {
  public:

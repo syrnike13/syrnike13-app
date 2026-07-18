@@ -26,8 +26,10 @@
 #include <string>
 #include <utility>
 
+#include "../common/diagnostic_log.hpp"
 #include "d3d11_gpu_completion.hpp"
 #include "screen_capture_priority.hpp"
+#include "screen_dxgi_compositor.hpp"
 
 using Microsoft::WRL::ComPtr;
 namespace capture = winrt::Windows::Graphics::Capture;
@@ -43,6 +45,27 @@ constexpr std::size_t kOutputPoolSize = 5;
 constexpr UINT64 kProducerKey = 0;
 constexpr UINT64 kConsumerKey = 1;
 constexpr auto kGpuCompletionTimeout = std::chrono::milliseconds(500);
+
+void logScreenCaptureBackend(
+    std::string_view event,
+    std::string_view reason,
+    long hresult = 0) noexcept {
+  auto& logger = diagnostics::DiagnosticLog::instance();
+  if (!logger.enabled()) return;
+  logger.write(
+      event,
+      {
+          {"from", "dxgi_gpu"},
+          {"to", "wgc_gpu"},
+          {"reason", reason},
+          {"hresult", static_cast<std::int64_t>(hresult)},
+      });
+}
+
+std::uint64_t nextScreenFrameSequence() noexcept {
+  static std::atomic<std::uint64_t> sequence{0};
+  return sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+}
 
 void disableCaptureBorderIfAllowed(
     const capture::GraphicsCaptureSession& session) {
@@ -407,7 +430,7 @@ class GpuFramePool {
       }
 
       next_slot_ = (index + 1) % slots_.size();
-      frame.sequence = ++sequence_;
+      frame.sequence = nextScreenFrameSequence();
       frame.timestamp_us = timestamp_us != 0 ? timestamp_us : steadyMicros();
       frame.width = output_width_;
       frame.height = output_height_;
@@ -434,6 +457,7 @@ class GpuFramePool {
       return;
     }
     auto& slot = slots_[frame.slot];
+    if (slot.shared_handle != frame.shared_texture_handle) return;
     if (slot.mutex->AcquireSync(kConsumerKey, 0) == S_OK) {
       slot.mutex->ReleaseSync(kProducerKey);
     }
@@ -569,7 +593,6 @@ class GpuFramePool {
   std::uint32_t source_height_ = 0;
   std::array<Slot, kOutputPoolSize> slots_;
   std::size_t next_slot_ = 0;
-  std::uint64_t sequence_ = 0;
 };
 
 // Independent BGRA pool for Electron preview. A slot remains occupied until
@@ -656,7 +679,7 @@ class GpuPreviewPool {
         const auto candidate = (next_slot_ + attempt) % slots_.size();
         if (!slots_[candidate].occupied) {
           slots_[candidate].occupied = true;
-          reserved_sequence = ++sequence_;
+          reserved_sequence = nextScreenFrameSequence();
           slots_[candidate].sequence = reserved_sequence;
           slot_index = candidate;
           break;
@@ -954,7 +977,6 @@ class GpuPreviewPool {
   std::optional<ScreenPreviewFrame> pending_;
   std::optional<ScreenPreviewFailure> pending_failure_;
   std::size_t next_slot_ = 0;
-  std::uint64_t sequence_ = 0;
   std::uint64_t demand_revision_ = 0;
   std::chrono::steady_clock::time_point last_frame_at_{};
   std::chrono::steady_clock::time_point next_retry_at_{};
@@ -969,6 +991,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       std::uint32_t width,
       std::uint32_t height)
       : target_(target), selection_(selectAdapter(target_)), d3d_(createDevice(selection_)),
+        compositor_(d3d_.device.Get(), d3d_.context.Get()),
         pool_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height),
         preview_(d3d_.device.Get(), d3d_.context.Get(), width, height) {
     recreateDuplication();
@@ -1021,11 +1044,14 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
     const auto timestamp_us = qpcMicros(frame_info.LastPresentTime);
     ScreenGpuFrameResult result;
     try {
+      auto* composed = compositor_.compose(
+          texture.Get(), duplication_.Get(), frame_info,
+          selection_.output_description.Rotation);
       result = pool_.process(
-          texture.Get(), native_width_, native_height_, native_width_, native_height_,
+          composed, native_width_, native_height_, native_width_, native_height_,
           timestamp_us, method(), metrics, frame);
       preview_.process(
-          texture.Get(), native_width_, native_height_, native_width_, native_height_,
+          composed, native_width_, native_height_, native_width_, native_height_,
           timestamp_us);
     } catch (const ScreenGpuCaptureError& error) {
       metrics.hresult = error.hresult();
@@ -1058,6 +1084,10 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   void recreateDuplication() {
     duplication_.Reset();
     requireHr(
+        selection_.output->GetDesc(&selection_.output_description),
+        ScreenGpuCaptureErrorCode::CaptureUnavailable,
+        "failed to refresh selected DXGI output");
+    requireHr(
         selection_.output->DuplicateOutput(d3d_.device.Get(), &duplication_),
         ScreenGpuCaptureErrorCode::CaptureUnavailable,
         "failed to create DXGI output duplication");
@@ -1072,6 +1102,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   syrnike::voice::ScreenCaptureTarget target_;
   AdapterSelection selection_;
   D3dDevice d3d_;
+  DxgiFrameCompositor compositor_;
   GpuFramePool pool_;
   GpuPreviewPool preview_;
   ComPtr<IDXGIOutputDuplication> duplication_;
@@ -1397,6 +1428,128 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   std::chrono::steady_clock::time_point last_restart_at_{};
 };
 
+std::shared_ptr<ScreenGpuCapturer> createWgcGpuCapturer(
+    const syrnike::voice::ScreenCaptureTarget& target,
+    std::uint32_t width,
+    std::uint32_t height) {
+  try {
+    return std::make_shared<WgcGpuCapturer>(target, width, height);
+  } catch (const ScreenGpuCaptureError&) {
+    throw;
+  } catch (const winrt::hresult_error& error) {
+    throw ScreenGpuCaptureError(
+        ScreenGpuCaptureErrorCode::CaptureUnavailable,
+        "Windows Graphics Capture initialization failed",
+        static_cast<long>(error.code()));
+  }
+}
+
+class MonitorGpuCapturer final : public ScreenGpuCapturer {
+ public:
+  MonitorGpuCapturer(
+      const syrnike::voice::ScreenCaptureTarget& target,
+      std::uint32_t width,
+      std::uint32_t height)
+      : target_(target), width_(width), height_(height) {
+    try {
+      dxgi_ = std::make_shared<DxgiGpuCapturer>(target_, width_, height_);
+      active_ = dxgi_;
+    } catch (const ScreenGpuCaptureError& error) {
+      wgc_ = createWgcGpuCapturer(target_, width_, height_);
+      active_ = wgc_;
+      logScreenCaptureBackend(
+          "screen_capture_backend_initial_fallback", error.what(), error.hresult());
+    } catch (const std::exception& error) {
+      wgc_ = createWgcGpuCapturer(target_, width_, height_);
+      active_ = wgc_;
+      logScreenCaptureBackend(
+          "screen_capture_backend_initial_fallback", error.what());
+    }
+  }
+
+  ScreenGpuFrameResult capture(ScreenGpuFrame& frame) override {
+    auto result = active_->capture(frame);
+    if (active_ != dxgi_) return result;
+
+    const bool should_fallback = fallback_policy_.shouldFallback(result.status);
+    if (result.status == ScreenGpuFrameStatus::RecoverableLost) {
+      if (!should_fallback ||
+          !switchToWgc("repeated_recovery", result.metrics.hresult)) {
+        return result;
+      }
+      result.method = active_->method();
+      return result;
+    }
+    if (should_fallback &&
+        switchToWgc("fatal_error", result.metrics.hresult)) {
+      result.status = ScreenGpuFrameStatus::RecoverableLost;
+      result.method = active_->method();
+      return result;
+    }
+    return result;
+  }
+
+  void discard(const ScreenGpuFrame& frame) noexcept override {
+    if (dxgi_) dxgi_->discard(frame);
+    if (wgc_) wgc_->discard(frame);
+  }
+
+  void setPreviewDemand(ScreenPreviewDemand demand) override {
+    preview_demand_ = demand;
+    if (dxgi_) dxgi_->setPreviewDemand(demand);
+    if (wgc_) wgc_->setPreviewDemand(demand);
+  }
+
+  bool takePreviewFrame(ScreenPreviewFrame& frame) override {
+    return (dxgi_ && dxgi_->takePreviewFrame(frame)) ||
+        (wgc_ && wgc_->takePreviewFrame(frame));
+  }
+
+  bool takePreviewFailure(ScreenPreviewFailure& failure) override {
+    return (dxgi_ && dxgi_->takePreviewFailure(failure)) ||
+        (wgc_ && wgc_->takePreviewFailure(failure));
+  }
+
+  void releasePreviewFrame(std::uint64_t sequence) noexcept override {
+    if (dxgi_) dxgi_->releasePreviewFrame(sequence);
+    if (wgc_) wgc_->releasePreviewFrame(sequence);
+  }
+
+  std::size_t previewFramesInFlight() const noexcept override {
+    return (dxgi_ ? dxgi_->previewFramesInFlight() : 0) +
+        (wgc_ ? wgc_->previewFramesInFlight() : 0);
+  }
+
+  const char* method() const noexcept override { return active_->method(); }
+  LUID adapterLuid() const noexcept override { return active_->adapterLuid(); }
+
+ private:
+  bool switchToWgc(std::string_view reason, long hresult) noexcept {
+    if (active_ == wgc_) return true;
+    try {
+      if (!wgc_) {
+        wgc_ = createWgcGpuCapturer(target_, width_, height_);
+        wgc_->setPreviewDemand(preview_demand_);
+      }
+      active_ = wgc_;
+      logScreenCaptureBackend(
+          "screen_capture_backend_runtime_fallback", reason, hresult);
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  syrnike::voice::ScreenCaptureTarget target_;
+  std::uint32_t width_ = 0;
+  std::uint32_t height_ = 0;
+  ScreenPreviewDemand preview_demand_;
+  std::shared_ptr<ScreenGpuCapturer> dxgi_;
+  std::shared_ptr<ScreenGpuCapturer> wgc_;
+  std::shared_ptr<ScreenGpuCapturer> active_;
+  DxgiFallbackPolicy fallback_policy_;
+};
+
 }  // namespace
 
 ScreenGpuCaptureError::ScreenGpuCaptureError(
@@ -1414,16 +1567,8 @@ std::shared_ptr<ScreenGpuCapturer> ScreenGpuCapturer::create(
         ScreenGpuCaptureErrorCode::TargetClosed,
         "selected window is no longer available");
   }
-  try {
-    return std::make_shared<WgcGpuCapturer>(target, width, height);
-  } catch (const ScreenGpuCaptureError&) {
-    throw;
-  } catch (const winrt::hresult_error& error) {
-    throw ScreenGpuCaptureError(
-        ScreenGpuCaptureErrorCode::CaptureUnavailable,
-        "Windows Graphics Capture initialization failed",
-        static_cast<long>(error.code()));
-  }
+  if (target.window) return createWgcGpuCapturer(target, width, height);
+  return std::make_shared<MonitorGpuCapturer>(target, width, height);
 }
 
 }  // namespace syrnike::desktop_native::media

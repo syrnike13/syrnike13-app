@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "media/audio_constants.hpp"
+#include "media/camera_capture.hpp"
 #include "media/livekit_connect_policy.hpp"
 #include "media/microphone_audio_processor.hpp"
 #include "media/microphone_echo_reference.hpp"
@@ -54,6 +55,40 @@ bool isExactSilence(const std::vector<float>& frame) {
 }  // namespace
 
 int main() try {
+  using syrnike::desktop_native::media::CameraFormat;
+  const auto camera_formats = syrnike::desktop_native::media::rankCameraOutputFormats(
+    CameraFormat{1280, 720, 30, 1},
+    {
+      CameraFormat{640, 480, 30, 1},
+      CameraFormat{1920, 1080, 30, 1},
+      CameraFormat{1280, 720, 15, 1},
+      CameraFormat{1280, 720, 30, 1},
+      CameraFormat{},
+    });
+  require(
+    camera_formats.size() == 4 &&
+      camera_formats.front() == CameraFormat{1280, 720, 30, 1} &&
+      camera_formats[1] == CameraFormat{1280, 720, 15, 1},
+    "camera output formats are not ranked from the requested format to the nearest fallback"
+  );
+
+  const std::vector<std::uint8_t> padded_rows{
+    1, 2, 3, 4, 90, 90, 90, 90,
+    5, 6, 7, 8, 91, 91, 91, 91,
+  };
+  require(
+    syrnike::desktop_native::media::copyCameraBgraRows(
+      padded_rows.data(), 8, 1, 2) ==
+      std::vector<std::uint8_t>{1, 2, 3, 4, 5, 6, 7, 8},
+    "camera BGRA copy retained source-row padding"
+  );
+  require(
+    syrnike::desktop_native::media::copyCameraBgraRows(
+      padded_rows.data() + 8, -8, 1, 2) ==
+      std::vector<std::uint8_t>{5, 6, 7, 8, 1, 2, 3, 4},
+    "camera BGRA copy did not normalize a bottom-up frame"
+  );
+
   syrnike::voice::RuntimeConfig config;
   config.echo_cancellation_enabled = true;
   const auto enabled = syrnike::voice::microphoneCleanupApmOptions(config, true);

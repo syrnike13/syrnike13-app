@@ -120,6 +120,7 @@ describe('desktop local settings', () => {
 
       expect(next.observability).toEqual({
         anonymousNativeMetrics: true,
+        diagnosticReports: false,
         nativeCrashReports: true,
       })
     } finally {

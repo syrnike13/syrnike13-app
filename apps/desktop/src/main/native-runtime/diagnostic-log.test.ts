@@ -81,14 +81,21 @@ describe('native diagnostic log', () => {
       .map((line) => JSON.parse(line))
     expect(lines).toHaveLength(1)
     expect(lines[0]).toMatchObject({
-      role: 'electron-main',
+      schema: 'syrnike.diagnostic',
+      version: 1,
+      record_type: 'event',
+      source: 'electron-main',
       event: 'transport_post',
-      epochMs: Date.parse('2026-07-10T12:00:01.000Z'),
-      sequence: 1,
-      pid: expect.any(Number),
-      monotonicMs: expect.any(Number),
+      timestamp_ms: Date.parse('2026-07-10T12:00:01.000Z'),
+      data: {
+        runtime: 'media',
+        run_id: session.runId,
+        sequence: 1,
+        pid: expect.any(Number),
+        monotonic_ms: expect.any(Number),
+      },
     })
-    expect(lines[0].data).toEqual({
+    expect(lines[0].data.payload).toEqual({
       requestId: 'request-1',
       command: {
         type: 'connectMicrophone',

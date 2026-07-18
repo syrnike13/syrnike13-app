@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import {
   AwardIcon,
+  BugIcon,
   LogOutIcon,
   SparklesIcon,
   UserSearchIcon,
@@ -14,6 +15,7 @@ import { config } from '#/lib/config'
 import { cn } from '#/lib/utils'
 
 const NAV = [
+  { to: '/diagnostics', label: 'Диагностика', icon: BugIcon },
   { to: '/badges', label: 'Бейджи', icon: AwardIcon },
   { to: '/users', label: 'Пользователи', icon: UserSearchIcon },
 ] as const

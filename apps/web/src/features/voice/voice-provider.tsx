@@ -12,7 +12,6 @@ import {
   type Room,
   type RemoteParticipant,
   type RemoteTrackPublication,
-  type VideoTrack,
 } from 'livekit-client'
 import {
   VoiceDirector,
@@ -48,10 +47,7 @@ import {
   writeStageMediaFilters,
 } from '#/features/voice/voice-stage-filters'
 import {
-  buildStageMediaItems,
   stageMediaItemId,
-  type StageMediaFilters,
-  type StageMediaTrackEntry,
 } from '#/features/voice/voice-stage-media'
 import {
   applyStageScreenPublicationSubscription,
@@ -86,10 +82,11 @@ import {
 } from '#/features/voice/voice-telemetry-context'
 import type {
   VoiceStageMediaItem,
-  VoiceStageMediaPublication,
 } from '#/features/voice/voice-context'
+import { buildStageItems } from '#/features/voice/voice-stage-items'
 import { withConnectingLocalAvatarItem } from '#/features/voice/voice-connecting-preview'
 import {
+  attachRtcRatesToScreenShares,
   appendRtcDebugSample,
   collectVoiceRtcDebugSnapshot,
   deriveRtcRates,
@@ -105,6 +102,10 @@ import {
 } from '#/features/voice/voice-screen-viewer-sounds'
 import { voiceSnapshotTransitionSounds } from '#/features/voice/voice-transition-sounds'
 import { getSyrnikeDesktop } from '#/platform/runtime'
+import {
+  recordDiagnosticEvent,
+  sendDiagnosticReport,
+} from '#/features/diagnostics/diagnostic-reporter'
 
 type VoiceClient = {
   dispatch(command: VoiceCommand): void
@@ -180,6 +181,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     useState<RtcDebugSnapshot | null>(null)
   const [rtcDebugHistory, setRtcDebugHistory] = useState<RtcDebugSnapshot[]>([])
   const rtcDebugSnapshotRef = useRef<RtcDebugSnapshot | null>(null)
+  const diagnosticRtcHistoryRef = useRef<RtcDebugSnapshot[]>([])
+  const stalledLocalScreenSamplesRef = useRef(0)
+  const stalledRemoteScreenSamplesRef = useRef(0)
   const stageMediaItemsRef = useRef<VoiceStageMediaItem[]>([])
   const watchedScreenViewerChannelsRef = useRef(new Map<string, string>())
   const pendingScreenWatchIdsRef = useRef(new Set<string>())
@@ -188,6 +192,35 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
   const nativeScreenDemandRef = useRef(new Map<string, boolean>())
   const nativeDemandRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const setNativeScreenDemand = useCallback((
+    sessionId: string,
+    generation: number,
+    trackId: string,
+    demanded: boolean,
+  ) => {
+    if (!desktop) return
+    const demandKey = nativeScreenDemandKey(sessionId, generation, trackId)
+    nativeScreenDemandRef.current.set(demandKey, demanded)
+    if (demanded) {
+      nativeVideoRegistry.beginSubscriptionRetry(sessionId, generation, trackId)
+    }
+    void desktop.media.setRemoteVideoDemand(
+      sessionId,
+      generation,
+      trackId,
+      demanded,
+    ).catch(() => {
+      if (nativeScreenDemandRef.current.get(demandKey) === demanded) {
+        nativeScreenDemandRef.current.delete(demandKey)
+      }
+      if (nativeDemandRetryTimerRef.current == null) {
+        nativeDemandRetryTimerRef.current = setTimeout(() => {
+          nativeDemandRetryTimerRef.current = null
+          setNativeDemandRetryRevision((revision) => revision + 1)
+        }, 250)
+      }
+    })
+  }, [desktop])
   const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
@@ -372,6 +405,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     room.on(RoomEvent.ParticipantDisconnected, refresh)
     room.on(RoomEvent.TrackSubscribed, refresh)
     room.on(RoomEvent.TrackUnsubscribed, refresh)
+    room.on(RoomEvent.TrackSubscriptionFailed, refresh)
     room.on(RoomEvent.TrackPublished, onTrackPublished)
     room.on(RoomEvent.TrackUnpublished, onTrackUnpublished)
     room.on(RoomEvent.TrackMuted, refresh)
@@ -381,6 +415,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       room.off(RoomEvent.ParticipantDisconnected, refresh)
       room.off(RoomEvent.TrackSubscribed, refresh)
       room.off(RoomEvent.TrackUnsubscribed, refresh)
+      room.off(RoomEvent.TrackSubscriptionFailed, refresh)
       room.off(RoomEvent.TrackPublished, onTrackPublished)
       room.off(RoomEvent.TrackUnpublished, onTrackUnpublished)
       room.off(RoomEvent.TrackMuted, refresh)
@@ -497,14 +532,29 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [snapshot.connection, snapshot.intentChannelId])
 
   useEffect(() => {
+    recordDiagnosticEvent('voice', 'session_snapshot', snapshot)
+  }, [snapshot])
+
+  useEffect(() => {
     const failureKey = snapshot.failure
       ? `${snapshot.failure.code}:${snapshot.operationId ?? ''}`
       : null
     if (failureKey && failureKey !== previousFailureRef.current) {
       toast.error(snapshot.failure?.message ?? 'Не удалось подключиться к голосу')
+      if (auth.session?.token && snapshot.failure) {
+        void sendDiagnosticReport({
+          token: auth.session.token,
+          desktop,
+          area: 'voice',
+          severity: 'error',
+          triggerCode: snapshot.failure.code,
+          context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
+          automatic: true,
+        }).catch(() => undefined)
+      }
     }
     previousFailureRef.current = failureKey
-  }, [snapshot.failure, snapshot.operationId])
+  }, [auth.session?.token, desktop, snapshot])
 
   useEffect(() => {
     const mediaFailure = ([
@@ -524,6 +574,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       } else {
         toast.error(error?.message ?? 'Медиа недоступно')
       }
+      if (auth.session?.token && error && mediaFailure) {
+        void sendDiagnosticReport({
+          token: auth.session.token,
+          desktop,
+          area: mediaFailure[0] === 'screen_audio' ? 'screen' : mediaFailure[0],
+          severity: error.code === 'output_device_fallback' ? 'warning' : 'error',
+          triggerCode: error.code,
+          context: { snapshot, rtcHistory: diagnosticRtcHistoryRef.current },
+          automatic: true,
+        }).catch(() => undefined)
+      }
     }
     previousMediaFailureRef.current = failureKey
   }, [
@@ -533,6 +594,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     snapshot.output.error,
     snapshot.screen.error,
     snapshot.screenAudio.error,
+    auth.session?.token,
+    desktop,
+    snapshot,
   ])
 
   const dispatchVoice = useCallback(async (command: VoiceCommand) => {
@@ -721,13 +785,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
         }
         : null,
-      setNativeDemand: (sessionId, generation, trackId, demanded) =>
-        desktop?.media.setRemoteVideoDemand(
-          sessionId,
-          generation,
-          trackId,
-          demanded,
-        ),
+      setNativeDemand: setNativeScreenDemand,
     })
     return withConnectingLocalAvatarItem(items, {
       connecting: status === 'connecting' && channelId != null,
@@ -746,6 +804,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     localScreenPreviewActive,
     stageMediaFilters,
     status,
+    setNativeScreenDemand,
   ])
   stageMediaItemsRef.current = stageMediaItems
 
@@ -757,11 +816,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     const activeDemandKeys = new Set<string>()
     for (const publication of nativeVideoPublications) {
-      const demandKey = [
+      const demandKey = nativeScreenDemandKey(
         publication.sessionId,
         publication.generation,
         publication.demandTrackId,
-      ].join('\u0000')
+      )
       activeDemandKeys.add(demandKey)
 
       const mediaId = stageMediaItemId(
@@ -773,24 +832,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           watchedScreenViewerChannelsRef.current.get(mediaId) === channelId,
       )
       if (nativeScreenDemandRef.current.get(demandKey) === demanded) continue
-
-      nativeScreenDemandRef.current.set(demandKey, demanded)
-      void desktop.media.setRemoteVideoDemand(
+      setNativeScreenDemand(
         publication.sessionId,
         publication.generation,
         publication.demandTrackId,
         demanded,
-      ).catch(() => {
-        if (nativeScreenDemandRef.current.get(demandKey) === demanded) {
-          nativeScreenDemandRef.current.delete(demandKey)
-        }
-        if (nativeDemandRetryTimerRef.current == null) {
-          nativeDemandRetryTimerRef.current = setTimeout(() => {
-            nativeDemandRetryTimerRef.current = null
-            setNativeDemandRetryRevision((revision) => revision + 1)
-          }, 250)
-        }
-      })
+      )
     }
 
     for (const demandKey of nativeScreenDemandRef.current.keys()) {
@@ -804,6 +851,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     nativeDemandRetryRevision,
     nativeVideoPublications,
     roomRevision,
+    setNativeScreenDemand,
   ])
 
   useEffect(() => () => {
@@ -869,12 +917,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (snapshot.connection !== 'connected' || !room) {
       rtcDebugSnapshotRef.current = null
+      diagnosticRtcHistoryRef.current = []
+      stalledLocalScreenSamplesRef.current = 0
+      stalledRemoteScreenSamplesRef.current = 0
       setRtcDebugSnapshot(null)
       setRtcDebugHistory([])
       return
     }
-    if (!rtcDebugEnabled) return
-
     let active = true
     let sampling = false
 
@@ -888,24 +937,91 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         )
         if (!active) return
         const previous = rtcDebugSnapshotRef.current
-        const next: RtcDebugSnapshot = previous
-          ? { ...current, rates: deriveRtcRates(previous, current) }
-          : current
+        const next = attachRtcRatesToScreenShares(
+          previous
+            ? { ...current, rates: deriveRtcRates(previous, current) }
+            : current,
+        )
         rtcDebugSnapshotRef.current = next
-        setRtcDebugSnapshot(next)
-        setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
+        diagnosticRtcHistoryRef.current = appendRtcDebugSample(
+          diagnosticRtcHistoryRef.current,
+          next,
+        )
+        recordDiagnosticEvent('rtc', 'sample', next)
+        const stalledLocalScreen = next.screenShares.some(
+          (screen) =>
+            screen.isLocal &&
+            screen.live &&
+            ((screen.captureVideoPublished === true &&
+              screen.captureVideoFrames === 0) ||
+              (screen.captureVideoNoFrameCount ?? 0) >= 3 ||
+              (screen.sentBitrate != null &&
+                screen.sentBitrate <= 1_000 &&
+                screen.fps === 0)),
+        )
+        const stalledRemoteScreen = next.screenShares.some(
+          (screen) =>
+            !screen.isLocal &&
+            screen.live &&
+            screen.subscribed === true &&
+            (!screen.trackReady ||
+              (screen.receivedBitrate != null &&
+                screen.receivedBitrate <= 1_000 &&
+                (screen.fps ?? 0) === 0)),
+        )
+        stalledLocalScreenSamplesRef.current = stalledLocalScreen
+          ? stalledLocalScreenSamplesRef.current + 1
+          : 0
+        stalledRemoteScreenSamplesRef.current = stalledRemoteScreen
+          ? stalledRemoteScreenSamplesRef.current + 1
+          : 0
+        if (
+          stalledLocalScreenSamplesRef.current === 3 &&
+          auth.session?.token
+        ) {
+          void sendDiagnosticReport({
+            token: auth.session.token,
+            desktop,
+            area: 'screen',
+            severity: 'error',
+            triggerCode: 'screen_publication_stalled',
+            context: next,
+            automatic: true,
+          }).catch(() => undefined)
+        }
+        if (
+          stalledRemoteScreenSamplesRef.current === 3 &&
+          auth.session?.token
+        ) {
+          void sendDiagnosticReport({
+            token: auth.session.token,
+            desktop,
+            area: 'screen',
+            severity: 'error',
+            triggerCode: 'screen_subscription_stalled',
+            context: next,
+            automatic: true,
+          }).catch(() => undefined)
+        }
+        if (rtcDebugEnabled) {
+          setRtcDebugSnapshot(next)
+          setRtcDebugHistory((history) => appendRtcDebugSample(history, next))
+        }
       } finally {
         sampling = false
       }
     }
 
     void sample()
-    const interval = window.setInterval(() => void sample(), 1_000)
+    const interval = window.setInterval(
+      () => void sample(),
+      rtcDebugEnabled ? 1_000 : 5_000,
+    )
     return () => {
       active = false
       window.clearInterval(interval)
     }
-  }, [room, rtcDebugEnabled, snapshot.connection])
+  }, [auth.session?.token, desktop, room, rtcDebugEnabled, snapshot.connection])
 
   const setStageMediaFilters = useCallback<
     VoiceStageContextValue['setStageMediaFilters']
@@ -1268,132 +1384,12 @@ function mediaIssue(snapshot: VoiceSnapshot): VoiceMicIssue | null {
   }
 }
 
-export function buildStageItems(options: {
-  room: Room | null
-  participants: readonly { id: string }[]
-  currentUserId: string | null
-  filters: StageMediaFilters
-  watchedRemoteScreenIds: ReadonlySet<string>
-  nativeTracks: readonly NativeVideoRegistryTrack[]
-  nativePublications: readonly NativeVideoRegistryPublication[]
-  localScreenPreview: {
-    userId: string
-    track: NativeVideoRegistryTrack['track']
-  } | null
-  setNativeDemand: (
-    sessionId: string,
-    generation: number,
-    trackId: string,
-    demanded: boolean,
-  ) => unknown
-}): VoiceStageMediaItem[] {
-  const participantIds = new Set(options.participants.map(({ id }) => id))
-  const tracks: StageMediaTrackEntry<VideoTrack, VoiceStageMediaPublication>[] = []
-  if (options.localScreenPreview) {
-    participantIds.add(options.localScreenPreview.userId)
-    tracks.push({
-      userId: options.localScreenPreview.userId,
-      source: 'screen',
-      track: options.localScreenPreview.track as unknown as VideoTrack,
-      publication: {
-        source: Track.Source.ScreenShare,
-        isMuted: false,
-        isSubscribed: true,
-      },
-      subscribed: true,
-      live: true,
-    })
-  }
-  for (const native of options.nativeTracks) {
-    if (native.source === 'screen') continue
-    const userId = baseVoiceIdentity(native.participantIdentity)
-    if (!participantIds.has(userId)) continue
-    tracks.push({
-      userId,
-      source: 'camera',
-      track: native.track as unknown as VideoTrack,
-      publication: {
-        source: Track.Source.Camera,
-        isMuted: false,
-        isSubscribed: true,
-      },
-      subscribed: true,
-      live: true,
-    })
-  }
-  for (const publication of options.nativePublications) {
-    const userId = baseVoiceIdentity(publication.participantIdentity)
-    if (!participantIds.has(userId)) continue
-    const mediaId = stageMediaItemId(userId, 'screen')
-    const subscribed = shouldSubscribeStageScreen({
-      isLocal: false,
-      mediaId,
-      watchedRemoteScreenIds: options.watchedRemoteScreenIds,
-    })
-    tracks.push({
-      userId,
-      source: 'screen',
-      track: subscribed ? publication.track as unknown as VideoTrack : null,
-      publication: {
-        source: Track.Source.ScreenShare,
-        isMuted: false,
-        isSubscribed: subscribed,
-        setSubscribed: (demanded) => {
-          void options.setNativeDemand(
-            publication.sessionId,
-            publication.generation,
-            publication.demandTrackId,
-            demanded,
-          )
-        },
-      },
-      subscribed,
-      live: true,
-    })
-  }
-  if (options.room) {
-    participantIds.add(baseVoiceIdentity(options.room.localParticipant.identity))
-    const roomParticipants = [
-      options.room.localParticipant,
-      ...options.room.remoteParticipants.values(),
-    ]
-    for (const participant of roomParticipants) {
-      const userId = baseVoiceIdentity(participant.identity)
-      const isLocal = participant === options.room.localParticipant
-      if (!isLocal && !participantIds.has(userId)) continue
-      if (isLocal) participantIds.add(userId)
-      for (const publication of participant.trackPublications.values()) {
-        const source =
-          publication.source === Track.Source.ScreenShare
-            ? 'screen'
-            : publication.source === Track.Source.Camera
-              ? 'camera'
-              : null
-        if (!source) continue
-        const subscribed = source === 'screen'
-          ? shouldSubscribeStageScreen({
-            isLocal,
-            mediaId: stageMediaItemId(userId, 'screen'),
-            watchedRemoteScreenIds: options.watchedRemoteScreenIds,
-          })
-          : publication.isSubscribed
-        tracks.push({
-          userId,
-          source,
-          track: subscribed ? publication.videoTrack ?? null : null,
-          publication,
-          subscribed,
-          live: !publication.isMuted,
-        })
-      }
-    }
-  }
-  return buildStageMediaItems({
-    participants: [...participantIds].map((id) => ({ id })),
-    currentUserId: options.currentUserId,
-    tracks,
-    filters: options.filters,
-  })
+function nativeScreenDemandKey(
+  sessionId: string,
+  generation: number,
+  trackId: string,
+) {
+  return [sessionId, generation, trackId].join('\u0000')
 }
 
 function screenQuality(quality: string) {

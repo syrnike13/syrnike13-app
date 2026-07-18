@@ -193,8 +193,8 @@ describe('ElectronUtilityAdapter', () => {
       'transport_kill',
       'after_restart',
     ])
-    expect(lines.map((line) => line.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7])
-    expect(new Set(lines.map((line) => line.runId))).toEqual(
+    expect(lines.map((line) => line.data.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(new Set(lines.map((line) => line.data.run_id))).toEqual(
       new Set([session.runId]),
     )
   })

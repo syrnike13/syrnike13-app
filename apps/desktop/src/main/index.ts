@@ -164,6 +164,17 @@ async function saveOverlaySettings(overlay: DesktopOverlaySettings) {
 
 function applyDesktopLocalSettings(settings: DesktopLocalSettings) {
   desktopLocalSettings = settings
+  if (settings.observability.diagnosticReports) {
+    process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS = '1'
+    process.env.SYRNIKE_NATIVE_DIAGNOSTIC_ROOT_DIR = path.join(
+      app.getPath('userData'),
+      'logs',
+      'native-media-diagnostics',
+    )
+  } else {
+    delete process.env.SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS
+    delete process.env.SYRNIKE_NATIVE_DIAGNOSTIC_ROOT_DIR
+  }
   desktopVoiceService.applyPreferences(settings.voice)
   anonymousNativeMetricsReporter.configure({
     enabled: settings.observability.anonymousNativeMetrics,
