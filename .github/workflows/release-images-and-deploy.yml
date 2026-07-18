@@ -368,11 +368,15 @@ jobs:
 
   native-windows:
     name: Verify Windows DLL runtime
-    needs: changes
+    needs:
+      - changes
+      - version
     if: ${{ needs.changes.outputs.desktop == 'true' }}
     uses: ./.github/workflows/native-media-windows.yml
     with:
       release_channel: stable
+      desktop_build_version: ${{ needs.version.outputs.version }}
+      symbol_retention_days: 30
 
   desktop:
     name: Build desktop packages
@@ -404,24 +408,31 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
-      - name: Build desktop and native runtime
+      - name: Download verified Windows native runtime
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v4
+        with:
+          name: native-runtime-windows-stable-${{ github.sha }}
+          path: .
+      - name: Verify downloaded Windows native runtime
+        if: runner.os == 'Windows'
+        run: pnpm desktop-native:verify
+      - name: Build desktop
+        if: runner.os != 'Windows'
         run: pnpm desktop:build
+      - name: Build Windows desktop with verified native runtime
+        if: runner.os == 'Windows'
+        run: |
+          pnpm --filter @syrnike13/web build
+          pnpm --filter @syrnike13/desktop verify:web-dist
+          pnpm --filter @syrnike13/platform build
+          pnpm --filter @syrnike13/desktop exec tsup
       - name: Package Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Package desktop
         if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
-      - name: Retain release native symbols
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-windows-symbols-${{ github.sha }}
-          retention-days: 30
-          if-no-files-found: error
-          path: |
-            packages/desktop-native/build/**/*.pdb
-            packages/desktop-native/dist/win32-x64/native-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
