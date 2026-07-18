@@ -188,6 +188,35 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   )
   const nativeScreenDemandRef = useRef(new Map<string, boolean>())
   const nativeDemandRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const setNativeScreenDemand = useCallback((
+    sessionId: string,
+    generation: number,
+    trackId: string,
+    demanded: boolean,
+  ) => {
+    if (!desktop) return
+    const demandKey = nativeScreenDemandKey(sessionId, generation, trackId)
+    nativeScreenDemandRef.current.set(demandKey, demanded)
+    if (demanded) {
+      nativeVideoRegistry.beginSubscriptionRetry(sessionId, generation, trackId)
+    }
+    void desktop.media.setRemoteVideoDemand(
+      sessionId,
+      generation,
+      trackId,
+      demanded,
+    ).catch(() => {
+      if (nativeScreenDemandRef.current.get(demandKey) === demanded) {
+        nativeScreenDemandRef.current.delete(demandKey)
+      }
+      if (nativeDemandRetryTimerRef.current == null) {
+        nativeDemandRetryTimerRef.current = setTimeout(() => {
+          nativeDemandRetryTimerRef.current = null
+          setNativeDemandRetryRevision((revision) => revision + 1)
+        }, 250)
+      }
+    })
+  }, [desktop])
   const notifiedScreenViewerIdsRef = useRef(new Set<string>())
   const previousFailureRef = useRef<string | null>(null)
   const previousMediaFailureRef = useRef<string | null>(null)
@@ -721,13 +750,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           track: nativeVideoRegistry.getLocalScreenPreviewTrack(),
         }
         : null,
-      setNativeDemand: (sessionId, generation, trackId, demanded) =>
-        desktop?.media.setRemoteVideoDemand(
-          sessionId,
-          generation,
-          trackId,
-          demanded,
-        ),
+      setNativeDemand: setNativeScreenDemand,
     })
     return withConnectingLocalAvatarItem(items, {
       connecting: status === 'connecting' && channelId != null,
@@ -746,6 +769,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     localScreenPreviewActive,
     stageMediaFilters,
     status,
+    setNativeScreenDemand,
   ])
   stageMediaItemsRef.current = stageMediaItems
 
@@ -757,11 +781,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     const activeDemandKeys = new Set<string>()
     for (const publication of nativeVideoPublications) {
-      const demandKey = [
+      const demandKey = nativeScreenDemandKey(
         publication.sessionId,
         publication.generation,
         publication.demandTrackId,
-      ].join('\u0000')
+      )
       activeDemandKeys.add(demandKey)
 
       const mediaId = stageMediaItemId(
@@ -773,24 +797,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           watchedScreenViewerChannelsRef.current.get(mediaId) === channelId,
       )
       if (nativeScreenDemandRef.current.get(demandKey) === demanded) continue
-
-      nativeScreenDemandRef.current.set(demandKey, demanded)
-      void desktop.media.setRemoteVideoDemand(
+      setNativeScreenDemand(
         publication.sessionId,
         publication.generation,
         publication.demandTrackId,
         demanded,
-      ).catch(() => {
-        if (nativeScreenDemandRef.current.get(demandKey) === demanded) {
-          nativeScreenDemandRef.current.delete(demandKey)
-        }
-        if (nativeDemandRetryTimerRef.current == null) {
-          nativeDemandRetryTimerRef.current = setTimeout(() => {
-            nativeDemandRetryTimerRef.current = null
-            setNativeDemandRetryRevision((revision) => revision + 1)
-          }, 250)
-        }
-      })
+      )
     }
 
     for (const demandKey of nativeScreenDemandRef.current.keys()) {
@@ -804,6 +816,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     nativeDemandRetryRevision,
     nativeVideoPublications,
     roomRevision,
+    setNativeScreenDemand,
   ])
 
   useEffect(() => () => {
@@ -1325,11 +1338,12 @@ export function buildStageItems(options: {
     const userId = baseVoiceIdentity(publication.participantIdentity)
     if (!participantIds.has(userId)) continue
     const mediaId = stageMediaItemId(userId, 'screen')
-    const subscribed = shouldSubscribeStageScreen({
+    const demanded = shouldSubscribeStageScreen({
       isLocal: false,
       mediaId,
       watchedRemoteScreenIds: options.watchedRemoteScreenIds,
     })
+    const subscribed = demanded && !publication.error
     tracks.push({
       userId,
       source: 'screen',
@@ -1349,6 +1363,7 @@ export function buildStageItems(options: {
       },
       subscribed,
       live: true,
+      error: publication.error,
     })
   }
   if (options.room) {
@@ -1394,6 +1409,14 @@ export function buildStageItems(options: {
     tracks,
     filters: options.filters,
   })
+}
+
+function nativeScreenDemandKey(
+  sessionId: string,
+  generation: number,
+  trackId: string,
+) {
+  return [sessionId, generation, trackId].join('\u0000')
 }
 
 function screenQuality(quality: string) {

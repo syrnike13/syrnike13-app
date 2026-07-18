@@ -735,6 +735,19 @@ void Room::onEvent(const FfiEvent& event) {
               break;
             }
             auto publication = pubIt->second;
+            // setSubscribed(true) updates the desired state synchronously, but
+            // the corresponding FFI subscribe can overtake an older
+            // unsubscribe event. In that case, clearing publication->track()
+            // here would detach the newly subscribed replacement and leave the
+            // consumer waiting forever. Keep the current track; if it is truly
+            // dead, its stream will end and the owner's recovery watchdog will
+            // resubscribe it.
+            if (publication->subscribed()) {
+              LK_LOG_DEBUG(
+                  "ignoring stale track_unsubscribed for demanded publication sid {}",
+                  track_sid);
+              break;
+            }
             unsub_source = publication->source();
             auto track = publication->track();
             publication->setTrack(nullptr);

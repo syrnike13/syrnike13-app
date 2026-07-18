@@ -54,6 +54,16 @@ ipcRenderer.on('syrnike-desktop:media:remote-video-track-removed', (_event, meta
   )
 })
 
+ipcRenderer.on(
+  'syrnike-desktop:media:remote-video-subscription-failed',
+  (_event, metadata) => {
+    window.postMessage(
+      { type: 'syrnike-native-video-subscription-failed', metadata },
+      window.location.origin,
+    )
+  },
+)
+
 for (const state of ['available', 'unavailable'] as const) {
   ipcRenderer.on(
     `syrnike-desktop:media:remote-screen-publication-${state}`,

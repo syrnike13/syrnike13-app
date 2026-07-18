@@ -130,6 +130,30 @@ describe('StageMediaTile', () => {
     expect(screen.queryByText('Экран исочка')).toBeNull()
   })
 
+  it('replaces the loader with a retry action after subscription exhaustion', () => {
+    const onSetSubscribed = vi.fn()
+    render(
+      <StageMediaTile
+        item={{
+          ...screenItem,
+          subscribed: false,
+          error: 'Не удалось подключиться к демонстрации после 10 попыток',
+        }}
+        displayName="Remote User"
+        variant="grid"
+        onFocus={vi.fn()}
+        onSetSubscribed={onSetSubscribed}
+      />,
+    )
+
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Не удалось подключиться к демонстрации после 10 попыток',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(onSetSubscribed).toHaveBeenCalledWith('remote-user:screen', true)
+  })
+
   it('renders an unsubscribed screen tile with a watch button and owner label', () => {
     const onSetSubscribed = vi.fn()
 

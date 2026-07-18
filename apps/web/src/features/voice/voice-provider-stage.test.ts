@@ -32,6 +32,63 @@ describe('desktop voice stage channel scope', () => {
       }),
     )
   })
+
+  it('exposes an exhausted native subscription as retryable instead of loading', () => {
+    const items = buildStageItems({
+      room: null,
+      participants: [{ id: 'remote' }],
+      currentUserId: 'local',
+      filters: {
+        showOwnStream: true,
+        showRemoteStreams: true,
+        showParticipantsWithoutMedia: true,
+      },
+      watchedRemoteScreenIds: new Set(['remote:screen']),
+      nativeTracks: [],
+      nativePublications: [{
+        ...publication('remote', 'screen'),
+        error: 'Не удалось подключиться к демонстрации после 10 попыток',
+      }],
+      localScreenPreview: null,
+      setNativeDemand: vi.fn(),
+    })
+
+    expect(items).toContainEqual(expect.objectContaining({
+      id: 'remote:screen',
+      subscribed: false,
+      track: null,
+      error: 'Не удалось подключиться к демонстрации после 10 попыток',
+    }))
+  })
+
+  it('routes one native UI subscription action through the demand coordinator', () => {
+    const setNativeDemand = vi.fn()
+    const items = buildStageItems({
+      room: null,
+      participants: [{ id: 'remote' }],
+      currentUserId: 'local',
+      filters: {
+        showOwnStream: true,
+        showRemoteStreams: true,
+        showParticipantsWithoutMedia: true,
+      },
+      watchedRemoteScreenIds: new Set(['remote:screen']),
+      nativeTracks: [],
+      nativePublications: [publication('remote', 'screen')],
+      localScreenPreview: null,
+      setNativeDemand,
+    })
+
+    items[0]?.publication?.setSubscribed?.(false)
+
+    expect(setNativeDemand).toHaveBeenCalledOnce()
+    expect(setNativeDemand).toHaveBeenCalledWith(
+      'voice-session',
+      2,
+      'screen',
+      false,
+    )
+  })
 })
 
 function publication(participantIdentity: string, trackId: string) {

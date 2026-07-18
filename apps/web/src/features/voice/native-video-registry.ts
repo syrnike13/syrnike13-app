@@ -40,6 +40,7 @@ type PublicationEntry = {
   participantIdentity: string
   source: 'screen'
   adapter: NativeVideoTrackAdapter
+  error?: string
 }
 
 const LOCAL_SCREEN_PREVIEW_TRACK_ID = 'local-screen-preview'
@@ -148,6 +149,21 @@ export class NativeVideoRegistry {
 
   getLocalScreenPreviewConsumerCount() {
     return this.localScreenConsumers.size
+  }
+
+  beginSubscriptionRetry(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+  ) {
+    const publication = this.publications.get(trackId)
+    if (!publication?.error || publication.sessionId !== sessionId ||
+      publication.generation !== generation) return
+    delete publication.error
+    // Keep the tombstone until native re-announces the publication. This
+    // exposes a loading state immediately without accepting an old in-flight
+    // frame from the exhausted subscription.
+    this.notify()
   }
 
   listTracks(): NativeVideoRegistryTrack[] {
@@ -262,6 +278,19 @@ export class NativeVideoRegistry {
           ? current.adapter
           : new NativeVideoTrackAdapter(metadata.trackId, this),
       })
+      this.notify()
+      return
+    }
+    if (isSubscriptionFailedMessage(event.data)) {
+      const { metadata } = event.data
+      if (!this.isActiveRemoteSession(metadata)) return
+      const publication = this.publications.get(metadata.trackId)
+      if (!publication ||
+        publication.sessionId !== metadata.sessionId ||
+        publication.generation !== metadata.generation) return
+      publication.error = metadata.message
+      this.tombstones.set(metadata.trackId, metadata)
+      this.removeTrack(metadata.trackId, metadata)
       this.notify()
       return
     }
@@ -487,6 +516,24 @@ function isTrackRemovedMessage(value: unknown): value is {
       (candidate.metadata as { generation?: unknown }).generation,
     )
   )
+}
+
+function isSubscriptionFailedMessage(value: unknown): value is {
+  type: 'syrnike-native-video-subscription-failed'
+  metadata: {
+    trackId: string
+    sessionId: string
+    generation: number
+    message: string
+  }
+} {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
+  return candidate.type === 'syrnike-native-video-subscription-failed' &&
+    typeof candidate.metadata?.trackId === 'string' &&
+    typeof candidate.metadata.sessionId === 'string' &&
+    Number.isSafeInteger(candidate.metadata.generation) &&
+    typeof candidate.metadata.message === 'string'
 }
 
 function isPublicationMessage(value: unknown): value is {

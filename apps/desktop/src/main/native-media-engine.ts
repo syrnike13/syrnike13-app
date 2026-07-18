@@ -115,7 +115,8 @@ export function registerNativeMediaRuntimeIpc(
     if (event.type === 'remoteVideoFrame' || event.type === 'localScreenPreviewFrame') {
       const local = event.type === 'localScreenPreviewFrame'
       const bridge = local ? localPreviewBridge : remoteVideoBridge
-      void bridge?.deliver({
+      if (!bridge) return
+      void bridge.deliver({
         sessionId: event.sessionId,
         generation: event.generation,
         trackId: event.trackId,
@@ -128,6 +129,14 @@ export function registerNativeMediaRuntimeIpc(
         timestampUs: event.timestampUs,
         runtimeEpoch: supervisor.getSnapshot().restartCount,
         ntHandle: Buffer.from(event.ntHandle),
+      }).then((delivered) => {
+        if (!local && delivered) {
+          controller.markRemoteVideoFrameDelivered(
+            event.sessionId,
+            event.generation,
+            event.trackId,
+          )
+        }
       })
       return
     }

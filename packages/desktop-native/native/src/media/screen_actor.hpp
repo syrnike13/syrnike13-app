@@ -31,6 +31,37 @@ class EncoderBackpressureStallDetector final {
   std::optional<std::chrono::steady_clock::time_point> started_at_;
 };
 
+class OutboundRtpStallDetector final {
+ public:
+  bool observe(
+    std::chrono::steady_clock::time_point now,
+    bool active,
+    std::uint64_t frames_sent,
+    std::chrono::steady_clock::duration timeout
+  ) {
+    if (!active) {
+      reset();
+      return false;
+    }
+    if (!last_frames_sent_ || frames_sent > *last_frames_sent_) {
+      last_frames_sent_ = frames_sent;
+      last_progress_at_ = now;
+      return false;
+    }
+    last_frames_sent_ = frames_sent;
+    return last_progress_at_ && now - *last_progress_at_ >= timeout;
+  }
+
+  void reset() noexcept {
+    last_frames_sent_.reset();
+    last_progress_at_.reset();
+  }
+
+ private:
+  std::optional<std::uint64_t> last_frames_sent_;
+  std::optional<std::chrono::steady_clock::time_point> last_progress_at_;
+};
+
 class ScreenActor final {
  public:
   using InternalPost = std::function<bool(MediaCommand)>;
