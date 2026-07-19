@@ -11,6 +11,7 @@ extern crate log;
 pub mod config;
 pub mod events;
 
+mod channel_activity;
 mod database;
 mod voice;
 mod voice_client;

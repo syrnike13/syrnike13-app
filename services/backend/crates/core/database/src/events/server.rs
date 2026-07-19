@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::client::Ping;
 
@@ -30,6 +31,17 @@ pub enum VoiceStateUpdateRequest {
         client_instance_id: String,
         connection_epoch: String,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum ChannelActivityRequest {
+    Sync,
+    Start { application_id: String },
+    Join { instance_id: String },
+    Leave { instance_id: String },
+    Command { instance_id: String, command: Value },
+    Close { instance_id: String },
 }
 
 impl VoiceStateUpdateRequest {
@@ -74,11 +86,16 @@ pub enum ClientMessage {
         suppress_call_notifications: Option<bool>,
         request: VoiceStateUpdateRequest,
     },
+    ChannelActivity {
+        request_id: String,
+        channel_id: String,
+        request: ChannelActivityRequest,
+    },
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientMessage, VoiceStateUpdateRequest};
+    use super::{ChannelActivityRequest, ClientMessage, VoiceStateUpdateRequest};
 
     #[test]
     fn voice_state_update_deserializes_refresh_request() {
@@ -110,6 +127,33 @@ mod tests {
                 rtc_engine: "web".to_string(),
                 client_instance_id: "client-1".to_string(),
                 connection_epoch: "epoch-1".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn channel_activity_command_deserializes_typed_request() {
+        let message = serde_json::from_value::<ClientMessage>(serde_json::json!({
+            "type": "ChannelActivity",
+            "request_id": "request-1",
+            "channel_id": "channel-1",
+            "request": {
+                "action": "command",
+                "instance_id": "activity-1",
+                "command": { "type": "increment" }
+            }
+        }))
+        .expect("channel activity command deserializes");
+
+        let ClientMessage::ChannelActivity { request, .. } = message else {
+            panic!("expected ChannelActivity");
+        };
+
+        assert_eq!(
+            request,
+            ChannelActivityRequest::Command {
+                instance_id: "activity-1".to_string(),
+                command: serde_json::json!({ "type": "increment" }),
             }
         );
     }

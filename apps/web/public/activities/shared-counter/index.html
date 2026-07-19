@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Совместный счётчик</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <p class="eyebrow">Realtime Activity</p>
+      <h1>Совместный счётчик</h1>
+      <p id="participants" class="muted">Подключение…</p>
+      <output id="count" aria-live="polite">0</output>
+      <div class="controls">
+        <button id="decrement" type="button" aria-label="Уменьшить">−</button>
+        <button id="increment" type="button" aria-label="Увеличить">+</button>
+      </div>
+      <p id="revision" class="muted"></p>
+    </main>
+    <script src="../sdk.js?v=1"></script>
+    <script src="./main.js"></script>
+  </body>
+</html>

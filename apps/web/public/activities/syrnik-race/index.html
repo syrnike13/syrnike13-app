@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Сырниковая гонка</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="game-header">
+        <div>
+          <h1>Сырниковая гонка</h1>
+          <p id="phase-label" class="muted">Подключение к раунду…</p>
+        </div>
+        <div class="connection" aria-live="polite">
+          <span id="connection-dot" aria-hidden="true"></span>
+          <span id="connection-label">Нет соединения</span>
+        </div>
+      </header>
+
+      <section class="diagnostics" aria-label="Диагностика синхронизации">
+        <div><span>Ревизия</span><strong id="revision">0</strong></div>
+        <div>
+          <span>Участники</span><strong id="participant-count">0</strong>
+        </div>
+        <div><span>Раунд</span><strong id="round">0</strong></div>
+        <div>
+          <span>Осталось целей</span><strong id="hits-remaining">0</strong>
+        </div>
+      </section>
+
+      <p id="error" class="error" role="status" hidden></p>
+
+      <section id="lobby" class="stage" hidden>
+        <div class="stage-copy">
+          <h2>Все готовы?</h2>
+          <p class="muted">
+            Каждый участник отмечает готовность, затем владелец запускает общий
+            раунд.
+          </p>
+        </div>
+        <ol id="lobby-players" class="player-list"></ol>
+        <div class="actions">
+          <button id="ready-button" type="button">Я готов</button>
+          <button id="start-button" type="button" class="secondary">
+            Начать раунд
+          </button>
+        </div>
+        <p id="owner-hint" class="muted"></p>
+      </section>
+
+      <section id="playing" class="stage arena-stage" hidden>
+        <div id="arena" class="arena" aria-label="Общее игровое поле">
+          <button id="target" class="target" type="button" hidden>
+            <img src="./syrnik.png" alt="Поймать сырник" draggable="false" />
+          </button>
+        </div>
+        <p class="arena-hint">Кликните первым — сервер засчитает один ответ.</p>
+      </section>
+
+      <section id="finished" class="stage" hidden>
+        <div class="stage-copy">
+          <h2 id="winner">Раунд завершён</h2>
+          <p class="muted">Финальный результат одинаков на всех клиентах.</p>
+        </div>
+        <button id="reset-button" type="button">Вернуться в лобби</button>
+        <p id="reset-hint" class="muted"></p>
+      </section>
+
+      <section class="score-section">
+        <h2>Счёт</h2>
+        <ol id="scoreboard" class="scoreboard"></ol>
+      </section>
+
+      <details class="event-log">
+        <summary>Журнал серверных снапшотов</summary>
+        <ol id="events"></ol>
+      </details>
+    </main>
+    <script src="../sdk.js?v=1"></script>
+    <script src="./main.js"></script>
+  </body>
+</html>

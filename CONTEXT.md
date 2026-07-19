@@ -140,6 +140,42 @@ Termination or unresponsiveness of one Windows utility host. Media, hotkey, and
 overlay runtime losses are isolated and recovered independently.
 _Avoid_: Sidecar lost, application crash, voice state update failed
 
+## Channel Activities
+
+**Channel Activity**:
+A first-party interactive web application embedded in the client and scoped to
+one voice channel. It may render independently from the Voice Stage, but it can
+only accept commands from accounts with a current Voice Membership in that
+channel.
+_Avoid_: Voice game, LiveKit app, rich presence activity
+
+**Activity Instance**:
+The server-authoritative realtime lifetime of one Channel Activity in one voice
+channel. It owns an immutable instance ID, application ID, participant set,
+monotonic revision, and application-defined state. One channel has at most one
+active Activity Instance in the first-party runtime.
+_Avoid_: Game room, Voice Session, iframe session
+
+**Activity Participant**:
+An account that has explicitly joined an Activity Instance and still has Voice
+Membership in the instance's channel. Voice Membership authorizes access, while
+the Activity Participant set records who is currently interacting with the
+application.
+_Avoid_: Voice participant, iframe client, player socket
+
+**Activity Host**:
+The trusted client component that embeds a Channel Activity in a sandboxed
+iframe, owns authenticated realtime transport, and exposes a bounded
+MessageChannel contract. The embedded application never receives the account's
+session token or desktop preload API.
+_Avoid_: Game container, webview bridge, Activity server
+
+**Activity Command**:
+An application-defined input sent by an Activity Participant and reduced by the
+server against the current Activity Instance revision. Clients render snapshots
+and never publish authoritative replacement state.
+_Avoid_: State patch, iframe event, gateway update
+
 ## Authorization
 
 **Authorization Scope**:
