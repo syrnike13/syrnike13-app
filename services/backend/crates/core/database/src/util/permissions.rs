@@ -119,7 +119,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
     /// Is our perspective user a member of the server?
     async fn are_we_a_member(&mut self) -> bool {
         if let Some(server) = &self.server {
-            if self.member.is_some() {
+            if self.validated_member().is_some() {
                 true
             } else if let Ok(member) = self
                 .database
@@ -127,7 +127,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
                 .await
             {
                 self.member = Some(Cow::Owned(member));
-                true
+                self.validated_member().is_some()
             } else {
                 false
             }
@@ -149,8 +149,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
     async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
         if let Some(server) = &self.server {
             let member_roles = self
-                .member
-                .as_ref()
+                .validated_member()
                 .map(|member| member.roles.clone())
                 .unwrap_or_default();
 
@@ -173,7 +172,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
 
     /// Is our perspective user timed out on this server?
     async fn are_we_timed_out(&mut self) -> bool {
-        if let Some(member) = &self.member {
+        if let Some(member) = self.validated_member() {
             member.in_timeout()
         } else {
             false
@@ -181,7 +180,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
     }
 
     async fn do_we_have_publish_overwrites(&mut self) -> bool {
-        if let Some(member) = &self.member {
+        if let Some(member) = self.validated_member() {
             member.can_publish
         } else {
             true
@@ -189,7 +188,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
     }
 
     async fn do_we_have_receive_overwrites(&mut self) -> bool {
-        if let Some(member) = &self.member {
+        if let Some(member) = self.validated_member() {
             member.can_receive
         } else {
             true
@@ -256,8 +255,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
                 }) => {
                     if let Some(server) = &self.server {
                         let member_roles = self
-                            .member
-                            .as_ref()
+                            .validated_member()
                             .map(|member| member.roles.clone())
                             .unwrap_or_default();
 
@@ -295,7 +293,7 @@ impl PermissionQuery for DatabasePermissionQuery<'_> {
                 | Cow::Owned(Channel::TextChannel {
                     user_permissions, ..
                 }) => {
-                    let user_id = self.member.as_ref().map(|member| &member.id.user)?;
+                    let user_id = self.validated_member().map(|member| &member.id.user)?;
                     user_permissions.get(user_id).copied().map(Override::from)
                 }
                 _ => None,
@@ -408,6 +406,35 @@ impl<'a> DatabasePermissionQuery<'a> {
         }
     }
 
+    /// Return the selected membership only when it belongs to the perspective
+    /// user and every selected server context.
+    fn validated_member(&self) -> Option<&Member> {
+        let member = self.member.as_deref()?;
+        if member.id.user != self.perspective.id {
+            return None;
+        }
+
+        if self
+            .server
+            .as_deref()
+            .is_some_and(|server| member.id.server != server.id)
+        {
+            return None;
+        }
+
+        if self.channel.as_deref().is_some_and(|channel| {
+            matches!(
+                channel,
+                Channel::TextChannel { server, .. }
+                    if member.id.server != server.as_str()
+            )
+        }) {
+            return None;
+        }
+
+        Some(member)
+    }
+
     /// Calculate the user permission value
     pub async fn calc_user(mut self) -> DatabasePermissionQuery<'a> {
         if self.cached_user_permission.is_some() {
@@ -459,6 +486,13 @@ impl<'a> DatabasePermissionQuery<'a> {
 
     /// Use member
     pub fn member(self, member: &'a Member) -> DatabasePermissionQuery<'a> {
+        if member.id.user != self.perspective.id {
+            return DatabasePermissionQuery {
+                member: None,
+                ..self
+            };
+        }
+
         DatabasePermissionQuery {
             member: Some(Cow::Borrowed(member)),
             ..self
@@ -481,15 +515,15 @@ impl<'a> DatabasePermissionQuery<'a> {
     }
 
     /// Access the underlying member
-    pub fn member_ref(&self) -> &Option<Cow<Member>> {
-        &self.member
+    pub fn member_ref(&self) -> Option<&Member> {
+        self.validated_member()
     }
 
     /// Get the known member's current ranking
     pub fn get_member_rank(&self) -> Option<i64> {
-        self.member
-            .as_ref()
-            .map(|member| member.get_ranking(self.server.as_ref().unwrap()))
+        let server = self.server.as_deref()?;
+        self.validated_member()
+            .map(|member| member.get_ranking(server))
     }
 }
 

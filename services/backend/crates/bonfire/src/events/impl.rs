@@ -30,7 +30,7 @@ impl Cache {
         #[allow(deprecated)]
         match &channel {
             Channel::TextChannel { server, .. } => {
-                let member = self.members.get(server);
+                let member = self.current_membership(server);
                 let server = self.servers.get(server);
                 let mut query =
                     DatabasePermissionQuery::new(db, self.users.get(&self.user_id).unwrap())
@@ -221,17 +221,14 @@ mod tests {
                 discoverable: false,
             },
         );
-        state.cache.members.insert(
-            server_id.clone(),
-            Member {
-                id: MemberCompositeKey {
-                    server: server_id.clone(),
-                    user: user.id.clone(),
-                },
-                roles: vec![],
-                ..Default::default()
+        state.cache.upsert_current_membership(Member {
+            id: MemberCompositeKey {
+                server: server_id.clone(),
+                user: user.id.clone(),
             },
-        );
+            roles: vec![],
+            ..Default::default()
+        });
         state.insert_subscription(server_id.clone()).await;
         state.apply_state().await;
 
@@ -363,7 +360,7 @@ mod tests {
         };
 
         state.cache.servers.insert(server_id.clone(), server);
-        state.cache.members.insert(server_id.clone(), member);
+        state.cache.upsert_current_membership(member);
         state.cache.channels.insert(channel_id.clone(), channel);
         state.insert_subscription(server_id.clone()).await;
         state.insert_subscription(channel_id.clone()).await;
@@ -396,7 +393,7 @@ impl State {
         let mut servers = HashMap::new();
         for (server_id, server) in &self.cache.servers {
             let mut query = DatabasePermissionQuery::new(db, perspective).server(server);
-            if let Some(member) = self.cache.members.get(server_id) {
+            if let Some(member) = self.cache.current_membership(server_id) {
                 query = query.member(member);
             }
             servers.insert(
@@ -412,7 +409,7 @@ impl State {
                 if let Some(server) = self.cache.servers.get(server_id) {
                     query = query.server(server);
                 }
-                if let Some(member) = self.cache.members.get(server_id) {
+                if let Some(member) = self.cache.current_membership(server_id) {
                     query = query.member(member);
                 }
             }
@@ -482,9 +479,23 @@ impl State {
             .unwrap_or_default();
 
         // Fetch all memberships with their corresponding servers.
-        let mut members: Vec<Member> = db.fetch_all_memberships(&user.id).await?;
+        let current_memberships: Vec<Member> = db
+            .fetch_all_memberships(&user.id)
+            .await?
+            .into_iter()
+            .filter(|membership| membership.id.user == user.id)
+            .collect();
+        let server_ids: Vec<String> = current_memberships
+            .iter()
+            .map(|membership| membership.id.server.clone())
+            .collect();
+        self.cache
+            .replace_current_memberships(current_memberships.iter().cloned());
+        let mut ready_members: HashMap<_, _> = current_memberships
+            .into_iter()
+            .map(|membership| (membership.id.clone(), membership))
+            .collect();
 
-        let server_ids: Vec<String> = members.iter().map(|x| x.id.server.clone()).collect();
         let servers = db.fetch_servers(&server_ids).await?;
         self.cache.servers = servers.iter().cloned().map(|x| (x.id.clone(), x)).collect();
 
@@ -557,7 +568,11 @@ impl State {
                 let user_ids = user_ids.into_iter().collect::<Vec<_>>();
                 let voice_members = db.fetch_members(&server, &user_ids).await?;
 
-                members.extend(voice_members);
+                for member in voice_members {
+                    // Keep the current user's membership from the authorization fetch above so
+                    // Ready.members and the initial authorization snapshot share one source.
+                    ready_members.entry(member.id.clone()).or_insert(member);
+                }
             }
 
             Some(voice_states)
@@ -611,12 +626,6 @@ impl State {
                     .collect::<Vec<String>>(),
             )
             .await?;
-
-        self.cache.members = members
-            .iter()
-            .cloned()
-            .map(|x| (x.id.server.clone(), x))
-            .collect();
 
         // Fetch customisations.
         let emojis = if fields.emojis {
@@ -719,7 +728,7 @@ impl State {
                 None
             },
             members: if fields.members {
-                Some(members.into_iter().map(Into::into).collect())
+                Some(ready_members.into_values().map(Into::into).collect())
             } else {
                 None
             },
@@ -939,6 +948,10 @@ impl State {
                 emojis: _,
                 voice_states: _,
             } => {
+                if member.id.user != self.cache.user_id || member.id.server != id.as_str() {
+                    return false;
+                }
+
                 self.insert_subscription(id.clone()).await;
 
                 if self.cache.is_bot {
@@ -946,7 +959,7 @@ impl State {
                 }
 
                 self.cache.servers.insert(id.clone(), server.clone().into());
-                self.cache.members.insert(id.clone(), member.clone().into());
+                self.cache.upsert_current_membership(member.clone().into());
 
                 for channel in channels {
                     self.cache
@@ -986,7 +999,7 @@ impl State {
                             self.cache.channels.remove(channel);
                         }
                     }
-                    self.cache.members.remove(id);
+                    self.cache.remove_current_membership(id);
                     refresh_authorization = true;
                 }
             }
@@ -999,12 +1012,12 @@ impl State {
                         self.cache.channels.remove(channel);
                     }
                 }
-                self.cache.members.remove(id);
+                self.cache.remove_current_membership(id);
                 refresh_authorization = true;
             }
             EventV1::ServerMemberUpdate { id, data, clear } => {
                 if id.user == self.cache.user_id {
-                    if let Some(member) = self.cache.members.get_mut(&id.server) {
+                    if let Some(member) = self.cache.current_membership_mut(&id.server) {
                         for field in &clear.clone() {
                             member.remove_field(&field.clone().into());
                         }
@@ -1055,7 +1068,7 @@ impl State {
                 }
 
                 if data.rank.is_some() || data.permissions.is_some() {
-                    if let Some(member) = self.cache.members.get(id) {
+                    if let Some(member) = self.cache.current_membership(id) {
                         if member.roles.contains(role_id) {
                             queue_server = Some(id.clone());
                         }
@@ -1069,7 +1082,7 @@ impl State {
                 }
                 refresh_authorization = true;
 
-                if let Some(member) = self.cache.members.get(id) {
+                if let Some(member) = self.cache.current_membership(id) {
                     if member.roles.contains(role_id) {
                         queue_server = Some(id.clone());
                     }
@@ -1085,7 +1098,7 @@ impl State {
                 }
                 refresh_authorization = true;
 
-                if let Some(member) = self.cache.members.get(id) {
+                if let Some(member) = self.cache.current_membership(id) {
                     if ranks.iter().any(|role_id| member.roles.contains(role_id)) {
                         queue_server = Some(id.clone());
                     }

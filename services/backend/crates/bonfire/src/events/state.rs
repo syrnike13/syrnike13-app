@@ -41,10 +41,53 @@ pub struct Cache {
 
     pub users: HashMap<String, User>,
     pub channels: HashMap<String, Channel>,
-    pub members: HashMap<String, Member>,
+    current_memberships: HashMap<String, Member>,
     pub servers: HashMap<String, Server>,
 
     pub seen_events: LruCache<String, ()>,
+}
+
+impl Cache {
+    /// Return this gateway connection's membership for a server.
+    ///
+    /// Authorization may only use the connected account's own membership.
+    pub(super) fn current_membership(&self, server_id: &str) -> Option<&Member> {
+        self.current_memberships
+            .get(server_id)
+            .filter(|member| member.id.server == server_id && member.id.user == self.user_id)
+    }
+
+    pub(super) fn current_membership_mut(&mut self, server_id: &str) -> Option<&mut Member> {
+        let user_id = self.user_id.as_str();
+        self.current_memberships
+            .get_mut(server_id)
+            .filter(|member| member.id.server == server_id && member.id.user == user_id)
+    }
+
+    /// Replace the connected account's memberships while rejecting foreign members.
+    pub(super) fn replace_current_memberships(
+        &mut self,
+        memberships: impl IntoIterator<Item = Member>,
+    ) {
+        self.current_memberships.clear();
+        for membership in memberships {
+            self.upsert_current_membership(membership);
+        }
+    }
+
+    /// Insert a membership only when it belongs to the connected account.
+    pub(super) fn upsert_current_membership(&mut self, membership: Member) {
+        if membership.id.user != self.user_id {
+            return;
+        }
+
+        self.current_memberships
+            .insert(membership.id.server.clone(), membership);
+    }
+
+    pub(super) fn remove_current_membership(&mut self, server_id: &str) -> Option<Member> {
+        self.current_memberships.remove(server_id)
+    }
 }
 
 impl Default for Cache {
@@ -55,7 +98,7 @@ impl Default for Cache {
 
             users: Default::default(),
             channels: Default::default(),
-            members: Default::default(),
+            current_memberships: Default::default(),
             servers: Default::default(),
 
             seen_events: LruCache::new(NonZeroUsize::new(20).unwrap()),
@@ -212,5 +255,68 @@ impl State {
         }
 
         subscribed.remove(subscription);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use syrnike_database::MemberCompositeKey;
+
+    use super::*;
+
+    fn membership(server_id: &str, user_id: &str, roles: &[&str]) -> Member {
+        Member {
+            id: MemberCompositeKey {
+                server: server_id.to_string(),
+                user: user_id.to_string(),
+            },
+            roles: roles.iter().map(|role| (*role).to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn current_memberships_never_accept_foreign_voice_members() {
+        let mut cache = Cache {
+            user_id: "current-user".to_string(),
+            ..Default::default()
+        };
+
+        cache.replace_current_memberships([
+            membership("server", "current-user", &["admin"]),
+            membership("server", "voice-peer", &[]),
+        ]);
+
+        assert_eq!(
+            cache.current_membership("server").unwrap().roles,
+            vec!["admin"]
+        );
+
+        cache.upsert_current_membership(membership("server", "voice-admin", &["admin"]));
+
+        let current = cache.current_membership("server").unwrap();
+        assert_eq!(current.id.user, "current-user");
+        assert_eq!(current.roles, vec!["admin"]);
+
+        cache.replace_current_memberships([
+            membership("second-server", "current-user", &[]),
+            membership("second-server", "voice-admin", &["admin"]),
+        ]);
+
+        let current = cache.current_membership("second-server").unwrap();
+        assert_eq!(current.id.user, "current-user");
+        assert!(current.roles.is_empty());
+    }
+
+    #[test]
+    fn current_membership_checks_server_key_identity() {
+        let mut cache = Cache {
+            user_id: "current-user".to_string(),
+            ..Default::default()
+        };
+        cache.upsert_current_membership(membership("actual-server", "current-user", &["admin"]));
+
+        assert!(cache.current_membership("actual-server").is_some());
+        assert!(cache.current_membership("different-server").is_none());
     }
 }
