@@ -183,6 +183,56 @@ describe('native runtime command validation', () => {
     expect(isNativeRuntimeEvent(removed)).toBe(false)
   })
 
+  it('validates local camera preview frames, releases, failures, and removal', () => {
+    expect(isNativeRuntimeCommand({
+      type: 'releaseLocalCameraPreviewFrame',
+      sessionId: 'voice-session',
+      generation: 5,
+      trackId: 'camera-publication',
+      sequence: 12,
+    })).toBe(true)
+
+    expect(isNativeRuntimeEvent({
+      type: 'localCameraPreviewFrame',
+      sequence: 9,
+      sessionId: 'voice-session',
+      generation: 5,
+      trackId: 'camera-publication',
+      participantIdentity: 'user:native-camera',
+      source: 'camera',
+      frameSequence: 12,
+      timestampUs: 33_000,
+      width: 1280,
+      height: 720,
+      ntHandle: new Uint8Array(8),
+    })).toBe(true)
+
+    expect(isNativeRuntimeEvent({
+      type: 'localCameraPreviewTrackRemoved',
+      sequence: 10,
+      sessionId: 'voice-session',
+      generation: 5,
+      trackId: 'camera-publication',
+      source: 'camera',
+    })).toBe(true)
+
+    expect(isNativeRuntimeEvent({
+      type: 'localCameraPreviewFailed',
+      sequence: 11,
+      sessionId: 'voice-session',
+      generation: 5,
+      trackId: 'camera-publication',
+      error: {
+        code: 'LOCAL_CAMERA_PREVIEW_FAILED',
+        message: 'Local camera preview stream ended unexpectedly',
+        stage: 'local_camera_preview',
+        retryable: false,
+        sessionId: 'voice-session',
+        generation: 5,
+      },
+    })).toBe(true)
+  })
+
   it('validates remote screen publication inventory events', () => {
     const publication = {
       sequence: 9,

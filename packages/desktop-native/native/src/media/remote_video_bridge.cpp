@@ -191,11 +191,13 @@ RemoteVideoBridge::RemoteVideoBridge(
   std::uint32_t electron_main_pid,
   Post post,
   OnEnded on_ended,
-  OnHealthy on_healthy
+  OnHealthy on_healthy,
+  VideoBridgeEventTypes event_types
 ) : electron_main_pid_(electron_main_pid),
     post_(std::move(post)),
     on_ended_(std::move(on_ended)),
-    on_healthy_(std::move(on_healthy)) {}
+    on_healthy_(std::move(on_healthy)),
+    event_types_(std::move(event_types)) {}
 
 RemoteVideoBridge::~RemoteVideoBridge() { stop(); }
 
@@ -221,11 +223,13 @@ void RemoteVideoBridge::updateIdentity(std::string session_id, std::uint64_t gen
 void RemoteVideoBridge::addTrack(
   std::shared_ptr<livekit::Track> track,
   std::string participant_identity,
-  std::optional<livekit::TrackSource> publication_source
+  std::optional<livekit::TrackSource> publication_source,
+  std::string track_id
 ) {
   if (!track || track->kind() != livekit::TrackKind::KIND_VIDEO) return;
   std::lock_guard lifecycle_lock(lifecycle_mutex_);
-  const auto track_id = track->sid();
+  if (track_id.empty()) track_id = track->sid();
+  if (track_id.empty()) return;
   // A repeated subscribed callback replaces the decoder for the same SID. It
   // is an implementation detail, not a track removal visible to the renderer.
   removeTrackLocked(track_id, {}, false);
@@ -262,7 +266,7 @@ void RemoteVideoBridge::addTrack(
           raw->frames.emplace(next, std::move(retained));
         }
         MediaCommand command;
-        command.type = "__remoteVideoFrame";
+        command.type = event_types_.frame;
         {
           std::lock_guard lock(mutex_);
           command.session_id = session_id_;
@@ -284,11 +288,12 @@ void RemoteVideoBridge::addTrack(
         }
       }
       if (!raw->stopped.load()) {
-        const std::string message = raw->first_frame_timed_out.load()
-          ? "Remote video stream did not produce its first frame"
-          : "Remote video stream ended unexpectedly";
+        const std::string message = event_types_.stream_label +
+          (raw->first_frame_timed_out.load()
+            ? " stream did not produce its first frame"
+            : " stream ended unexpectedly");
         MediaCommand command;
-        command.type = "__remoteVideoFailed";
+        command.type = event_types_.failed;
         {
           std::lock_guard lock(mutex_);
           command.session_id = session_id_;
@@ -304,7 +309,7 @@ void RemoteVideoBridge::addTrack(
     } catch (const std::exception& error) {
       if (raw->stopped.load()) return;
       MediaCommand command;
-      command.type = "__remoteVideoFailed";
+      command.type = event_types_.failed;
       {
         std::lock_guard lock(mutex_);
         command.session_id = session_id_;
@@ -319,7 +324,7 @@ void RemoteVideoBridge::addTrack(
     } catch (...) {
       if (raw->stopped.load()) return;
       MediaCommand command;
-      command.type = "__remoteVideoFailed";
+      command.type = event_types_.failed;
       {
         std::lock_guard lock(mutex_);
         command.session_id = session_id_;
@@ -400,7 +405,7 @@ void RemoteVideoBridge::removeTrackLocked(
 #endif
   if (!notify) return;
   MediaCommand command;
-  command.type = "__remoteVideoTrackRemoved";
+  command.type = event_types_.track_removed;
   command.track_id = track_id;
   {
     std::lock_guard lock(mutex_);

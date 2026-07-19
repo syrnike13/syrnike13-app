@@ -4,6 +4,44 @@ import { Track } from 'livekit-client'
 import { buildStageItems, type StageRoom } from './voice-stage-items'
 
 describe('desktop voice stage channel scope', () => {
+  it('shows the local native camera track as the current user self-view', () => {
+    const track = { kind: 'video' }
+    const items = buildStageItems({
+      room: null,
+      participants: [{ id: 'local' }],
+      currentUserId: 'local',
+      filters: {
+        showOwnStream: true,
+        showRemoteStreams: true,
+        showParticipantsWithoutMedia: true,
+      },
+      watchedRemoteScreenIds: new Set(),
+      nativeTracks: [{
+        sessionId: 'voice-session',
+        generation: 2,
+        trackId: 'camera-publication',
+        participantIdentity: 'voice:v1|windows_native|client|epoch|op|local',
+        source: 'camera',
+        local: true,
+        sequence: 1,
+        rendererEpoch: 0,
+        track: track as never,
+        consumerCount: 0,
+      }],
+      nativePublications: [],
+      localScreenPreview: null,
+      setNativeDemand: vi.fn(),
+    })
+
+    expect(items).toContainEqual(expect.objectContaining({
+      id: 'local:camera',
+      userId: 'local',
+      kind: 'camera',
+      isLocal: true,
+      track,
+    }))
+  })
+
   it('does not add native publications owned by users in another voice channel', () => {
     const items = buildStageItems({
       room: null,

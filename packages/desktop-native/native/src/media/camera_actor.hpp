@@ -27,6 +27,7 @@ class CameraActor final {
 
   void connect(const MediaCommand& command);
   void disconnect(const MediaCommand& command, bool emit_event = true);
+  void releasePreviewFrame(const MediaCommand& command);
   void handleTerminal(const MediaCommand& command);
   void shutdown();
 

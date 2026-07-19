@@ -56,6 +56,9 @@ class CameraActor::Implementation {
     if (command.livekit_url.empty() || command.livekit_token.empty()) {
       throw std::invalid_argument("camera LiveKit credentials are required");
     }
+    if (command.participant_identity.empty()) {
+      throw std::invalid_argument("camera participantIdentity is required");
+    }
     {
       std::lock_guard lock(mutex_);
       if (running_ && session_id_ == command.session_id && generation_ == command.generation) {
@@ -94,6 +97,13 @@ class CameraActor::Implementation {
     event.kind = "camera";
     event.status = "stopped";
     emitter_.emit(std::move(event));
+  }
+
+  void releasePreviewFrame(const MediaCommand& command) {
+    client_->releaseLocalCameraPreviewFrame(
+      command.track_id,
+      command.frame_sequence
+    );
   }
 
   void handleTerminal(const MediaCommand& command) {
@@ -160,6 +170,7 @@ class CameraActor::Implementation {
       generation_ = 0;
     }
     if (thread.joinable() && thread.get_id() != std::this_thread::get_id()) thread.join();
+    if (!publication_sid.empty()) client_->stopLocalCameraPreview(publication_sid);
     if (room && !publication_sid.empty()) room->unpublishTrack(publication_sid);
   }
 
@@ -244,6 +255,13 @@ class CameraActor::Implementation {
         static_cast<std::uint64_t>(command.bitrate), static_cast<double>(fps)};
       publication_sid = room->publishVideoTrack(track, options);
       if (publication_sid.empty()) throw std::runtime_error("LiveKit camera publication SID is empty");
+      client_->startLocalCameraPreview(
+        command.session_id,
+        command.generation,
+        publication_sid,
+        command.participant_identity,
+        track
+      );
 
       auto running = std::make_shared<std::atomic_bool>(true);
       {
@@ -271,6 +289,7 @@ class CameraActor::Implementation {
       event.device_id = command.device_id; event.width = width; event.height = height; event.fps = fps;
       emitter_.emit(std::move(event));
     } catch (const std::exception& error) {
+      if (!publication_sid.empty()) client_->stopLocalCameraPreview(publication_sid);
       if (room && !publication_sid.empty()) room->unpublishTrack(publication_sid);
       if (!attempt->reply_emitted.exchange(true)) {
         auto failed = reply(command);
@@ -283,6 +302,7 @@ class CameraActor::Implementation {
         emitter_.emit(std::move(failed));
       }
     } catch (...) {
+      if (!publication_sid.empty()) client_->stopLocalCameraPreview(publication_sid);
       if (!attempt->reply_emitted.exchange(true)) {
         auto failed = reply(command); failed.ok = false;
         failed.error = NativeError{"native_command_failed", "Camera publication failed",
@@ -359,6 +379,9 @@ CameraActor::~CameraActor() = default;
 void CameraActor::connect(const MediaCommand& command) { implementation_->connect(command); }
 void CameraActor::disconnect(const MediaCommand& command, bool emit) {
   implementation_->disconnect(command, emit);
+}
+void CameraActor::releasePreviewFrame(const MediaCommand& command) {
+  implementation_->releasePreviewFrame(command);
 }
 void CameraActor::handleTerminal(const MediaCommand& command) {
   implementation_->handleTerminal(command);

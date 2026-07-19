@@ -20,7 +20,7 @@ export type NativeSharedVideoFrame = {
 
 export type NativeSharedVideoRelease = Pick<
   NativeSharedVideoFrame,
-  'sessionId' | 'generation' | 'trackId' | 'sequence'
+  'sessionId' | 'generation' | 'trackId' | 'source' | 'sequence'
 > & { runtimeEpoch: number; local: boolean }
 
 export type SharedTextureBridgeDependencies = {
