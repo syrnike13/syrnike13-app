@@ -15,9 +15,9 @@ use syrnike_result::{create_error, Result};
 use ulid::Ulid;
 
 const MAX_COMPRESSED_BYTES: usize = 10 * 1024 * 1024;
-const MAX_DECOMPRESSED_BYTES: usize = 12 * 1024 * 1024;
+const MAX_DECOMPRESSED_BYTES: usize = 34 * 1024 * 1024;
 const MAX_RECORD_BYTES: usize = 64 * 1024;
-const MAX_RECORDS: usize = 10_000;
+const MAX_RECORDS: usize = 100_000;
 const RETENTION_SECONDS: u64 = 30 * 24 * 60 * 60;
 const PENDING_RETENTION_SECONDS: u64 = 60 * 60;
 const DIAGNOSTIC_SCHEMA: &str = "syrnike.diagnostic";

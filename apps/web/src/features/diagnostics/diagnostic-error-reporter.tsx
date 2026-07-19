@@ -1,4 +1,8 @@
 import { useEffect } from 'react'
+import type {
+  NativeDiagnosticIncident,
+  NativeDiagnosticIncidentSeverity,
+} from '@syrnike13/platform'
 
 import { useAuth } from '#/features/auth/auth-context'
 import { usePlatform } from '#/platform/use-platform'
@@ -42,5 +46,59 @@ export function DiagnosticErrorReporter() {
     }
   }, [auth.session?.token, desktop])
 
+  useEffect(() => {
+    const token = auth.session?.token
+    if (!desktop || !token) return
+    let active = true
+    let draining = false
+
+    const drainNativeIncidents = async () => {
+      if (draining) return
+      draining = true
+      try {
+        const incidents = await desktop.diagnostics.takeNativeIncidents()
+        if (!active || incidents.length === 0) return
+        for (const incident of incidents) {
+          recordDiagnosticEvent(
+            'native-runtime',
+            'instability_detected',
+            incident,
+          )
+        }
+        const severity = highestIncidentSeverity(incidents)
+        void sendDiagnosticReport({
+          token,
+          desktop,
+          area: 'native-runtime',
+          severity,
+          triggerCode: incidents[0]?.triggerCode ?? 'native_instability',
+          context: { incidents },
+          automatic: true,
+          automaticCooldownMs: 60_000,
+        }).catch(() => undefined)
+      } catch {
+        // Native incident reporting must never affect the renderer lifecycle.
+      } finally {
+        draining = false
+      }
+    }
+
+    void drainNativeIncidents()
+    const interval = window.setInterval(() => void drainNativeIncidents(), 2_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [auth.session?.token, desktop])
+
   return null
+}
+
+function highestIncidentSeverity(incidents: NativeDiagnosticIncident[]) {
+  let severity: NativeDiagnosticIncidentSeverity = 'warning'
+  for (const incident of incidents) {
+    if (incident.severity === 'fatal') return 'fatal'
+    if (incident.severity === 'error') severity = 'error'
+  }
+  return severity
 }

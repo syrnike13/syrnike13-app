@@ -110,6 +110,15 @@ export async function runNativeUtilityHost(runtimeKind: NativeRuntimeKind) {
     pid: process.pid,
     runtimeKind,
     nativeLogConfigured: Boolean(process.env.SYRNIKE_NATIVE_MEDIA_LOG_PATH),
+    architecture: process.arch,
+    electronVersion: process.versions.electron,
+    nodeVersion: process.versions.node,
+    napiVersion: process.versions.napi,
+    appVersion: process.env.SYRNIKE_NATIVE_APP_VERSION,
+    releaseChannel: process.env.SYRNIKE_NATIVE_RELEASE_CHANNEL,
+    contractVersion: process.env.SYRNIKE_NATIVE_CONTRACT_VERSION,
+    livekitVersion: process.env.SYRNIKE_NATIVE_LIVEKIT_VERSION,
+    commitSha: process.env.SYRNIKE_NATIVE_COMMIT_SHA,
   })
 
   const nativeModulePath = process.env.SYRNIKE_NATIVE_MODULE_PATH

@@ -109,7 +109,7 @@ describe('desktop local settings', () => {
     }
   })
 
-  it('persists observability opt-in without changing privacy defaults', async () => {
+  it('keeps diagnostic reports enabled while persisting crash-report opt-in', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
     const filePath = path.join(dir, 'local-settings.json')
 
@@ -120,7 +120,7 @@ describe('desktop local settings', () => {
 
       expect(next.observability).toEqual({
         anonymousNativeMetrics: true,
-        diagnosticReports: false,
+        diagnosticReports: true,
         nativeCrashReports: true,
       })
     } finally {
@@ -128,7 +128,7 @@ describe('desktop local settings', () => {
     }
   })
 
-  it('migrates legacy microphone defaults once and persists version 2', async () => {
+  it('migrates legacy microphone defaults once and persists version 3', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
     const filePath = path.join(dir, 'local-settings.json')
 
@@ -149,7 +149,7 @@ describe('desktop local settings', () => {
 
       const migrated = await loadDesktopLocalSettings(filePath)
       expect(migrated).toMatchObject({
-        version: 2,
+        version: 3,
         voice: {
           preferredAudioInputDevice: 'legacy-mic',
           inputVolume: 0.42,
@@ -165,9 +165,44 @@ describe('desktop local settings', () => {
       })
       await expect(loadDesktopLocalSettings(filePath)).resolves.toEqual(updated)
       expect(updated).toMatchObject({
-        version: 2,
+        version: 3,
         voice: { echoCancellation: true, automaticGainControl: false },
       })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('enables diagnostic reports once when migrating existing version 2 settings', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'syrnike-settings-'))
+    const filePath = path.join(dir, 'local-settings.json')
+
+    try {
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          version: 2,
+          observability: {
+            anonymousNativeMetrics: false,
+            diagnosticReports: false,
+            nativeCrashReports: false,
+          },
+        }),
+      )
+
+      const migrated = await loadDesktopLocalSettings(filePath)
+      expect(migrated.version).toBe(3)
+      expect(migrated.observability).toEqual({
+        anonymousNativeMetrics: false,
+        diagnosticReports: true,
+        nativeCrashReports: false,
+      })
+
+      const optedOut = await updateDesktopLocalSettings(filePath, {
+        observability: { diagnosticReports: false },
+      })
+      await expect(loadDesktopLocalSettings(filePath)).resolves.toEqual(optedOut)
+      expect(optedOut.observability.diagnosticReports).toBe(false)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

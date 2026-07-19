@@ -23,6 +23,8 @@ export const IPC = {
   settingsLoad: 'syrnike-desktop:settings:load',
   settingsUpdate: 'syrnike-desktop:settings:update',
   diagnosticsCreateBundle: 'syrnike-desktop:diagnostics:create-bundle',
+  diagnosticsTakeNativeIncidents:
+    'syrnike-desktop:diagnostics:take-native-incidents',
   hotkeysGetBindings: 'syrnike-desktop:hotkeys:get-bindings',
   hotkeysSetBindings: 'syrnike-desktop:hotkeys:set-bindings',
   hotkeysSetSuspended: 'syrnike-desktop:hotkeys:set-suspended',

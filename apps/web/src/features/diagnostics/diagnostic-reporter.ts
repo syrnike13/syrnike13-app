@@ -22,9 +22,22 @@ export type SendDiagnosticReportOptions = {
   description?: string
   context?: unknown
   automatic?: boolean
+  automaticCooldownMs?: number
 }
 
 type DiagnosticReportCreated = { id: string; created_at: number }
+
+type RecordDiagnosticEventOptions = {
+  /** Collapse identical sanitized payloads while retaining periodic heartbeats. */
+  dedupeKey?: string
+  heartbeatMs?: number
+}
+
+type DeduplicatedEventState = {
+  fingerprint: string
+  lastRecordedAt: number
+  suppressed: number
+}
 
 const MAX_EVENTS = 800
 const MAX_EVENT_BYTES = 16 * 1024
@@ -34,21 +47,55 @@ const AUTOMATIC_COOLDOWN_MS = 10 * 60 * 1_000
 const SENSITIVE_KEY =
   /token|authorization|cookie|password|secret|identity|participant|user(?:id)?|channel(?:id)?|room|device|label|source(?:id)?|window|path|address|hostname|candidate/i
 const automaticReports = new Map<string, number>()
+const deduplicatedEvents = new Map<string, DeduplicatedEventState>()
 const events: string[] = []
 let eventBufferBytes = 0
 
-export function recordDiagnosticEvent(area: string, event: string, data?: unknown) {
+export function recordDiagnosticEvent(
+  area: string,
+  event: string,
+  data?: unknown,
+  options: RecordDiagnosticEventOptions = {},
+) {
+  const timestampMs = Date.now()
+  const sanitized = sanitizeDiagnosticValue(data)
+  const dedupeKey = options.dedupeKey
+  let deduplication: DiagnosticJsonValue | undefined
+  if (dedupeKey) {
+    const fingerprint = JSON.stringify(sanitized)
+    const previous = deduplicatedEvents.get(dedupeKey)
+    const heartbeatMs = Math.max(1_000, options.heartbeatMs ?? 30_000)
+    if (
+      previous?.fingerprint === fingerprint &&
+      timestampMs - previous.lastRecordedAt < heartbeatMs
+    ) {
+      previous.suppressed += 1
+      return
+    }
+    if (previous?.suppressed) {
+      deduplication = {
+        repeated_events_omitted: previous.suppressed,
+        elapsed_ms: Math.max(0, timestampMs - previous.lastRecordedAt),
+      }
+    }
+    deduplicatedEvents.set(dedupeKey, {
+      fingerprint,
+      lastRecordedAt: timestampMs,
+      suppressed: 0,
+    })
+  }
+
   const record: DiagnosticEnvelope = {
     schema: DIAGNOSTIC_SCHEMA,
     version: DIAGNOSTIC_SCHEMA_VERSION,
     record_type: 'event',
-    timestamp_ms: Date.now(),
+    timestamp_ms: timestampMs,
     source: 'renderer',
     event: `${safeIdentifier(area, 'unknown')}.${safeIdentifier(event, 'unknown')}`,
     data: {},
   }
-  const sanitized = sanitizeDiagnosticValue(data)
   if (sanitized !== undefined) record.data.payload = sanitized
+  if (deduplication !== undefined) record.data.deduplication = deduplication
   let serialized = JSON.stringify(record)
   let bytes = utf8Bytes(serialized)
   if (bytes > MAX_EVENT_BYTES) {
@@ -85,7 +132,11 @@ export async function sendDiagnosticReport(
       return null
     }
     const previous = automaticReports.get(automaticKey) ?? 0
-    if (Date.now() - previous < AUTOMATIC_COOLDOWN_MS) return null
+    const cooldownMs = Math.max(
+      5_000,
+      options.automaticCooldownMs ?? AUTOMATIC_COOLDOWN_MS,
+    )
+    if (Date.now() - previous < cooldownMs) return null
     automaticReports.set(automaticKey, Date.now())
   }
 
@@ -157,6 +208,7 @@ export function clearDiagnosticEventsForTests() {
   events.length = 0
   eventBufferBytes = 0
   automaticReports.clear()
+  deduplicatedEvents.clear()
 }
 
 function sanitizeDiagnosticValue(

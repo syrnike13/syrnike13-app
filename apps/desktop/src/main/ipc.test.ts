@@ -56,6 +56,7 @@ vi.mock('./native-media-engine', () => ({
     prewarmMicrophone: vi.fn(async () => undefined),
     dispose: vi.fn(),
   })),
+  flushNativeMediaDiagnostics: vi.fn(async () => undefined),
   logNativeVoiceDiagnostic: vi.fn(),
   registerNativeMediaRuntimeIpc: vi.fn(),
 }))

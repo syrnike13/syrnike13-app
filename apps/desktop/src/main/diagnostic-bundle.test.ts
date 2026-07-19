@@ -38,8 +38,23 @@ describe('desktop diagnostic bundle', () => {
     const value = gunzipSync(compressed).toString('utf8')
     expect(value).toContain('voice_failed')
     expect(value).toContain('screen_started')
-    for (const line of value.split('\n')) {
-      expect(JSON.parse(line)).toMatchObject({
+    const records = value.split('\n').map((line) => JSON.parse(line))
+    expect(records[0]).toMatchObject({ record_type: 'manifest' })
+    expect(records).toContainEqual(
+      expect.objectContaining({
+        source: 'electron-main',
+        event: 'diagnostic.bundle_inventory',
+        data: expect.objectContaining({
+          native_limit_bytes: 30 * 1024 * 1024,
+          native_sessions_found: 1,
+          native_files_included: 1,
+          native_records_included: 1,
+          native_records_by_source: { native: 1 },
+        }),
+      }),
+    )
+    for (const record of records) {
+      expect(record).toMatchObject({
         schema: 'syrnike.diagnostic',
         version: 1,
       })

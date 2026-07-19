@@ -532,7 +532,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [snapshot.connection, snapshot.intentChannelId])
 
   useEffect(() => {
-    recordDiagnosticEvent('voice', 'session_snapshot', snapshot)
+    recordDiagnosticEvent('voice', 'session_snapshot', snapshot, {
+      dedupeKey: 'voice.session_snapshot',
+      heartbeatMs: 30_000,
+    })
   }, [snapshot])
 
   useEffect(() => {
