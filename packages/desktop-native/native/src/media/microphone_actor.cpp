@@ -540,7 +540,10 @@ class MicrophoneActor::Implementation {
           AudioClientProperties properties{};
           properties.cbSize = sizeof(properties);
           properties.bIsOffload = FALSE;
-          properties.eCategory = AudioCategory_Communications;
+          // The microphone stays warm outside active voice sessions. Marking
+          // that persistent capture as Communications makes Windows attenuate
+          // game and media streams for the lifetime of the application.
+          properties.eCategory = AudioCategory_Other;
           properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
           if (SUCCEEDED(audio_client2->SetClientProperties(&properties))) {
             raw_applied = true;
