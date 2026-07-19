@@ -415,15 +415,42 @@ class RemoteAudioOutput::Implementation {
     try {
       { std::lock_guard lock(mutex_); device_id = output_device_id_; }
       auto device = renderDevice(device_id);
-      ComPtr<IAudioClient> client;
-      if (FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
-          reinterpret_cast<void**>(client.GetAddressOf())))) throw std::runtime_error("activate render device failed");
+      const auto activate_audio_client = [&] {
+        ComPtr<IAudioClient> candidate;
+        if (FAILED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+            reinterpret_cast<void**>(candidate.GetAddressOf())))) {
+          throw std::runtime_error("activate render device failed");
+        }
+        return candidate;
+      };
+      auto client = activate_audio_client();
+      std::string category_status = "unsupported";
+      ComPtr<IAudioClient2> client2;
+      if (SUCCEEDED(client.As(&client2))) {
+        AudioClientProperties properties{};
+        properties.cbSize = sizeof(properties);
+        properties.bIsOffload = FALSE;
+        properties.eCategory = AudioCategory_GameChat;
+        properties.Options = AUDCLNT_STREAMOPTIONS_NONE;
+        if (SUCCEEDED(client2->SetClientProperties(&properties))) {
+          category_status = "game_chat";
+        }
+      }
       auto format = desiredRemoteAudioRenderFormat();
       constexpr auto requested_buffer_duration = remoteAudioRenderBufferDuration();
-      if (FAILED(client->Initialize(AUDCLNT_SHAREMODE_SHARED,
+      const auto initialize_audio_client = [&](const ComPtr<IAudioClient>& candidate) {
+        return candidate->Initialize(AUDCLNT_SHAREMODE_SHARED,
           AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
           requested_buffer_duration.count() * kHundredNanosecondsPerMillisecond,
-          0, &format, nullptr))) throw std::runtime_error("initialize render stream failed");
+          0, &format, nullptr);
+      };
+      auto initialize_result = initialize_audio_client(client);
+      if (FAILED(initialize_result) && category_status == "game_chat") {
+        client = activate_audio_client();
+        category_status = "fallback";
+        initialize_result = initialize_audio_client(client);
+      }
+      if (FAILED(initialize_result)) throw std::runtime_error("initialize render stream failed");
       ComPtr<IAudioRenderClient> render_client;
       if (FAILED(client->GetService(IID_PPV_ARGS(&render_client)))) throw std::runtime_error("open render client failed");
       UINT32 capacity = 0;
@@ -444,7 +471,8 @@ class RemoteAudioOutput::Implementation {
           {"capacityMs", static_cast<std::uint64_t>(
             (static_cast<std::uint64_t>(capacity) * 1'000) / format.nSamplesPerSec
           )},
-          {"requestedBufferMs", static_cast<std::uint64_t>(requested_buffer_duration.count())}
+          {"requestedBufferMs", static_cast<std::uint64_t>(requested_buffer_duration.count())},
+          {"category", category_status}
         }
       );
       while (!token.stop_requested() && renderer_running_.load()) {

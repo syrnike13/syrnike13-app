@@ -274,7 +274,6 @@ pub async fn join_voice_channel(
     let user_voice_channel = UserVoiceChannel::from_channel(&channel);
     let temporary_server_id = permissions
         .member_ref()
-        .as_ref()
         .filter(|member| member.temporary)
         .and_then(|_| user_voice_channel.server_id.clone());
 
@@ -813,7 +812,6 @@ pub async fn refresh_voice_credentials(
     let user_voice_channel = UserVoiceChannel::from_channel(&channel);
     let temporary_server_id = permissions
         .member_ref()
-        .as_ref()
         .filter(|member| member.temporary)
         .and_then(|_| user_voice_channel.server_id.clone());
 

@@ -112,8 +112,20 @@ export function registerNativeMediaRuntimeIpc(
       })
       return
     }
-    if (event.type === 'remoteVideoFrame' || event.type === 'localScreenPreviewFrame') {
-      const local = event.type === 'localScreenPreviewFrame'
+    if (event.type === 'localCameraPreviewFailed') {
+      console.warn('[native-media] local camera preview failed', {
+        sessionId: event.sessionId,
+        generation: event.generation,
+        trackId: event.trackId,
+        code: event.error.code,
+        stage: event.error.stage,
+        message: event.error.message,
+      })
+    }
+    if (event.type === 'remoteVideoFrame' ||
+      event.type === 'localScreenPreviewFrame' ||
+      event.type === 'localCameraPreviewFrame') {
+      const local = event.type !== 'remoteVideoFrame'
       const bridge = local ? localPreviewBridge : remoteVideoBridge
       if (!bridge) return
       void bridge.deliver({
@@ -170,8 +182,12 @@ export function registerNativeMediaRuntimeIpc(
       return
     }
     if (event.type === 'remoteVideoTrackRemoved' || event.type === 'remoteVideoFailed' ||
-      event.type === 'localScreenPreviewTrackRemoved') {
-      const bridge = event.type === 'localScreenPreviewTrackRemoved'
+      event.type === 'localScreenPreviewTrackRemoved' ||
+      event.type === 'localCameraPreviewTrackRemoved' ||
+      event.type === 'localCameraPreviewFailed') {
+      const bridge = event.type === 'localScreenPreviewTrackRemoved' ||
+        event.type === 'localCameraPreviewTrackRemoved' ||
+        event.type === 'localCameraPreviewFailed'
         ? localPreviewBridge
         : remoteVideoBridge
       bridge?.removeTrack(event.sessionId, event.generation, event.trackId)
@@ -210,7 +226,9 @@ function createVideoBridge(
         sequence: frame.sequence,
       }
       const command = local
-        ? { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
+        ? frame.source === 'camera'
+          ? { type: 'releaseLocalCameraPreviewFrame' as const, ...identity }
+          : { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
       await supervisor.request(command, 2_000)
     },

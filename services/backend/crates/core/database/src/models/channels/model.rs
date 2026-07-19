@@ -944,4 +944,47 @@ mod tests {
                 .has_channel_permission(ChannelPermission::SendMessage));
         });
     }
+
+    #[async_std::test]
+    async fn channel_permission_query_never_uses_another_members_overrides() {
+        database_test!(|db| async move {
+            fixture!(db, "server_with_roles",
+                moderator user 1
+                user user 2
+                channel channel 3
+                server server 4);
+
+            let moderator_member = db
+                .fetch_member(&server.id, &moderator.id)
+                .await
+                .expect("moderator membership");
+            let user_member = db
+                .fetch_member(&server.id, &user.id)
+                .await
+                .expect("ordinary membership");
+
+            let mut moderator_query = DatabasePermissionQuery::new(&db, &moderator)
+                .channel(&channel)
+                .member(&user_member);
+            assert!(
+                calculate_channel_permissions(&mut moderator_query)
+                    .await
+                    .has_channel_permission(ChannelPermission::SendMessage)
+            );
+            assert_eq!(
+                moderator_query.member_ref().unwrap().id.user,
+                moderator.id
+            );
+
+            let mut user_query = DatabasePermissionQuery::new(&db, &user)
+                .channel(&channel)
+                .member(&moderator_member);
+            assert!(
+                !calculate_channel_permissions(&mut user_query)
+                    .await
+                    .has_channel_permission(ChannelPermission::SendMessage)
+            );
+            assert_eq!(user_query.member_ref().unwrap().id.user, user.id);
+        });
+    }
 }

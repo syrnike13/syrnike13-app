@@ -406,7 +406,10 @@ export class NativeMediaController {
       event.type === 'displaySourceList' ||
       event.type === 'localScreenPreviewFrame' ||
       event.type === 'localScreenPreviewTrackRemoved' ||
-      event.type === 'localScreenPreviewFailed'
+      event.type === 'localScreenPreviewFailed' ||
+      event.type === 'localCameraPreviewFrame' ||
+      event.type === 'localCameraPreviewTrackRemoved' ||
+      event.type === 'localCameraPreviewFailed'
     ) return
     if (event.type === 'sessionLifecycle' && event.kind === 'screen') {
       if (event.state.status === 'starting' || event.state.status === 'running') {

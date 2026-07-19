@@ -25,6 +25,13 @@ std::string remoteVideoSourceLabel(
   std::optional<livekit::TrackSource> track_source
 );
 
+struct VideoBridgeEventTypes {
+  std::string frame = "__remoteVideoFrame";
+  std::string track_removed = "__remoteVideoTrackRemoved";
+  std::string failed = "__remoteVideoFailed";
+  std::string stream_label = "Remote video";
+};
+
 class RemoteVideoBridge {
  public:
   using Post = std::function<bool(MediaCommand)>;
@@ -42,7 +49,8 @@ class RemoteVideoBridge {
     std::uint32_t electron_main_pid,
     Post post,
     OnEnded on_ended = {},
-    OnHealthy on_healthy = {}
+    OnHealthy on_healthy = {},
+    VideoBridgeEventTypes event_types = {}
   );
   ~RemoteVideoBridge();
 
@@ -53,7 +61,8 @@ class RemoteVideoBridge {
   void addTrack(
     std::shared_ptr<livekit::Track> track,
     std::string participant_identity,
-    std::optional<livekit::TrackSource> publication_source
+    std::optional<livekit::TrackSource> publication_source,
+    std::string track_id = {}
   );
   void removeTrack(const std::string& track_id, bool notify = true);
   void removeTrackIfCurrent(
@@ -75,6 +84,7 @@ class RemoteVideoBridge {
   Post post_;
   OnEnded on_ended_;
   OnHealthy on_healthy_;
+  VideoBridgeEventTypes event_types_;
   std::mutex lifecycle_mutex_;
   std::mutex mutex_;
   std::string session_id_;

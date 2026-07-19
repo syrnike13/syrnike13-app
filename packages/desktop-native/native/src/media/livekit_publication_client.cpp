@@ -84,7 +84,19 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
         const std::string& message
       ) {
         handleRemoteVideoEnded(track_id, track, message);
-      }, {}) {
+      }, {}),
+      local_camera_preview_(
+        electronMainPid(),
+        post_,
+        {},
+        {},
+        VideoBridgeEventTypes{
+          "__localCameraPreviewFrame",
+          "__localCameraPreviewTrackRemoved",
+          "__localCameraPreviewFailed",
+          "Local camera preview"
+        }
+      ) {
     remote_video_.updateIdentity(session_id_, generation_);
   }
 
@@ -392,6 +404,31 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   void stopAudio() { audio_output_.stop(); }
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) {
     remote_video_.release(track_id, sequence);
+  }
+  void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    const std::shared_ptr<livekit::LocalVideoTrack>& track
+  ) {
+    local_camera_preview_.updateIdentity(std::move(session_id), generation);
+    local_camera_preview_.addTrack(
+      track,
+      std::move(participant_identity),
+      livekit::TrackSource::SOURCE_CAMERA,
+      std::move(track_id)
+    );
+  }
+  void stopLocalCameraPreview(const std::string& track_id) {
+    local_camera_preview_.removeTrack(track_id);
+  }
+  void stopLocalCameraPreviews() { local_camera_preview_.stop(); }
+  void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) {
+    local_camera_preview_.release(track_id, sequence);
   }
   void setRemoteVideoDemand(const std::string& track_id, bool demanded) {
     std::shared_ptr<livekit::RemoteTrackPublication> publication;
@@ -701,6 +738,7 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   LiveKitPublicationClient::InternalPost post_;
   RemoteAudioOutput audio_output_;
   RemoteVideoBridge remote_video_;
+  RemoteVideoBridge local_camera_preview_;
   std::mutex video_publications_mutex_;
   std::unordered_map<std::string, ScreenPublication> screen_publications_;
 };
@@ -730,6 +768,7 @@ class RealLiveKitRoomSession final : public LiveKitRoomSession {
     // callback is observed, then detach it before Room teardown.
     delegate_->markIntentionalDisconnect();
     delegate_->stopAudio();
+    delegate_->stopLocalCameraPreviews();
     try {
       close();
     } catch (...) {
@@ -802,6 +841,30 @@ class RealLiveKitRoomSession final : public LiveKitRoomSession {
   void stopAudio() { delegate_->stopAudio(); }
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) {
     delegate_->releaseRemoteVideoFrame(std::move(track_id), sequence);
+  }
+  void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    const std::shared_ptr<livekit::LocalVideoTrack>& track
+  ) {
+    delegate_->startLocalCameraPreview(
+      std::move(session_id),
+      generation,
+      std::move(track_id),
+      std::move(participant_identity),
+      track
+    );
+  }
+  void stopLocalCameraPreview(const std::string& track_id) {
+    delegate_->stopLocalCameraPreview(track_id);
+  }
+  void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) {
+    delegate_->releaseLocalCameraPreviewFrame(std::move(track_id), sequence);
   }
   void setRemoteVideoDemand(std::string track_id, bool demanded) {
     delegate_->setRemoteVideoDemand(track_id, demanded);
@@ -938,6 +1001,37 @@ class RealLiveKitPublicationClient final : public LiveKitPublicationClient {
   void retryRemoteVideo(std::string track_id, std::string reason) override {
     const auto room = roomSnapshot();
     if (room) room->retryRemoteVideo(std::move(track_id), std::move(reason));
+  }
+
+  void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    std::shared_ptr<livekit::LocalVideoTrack> track
+  ) override {
+    const auto room = roomSnapshot();
+    if (!room) throw std::runtime_error("LiveKit voice Room is not connected");
+    room->startLocalCameraPreview(
+      std::move(session_id),
+      generation,
+      std::move(track_id),
+      std::move(participant_identity),
+      track
+    );
+  }
+
+  void stopLocalCameraPreview(std::string track_id) override {
+    const auto room = roomSnapshot();
+    if (room) room->stopLocalCameraPreview(track_id);
+  }
+
+  void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) override {
+    const auto room = roomSnapshot();
+    if (room) room->releaseLocalCameraPreviewFrame(std::move(track_id), sequence);
   }
 
   void disconnectVoice() override {
@@ -1245,6 +1339,27 @@ void DeterministicFakeLiveKitPublicationClient::releaseRemoteVideoFrame(
 void DeterministicFakeLiveKitPublicationClient::setRemoteVideoDemand(std::string, bool) {}
 void DeterministicFakeLiveKitPublicationClient::retryRemoteVideo(std::string, std::string) {}
 
+void DeterministicFakeLiveKitPublicationClient::startLocalCameraPreview(
+  std::string,
+  std::uint64_t,
+  std::string,
+  std::string,
+  std::shared_ptr<livekit::LocalVideoTrack>
+) {
+  std::lock_guard lock(mutex_);
+  local_camera_preview_start_count_ += 1;
+}
+
+void DeterministicFakeLiveKitPublicationClient::stopLocalCameraPreview(std::string) {
+  std::lock_guard lock(mutex_);
+  local_camera_preview_stop_count_ += 1;
+}
+
+void DeterministicFakeLiveKitPublicationClient::releaseLocalCameraPreviewFrame(
+  std::string,
+  std::uint64_t
+) {}
+
 void DeterministicFakeLiveKitPublicationClient::disconnectVoice() {
   {
     std::lock_guard lock(mutex_);
@@ -1347,6 +1462,16 @@ std::vector<std::string>
 DeterministicFakeLiveKitPublicationClient::unpublishedPublicationSids() const {
   std::lock_guard lock(mutex_);
   return unpublished_publication_sids_;
+}
+
+std::size_t DeterministicFakeLiveKitPublicationClient::localCameraPreviewStartCount() const {
+  std::lock_guard lock(mutex_);
+  return local_camera_preview_start_count_;
+}
+
+std::size_t DeterministicFakeLiveKitPublicationClient::localCameraPreviewStopCount() const {
+  std::lock_guard lock(mutex_);
+  return local_camera_preview_stop_count_;
 }
 
 void DeterministicFakeLiveKitPublicationClient::recordUnpublishedPublicationSid(

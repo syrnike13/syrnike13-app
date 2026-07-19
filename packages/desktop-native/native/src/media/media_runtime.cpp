@@ -289,7 +289,11 @@ class MediaRuntime::Implementation {
       if (accepted) queue_depth = screen_commands_.size();
     } else if (
       type == "__cameraTerminal" || type == "connectCamera" ||
-      type == "disconnectCamera"
+      type == "disconnectCamera" ||
+      type == "releaseLocalCameraPreviewFrame" ||
+      type == "__localCameraPreviewFrame" ||
+      type == "__localCameraPreviewFailed" ||
+      type == "__localCameraPreviewTrackRemoved"
     ) {
       command.internal_enqueued_steady_ms = enqueue_started_at;
       command.internal_queue_depth = static_cast<std::uint32_t>(camera_commands_.size() + 1);
@@ -660,6 +664,16 @@ class MediaRuntime::Implementation {
       emitter_.emit(reply(command));
       return;
     }
+    if (
+      command.type == "__localCameraPreviewFrame" ||
+      command.type == "__localCameraPreviewFailed" ||
+      command.type == "__localCameraPreviewTrackRemoved"
+    ) {
+      // The shared LiveKit room retains the VoiceActor callback that created it,
+      // so its local-camera bridge posts these events onto the voice queue.
+      handleCamera(command);
+      return;
+    }
     unknown(command);
   }
 
@@ -780,6 +794,61 @@ class MediaRuntime::Implementation {
   }
 
   void handleCamera(const MediaCommand& command) {
+    if (command.type == "__localCameraPreviewFrame") {
+      if (!desired_camera_.isCurrent(command.session_id, command.generation)) {
+        camera_.releasePreviewFrame(command);
+        return;
+      }
+      RuntimeEvent event;
+      event.type = "localCameraPreviewFrame";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.participant_identity = command.participant_identity;
+      event.video_source = "camera";
+      event.frame_sequence = command.frame_sequence;
+      event.timestamp_us = command.timestamp_us;
+      event.nt_handle = command.nt_handle;
+      event.width = command.width;
+      event.height = command.height;
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__localCameraPreviewFailed") {
+      livekit_client_->stopLocalCameraPreview(command.track_id);
+      RuntimeEvent event;
+      event.type = "localCameraPreviewFailed";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.error = NativeError{
+        "LOCAL_CAMERA_PREVIEW_FAILED",
+        command.internal_message.empty()
+          ? "Local camera preview failed"
+          : command.internal_message,
+        "local_camera_preview",
+        false,
+        command.session_id,
+        command.generation
+      };
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "__localCameraPreviewTrackRemoved") {
+      RuntimeEvent event;
+      event.type = "localCameraPreviewTrackRemoved";
+      event.session_id = command.session_id;
+      event.generation = command.generation;
+      event.track_id = command.track_id;
+      event.video_source = "camera";
+      emitter_.emit(std::move(event));
+      return;
+    }
+    if (command.type == "releaseLocalCameraPreviewFrame") {
+      camera_.releasePreviewFrame(command);
+      emitter_.emit(reply(command));
+      return;
+    }
     if (command.type == "__cameraTerminal") {
       camera_.handleTerminal(command);
       return;
