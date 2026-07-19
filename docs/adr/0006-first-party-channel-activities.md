@@ -60,6 +60,20 @@ is the only application bridge. It provides context, theme tokens, snapshots,
 commands, and close; it never exposes the authenticated gateway, session token,
 Voice Director, or desktop preload API.
 
+### Voice Stage projection
+
+The voice-panel media bar is the single launcher for Channel Activities. An
+active Activity Instance is projected into the Voice Stage as a regular tile:
+members who have not joined see an explicit join action, while Activity
+Participants receive the embedded application. The tile participates in the
+same grid, focus, filmstrip, popout, and fullscreen layout machinery as media
+tiles; focusing or hiding it never changes Activity Membership.
+
+While Channel Activities are experimental, every Activity UI projection is
+enabled only by `uiFeatureFlags.channelActivities`. The flag is derived
+centrally from `VITE_RELEASE_CHANNEL=nightly`; stable builds neither show
+Activity controls nor subscribe the VoiceStage to Activity state.
+
 ## Consequences
 
 - Web and Windows desktop share one Channel Activity implementation because the

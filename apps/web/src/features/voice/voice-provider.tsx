@@ -176,6 +176,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [focusedMediaId, setFocusedMediaIdState] = useState<string | null>(null)
   const [stageFocusNonce, setStageFocusNonce] = useState(0)
   const [stageFullscreen, setStageFullscreen] = useState(false)
+  const [activityLauncherOpen, setActivityLauncherOpen] = useState(false)
   const [rtcDebugEnabled, setRtcDebugEnabled] = useState(false)
   const [rtcDebugSnapshot, setRtcDebugSnapshot] =
     useState<RtcDebugSnapshot | null>(null)
@@ -722,6 +723,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         : null
 
   useEffect(() => {
+    if (!channelId) setActivityLauncherOpen(false)
+  }, [channelId])
+
+  useEffect(() => {
     if (!room || !channelId) return
     const watchedRemoteScreenIds = new Set(
       [...watchedScreenViewerChannelsRef.current]
@@ -1177,8 +1182,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setStageMediaSubscribed,
       stageFullscreen,
       toggleStageFullscreen: () => setStageFullscreen((value) => !value),
+      activityLauncherOpen,
+      setActivityLauncherOpen,
     }),
     [
+      activityLauncherOpen,
       channelId,
       focusedMediaId,
       setFocusedMediaId,

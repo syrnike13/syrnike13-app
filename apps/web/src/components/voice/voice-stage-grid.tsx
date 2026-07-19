@@ -1,6 +1,5 @@
 import { useRef, type ReactNode } from 'react'
 
-import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import {
   chunkIntoRows,
   type VoiceStageGridLayout,
@@ -13,17 +12,19 @@ type GridSlot = {
   node: ReactNode
 }
 
-type VoiceStageGridProps = {
-  items: readonly VoiceStageMediaItem[]
+type VoiceStageGridItem = Readonly<{ id: string }>
+
+type VoiceStageGridProps<TItem extends VoiceStageGridItem> = {
+  items: readonly TItem[]
   inviteSlot?: ReactNode
-  renderTile: (item: VoiceStageMediaItem, variant: 'grid') => ReactNode
+  renderTile: (item: TItem, variant: 'grid') => ReactNode
 }
 
-export function VoiceStageGrid({
+export function VoiceStageGrid<TItem extends VoiceStageGridItem>({
   items,
   inviteSlot,
   renderTile,
-}: VoiceStageGridProps) {
+}: VoiceStageGridProps<TItem>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const slots: GridSlot[] = items.map((item) => ({
     key: item.id,
@@ -54,11 +55,7 @@ export function VoiceStageGrid({
         style={{ gap: layout.gap }}
       >
         {rows.map((row, rowIndex) => (
-          <VoiceStageGridRow
-            key={rowIndex}
-            slots={row}
-            layout={layout}
-          />
+          <VoiceStageGridRow key={rowIndex} slots={row} layout={layout} />
         ))}
       </div>
     </div>

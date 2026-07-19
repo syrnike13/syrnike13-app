@@ -12,7 +12,6 @@ import {
 import {
   MessageSquareIcon,
   ChevronDownIcon,
-  Gamepad2Icon,
   Loader2Icon,
 } from '#/components/icons'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
@@ -28,6 +27,10 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
+import {
+  VoiceStageActivityTile,
+  type VoiceStageActivityItem,
+} from '#/components/voice/voice-stage-activity-tile'
 import { VoiceStageStreamVolumeControl } from '#/components/voice/voice-stage-stream-volume-control'
 import {
   VoiceStageControls,
@@ -40,6 +43,8 @@ import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
 import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popout-placeholder'
 import { useAuth } from '#/features/auth/auth-context'
 import { channelActivityClient } from '#/features/activities/channel-activity-client'
+import { channelActivityStageItemId } from '#/features/activities/channel-activity-stage'
+import { getFirstPartyChannelActivity } from '#/features/activities/channel-activity-catalog'
 import { useChannelActivity } from '#/features/activities/use-channel-activity'
 import {
   getChannelVoiceParticipants,
@@ -75,6 +80,7 @@ import {
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { canInviteToChannel } from '#/features/authorization/authorization'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { cn } from '#/lib/utils'
 
 type VoiceStageDmHeader = {
@@ -103,11 +109,19 @@ type VoiceStageViewProps = {
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
 const EMPTY_STAGE_MEDIA_ITEMS: readonly VoiceStageMediaItem[] = []
-const ChannelActivityPanel = lazy(() =>
+const ChannelActivityLauncher = lazy(() =>
   import('#/features/activities/channel-activity-panel').then((module) => ({
-    default: module.ChannelActivityPanel,
+    default: module.ChannelActivityLauncher,
   })),
 )
+
+type VoiceStageItem = VoiceStageMediaItem | VoiceStageActivityItem
+
+function isVoiceStageActivityItem(
+  item: VoiceStageItem,
+): item is VoiceStageActivityItem {
+  return item.kind === 'activity'
+}
 
 export function VoiceStageView({
   channel,
@@ -145,25 +159,30 @@ export function VoiceStageView({
   const inVoiceSession = isVoiceSessionInChannel(voiceSession, channelId)
   const inThisVoiceCall = voiceSession.status === 'connected' && inVoiceSession
   const connecting = voiceSession.status === 'connecting' && inVoiceSession
-  const channelActivity = useChannelActivity(channelId, inThisVoiceCall)
-  const [activityOpen, setActivityOpen] = useState(false)
+  const channelActivitiesEnabled = uiFeatureFlags.channelActivities
+  const channelActivity = useChannelActivity(
+    channelId,
+    channelActivitiesEnabled && inThisVoiceCall,
+  )
   const currentUserId = auth.user?._id
   const currentActivityId = channelActivity.instance?.id ?? null
-  const joinedActivity = Boolean(
-    currentUserId &&
-    channelActivity.instance?.participant_ids.includes(currentUserId),
-  )
-
-  const closeActivity = useCallback(() => {
-    if (currentActivityId && joinedActivity) {
-      channelActivityClient.leave(channelId, currentActivityId)
-    }
-    setActivityOpen(false)
-  }, [channelId, currentActivityId, joinedActivity])
+  const closeActivityLauncher = useCallback(() => {
+    voiceStage.setActivityLauncherOpen(false)
+  }, [voiceStage.setActivityLauncherOpen])
 
   useEffect(() => {
-    if (!inThisVoiceCall && activityOpen) closeActivity()
-  }, [activityOpen, closeActivity, inThisVoiceCall])
+    if (
+      (!channelActivitiesEnabled || !inThisVoiceCall) &&
+      voiceStage.activityLauncherOpen
+    ) {
+      voiceStage.setActivityLauncherOpen(false)
+    }
+  }, [
+    channelActivitiesEnabled,
+    inThisVoiceCall,
+    voiceStage.activityLauncherOpen,
+    voiceStage.setActivityLauncherOpen,
+  ])
   const isDmVoiceStage =
     channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
   const resolvedJoinLabel =
@@ -223,10 +242,16 @@ export function VoiceStageView({
   )
 
   useEffect(() => {
-    if (inThisVoiceCall && currentActivityId) {
+    if (channelActivitiesEnabled && inThisVoiceCall && currentActivityId) {
       channelActivityClient.sync(channelId)
     }
-  }, [activityVoiceMembersKey, channelId, currentActivityId, inThisVoiceCall])
+  }, [
+    activityVoiceMembersKey,
+    channelActivitiesEnabled,
+    channelId,
+    currentActivityId,
+    inThisVoiceCall,
+  ])
   const participantsById = useMemo(
     () =>
       new Map(participants.map((participant) => [participant.id, participant])),
@@ -240,13 +265,31 @@ export function VoiceStageView({
     () => sortStageMediaItemsForGrid(mediaItems),
     [mediaItems],
   )
+  const activityStageItem = useMemo<VoiceStageActivityItem | null>(
+    () =>
+      channelActivitiesEnabled && channelActivity.instance
+        ? {
+            id: channelActivityStageItemId(channelActivity.instance.id),
+            kind: 'activity',
+            instance: channelActivity.instance,
+          }
+        : null,
+    [channelActivitiesEnabled, channelActivity.instance],
+  )
+  const stageItems = useMemo<readonly VoiceStageItem[]>(
+    () =>
+      activityStageItem
+        ? [activityStageItem, ...gridMediaItems]
+        : gridMediaItems,
+    [activityStageItem, gridMediaItems],
+  )
   const videoMediaItems = useMemo(
     () => filterStageVideoMediaItems(gridMediaItems),
     [gridMediaItems],
   )
-  const mediaIds = useMemo(
-    () => mediaItems.map((item) => item.id),
-    [mediaItems],
+  const stageItemIds = useMemo(
+    () => stageItems.map((item) => item.id),
+    [stageItems],
   )
   const videoUserIds = useMemo(
     () => new Set(videoMediaItems.map((item) => item.userId)),
@@ -258,29 +301,53 @@ export function VoiceStageView({
     [participants, videoUserIds],
   )
   const useAvatarRosterLayout =
+    !activityStageItem &&
     videoMediaItems.length === 0 &&
     gridMediaItems.length === 0 &&
     participants.length > 0
 
   useEffect(() => {
+    if (!voiceStage.activityLauncherOpen || !activityStageItem) return
+    voiceStage.setActivityLauncherOpen(false)
+    voiceStage.setFocusedMediaId(activityStageItem.id)
+    setRequestedMode('focus')
+  }, [
+    activityStageItem,
+    voiceStage.activityLauncherOpen,
+    voiceStage.setActivityLauncherOpen,
+    voiceStage.setFocusedMediaId,
+  ])
+
+  useEffect(() => {
     if (!voiceStage.stageFocusNonce) return
     const mediaId = voiceStage.focusedMediaId
-    if (!mediaId || !mediaIds.includes(mediaId)) return
+    if (!mediaId || !stageItemIds.includes(mediaId)) return
     setRequestedMode('focus')
-  }, [mediaIds, voiceStage.focusedMediaId, voiceStage.stageFocusNonce])
+  }, [stageItemIds, voiceStage.focusedMediaId, voiceStage.stageFocusNonce])
 
   const layoutMode = resolveStageLayoutMode({
     requestedMode,
     focusedMediaId: voiceStage.focusedMediaId,
-    visibleMediaIds: mediaIds,
+    visibleMediaIds: stageItemIds,
   })
   const focusedItem =
     layoutMode === 'focus'
-      ? (mediaItems.find((item) => item.id === voiceStage.focusedMediaId) ??
+      ? (stageItems.find((item) => item.id === voiceStage.focusedMediaId) ??
         null)
       : null
   const focusedMediaHeader = useMemo(() => {
     if (!focusedItem) return null
+    if (isVoiceStageActivityItem(focusedItem)) {
+      return {
+        user: undefined,
+        kindLabel: 'Активность',
+        displayName:
+          getFirstPartyChannelActivity(focusedItem.instance.application_id)
+            ?.title ?? 'Неизвестное приложение',
+        showOnAir: false,
+        showAvatar: false,
+      }
+    }
     const kindLabel = stageMediaKindLabel(focusedItem.kind)
     if (!kindLabel) return null
 
@@ -303,10 +370,11 @@ export function VoiceStageView({
       ),
       showOnAir:
         focusedItem.kind === 'screen' && Boolean(participant?.screensharing),
+      showAvatar: true,
     }
   }, [auth.user, focusedItem, participantsById, users])
   const canToggleStageFullscreen =
-    !mobileDrawer && (participants.length > 0 || mediaItems.length > 0)
+    !mobileDrawer && (participants.length > 0 || stageItems.length > 0)
   const canInvite =
     server && channel.channel_type === 'TextChannel'
       ? canInviteToChannel(server, channel, member, auth.user?._id)
@@ -318,7 +386,7 @@ export function VoiceStageView({
     shouldShowVoiceInviteSlot(participants.length)
   const showEmptyStage =
     participants.length === 0 &&
-    mediaItems.length === 0 &&
+    stageItems.length === 0 &&
     !(isDmVoiceStage && voiceCall)
   const showRemoteJoinPreview =
     useAvatarRosterLayout && !inThisVoiceCall && !connecting && !isDmVoiceStage
@@ -433,10 +501,24 @@ export function VoiceStageView({
 
   const renderTile = useCallback(
     (
-      item: VoiceStageMediaItem,
+      item: VoiceStageItem,
       variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
       onStreamAspectRatioChange?: (aspectRatio: number) => void,
     ) => {
+      if (isVoiceStageActivityItem(item)) {
+        if (!currentUserId) return null
+        return (
+          <VoiceStageActivityTile
+            key={item.id}
+            item={item}
+            activity={channelActivity}
+            currentUserId={currentUserId}
+            variant={variant}
+            onFocus={focusMedia}
+            onAspectRatioChange={onStreamAspectRatioChange}
+          />
+        )
+      }
       const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id ?? null)
       return (
         <StageMediaTile
@@ -467,7 +549,9 @@ export function VoiceStageView({
     },
     [
       auth.user,
+      channelActivity,
       connecting,
+      currentUserId,
       focusMedia,
       inThisVoiceCall,
       participantsById,
@@ -507,7 +591,9 @@ export function VoiceStageView({
             : voiceStageContentInsetClass,
         )}
       >
-        {activityOpen && currentUserId ? (
+        {channelActivitiesEnabled &&
+        voiceStage.activityLauncherOpen &&
+        currentUserId ? (
           <Suspense
             fallback={
               <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
@@ -516,14 +602,13 @@ export function VoiceStageView({
               </div>
             }
           >
-            <ChannelActivityPanel
+            <ChannelActivityLauncher
               channelId={channelId}
-              currentUserId={currentUserId}
               activity={channelActivity}
-              onClose={closeActivity}
+              onClose={closeActivityLauncher}
             />
           </Suspense>
-        ) : participants.length === 0 && mediaItems.length === 0 ? (
+        ) : participants.length === 0 && stageItems.length === 0 ? (
           isDmVoiceStage && voiceCall ? (
             <VoiceStageWaitingCall
               voiceCall={voiceCall}
@@ -557,13 +642,15 @@ export function VoiceStageView({
         ) : focusedItem ? (
           <VoiceStageFocusStage
             focusedItem={focusedItem}
-            mediaItems={gridMediaItems}
+            mediaItems={stageItems}
             chromeVisible={chromeVisible}
             renderTile={renderTile}
           />
         ) : useAvatarRosterLayout ? (
           renderAvatarRoster()
-        ) : isDmVoiceStage && videoMediaItems.length > 0 ? (
+        ) : isDmVoiceStage &&
+          videoMediaItems.length > 0 &&
+          !activityStageItem ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2">
             <VoiceStageGrid items={videoMediaItems} renderTile={renderTile} />
             {avatarOnlyParticipants.length > 0
@@ -575,7 +662,7 @@ export function VoiceStageView({
           </div>
         ) : (
           <VoiceStageGrid
-            items={gridMediaItems}
+            items={stageItems}
             inviteSlot={
               showInviteSlot ? (
                 <VoiceStageInviteTile channelId={channelId} />
@@ -671,12 +758,14 @@ export function VoiceStageView({
                     <span className="shrink-0 text-white/45" aria-hidden>
                       •
                     </span>
-                    <UserAvatar
-                      user={focusedMediaHeader.user}
-                      className="size-5"
-                      fallbackClassName="size-5 text-[10px]"
-                      showPresence={false}
-                    />
+                    {focusedMediaHeader.showAvatar ? (
+                      <UserAvatar
+                        user={focusedMediaHeader.user}
+                        className="size-5"
+                        fallbackClassName="size-5 text-[10px]"
+                        showPresence={false}
+                      />
+                    ) : null}
                     <span className="shrink-0 text-white/70">
                       {focusedMediaHeader.kindLabel}
                     </span>
@@ -700,12 +789,14 @@ export function VoiceStageView({
             <span className="shrink-0 text-white/45" aria-hidden>
               •
             </span>
-            <UserAvatar
-              user={focusedMediaHeader.user}
-              className="size-5"
-              fallbackClassName="size-5 text-[10px]"
-              showPresence={false}
-            />
+            {focusedMediaHeader.showAvatar ? (
+              <UserAvatar
+                user={focusedMediaHeader.user}
+                className="size-5"
+                fallbackClassName="size-5 text-[10px]"
+                showPresence={false}
+              />
+            ) : null}
             <span className="shrink-0">{focusedMediaHeader.kindLabel}</span>
             <span className="min-w-0 truncate">
               {focusedMediaHeader.displayName}
@@ -719,29 +810,6 @@ export function VoiceStageView({
           <div className="flex shrink-0 items-center gap-1">
             {headerTrailing}
           </div>
-        ) : null}
-        {inThisVoiceCall && currentUserId ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'size-9 shrink-0 text-white/70 hover:bg-white/10 hover:text-white',
-              activityOpen && 'bg-white/15 text-white',
-              !activityOpen && channelActivity.instance && 'text-primary',
-            )}
-            title={activityOpen ? 'Закрыть Активность' : 'Открыть Активности'}
-            aria-label={
-              activityOpen ? 'Закрыть Активность' : 'Открыть Активности'
-            }
-            aria-pressed={activityOpen}
-            onClick={() => {
-              if (activityOpen) closeActivity()
-              else setActivityOpen(true)
-            }}
-          >
-            <Gamepad2Icon className="size-5" />
-          </Button>
         ) : null}
         {presentation === 'embedded' && showChatToggle && !mobileDrawer ? (
           <Button

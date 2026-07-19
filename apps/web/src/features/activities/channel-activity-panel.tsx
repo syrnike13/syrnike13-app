@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { Gamepad2Icon, Loader2Icon, XIcon } from '#/components/icons'
+import { Gamepad2Icon } from '#/components/icons'
 
 import { Button } from '#/components/ui/button'
 import {
   FIRST_PARTY_CHANNEL_ACTIVITIES,
-  getFirstPartyChannelActivity,
   type FirstPartyChannelActivity,
 } from './channel-activity-catalog'
 import { channelActivityClient } from './channel-activity-client'
@@ -20,126 +19,67 @@ import type {
   ChannelActivityViewState,
 } from './channel-activity-types'
 
-type ChannelActivityPanelProps = {
+type ChannelActivityLauncherProps = {
   channelId: string
-  currentUserId: string
   activity: ChannelActivityViewState
   onClose: () => void
 }
 
-export function ChannelActivityPanel({
+export function ChannelActivityLauncher({
   channelId,
-  currentUserId,
   activity,
   onClose,
-}: ChannelActivityPanelProps) {
-  const instance = activity.instance
-  const instanceId = instance?.id
-  const joined = instance?.participant_ids.includes(currentUserId) ?? false
-
-  useEffect(() => {
-    if (!instanceId || joined) return
-    channelActivityClient.join(channelId, instanceId)
-  }, [channelId, instanceId, joined])
-
-  if (!instance) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-        <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-xl">
-          <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
-            <Gamepad2Icon className="size-6" />
-          </div>
-          <h2 className="text-xl font-semibold">Активности</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Запустите общее приложение для участников этого голосового канала.
+}: ChannelActivityLauncherProps) {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-xl">
+        <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          <Gamepad2Icon className="size-6" />
+        </div>
+        <h2 className="text-xl font-semibold">Активности</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Запустите общее приложение для участников этого голосового канала.
+        </p>
+        {activity.error ? (
+          <p className="mt-3 text-sm text-destructive">
+            Не удалось запустить Активность: {activity.error}
           </p>
-          {activity.error ? (
-            <p className="mt-3 text-sm text-destructive">
-              Не удалось запустить Активность: {activity.error}
-            </p>
-          ) : null}
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {FIRST_PARTY_CHANNEL_ACTIVITIES.map((application) => (
-              <div
-                key={application.id}
-                className="flex flex-col rounded-xl border border-border bg-background p-4"
+        ) : null}
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {FIRST_PARTY_CHANNEL_ACTIVITIES.map((application) => (
+            <div
+              key={application.id}
+              className="flex flex-col rounded-xl border border-border bg-background p-4"
+            >
+              <h3 className="font-medium text-foreground">
+                {application.title}
+              </h3>
+              <p className="mt-1 flex-1 text-sm text-muted-foreground">
+                {application.description}
+              </p>
+              <Button
+                type="button"
+                className="mt-4 self-start"
+                onClick={() =>
+                  channelActivityClient.start(channelId, application.id)
+                }
               >
-                <h3 className="font-medium text-foreground">
-                  {application.title}
-                </h3>
-                <p className="mt-1 flex-1 text-sm text-muted-foreground">
-                  {application.description}
-                </p>
-                <Button
-                  type="button"
-                  className="mt-4 self-start"
-                  onClick={() =>
-                    channelActivityClient.start(channelId, application.id)
-                  }
-                >
-                  Запустить
-                </Button>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Назад
-            </Button>
-          </div>
+                Запустить
+              </Button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Назад
+          </Button>
         </div>
       </div>
-    )
-  }
-
-  if (!joined) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
-        <Loader2Icon className="mr-2 size-5 animate-spin" />
-        Подключаем к общей Активности…
-      </div>
-    )
-  }
-
-  const application = getFirstPartyChannelActivity(instance.application_id)
-  if (!application) {
-    return (
-      <div className="flex min-h-0 flex-1 items-center justify-center text-destructive">
-        Клиент не поддерживает эту Активность.
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative flex min-h-0 flex-1 p-2 pt-12">
-      <EmbeddedActivityFrame
-        key={instance.id}
-        application={application}
-        instance={instance}
-        error={activity.error}
-        transport={activity.transport}
-        currentUserId={currentUserId}
-        onCommand={(command) =>
-          channelActivityClient.command(channelId, instance.id, command)
-        }
-        onClose={onClose}
-      />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="absolute top-12 right-3 z-10 size-9 bg-background/80 text-foreground hover:bg-accent"
-        title="Закрыть Активность"
-        aria-label="Закрыть Активность"
-        onClick={onClose}
-      >
-        <XIcon className="size-5" />
-      </Button>
     </div>
   )
 }
 
-function EmbeddedActivityFrame({
+export function EmbeddedActivityFrame({
   application,
   instance,
   error,
@@ -261,7 +201,7 @@ function EmbeddedActivityFrame({
       title={application.title}
       src={application.entryUrl}
       sandbox="allow-scripts"
-      className="min-h-0 w-full flex-1 rounded-xl border border-border bg-background"
+      className="size-full min-h-0 rounded-md border-0 bg-background"
       onLoad={connect}
     />
   )

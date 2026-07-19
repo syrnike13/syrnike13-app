@@ -144,9 +144,10 @@ _Avoid_: Sidecar lost, application crash, voice state update failed
 
 **Channel Activity**:
 A first-party interactive web application embedded in the client and scoped to
-one voice channel. It may render independently from the Voice Stage, but it can
-only accept commands from accounts with a current Voice Membership in that
-channel.
+one voice channel. Its active instance is projected into the Voice Stage as a
+focusable tile, while its launcher belongs to the voice-panel media controls.
+It can only accept commands from accounts with a current Voice Membership in
+that channel.
 _Avoid_: Voice game, LiveKit app, rich presence activity
 
 **Activity Instance**:

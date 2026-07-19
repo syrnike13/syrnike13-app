@@ -13,15 +13,17 @@ import { TooltipProvider } from '#/components/ui/tooltip'
 import { VoiceControlTooltip } from '#/components/voice/voice-control-tooltip'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
+import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { voiceMediaControlState } from '#/features/voice/voice-media-availability'
+import { isChannelActivityStageItemId } from '#/features/activities/channel-activity-stage'
 import { shellDivider } from '#/components/layout/shell-chrome'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { cn } from '#/lib/utils'
 
 const panelMediaButtonBaseClass =
   'relative flex h-8 w-full items-center justify-center rounded-md border text-secondary-foreground transition-colors'
 
-const panelMediaButtonDisabledClass =
-  'cursor-not-allowed opacity-45'
+const panelMediaButtonDisabledClass = 'cursor-not-allowed opacity-45'
 
 const panelMediaButtonIdleClass =
   'border-secondary-foreground/5 bg-secondary-foreground/8 hover:border-secondary-foreground/5 hover:bg-secondary-foreground/12'
@@ -49,6 +51,8 @@ function PanelMediaButton({
     <VoiceControlTooltip title={title} wrapperClassName="flex min-w-0 flex-1">
       <button
         type="button"
+        aria-label={title}
+        aria-pressed={active}
         aria-disabled={disabled}
         onClick={disabled ? undefined : onClick}
         className={cn(
@@ -63,7 +67,13 @@ function PanelMediaButton({
   )
 }
 
-function PanelMediaButtonSoon({ title, children }: { title: string; children: ReactNode }) {
+function PanelMediaButtonSoon({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) {
   return (
     <VoiceControlTooltip
       title={title}
@@ -78,6 +88,7 @@ function PanelMediaButtonSoon({ title, children }: { title: string; children: Re
     >
       <button
         type="button"
+        aria-label={title}
         aria-disabled
         className={cn(panelMediaButtonBaseClass, panelMediaButtonSoonClass)}
       >
@@ -90,6 +101,7 @@ function PanelMediaButtonSoon({ title, children }: { title: string; children: Re
 export function VoicePanelMediaBar() {
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
+  const voiceStage = useVoiceStage()
   const connecting = voiceSession.status === 'connecting'
   const cameraOn = voiceMedia.cameraEnabled
   const sharingScreen = voiceMedia.screenShareEnabled
@@ -142,9 +154,21 @@ export function VoicePanelMediaBar() {
           )}
         </PanelMediaButton>
 
-        <PanelMediaButtonSoon title="Активность">
-          <ActivityIcon className="size-[1.125rem]" />
-        </PanelMediaButtonSoon>
+        {uiFeatureFlags.channelActivities ? (
+          <PanelMediaButton
+            title="Активности"
+            active={
+              voiceStage.activityLauncherOpen ||
+              isChannelActivityStageItemId(voiceStage.focusedMediaId)
+            }
+            disabled={voiceSession.status !== 'connected'}
+            onClick={() =>
+              voiceStage.setActivityLauncherOpen((current) => !current)
+            }
+          >
+            <ActivityIcon className="size-[1.125rem]" />
+          </PanelMediaButton>
+        ) : null}
 
         <PanelMediaButtonSoon title="Саундбар">
           <SoundboardIcon className="size-[1.125rem]" />
