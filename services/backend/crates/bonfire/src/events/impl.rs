@@ -108,6 +108,61 @@ mod tests {
     use super::*;
 
     #[async_std::test]
+    async fn server_create_rejects_membership_for_another_user() {
+        let db = DatabaseInfo::Reference
+            .connect()
+            .await
+            .expect("reference database");
+        let server_id = "server-1".to_string();
+        let mut state = State::from(
+            User {
+                id: "current-user".to_string(),
+                username: "current".to_string(),
+                discriminator: "0001".to_string(),
+                ..Default::default()
+            },
+            "session-1".to_string(),
+        );
+        let mut event = EventV1::ServerCreate {
+            id: server_id.clone(),
+            server: Server {
+                id: server_id.clone(),
+                owner: "owner-1".to_string(),
+                name: "Server".to_string(),
+                description: None,
+                channels: vec![],
+                categories: None,
+                system_messages: None,
+                roles: HashMap::new(),
+                default_permissions: 0,
+                icon: None,
+                banner: None,
+                flags: None,
+                nsfw: false,
+                analytics: false,
+                discoverable: false,
+            }
+            .into(),
+            channels: vec![],
+            member: Member {
+                id: MemberCompositeKey {
+                    server: server_id.clone(),
+                    user: "another-user".to_string(),
+                },
+                ..Default::default()
+            }
+            .into(),
+            emojis: vec![],
+            voice_states: vec![],
+        };
+
+        assert!(!state.handle_incoming_event_v1(&db, &mut event).await);
+        assert!(!state.subscribed.read().await.contains(&server_id));
+        assert!(!state.cache.servers.contains_key(&server_id));
+        assert!(state.cache.current_membership(&server_id).is_none());
+    }
+
+    #[async_std::test]
     async fn server_role_update_inserts_missing_created_role_in_cache() {
         let db = DatabaseInfo::Reference
             .connect()

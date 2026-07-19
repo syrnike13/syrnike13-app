@@ -664,6 +664,16 @@ class MediaRuntime::Implementation {
       emitter_.emit(reply(command));
       return;
     }
+    if (
+      command.type == "__localCameraPreviewFrame" ||
+      command.type == "__localCameraPreviewFailed" ||
+      command.type == "__localCameraPreviewTrackRemoved"
+    ) {
+      // The shared LiveKit room retains the VoiceActor callback that created it,
+      // so its local-camera bridge posts these events onto the voice queue.
+      handleCamera(command);
+      return;
+    }
     unknown(command);
   }
 

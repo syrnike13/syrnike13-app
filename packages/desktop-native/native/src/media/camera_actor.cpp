@@ -303,6 +303,7 @@ class CameraActor::Implementation {
       }
     } catch (...) {
       if (!publication_sid.empty()) client_->stopLocalCameraPreview(publication_sid);
+      if (room && !publication_sid.empty()) room->unpublishTrack(publication_sid);
       if (!attempt->reply_emitted.exchange(true)) {
         auto failed = reply(command); failed.ok = false;
         failed.error = NativeError{"native_command_failed", "Camera publication failed",
