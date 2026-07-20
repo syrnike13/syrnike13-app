@@ -102,6 +102,9 @@ describe('VoiceStageControls', () => {
 
     expect(exitViewSession).toHaveBeenCalledWith(streamSession)
     expect(voiceLeaveMock).not.toHaveBeenCalled()
+    expect(
+      screen.queryByRole('button', { name: 'Выбрать, что завершить' }),
+    ).toBeNull()
   })
 
   it('offers every active view session from the exit dropdown', async () => {
@@ -142,6 +145,10 @@ describe('VoiceStageControls', () => {
       screen.getByRole('button', { name: 'Выбрать, что завершить' }),
       { button: 0, ctrlKey: false },
     )
+
+    expect(
+      screen.queryByRole('menuitem', { name: 'Отключиться от голоса' }),
+    ).toBeNull()
 
     fireEvent.click(
       await screen.findByRole('menuitem', {

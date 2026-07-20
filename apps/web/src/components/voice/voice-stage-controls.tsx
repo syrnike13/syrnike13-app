@@ -27,7 +27,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '#/components/ui/dropdown-menu'
 import {
@@ -782,7 +781,7 @@ function VoiceStageExitControl({
   const focusedSession = sessions.find(
     (session) => session.stageItemId === focusedStageItemId,
   )
-  const hasMenu = sessions.length > 0
+  const hasMenu = sessions.length > 0 && !focusedSession
   const title = focusedSession
     ? voiceStageViewSessionExitLabel(focusedSession)
     : 'Отключиться от голоса'
@@ -876,13 +875,6 @@ function VoiceStageExitControl({
               </DropdownMenuItem>
             )
           })}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem variant="destructive" onSelect={onLeaveVoice}>
-            <PhoneOffIcon />
-            Отключиться от голоса
-          </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
