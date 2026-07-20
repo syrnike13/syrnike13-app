@@ -181,12 +181,38 @@ describe('ServerRail', () => {
       )
       expect(tooltip.textContent).toBe('Demo')
       expect(tooltipContent?.className).toContain('font-black')
+      expect(tooltipContent?.firstElementChild?.className).toContain('w-max')
+      expect(tooltipContent?.firstElementChild?.className).not.toContain(
+        'min-w-32',
+      )
     })
   })
 
   it('separates voice participants and screen sharers in the server tooltip', async () => {
     const voiceUserId = '01VOICEUSERALICE00000001'
     const screenSharingUserId = '01VOICEUSERBOB0000000002'
+    const voiceParticipant = {
+      id: voiceUserId,
+      joined_at: 1,
+      self_mute: false,
+      self_deaf: false,
+      server_muted: false,
+      server_deafened: false,
+      screensharing: false,
+      camera: false,
+      version: 1,
+    }
+    const screenSharingParticipant = {
+      id: screenSharingUserId,
+      joined_at: 2,
+      self_mute: false,
+      self_deaf: false,
+      server_muted: false,
+      server_deafened: false,
+      screensharing: true,
+      camera: false,
+      version: 1,
+    }
 
     syncStore.applyReady({
       authorization: {
@@ -237,30 +263,7 @@ describe('ServerRail', () => {
       voice_states: [
         {
           id: 'voice-1',
-          participants: [
-            {
-              id: voiceUserId,
-              joined_at: 1,
-              self_mute: false,
-              self_deaf: false,
-              server_muted: false,
-              server_deafened: false,
-              screensharing: false,
-              camera: false,
-              version: 1,
-            },
-            {
-              id: screenSharingUserId,
-              joined_at: 2,
-              self_mute: false,
-              self_deaf: false,
-              server_muted: false,
-              server_deafened: false,
-              screensharing: true,
-              camera: false,
-              version: 1,
-            },
-          ],
+          participants: [voiceParticipant, screenSharingParticipant],
         },
       ],
       voice_calls: [],
@@ -268,7 +271,17 @@ describe('ServerRail', () => {
 
     render(<ServerRail variant="desktop" />)
 
-    fireEvent.pointerMove(screen.getByRole('link', { name: 'Demo' }), {
+    const serverLink = screen.getByRole('link', { name: 'Demo' })
+    const activityBadge = serverLink.querySelector<HTMLElement>(
+      '[data-slot="server-activity-badge"]',
+    )
+    expect(activityBadge?.dataset.kind).toBe('screen-share')
+    expect(activityBadge?.hasAttribute('data-connected')).toBe(false)
+    expect(activityBadge?.getAttribute('aria-label')).toBe(
+      'На сервере демонстрируют экран',
+    )
+
+    fireEvent.pointerMove(serverLink, {
       pointerType: 'mouse',
     })
 
@@ -291,6 +304,18 @@ describe('ServerRail', () => {
       expect(within(voiceRow!).queryByTitle('bob')).toBeNull()
       expect(within(screenShareRow!).getByTitle('bob')).toBeTruthy()
       expect(within(screenShareRow!).queryByTitle('alice')).toBeNull()
+    })
+
+    syncStore.setChannelVoiceParticipants('voice-1', [voiceParticipant])
+
+    await waitFor(() => {
+      const voiceBadge = serverLink.querySelector<HTMLElement>(
+        '[data-slot="server-activity-badge"]',
+      )
+      expect(voiceBadge?.dataset.kind).toBe('voice')
+      expect(voiceBadge?.getAttribute('aria-label')).toBe(
+        'На сервере есть участники голосовых каналов',
+      )
     })
   })
 

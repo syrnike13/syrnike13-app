@@ -33,42 +33,18 @@ import {
   shellLowestSurface,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
-import { serverIconUrl } from '#/lib/media'
 import { useMediaQuery } from '#/hooks/use-media-query'
 import { UserAvatar } from '#/components/user/user-avatar'
+import {
+  ServerAvatar,
+  type ServerActivityKind,
+} from '#/components/servers/server-avatar'
 import { getChannelVoiceParticipants } from '#/features/sync/voice-selectors'
 import type { UserVoiceState } from '#/features/sync/voice-types'
 import { isServerVoiceChannel } from '#/lib/channel-voice'
 
 type ServerRailVariant = 'desktop' | 'mobile'
 const MAX_TOOLTIP_AVATARS = 6
-
-function ServerIcon({
-  server,
-  animated,
-}: {
-  server: Server
-  animated: boolean
-}) {
-  const iconUrl = serverIconUrl(server.icon, { animated })
-
-  if (iconUrl) {
-    return (
-      <img
-        src={iconUrl}
-        alt=""
-        draggable={false}
-        className="size-full object-cover"
-      />
-    )
-  }
-
-  return (
-    <span className="text-xs font-semibold uppercase">
-      {server.name.trim().slice(0, 2) || '??'}
-    </span>
-  )
-}
 
 function ServerRailTooltipAvatarRow({
   kind,
@@ -153,8 +129,8 @@ function ServerRailTooltip({
   )
 
   return (
-    <div className="min-w-32 space-y-2">
-      <div className="max-w-52 truncate text-sm font-black">{serverName}</div>
+    <div className="w-max max-w-52 space-y-2">
+      <div className="truncate text-sm font-black">{serverName}</div>
       <ServerRailTooltipAvatarRow
         kind="voice"
         label="Участники голосовых каналов"
@@ -373,13 +349,25 @@ function ServerRailButton({
       ? !channelMatch && selectedServerId === server._id
       : Boolean(channelMatch) && contextualServerId === server._id
 
+  const activityKind: ServerActivityKind = voiceParticipants.some(
+    (participant) => participant.screensharing,
+  )
+    ? 'screen-share'
+    : voiceParticipants.length > 0
+      ? 'voice'
+      : null
+  const currentUserConnected = Boolean(
+    currentUserId &&
+      voiceParticipants.some((participant) => participant.id === currentUserId),
+  )
+
   const icon = (
-    <span className="flex size-full items-center justify-center">
-      <ServerIcon
-        server={server}
-        animated={iconInteractionActive && !prefersReducedMotion}
-      />
-    </span>
+    <ServerAvatar
+      server={server}
+      animated={iconInteractionActive && !prefersReducedMotion}
+      activity={activityKind}
+      connected={currentUserConnected}
+    />
   )
 
   const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
