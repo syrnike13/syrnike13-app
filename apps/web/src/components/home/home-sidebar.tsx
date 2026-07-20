@@ -12,6 +12,7 @@ import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 type HomeSidebarProps = {
   activeChannelId?: string
   reserveUserPanelSpace?: boolean
+  userPanelReservePx?: number
 }
 
 const activeNavItemClassName =
@@ -20,6 +21,7 @@ const activeNavItemClassName =
 export function HomeSidebar({
   activeChannelId,
   reserveUserPanelSpace = true,
+  userPanelReservePx = USER_PANEL_RESERVE_PX,
 }: HomeSidebarProps) {
   const prefix = useAppRoutePrefix()
   return (
@@ -27,7 +29,7 @@ export function HomeSidebar({
       className={`flex h-full min-h-0 w-full flex-col ${shellNavSurface}`}
       style={
         reserveUserPanelSpace
-          ? { paddingBottom: USER_PANEL_RESERVE_PX }
+          ? { paddingBottom: userPanelReservePx }
           : undefined
       }
     >

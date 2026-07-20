@@ -29,7 +29,7 @@ struct MicrophonePipelineSnapshot {
   std::string device_id;
   std::uint64_t revision = 0;
   bool noise_suppression_enabled = true;
-  bool echo_cancellation_enabled = true;
+  bool echo_cancellation_enabled = false;
 };
 
 void validateMicrophonePublicationCommand(const MediaCommand &command);

@@ -25,6 +25,11 @@
 #include <thread>
 #include <vector>
 
+#include "ffi.pb.h"
+#include "livekit/remote_participant.h"
+#include "livekit/remote_track_publication.h"
+#include "track.pb.h"
+
 namespace livekit {
 
 class RoomCallbackTest : public ::testing::Test {
@@ -32,6 +37,75 @@ protected:
   void SetUp() override { livekit::initialize(livekit::LogLevel::Info); }
 
   void TearDown() override { livekit::shutdown(); }
+
+  static constexpr const char* kParticipantIdentity = "viewer-source";
+  static constexpr const char* kTrackSid = "screen-track";
+
+  static proto::OwnedTrackPublication makeScreenPublication() {
+    proto::OwnedTrackPublication owned;
+    owned.mutable_handle()->set_id(0);
+    auto* info = owned.mutable_info();
+    info->set_sid(kTrackSid);
+    info->set_name("screen");
+    info->set_kind(proto::KIND_VIDEO);
+    info->set_source(proto::SOURCE_SCREENSHARE);
+    info->set_simulcasted(false);
+    info->set_width(1920);
+    info->set_height(1080);
+    info->set_mime_type("video/h264");
+    info->set_muted(false);
+    info->set_remote(true);
+    info->set_encryption_type(proto::NONE);
+    return owned;
+  }
+
+  static proto::OwnedTrack makeScreenTrack() {
+    proto::OwnedTrack owned;
+    owned.mutable_handle()->set_id(0);
+    auto* info = owned.mutable_info();
+    info->set_sid(kTrackSid);
+    info->set_name("screen");
+    info->set_kind(proto::KIND_VIDEO);
+    info->set_stream_state(proto::STATE_ACTIVE);
+    info->set_muted(false);
+    info->set_remote(true);
+    return owned;
+  }
+
+  static std::shared_ptr<RemoteTrackPublication> addScreenPublication(Room& room) {
+    room.room_handle_ = std::make_shared<FfiHandle>();
+    auto participant = std::make_shared<RemoteParticipant>(
+        FfiHandle(), "participant-sid", "source", kParticipantIdentity, "",
+        std::unordered_map<std::string, std::string>{}, ParticipantKind::Standard, DisconnectReason::Unknown);
+    auto publication = std::make_shared<RemoteTrackPublication>(makeScreenPublication());
+    participant->mutableTrackPublications().emplace(kTrackSid, publication);
+    room.remote_participants_.emplace(kParticipantIdentity, std::move(participant));
+    return publication;
+  }
+
+  static void setSubscriptionDesired(RemoteTrackPublication& publication, bool desired) {
+    publication.subscription_desired_.store(desired, std::memory_order_release);
+  }
+
+  static void pushTrackSubscribed(Room& room) {
+    proto::FfiEvent event;
+    auto* room_event = event.mutable_room_event();
+    room_event->set_room_handle(0);
+    auto* subscribed = room_event->mutable_track_subscribed();
+    subscribed->set_participant_identity(kParticipantIdentity);
+    subscribed->mutable_track()->CopyFrom(makeScreenTrack());
+    room.onEvent(event);
+  }
+
+  static void pushTrackUnsubscribed(Room& room) {
+    proto::FfiEvent event;
+    auto* room_event = event.mutable_room_event();
+    room_event->set_room_handle(0);
+    auto* unsubscribed = room_event->mutable_track_unsubscribed();
+    unsubscribed->set_participant_identity(kParticipantIdentity);
+    unsubscribed->set_track_sid(kTrackSid);
+    room.onEvent(event);
+  }
 };
 
 TEST_F(RoomCallbackTest, FrameCallbackRegistrationByTrackNameIsAccepted) {
@@ -126,6 +200,42 @@ TEST_F(RoomCallbackTest, ConnectionStateIsQueryableFromMultipleThreads) {
   }
 
   EXPECT_EQ(disconnected_count.load(), kThreads * kIterations);
+}
+
+TEST_F(RoomCallbackTest, TrackSubscribedEventUpdatesStateWithoutSendingSubscriptionCommand) {
+  Room room;
+  const auto publication = addScreenPublication(room);
+
+  ASSERT_NO_THROW(pushTrackSubscribed(room));
+
+  EXPECT_TRUE(publication->subscribed());
+  EXPECT_NE(publication->track(), nullptr);
+}
+
+TEST_F(RoomCallbackTest, LateTrackUnsubscribedDoesNotDetachDemandedReplacement) {
+  Room room;
+  const auto publication = addScreenPublication(room);
+  setSubscriptionDesired(*publication, true);
+  pushTrackSubscribed(room);
+  const auto replacement = publication->track();
+  ASSERT_NE(replacement, nullptr);
+
+  ASSERT_NO_THROW(pushTrackUnsubscribed(room));
+
+  EXPECT_TRUE(publication->subscribed());
+  EXPECT_EQ(publication->track(), replacement);
+}
+
+TEST_F(RoomCallbackTest, TrackUnsubscribedEventClearsStateWithoutSendingSubscriptionCommand) {
+  Room room;
+  const auto publication = addScreenPublication(room);
+  pushTrackSubscribed(room);
+  ASSERT_NE(publication->track(), nullptr);
+
+  ASSERT_NO_THROW(pushTrackUnsubscribed(room));
+
+  EXPECT_FALSE(publication->subscribed());
+  EXPECT_EQ(publication->track(), nullptr);
 }
 
 } // namespace livekit

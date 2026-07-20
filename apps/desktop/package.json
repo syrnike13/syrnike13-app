@@ -1,6 +1,6 @@
 {
   "name": "@syrnike13/desktop",
-  "version": "0.5.1",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",

@@ -36,6 +36,7 @@ import {
   type LocalSpeakingDetector,
 } from '#/features/voice/local-speaking-detector'
 import { voiceListenerStore } from '#/features/voice/voice-listener-store'
+import { applyStageScreenPublicationSubscription } from '#/features/voice/voice-stage-subscription'
 
 type ActiveBrowserVoice = {
   lease: VoiceLease
@@ -254,6 +255,13 @@ export class BrowserRtcEngineAdapter implements RtcEngineAdapter {
 
   private attachRoomEvents(active: ActiveBrowserVoice) {
     const { room } = active
+    room.on(
+      RoomEvent.TrackPublished,
+      (publication: RemoteTrackPublication) => {
+        if (this.active !== active) return
+        applyStageScreenPublicationSubscription(publication, false)
+      },
+    )
     room.on(RoomEvent.Reconnecting, () => {
       if (this.active !== active) return
       active.connected = false

@@ -124,6 +124,8 @@ The native signal order is:
 -> WebRTC APM noise suppression / AEC when enabled and available
 -> input volume
 -> voice gate
+-> WebRTC adaptive digital gain control when enabled
+-> closed-gate digital-silence guard
 -> soft limiter
 -> LiveKit native audio frame
 ```
@@ -167,10 +169,22 @@ causes a fresh Director join to A.
 
 ## Failure, Retry and Recovery
 
-Detailed Electron/utility/native diagnostics are disabled by default in every
-build and enabled only with `SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS=1`. They redact
-tokens, URLs, identities, device/source/window data and paths, and remove local
-run directories older than seven days.
+Detailed Electron/utility/native diagnostics are enabled by default on Windows
+through `SYRNIKE_NATIVE_MEDIA_DIAGNOSTICS=1`. Existing installations are enabled
+once by the desktop settings v3 migration, while a later explicit opt-out is
+preserved. Logs redact tokens, URLs, identities, device/source/window data and
+paths, remove local run directories older than seven days, and contribute a
+fairly shared maximum of 30 MiB to a report.
+
+After native records are normalized, the desktop bundle is capped at 33 MiB
+decompressed and 10 MiB gzip-compressed; incompressible native tails are reduced
+until both upload limits are satisfied.
+
+The main-process incident monitor promotes any native error code plus failures,
+timeouts, queue exhaustion, degraded states, unexpected exits, restarts,
+recycling, stalls, incompatibility, and contract corruption into an automatic
+diagnostic report. It does not show a confirmation prompt; repeated identical
+signals are deduplicated and upload cooldowns bound restart-loop traffic.
 
 A query timeout rejects that request and may use the relevant actor-specific
 liveness probe; it is not by itself evidence that the utility host died. A
@@ -217,6 +231,6 @@ avoid double processing.
 
 ## Out of Scope
 
-Krisp, RNNoise, DeepFilterNet3, AGC, new ML denoise, HDR, hardware encoding and
+Krisp, RNNoise, DeepFilterNet3, new ML denoise, HDR, hardware encoding and
 new capture capabilities are not part of this migration. The microphone target
 is the WebRTC/APM standard processing class.

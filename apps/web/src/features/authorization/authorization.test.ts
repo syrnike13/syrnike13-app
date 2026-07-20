@@ -37,6 +37,8 @@ describe('backend authorization snapshot', () => {
     })
 
     expect(canAccessAdmin()).toBe(true)
+    expect(canManageServerChannels(server, undefined, 'admin')).toBe(false)
+    expect(canManageChannel(server, channel, undefined, 'admin')).toBe(false)
   })
 
   it('uses channel-specific effective permissions for channel controls', () => {

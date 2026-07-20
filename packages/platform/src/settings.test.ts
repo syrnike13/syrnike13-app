@@ -17,6 +17,47 @@ describe('desktop local settings contract', () => {
     )
   })
 
+  it('migrates legacy microphone defaults without changing other settings', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 1,
+        voice: {
+          preferredAudioInputDevice: 'legacy-mic',
+          inputVolume: 0.42,
+          noiseSuppression: false,
+          echoCancellation: true,
+          automaticGainControl: false,
+        },
+        appearance: { themeId: 'night' },
+      }),
+    ).toMatchObject({
+      version: 3,
+      voice: {
+        preferredAudioInputDevice: 'legacy-mic',
+        inputVolume: 0.42,
+        noiseSuppression: false,
+        echoCancellation: false,
+        automaticGainControl: true,
+      },
+      appearance: { themeId: 'night' },
+    })
+  })
+
+  it('preserves explicit microphone processing values after migration', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 2,
+        voice: {
+          echoCancellation: true,
+          automaticGainControl: false,
+        },
+      }).voice,
+    ).toMatchObject({
+      echoCancellation: true,
+      automaticGainControl: false,
+    })
+  })
+
   it('keeps saved voice and listener settings', () => {
     expect(
       normalizeDesktopLocalSettings({
@@ -28,6 +69,8 @@ describe('desktop local settings contract', () => {
           preferredVideoDevice: 'camera-1',
           inputVolume: 0.42,
           outputVolume: 1.7,
+          bypassSystemAudioInputProcessing: false,
+          automaticGainControl: true,
           noiseSuppression: false,
           echoCancellation: false,
           voiceGateEnabled: true,
@@ -51,6 +94,8 @@ describe('desktop local settings contract', () => {
         deafened: true,
         preferredAudioInputDevice: 'mic-1',
         outputVolume: 1.7,
+        bypassSystemAudioInputProcessing: false,
+        automaticGainControl: true,
         noiseSuppression: false,
         screenShareQuality: 'high60',
       },
@@ -109,12 +154,16 @@ describe('desktop local settings contract', () => {
     expect(
       normalizeDesktopLocalSettingsPatch({
         voice: {
+          bypassSystemAudioInputProcessing: false,
+          automaticGainControl: true,
           noiseSuppression: false,
           outputVolume: 5,
         },
       }),
     ).toEqual({
       voice: {
+        bypassSystemAudioInputProcessing: false,
+        automaticGainControl: true,
         noiseSuppression: false,
         outputVolume: 3,
       },
@@ -172,10 +221,25 @@ describe('desktop local settings contract', () => {
     })
   })
 
-  it('defaults native metrics on and full crash reports off', () => {
+  it('defaults native metrics and redacted diagnostic reports on', () => {
     expect(normalizeDesktopLocalSettings({}).observability).toEqual(
       DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS,
     )
+  })
+
+  it('enables diagnostic reports for version 2 and preserves a version 3 opt-out', () => {
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 2,
+        observability: { diagnosticReports: false },
+      }).observability.diagnosticReports,
+    ).toBe(true)
+    expect(
+      normalizeDesktopLocalSettings({
+        version: 3,
+        observability: { diagnosticReports: false },
+      }).observability.diagnosticReports,
+    ).toBe(false)
   })
 
   it('accepts only boolean observability settings', () => {
@@ -183,6 +247,7 @@ describe('desktop local settings contract', () => {
       normalizeDesktopLocalSettingsPatch({
         observability: {
           anonymousNativeMetrics: false,
+          diagnosticReports: true,
           nativeCrashReports: true,
           roomUrl: 'wss://private.example',
         },
@@ -190,6 +255,7 @@ describe('desktop local settings contract', () => {
     ).toEqual({
       observability: {
         anonymousNativeMetrics: false,
+        diagnosticReports: true,
         nativeCrashReports: true,
       },
     })

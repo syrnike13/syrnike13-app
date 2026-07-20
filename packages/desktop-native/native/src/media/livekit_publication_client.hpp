@@ -65,6 +65,19 @@ class LiveKitPublicationClient {
   virtual void configureRemoteAudio(RemoteAudioSettings settings) = 0;
   virtual void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) = 0;
   virtual void setRemoteVideoDemand(std::string track_id, bool demanded) = 0;
+  virtual void retryRemoteVideo(std::string track_id, std::string reason) = 0;
+  virtual void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    std::shared_ptr<livekit::LocalVideoTrack> track
+  ) = 0;
+  virtual void stopLocalCameraPreview(std::string track_id) = 0;
+  virtual void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) = 0;
   virtual void disconnectVoice() = 0;
 
   virtual std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
@@ -121,6 +134,19 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
   void configureRemoteAudio(RemoteAudioSettings settings) override;
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) override;
   void setRemoteVideoDemand(std::string track_id, bool demanded) override;
+  void retryRemoteVideo(std::string track_id, std::string reason) override;
+  void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    std::shared_ptr<livekit::LocalVideoTrack> track
+  ) override;
+  void stopLocalCameraPreview(std::string track_id) override;
+  void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) override;
   void disconnectVoice() override;
 
   std::shared_ptr<livekit::LocalAudioTrack> createMicrophoneTrack(
@@ -152,6 +178,8 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
   );
   std::size_t pending(Operation operation) const;
   std::vector<std::string> unpublishedPublicationSids() const;
+  std::size_t localCameraPreviewStartCount() const;
+  std::size_t localCameraPreviewStopCount() const;
   Release enterGate(Operation operation);
   void recordUnpublishedPublicationSid(std::string publication_sid);
 
@@ -172,6 +200,8 @@ class DeterministicFakeLiveKitPublicationClient final : public LiveKitPublicatio
   GateState unpublish_;
   GateState disconnect_;
   std::vector<std::string> unpublished_publication_sids_;
+  std::size_t local_camera_preview_start_count_ = 0;
+  std::size_t local_camera_preview_stop_count_ = 0;
   std::size_t voice_connect_pending_ = 0;
   bool voice_connected_ = false;
   bool voice_deafened_ = false;

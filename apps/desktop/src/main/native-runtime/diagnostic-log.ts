@@ -3,6 +3,8 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 
+import type { DiagnosticEnvelope } from '@syrnike13/platform'
+
 import { redactSensitiveText, type NativeRuntimeKind } from './contract'
 
 export type NativeDiagnosticRole = 'electron-main' | 'utility' | 'native'
@@ -22,7 +24,11 @@ export type NativeDiagnosticSession = {
 }
 
 export type DiagnosticLogRecord = {
-  scope: 'native-runtime-supervisor' | 'native-media-controller'
+  scope:
+    | 'native-runtime-supervisor'
+    | 'native-media-controller'
+    | 'native-video'
+    | 'desktop-voice'
   event: string
   runtime?: string
   kind?: string
@@ -67,19 +73,6 @@ type JsonValue = NativeDiagnosticPrimitive
 
 type JsonRecord = Record<string, JsonValue>
 
-type NativeDiagnosticEvent = {
-  ts: string
-  epochMs: number
-  monotonicMs: number
-  sequence: number
-  pid: number
-  runtime: NativeRuntimeKind
-  runId: string
-  role: NativeDiagnosticRole
-  event: string
-  data?: JsonValue
-}
-
 type CreateNativeDiagnosticSessionOptions = {
   runtime: NativeRuntimeKind
   rootDir: string
@@ -120,6 +113,9 @@ const ROLE_FILENAMES: Record<NativeDiagnosticRole, string> = {
   utility: 'utility.jsonl',
   native: 'native.jsonl',
 }
+
+const DIAGNOSTIC_SCHEMA = 'syrnike.diagnostic' as const
+const DIAGNOSTIC_SCHEMA_VERSION = 1 as const
 
 const OMITTED = '[omitted]'
 const MAX_DEPTH = 6
@@ -228,20 +224,24 @@ export function createNativeDiagnosticLog(
       if (closed) return
       try {
         const epochMs = now()
-        const entry: NativeDiagnosticEvent = {
-          ts: new Date(epochMs).toISOString(),
-          epochMs,
-          monotonicMs: monotonicNow(),
-          sequence: ++sequence,
-          pid,
-          runtime: options.runtime,
-          runId: options.runId,
-          role: options.role,
+        const entry: DiagnosticEnvelope = {
+          schema: DIAGNOSTIC_SCHEMA,
+          version: DIAGNOSTIC_SCHEMA_VERSION,
+          record_type: 'event',
+          timestamp_ms: epochMs,
+          source: options.role,
           event: redactDiagnosticText(event).slice(0, 256),
+          data: {
+            runtime: options.runtime,
+            run_id: options.runId,
+            sequence: ++sequence,
+            pid,
+            monotonic_ms: monotonicNow(),
+          },
         }
         const sanitized = sanitizeDiagnosticValue(data)
         if (sanitized !== undefined) {
-          entry.data = sanitized
+          entry.data.payload = sanitized
         }
         void enqueue(() =>
           appendFileImpl(options.filePath, `${JSON.stringify(entry)}\n`, 'utf8'),

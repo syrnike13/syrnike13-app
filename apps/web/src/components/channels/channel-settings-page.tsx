@@ -138,7 +138,6 @@ export function ChannelSettingsPage({
           settingsChannel,
           member,
           auth.user?._id,
-          auth.user?.privileged,
         )
       : false
 
@@ -149,7 +148,6 @@ export function ChannelSettingsPage({
           settingsChannel,
           member,
           auth.user?._id,
-          auth.user?.privileged,
         )
       : false
   const canManageWebhooks =
@@ -159,7 +157,6 @@ export function ChannelSettingsPage({
           settingsChannel,
           member,
           auth.user?._id,
-          auth.user?.privileged,
         )
       : false
 

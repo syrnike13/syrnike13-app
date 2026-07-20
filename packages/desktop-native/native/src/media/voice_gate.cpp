@@ -11,10 +11,11 @@ constexpr float kMaxDb = 0.0f;
 constexpr float kAutoThresholdMinDb = -50.0f;
 constexpr float kAutoThresholdMaxDb = -18.0f;
 constexpr std::size_t kQuietHistoryMaxFrames = 200;
-constexpr std::size_t kQuietHistoryMinFrames = 16;
+constexpr std::size_t kQuietHistoryMinFrames = 20;
 constexpr float kQuietFloorPercentile = 0.2f;
 constexpr float kNoiseFloorUpAlpha = 0.02f;
-constexpr float kNoiseFloorDownAlpha = 0.25f;
+constexpr float kNoiseFloorDownAlpha = 0.15f;
+constexpr float kNoiseLearningWindowDb = 12.0f;
 
 float clampDb(float value) {
   if (!std::isfinite(value)) return kMinDb;
@@ -57,31 +58,36 @@ VoiceGateProcessor::VoiceGateProcessor(int sample_rate)
   : sample_rate_(std::max(1, sample_rate)) {}
 
 void VoiceGateProcessor::updateConfig(const VoiceGateConfig& config) {
-  const bool auto_mode_changed = config_.auto_threshold != config.auto_threshold;
+  VoiceGateConfig next = config;
+  next.manual_threshold_db = clampDb(next.manual_threshold_db);
+  next.auto_margin_db = std::max(3.0f, std::min(18.0f, next.auto_margin_db));
+  next.hysteresis_db = std::max(2.0f, std::min(18.0f, next.hysteresis_db));
+  next.attack_ms = std::max(1, next.attack_ms);
+  next.hold_ms = std::max(0, next.hold_ms);
+  next.release_ms = std::max(1, next.release_ms);
+  next.lookahead_ms = std::max(0, next.lookahead_ms);
 
-  config_ = config;
-  config_.manual_threshold_db = clampDb(config_.manual_threshold_db);
-  config_.auto_margin_db = std::max(3.0f, std::min(18.0f, config_.auto_margin_db));
-  config_.hysteresis_db = std::max(2.0f, std::min(18.0f, config_.hysteresis_db));
-  config_.attack_ms = std::max(1, config_.attack_ms);
-  config_.hold_ms = std::max(0, config_.hold_ms);
-  config_.release_ms = std::max(1, config_.release_ms);
-  config_.lookahead_ms = std::max(0, config_.lookahead_ms);
-  config_.floor_gain = clampGain(config_.floor_gain);
+  const bool first_config = !config_initialized_;
+  const bool enabled_changed = !first_config && config_.enabled != next.enabled;
+  const bool mode_changed = !first_config &&
+    config_.auto_threshold != next.auto_threshold;
+  const bool lookahead_topology_changed = !first_config &&
+    (config_.auto_threshold || next.auto_threshold) &&
+    config_.lookahead_ms != next.lookahead_ms;
 
-  if (auto_mode_changed) {
+  config_ = next;
+  config_initialized_ = true;
+  if (first_config || enabled_changed || mode_changed) {
     resetAdaptiveState();
-    open_ = true;
-    below_close_ms_ = 0;
-    gain_ = 1.0f;
+  }
+  if (first_config || enabled_changed || mode_changed || lookahead_topology_changed) {
+    resetGateState(!config_.enabled);
   }
 }
 
 void VoiceGateProcessor::reset(bool open) {
-  open_ = open;
-  below_close_ms_ = 0;
-  gain_ = open ? 1.0f : config_.floor_gain;
   resetAdaptiveState();
+  resetGateState(open);
 }
 
 float VoiceGateProcessor::effectiveThresholdDb() const {
@@ -92,18 +98,59 @@ float VoiceGateProcessor::effectiveThresholdDb() const {
   );
 }
 
-float VoiceGateProcessor::gainSmoothingCoefficient(float target) const {
-  const int duration_ms = target > gain_ ? config_.attack_ms : config_.release_ms;
-  if (duration_ms <= 1) return 1.0f;
-  const float frame_ms = 10.0f;
-  return std::max(0.0f, std::min(1.0f, 1.0f - std::exp(-frame_ms / static_cast<float>(duration_ms))));
-}
-
 int VoiceGateProcessor::frameDurationMs(std::span<float> samples) const {
   if (sample_rate_ <= 0) return 0;
   return static_cast<int>(
     std::lround(static_cast<double>(samples.size()) * 1000.0 / sample_rate_)
   );
+}
+
+void VoiceGateProcessor::beginGainTransition(float target, int duration_ms) {
+  target = clampGain(target);
+  if (gain_ == target) {
+    transition_start_gain_ = target;
+    transition_target_ = target;
+    transition_samples_total_ = 0;
+    transition_samples_remaining_ = 0;
+    return;
+  }
+
+  transition_samples_total_ = static_cast<int>(std::max(
+    1.0,
+    std::round(static_cast<double>(sample_rate_) * duration_ms / 1000.0)
+  ));
+  transition_start_gain_ = gain_;
+  transition_target_ = target;
+  transition_samples_remaining_ = transition_samples_total_;
+}
+
+float VoiceGateProcessor::nextGain() {
+  if (transition_samples_remaining_ <= 0) return gain_;
+
+  const int completed_samples =
+    transition_samples_total_ - transition_samples_remaining_ + 1;
+  const float progress = static_cast<float>(completed_samples) /
+    static_cast<float>(transition_samples_total_);
+  const float smooth_progress = progress * progress * (3.0f - 2.0f * progress);
+  gain_ = transition_start_gain_ +
+    (transition_target_ - transition_start_gain_) * smooth_progress;
+  transition_samples_remaining_ -= 1;
+  if (transition_samples_remaining_ == 0) {
+    gain_ = transition_target_;
+  }
+  gain_ = clampGain(gain_);
+  return gain_;
+}
+
+void VoiceGateProcessor::resetGateState(bool open) {
+  open_ = open;
+  below_close_ms_ = 0;
+  gain_ = open ? 1.0f : 0.0f;
+  transition_start_gain_ = gain_;
+  transition_target_ = gain_;
+  transition_samples_total_ = 0;
+  transition_samples_remaining_ = 0;
+  lookahead_frames_.clear();
 }
 
 int VoiceGateProcessor::lookaheadFrameCount(std::span<float> samples) const {
@@ -121,7 +168,11 @@ void VoiceGateProcessor::resetAdaptiveState() {
 }
 
 void VoiceGateProcessor::updateNoiseFloor(float input_db, bool quiet) {
-  if (!config_.auto_threshold || !quiet) return;
+  if (!config_.auto_threshold) return;
+
+  const bool plausible_background = !open_ &&
+    input_db <= noise_floor_db_ + kNoiseLearningWindowDb;
+  if (!quiet && !plausible_background) return;
 
   quiet_history_.push_back(clampDb(input_db));
   if (quiet_history_.size() > kQuietHistoryMaxFrames) {
@@ -158,10 +209,9 @@ VoiceGateFrameMetrics VoiceGateProcessor::processFrame(std::span<float> samples)
   const float input_db = frameDb(samples);
 
   if (!config_.enabled) {
-    open_ = true;
-    below_close_ms_ = 0;
-    gain_ = 1.0f;
-    lookahead_frames_.clear();
+    if (!open_ || gain_ != 1.0f || !lookahead_frames_.empty()) {
+      resetGateState(true);
+    }
     return VoiceGateFrameMetrics{
       .input_db = input_db,
       .noise_floor_db = noise_floor_db_,
@@ -185,6 +235,7 @@ VoiceGateFrameMetrics VoiceGateProcessor::processFrame(std::span<float> samples)
       below_close_ms_ += frameDurationMs(samples);
       if (below_close_ms_ >= config_.hold_ms) {
         open_ = false;
+        beginGainTransition(0.0f, config_.release_ms);
       }
     } else {
       below_close_ms_ = 0;
@@ -192,17 +243,13 @@ VoiceGateFrameMetrics VoiceGateProcessor::processFrame(std::span<float> samples)
   } else if (input_db >= threshold_db) {
     open_ = true;
     below_close_ms_ = 0;
+    beginGainTransition(1.0f, config_.attack_ms);
   }
-
-  const float target = open_ ? 1.0f : config_.floor_gain;
-  const float coefficient = gainSmoothingCoefficient(target);
-  gain_ += (target - gain_) * coefficient;
-  gain_ = clampGain(gain_);
 
   std::vector<float> output = delayedOutputFrame(samples);
   const std::size_t count = std::min(samples.size(), output.size());
   for (std::size_t index = 0; index < count; ++index) {
-    samples[index] = output[index] * gain_;
+    samples[index] = output[index] * nextGain();
   }
   for (std::size_t index = count; index < samples.size(); ++index) {
     samples[index] = 0.0f;

@@ -267,14 +267,6 @@ async fn calculate_members_permissions<'a>(
 
         let member = *member.unwrap();
 
-        if user.privileged {
-            resp.insert(
-                user.id.clone(),
-                PermissionValue::from(ChannelPermission::GrantAllSafe),
-            );
-            continue;
-        }
-
         if user.id == query.server.owner {
             resp.insert(
                 user.id.clone(),
@@ -315,7 +307,7 @@ async fn calculate_members_permissions<'a>(
 
 /// Calculates a member's server permissions
 fn calculate_server_permissions(server: &Server, user: &User, member: &Member) -> PermissionValue {
-    if user.privileged || server.owner == user.id {
+    if server.owner == user.id {
         return ChannelPermission::GrantAllSafe.into();
     }
 
@@ -343,4 +335,77 @@ fn calculate_server_permissions(server: &Server, user: &User, member: &Member) -
     }
 
     permissions
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::calculate_server_permissions;
+    use crate::{Member, MemberCompositeKey, Server, User};
+    use syrnike_permissions::ChannelPermission;
+
+    fn server(owner: &str, default_permissions: i64) -> Server {
+        Server {
+            id: "server-1".to_string(),
+            owner: owner.to_string(),
+            name: "Server".to_string(),
+            description: None,
+            channels: vec![],
+            categories: None,
+            system_messages: None,
+            roles: HashMap::new(),
+            default_permissions,
+            icon: None,
+            banner: None,
+            flags: None,
+            nsfw: false,
+            analytics: false,
+            discoverable: false,
+        }
+    }
+
+    fn member(user_id: &str) -> Member {
+        Member {
+            id: MemberCompositeKey {
+                server: "server-1".to_string(),
+                user: user_id.to_string(),
+            },
+            ..Member::default()
+        }
+    }
+
+    #[test]
+    fn project_admin_uses_server_scoped_permissions() {
+        let user = User {
+            id: "admin".to_string(),
+            privileged: true,
+            ..User::default()
+        };
+        let expected = ChannelPermission::ViewChannel as u64;
+
+        let permissions = calculate_server_permissions(
+            &server("owner", expected as i64),
+            &user,
+            &member(&user.id),
+        );
+
+        assert_eq!(permissions.into_raw(), expected);
+        assert!(!permissions.has_channel_permission(ChannelPermission::ManageServer));
+    }
+
+    #[test]
+    fn server_owner_still_receives_all_server_permissions() {
+        let user = User {
+            id: "owner".to_string(),
+            privileged: false,
+            ..User::default()
+        };
+
+        let permissions =
+            calculate_server_permissions(&server(&user.id, 0), &user, &member(&user.id));
+
+        assert!(permissions.has_channel_permission(ChannelPermission::ManageServer));
+        assert!(permissions.has_channel_permission(ChannelPermission::ManagePermissions));
+    }
 }

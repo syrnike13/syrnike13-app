@@ -8,6 +8,16 @@ on:
         required: false
         type: string
         default: stable
+      desktop_build_version:
+        description: Desktop version embedded into the staged native runtime.
+        required: false
+        type: string
+        default: ""
+      symbol_retention_days:
+        description: Retention period for native debug symbols.
+        required: false
+        type: number
+        default: 14
   pull_request:
     paths:
       - .github/workflows/native-media-windows.yml
@@ -36,6 +46,7 @@ jobs:
     runs-on: windows-2025-vs2026
     env:
       SYRNIKE_DESKTOP_CHANNEL: ${{ inputs.release_channel || 'stable' }}
+      SYRNIKE_DESKTOP_BUILD_VERSION: ${{ inputs.desktop_build_version || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -47,6 +58,25 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: vcpkg-binaries-v1-${{ runner.os }}-${{ runner.arch }}-fb87e2bb3fe69e16c224989acb5a61349166c782-${{ hashFiles('packages/desktop-native/vendor/livekit-client/vcpkg.json', 'packages/desktop-native/vendor/livekit-client/vcpkg-configuration.json') }}
+      - name: Configure native build caches
+        shell: pwsh
+        run: |
+          $cacheRoot = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          $rustTargetRoot = Join-Path $env:RUNNER_TEMP 'syrnike13-livekit-rust-target'
+          New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_SOURCES=clear;files,$cacheRoot,readwrite" >> $env:GITHUB_ENV
+          "SYRNIKE_LIVEKIT_RUST_TARGET_DIR=$rustTargetRoot" >> $env:GITHUB_ENV
+      - name: Restore LiveKit Rust build cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\syrnike13-livekit-rust-target
+          key: livekit-rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/desktop-native/vendor/livekit-client/client-sdk-rust/Cargo.lock', 'packages/desktop-native/scripts/build.mjs') }}
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Debug DLL runtime
@@ -75,13 +105,22 @@ jobs:
         run: pnpm --filter @syrnike13/desktop verify:web-dist
       - name: Build and verify unpacked Windows package
         run: pnpm --filter @syrnike13/desktop package:prepared
+      - name: Upload verified Windows native runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-runtime-windows-${{ inputs.release_channel || 'stable' }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            packages/desktop-native/dist/win32-x64/**
+            apps/desktop/out/native/win32-x64/**
       - name: Upload native debug symbols
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: native-runtime-windows-symbols-${{ github.sha }}
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: ${{ inputs.symbol_retention_days || 14 }}
           path: |
             packages/desktop-native/build/**/*.pdb
             packages/desktop-native/dist/win32-x64/native-manifest.json
@@ -100,6 +139,18 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: fb87e2bb3fe69e16c224989acb5a61349166c782
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: vcpkg-binaries-v1-${{ runner.os }}-${{ runner.arch }}-fb87e2bb3fe69e16c224989acb5a61349166c782-${{ hashFiles('packages/desktop-native/vendor/livekit-client/vcpkg.json', 'packages/desktop-native/vendor/livekit-client/vcpkg-configuration.json') }}
+      - name: Use supported vcpkg binary cache
+        shell: pwsh
+        run: |
+          $cacheRoot = Join-Path $env:RUNNER_TEMP 'vcpkg-binary-cache'
+          New-Item -ItemType Directory -Force -Path $cacheRoot | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" >> $env:GITHUB_ENV
+          "VCPKG_BINARY_SOURCES=clear;files,$cacheRoot,readwrite" >> $env:GITHUB_ENV
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
       - name: Build Debug native core with AddressSanitizer

@@ -16,20 +16,20 @@ import { ComposerReplyBanner } from '#/components/chat/message-reply-preview'
 import { FxImage } from '#/components/ui/fx-image'
 import { Button } from '#/components/ui/button'
 import type { SendMessageInput } from '#/features/api/messages-api'
-import { uploadAttachment } from '#/features/api/media-api'
 import type { Channel, User } from '@syrnike13/api-types'
-import { memberDisplayColour } from '#/features/sync/member-list-groups'
+import {
+  memberDisplayColour,
+  normalizeRoleColour,
+} from '#/features/sync/member-list-groups'
 import { getMentionableUsers } from '#/lib/mentions'
 import { isCustomEmojiId } from '#/lib/emoji'
-import type { MentionSuggestionItem } from '#/lib/message-format/extensions/mention-suggestion'
+import {
+  MAX_MENTION_SUGGESTION_ITEMS,
+  type MentionSuggestionItem,
+} from '#/lib/message-format/extensions/mention-suggestion'
 import { memberRoleEntries } from '#/features/sync/selectors'
 import { useSyncStore } from '#/features/sync/sync-store'
 import { useAuth } from '#/features/auth/auth-context'
-import {
-  createPendingFiles,
-  revokePendingFiles,
-  type PendingComposerFile,
-} from '#/lib/composer-files'
 import { getChannelLabel } from '#/features/sync/channel-label'
 import {
   isServerVoiceChannel,
@@ -38,6 +38,10 @@ import {
 } from '#/lib/channel-voice'
 import { FloatingBarShell } from '#/components/layout/floating-bar-shell'
 import { cn } from '#/lib/utils'
+import { ChannelPermission } from '#/features/authorization/authorization'
+import { hasPermissionBit } from '#/lib/permission-bits'
+import { useComposerState } from '#/features/chat/use-composer-state'
+import { useComposerAttachments } from '#/features/chat/use-composer-attachments'
 
 const composerIconClass =
   'flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
@@ -78,8 +82,37 @@ type MessageComposerProps = {
   onSend: (input: SendMessageInput) => Promise<void>
   onEdit?: (messageId: string, content: string) => Promise<void>
   onTyping?: () => void
+  onStopTyping?: () => void
   /** Плавает над лентой (как UserPanel). */
   floating?: boolean
+  onHeightChange?: (height: number) => void
+}
+
+const RESERVED_NON_PARTICIPANT_SLOTS = 2
+
+function limitMentionSuggestionGroups(
+  participants: MentionSuggestionItem[],
+  otherItems: MentionSuggestionItem[],
+): MentionSuggestionItem[] {
+  if (otherItems.length === 0) {
+    return participants.slice(0, MAX_MENTION_SUGGESTION_ITEMS)
+  }
+  if (participants.length === 0) {
+    return otherItems.slice(0, MAX_MENTION_SUGGESTION_ITEMS)
+  }
+
+  const reservedOtherSlots = Math.min(
+    RESERVED_NON_PARTICIPANT_SLOTS,
+    otherItems.length,
+  )
+  const visibleParticipants = participants.slice(
+    0,
+    MAX_MENTION_SUGGESTION_ITEMS - reservedOtherSlots,
+  )
+  const remainingSlots =
+    MAX_MENTION_SUGGESTION_ITEMS - visibleParticipants.length
+
+  return [...visibleParticipants, ...otherItems.slice(0, remainingSlots)]
 }
 
 export function MessageComposer({
@@ -94,23 +127,66 @@ export function MessageComposer({
   onSend,
   onEdit,
   onTyping,
+  onStopTyping,
   floating = false,
+  onHeightChange,
 }: MessageComposerProps) {
   const auth = useAuth()
   const members = useSyncStore((s) => s.members)
   const composerRef = useRef<ComposerEditorHandle>(null)
   const composerInputRowRef = useRef<HTMLDivElement>(null)
+  const composerBodyRef = useRef<HTMLDivElement>(null)
+  const sendAttemptRef = useRef<{ signature: string; nonce: string } | null>(null)
 
-  const [value, setValue] = useState('')
-  const [files, setFiles] = useState<PendingComposerFile[]>([])
+  const channelId = channel?._id
+  const draftOwnerId = auth.user?._id
+  const {
+    value,
+    editing: isEditing,
+    setValue,
+    clearCompose,
+  } = useComposerState({
+    userId: draftOwnerId,
+    channelId,
+    editingMessage,
+  })
+  const {
+    files,
+    append: appendPendingFiles,
+    remove: removePendingFile,
+    reset: resetAttachments,
+    uploadAll: uploadAttachments,
+  } = useComposerAttachments(channelId)
   const [sending, setSending] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [replyMention, setReplyMention] = useState(true)
+  const [slowmodeEndsAt, setSlowmodeEndsAt] = useState(0)
+  const [now, setNow] = useState(Date.now())
 
-  const isEditing = Boolean(editingMessage)
   const showReplyBanner = Boolean(replyTo && !isEditing)
 
   const serverId = serverChannelServerId(channel)
+  const channelPermissions = useSyncStore((s) =>
+    channelId ? (s.authorization.channels[channelId] ?? 0) : 0,
+  )
+  const canSendMessages =
+    !serverId || hasPermissionBit(channelPermissions, ChannelPermission.SendMessage)
+  const canUploadFiles =
+    !serverId || hasPermissionBit(channelPermissions, ChannelPermission.UploadFiles)
+  const canMassMention =
+    !serverId ||
+    hasPermissionBit(channelPermissions, ChannelPermission.MentionEveryone)
+  const canMentionRoles =
+    !serverId ||
+    hasPermissionBit(channelPermissions, ChannelPermission.MentionRoles)
+  const bypassesSlowmode =
+    !serverId ||
+    hasPermissionBit(channelPermissions, ChannelPermission.BypassSlowmode)
+  const slowmodeRemaining = bypassesSlowmode
+    ? 0
+    : Math.max(0, Math.ceil((slowmodeEndsAt - now) / 1_000))
+  const slowmodeActive = !isEditing && slowmodeRemaining > 0
+  const composerDisabled = disabled || !canSendMessages || slowmodeActive
   const server = useSyncStore((s) =>
     serverId ? s.servers[serverId] : undefined,
   )
@@ -133,19 +209,38 @@ export function MessageComposer({
   }, [replyMember, server])
 
   useEffect(() => {
-    if (editingMessage) {
-      setValue(editingMessage.content ?? '')
-      setFiles([])
-      requestAnimationFrame(() => composerRef.current?.focus())
-      return
-    }
-    if (!replyTo) {
-      setValue('')
-      return
-    }
+    setDragActive(false)
+    setSlowmodeEndsAt(0)
+    setNow(Date.now())
+  }, [channelId])
+
+  useEffect(() => {
+    if (slowmodeEndsAt <= Date.now()) return
+    const interval = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(interval)
+  }, [slowmodeEndsAt])
+
+  useEffect(() => {
+    const element = composerBodyRef.current
+    if (!element || !onHeightChange) return
+
+    const update = () => onHeightChange(Math.ceil(element.getBoundingClientRect().height))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [onHeightChange])
+
+  useEffect(() => {
+    if (!editingMessage) return
+    requestAnimationFrame(() => composerRef.current?.focus())
+  }, [editingMessage?._id])
+
+  useEffect(() => {
+    if (!replyTo) return
     setReplyMention(true)
     requestAnimationFrame(() => composerRef.current?.focus())
-  }, [editingMessage?._id, replyTo?._id])
+  }, [replyTo?._id])
 
   const mentionable = useMemo(
     () => getMentionableUsers(channel, users, members, auth.user?._id),
@@ -178,25 +273,7 @@ export function MessageComposer({
     () =>
       (query: string): MentionSuggestionItem[] => {
         const q = query.toLowerCase()
-        const items: MentionSuggestionItem[] = []
         const isTextChannel = channel?.channel_type === 'TextChannel'
-
-        if (isTextChannel) {
-          if (!q || 'everyone'.startsWith(q)) {
-            items.push({
-              kind: 'everyone',
-              label: '@everyone',
-              description: 'все в канале',
-            })
-          }
-          if (!q || 'online'.startsWith(q)) {
-            items.push({
-              kind: 'online',
-              label: '@online',
-              description: 'кто в сети',
-            })
-          }
-        }
 
         const filteredUsers = q
           ? mentionable
@@ -217,6 +294,7 @@ export function MessageComposer({
               .slice(0, 8)
           : mentionable.slice(0, 8)
 
+        const participantItems: MentionSuggestionItem[] = []
         for (const user of filteredUsers) {
           const member =
             serverId && members[`${serverId}:${user._id}`]
@@ -225,7 +303,7 @@ export function MessageComposer({
           const serverName =
             member?.nickname?.trim() || user.display_name || user.username
 
-          items.push({
+          participantItems.push({
             kind: 'user',
             id: user._id,
             user,
@@ -238,16 +316,90 @@ export function MessageComposer({
           })
         }
 
-        return items
+        if (!q) {
+          return participantItems.slice(0, MAX_MENTION_SUGGESTION_ITEMS)
+        }
+
+        const matchingItems: MentionSuggestionItem[] = []
+        if (isTextChannel && canMassMention) {
+          if ('everyone'.startsWith(q)) {
+            matchingItems.push({
+              kind: 'everyone',
+              label: '@everyone',
+              description: 'Оповестить всех участников канала',
+            })
+          }
+          if ('online'.startsWith(q)) {
+            matchingItems.push({
+              kind: 'online',
+              label: '@online',
+              description: 'Оповестить участников в сети',
+            })
+          }
+        }
+
+        if (isTextChannel && server?.roles) {
+          for (const role of Object.values(server.roles)
+            .filter(
+              (role) =>
+                (role.mentionable || canMentionRoles) &&
+                role.name.toLowerCase().includes(q),
+            )
+            .slice(0, 5)) {
+            matchingItems.push({
+              kind: 'role',
+              id: role._id,
+              label: `@${role.name}`,
+              description: 'Оповестить участников с этой ролью',
+              colour: role.colour
+                ? normalizeRoleColour(role.colour)
+                : undefined,
+            })
+          }
+        }
+
+        return limitMentionSuggestionGroups(participantItems, matchingItems)
       },
-    [channel?.channel_type, members, mentionable, server, serverId],
+    [
+      canMassMention,
+      canMentionRoles,
+      channel?.channel_type,
+      members,
+      mentionable,
+      server,
+      serverId,
+    ],
+  )
+
+  const buildChannelItems = useMemo(
+    () =>
+      (query: string): MentionSuggestionItem[] => {
+        if (!serverId) return []
+        const q = query.toLowerCase()
+        return Object.values(channels)
+          .filter(
+            (candidate): candidate is Extract<
+              Channel,
+              { channel_type: 'TextChannel' }
+            > =>
+              candidate.channel_type === 'TextChannel' &&
+              candidate.server === serverId &&
+              (!q || candidate.name.toLowerCase().includes(q)),
+          )
+          .slice(0, 8)
+          .map((candidate) => ({
+            kind: 'channel' as const,
+            id: candidate._id,
+            label: `#${candidate.name}`,
+            description: 'Упомянуть текстовый канал',
+          }))
+      },
+    [channels, serverId],
   )
 
   function appendFiles(fileList: FileList | File[]) {
-    if (isEditing) return
-    const next = createPendingFiles(fileList)
-    if (next.length === 0) return
-    setFiles((current) => [...current, ...next])
+    if (isEditing || !canUploadFiles) return
+    appendPendingFiles(fileList)
   }
 
   function handleFilesSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -260,20 +412,14 @@ export function MessageComposer({
   function handleDrop(event: DragEvent) {
     event.preventDefault()
     setDragActive(false)
-    if (disabled || sending || isEditing) return
+    if (composerDisabled || sending || isEditing || !canUploadFiles) return
     if (event.dataTransfer.files.length > 0) {
       appendFiles(event.dataTransfer.files)
     }
   }
 
   function removeFile(id: string) {
-    setFiles((current) => {
-      const target = current.find((file) => file.id === id)
-      if (target?.previewUrl) {
-        URL.revokeObjectURL(target.previewUrl)
-      }
-      return current.filter((file) => file.id !== id)
-    })
+    removePendingFile(id)
   }
 
   function insertAtCaret(text: string) {
@@ -298,7 +444,11 @@ export function MessageComposer({
 
   async function submit() {
     const content = buildOutboundContent(value)
-    if ((!content && files.length === 0 && !isEditing) || sending || disabled) {
+    if (
+      (!content && files.length === 0 && !isEditing) ||
+      sending ||
+      composerDisabled
+    ) {
       return
     }
 
@@ -317,8 +467,6 @@ export function MessageComposer({
       setSending(true)
       try {
         await onEdit(editingMessage._id, content)
-        setValue('')
-        composerRef.current?.clear()
         onCancelAction?.()
       } catch (error) {
         toast.error(
@@ -333,25 +481,40 @@ export function MessageComposer({
 
     setSending(true)
     try {
-      const attachments: string[] = []
-
-      for (const pending of files) {
-        const id = await uploadAttachment(token, pending.file)
-        attachments.push(id)
+      const signature = JSON.stringify({
+        channelId,
+        content,
+        files: files.map((file) => file.id),
+        replyId: replyTo?._id,
+        replyMention,
+      })
+      if (sendAttemptRef.current?.signature !== signature) {
+        sendAttemptRef.current = { signature, nonce: crypto.randomUUID() }
       }
+      const attachments = await uploadAttachments(token)
 
       await onSend({
+        nonce: sendAttemptRef.current.nonce,
         content: content || undefined,
         attachments: attachments.length ? attachments : undefined,
         replies: replyTo
           ? [{ id: replyTo._id, mention: replyMention }]
           : undefined,
       })
+      onStopTyping?.()
+      if (!bypassesSlowmode && channel?.channel_type === 'TextChannel') {
+        const delay = channel.slowmode ?? 0
+        if (delay > 0) {
+          const endsAt = Date.now() + delay * 1_000
+          setNow(Date.now())
+          setSlowmodeEndsAt(endsAt)
+        }
+      }
 
-      setValue('')
+      clearCompose()
       composerRef.current?.clear()
-      revokePendingFiles(files)
-      setFiles([])
+      resetAttachments()
+      sendAttemptRef.current = null
       onCancelAction?.()
     } catch (error) {
       toast.error(
@@ -368,13 +531,17 @@ export function MessageComposer({
 
   const placeholder =
     disabledPlaceholder ??
-    composerPlaceholder(
-      channel,
-      users,
-      auth.user?._id,
-      isEditing,
-      waitingForConnection,
-    )
+    (slowmodeActive
+      ? `Можно отправить через ${slowmodeRemaining} с`
+      : !canSendMessages
+      ? 'У вас нет права отправлять сообщения'
+      : composerPlaceholder(
+          channel,
+          users,
+          auth.user?._id,
+          isEditing,
+          waitingForConnection,
+        ))
 
   const hasComposerHeader = showReplyBanner || isEditing
 
@@ -423,7 +590,8 @@ export function MessageComposer({
               composerIconClass,
               composerIconHoverClass(floating),
               'mb-1 cursor-pointer',
-              (disabled || sending) && 'pointer-events-none',
+              (composerDisabled || sending || !canUploadFiles) &&
+                'pointer-events-none',
             )}
             title="Вложение"
           >
@@ -431,7 +599,7 @@ export function MessageComposer({
               type="file"
               multiple
               className="sr-only"
-              disabled={disabled || sending}
+              disabled={composerDisabled || sending || !canUploadFiles}
               onChange={handleFilesSelected}
             />
             <PlusIcon className="size-5" />
@@ -441,10 +609,11 @@ export function MessageComposer({
         <ComposerEditor
           ref={composerRef}
           value={value}
-          disabled={disabled || sending}
+          disabled={composerDisabled || sending}
           placeholder={placeholder}
           formatContext={formatContext}
           mentionItems={buildMentionItems}
+          channelItems={buildChannelItems}
           menuAnchorRef={composerInputRowRef}
           menuSurfaceClassName={
             floating
@@ -483,7 +652,7 @@ export function MessageComposer({
           {!isEditing ? (
             <ComposerEmojiPicker
               serverId={serverId}
-              disabled={disabled || sending}
+              disabled={composerDisabled || sending}
               onInsert={insertAtCaret}
               triggerClassName={cn(
                 composerIconClass,
@@ -498,9 +667,10 @@ export function MessageComposer({
                 composerIconHoverClass(floating),
                 'pointer-events-none',
               )}
-              aria-hidden
+              role="status"
+              aria-label="Отправка сообщения"
             >
-              <Loader2Icon className="size-4 animate-spin" />
+              <Loader2Icon className="size-4 animate-spin motion-reduce:animate-none" />
             </span>
           ) : null}
         </div>
@@ -510,6 +680,7 @@ export function MessageComposer({
 
   const composerBody = (
     <div
+      ref={composerBodyRef}
       className={cn(
         'relative flex flex-col',
         floating
@@ -535,28 +706,47 @@ export function MessageComposer({
         </p>
       ) : null}
       {files.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" aria-label="Вложения">
           {files.map((pending) => (
             <div
               key={pending.id}
               className="relative flex items-center gap-2 rounded-md border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground"
             >
-              {pending.previewUrl ? (
-                <FxImage
-                  src={pending.previewUrl}
-                  rounded="md"
-                  wrapperClassName="size-10 shrink-0"
-                  className="size-10"
-                />
-              ) : (
-                <span className="max-w-32 truncate">{pending.file.name}</span>
-              )}
+              <div className="min-w-0">
+                {pending.previewUrl ? (
+                  <FxImage
+                    src={pending.previewUrl}
+                    rounded="md"
+                    wrapperClassName="size-10 shrink-0"
+                    className="size-10"
+                  />
+                ) : (
+                  <span className="block max-w-32 truncate">
+                    {pending.file.name}
+                  </span>
+                )}
+                {pending.status === 'uploading' ? (
+                  <span className="mt-1 block h-1 w-10 overflow-hidden rounded-full bg-muted" aria-label={`Загружено ${Math.round((pending.progress ?? 0) * 100)}%`}>
+                    <span
+                      className="block h-full bg-primary transition-[width] duration-150 motion-reduce:transition-none"
+                      style={{ width: `${Math.round((pending.progress ?? 0) * 100)}%` }}
+                    />
+                  </span>
+                ) : null}
+                {pending.status === 'error' ? (
+                  <span className="block max-w-32 truncate text-destructive">
+                    {pending.error}
+                  </span>
+                ) : null}
+              </div>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="size-6"
+                disabled={sending && pending.status !== 'uploading'}
                 onClick={() => removeFile(pending.id)}
+                aria-label={`Удалить вложение ${pending.file.name}`}
               >
                 <XIcon className="size-3" />
               </Button>
@@ -570,7 +760,7 @@ export function MessageComposer({
           data-composer-chrome
           className={cn(
             dragActive && 'ring-2 ring-primary/40',
-            (disabled || sending) && 'opacity-60',
+            (composerDisabled || sending) && 'opacity-60',
           )}
           surfaceClassName="flex flex-col transition-colors"
         >
@@ -585,7 +775,7 @@ export function MessageComposer({
               ? 'overflow-hidden rounded-lg border border-border bg-accent text-foreground'
               : 'min-h-11 rounded-lg border border-border bg-accent py-1 text-foreground',
             dragActive && 'ring-2 ring-primary/40',
-            (disabled || sending) && 'opacity-60',
+            (composerDisabled || sending) && 'opacity-60',
           )}
         >
           {composerChrome}

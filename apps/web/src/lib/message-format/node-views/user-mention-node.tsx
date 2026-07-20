@@ -22,6 +22,7 @@ export function UserMentionNodeView({ node }: NodeViewProps) {
         serverName={context.serverName}
         member={member}
         currentUserId={context.currentUserId}
+        interactive={false}
       />
     </NodeViewWrapper>
   )

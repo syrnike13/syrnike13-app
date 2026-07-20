@@ -4,6 +4,8 @@ export {
   RiArrowDownSLine as ChevronDownIcon,
   RiArrowUpSLine as ChevronUpIcon,
   RiAwardLine as AwardIcon,
+  RiBugLine as BugIcon,
+  RiDownloadLine as DownloadIcon,
   RiCheckLine as CheckIcon,
   RiCheckboxCircleLine as CircleCheckIcon,
   RiCloseCircleLine as OctagonXIcon,

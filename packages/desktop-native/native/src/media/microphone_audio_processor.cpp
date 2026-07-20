@@ -1,7 +1,6 @@
 #include "microphone_audio_processor.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -13,17 +12,16 @@
 
 namespace syrnike::voice {
 
-MicrophoneAudioProcessingOptions microphoneApmOptions(
+MicrophoneCleanupApmOptions microphoneCleanupApmOptions(
   const RuntimeConfig& config,
   bool echo_reference_available
 ) {
-  MicrophoneAudioProcessingOptions options;
+  MicrophoneCleanupApmOptions options;
   options.noise_suppression = config.noise_suppression_enabled;
   options.echo_cancellation =
     config.echo_cancellation_enabled && echo_reference_available;
   options.high_pass_filter =
     options.noise_suppression || options.echo_cancellation;
-  options.auto_gain_control = false;
   return options;
 }
 
@@ -32,16 +30,16 @@ MicrophoneAudioProcessor::MicrophoneAudioProcessor()
 
 MicrophoneAudioProcessor::~MicrophoneAudioProcessor() = default;
 
-bool MicrophoneAudioProcessor::ensureApm(
-  const MicrophoneAudioProcessingOptions& options
+bool MicrophoneAudioProcessor::ensureCleanupApm(
+  const MicrophoneCleanupApmOptions& options
 ) {
-  if (options == active_options_ && apm_ != nullptr) {
+  if (options == active_cleanup_options_ && cleanup_apm_ != nullptr) {
     return true;
   }
 
-  if (options != active_options_) {
-    active_options_ = options;
-    apm_.reset();
+  if (options != active_cleanup_options_) {
+    active_cleanup_options_ = options;
+    cleanup_apm_.reset();
   }
 
   if (!options.noise_suppression &&
@@ -55,15 +53,44 @@ bool MicrophoneAudioProcessor::ensureApm(
   livekit_options.echo_cancellation = options.echo_cancellation;
   livekit_options.high_pass_filter = options.high_pass_filter;
   livekit_options.auto_gain_control = false;
-  assert(!livekit_options.auto_gain_control);
 
   try {
-    apm_ = std::make_unique<livekit::AudioProcessingModule>(livekit_options);
+    cleanup_apm_ =
+      std::make_unique<livekit::AudioProcessingModule>(livekit_options);
   } catch (...) {
-    apm_.reset();
+    cleanup_apm_.reset();
   }
 
-  return apm_ != nullptr;
+  return cleanup_apm_ != nullptr;
+}
+
+bool MicrophoneAudioProcessor::ensureAgcApm(bool enabled) {
+  if (enabled == active_agc_enabled_ && agc_apm_ != nullptr) {
+    return true;
+  }
+
+  if (enabled != active_agc_enabled_) {
+    active_agc_enabled_ = enabled;
+    agc_apm_.reset();
+  }
+
+  if (!enabled) {
+    return false;
+  }
+
+  livekit::AudioProcessingModule::Options livekit_options;
+  livekit_options.noise_suppression = false;
+  livekit_options.echo_cancellation = false;
+  livekit_options.high_pass_filter = false;
+  livekit_options.auto_gain_control = true;
+
+  try {
+    agc_apm_ = std::make_unique<livekit::AudioProcessingModule>(livekit_options);
+  } catch (...) {
+    agc_apm_.reset();
+  }
+
+  return agc_apm_ != nullptr;
 }
 
 MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
@@ -77,8 +104,8 @@ MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
 
   const bool has_reference =
     echo_reference_frame != nullptr && echo_reference_frame->size() == kSamplesPer10Ms;
-  const auto options = microphoneApmOptions(config, has_reference);
-  const bool apm_ready = ensureApm(options);
+  const auto cleanup_options = microphoneCleanupApmOptions(config, has_reference);
+  const bool cleanup_apm_ready = ensureCleanupApm(cleanup_options);
 
   std::vector<std::int16_t> mic_pcm;
   mic_pcm.reserve(kSamplesPer10Ms);
@@ -88,17 +115,17 @@ MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
 
   bool noise_processed = false;
   bool echo_processed = false;
-  if (apm_ready && apm_) {
+  if (cleanup_apm_ready && cleanup_apm_) {
     try {
-      if (options.echo_cancellation && echo_reference_frame) {
+      if (cleanup_options.echo_cancellation && echo_reference_frame) {
         livekit::AudioFrame reverse(
           std::vector<std::int16_t>(*echo_reference_frame),
           kSampleRate,
           kChannels,
           kSamplesPer10Ms
         );
-        apm_->processReverseStream(reverse);
-        apm_->setStreamDelayMs(50);
+        cleanup_apm_->processReverseStream(reverse);
+        cleanup_apm_->setStreamDelayMs(50);
       }
 
       livekit::AudioFrame forward(
@@ -107,12 +134,12 @@ MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
         kChannels,
         kSamplesPer10Ms
       );
-      apm_->processStream(forward);
+      cleanup_apm_->processStream(forward);
       mic_pcm = forward.data();
-      noise_processed = options.noise_suppression;
-      echo_processed = options.echo_cancellation;
+      noise_processed = cleanup_options.noise_suppression;
+      echo_processed = cleanup_options.echo_cancellation;
     } catch (...) {
-      apm_.reset();
+      cleanup_apm_.reset();
       mic_pcm.clear();
       mic_pcm.reserve(kSamplesPer10Ms);
       for (float sample : raw_frame) {
@@ -132,8 +159,53 @@ MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
   gate_.updateConfig(voiceGateConfigFromRuntimeConfig(config));
   const VoiceGateFrameMetrics gate_metrics = gate_.processFrame(processed);
 
+  std::uint32_t clipped_samples = 0;
+  if (config.automatic_gain_control_enabled) {
+    std::vector<std::int16_t> agc_input;
+    agc_input.reserve(kSamplesPer10Ms);
+    for (float sample : processed) {
+      // WebRTC's APM accepts PCM16. Count this unavoidable boundary clamp as
+      // clipping, while keeping the safety soft limiter after the AGC stage.
+      if (std::abs(sample) > 1.0f) {
+        clipped_samples += 1;
+      }
+      agc_input.push_back(clampToPcm16(sample));
+    }
+
+    if (ensureAgcApm(true) && agc_apm_) {
+      try {
+        livekit::AudioFrame agc_frame(
+          std::move(agc_input),
+          kSampleRate,
+          kChannels,
+          kSamplesPer10Ms
+        );
+        agc_apm_->processStream(agc_frame);
+
+        processed.clear();
+        processed.reserve(kSamplesPer10Ms);
+        for (std::int16_t sample : agc_frame.data()) {
+          processed.push_back(static_cast<float>(sample) / 32768.0f);
+        }
+      } catch (...) {
+        agc_apm_.reset();
+        // Keep the post-volume, post-gate float frame as the safe AGC bypass.
+      }
+    }
+  } else {
+    ensureAgcApm(false);
+  }
+
+  // The gate envelope reaches literal zero before AGC. Enforce that state on
+  // the final frame as well, so adaptive gain cannot resurrect a closed gate
+  // through internal state or rounding at the PCM16 boundary.
+  if (config.voice_gate_enabled && !gate_metrics.open && gate_metrics.gain == 0.0f) {
+    std::fill(processed.begin(), processed.end(), 0.0f);
+  }
+
   MicrophoneAudioProcessorFrame result;
   result.gate_metrics = gate_metrics;
+  result.clipped_samples = clipped_samples;
   result.status.noise_suppression =
     config.noise_suppression_enabled
       ? (noise_processed ? "software" : "unavailable")
@@ -145,7 +217,7 @@ MicrophoneAudioProcessorFrame MicrophoneAudioProcessor::processFrame(
 
   result.pcm.reserve(kSamplesPer10Ms);
   for (float sample : processed) {
-    if (std::abs(sample) > 1.0f) {
+    if (!config.automatic_gain_control_enabled && std::abs(sample) > 1.0f) {
       result.clipped_samples += 1;
     }
     const float limited = softLimitSample(sample);

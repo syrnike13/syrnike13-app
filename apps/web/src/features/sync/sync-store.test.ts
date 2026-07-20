@@ -292,7 +292,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
-        version: 2,
+        version: 3,
       },
     })
 
@@ -319,7 +319,7 @@ describe('syncStore voice events', () => {
       server_deafened: false,
       camera: false,
       screensharing: false,
-      version: 2,
+      version: 3,
     })
     syncStore.handleGatewayEvent({
       type: 'VoiceChannelMove',
@@ -363,7 +363,7 @@ describe('syncStore voice events', () => {
       server_deafened: false,
       camera: false,
       screensharing: false,
-      version: 2,
+      version: 3,
     })
     syncStore.handleGatewayEvent({
       type: 'VoiceChannelMove',
@@ -388,7 +388,7 @@ describe('syncStore voice events', () => {
         [USER_ID]: expect.objectContaining({
           id: USER_ID,
           self_mute: false,
-          version: 2,
+          version: 3,
         }),
       },
     })
@@ -409,7 +409,7 @@ describe('syncStore voice events', () => {
         server_deafened: false,
         camera: false,
         screensharing: false,
-        version: 2,
+        version: 3,
       },
     })
 
@@ -419,7 +419,7 @@ describe('syncStore voice events', () => {
       id: USER_ID,
       self_mute: false,
       self_deaf: false,
-      version: 2,
+      version: 3,
     })
   })
 

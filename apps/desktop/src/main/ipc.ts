@@ -35,7 +35,10 @@ import {
   desktopLocalSettingsDefaults,
   loadDesktopLocalSettings,
 } from './desktop-local-settings'
-import { registerNativeMediaRuntimeIpc } from './native-media-engine'
+import {
+  flushNativeMediaDiagnostics,
+  registerNativeMediaRuntimeIpc,
+} from './native-media-engine'
 import { registerDisplayMediaIpc } from './media-permissions'
 import {
   canSetDesktopOverlaySnapshot,
@@ -49,6 +52,12 @@ import {
   broadcastDesktopVoiceSnapshot,
   desktopVoiceService,
 } from './voice/desktop-voice-service'
+import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
+import {
+  acknowledgeNativeDiagnosticIncidents,
+  leaseNativeDiagnosticIncidents,
+  releaseNativeDiagnosticIncidents,
+} from './native-runtime/diagnostic-incidents'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -186,6 +195,23 @@ export function registerDesktopIpc(
     setDesktopOverlaySettings(settings.overlay)
     return settings
   })
+
+  ipcMain.handle(
+    IPC.diagnosticsCreateBundle,
+    async (_event, rendererJsonl: string) => {
+      await flushNativeMediaDiagnostics()
+      return createDesktopDiagnosticBundle(rendererJsonl)
+    },
+  )
+  ipcMain.handle(IPC.diagnosticsLeaseNativeIncidents, () =>
+    leaseNativeDiagnosticIncidents(),
+  )
+  ipcMain.handle(IPC.diagnosticsAcknowledgeNativeIncidents, (_event, batchId) =>
+    acknowledgeNativeDiagnosticIncidents(batchId),
+  )
+  ipcMain.handle(IPC.diagnosticsReleaseNativeIncidents, (_event, batchId) =>
+    releaseNativeDiagnosticIncidents(batchId),
+  )
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())
 

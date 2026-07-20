@@ -16,6 +16,7 @@ import type { VoiceMediaDesiredState } from '@syrnike13/platform'
 
 export type VoiceMicProcessingPreferences = Pick<
   VoiceMediaDesiredState,
+  | 'automaticGainControl'
   | 'echoCancellation'
   | 'noiseSuppression'
   | 'inputVolume'

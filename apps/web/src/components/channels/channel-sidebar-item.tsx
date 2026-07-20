@@ -122,7 +122,6 @@ export function ChannelSidebarItem({
       channel,
       member,
       auth.user?._id,
-      auth.user?.privileged,
     )
 
   function openChannelSettings() {

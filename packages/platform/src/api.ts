@@ -7,6 +7,7 @@ import type {
   DesktopOverlaySnapshot,
   DesktopOverlayState,
 } from './overlay'
+import type { NativeDiagnosticIncidentBatch } from './diagnostics'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
 
@@ -58,6 +59,7 @@ export type DesktopUpdateState =
   | { status: 'available'; version: string }
   | { status: 'downloading'; percent: number }
   | { status: 'ready'; version: string }
+  | { status: 'installing'; version: string }
   | { status: 'error'; message: string }
 
 export type HotkeyAction =
@@ -200,6 +202,12 @@ export interface SyrnikeDesktopApi {
   settings: {
     load(): Promise<DesktopLocalSettings>
     update(patch: DesktopLocalSettingsPatch): Promise<DesktopLocalSettings>
+  }
+  diagnostics: {
+    createBundle(rendererJsonl: string): Promise<Uint8Array>
+    leaseNativeIncidents(): Promise<NativeDiagnosticIncidentBatch | null>
+    acknowledgeNativeIncidents(batchId: string): Promise<boolean>
+    releaseNativeIncidents(batchId: string): Promise<boolean>
   }
   updates: {
     getState(): Promise<DesktopUpdateState>

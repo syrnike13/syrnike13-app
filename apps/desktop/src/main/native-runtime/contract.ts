@@ -104,6 +104,8 @@ export type MediaRuntimeCommand =
     } & SessionCommandBase)
   | ({ type: 'releaseLocalScreenPreviewFrame'; trackId: string; sequence: number } &
       SessionCommandBase)
+  | ({ type: 'releaseLocalCameraPreviewFrame'; trackId: string; sequence: number } &
+      SessionCommandBase)
   | ({
       type: 'configureVoiceOutput'
       deafened: boolean
@@ -244,6 +246,18 @@ export type MediaRuntimeEvent =
       ntHandle: Uint8Array
     } & SessionEventBase)
   | ({ type: 'remoteVideoTrackRemoved'; trackId: string } & SessionEventBase)
+  | ({
+      type: 'remoteScreenPublicationAvailable'
+      trackId: string
+      participantIdentity: string
+      source: 'screen'
+    } & SessionEventBase)
+  | ({
+      type: 'remoteScreenPublicationUnavailable'
+      trackId: string
+      participantIdentity: string
+      source: 'screen'
+    } & SessionEventBase)
   | ({ type: 'remoteVideoFailed'; trackId: string; source?: 'camera' | 'screen' } &
       SessionEventBase)
   | ({
@@ -260,6 +274,21 @@ export type MediaRuntimeEvent =
   | ({ type: 'localScreenPreviewTrackRemoved'; trackId: string; source: 'screen' } &
       SessionEventBase)
   | ({ type: 'localScreenPreviewFailed'; trackId: string; error: NativeRuntimeError } &
+      SessionEventBase)
+  | ({
+      type: 'localCameraPreviewFrame'
+      trackId: string
+      participantIdentity: string
+      source: 'camera'
+      frameSequence: number
+      timestampUs: number
+      width: number
+      height: number
+      ntHandle: Uint8Array
+    } & SessionEventBase)
+  | ({ type: 'localCameraPreviewTrackRemoved'; trackId: string; source: 'camera' } &
+      SessionEventBase)
+  | ({ type: 'localCameraPreviewFailed'; trackId: string; error: NativeRuntimeError } &
       SessionEventBase)
   | ({ type: 'runtimeError'; error: NativeRuntimeError } & RuntimeEventBase)
 
@@ -348,6 +377,8 @@ function isMicrophonePipelineConfig(
   if (!isRecord(value)) return false
   return (
     (value.deviceId === null || isNonEmptyString(value.deviceId, 2_048)) &&
+    typeof value.bypassSystemAudioInputProcessing === 'boolean' &&
+    typeof value.automaticGainControl === 'boolean' &&
     typeof value.noiseSuppression === 'boolean' &&
     typeof value.echoCancellation === 'boolean' &&
     isFiniteNumber(value.inputVolume, 0, 4) &&
@@ -567,6 +598,7 @@ export function isNativeRuntimeCommand(value: unknown): value is NativeRuntimeCo
         isIntegerInRange(value.options.height, 16, 2160) &&
         isIntegerInRange(value.options.fps, 1, 60)
     case 'releaseLocalScreenPreviewFrame':
+    case 'releaseLocalCameraPreviewFrame':
       return isSessionCommand(value) && isNonEmptyString(value.trackId, 512) &&
         isSequence(value.sequence)
     case 'configureVoiceOutput':
@@ -837,12 +869,15 @@ export function isNativeRuntimeEvent(
       )
     case 'remoteVideoFrame':
     case 'localScreenPreviewFrame':
+    case 'localCameraPreviewFrame':
       return (
         isNonEmptyString(value.trackId, 512) &&
         typeof value.participantIdentity === 'string' && value.participantIdentity.length <= 512 &&
         (value.type === 'localScreenPreviewFrame'
           ? value.source === 'screen'
-          : value.source === 'camera' || value.source === 'screen') &&
+          : value.type === 'localCameraPreviewFrame'
+            ? value.source === 'camera'
+            : value.source === 'camera' || value.source === 'screen') &&
         isSequence(value.frameSequence) && isSequence(value.timestampUs) &&
         isIntegerInRange(value.width, 1, 7680) &&
         isIntegerInRange(value.height, 1, 4320) &&
@@ -850,11 +885,23 @@ export function isNativeRuntimeEvent(
       )
     case 'remoteVideoTrackRemoved':
       return isNonEmptyString(value.trackId, 512)
+    case 'remoteScreenPublicationAvailable':
+    case 'remoteScreenPublicationUnavailable':
+      return isNonEmptyString(value.trackId, 512) &&
+        isNonEmptyString(value.participantIdentity, 512) &&
+        value.source === 'screen'
     case 'localScreenPreviewTrackRemoved':
       return isNonEmptyString(value.trackId, 512) && value.source === 'screen'
+    case 'localCameraPreviewTrackRemoved':
+      return isNonEmptyString(value.trackId, 512) && value.source === 'camera'
     case 'localScreenPreviewFailed':
       return isNonEmptyString(value.trackId, 512) && isRuntimeError(value.error) &&
         value.error.code === 'LOCAL_SCREEN_PREVIEW_FAILED' &&
+        value.error.sessionId === value.sessionId &&
+        value.error.generation === value.generation
+    case 'localCameraPreviewFailed':
+      return isNonEmptyString(value.trackId, 512) && isRuntimeError(value.error) &&
+        value.error.code === 'LOCAL_CAMERA_PREVIEW_FAILED' &&
         value.error.sessionId === value.sessionId &&
         value.error.generation === value.generation
     case 'remoteVideoFailed':

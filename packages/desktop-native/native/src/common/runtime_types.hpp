@@ -145,7 +145,9 @@ struct MediaCommand {
   std::uint64_t self_window_handle = 0;
   bool audio_requested = false;
   bool noise_suppression = true;
-  bool echo_cancellation = true;
+  bool echo_cancellation = false;
+  bool bypass_system_audio_input_processing = true;
+  bool automatic_gain_control = true;
   float input_volume = 1.0f;
   float output_volume = 1.0f;
   bool voice_gate_enabled = true;
@@ -155,6 +157,8 @@ struct MediaCommand {
   bool deafened = false;
   bool has_noise_suppression = false;
   bool has_echo_cancellation = false;
+  bool has_bypass_system_audio_input_processing = false;
+  bool has_automatic_gain_control = false;
   bool has_input_volume = false;
   bool has_output_volume = false;
   bool has_voice_gate_enabled = false;

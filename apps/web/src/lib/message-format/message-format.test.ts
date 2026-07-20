@@ -72,4 +72,40 @@ describe('message-format', () => {
     expect(roundTrip('# title')).toBe('# title')
     expect(roundTrip('## subtitle')).toBe('## subtitle')
   })
+
+  it('keeps mention tokens literal inside inline code or after an escape', () => {
+    expect(roundTrip(`\`<@${userId}> @everyone\``)).toBe(
+      `\`<@${userId}> @everyone\``,
+    )
+    expect(roundTrip('\\@everyone')).toBe('\\@everyone')
+    expect(roundTrip(`\\<@${userId}>`)).toBe(`\\<@${userId}>`)
+    expect(roundTrip('\\`@everyone`')).toBe('\\`@everyone`')
+  })
+
+  it('round-trips formatting around inline mention atoms', () => {
+    expect(roundTrip('**@everyone**')).toBe('**@everyone**')
+    expect(roundTrip(`**<@${userId}>**`)).toBe(`**<@${userId}>**`)
+  })
+
+  it('does not replace edited link text with its previous URL', () => {
+    expect(
+      serializeMessageContent({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'text',
+                text: 'понятная ссылка',
+                marks: [
+                  { type: 'link', attrs: { href: 'https://example.com' } },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe('понятная ссылка')
+  })
 })

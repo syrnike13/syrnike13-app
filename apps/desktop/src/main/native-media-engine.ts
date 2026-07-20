@@ -23,6 +23,7 @@ import {
   type NativeDiagnosticLog,
   type NativeDiagnosticSession,
 } from './native-runtime/diagnostic-log'
+import { captureNativeDiagnosticIncident } from './native-runtime/diagnostic-incidents'
 import { attachNativeRuntimeMetrics } from './native-runtime/anonymous-metrics'
 import { NativeRtcEngineAdapter } from './voice/native-rtc-engine-adapter'
 import { NativeSharedTextureBridge } from './native-video/shared-texture-bridge'
@@ -41,6 +42,7 @@ let nativeMediaDiagnostics: NativeMediaDiagnostics | null | undefined
 
 const diagnosticSink: DiagnosticLogSink = ({ scope, event, ...detail }) => {
   try {
+    captureNativeDiagnosticIncident({ scope, event, ...detail })
     ensureNativeMediaDiagnostics()?.log.log(`${scope}.${event}`, {
       scope,
       ...detail,
@@ -88,10 +90,15 @@ export function createNativeRtcEngineAdapter() {
 
 export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
   try {
+    captureNativeDiagnosticIncident(nativeVoiceDiagnosticRecord(event, data))
     ensureNativeMediaDiagnostics()?.log.log(`desktop_voice.${event}`, data)
   } catch {
     // Voice diagnostics must never change control-plane or RTC behavior.
   }
+}
+
+export async function flushNativeMediaDiagnostics() {
+  await ensureNativeMediaDiagnostics()?.log.flush()
 }
 
 export function registerNativeMediaRuntimeIpc(
@@ -112,10 +119,23 @@ export function registerNativeMediaRuntimeIpc(
       })
       return
     }
-    if (event.type === 'remoteVideoFrame' || event.type === 'localScreenPreviewFrame') {
-      const local = event.type === 'localScreenPreviewFrame'
+    if (event.type === 'localCameraPreviewFailed') {
+      console.warn('[native-media] local camera preview failed', {
+        sessionId: event.sessionId,
+        generation: event.generation,
+        trackId: event.trackId,
+        code: event.error.code,
+        stage: event.error.stage,
+        message: event.error.message,
+      })
+    }
+    if (event.type === 'remoteVideoFrame' ||
+      event.type === 'localScreenPreviewFrame' ||
+      event.type === 'localCameraPreviewFrame') {
+      const local = event.type !== 'remoteVideoFrame'
       const bridge = local ? localPreviewBridge : remoteVideoBridge
-      void bridge?.deliver({
+      if (!bridge) return
+      void bridge.deliver({
         sessionId: event.sessionId,
         generation: event.generation,
         trackId: event.trackId,
@@ -128,12 +148,53 @@ export function registerNativeMediaRuntimeIpc(
         timestampUs: event.timestampUs,
         runtimeEpoch: supervisor.getSnapshot().restartCount,
         ntHandle: Buffer.from(event.ntHandle),
+      }).then((delivered) => {
+        if (!local && delivered) {
+          controller.markRemoteVideoFrameDelivered(
+            event.sessionId,
+            event.generation,
+            event.trackId,
+          )
+        }
+      }).catch((error) => {
+        diagnosticSink({
+          scope: 'native-video',
+          event: 'frame_delivery_rejected',
+          kind: local ? 'local-preview' : 'remote-video',
+          stage: 'renderer-delivery',
+          generation: event.generation,
+          message: safeErrorMessage(error),
+        })
       })
       return
     }
+    if (event.type === 'remoteScreenPublicationAvailable' ||
+      event.type === 'remoteScreenPublicationUnavailable') {
+      const window = getWindow()
+      if (window && !window.isDestroyed()) {
+        const suffix = event.type === 'remoteScreenPublicationAvailable'
+          ? 'available'
+          : 'unavailable'
+        window.webContents.send(
+          `syrnike-desktop:media:remote-screen-publication-${suffix}`,
+          {
+            trackId: event.trackId,
+            participantIdentity: event.participantIdentity,
+            source: event.source,
+            sessionId: event.sessionId,
+            generation: event.generation,
+          },
+        )
+      }
+      return
+    }
     if (event.type === 'remoteVideoTrackRemoved' || event.type === 'remoteVideoFailed' ||
-      event.type === 'localScreenPreviewTrackRemoved') {
-      const bridge = event.type === 'localScreenPreviewTrackRemoved'
+      event.type === 'localScreenPreviewTrackRemoved' ||
+      event.type === 'localCameraPreviewTrackRemoved' ||
+      event.type === 'localCameraPreviewFailed') {
+      const bridge = event.type === 'localScreenPreviewTrackRemoved' ||
+        event.type === 'localCameraPreviewTrackRemoved' ||
+        event.type === 'localCameraPreviewFailed'
         ? localPreviewBridge
         : remoteVideoBridge
       bridge?.removeTrack(event.sessionId, event.generation, event.trackId)
@@ -162,7 +223,7 @@ function createVideoBridge(
 ) {
   return new NativeSharedTextureBridge({
     getWindow,
-    release: (frame) => {
+    release: async (frame) => {
       const runtime = supervisor.getSnapshot()
       if (runtime.status !== 'ready' || runtime.restartCount !== frame.runtimeEpoch) return
       const identity = {
@@ -172,10 +233,21 @@ function createVideoBridge(
         sequence: frame.sequence,
       }
       const command = local
-        ? { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
+        ? frame.source === 'camera'
+          ? { type: 'releaseLocalCameraPreviewFrame' as const, ...identity }
+          : { type: 'releaseLocalScreenPreviewFrame' as const, ...identity }
         : { type: 'releaseRemoteVideoFrame' as const, ...identity }
-      void supervisor.request(command, 2_000).catch(() => undefined)
+      await supervisor.request(command, 2_000)
     },
+    onTrackStalled: local
+      ? undefined
+      : async (frame) => {
+          await controller.recoverRemoteVideoDemand(
+            frame.sessionId,
+            frame.generation,
+            frame.trackId,
+          )
+        },
   })
 }
 
@@ -193,7 +265,9 @@ export function startNativeMediaRuntime() {
   void controller
     .start()
     .catch((error) => {
-      diagnostics?.log.log('native_media_bootstrap_failed', {
+      diagnosticSink({
+        scope: 'native-media-controller',
+        event: 'bootstrap_failed',
         message: safeErrorMessage(error),
       })
     })
@@ -212,7 +286,9 @@ export async function disposeNativeMediaRuntime() {
     await controller.dispose()
     diagnostics?.log.log('native_media_dispose_completed')
   } catch (error) {
-    diagnostics?.log.log('native_media_dispose_failed', {
+    diagnosticSink({
+      scope: 'native-media-controller',
+      event: 'dispose_failed',
       message: safeErrorMessage(error),
     })
   } finally {
@@ -237,6 +313,39 @@ function readWindowHwnd(win: BrowserWindow | null) {
 
 function safeErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Native media runtime failed'
+}
+
+function nativeVoiceDiagnosticRecord(
+  event: string,
+  data: unknown,
+): Parameters<DiagnosticLogSink>[0] {
+  const detail = isRecord(data) ? data : {}
+  const failure = isRecord(detail.failure) ? detail.failure : {}
+  return {
+    scope: 'desktop-voice',
+    event,
+    status: diagnosticString(
+      detail.status ?? detail.connection ?? detail.eventType,
+    ),
+    reason: diagnosticString(detail.reason),
+    stage: diagnosticString(detail.stage ?? failure.stage),
+    errorCode: diagnosticString(
+      detail.errorCode ?? detail.errorType ?? failure.code,
+    ),
+    message: diagnosticString(
+      detail.errorMessage ?? detail.message ?? failure.message,
+    ),
+  }
+}
+
+function diagnosticString(value: unknown) {
+  return typeof value === 'string' && value.length > 0
+    ? value.slice(0, 4_096)
+    : undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {

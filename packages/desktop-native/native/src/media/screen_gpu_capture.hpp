@@ -37,9 +37,28 @@ class ScreenGpuCaptureError final : public std::runtime_error {
 enum class ScreenGpuFrameStatus {
   NewFrame,
   NoFrame,
+  EncoderBackpressure,
   RecoverableLost,
   TargetClosed,
   FatalError,
+};
+
+class DxgiFallbackPolicy final {
+ public:
+  [[nodiscard]] bool shouldFallback(ScreenGpuFrameStatus status) noexcept {
+    if (status == ScreenGpuFrameStatus::FatalError) {
+      consecutive_recoveries_ = 0;
+      return true;
+    }
+    if (status == ScreenGpuFrameStatus::RecoverableLost) {
+      return ++consecutive_recoveries_ >= 3;
+    }
+    consecutive_recoveries_ = 0;
+    return false;
+  }
+
+ private:
+  std::uint32_t consecutive_recoveries_ = 0;
 };
 
 struct ScreenGpuFrame {

@@ -27,7 +27,7 @@ export function MentionPill({
         className,
       )}
     >
-      @{label}
+      {label}
     </span>
   )
 }

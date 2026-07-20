@@ -12,6 +12,7 @@
 - For bugs, look for the architectural cause, not only the immediate failure.
 - If an architectural change seems necessary, explain the problem and ask for consent before changing architecture.
 - Prefer simple, maintainable, production-friendly solutions. Keep APIs small and behavior explicit.
+- For manual-save UI, do not render permanent inline save buttons. Register dirty state with the shared draft controller and show `UnsavedChangesBar` only when changes exist, with both save and reset actions.
 
 ## GitHub Workflow
 
@@ -95,6 +96,13 @@ Use the narrower package/service command when a task touches only one area.
 - нативная оболочка desktop без themed DOM: прозрачность оверлея (`#00000000`), `backgroundColor` окна до загрузки web — не семантические цвета интерфейса.
 
 Подробнее: `.cursor/rules/ui-theming.mdc`.
+
+## Nightly-only UI
+
+- `VITE_RELEASE_CHANNEL` is the single environment source for the client release channel: `nightly` enables experimental UI and `stable` disables it. Do not introduce a parallel `NIGHTLY`/`VITE_NIGHTLY` flag because the values could diverge.
+- Declare release-channel-dependent UI capabilities only in `apps/web/src/lib/ui-feature-flags.ts`. UI components must use the named capability and must not read `import.meta.env` or `config.releaseChannel` directly to decide experimental feature visibility.
+- Gate every UI entry point and projection of an experimental feature. For Channel Activities this includes the voice-panel launcher, catalog, running VoiceStage tile, join actions, focus view, popout, and fullscreen projection.
+- Nightly UI flags control discoverability only. They are not authorization or security boundaries, so sensitive backend operations still require normal server-side permission checks.
 
 ### Windows backend checks
 

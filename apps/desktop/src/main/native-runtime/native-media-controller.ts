@@ -19,6 +19,10 @@ import type {
 const QUERY_TIMEOUT_MS = 5_000
 const SESSION_TIMEOUT_MS = 20_000
 const STOP_TIMEOUT_MS = 5_000
+const REMOTE_VIDEO_FIRST_FRAME_TIMEOUT_MS = 8_000
+const REMOTE_VIDEO_RETRY_BASE_DELAY_MS = 250
+const REMOTE_VIDEO_RETRY_MAX_DELAY_MS = 8_000
+const REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS = 10
 
 type PreviewSessionState = {
   sessionId: string
@@ -36,6 +40,13 @@ type LocalScreenPreviewDemand = {
 export type NativeMediaControllerEvent =
   | { type: 'microphoneMetrics'; event: NativeMicrophoneMetricsEvent }
   | { type: 'microphonePreviewState'; event: NativeMicrophonePreviewStateEvent }
+  | {
+      type: 'remoteVideoSubscriptionFailed'
+      sessionId: string
+      generation: number
+      trackId: string
+      message: string
+    }
 
 export type NativeMediaControllerOptions = {
   supervisor: NativeRuntimeSupervisor
@@ -43,6 +54,20 @@ export type NativeMediaControllerOptions = {
   getSelfWindowHwnd: () => string | undefined
   processId?: number
   diagnostics?: DiagnosticLogSink
+  remoteVideoFirstFrameTimeoutMs?: number
+}
+
+type RemoteVideoDemandState = {
+  sessionId: string
+  generation: number
+  trackId: string
+  demanded: boolean
+  revision: number
+  recoveryAttempt: number
+  recoveryTimer: ReturnType<typeof setTimeout> | null
+  recoveryPromise: Promise<boolean> | null
+  lastFrameAt: number | null
+  ignoreFailureUntil: number
 }
 
 export class NativeMediaController {
@@ -55,6 +80,11 @@ export class NativeMediaController {
   private lastRestoredRestartCount = 0
   private disposed = false
   private activeScreen: { sessionId: string; generation: number } | null = null
+  private readonly remoteVideoDemands = new Map<
+    string,
+    RemoteVideoDemandState
+  >()
+  private remoteVideoDemandRevision = 0
   private localScreenPreviewDemand: LocalScreenPreviewDemand = {
     demanded: false,
     width: 1280,
@@ -139,10 +169,115 @@ export class NativeMediaController {
     demanded: boolean,
   ) {
     if (!sessionId || !trackId) throw new Error('Remote video identity is required')
+    const key = remoteVideoDemandKey(sessionId, generation, trackId)
+    const previous = this.remoteVideoDemands.get(key)
+    if (previous?.recoveryTimer) clearTimeout(previous.recoveryTimer)
+    const demand: RemoteVideoDemandState = {
+      sessionId,
+      generation,
+      trackId,
+      demanded,
+      revision: ++this.remoteVideoDemandRevision,
+      recoveryAttempt: 0,
+      recoveryTimer: null,
+      recoveryPromise: null,
+      lastFrameAt: null,
+      ignoreFailureUntil: demanded
+        ? Date.now() + this.remoteVideoFirstFrameTimeout()
+        : 0,
+    }
+    this.remoteVideoDemands.set(key, demand)
+    this.armRemoteVideoRecovery(key, demand)
     await this.request(
       { type: 'setRemoteVideoDemand', sessionId, generation, trackId, demanded },
       2_000,
     )
+  }
+
+  async recoverRemoteVideoDemand(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+  ) {
+    const key = remoteVideoDemandKey(sessionId, generation, trackId)
+    const desired = this.remoteVideoDemands.get(key)
+    if (!desired?.demanded) return false
+    if (desired.recoveryPromise) return desired.recoveryPromise
+    if (desired.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS) {
+      this.failRemoteVideoDemand(key, desired)
+      return false
+    }
+    desired.recoveryAttempt += 1
+    const recovery = this.performRemoteVideoRecovery(key, desired)
+    desired.recoveryPromise = recovery
+    try {
+      return await recovery
+    } finally {
+      if (desired.recoveryPromise === recovery) {
+        desired.recoveryPromise = null
+      }
+    }
+  }
+
+  markRemoteVideoFrameDelivered(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+  ) {
+    const key = remoteVideoDemandKey(sessionId, generation, trackId)
+    const demand = this.remoteVideoDemands.get(key)
+    if (!demand?.demanded) return
+    demand.lastFrameAt = Date.now()
+    demand.recoveryAttempt = 0
+    demand.ignoreFailureUntil = 0
+    if (!demand.recoveryTimer) this.armRemoteVideoRecovery(key, demand)
+  }
+
+  private async performRemoteVideoRecovery(
+    key: string,
+    desired: RemoteVideoDemandState,
+  ) {
+    if (desired.recoveryTimer) {
+      clearTimeout(desired.recoveryTimer)
+      desired.recoveryTimer = null
+    }
+    // The unsubscribe half of our own false -> true cycle emits a removal.
+    // Fence it before sending false so that event cannot start a concurrent
+    // recovery while this one is still in flight.
+    desired.ignoreFailureUntil =
+      Date.now() + this.remoteVideoFirstFrameTimeout()
+    try {
+      await this.request(
+        {
+          type: 'setRemoteVideoDemand',
+          sessionId: desired.sessionId,
+          generation: desired.generation,
+          trackId: desired.trackId,
+          demanded: false,
+        },
+        2_000,
+      )
+      const current = this.remoteVideoDemands.get(key)
+      if (!current?.demanded || current.revision !== desired.revision) return false
+      await this.request(
+        {
+          type: 'setRemoteVideoDemand',
+          sessionId: desired.sessionId,
+          generation: desired.generation,
+          trackId: desired.trackId,
+          demanded: true,
+        },
+        2_000,
+      )
+      desired.ignoreFailureUntil =
+        Date.now() + this.remoteVideoFirstFrameTimeout()
+      return true
+    } finally {
+      const current = this.remoteVideoDemands.get(key)
+      if (current === desired && current.demanded) {
+        this.armRemoteVideoRecovery(key, current)
+      }
+    }
   }
 
   async setLocalScreenPreviewDemand(demand: LocalScreenPreviewDemand) {
@@ -166,6 +301,7 @@ export class NativeMediaController {
     if (this.disposed) return
     await this.stopMicrophonePreview().catch(() => undefined)
     this.disposed = true
+    this.clearRemoteVideoDemands()
     this.unsubscribeRuntimeEvent()
     this.unsubscribeRuntimeState()
     this.listeners.clear()
@@ -209,6 +345,42 @@ export class NativeMediaController {
   }
 
   private handleRuntimeEvent(event: MediaRuntimeEvent) {
+    if (event.type === 'remoteVideoFrame') {
+      const key = remoteVideoDemandKey(
+        event.sessionId,
+        event.generation,
+        event.trackId,
+      )
+      const demand = this.remoteVideoDemands.get(key)
+      if (demand?.demanded) {
+        if (!demand.recoveryTimer) this.armRemoteVideoRecovery(key, demand)
+      }
+      return
+    }
+    if (event.type === 'remoteScreenPublicationUnavailable') {
+      const key = remoteVideoDemandKey(
+        event.sessionId,
+        event.generation,
+        event.trackId,
+      )
+      const demand = this.remoteVideoDemands.get(key)
+      if (demand?.recoveryTimer) clearTimeout(demand.recoveryTimer)
+      this.remoteVideoDemands.delete(key)
+      return
+    }
+    if (event.type === 'remoteVideoTrackRemoved' ||
+      event.type === 'remoteVideoFailed') {
+      const key = remoteVideoDemandKey(
+        event.sessionId,
+        event.generation,
+        event.trackId,
+      )
+      const demand = this.remoteVideoDemands.get(key)
+      if (demand?.demanded && Date.now() >= demand.ignoreFailureUntil) {
+        this.armRemoteVideoRecovery(key, demand, true)
+      }
+      return
+    }
     if (event.type === 'microphoneMetrics') {
       this.emit({ type: 'microphoneMetrics', event: event.metrics })
       return
@@ -232,12 +404,12 @@ export class NativeMediaController {
     if (
       event.type === 'deviceList' ||
       event.type === 'displaySourceList' ||
-      event.type === 'remoteVideoFrame' ||
-      event.type === 'remoteVideoTrackRemoved' ||
-      event.type === 'remoteVideoFailed' ||
       event.type === 'localScreenPreviewFrame' ||
       event.type === 'localScreenPreviewTrackRemoved' ||
-      event.type === 'localScreenPreviewFailed'
+      event.type === 'localScreenPreviewFailed' ||
+      event.type === 'localCameraPreviewFrame' ||
+      event.type === 'localCameraPreviewTrackRemoved' ||
+      event.type === 'localCameraPreviewFailed'
     ) return
     if (event.type === 'sessionLifecycle' && event.kind === 'screen') {
       if (event.state.status === 'starting' || event.state.status === 'running') {
@@ -268,6 +440,7 @@ export class NativeMediaController {
   private handleSupervisorState(snapshot: NativeRuntimeSupervisorSnapshot) {
     if (snapshot.status === 'degraded' || snapshot.status === 'recovering') {
       this.activeScreen = null
+      this.clearRemoteVideoDemands()
     }
     if (snapshot.status === 'degraded' && (this.preview || this.previewStartOperation)) {
       this.preview = null
@@ -303,6 +476,92 @@ export class NativeMediaController {
     }
   }
 
+  private clearRemoteVideoDemands() {
+    for (const demand of this.remoteVideoDemands.values()) {
+      if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
+    }
+    this.remoteVideoDemands.clear()
+  }
+
+  private armRemoteVideoRecovery(
+    key: string,
+    demand: RemoteVideoDemandState,
+    failureKnown = false,
+  ) {
+    if (demand.recoveryTimer) clearTimeout(demand.recoveryTimer)
+    demand.recoveryTimer = null
+    if (this.disposed || !demand.demanded) return
+    const baseTimeout = this.remoteVideoFirstFrameTimeout()
+    const retriesExhausted =
+      demand.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS
+    const backoff = Math.min(
+      REMOTE_VIDEO_RETRY_MAX_DELAY_MS,
+      REMOTE_VIDEO_RETRY_BASE_DELAY_MS *
+        2 ** Math.min(demand.recoveryAttempt, 5),
+    )
+    const timeout = failureKnown
+      ? retriesExhausted ? 0 : backoff
+      : baseTimeout + (retriesExhausted ? 0 : backoff)
+    demand.recoveryTimer = setTimeout(() => {
+      demand.recoveryTimer = null
+      if (this.remoteVideoDemands.get(key) !== demand || !demand.demanded) return
+      if (!failureKnown && demand.lastFrameAt !== null &&
+        Date.now() - demand.lastFrameAt < baseTimeout) {
+        this.armRemoteVideoRecovery(key, demand)
+        return
+      }
+      if (demand.recoveryAttempt >= REMOTE_VIDEO_MAX_RECOVERY_ATTEMPTS) {
+        this.failRemoteVideoDemand(key, demand)
+        return
+      }
+      void this.recoverRemoteVideoDemand(
+        demand.sessionId,
+        demand.generation,
+        demand.trackId,
+      ).catch(() => {
+        if (this.remoteVideoDemands.get(key) === demand && demand.demanded) {
+          this.armRemoteVideoRecovery(key, demand)
+        }
+      })
+    }, timeout)
+    demand.recoveryTimer.unref?.()
+  }
+
+  private failRemoteVideoDemand(
+    key: string,
+    demand: RemoteVideoDemandState,
+  ) {
+    if (this.remoteVideoDemands.get(key) !== demand || !demand.demanded) return
+    demand.demanded = false
+    demand.revision = ++this.remoteVideoDemandRevision
+    demand.recoveryTimer = null
+    void this.request(
+      {
+        type: 'setRemoteVideoDemand',
+        sessionId: demand.sessionId,
+        generation: demand.generation,
+        trackId: demand.trackId,
+        demanded: false,
+      },
+      2_000,
+    ).catch(() => undefined)
+    this.emit({
+      type: 'remoteVideoSubscriptionFailed',
+      sessionId: demand.sessionId,
+      generation: demand.generation,
+      trackId: demand.trackId,
+      message: 'Не удалось подключиться к демонстрации после 10 попыток',
+    })
+  }
+
+  private remoteVideoFirstFrameTimeout() {
+    return Math.max(
+      1_000,
+      this.options.remoteVideoFirstFrameTimeoutMs ??
+        REMOTE_VIDEO_FIRST_FRAME_TIMEOUT_MS,
+    )
+  }
+
   private sendLocalScreenPreviewDemand(screen: { sessionId: string; generation: number }) {
     const demand = this.localScreenPreviewDemand
     return this.request(
@@ -316,6 +575,14 @@ export class NativeMediaController {
       2_000,
     )
   }
+}
+
+function remoteVideoDemandKey(
+  sessionId: string,
+  generation: number,
+  trackId: string,
+) {
+  return `${sessionId}:${generation}:${trackId}`
 }
 
 function unwrapResult(value: unknown) {

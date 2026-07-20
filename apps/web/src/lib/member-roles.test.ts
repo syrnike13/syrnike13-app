@@ -150,7 +150,7 @@ describe('canToggleMemberRole', () => {
 })
 
 describe('member role edit affordances', () => {
-  it('allows privileged users to edit roles without server membership', () => {
+  it('does not let project admins bypass server role hierarchy', () => {
     installAuthorizationForTest({
       global: GlobalPermission.AccessAdmin,
       servers: { 'server-1': ChannelPermission.AssignRoles },
@@ -168,9 +168,8 @@ describe('member role edit affordances', () => {
         undefined,
         'privileged-1',
         target,
-        true,
       ),
-    ).toBe(true)
+    ).toBe(false)
     expect(
       canToggleMemberRole(
         server,
@@ -179,9 +178,8 @@ describe('member role edit affordances', () => {
         target,
         role,
         false,
-        true,
       ),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('opens role editing when at least one lower role can be toggled', () => {

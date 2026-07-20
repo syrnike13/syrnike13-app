@@ -13,17 +13,25 @@ import { cn } from '#/lib/utils'
 type ShellNavColumnProps = {
   sidebar: ReactNode
   overlay: ReactNode
+  userPanelReservePx: number
 }
 
 /**
  * Левая колонка shell: рельс + навигация.
  * `overlay` (UserPanel) — absolute внизу колонки; ширина = ширине колонки (CSS).
  */
-export function ShellNavColumn({ sidebar, overlay }: ShellNavColumnProps) {
+export function ShellNavColumn({
+  sidebar,
+  overlay,
+  userPanelReservePx,
+}: ShellNavColumnProps) {
   return (
     <div className="relative flex h-full min-h-0 shrink-0 flex-col">
       <div className="flex min-h-0 flex-1">
-        <ServerRail variant="desktop" />
+        <ServerRail
+          variant="desktop"
+          userPanelReservePx={userPanelReservePx}
+        />
         <div
           className={cn(
             'flex min-h-0 flex-col overflow-hidden rounded-tl-xl border-l border-t shadow-sm',

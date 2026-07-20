@@ -2,8 +2,11 @@ import type { ReactNode } from 'react'
 
 import { cn } from '#/lib/utils'
 
-/** Высота плавающей панели аккаунта на mobile (+ отступ снизу). */
+/** Место под плавающую панель аккаунта и нижний отступ. */
 export const USER_PANEL_RESERVE_PX = 120
+
+/** Место под Telegram-промо, панель аккаунта и нижний отступ. */
+export const USER_PANEL_WITH_TELEGRAM_PROMO_RESERVE_PX = 168
 
 /** Колонка списка каналов: было w-60 (240px), w-72 — 288px. */
 export const CHANNEL_SIDEBAR_WIDTH_CLASS = 'w-82' as const

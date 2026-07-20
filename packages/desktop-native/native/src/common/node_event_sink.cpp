@@ -239,9 +239,15 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
 
   setIfPresent(result, "sessionId", event.session_id);
   if (!event.session_id.empty()) result.Set("generation", jsNumber(env, event.generation));
-  if (event.type == "remoteVideoFrame" || event.type == "localScreenPreviewFrame") {
+  if (event.type == "remoteVideoFrame" || event.type == "localScreenPreviewFrame" ||
+      event.type == "localCameraPreviewFrame" ||
+      event.type == "remoteScreenPublicationAvailable" ||
+      event.type == "remoteScreenPublicationUnavailable") {
     result.Set("participantIdentity", event.participant_identity);
     result.Set("source", event.video_source);
+  }
+  if (event.type == "remoteVideoFrame" || event.type == "localScreenPreviewFrame" ||
+      event.type == "localCameraPreviewFrame") {
     result.Set("frameSequence", jsNumber(env, event.frame_sequence));
     result.Set("timestampUs", jsNumber(env, event.timestamp_us));
     result.Set("width", event.width);
@@ -256,7 +262,8 @@ Napi::Object eventToObject(Napi::Env env, const RuntimeEvent& event) {
       )
     );
   }
-  if (event.type == "localScreenPreviewTrackRemoved") {
+  if (event.type == "localScreenPreviewTrackRemoved" ||
+      event.type == "localCameraPreviewTrackRemoved") {
     result.Set("source", event.video_source);
   }
   if (event.error) result.Set("error", errorToObject(env, *event.error));

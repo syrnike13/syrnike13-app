@@ -16,7 +16,6 @@ struct VoiceGateConfig {
   int hold_ms = 240;
   int release_ms = 120;
   int lookahead_ms = 20;
-  float floor_gain = 0.125f;
 };
 
 struct VoiceGateFrameMetrics {
@@ -39,17 +38,24 @@ public:
 private:
   int sample_rate_;
   VoiceGateConfig config_;
-  bool open_ = true;
-  float gain_ = 1.0f;
+  bool config_initialized_ = false;
+  bool open_ = false;
+  float gain_ = 0.0f;
+  float transition_start_gain_ = 0.0f;
+  float transition_target_ = 0.0f;
+  int transition_samples_total_ = 0;
+  int transition_samples_remaining_ = 0;
   int below_close_ms_ = 0;
   float noise_floor_db_ = -36.0f;
   std::vector<float> quiet_history_;
   std::deque<std::vector<float>> lookahead_frames_;
 
   float effectiveThresholdDb() const;
-  float gainSmoothingCoefficient(float target) const;
   int frameDurationMs(std::span<float> samples) const;
   int lookaheadFrameCount(std::span<float> samples) const;
+  void beginGainTransition(float target, int duration_ms);
+  float nextGain();
+  void resetGateState(bool open);
   void resetAdaptiveState();
   void updateNoiseFloor(float input_db, bool quiet);
   std::vector<float> delayedOutputFrame(std::span<float> samples);

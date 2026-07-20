@@ -11,6 +11,7 @@ extern crate log;
 pub mod config;
 pub mod events;
 
+mod channel_activity;
 mod database;
 mod voice;
 mod voice_client;
@@ -23,6 +24,7 @@ async fn main() {
     database::connect().await;
     voice_client::init().await;
     let amqp = AMQP::new_auto().await;
+    async_std::task::spawn(channel_activity::run_expiration_sweeper());
 
     // Clean up the current region information.
     let no_clear_region = env::var("NO_CLEAR_PRESENCE").unwrap_or_else(|_| "0".into()) == "1";

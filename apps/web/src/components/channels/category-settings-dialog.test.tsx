@@ -135,4 +135,45 @@ describe('CategorySettingsDialog', () => {
     })
     expect(mocks.onOpenChange).toHaveBeenCalledWith(false)
   })
+
+  it('uses the shared unsaved changes bar for category renaming', async () => {
+    render(
+      <CategorySettingsDialog
+        serverId="server-1"
+        category={category}
+        open
+        onOpenChange={mocks.onOpenChange}
+      />,
+    )
+
+    expect(
+      screen.queryByText('Есть несохранённые изменения'),
+    ).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('Название'), {
+      target: { value: 'Renamed' },
+    })
+
+    expect(
+      await screen.findByText('Есть несохранённые изменения'),
+    ).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Сбросить' })).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    await waitFor(() => {
+      expect(mocks.editServer).toHaveBeenCalledWith(
+        'session-token',
+        'server-1',
+        {
+          categories: [
+            { ...category, title: 'Renamed' },
+            remainingCategory,
+          ],
+        },
+      )
+    })
+    expect(await screen.findByText('Изменения сохранены')).not.toBeNull()
+    expect(mocks.onOpenChange).not.toHaveBeenCalledWith(false)
+  })
 })

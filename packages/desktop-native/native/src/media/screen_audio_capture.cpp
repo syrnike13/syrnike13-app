@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cmath>
 #include <stdexcept>
@@ -27,8 +28,8 @@ using Microsoft::WRL::ComPtr;
 namespace syrnike::voice {
 namespace {
 
-constexpr int kScreenAudioSampleRate = 48000;
-constexpr int kScreenAudioChannels = 2;
+constexpr std::size_t kScreenAudioSamplesPerPacket =
+    static_cast<std::size_t>(kScreenAudioFramesPerPacket) * kScreenAudioChannels;
 constexpr REFERENCE_TIME kScreenAudioBufferDurationHns = 1000000; // 100 ms
 
 struct ScreenAudioProbeResult {
@@ -233,6 +234,8 @@ void captureLoopbackAudio(
     float interval_peak = 0.0f;
     double interval_square_sum = 0.0;
     std::uint64_t interval_sample_count = 0;
+    std::vector<int16_t> pending_pcm;
+    pending_pcm.reserve(kScreenAudioSamplesPerPacket * 2);
     auto next_stats_at = std::chrono::steady_clock::now();
 
     while (running->load()) {
@@ -250,29 +253,45 @@ void captureLoopbackAudio(
       hr = capture_client->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
       if (FAILED(hr)) throw std::runtime_error("screen loopback buffer read failed");
 
-      std::vector<int16_t> pcm(static_cast<size_t>(frames) * kScreenAudioChannels);
+      if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0) {
+        pending_pcm.clear();
+      }
+
+      const auto packet_sample_count =
+          static_cast<std::size_t>(frames) * kScreenAudioChannels;
+      const auto pending_offset = pending_pcm.size();
+      pending_pcm.resize(pending_offset + packet_sample_count, 0);
       if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) == 0 && data) {
         const auto* samples = reinterpret_cast<const float*>(data);
-        for (size_t index = 0; index < pcm.size(); ++index) {
+        for (std::size_t index = 0; index < packet_sample_count; ++index) {
           const float clamped = std::clamp(samples[index], -1.0f, 1.0f);
           const float magnitude = std::abs(clamped);
           interval_peak = std::max(interval_peak, magnitude);
           interval_square_sum += static_cast<double>(clamped) * clamped;
           interval_sample_count += 1;
-          pcm[index] = floatToPcm16(clamped);
+          pending_pcm[pending_offset + index] = floatToPcm16(clamped);
         }
       }
 
       capture_client->ReleaseBuffer(frames);
 
-      if (!pcm.empty()) {
+      while (pending_pcm.size() >= kScreenAudioSamplesPerPacket) {
+        std::vector<int16_t> pcm(
+            pending_pcm.begin(),
+            pending_pcm.begin() + static_cast<std::ptrdiff_t>(kScreenAudioSamplesPerPacket));
+        pending_pcm.erase(
+            pending_pcm.begin(),
+            pending_pcm.begin() + static_cast<std::ptrdiff_t>(kScreenAudioSamplesPerPacket));
         livekit::AudioFrame frame(
             std::move(pcm),
             kScreenAudioSampleRate,
             kScreenAudioChannels,
-            static_cast<int>(frames));
-        audio_source->captureFrame(frame);
-        captured_frames_total += frames;
+            kScreenAudioFramesPerPacket);
+        // queue_size_ms=0 is LiveKit's real-time path. It requires exact 10 ms
+        // frames and only remains ordered when each async acknowledgement is
+        // observed before the next frame is submitted.
+        audio_source->captureFrame(frame, 0);
+        captured_frames_total += kScreenAudioFramesPerPacket;
         packets_total += 1;
       }
 

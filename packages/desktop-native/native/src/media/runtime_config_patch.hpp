@@ -25,7 +25,22 @@ inline syrnike::voice::RuntimeConfig mergeRuntimeConfig(
   if (command.has_echo_cancellation) {
     current.echo_cancellation_enabled = command.echo_cancellation;
   }
+  if (command.has_bypass_system_audio_input_processing) {
+    current.bypass_system_audio_input_processing =
+      command.bypass_system_audio_input_processing;
+  }
+  if (command.has_automatic_gain_control) {
+    current.automatic_gain_control_enabled = command.automatic_gain_control;
+  }
   return current;
+}
+
+inline bool microphoneCaptureConfigRequiresRestart(
+  const syrnike::voice::RuntimeConfig& current,
+  const syrnike::voice::RuntimeConfig& desired
+) {
+  return current.bypass_system_audio_input_processing !=
+    desired.bypass_system_audio_input_processing;
 }
 
 }  // namespace syrnike::desktop_native::media

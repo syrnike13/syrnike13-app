@@ -36,7 +36,6 @@ import { useVoiceSession } from '#/features/voice/voice-session-context'
 import {
   FLOATING_BAR_BOTTOM_CLASS,
   FLOATING_BAR_INSET_X_CLASS,
-  FLOATING_BAR_SCROLL_PAD_CLASS,
   shellChromeSurface,
   shellColumnHeaderClass,
 } from '#/components/layout/shell-chrome'
@@ -157,6 +156,7 @@ export function ChannelView({
   const [inlineVoiceStageHeight, setInlineVoiceStageHeight] = useState(
     INLINE_VOICE_STAGE_DEFAULT_HEIGHT,
   )
+  const [composerHeight, setComposerHeight] = useState(56)
   const observedChannelRef = useRef(false)
   const channelContentRef = useRef<HTMLDivElement>(null)
   const inlineVoiceStageRef = useRef<HTMLElement>(null)
@@ -182,6 +182,7 @@ export function ChannelView({
     editingMessage,
     listHighlightMessageId,
     notifyTyping,
+    stopTyping,
   } = chat
   const syncReady = useSyncStore((state) => state.ready)
 
@@ -286,7 +287,9 @@ export function ChannelView({
       ? 'Вы заблокировали этого пользователя'
       : dmRecipient?.relationship === 'BlockedOther'
         ? 'Пользователь заблокировал вас'
-        : undefined
+        : dmMessagesBlocked
+          ? 'Вы не можете отправлять сообщения этому пользователю'
+          : undefined
   const inThisVoiceCall =
     voice.channelId === channelId &&
     voice.status === 'connected'
@@ -664,10 +667,7 @@ export function ChannelView({
             <MessageList
               channelId={channelId}
               serverId={serverIdForSelection ?? undefined}
-              scrollPaddingClassName={cn(
-                FLOATING_BAR_SCROLL_PAD_CLASS,
-                replyTo && 'pb-[88px]',
-              )}
+              scrollPaddingBottom={composerHeight + 48}
               highlightMessageId={listHighlightMessageId}
               messages={messages}
               users={users}
@@ -738,6 +738,7 @@ export function ChannelView({
                 channel={channel}
                 users={users}
                 floating
+                onHeightChange={setComposerHeight}
                 disabled={
                   !token || auth.gatewayState !== 'connected' || dmMessagesBlocked
                 }
@@ -747,6 +748,7 @@ export function ChannelView({
                 editingMessage={editingMessage}
                 onCancelAction={() => setComposerAction(null)}
                 onTyping={notifyTyping}
+                onStopTyping={stopTyping}
                 onSend={async (input) => {
                   if (!token) return
                   await sendChannelMessage(token, channelId, input)

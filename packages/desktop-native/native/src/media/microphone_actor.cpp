@@ -175,7 +175,9 @@ class MicrophoneActor::Implementation {
     desired.config = mergeRuntimeConfig(desired.config, command);
     desired.device_id = command.device_id;
     if (command.has_revision) desired.revision = command.revision;
-    if (captureThreadActive() && desired.device_id != current.device_id) {
+    if (captureThreadActive() &&
+        (desired.device_id != current.device_id ||
+         microphoneCaptureConfigRequiresRestart(current.config, desired.config))) {
       ensureCapture(desired, true);
     } else {
       setPipelineState(desired);
@@ -191,7 +193,11 @@ class MicrophoneActor::Implementation {
       "microphone_configure_ok",
       {
         {"revision", desired.revision},
-        {"deviceSwitch", desired.device_id != current.device_id}
+        {"deviceSwitch", desired.device_id != current.device_id},
+        {"captureRestart", microphoneCaptureConfigRequiresRestart(
+          current.config,
+          desired.config
+        )}
       }
     );
     return reply;
@@ -389,9 +395,12 @@ class MicrophoneActor::Implementation {
     return capture_running_.load() && captureReady();
   }
 
-  bool captureDeviceMatches(const std::string& device_id) {
+  bool capturePipelineMatches(const PipelineState& pipeline) {
     std::lock_guard lock(capture_lifecycle_mutex_);
-    return capture_thread_.joinable() && capture_device_id_ == device_id;
+    return capture_thread_.joinable() &&
+      capture_device_id_ == pipeline.device_id &&
+      capture_bypass_system_audio_input_processing_ ==
+        pipeline.config.bypass_system_audio_input_processing;
   }
 
   bool captureThreadActive() {
@@ -399,7 +408,7 @@ class MicrophoneActor::Implementation {
     return capture_thread_.joinable();
   }
 
-  void startCapture(const std::string& device_id) {
+  void startCapture(const PipelineState& pipeline) {
     logMicrophone("microphone_capture_start_begin");
     {
       std::lock_guard lock(capture_startup_mutex_);
@@ -409,10 +418,18 @@ class MicrophoneActor::Implementation {
     const auto epoch = capture_epoch_.fetch_add(1) + 1;
     {
       std::lock_guard lock(capture_lifecycle_mutex_);
-      capture_device_id_ = device_id;
+      capture_device_id_ = pipeline.device_id;
+      capture_bypass_system_audio_input_processing_ =
+        pipeline.config.bypass_system_audio_input_processing;
       capture_running_.store(true);
-      capture_thread_ = std::thread([this, device_id = capture_device_id_, epoch] {
-        captureLoop(device_id, epoch);
+      capture_thread_ = std::thread([
+        this,
+        device_id = capture_device_id_,
+        bypass_system_audio_input_processing =
+          capture_bypass_system_audio_input_processing_,
+        epoch
+      ] {
+        captureLoop(device_id, bypass_system_audio_input_processing, epoch);
       });
     }
     std::unique_lock startup_lock(capture_startup_mutex_);
@@ -441,7 +458,7 @@ class MicrophoneActor::Implementation {
         {"captureHealthy", captureHealthy()}
       }
     );
-    if (captureDeviceMatches(desired.device_id) && captureHealthy()) {
+    if (capturePipelineMatches(desired) && captureHealthy()) {
       setPipelineState(desired);
       logMicrophone("microphone_ensure_capture_reused");
       return;
@@ -450,14 +467,14 @@ class MicrophoneActor::Implementation {
     setPipelineState(desired);
     stopCapture();
     try {
-      startCapture(desired.device_id);
+      startCapture(desired);
       logMicrophone("microphone_ensure_capture_started");
     } catch (const std::exception& error) {
       setPipelineState(previous);
       if (rollback_candidate) {
         logMicrophone("microphone_ensure_capture_rollback_start");
         try {
-          startCapture(previous.device_id);
+          startCapture(previous);
           logMicrophone("microphone_ensure_capture_rollback_ok");
         } catch (const std::exception& rollback_error) {
           logMicrophone(
@@ -483,10 +500,15 @@ class MicrophoneActor::Implementation {
     if (capture_thread_.joinable()) capture_thread_.join();
     std::lock_guard lock(capture_lifecycle_mutex_);
     capture_device_id_.clear();
+    capture_bypass_system_audio_input_processing_ = true;
     logMicrophone("microphone_capture_stop_done");
   }
 
-  void captureLoop(std::string device_id, std::uint64_t epoch) {
+  void captureLoop(
+    std::string device_id,
+    bool bypass_system_audio_input_processing,
+    std::uint64_t epoch
+  ) {
     logMicrophone("microphone_capture_loop_start", {{"epoch", epoch}});
     const auto com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     const bool com_initialized = SUCCEEDED(com_result);
@@ -496,20 +518,64 @@ class MicrophoneActor::Implementation {
 
     try {
       auto device = captureDevice(device_id);
-      ComPtr<IAudioClient> audio_client;
-      auto result = device->Activate(
-        __uuidof(IAudioClient), CLSCTX_ALL, nullptr,
-        reinterpret_cast<void**>(audio_client.GetAddressOf())
-      );
-      if (FAILED(result)) throw std::runtime_error("failed to activate microphone IAudioClient");
+      const auto activate_audio_client = [&] {
+        ComPtr<IAudioClient> client;
+        const auto activate_result = device->Activate(
+          __uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+          reinterpret_cast<void**>(client.GetAddressOf())
+        );
+        if (FAILED(activate_result)) {
+          throw std::runtime_error("failed to activate microphone IAudioClient");
+        }
+        return client;
+      };
+      auto audio_client = activate_audio_client();
+      bool raw_applied = false;
+      std::string raw_status = bypass_system_audio_input_processing
+        ? "fallback"
+        : "not_requested";
+      if (bypass_system_audio_input_processing) {
+        ComPtr<IAudioClient2> audio_client2;
+        if (SUCCEEDED(audio_client.As(&audio_client2))) {
+          AudioClientProperties properties{};
+          properties.cbSize = sizeof(properties);
+          properties.bIsOffload = FALSE;
+          // The microphone stays warm outside active voice sessions. Marking
+          // that persistent capture as Communications makes Windows attenuate
+          // game and media streams for the lifetime of the application.
+          properties.eCategory = AudioCategory_Other;
+          properties.Options = AUDCLNT_STREAMOPTIONS_RAW;
+          if (SUCCEEDED(audio_client2->SetClientProperties(&properties))) {
+            raw_applied = true;
+            raw_status = "applied";
+          }
+        }
+      }
       auto format = desiredCaptureFormat();
-      result = audio_client->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
-        10'000'000,
-        0,
-        &format,
-        nullptr
+      auto initialize_audio_client = [&](const ComPtr<IAudioClient>& client) {
+        return client->Initialize(
+          AUDCLNT_SHAREMODE_SHARED,
+          AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
+            AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+          10'000'000,
+          0,
+          &format,
+          nullptr
+        );
+      };
+      auto result = initialize_audio_client(audio_client);
+      if (FAILED(result) && raw_applied) {
+        audio_client = activate_audio_client();
+        raw_applied = false;
+        raw_status = "fallback";
+        result = initialize_audio_client(audio_client);
+      }
+      logMicrophone(
+        "microphone_capture_raw_mode",
+        {
+          {"requested", bypass_system_audio_input_processing},
+          {"status", raw_status}
+        }
       );
       if (FAILED(result)) throw std::runtime_error("failed to initialize microphone stream");
       ComPtr<IAudioCaptureClient> capture_client;
@@ -646,6 +712,7 @@ class MicrophoneActor::Implementation {
   std::atomic_bool capture_running_{false};
   std::atomic_uint64_t capture_epoch_{0};
   std::string capture_device_id_;
+  bool capture_bypass_system_audio_input_processing_ = true;
   std::mutex capture_startup_mutex_;
   std::condition_variable capture_startup_changed_;
   bool capture_ready_ = false;

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -226,6 +227,10 @@ class ScreenActor::Implementation {
     }
     if (command.type == "releaseLocalScreenPreviewFrame") {
       releasePreviewFrame(command);
+      return;
+    }
+    if (command.type == "__screenRtpStalled") {
+      publication_->restartCaptureAfterStall(command);
       return;
     }
     publication_->handleWorkerCommand(command);
@@ -468,14 +473,32 @@ class ScreenActor::Implementation {
     emitStatsIfDue(session_id, generation);
   }
 
-  void sampleOutboundStats(
+  struct OutboundStatsSample {
+    bool available = false;
+    bool active = false;
+    std::uint64_t frames_sent = 0;
+  };
+
+  std::optional<OutboundStatsSample> sampleOutboundStats(
     const std::string& session_id,
     std::uint64_t generation,
     const std::shared_ptr<livekit::LocalVideoTrack>& track
   ) {
-    if (!track || !diagnostics::DiagnosticLog::instance().enabled()) return;
+    if (!track) return std::nullopt;
     try {
-      const auto records = track->getStats().get();
+      auto stats_future = track->getStats();
+      if (stats_future.wait_for(std::chrono::milliseconds(250)) !=
+          std::future_status::ready) {
+        logScreen(
+          "screen_rtp_stats_timeout",
+          {
+            {"sessionId", session_id},
+            {"generation", generation}
+          }
+        );
+        return std::nullopt;
+      }
+      const auto records = stats_future.get();
       std::uint64_t packets_sent = 0;
       std::uint64_t bytes_sent = 0;
       std::uint64_t frames_sent = 0;
@@ -512,7 +535,9 @@ class ScreenActor::Implementation {
       }
       {
         std::lock_guard lock(stats_mutex_);
-        if (stats_session_id_ != session_id || stats_generation_ != generation) return;
+        if (stats_session_id_ != session_id || stats_generation_ != generation) {
+          return std::nullopt;
+        }
         stats_rtp_available_ = available;
         stats_rtp_packets_sent_ = packets_sent;
         stats_rtp_bytes_sent_ = bytes_sent;
@@ -538,6 +563,7 @@ class ScreenActor::Implementation {
           {"active", active}
         }
       );
+      return OutboundStatsSample{available, active, frames_sent};
     } catch (const std::exception& error) {
       logScreen(
         "screen_rtp_stats_error",
@@ -547,6 +573,7 @@ class ScreenActor::Implementation {
           {"message", sanitizeDiagnosticMessage(error.what())}
         }
       );
+      return std::nullopt;
     }
   }
 
@@ -577,6 +604,9 @@ class ScreenActor::Implementation {
     auto next_frame = std::chrono::steady_clock::now();
     auto next_rtp_stats_at = next_frame + std::chrono::seconds(1);
     const auto started = next_frame;
+    EncoderBackpressureStallDetector encoder_backpressure_stall;
+    OutboundRtpStallDetector outbound_rtp_stall;
+    bool rtp_stall_reported = false;
     std::uint64_t frames = 0;
     std::uint64_t method_wgc_gpu = 0;
     std::uint64_t method_dxgi_gpu = 0;
@@ -634,10 +664,45 @@ class ScreenActor::Implementation {
             : std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - started).count();
           if (source->capture(std::move(lease), timestamp)) {
+            encoder_backpressure_stall.noteProgress();
             ++frames;
             if (method == "wgc_gpu") ++method_wgc_gpu;
             else if (method == "dxgi_gpu") ++method_dxgi_gpu;
           }
+        } else if (capture.status == ScreenGpuFrameStatus::EncoderBackpressure) {
+          const auto now = std::chrono::steady_clock::now();
+          if (!rtp_stall_reported && encoder_backpressure_stall.observe(
+                now, std::chrono::seconds(2))) {
+            MediaCommand stalled;
+            stalled.type = "__screenRtpStalled";
+            stalled.session_id = session_id;
+            stalled.generation = generation;
+            stalled.internal_message = "encoder_backpressure";
+            logScreen(
+              "screen_encoder_backpressure_stall",
+              {
+                {"sessionId", session_id},
+                {"generation", generation},
+                {"frames", frames},
+                {"method", method}
+              }
+            );
+            if (post_(std::move(stalled))) {
+              rtp_stall_reported = true;
+              running->store(false);
+            }
+          }
+        } else if (capture.status == ScreenGpuFrameStatus::RecoverableLost) {
+          encoder_backpressure_stall.noteProgress();
+          logScreen(
+            "screen_capture_restarted_after_stall",
+            {
+              {"sessionId", session_id},
+              {"generation", generation},
+              {"frames", frames},
+              {"method", method}
+            }
+          );
         } else if (
           capture.status == ScreenGpuFrameStatus::TargetClosed ||
           capture.status == ScreenGpuFrameStatus::FatalError
@@ -667,7 +732,33 @@ class ScreenActor::Implementation {
 
         const auto now = std::chrono::steady_clock::now();
         if (now >= next_rtp_stats_at) {
-          sampleOutboundStats(session_id, generation, track);
+          const auto stats = sampleOutboundStats(session_id, generation, track);
+          if (stats && stats->available) {
+            if (!rtp_stall_reported && outbound_rtp_stall.observe(
+                  now,
+                  stats->active,
+                  stats->frames_sent,
+                  std::chrono::seconds(5))) {
+              MediaCommand stalled;
+              stalled.type = "__screenRtpStalled";
+              stalled.session_id = session_id;
+              stalled.generation = generation;
+              stalled.internal_message = "rtp_output_stalled";
+              logScreen(
+                "screen_rtp_stall_detected",
+                {
+                  {"sessionId", session_id},
+                  {"generation", generation},
+                  {"frames", frames},
+                  {"framesSent", stats->frames_sent}
+                }
+              );
+              if (post_(std::move(stalled))) {
+                rtp_stall_reported = true;
+                running->store(false);
+              }
+            }
+          }
           next_rtp_stats_at = now + std::chrono::seconds(1);
         }
         recordVideoStats(

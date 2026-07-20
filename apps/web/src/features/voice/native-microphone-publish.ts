@@ -4,6 +4,8 @@ import type { VoicePreferenceState } from '#/features/voice/voice-preference-sto
 
 type NativeMicrophonePreferences = Pick<
   VoicePreferenceState,
+  | 'bypassSystemAudioInputProcessing'
+  | 'automaticGainControl'
   | 'noiseSuppression'
   | 'echoCancellation'
   | 'inputVolume'
@@ -40,6 +42,9 @@ export function nativeMicrophonePipelineConfig(
 ) {
   return {
     deviceId: deviceId ?? null,
+    bypassSystemAudioInputProcessing:
+      prefs.bypassSystemAudioInputProcessing,
+    automaticGainControl: prefs.automaticGainControl,
     noiseSuppression: prefs.noiseSuppression,
     echoCancellation: prefs.echoCancellation,
     inputVolume: prefs.inputVolume,

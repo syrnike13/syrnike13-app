@@ -83,6 +83,16 @@ export type {
   SyrnikeRuntime,
 } from './api'
 export { getCapabilities, type PlatformCapabilities } from './capabilities'
+export {
+  DIAGNOSTIC_SCHEMA,
+  DIAGNOSTIC_SCHEMA_VERSION,
+  type DiagnosticEnvelope,
+  type DiagnosticEnvelopeSource,
+  type DiagnosticJsonValue,
+  type NativeDiagnosticIncident,
+  type NativeDiagnosticIncidentBatch,
+  type NativeDiagnosticIncidentSeverity,
+} from './diagnostics'
 export { IPC, type IpcChannel } from './ipc'
 export {
   APPEARANCE_GRADIENT_MAX_COLORS,

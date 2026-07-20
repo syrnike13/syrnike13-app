@@ -21,6 +21,9 @@ async function configureNativeMicrophonePipelineNow(
   await desktop.voice.dispatch({
     type: 'configureMicrophone',
     deviceId: config.deviceId ?? undefined,
+    bypassSystemAudioInputProcessing:
+      config.bypassSystemAudioInputProcessing,
+    automaticGainControl: config.automaticGainControl,
     noiseSuppression: config.noiseSuppression,
     echoCancellation: config.echoCancellation,
     inputVolume: config.inputVolume,

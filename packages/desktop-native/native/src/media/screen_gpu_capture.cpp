@@ -26,7 +26,10 @@
 #include <string>
 #include <utility>
 
+#include "../common/diagnostic_log.hpp"
+#include "d3d11_gpu_completion.hpp"
 #include "screen_capture_priority.hpp"
+#include "screen_dxgi_compositor.hpp"
 
 using Microsoft::WRL::ComPtr;
 namespace capture = winrt::Windows::Graphics::Capture;
@@ -41,6 +44,28 @@ namespace {
 constexpr std::size_t kOutputPoolSize = 5;
 constexpr UINT64 kProducerKey = 0;
 constexpr UINT64 kConsumerKey = 1;
+constexpr auto kGpuCompletionTimeout = std::chrono::milliseconds(500);
+
+void logScreenCaptureBackend(
+    std::string_view event,
+    std::string_view reason,
+    long hresult = 0) noexcept {
+  auto& logger = diagnostics::DiagnosticLog::instance();
+  if (!logger.enabled()) return;
+  logger.write(
+      event,
+      {
+          {"from", "dxgi_gpu"},
+          {"to", "wgc_gpu"},
+          {"reason", reason},
+          {"hresult", static_cast<std::int64_t>(hresult)},
+      });
+}
+
+std::uint64_t nextScreenFrameSequence() noexcept {
+  static std::atomic<std::uint64_t> sequence{0};
+  return sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+}
 
 void disableCaptureBorderIfAllowed(
     const capture::GraphicsCaptureSession& session) {
@@ -67,6 +92,27 @@ std::uint64_t steadyMicros() {
       std::chrono::duration_cast<std::chrono::microseconds>(
           std::chrono::steady_clock::now().time_since_epoch())
           .count());
+}
+
+std::uint64_t qpcMicros(LARGE_INTEGER timestamp) {
+  if (timestamp.QuadPart <= 0) return 0;
+  static const LARGE_INTEGER frequency = [] {
+    LARGE_INTEGER value{};
+    QueryPerformanceFrequency(&value);
+    return value;
+  }();
+  if (frequency.QuadPart <= 0) return 0;
+  const auto seconds = timestamp.QuadPart / frequency.QuadPart;
+  const auto remainder = timestamp.QuadPart % frequency.QuadPart;
+  return static_cast<std::uint64_t>(seconds) * 1'000'000ULL +
+      static_cast<std::uint64_t>(remainder) * 1'000'000ULL /
+          static_cast<std::uint64_t>(frequency.QuadPart);
+}
+
+std::uint64_t wgcTimestampMicros(
+    winrt::Windows::Foundation::TimeSpan timestamp) {
+  const auto ticks = timestamp.count();
+  return ticks > 0 ? static_cast<std::uint64_t>(ticks / 10) : 0;
 }
 
 bool sameLuid(const LUID& left, const LUID& right) {
@@ -242,6 +288,7 @@ class GpuFramePool {
       std::uint32_t output_height)
       : device_(device),
         context_(context),
+        completion_(device, context),
         adapter_luid_(adapter_luid),
         output_width_(output_width),
         output_height_(output_height) {
@@ -259,6 +306,10 @@ class GpuFramePool {
         context_->QueryInterface(IID_PPV_ARGS(&video_context_)),
         ScreenGpuCaptureErrorCode::FormatUnsupported,
         "D3D11 video context is unavailable");
+    requireHr(
+        completion_.initializationResult(),
+        ScreenGpuCaptureErrorCode::InteropUnavailable,
+        "failed to create GPU conversion completion query");
     createTextures();
   }
 
@@ -274,6 +325,7 @@ class GpuFramePool {
       std::uint32_t source_height,
       std::uint32_t content_width,
       std::uint32_t content_height,
+      std::uint64_t timestamp_us,
       const char* method,
       syrnike::voice::ScreenCaptureFrameMetrics metrics,
       ScreenGpuFrame& frame) {
@@ -360,6 +412,10 @@ class GpuFramePool {
             ScreenGpuCaptureErrorCode::DeviceLost,
             "GPU screen conversion failed");
         requireHr(
+            completion_.wait(kGpuCompletionTimeout),
+            ScreenGpuCaptureErrorCode::DeviceLost,
+            "GPU screen conversion did not complete");
+        requireHr(
             slot.mutex->ReleaseSync(kConsumerKey),
             ScreenGpuCaptureErrorCode::DeviceLost,
             "failed to release GPU frame to encoder");
@@ -374,8 +430,8 @@ class GpuFramePool {
       }
 
       next_slot_ = (index + 1) % slots_.size();
-      frame.sequence = ++sequence_;
-      frame.timestamp_us = steadyMicros();
+      frame.sequence = nextScreenFrameSequence();
+      frame.timestamp_us = timestamp_us != 0 ? timestamp_us : steadyMicros();
       frame.width = output_width_;
       frame.height = output_height_;
       frame.slot = static_cast<std::uint32_t>(index);
@@ -388,7 +444,10 @@ class GpuFramePool {
                     ScreenGpuCaptureErrorCode::CaptureUnavailable);
     }
 
-    return result(ScreenGpuFrameStatus::NoFrame, method, metrics,
+    // WGC/DXGI supplied a source texture, but every NV12 output slot is still
+    // owned by the encoder. Keep this distinct from a capture-source miss so
+    // the actor can restart the stalled MFT instead of recreating WGC.
+    return result(ScreenGpuFrameStatus::EncoderBackpressure, method, metrics,
                   ScreenGpuCaptureErrorCode::CaptureUnavailable);
   }
 
@@ -398,6 +457,7 @@ class GpuFramePool {
       return;
     }
     auto& slot = slots_[frame.slot];
+    if (slot.shared_handle != frame.shared_texture_handle) return;
     if (slot.mutex->AcquireSync(kConsumerKey, 0) == S_OK) {
       slot.mutex->ReleaseSync(kProducerKey);
     }
@@ -523,6 +583,7 @@ class GpuFramePool {
   ComPtr<ID3D11DeviceContext> context_;
   ComPtr<ID3D11VideoDevice> video_device_;
   ComPtr<ID3D11VideoContext> video_context_;
+  D3d11GpuCompletion completion_;
   ComPtr<ID3D11VideoProcessorEnumerator> enumerator_;
   ComPtr<ID3D11VideoProcessor> processor_;
   LUID adapter_luid_{};
@@ -532,7 +593,6 @@ class GpuFramePool {
   std::uint32_t source_height_ = 0;
   std::array<Slot, kOutputPoolSize> slots_;
   std::size_t next_slot_ = 0;
-  std::uint64_t sequence_ = 0;
 };
 
 // Independent BGRA pool for Electron preview. A slot remains occupied until
@@ -547,6 +607,7 @@ class GpuPreviewPool {
       std::uint32_t max_height)
       : device_(device),
         context_(context),
+        completion_(device, context),
         max_width_(max_width),
         max_height_(max_height) {
     requireHr(
@@ -557,6 +618,10 @@ class GpuPreviewPool {
         context_->QueryInterface(IID_PPV_ARGS(&video_context_)),
         ScreenGpuCaptureErrorCode::FormatUnsupported,
         "D3D11 preview video context is unavailable");
+    requireHr(
+        completion_.initializationResult(),
+        ScreenGpuCaptureErrorCode::InteropUnavailable,
+        "failed to create preview completion query");
   }
 
   ~GpuPreviewPool() {
@@ -594,7 +659,8 @@ class GpuPreviewPool {
       std::uint32_t source_width,
       std::uint32_t source_height,
       std::uint32_t content_width,
-      std::uint32_t content_height) {
+      std::uint32_t content_height,
+      std::uint64_t timestamp_us) {
     ScreenPreviewDemand demand;
     std::uint64_t demand_revision = 0;
     std::uint64_t reserved_sequence = 0;
@@ -613,7 +679,7 @@ class GpuPreviewPool {
         const auto candidate = (next_slot_ + attempt) % slots_.size();
         if (!slots_[candidate].occupied) {
           slots_[candidate].occupied = true;
-          reserved_sequence = ++sequence_;
+          reserved_sequence = nextScreenFrameSequence();
           slots_[candidate].sequence = reserved_sequence;
           slot_index = candidate;
           break;
@@ -673,7 +739,10 @@ class GpuPreviewPool {
               slot.processor.Get(), slot.output_view.Get(), 0, 1, &stream),
           ScreenGpuCaptureErrorCode::DeviceLost,
           "GPU preview copy failed");
-      context_->Flush();
+      requireHr(
+          completion_.wait(kGpuCompletionTimeout),
+          ScreenGpuCaptureErrorCode::DeviceLost,
+          "GPU preview copy did not complete");
 
       HANDLE main_process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, demand.electron_main_pid);
       if (!main_process) throw ScreenGpuCaptureError(
@@ -700,7 +769,7 @@ class GpuPreviewPool {
       next_slot_ = (slot_index + 1) % slots_.size();
       pending_ = ScreenPreviewFrame{
           reserved_sequence,
-          steadyMicros(),
+          timestamp_us != 0 ? timestamp_us : steadyMicros(),
           demand.width,
           demand.height,
           reinterpret_cast<std::uint64_t>(duplicated),
@@ -899,6 +968,7 @@ class GpuPreviewPool {
   ComPtr<ID3D11DeviceContext> context_;
   ComPtr<ID3D11VideoDevice> video_device_;
   ComPtr<ID3D11VideoContext> video_context_;
+  D3d11GpuCompletion completion_;
   const std::uint32_t max_width_;
   const std::uint32_t max_height_;
   mutable std::mutex mutex_;
@@ -907,7 +977,6 @@ class GpuPreviewPool {
   std::optional<ScreenPreviewFrame> pending_;
   std::optional<ScreenPreviewFailure> pending_failure_;
   std::size_t next_slot_ = 0;
-  std::uint64_t sequence_ = 0;
   std::uint64_t demand_revision_ = 0;
   std::chrono::steady_clock::time_point last_frame_at_{};
   std::chrono::steady_clock::time_point next_retry_at_{};
@@ -922,6 +991,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
       std::uint32_t width,
       std::uint32_t height)
       : target_(target), selection_(selectAdapter(target_)), d3d_(createDevice(selection_)),
+        compositor_(d3d_.device.Get(), d3d_.context.Get()),
         pool_(d3d_.device.Get(), d3d_.context.Get(), d3d_.adapter_luid, width, height),
         preview_(d3d_.device.Get(), d3d_.context.Get(), width, height) {
     recreateDuplication();
@@ -971,13 +1041,18 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started_at)
             .count());
+    const auto timestamp_us = qpcMicros(frame_info.LastPresentTime);
     ScreenGpuFrameResult result;
     try {
+      auto* composed = compositor_.compose(
+          texture.Get(), duplication_.Get(), frame_info,
+          selection_.output_description.Rotation);
       result = pool_.process(
-          texture.Get(), native_width_, native_height_, native_width_, native_height_,
-          method(), metrics, frame);
+          composed, native_width_, native_height_, native_width_, native_height_,
+          timestamp_us, method(), metrics, frame);
       preview_.process(
-          texture.Get(), native_width_, native_height_, native_width_, native_height_);
+          composed, native_width_, native_height_, native_width_, native_height_,
+          timestamp_us);
     } catch (const ScreenGpuCaptureError& error) {
       metrics.hresult = error.hresult();
       result = {ScreenGpuFrameStatus::FatalError, metrics, method(), error.code()};
@@ -1009,6 +1084,10 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   void recreateDuplication() {
     duplication_.Reset();
     requireHr(
+        selection_.output->GetDesc(&selection_.output_description),
+        ScreenGpuCaptureErrorCode::CaptureUnavailable,
+        "failed to refresh selected DXGI output");
+    requireHr(
         selection_.output->DuplicateOutput(d3d_.device.Get(), &duplication_),
         ScreenGpuCaptureErrorCode::CaptureUnavailable,
         "failed to create DXGI output duplication");
@@ -1023,6 +1102,7 @@ class DxgiGpuCapturer final : public ScreenGpuCapturer {
   syrnike::voice::ScreenCaptureTarget target_;
   AdapterSelection selection_;
   D3dDevice d3d_;
+  DxgiFrameCompositor compositor_;
   GpuFramePool pool_;
   GpuPreviewPool preview_;
   ComPtr<IDXGIOutputDuplication> duplication_;
@@ -1043,9 +1123,7 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   }
 
   ~WgcGpuCapturer() override {
-    if (closed_subscribed_ && item_) item_.Closed(closed_token_);
-    if (session_) session_.Close();
-    if (frame_pool_) frame_pool_.Close();
+    closeCaptureSession();
   }
 
   ScreenGpuFrameResult capture(ScreenGpuFrame& frame) override {
@@ -1057,9 +1135,22 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
     const auto started_at = std::chrono::steady_clock::now();
     capture::Direct3D11CaptureFrame capture_frame{nullptr};
     winrt::Windows::Graphics::SizeInt32 content_size{};
+    std::uint64_t timestamp_us = 0;
     try {
       capture_frame = frame_pool_.TryGetNextFrame();
-      if (capture_frame) content_size = capture_frame.ContentSize();
+      if (capture_frame) {
+        // Sampling runs on its own cadence. Drain the bounded WGC queue so a
+        // delayed capture iteration publishes the newest complete desktop
+        // composition instead of adding latency frame by frame.
+        for (std::size_t drained = 0; drained < 3; ++drained) {
+          auto newer = frame_pool_.TryGetNextFrame();
+          if (!newer) break;
+          capture_frame.Close();
+          capture_frame = std::move(newer);
+        }
+        content_size = capture_frame.ContentSize();
+        timestamp_us = wgcTimestampMicros(capture_frame.SystemRelativeTime());
+      }
     } catch (const winrt::hresult_error& error) {
       syrnike::voice::ScreenCaptureFrameMetrics metrics;
       metrics.hresult = static_cast<long>(error.code());
@@ -1073,10 +1164,11 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
           code,
       };
     }
-    if (!capture_frame) return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+    if (!capture_frame) return handleNoFrame();
     if (content_size.Width <= 0 || content_size.Height <= 0) {
-      return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+      return handleNoFrame();
     }
+    last_frame_at_ = std::chrono::steady_clock::now();
     if (content_size.Width != pool_size_.Width || content_size.Height != pool_size_.Height) {
       try {
         capture_frame.Close();
@@ -1141,13 +1233,14 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
           static_cast<std::uint32_t>(pool_size_.Height),
           static_cast<std::uint32_t>(content_size.Width),
           static_cast<std::uint32_t>(content_size.Height),
-          method(), metrics, frame);
+          timestamp_us, method(), metrics, frame);
       preview_.process(
           texture.Get(),
           static_cast<std::uint32_t>(pool_size_.Width),
           static_cast<std::uint32_t>(pool_size_.Height),
           static_cast<std::uint32_t>(content_size.Width),
-          static_cast<std::uint32_t>(content_size.Height));
+          static_cast<std::uint32_t>(content_size.Height),
+          timestamp_us);
       return result;
     } catch (const ScreenGpuCaptureError& error) {
       metrics.hresult = error.hresult();
@@ -1175,6 +1268,68 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   LUID adapterLuid() const noexcept override { return d3d_.adapter_luid; }
 
  private:
+  ScreenGpuFrameResult handleNoFrame() {
+    // Recover WGC only when the capture source itself stops delivering frames.
+    // Encoder-owned output slots are reported separately as
+    // EncoderBackpressure and require recreating the publication/encoder.
+    constexpr auto stall_timeout = std::chrono::seconds(2);
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_frame_at_ < stall_timeout ||
+        now - last_restart_at_ < stall_timeout) {
+      return {ScreenGpuFrameStatus::NoFrame, {}, method()};
+    }
+    last_restart_at_ = now;
+    try {
+      closeCaptureSession();
+      target_closed_.store(false, std::memory_order_release);
+      initialize();
+      last_frame_at_ = now;
+      return {ScreenGpuFrameStatus::RecoverableLost, {}, method()};
+    } catch (const ScreenGpuCaptureError& error) {
+      syrnike::voice::ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = error.hresult();
+      return {
+          error.code() == ScreenGpuCaptureErrorCode::TargetClosed
+              ? ScreenGpuFrameStatus::TargetClosed
+              : ScreenGpuFrameStatus::FatalError,
+          metrics,
+          method(),
+          error.code(),
+      };
+    } catch (const winrt::hresult_error& error) {
+      syrnike::voice::ScreenCaptureFrameMetrics metrics;
+      metrics.hresult = static_cast<long>(error.code());
+      const auto code = captureErrorForHr(error.code());
+      return {
+          code == ScreenGpuCaptureErrorCode::TargetClosed
+              ? ScreenGpuFrameStatus::TargetClosed
+              : ScreenGpuFrameStatus::FatalError,
+          metrics,
+          method(),
+          code,
+      };
+    }
+  }
+
+  void closeCaptureSession() noexcept {
+    try {
+      if (closed_subscribed_ && item_) item_.Closed(closed_token_);
+    } catch (...) {
+    }
+    closed_subscribed_ = false;
+    try {
+      if (session_) session_.Close();
+    } catch (...) {
+    }
+    try {
+      if (frame_pool_) frame_pool_.Close();
+    } catch (...) {
+    }
+    session_ = nullptr;
+    frame_pool_ = nullptr;
+    item_ = nullptr;
+  }
+
   void initialize() {
     try {
       winrt::init_apartment(winrt::apartment_type::multi_threaded);
@@ -1241,6 +1396,9 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
     session_.IsCursorCaptureEnabled(true);
     disableCaptureBorderIfAllowed(session_);
     session_.StartCapture();
+    const auto now = std::chrono::steady_clock::now();
+    last_frame_at_ = now;
+    last_restart_at_ = now;
   }
 
   void recreateFramePool(winrt::Windows::Graphics::SizeInt32 size) {
@@ -1266,6 +1424,130 @@ class WgcGpuCapturer final : public ScreenGpuCapturer {
   winrt::event_token closed_token_{};
   bool closed_subscribed_ = false;
   std::atomic_bool target_closed_{false};
+  std::chrono::steady_clock::time_point last_frame_at_{};
+  std::chrono::steady_clock::time_point last_restart_at_{};
+};
+
+std::shared_ptr<ScreenGpuCapturer> createWgcGpuCapturer(
+    const syrnike::voice::ScreenCaptureTarget& target,
+    std::uint32_t width,
+    std::uint32_t height) {
+  try {
+    return std::make_shared<WgcGpuCapturer>(target, width, height);
+  } catch (const ScreenGpuCaptureError&) {
+    throw;
+  } catch (const winrt::hresult_error& error) {
+    throw ScreenGpuCaptureError(
+        ScreenGpuCaptureErrorCode::CaptureUnavailable,
+        "Windows Graphics Capture initialization failed",
+        static_cast<long>(error.code()));
+  }
+}
+
+class MonitorGpuCapturer final : public ScreenGpuCapturer {
+ public:
+  MonitorGpuCapturer(
+      const syrnike::voice::ScreenCaptureTarget& target,
+      std::uint32_t width,
+      std::uint32_t height)
+      : target_(target), width_(width), height_(height) {
+    try {
+      dxgi_ = std::make_shared<DxgiGpuCapturer>(target_, width_, height_);
+      active_ = dxgi_;
+    } catch (const ScreenGpuCaptureError& error) {
+      wgc_ = createWgcGpuCapturer(target_, width_, height_);
+      active_ = wgc_;
+      logScreenCaptureBackend(
+          "screen_capture_backend_initial_fallback", error.what(), error.hresult());
+    } catch (const std::exception& error) {
+      wgc_ = createWgcGpuCapturer(target_, width_, height_);
+      active_ = wgc_;
+      logScreenCaptureBackend(
+          "screen_capture_backend_initial_fallback", error.what());
+    }
+  }
+
+  ScreenGpuFrameResult capture(ScreenGpuFrame& frame) override {
+    auto result = active_->capture(frame);
+    if (active_ != dxgi_) return result;
+
+    const bool should_fallback = fallback_policy_.shouldFallback(result.status);
+    if (result.status == ScreenGpuFrameStatus::RecoverableLost) {
+      if (!should_fallback ||
+          !switchToWgc("repeated_recovery", result.metrics.hresult)) {
+        return result;
+      }
+      result.method = active_->method();
+      return result;
+    }
+    if (should_fallback &&
+        switchToWgc("fatal_error", result.metrics.hresult)) {
+      result.status = ScreenGpuFrameStatus::RecoverableLost;
+      result.method = active_->method();
+      return result;
+    }
+    return result;
+  }
+
+  void discard(const ScreenGpuFrame& frame) noexcept override {
+    if (dxgi_) dxgi_->discard(frame);
+    if (wgc_) wgc_->discard(frame);
+  }
+
+  void setPreviewDemand(ScreenPreviewDemand demand) override {
+    preview_demand_ = demand;
+    if (dxgi_) dxgi_->setPreviewDemand(demand);
+    if (wgc_) wgc_->setPreviewDemand(demand);
+  }
+
+  bool takePreviewFrame(ScreenPreviewFrame& frame) override {
+    return (dxgi_ && dxgi_->takePreviewFrame(frame)) ||
+        (wgc_ && wgc_->takePreviewFrame(frame));
+  }
+
+  bool takePreviewFailure(ScreenPreviewFailure& failure) override {
+    return (dxgi_ && dxgi_->takePreviewFailure(failure)) ||
+        (wgc_ && wgc_->takePreviewFailure(failure));
+  }
+
+  void releasePreviewFrame(std::uint64_t sequence) noexcept override {
+    if (dxgi_) dxgi_->releasePreviewFrame(sequence);
+    if (wgc_) wgc_->releasePreviewFrame(sequence);
+  }
+
+  std::size_t previewFramesInFlight() const noexcept override {
+    return (dxgi_ ? dxgi_->previewFramesInFlight() : 0) +
+        (wgc_ ? wgc_->previewFramesInFlight() : 0);
+  }
+
+  const char* method() const noexcept override { return active_->method(); }
+  LUID adapterLuid() const noexcept override { return active_->adapterLuid(); }
+
+ private:
+  bool switchToWgc(std::string_view reason, long hresult) noexcept {
+    if (active_ == wgc_) return true;
+    try {
+      if (!wgc_) {
+        wgc_ = createWgcGpuCapturer(target_, width_, height_);
+        wgc_->setPreviewDemand(preview_demand_);
+      }
+      active_ = wgc_;
+      logScreenCaptureBackend(
+          "screen_capture_backend_runtime_fallback", reason, hresult);
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  syrnike::voice::ScreenCaptureTarget target_;
+  std::uint32_t width_ = 0;
+  std::uint32_t height_ = 0;
+  ScreenPreviewDemand preview_demand_;
+  std::shared_ptr<ScreenGpuCapturer> dxgi_;
+  std::shared_ptr<ScreenGpuCapturer> wgc_;
+  std::shared_ptr<ScreenGpuCapturer> active_;
+  DxgiFallbackPolicy fallback_policy_;
 };
 
 }  // namespace
@@ -1285,16 +1567,8 @@ std::shared_ptr<ScreenGpuCapturer> ScreenGpuCapturer::create(
         ScreenGpuCaptureErrorCode::TargetClosed,
         "selected window is no longer available");
   }
-  try {
-    return std::make_shared<WgcGpuCapturer>(target, width, height);
-  } catch (const ScreenGpuCaptureError&) {
-    throw;
-  } catch (const winrt::hresult_error& error) {
-    throw ScreenGpuCaptureError(
-        ScreenGpuCaptureErrorCode::CaptureUnavailable,
-        "Windows Graphics Capture initialization failed",
-        static_cast<long>(error.code()));
-  }
+  if (target.window) return createWgcGpuCapturer(target, width, height);
+  return std::make_shared<MonitorGpuCapturer>(target, width, height);
 }
 
 }  // namespace syrnike::desktop_native::media

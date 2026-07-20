@@ -156,6 +156,46 @@ function LoadingScreenStreamTile({
   )
 }
 
+function FailedScreenStreamTile({
+  displayName,
+  error,
+  variant,
+  onRetry,
+}: {
+  displayName: string
+  error: string
+  variant: StageMediaTileVariant
+  onRetry: () => void
+}) {
+  return (
+    <>
+      <div className={screenStreamSurfaceClass} aria-hidden />
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center"
+        role="alert"
+      >
+        <MonitorXIcon className="size-7 text-destructive" aria-hidden />
+        {variant !== 'strip' ? (
+          <p className="max-w-sm text-sm text-muted-foreground">{error}</p>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onKeyDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            onRetry()
+          }}
+        >
+          Повторить
+        </Button>
+      </div>
+      <ScreenStreamOwnerLabel displayName={displayName} variant={variant} />
+    </>
+  )
+}
+
 export function StageMediaTile({
   item,
   user,
@@ -177,12 +217,16 @@ export function StageMediaTile({
     isScreen ? s.getStreamVolume(item.userId) : s.getUserVolume(item.userId),
   )
   const palette = useVoiceTilePalette(user, item.userId)
+  const isFailedScreen = isScreen && Boolean(item.error)
   const isUnsubscribedScreen =
-    isScreen && !item.isLocal && item.subscribed === false
+    isScreen && !isFailedScreen && !item.isLocal && item.subscribed === false
   const isLoadingScreen =
-    isScreen && !isUnsubscribedScreen && !item.track
-  const isScreenPlaceholder = isUnsubscribedScreen || isLoadingScreen
-  const hasVideo = Boolean(item.track && !isUnsubscribedScreen)
+    isScreen && !isFailedScreen && !isUnsubscribedScreen && !item.track
+  const isScreenPlaceholder =
+    isFailedScreen || isUnsubscribedScreen || isLoadingScreen
+  const hasVideo = Boolean(
+    item.track && !isFailedScreen && !isUnsubscribedScreen,
+  )
   const fit =
     variant === 'focus'
       ? 'cover'
@@ -264,6 +308,13 @@ export function StageMediaTile({
                 onVideoSizeChange={updateVideoSize}
               />
             )
+          ) : isFailedScreen ? (
+            <FailedScreenStreamTile
+              displayName={displayName}
+              error={item.error ?? 'Не удалось подключиться к демонстрации'}
+              variant={variant}
+              onRetry={() => onSetSubscribed(item.id, true)}
+            />
           ) : isUnsubscribedScreen ? (
             <UnsubscribedScreenStreamTile
               displayName={displayName}

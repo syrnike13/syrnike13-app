@@ -37,6 +37,10 @@
 
 namespace livekit {
 
+namespace proto {
+class TrackPublicationInfo;
+}
+
 struct ParticipantTrackPermission;
 
 class FfiClient;
@@ -236,6 +240,7 @@ protected:
   void handleRpcMethodInvocation(std::uint64_t invocation_id, const std::string& method, const std::string& request_id,
                                  const std::string& caller_identity, const std::string& payload,
                                  double response_timeout);
+  void handleTrackRepublished(const std::string& previous_sid, const proto::TrackPublicationInfo& info);
   /// Called by Room events like kTrackMuted.
   std::shared_ptr<TrackPublication> findTrackPublication(const std::string& sid) const override;
   friend class Room;
@@ -245,6 +250,8 @@ private:
   /// cached publication). @c mutable so @ref trackPublications() const can
   /// prune expired @c weak_ptr entries.
   mutable TrackMap published_tracks_by_sid_;
+  mutable std::unordered_map<std::string, std::string> publication_sid_aliases_;
+  mutable std::mutex published_tracks_mutex_;
 
   std::unordered_map<std::string, RpcHandler> rpc_handlers_;
 

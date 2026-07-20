@@ -42,6 +42,7 @@ export type StageMediaTrackEntry<TTrack = unknown, TPublication = unknown> = {
   publication?: TPublication | null
   subscribed?: boolean
   live?: boolean
+  error?: string
 }
 
 export type StageMediaItem<TTrack = unknown, TPublication = unknown> = {
@@ -54,6 +55,7 @@ export type StageMediaItem<TTrack = unknown, TPublication = unknown> = {
   isLocal: boolean
   subscribed?: boolean
   live: boolean
+  error?: string
   /** Ожидание LiveKit: полупрозрачная плитка до connected. */
   pending?: boolean
 }
@@ -184,6 +186,7 @@ function mediaItem<TTrack, TPublication>(
     isLocal,
     subscribed: entry.subscribed,
     live: entry.live ?? Boolean(entry.track && entry.subscribed !== false),
+    error: entry.error,
   }
 }
 

@@ -132,10 +132,9 @@ export function UserGlobalProfileSidebar({
             actorMember,
             actorUserId,
             member,
-            auth.user?.privileged,
           ),
       ),
-    [actorMember, actorUserId, auth.user?.privileged, member, server],
+    [actorMember, actorUserId, member, server],
   )
 
   const profileQuery = useQuery({
@@ -163,7 +162,6 @@ export function UserGlobalProfileSidebar({
         member,
         role,
         false,
-        auth.user?.privileged,
       )
     ) {
       return
@@ -430,7 +428,6 @@ export function UserGlobalProfileSidebar({
                     member,
                     serverRole!,
                     false,
-                    auth.user?.privileged,
                   )
                 const removing = removingRoleId === role.id
                 return (

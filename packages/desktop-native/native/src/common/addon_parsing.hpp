@@ -145,7 +145,13 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
     command.audio_requested = boolField(audio.As<Napi::Object>(), "requested", command.audio_requested);
   }
   command.noise_suppression = boolField(settings, "noiseSuppression", true);
-  command.echo_cancellation = boolField(settings, "echoCancellation", true);
+  command.echo_cancellation = boolField(settings, "echoCancellation", false);
+  command.bypass_system_audio_input_processing = boolField(
+    settings,
+    "bypassSystemAudioInputProcessing",
+    true
+  );
+  command.automatic_gain_control = boolField(settings, "automaticGainControl", true);
   command.input_volume = floatField(settings, "inputVolume", 1.0f);
   command.output_volume = floatField(object, "volume", 1.0f);
   command.voice_gate_enabled = boolField(settings, "voiceGateEnabled", true);
@@ -155,6 +161,11 @@ inline MediaCommand parseMediaCommand(const Napi::Object& object) {
   command.deafened = boolField(object, "deafened", false);
   command.has_noise_suppression = hasField(settings, "noiseSuppression");
   command.has_echo_cancellation = hasField(settings, "echoCancellation");
+  command.has_bypass_system_audio_input_processing = hasField(
+    settings,
+    "bypassSystemAudioInputProcessing"
+  );
+  command.has_automatic_gain_control = hasField(settings, "automaticGainControl");
   command.has_input_volume = hasField(settings, "inputVolume");
   command.has_output_volume = hasField(object, "volume");
   command.has_voice_gate_enabled = hasField(settings, "voiceGateEnabled");

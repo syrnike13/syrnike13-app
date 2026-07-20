@@ -1,6 +1,7 @@
 import {
   RiAndroidFill,
   RiAppleFill,
+  RiTelegram2Fill,
   RiUbuntuFill,
   RiWindowsFill,
 } from '@remixicon/react'
@@ -25,4 +26,9 @@ export const LinuxIcon = defineIcon(RiUbuntuFill, {
 export const AndroidIcon = defineIcon(RiAndroidFill, {
   pack: 'remixicon',
   name: 'RiAndroidFill',
+})
+
+export const TelegramIcon = defineIcon(RiTelegram2Fill, {
+  pack: 'remixicon',
+  name: 'RiTelegram2Fill',
 })

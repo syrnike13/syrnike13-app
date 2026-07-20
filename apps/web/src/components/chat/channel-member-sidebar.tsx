@@ -121,7 +121,6 @@ export function ChannelMemberSidebar({ channel }: ChannelMemberSidebarProps) {
         channel,
         entry.member,
         entry.user._id,
-        entry.user.privileged,
       ),
     )
   }, [channel, members, server])

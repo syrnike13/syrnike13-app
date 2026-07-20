@@ -13,6 +13,7 @@ function participantWithAudioTrack(audioTrack: unknown) {
 function processingPreferences() {
   const prefs = voicePreferenceStore.getState()
   return {
+    automaticGainControl: prefs.automaticGainControl,
     echoCancellation: prefs.echoCancellation,
     noiseSuppression: prefs.noiseSuppression,
     inputVolume: prefs.inputVolume,
@@ -24,6 +25,7 @@ function processingPreferences() {
 
 describe('applyMicProcessing', () => {
   beforeEach(() => {
+    voicePreferenceStore.setAutomaticGainControl(false)
     voicePreferenceStore.setVoiceGateEnabled(true)
     voicePreferenceStore.setVoiceGateThresholdDb(-28)
     voicePreferenceStore.setInputVolume(1)
@@ -55,6 +57,27 @@ describe('applyMicProcessing', () => {
         noiseSuppression: false,
         autoGainControl: false,
       }),
+    )
+  })
+
+  it('applies automatic gain control as a live capture constraint', async () => {
+    voicePreferenceStore.setAutomaticGainControl(true)
+    const audioTrack = {
+      mediaStreamTrack: {
+        applyConstraints: vi.fn(async () => {}),
+      },
+      getProcessor: vi.fn(() => null),
+      stopProcessor: vi.fn(async () => {}),
+      setProcessor: vi.fn(async () => {}),
+    }
+
+    await applyMicProcessing(
+      participantWithAudioTrack(audioTrack) as never,
+      processingPreferences(),
+    )
+
+    expect(audioTrack.mediaStreamTrack.applyConstraints).toHaveBeenCalledWith(
+      expect.objectContaining({ autoGainControl: true }),
     )
   })
 

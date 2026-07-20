@@ -1,7 +1,7 @@
 use crate::{
-    calculate_channel_permissions, calculate_user_permissions, ChannelPermission, ChannelType,
-    Override, PermissionQuery, RelationshipStatus, DEFAULT_PERMISSION_DIRECT_MESSAGE,
-    DEFAULT_PERMISSION_SERVER, DEFAULT_PERMISSION_VIEW_ONLY,
+    calculate_channel_permissions, calculate_server_permissions, calculate_user_permissions,
+    ChannelPermission, ChannelType, Override, PermissionQuery, RelationshipStatus,
+    DEFAULT_PERMISSION_DIRECT_MESSAGE, DEFAULT_PERMISSION_SERVER, DEFAULT_PERMISSION_VIEW_ONLY,
 };
 
 #[async_std::test]
@@ -20,10 +20,6 @@ async fn validate_user_permissions() {
 
     #[async_trait]
     impl PermissionQuery for Scenario {
-        async fn are_we_privileged(&mut self) -> bool {
-            false
-        }
-
         async fn are_we_a_bot(&mut self) -> bool {
             false
         }
@@ -121,10 +117,6 @@ async fn validate_group_permissions() {
 
     #[async_trait]
     impl PermissionQuery for Scenario {
-        async fn are_we_privileged(&mut self) -> bool {
-            false
-        }
-
         async fn are_we_a_bot(&mut self) -> bool {
             unreachable!()
         }
@@ -229,10 +221,6 @@ async fn validate_server_permissions() {
 
     #[async_trait]
     impl PermissionQuery for Scenario {
-        async fn are_we_privileged(&mut self) -> bool {
-            false
-        }
-
         async fn are_we_a_bot(&mut self) -> bool {
             unreachable!()
         }
@@ -339,10 +327,6 @@ async fn channel_role_override_allow_wins_over_other_role_deny() {
 
     #[async_trait]
     impl PermissionQuery for Scenario {
-        async fn are_we_privileged(&mut self) -> bool {
-            false
-        }
-
         async fn are_we_a_bot(&mut self) -> bool {
             unreachable!()
         }
@@ -446,10 +430,6 @@ async fn channel_user_override_applies_after_role_overrides() {
 
     #[async_trait]
     impl PermissionQuery for Scenario {
-        async fn are_we_privileged(&mut self) -> bool {
-            false
-        }
-
         async fn are_we_a_bot(&mut self) -> bool {
             unreachable!()
         }
@@ -550,10 +530,6 @@ async fn validate_timed_out_member() {
 
     #[async_trait]
     impl PermissionQuery for Scenario {
-        async fn are_we_privileged(&mut self) -> bool {
-            false
-        }
-
         async fn are_we_a_bot(&mut self) -> bool {
             unreachable!()
         }
@@ -633,5 +609,116 @@ async fn validate_timed_out_member() {
         async fn set_server_from_channel(&mut self) {
             // no-op
         }
+    }
+}
+
+#[async_std::test]
+async fn access_admin_does_not_get_user_permissions_automatically() {
+    let mut query = AccessAdminWithoutMembership {
+        _has_access_admin: true,
+    };
+
+    assert_eq!(u64::from(calculate_user_permissions(&mut query).await), 0);
+}
+
+#[async_std::test]
+async fn access_admin_without_membership_gets_no_server_or_channel_permissions() {
+    let mut query = AccessAdminWithoutMembership {
+        _has_access_admin: true,
+    };
+
+    assert_eq!(u64::from(calculate_server_permissions(&mut query).await), 0);
+    assert_eq!(
+        u64::from(calculate_channel_permissions(&mut query).await),
+        0
+    );
+}
+
+// The production query may still carry this account-level flag, but AccessAdmin is
+// deliberately absent from PermissionQuery because it only authorizes admin routes.
+struct AccessAdminWithoutMembership {
+    _has_access_admin: bool,
+}
+
+#[async_trait]
+impl PermissionQuery for AccessAdminWithoutMembership {
+    async fn are_we_a_bot(&mut self) -> bool {
+        false
+    }
+
+    async fn are_the_users_same(&mut self) -> bool {
+        false
+    }
+
+    async fn user_relationship(&mut self) -> RelationshipStatus {
+        RelationshipStatus::None
+    }
+
+    async fn user_is_bot(&mut self) -> bool {
+        false
+    }
+
+    async fn have_mutual_connection(&mut self) -> bool {
+        false
+    }
+
+    async fn are_we_server_owner(&mut self) -> bool {
+        false
+    }
+
+    async fn are_we_a_member(&mut self) -> bool {
+        false
+    }
+
+    async fn get_default_server_permissions(&mut self) -> u64 {
+        unreachable!()
+    }
+
+    async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
+        unreachable!()
+    }
+
+    async fn are_we_timed_out(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn do_we_have_publish_overwrites(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn do_we_have_receive_overwrites(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn get_channel_type(&mut self) -> ChannelType {
+        ChannelType::ServerChannel
+    }
+
+    async fn get_default_channel_permissions(&mut self) -> Override {
+        unreachable!()
+    }
+
+    async fn get_our_channel_role_overrides(&mut self) -> Vec<Override> {
+        unreachable!()
+    }
+
+    async fn get_our_channel_user_override(&mut self) -> Option<Override> {
+        unreachable!()
+    }
+
+    async fn do_we_own_the_channel(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn are_we_part_of_the_channel(&mut self) -> bool {
+        unreachable!()
+    }
+
+    async fn set_recipient_as_user(&mut self) {
+        unreachable!()
+    }
+
+    async fn set_server_from_channel(&mut self) {
+        // no-op
     }
 }

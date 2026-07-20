@@ -62,6 +62,7 @@ MediaCommand command(std::uint64_t generation, std::string request_id = "request
   result.type = "connectCamera"; result.request_id = std::move(request_id);
   result.session_id = "voice"; result.generation = generation;
   result.livekit_url = "wss://example.invalid"; result.livekit_token = "token";
+  result.participant_identity = "user:native-camera";
   result.width = 16; result.height = 16; result.fps = 30;
   return result;
 }
@@ -118,6 +119,21 @@ int main() try {
   if (replacement_reply.ok || !replacement_reply.error ||
       replacement_reply.error->code != "native_command_failed") {
     throw std::runtime_error("replacement camera attempt was not launched and settled");
+  }
+
+  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Connect);
+  client->releaseNext(DeterministicFakeLiveKitPublicationClient::Operation::Publish);
+  current.store(4);
+  actor->connect(command(4, "preview"));
+  const auto preview_reply = waitReply(sink, "preview");
+  if (!preview_reply.ok || client->localCameraPreviewStartCount() != 1) {
+    throw std::runtime_error("camera publication did not start its local preview");
+  }
+  auto disconnect = command(4, "disconnect-preview");
+  disconnect.type = "disconnectCamera";
+  actor->disconnect(disconnect);
+  if (client->localCameraPreviewStopCount() != 1) {
+    throw std::runtime_error("camera disconnect did not stop its local preview");
   }
 
   actor->shutdown();

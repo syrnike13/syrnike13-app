@@ -30,9 +30,13 @@ RemoteTrackPublication::RemoteTrackPublication(const proto::OwnedTrackPublicatio
                        convertAudioFeatures(owned.info().audio_features())) {}
 
 void RemoteTrackPublication::setSubscribed(bool subscribed) {
+  const std::scoped_lock<std::mutex> command_guard(subscription_command_lock_);
+
   if (ffiHandleId() == 0) {
     throw std::runtime_error("RemoteTrackPublication::setSubscribed: invalid FFI handle");
   }
+
+  const bool previous_desired = subscription_desired_.exchange(subscribed, std::memory_order_acq_rel);
 
   proto::FfiRequest req;
   auto* msg = req.mutable_set_subscribed();
@@ -41,10 +45,13 @@ void RemoteTrackPublication::setSubscribed(bool subscribed) {
 
   // Synchronous request; if you add an async version in FfiClient, you can
   // wire that up instead.
-  auto resp = FfiClient::instance().sendRequest(req);
-  (void)resp; // currently unused, but you can inspect error fields here
-
-  subscribed_ = subscribed;
+  try {
+    auto resp = FfiClient::instance().sendRequest(req);
+    (void)resp; // currently unused, but you can inspect error fields here
+  } catch (...) {
+    subscription_desired_.store(previous_desired, std::memory_order_release);
+    throw;
+  }
 }
 
 } // namespace livekit

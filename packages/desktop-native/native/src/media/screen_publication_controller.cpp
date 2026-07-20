@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -36,10 +37,7 @@ void logScreen(
 }
 
 int screenBitrate(int requested) {
-  if (requested <= 625'000) return 625'000;
-  if (requested <= 2'500'000) return 2'500'000;
-  if (requested <= 4'000'000) return 4'000'000;
-  return 8'000'000;
+  return std::clamp(requested, 625'000, 10'000'000);
 }
 
 std::string screenFailureCode(std::string_view message) {
@@ -232,6 +230,11 @@ class ScreenPublicationController::Implementation {
       );
       throw std::runtime_error("stale screen stop generation");
     }
+    if (pending_restart_ &&
+        pending_restart_->session_id == command.session_id &&
+        pending_restart_->generation == command.generation) {
+      pending_restart_.reset();
+    }
     if (candidate_ && candidate_->kind == AttemptKind::Start &&
         candidate_->command.session_id == command.session_id) {
       candidate_->cancel_requested.store(true);
@@ -241,6 +244,23 @@ class ScreenPublicationController::Implementation {
     const auto stopped_generation = active_->command.generation;
     retireResources(std::move(active_));
     if (emit_stopped) emitStopped(stopped_session_id, stopped_generation, "stopped");
+  }
+
+  void restartCaptureAfterStall(const MediaCommand& command) {
+    reapFinishedWork();
+    if (shutdown_ || !is_current_(command.session_id, command.generation)) return;
+    if (!active_ || !matches(*active_, command) || pending_restart_) return;
+
+    pending_restart_ = active_->command;
+    pending_restart_->request_id.clear();
+    logScreen(
+      "screen_stall_restart_requested",
+      {
+        {"sessionId", command.session_id},
+        {"generation", command.generation}
+      }
+    );
+    retireResources(std::move(active_));
   }
 
   void disconnect(const MediaCommand& command, bool emit_stopped) {
@@ -264,6 +284,12 @@ class ScreenPublicationController::Implementation {
       throw std::runtime_error("stale screen disconnect generation");
     }
     bool matched = false;
+    if (pending_restart_ &&
+        (command.session_id.empty() ||
+         pending_restart_->session_id == command.session_id)) {
+      pending_restart_.reset();
+      matched = true;
+    }
     if (candidate_ &&
         (command.session_id.empty() || candidate_->command.session_id == command.session_id)) {
       candidate_->cancel_requested.store(true);
@@ -290,6 +316,12 @@ class ScreenPublicationController::Implementation {
   bool handleTerminal(const MediaCommand& command, bool livekit_terminal) {
     reapFinishedWork();
     bool affected = false;
+    if (pending_restart_ &&
+        pending_restart_->session_id == command.session_id &&
+        pending_restart_->generation == command.generation) {
+      pending_restart_.reset();
+      affected = true;
+    }
     if (candidate_ && matches(*candidate_, command) &&
         (livekit_terminal || candidate_->kind == AttemptKind::Start)) {
       affected = !candidate_->cancel_requested.exchange(true);
@@ -382,6 +414,7 @@ class ScreenPublicationController::Implementation {
   void shutdown() {
     if (shutdown_) return;
     shutdown_ = true;
+    pending_restart_.reset();
     logScreen("screen_shutdown_start");
     if (candidate_) {
       candidate_->cancel_requested.store(true);
@@ -868,7 +901,10 @@ class ScreenPublicationController::Implementation {
     result.loopback_mode = description.loopback_mode;
     result.audio_target_process_id = description.audio_target_process_id;
     result.native_participant_identity = command.participant_identity;
-    emitter_.emit(result);
+    // Stall recovery reuses the original capture command after clearing its
+    // request id. It still needs lifecycle events, but an empty-id reply is not
+    // a valid runtime event and would make the utility host terminate.
+    if (!command.request_id.empty()) emitter_.emit(result);
     if (emit_session_started) {
       RuntimeEvent started = result;
       started.type = "sessionStarted";
@@ -1055,6 +1091,7 @@ class ScreenPublicationController::Implementation {
     retiring_.reset();
     logScreen("screen_retire_done", {{"retireId", id}});
     startDeferredRetire();
+    startPendingRestart();
   }
 
   void startDeferredRetire() {
@@ -1062,6 +1099,28 @@ class ScreenPublicationController::Implementation {
       auto next = std::move(deferred_retire_);
       retireResources(std::move(next));
     }
+  }
+
+  void startPendingRestart() {
+    if (shutdown_ || retiring_ || deferred_retire_ || candidate_ ||
+        !pending_restart_) return;
+    auto command = std::move(*pending_restart_);
+    pending_restart_.reset();
+    if (!is_current_(command.session_id, command.generation)) return;
+
+    auto attempt = std::make_shared<AttemptState>();
+    attempt->kind = AttemptKind::Start;
+    attempt->command = std::move(command);
+    attempt->resources = std::make_unique<ScreenResources>();
+    attempt->resources->command = attempt->command;
+    logScreen(
+      "screen_stall_restart_launch",
+      {
+        {"sessionId", attempt->command.session_id},
+        {"generation", attempt->command.generation}
+      }
+    );
+    launchAttempt(std::move(attempt));
   }
 
   void reapFinishedWork() {
@@ -1073,6 +1132,7 @@ class ScreenPublicationController::Implementation {
       finishRetire(id);
     }
     if (!retiring_ && deferred_retire_) startDeferredRetire();
+    if (!retiring_ && !deferred_retire_) startPendingRestart();
   }
 
   void drainRetirements() {
@@ -1103,6 +1163,7 @@ class ScreenPublicationController::Implementation {
   std::shared_ptr<AttemptState> candidate_;
   std::shared_ptr<RetiringState> retiring_;
   std::unique_ptr<ScreenResources> deferred_retire_;
+  std::optional<MediaCommand> pending_restart_;
   std::uint64_t next_retire_id_ = 0;
   bool shutdown_ = false;
 };
@@ -1148,6 +1209,12 @@ void ScreenPublicationController::stopCapture(
   bool emit_stopped
 ) {
   implementation_->stopCapture(command, emit_stopped);
+}
+
+void ScreenPublicationController::restartCaptureAfterStall(
+  const MediaCommand& command
+) {
+  implementation_->restartCaptureAfterStall(command);
 }
 
 void ScreenPublicationController::disconnect(

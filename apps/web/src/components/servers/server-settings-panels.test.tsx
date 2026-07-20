@@ -5,7 +5,6 @@ import {
   fireEvent,
   render,
   screen,
-  within,
   waitFor,
 } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -13,6 +12,9 @@ import type { Channel, File as ApiFile } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ServerSettingsPanelContent } from '#/components/servers/server-settings-panels'
+import type { ServerSettingsTab } from '#/components/servers/server-settings-types'
+import { DraftProvider } from '#/components/settings/draft-controller-context'
+import { UnsavedChangesBar } from '#/components/settings/unsaved-changes-bar'
 import { syncStore } from '#/features/sync/sync-store'
 
 Object.defineProperty(HTMLElement.prototype, 'hasPointerCapture', {
@@ -27,17 +29,11 @@ const mocks = vi.hoisted(() => ({
   editServer: vi.fn(),
   uploadEmoji: vi.fn(),
   uploadMediaFile: vi.fn(),
-  deleteOrLeaveServer: vi.fn(),
   createServerEmoji: vi.fn(),
   deleteServerEmoji: vi.fn(),
   fetchServerEmojis: vi.fn(),
-  navigate: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
-}))
-
-vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => mocks.navigate,
 }))
 
 vi.mock('sonner', () => ({
@@ -56,10 +52,6 @@ vi.mock('#/features/auth/auth-context', () => ({
   }),
 }))
 
-vi.mock('#/features/navigation/route-prefix', () => ({
-  useAppRoutePrefix: () => '/app',
-}))
-
 vi.mock('#/features/api/media-api', () => ({
   uploadEmoji: (...args: Parameters<typeof mocks.uploadEmoji>) =>
     mocks.uploadEmoji(...args),
@@ -70,9 +62,6 @@ vi.mock('#/features/api/media-api', () => ({
 vi.mock('#/features/api/servers-api', () => ({
   createServerEmoji: (...args: Parameters<typeof mocks.createServerEmoji>) =>
     mocks.createServerEmoji(...args),
-  deleteOrLeaveServer: (
-    ...args: Parameters<typeof mocks.deleteOrLeaveServer>
-  ) => mocks.deleteOrLeaveServer(...args),
   deleteServerEmoji: (...args: Parameters<typeof mocks.deleteServerEmoji>) =>
     mocks.deleteServerEmoji(...args),
   editServer: (...args: Parameters<typeof mocks.editServer>) =>
@@ -148,7 +137,29 @@ async function chooseSystemMessageChannel(label: string) {
   fireEvent.click(await screen.findByRole('option', { name: label }))
 }
 
-describe('ServerSettingsPanelContent overview', () => {
+async function chooseServerMediaAction(
+  triggerName: string,
+  actionName: string,
+) {
+  fireEvent.pointerDown(screen.getByRole('button', { name: triggerName }), {
+    button: 0,
+    ctrlKey: false,
+    pointerId: 1,
+    pointerType: 'mouse',
+  })
+  fireEvent.click(await screen.findByRole('menuitem', { name: actionName }))
+}
+
+function renderPanel(tab: ServerSettingsTab) {
+  return render(
+    <DraftProvider>
+      <ServerSettingsPanelContent serverId="server-1" tab={tab} />
+      <UnsavedChangesBar />
+    </DraftProvider>,
+  )
+}
+
+describe('ServerSettingsPanelContent', () => {
   beforeEach(() => {
     syncStore.reset()
     upsertServer()
@@ -157,8 +168,6 @@ describe('ServerSettingsPanelContent overview', () => {
     mocks.fetchServerEmojis.mockResolvedValue([])
     mocks.uploadEmoji.mockResolvedValue('emoji-file')
     mocks.uploadMediaFile.mockResolvedValue('file-id')
-    mocks.deleteOrLeaveServer.mockResolvedValue(undefined)
-    mocks.navigate.mockResolvedValue(undefined)
     mocks.editServer.mockImplementation((_token, _serverId, patch) =>
       Promise.resolve({
         _id: 'server-1',
@@ -185,7 +194,7 @@ describe('ServerSettingsPanelContent overview', () => {
       .mockResolvedValueOnce('icon-file')
       .mockResolvedValueOnce('banner-file')
 
-    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+    renderPanel('overview')
 
     fireEvent.change(screen.getByLabelText('Иконка сервера'), {
       target: { files: [icon] },
@@ -193,6 +202,16 @@ describe('ServerSettingsPanelContent overview', () => {
     fireEvent.change(screen.getByLabelText('Баннер сервера'), {
       target: { files: [banner] },
     })
+
+    const unsavedBar = screen.getByRole('status')
+    expect(unsavedBar.querySelector('.gradient-surface-solid')).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: 'Сбросить' }).dataset.variant,
+    ).toBe('ghost')
+    expect(
+      screen.getByRole('button', { name: 'Сохранить' }).dataset.variant,
+    ).toBe('default')
+
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
@@ -221,10 +240,16 @@ describe('ServerSettingsPanelContent overview', () => {
       banner: imageFile({ _id: 'banner-1', tag: 'backgrounds' }),
     })
 
-    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+    renderPanel('overview')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Удалить иконку' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Удалить баннер' }))
+    await chooseServerMediaAction(
+      'Открыть меню иконки сервера',
+      'Удалить иконку',
+    )
+    await chooseServerMediaAction(
+      'Открыть меню баннера сервера',
+      'Удалить баннер',
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
@@ -235,8 +260,8 @@ describe('ServerSettingsPanelContent overview', () => {
     expect(mocks.uploadMediaFile).not.toHaveBeenCalled()
   })
 
-  it('saves the system messages channel from overview settings', async () => {
-    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+  it('saves the system messages channel from engagement settings', async () => {
+    renderPanel('engagement')
 
     await chooseSystemMessageChannel('#announcements')
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
@@ -256,7 +281,7 @@ describe('ServerSettingsPanelContent overview', () => {
   it('removes the server description when the field is cleared', async () => {
     upsertServer({ description: 'Старое описание' })
 
-    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+    renderPanel('overview')
 
     fireEvent.change(screen.getByLabelText('Описание'), {
       target: { value: '' },
@@ -270,6 +295,34 @@ describe('ServerSettingsPanelContent overview', () => {
     })
   })
 
+  it('keeps reset feedback visible until the bar finishes exiting', async () => {
+    renderPanel('overview')
+
+    fireEvent.change(screen.getByLabelText('Название'), {
+      target: { value: 'Changed server' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Сбросить' }))
+
+    expect(screen.getByText('Изменения отменены')).toBeTruthy()
+
+    await waitFor(
+      () => {
+        expect(screen.getByRole('status').dataset.phase).toBe('exiting')
+      },
+      { interval: 20, timeout: 1_000 },
+    )
+
+    expect(screen.getByText('Изменения отменены')).toBeTruthy()
+    expect(screen.queryByText('Есть несохранённые изменения')).toBeNull()
+
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('status')).toBeNull()
+      },
+      { interval: 20, timeout: 500 },
+    )
+  })
+
   it('removes system messages when the system channel is cleared', async () => {
     upsertServer({
       system_messages: {
@@ -280,7 +333,7 @@ describe('ServerSettingsPanelContent overview', () => {
       },
     })
 
-    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
+    renderPanel('engagement')
 
     await chooseSystemMessageChannel('Не отправлять')
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
@@ -290,48 +343,6 @@ describe('ServerSettingsPanelContent overview', () => {
         remove: ['SystemMessages'],
       })
     })
-  })
-
-  it('deletes an owned server from the overview danger zone through a dialog', async () => {
-    upsertServer({ owner: 'user-1' })
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-
-    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Удалить сервер' }))
-
-    expect(confirmSpy).not.toHaveBeenCalled()
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.textContent).toContain('Server')
-    expect(mocks.deleteOrLeaveServer).not.toHaveBeenCalled()
-
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'Удалить сервер' }),
-    )
-
-    await waitFor(() => {
-      expect(mocks.deleteOrLeaveServer).toHaveBeenCalledWith(
-        'session-token',
-        'server-1',
-      )
-    })
-    expect(syncStore.getState().servers['server-1']).toBeUndefined()
-    await waitFor(() => {
-      expect(mocks.navigate).toHaveBeenCalledWith({
-        to: '/app',
-        search: { tab: 'online' },
-      })
-    })
-  })
-
-  it('does not expose server deletion to non-owners in overview settings', () => {
-    upsertServer({ owner: 'owner-2' })
-
-    render(<ServerSettingsPanelContent serverId="server-1" tab="overview" />)
-
-    expect(
-      screen.queryByRole('button', { name: 'Удалить сервер' }),
-    ).toBeNull()
   })
 
   it('deletes a server emoji through a confirmation dialog', async () => {
@@ -345,7 +356,7 @@ describe('ServerSettingsPanelContent overview', () => {
       },
     ])
 
-    render(<ServerSettingsPanelContent serverId="server-1" tab="emoji" />)
+    renderPanel('emoji')
 
     expect(await screen.findByText(':party:')).toBeTruthy()
     fireEvent.click(screen.getByTitle('Удалить'))
@@ -366,7 +377,7 @@ describe('ServerSettingsPanelContent overview', () => {
   it('rejects invalid server emoji names before upload', async () => {
     const file = new File(['emoji'], 'party.png', { type: 'image/png' })
 
-    render(<ServerSettingsPanelContent serverId="server-1" tab="emoji" />)
+    renderPanel('emoji')
 
     fireEvent.change(screen.getByLabelText('Имя'), {
       target: { value: 'party parrot!' },

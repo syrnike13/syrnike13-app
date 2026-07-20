@@ -686,6 +686,22 @@ async fn worker(
                             }
                         }
                     }
+                    ClientMessage::ChannelActivity {
+                        request_id,
+                        channel_id,
+                        request,
+                    } => {
+                        if let Some(event) = crate::channel_activity::handle_request(
+                            &user,
+                            request_id,
+                            channel_id,
+                            request,
+                        )
+                        .await
+                        {
+                            write.lock().await.send(config.encode(&event)).await.ok();
+                        }
+                    }
                     _ => {}
                 }
             }

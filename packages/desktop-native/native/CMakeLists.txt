@@ -121,6 +121,7 @@ add_library(syrnike_media_core STATIC
   src/media/screen_audio_capture.cpp
   src/media/screen_capture_target.cpp
   src/media/screen_capture_priority.cpp
+  src/media/screen_dxgi_compositor.cpp
   src/media/screen_gpu_capture.cpp
   src/media/voice_gate.cpp
   src/media/voice_activity_detector.cpp
@@ -137,6 +138,7 @@ target_link_libraries(syrnike_media_core PUBLIC
   mfuuid
   ole32
   d3d11
+  d3dcompiler
   dwmapi
   dxgi
   runtimeobject
@@ -348,12 +350,38 @@ add_test(
   COMMAND syrnike-native-hooks-runtime-lifecycle-tests
 )
 
+add_executable(syrnike-native-d3d11-gpu-completion-tests
+  tests/d3d11_gpu_completion_test.cpp
+)
+syrnike_native_target(syrnike-native-d3d11-gpu-completion-tests)
+target_link_libraries(syrnike-native-d3d11-gpu-completion-tests PRIVATE d3d11 dxgi)
+add_test(
+  NAME syrnike-native-d3d11-gpu-completion-tests
+  COMMAND syrnike-native-d3d11-gpu-completion-tests
+)
+
+add_executable(syrnike-native-screen-dxgi-compositor-tests
+  tests/screen_dxgi_compositor_test.cpp
+)
+syrnike_native_target(syrnike-native-screen-dxgi-compositor-tests)
+target_link_libraries(
+  syrnike-native-screen-dxgi-compositor-tests
+  PRIVATE syrnike_media_core
+)
+syrnike_copy_livekit_runtime(syrnike-native-screen-dxgi-compositor-tests)
+add_test(
+  NAME syrnike-native-screen-dxgi-compositor-tests
+  COMMAND syrnike-native-screen-dxgi-compositor-tests
+)
+
 # Manual, non-gating benchmark. Run the executable directly; its hardware paths
 # report SKIP rather than silently falling back when the adapter lacks support.
 add_executable(syrnike-native-screen-streaming-benchmark
   tests/screen_streaming_benchmark.cpp
+  src/common/diagnostic_log.cpp
   src/media/screen_capture_target.cpp
   src/media/screen_capture_priority.cpp
+  src/media/screen_dxgi_compositor.cpp
   src/media/screen_gpu_capture.cpp
   src/media/screen_video_capture.cpp
 )
@@ -361,6 +389,7 @@ syrnike_native_target(syrnike-native-screen-streaming-benchmark)
 target_link_libraries(syrnike-native-screen-streaming-benchmark PRIVATE
   avrt
   d3d11
+  d3dcompiler
   dxgi
   mf
   mfplat

@@ -1,7 +1,12 @@
 import { useMatch, useRouterState } from '@tanstack/react-router'
-import { HashIcon, HomeIcon } from '#/components/icons'
-import type { Server } from '@syrnike13/api-types'
-import { useState } from 'react'
+import {
+  HashIcon,
+  HomeIcon,
+  MonitorUpIcon,
+  Volume2BoldIcon,
+} from '#/components/icons'
+import type { Server, User } from '@syrnike13/api-types'
+import { useState, type ReactNode } from 'react'
 
 import { NotificationBadge } from '#/components/notifications/notification-badge'
 import { ScrollArea } from '#/components/ui/scroll-area'
@@ -28,35 +33,121 @@ import {
   shellLowestSurface,
 } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
-import { serverIconUrl } from '#/lib/media'
 import { useMediaQuery } from '#/hooks/use-media-query'
+import { UserAvatar } from '#/components/user/user-avatar'
+import {
+  ServerAvatar,
+  type ServerActivityKind,
+} from '#/components/servers/server-avatar'
+import { getChannelVoiceParticipants } from '#/features/sync/voice-selectors'
+import type { UserVoiceState } from '#/features/sync/voice-types'
+import { isServerVoiceChannel } from '#/lib/channel-voice'
 
 type ServerRailVariant = 'desktop' | 'mobile'
+const MAX_TOOLTIP_AVATARS = 6
 
-function ServerIcon({
-  server,
-  animated,
+function ServerRailTooltipAvatarRow({
+  kind,
+  label,
+  icon,
+  participants,
+  users,
+  currentUser,
 }: {
-  server: Server
-  animated: boolean
+  kind: 'voice' | 'screen-share'
+  label: string
+  icon: ReactNode
+  participants: readonly UserVoiceState[]
+  users: Record<string, User | undefined>
+  currentUser?: User | null
 }) {
-  const iconUrl = serverIconUrl(server.icon, { animated })
+  if (participants.length === 0) return null
 
-  if (iconUrl) {
-    return (
-      <img
-        src={iconUrl}
-        alt=""
-        draggable={false}
-        className="size-full object-cover"
-      />
-    )
-  }
+  const visibleParticipants = participants.slice(0, MAX_TOOLTIP_AVATARS)
+  const hiddenCount = participants.length - visibleParticipants.length
 
   return (
-    <span className="text-xs font-semibold uppercase">
-      {server.name.trim().slice(0, 2) || '??'}
-    </span>
+    <div
+      data-slot="server-rail-tooltip-row"
+      data-kind={kind}
+      className="flex items-center gap-1.5"
+      aria-label={label}
+    >
+      <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
+        {icon}
+      </span>
+      <ul className="flex -space-x-2.5">
+        {visibleParticipants.map((participant) => {
+          const user =
+            users[participant.id] ??
+            (participant.id === currentUser?._id
+              ? (currentUser ?? undefined)
+              : undefined)
+          const name = user?.display_name ?? user?.username ?? participant.id
+
+          return (
+            <li key={participant.id} title={name}>
+              <UserAvatar
+                user={user}
+                className="size-7 ring-2 ring-popover"
+                fallbackClassName="size-7 text-[11px]"
+                showPresence={false}
+                animated="never"
+              />
+            </li>
+          )
+        })}
+        {hiddenCount > 0 ? (
+          <li
+            aria-label={`Ещё ${hiddenCount}`}
+            className="relative flex size-7 items-center justify-center rounded-full bg-muted text-[11px] font-black text-muted-foreground ring-2 ring-popover"
+          >
+            +{hiddenCount}
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  )
+}
+
+function ServerRailTooltip({
+  serverName,
+  participants,
+  users,
+  currentUser,
+}: {
+  serverName: string
+  participants: readonly UserVoiceState[]
+  users: Record<string, User | undefined>
+  currentUser?: User | null
+}) {
+  const voiceParticipants = participants.filter(
+    (participant) => !participant.screensharing,
+  )
+  const screenSharingParticipants = participants.filter(
+    (participant) => participant.screensharing,
+  )
+
+  return (
+    <div className="w-max max-w-52 space-y-2">
+      <div className="truncate text-sm font-black">{serverName}</div>
+      <ServerRailTooltipAvatarRow
+        kind="voice"
+        label="Участники голосовых каналов"
+        icon={<Volume2BoldIcon aria-hidden="true" className="size-4" />}
+        participants={voiceParticipants}
+        users={users}
+        currentUser={currentUser}
+      />
+      <ServerRailTooltipAvatarRow
+        kind="screen-share"
+        label="Демонстрируют экран"
+        icon={<MonitorUpIcon aria-hidden="true" className="size-4" />}
+        participants={screenSharingParticipants}
+        users={users}
+        currentUser={currentUser}
+      />
+    </div>
   )
 }
 
@@ -74,9 +165,11 @@ function ServerIcon({
 export function ServerRail({
   variant,
   reserveUserPanelSpace = true,
+  userPanelReservePx = USER_PANEL_RESERVE_PX,
 }: {
   variant: ServerRailVariant
   reserveUserPanelSpace?: boolean
+  userPanelReservePx?: number
 }) {
   const auth = useAuth()
   const ready = useSyncStore((s) => s.ready)
@@ -110,7 +203,7 @@ export function ServerRail({
     (variant === 'desktop' || !selectedServerId)
 
   const railBottomReserveStyle = reserveUserPanelSpace
-    ? { paddingBottom: USER_PANEL_RESERVE_PX }
+    ? { paddingBottom: userPanelReservePx }
     : undefined
 
   if (!ready) {
@@ -226,6 +319,7 @@ function ServerRailButton({
 }) {
   const selectedServerId = useSyncStore((s) => s.selectedServerId)
   const [iconInteractionActive, setIconInteractionActive] = useState(false)
+  const users = useSyncStore((s) => s.users)
   const activeChannel = useSyncStore((s) =>
     activeChannelId ? s.channels[activeChannelId] : undefined,
   )
@@ -240,23 +334,56 @@ function ServerRailButton({
     const text = channels.find((c) => c.channel_type === 'TextChannel')
     return (text ?? channels[0])?._id
   })
+  const voiceParticipants = useSyncStore((s) => {
+    const seen = new Set<string>()
+    return listServerChannels(s, server._id, currentUserId)
+      .filter(isServerVoiceChannel)
+      .flatMap((channel) =>
+        getChannelVoiceParticipants(s, channel._id, currentUserId),
+      )
+      .filter((participant) => {
+        if (seen.has(participant.id)) return false
+        seen.add(participant.id)
+        return true
+      })
+  })
 
   const active =
     variant === 'mobile'
       ? !channelMatch && selectedServerId === server._id
       : Boolean(channelMatch) && contextualServerId === server._id
 
+  const activityKind: ServerActivityKind = voiceParticipants.some(
+    (participant) => participant.screensharing,
+  )
+    ? 'screen-share'
+    : voiceParticipants.length > 0
+      ? 'voice'
+      : null
+  const currentUserConnected = Boolean(
+    currentUserId &&
+      voiceParticipants.some((participant) => participant.id === currentUserId),
+  )
+
   const icon = (
-    <span className="flex size-full items-center justify-center">
-      <ServerIcon
-        server={server}
-        animated={iconInteractionActive && !prefersReducedMotion}
-      />
-    </span>
+    <ServerAvatar
+      server={server}
+      animated={iconInteractionActive && !prefersReducedMotion}
+      activity={activityKind}
+      connected={currentUserConnected}
+    />
   )
 
   const channelTo = variant === 'mobile' ? '/m/c/$channelId' : '/app/c/$channelId'
   const homeTo = variant === 'mobile' ? '/m' : '/app'
+  const tooltipContent = (
+    <ServerRailTooltip
+      serverName={server.name}
+      participants={voiceParticipants}
+      users={users}
+      currentUser={currentUserId ? users[currentUserId] : undefined}
+    />
+  )
 
   // Desktop: ведём сразу в первый канал сервера.
   // Mobile: ведём на home с установкой selectedServerId (sidebar каналов покажется рядом).
@@ -266,6 +393,7 @@ function ServerRailButton({
         active={active}
         unread={notificationBadge.hasUnread}
         title={server.name}
+        tooltipContent={tooltipContent}
         to={channelTo}
         params={{ channelId: firstChannelId }}
         search={{ m: undefined }}
@@ -284,6 +412,7 @@ function ServerRailButton({
       active={active}
       unread={notificationBadge.hasUnread}
       title={server.name}
+      tooltipContent={tooltipContent}
       to={homeTo}
       search={{ tab: 'online' }}
       replace={channelMatch}

@@ -10,6 +10,7 @@ import type {
   DesktopOs,
   DesktopLocalSettings,
   DesktopLocalSettingsPatch,
+  NativeDiagnosticIncidentBatch,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
@@ -53,6 +54,28 @@ ipcRenderer.on('syrnike-desktop:media:remote-video-track-removed', (_event, meta
     window.location.origin,
   )
 })
+
+ipcRenderer.on(
+  'syrnike-desktop:media:remote-video-subscription-failed',
+  (_event, metadata) => {
+    window.postMessage(
+      { type: 'syrnike-native-video-subscription-failed', metadata },
+      window.location.origin,
+    )
+  },
+)
+
+for (const state of ['available', 'unavailable'] as const) {
+  ipcRenderer.on(
+    `syrnike-desktop:media:remote-screen-publication-${state}`,
+    (_event, metadata) => {
+      window.postMessage(
+        { type: `syrnike-native-screen-publication-${state}`, metadata },
+        window.location.origin,
+      )
+    },
+  )
+}
 
 function resolveDesktopOs(): DesktopOs {
   switch (process.platform) {
@@ -154,6 +177,32 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
         IPC.settingsUpdate,
         patch,
       ) as Promise<DesktopLocalSettings>
+    },
+  },
+  diagnostics: {
+    async createBundle(rendererJsonl: string) {
+      const value = await ipcRenderer.invoke(
+        IPC.diagnosticsCreateBundle,
+        rendererJsonl,
+      )
+      return new Uint8Array(value)
+    },
+    leaseNativeIncidents() {
+      return ipcRenderer.invoke(
+        IPC.diagnosticsLeaseNativeIncidents,
+      ) as Promise<NativeDiagnosticIncidentBatch | null>
+    },
+    acknowledgeNativeIncidents(batchId: string) {
+      return ipcRenderer.invoke(
+        IPC.diagnosticsAcknowledgeNativeIncidents,
+        batchId,
+      ) as Promise<boolean>
+    },
+    releaseNativeIncidents(batchId: string) {
+      return ipcRenderer.invoke(
+        IPC.diagnosticsReleaseNativeIncidents,
+        batchId,
+      ) as Promise<boolean>
     },
   },
   updates: {
@@ -346,6 +395,7 @@ function isDesktopUpdateState(value: unknown): value is DesktopUpdateState {
       return true
     case 'available':
     case 'ready':
+    case 'installing':
       return typeof state.version === 'string'
     case 'downloading':
       return typeof state.percent === 'number'

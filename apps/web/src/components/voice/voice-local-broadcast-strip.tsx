@@ -1,6 +1,6 @@
 import { MonitorXIcon, VideoOffIcon } from '#/components/icons'
 import type { AppIcon } from '#/components/icons'
-import { useMemo, useSyncExternalStore } from 'react'
+import { useMemo } from 'react'
 
 import { Button } from '#/components/ui/button'
 import {
@@ -12,31 +12,20 @@ import {
 import {
   cameraBroadcastIcon,
   readCameraBroadcastLabel,
+  readDesktopScreenShareBroadcastSource,
   readScreenShareBroadcastSource,
   screenShareBroadcastIcon,
 } from '#/features/voice/voice-broadcast-source'
-import { nativeMediaEngineStatsStore } from '#/features/voice/native-media-engine-stats'
 import { useVoiceMedia } from '#/features/voice/voice-media-context'
 import { useVoiceSession } from '#/features/voice/voice-session-context'
 import { useVoiceStage } from '#/features/voice/voice-stage-context'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { cn } from '#/lib/utils'
 import { usePlatform } from '#/platform/use-platform'
-import { readDesktopScreenShareBroadcastSource } from '#/features/voice/voice-broadcast-source'
-
-function captureMethodLabel(method: string | undefined) {
-  switch (method) {
-    case 'wgc_gpu':
-      return 'WGC'
-    case 'dxgi_gpu':
-      return 'DXGI'
-    default:
-      return method
-  }
-}
 
 function BroadcastStrip({
   sourceLabel,
+  sourceIconDataUrl,
   Icon,
   stopTitle,
   StopIcon,
@@ -44,6 +33,7 @@ function BroadcastStrip({
   onStop,
 }: {
   sourceLabel: string
+  sourceIconDataUrl?: string | null
   Icon: AppIcon
   stopTitle: string
   StopIcon: AppIcon
@@ -57,7 +47,16 @@ function BroadcastStrip({
           className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted"
           title={sourceLabel}
         >
-          <Icon className="size-4 text-muted-foreground" aria-hidden />
+          {sourceIconDataUrl ? (
+            <img
+              src={sourceIconDataUrl}
+              alt=""
+              className="size-5 object-contain"
+              draggable={false}
+            />
+          ) : (
+            <Icon className="size-4 text-muted-foreground" aria-hidden />
+          )}
         </div>
 
         <p
@@ -96,11 +95,6 @@ function useLocalScreenShareSource() {
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
   const { desktop } = usePlatform()
-  const nativeStats = useSyncExternalStore(
-    nativeMediaEngineStatsStore.subscribe,
-    nativeMediaEngineStatsStore.getState,
-    nativeMediaEngineStatsStore.getState,
-  )
 
   return useMemo(() => {
     if (!voiceMedia.screenShareEnabled) return null
@@ -113,25 +107,14 @@ function useLocalScreenShareSource() {
       item?.track?.mediaStreamTrack,
     )
     if (!desktop) {
-      return {
-        ...trackSource,
-        label: `${trackSource.label} · Браузерный`,
-      }
+      return trackSource
     }
 
-    const source = readDesktopScreenShareBroadcastSource() ?? trackSource
-    const methodSuffix = nativeStats.activeMethod
-      ? ` · ${captureMethodLabel(nativeStats.activeMethod)}`
-      : ''
-    return {
-      ...source,
-      label: `${source.label} · Нативный${methodSuffix}`,
-    }
+    return readDesktopScreenShareBroadcastSource() ?? trackSource
   }, [
     desktop,
     voiceMedia.screenShareEnabled,
     voiceStage.stageMediaItems,
-    nativeStats,
   ])
 }
 
@@ -160,6 +143,7 @@ export function VoiceScreenShareStrip() {
   return (
     <BroadcastStrip
       sourceLabel={source.label}
+      sourceIconDataUrl={source.appIconDataUrl}
       Icon={screenShareBroadcastIcon(source.surface)}
       StopIcon={MonitorXIcon}
       stopTitle="Остановить демонстрацию"

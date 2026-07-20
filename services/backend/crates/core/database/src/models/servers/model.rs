@@ -478,4 +478,71 @@ mod tests {
             );
         });
     }
+
+    #[async_std::test]
+    async fn permission_query_never_uses_another_members_roles() {
+        database_test!(|db| async move {
+            fixture!(db, "server_with_roles",
+                moderator user 1
+                user user 2
+                server server 4);
+
+            let moderator_member = db
+                .fetch_member(&server.id, &moderator.id)
+                .await
+                .expect("moderator membership");
+            let user_member = db
+                .fetch_member(&server.id, &user.id)
+                .await
+                .expect("ordinary membership");
+
+            let mut moderator_query = DatabasePermissionQuery::new(&db, &moderator)
+                .server(&server)
+                .member(&user_member);
+            assert!(
+                calculate_server_permissions(&mut moderator_query)
+                    .await
+                    .has_channel_permission(ChannelPermission::BanMembers)
+            );
+            assert_eq!(
+                moderator_query.member_ref().unwrap().id.user,
+                moderator.id
+            );
+
+            let mut user_query = DatabasePermissionQuery::new(&db, &user)
+                .server(&server)
+                .member(&moderator_member);
+            assert!(
+                !calculate_server_permissions(&mut user_query)
+                    .await
+                    .has_channel_permission(ChannelPermission::BanMembers)
+            );
+            assert_eq!(user_query.member_ref().unwrap().id.user, user.id);
+        });
+    }
+
+    #[async_std::test]
+    async fn permission_query_rejects_membership_from_another_server_in_any_builder_order() {
+        database_test!(|db| async move {
+            fixture!(db, "server_with_roles",
+                moderator user 1
+                server server 4);
+
+            let mut wrong_server_member = db
+                .fetch_member(&server.id, &moderator.id)
+                .await
+                .expect("moderator membership");
+            wrong_server_member.id.server = "different-server".to_string();
+
+            let member_first = DatabasePermissionQuery::new(&db, &moderator)
+                .member(&wrong_server_member)
+                .server(&server);
+            assert!(member_first.member_ref().is_none());
+
+            let server_first = DatabasePermissionQuery::new(&db, &moderator)
+                .server(&server)
+                .member(&wrong_server_member);
+            assert!(server_first.member_ref().is_none());
+        });
+    }
 }

@@ -25,10 +25,13 @@ export type VoiceStageContextValue = {
   setStageMediaSubscribed: (mediaId: string, subscribed: boolean) => void
   stageFullscreen: boolean
   toggleStageFullscreen: () => void
+  activityLauncherOpen: boolean
+  setActivityLauncherOpen: Dispatch<SetStateAction<boolean>>
 }
 
-export const VoiceStageContext =
-  createContext<VoiceStageContextValue | null>(null)
+export const VoiceStageContext = createContext<VoiceStageContextValue | null>(
+  null,
+)
 
 export function useVoiceStage() {
   const context = useContext(VoiceStageContext)

@@ -55,6 +55,9 @@ export function useVoiceGateMeter(
 
     configureNativeMicrophonePipeline(
       nativeMicrophonePipelineConfig({
+        bypassSystemAudioInputProcessing:
+          prefs.bypassSystemAudioInputProcessing,
+        automaticGainControl: prefs.automaticGainControl,
         noiseSuppression: prefs.noiseSuppression,
         echoCancellation: prefs.echoCancellation,
         inputVolume: prefs.inputVolume,
@@ -66,6 +69,8 @@ export function useVoiceGateMeter(
   }, [
     active,
     inputDeviceId,
+    prefs.bypassSystemAudioInputProcessing,
+    prefs.automaticGainControl,
     prefs.noiseSuppression,
     prefs.echoCancellation,
     prefs.inputVolume,
@@ -152,6 +157,7 @@ export function useVoiceGateMeter(
     inputDeviceId,
     outputRef,
     prefs.echoCancellation,
+    prefs.automaticGainControl,
   ])
 
   return outputRef

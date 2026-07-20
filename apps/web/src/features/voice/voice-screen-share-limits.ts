@@ -6,7 +6,7 @@ const FALLBACK_SCREEN_SHARE_LIMITS: ScreenShareCaptureLimits = {
   maxWidth: 1920,
   maxHeight: 1080,
   maxPixels: 1920 * 1080,
-  maxBitrate: 8_000_000,
+  maxBitrate: 10_000_000,
 }
 
 let cachedLimits: ScreenShareCaptureLimits | null = null

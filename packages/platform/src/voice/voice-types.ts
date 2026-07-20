@@ -46,6 +46,8 @@ export type VoiceMediaDesiredState = Readonly<{
   pushToTalkHeld: boolean
   effectiveMuted: boolean
   microphoneDeviceId?: string
+  bypassSystemAudioInputProcessing: boolean
+  automaticGainControl: boolean
   noiseSuppression: boolean
   echoCancellation: boolean
   inputVolume: number
@@ -154,6 +156,8 @@ export type VoiceCommand =
   | Readonly<{
       type: 'configureMicrophone'
       deviceId?: string
+      bypassSystemAudioInputProcessing: boolean
+      automaticGainControl: boolean
       noiseSuppression: boolean
       echoCancellation: boolean
       inputVolume: number
@@ -219,6 +223,8 @@ export function isVoiceCommand(value: unknown): value is VoiceCommand {
     case 'configureMicrophone':
       return (
         (command.deviceId === undefined || validIdentifier(command.deviceId)) &&
+        typeof command.bypassSystemAudioInputProcessing === 'boolean' &&
+        typeof command.automaticGainControl === 'boolean' &&
         typeof command.noiseSuppression === 'boolean' &&
         typeof command.echoCancellation === 'boolean' &&
         finiteInRange(command.inputVolume, 0, 4) &&
@@ -387,8 +393,10 @@ export function createInitialVoiceMediaDesiredState(): VoiceMediaDesiredState {
     monitoringMuted: false,
     inputMode: 'voice_activity' as const,
     pushToTalkHeld: false,
+    bypassSystemAudioInputProcessing: true,
+    automaticGainControl: true,
     noiseSuppression: true,
-    echoCancellation: true,
+    echoCancellation: false,
     inputVolume: 1,
     voiceGateEnabled: true,
     voiceGateThresholdDb: -28,

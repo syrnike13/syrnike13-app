@@ -91,6 +91,14 @@ export function VoiceParticipantRow({
         {displayName}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
+        <VoiceParticipantIcons
+          muted={muted}
+          deafened={deafened}
+          serverMuted={participant.server_muted}
+          serverDeafened={participant.server_deafened}
+          listenerMuted={listenerMuted}
+          camera={participant.camera}
+        />
         {participant.screensharing ? (
           <VoiceOnAirBadge
             onDoubleClick={
@@ -104,14 +112,6 @@ export function VoiceParticipantRow({
             }
           />
         ) : null}
-        <VoiceParticipantIcons
-          muted={muted}
-          deafened={deafened}
-          serverMuted={participant.server_muted}
-          serverDeafened={participant.server_deafened}
-          listenerMuted={listenerMuted}
-          camera={participant.camera}
-        />
       </span>
     </>
   )

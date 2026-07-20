@@ -278,7 +278,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
     "diagnosticsEnabled",
     diagnostics::DiagnosticLog::instance().enabled()
   );
-  auto capabilities = Napi::Array::New(info.Env(), 7);
+  auto capabilities = Napi::Array::New(info.Env(), 8);
   capabilities.Set(uint32_t{0}, "microphone");
   capabilities.Set(uint32_t{1}, "screen");
   capabilities.Set(uint32_t{2}, "screenAudio");
@@ -286,6 +286,7 @@ Napi::Object getRuntimeInfo(const Napi::CallbackInfo& info) {
   capabilities.Set(uint32_t{4}, "queries");
   capabilities.Set(uint32_t{5}, "remoteVideo");
   capabilities.Set(uint32_t{6}, "localScreenPreview");
+  capabilities.Set(uint32_t{7}, "localCameraPreview");
   result.Set("capabilities", capabilities);
   return result;
 }

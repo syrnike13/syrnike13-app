@@ -198,9 +198,7 @@ pub async fn edit(
         ),
     ]
     .iter()
-    .find_map(|(is_set, field, name)| {
-        (*is_set && data.remove.contains(field)).then_some(*name)
-    });
+    .find_map(|(is_set, field, name)| (*is_set && data.remove.contains(field)).then_some(*name));
 
     if let Some(field) = conflicting_field {
         return Err(create_error!(FailedValidation {
@@ -239,9 +237,10 @@ pub async fn edit(
         permissions.throw_if_lacking_channel_permission(ChannelPermission::ManageServer)?;
     }
 
-    // Check we are the server owner or privileged if changing sensitive fields
+    // Only the server owner may transfer ownership. Project administration is a
+    // separate scope and must not grant authority over user-owned servers.
     if data.owner.is_some() {
-        if user.id != server.owner && !user.privileged {
+        if user.id != server.owner {
             return Err(create_error!(NotOwner));
         }
 
@@ -250,11 +249,10 @@ pub async fn edit(
         }
     }
 
-    // Check we are privileged if changing sensitive fields
-    if (data.flags.is_some() /*|| data.nsfw.is_some()*/ || data.discoverable.is_some())
-        && !user.privileged
-    {
-        return Err(create_error!(NotPrivileged));
+    // Project administration must not expand the regular server API. Internal
+    // server fields need a dedicated admin route if they are exposed again.
+    if data.flags.is_some() /*|| data.nsfw.is_some()*/ || data.discoverable.is_some() {
+        return Err(create_error!(InvalidOperation));
     }
 
     // Changing categories or channel order requires manage channel

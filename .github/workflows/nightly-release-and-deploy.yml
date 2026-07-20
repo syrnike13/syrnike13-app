@@ -46,6 +46,8 @@ jobs:
     uses: ./.github/workflows/native-media-windows.yml
     with:
       release_channel: nightly
+      desktop_build_version: ${{ needs.version.outputs.nightly_version }}
+      symbol_retention_days: 14
 
   web:
     name: Publish nightly web image
@@ -334,8 +336,6 @@ jobs:
       VITE_PROXY_URL: https://beta.syrnike13.ru/january
       VITE_GIFBOX_URL: https://api.gifbox.me
       VITE_VOICE_NODE: worldwide
-      SYRNIKE_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_NIGHTLY_SENTRY_DSN || vars.DESKTOP_SENTRY_DSN }}
-      SYRNIKE_DESKTOP_SENTRY_ENVIRONMENT: nightly
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -348,31 +348,31 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnss3 libxss1 libasound2t64 fakeroot rpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm version:sync
-      - name: Build nightly desktop and native runtime
-        run: pnpm --filter @syrnike13/desktop build
-      - name: Upload nightly Windows debug artifacts
+      - name: Download verified Windows native runtime
         if: runner.os == 'Windows'
-        run: pnpm --filter @syrnike13/desktop upload:debug-artifacts
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ vars.DESKTOP_NIGHTLY_SENTRY_PROJECT || vars.DESKTOP_SENTRY_PROJECT }}
+        uses: actions/download-artifact@v4
+        with:
+          name: native-runtime-windows-nightly-${{ github.sha }}
+          path: .
+      - name: Verify downloaded Windows native runtime
+        if: runner.os == 'Windows'
+        run: pnpm desktop-native:verify
+      - name: Build nightly desktop
+        if: runner.os != 'Windows'
+        run: pnpm --filter @syrnike13/desktop build
+      - name: Build nightly Windows desktop with verified native runtime
+        if: runner.os == 'Windows'
+        run: |
+          pnpm --filter @syrnike13/web build
+          pnpm --filter @syrnike13/desktop verify:web-dist
+          pnpm --filter @syrnike13/platform build
+          pnpm --filter @syrnike13/desktop exec tsup
       - name: Package and verify nightly Windows desktop
         if: runner.os == 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
       - name: Package and verify nightly desktop
         if: runner.os != 'Windows'
         run: pnpm --filter @syrnike13/desktop package:prepared
-      - name: Retain nightly native symbols
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-nightly-windows-symbols-${{ github.sha }}
-          retention-days: 14
-          if-no-files-found: error
-          path: |
-            packages/desktop-native/build/**/*.pdb
-            packages/desktop-native/dist/win32-x64/native-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -391,10 +391,21 @@ jobs:
       - desktop
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - name: Download nightly Windows desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          path: desktop-artifacts
-          pattern: desktop-nightly-*
+          name: desktop-nightly-windows
+          path: desktop-artifacts/desktop-nightly-windows
+      - name: Download nightly macOS desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-nightly-macos
+          path: desktop-artifacts/desktop-nightly-macos
+      - name: Download nightly Linux desktop artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-nightly-linux
+          path: desktop-artifacts/desktop-nightly-linux
       - name: Delete previous nightly release
         env:
           GH_TOKEN: ${{ github.token }}

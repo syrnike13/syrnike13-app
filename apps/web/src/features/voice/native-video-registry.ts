@@ -33,11 +33,26 @@ type TrackEntry = {
   drawRequest: number | null
 }
 
+type PublicationEntry = {
+  sessionId: string
+  generation: number
+  trackId: string
+  participantIdentity: string
+  source: 'screen'
+  adapter: NativeVideoTrackAdapter
+  error?: string
+}
+
 const LOCAL_SCREEN_PREVIEW_TRACK_ID = 'local-screen-preview'
 
 export type NativeVideoRegistryTrack = NativeVideoTrackMetadata & {
   track: NativeVideoTrackAdapter
   consumerCount: number
+}
+
+export type NativeVideoRegistryPublication = Omit<PublicationEntry, 'adapter'> & {
+  demandTrackId: string
+  track: NativeVideoTrackAdapter | null
 }
 
 export class NativeVideoTrackAdapter {
@@ -64,6 +79,7 @@ export function isNativeVideoTrackAdapter(
 
 export class NativeVideoRegistry {
   private readonly tracks = new Map<string, TrackEntry>()
+  private readonly publications = new Map<string, PublicationEntry>()
   private readonly localScreenConsumers = new Map<symbol, CanvasConsumer>()
   private readonly localScreenAdapter = new NativeVideoTrackAdapter(
     LOCAL_SCREEN_PREVIEW_TRACK_ID,
@@ -74,6 +90,9 @@ export class NativeVideoRegistry {
     { sessionId: string; generation: number }
   >()
   private readonly listeners = new Set<() => void>()
+  private activeRemoteSession: { sessionId: string; generation: number } | null =
+    null
+  private readonly retiredRemoteSessions = new Set<string>()
   private listening = false
   private version = 0
 
@@ -91,7 +110,19 @@ export class NativeVideoRegistry {
       this.disposeTrack(trackId, entry, false)
     }
     this.localScreenConsumers.clear()
+    this.publications.clear()
     this.tombstones.clear()
+    this.activeRemoteSession = null
+    this.retiredRemoteSessions.clear()
+    this.notify()
+  }
+
+  clearRemote() {
+    if (this.activeRemoteSession) {
+      this.retiredRemoteSessions.add(remoteSessionKey(this.activeRemoteSession))
+      this.activeRemoteSession = null
+    }
+    if (!this.clearRemoteEntries()) return
     this.notify()
   }
 
@@ -120,12 +151,41 @@ export class NativeVideoRegistry {
     return this.localScreenConsumers.size
   }
 
+  beginSubscriptionRetry(
+    sessionId: string,
+    generation: number,
+    trackId: string,
+  ) {
+    const publication = this.publications.get(trackId)
+    if (!publication?.error || publication.sessionId !== sessionId ||
+      publication.generation !== generation) return
+    delete publication.error
+    // Keep the tombstone until native re-announces the publication. This
+    // exposes a loading state immediately without accepting an old in-flight
+    // frame from the exhausted subscription.
+    this.notify()
+  }
+
   listTracks(): NativeVideoRegistryTrack[] {
     return [...this.tracks.values()].map((entry) => ({
       ...entry.metadata,
       track: entry.adapter,
       consumerCount: this.consumersFor(entry).size,
     }))
+  }
+
+  listPublications(): NativeVideoRegistryPublication[] {
+    return [...this.publications.values()].map(({ adapter, ...publication }) => {
+      const track = this.tracks.get(publication.trackId)
+      return {
+        ...publication,
+        demandTrackId: publication.trackId,
+        track: track?.metadata.sessionId === publication.sessionId &&
+            track.metadata.generation === publication.generation
+          ? adapter
+          : null,
+      }
+    })
   }
 
   attachCanvas(
@@ -187,13 +247,74 @@ export class NativeVideoRegistry {
 
   private readonly onMessage = (event: MessageEvent<unknown>) => {
     if (event.source !== window || event.origin !== window.location.origin) return
+    if (isPublicationMessage(event.data)) {
+      const { metadata } = event.data
+      if (event.data.type === 'syrnike-native-screen-publication-unavailable') {
+        if (!this.isActiveRemoteSession(metadata)) return
+        const publication = this.publications.get(metadata.trackId)
+        if (publication &&
+          (publication.sessionId !== metadata.sessionId ||
+            publication.generation !== metadata.generation)) return
+        this.tombstones.set(metadata.trackId, metadata)
+        this.publications.delete(metadata.trackId)
+        this.removeTrack(metadata.trackId, metadata)
+        this.notify()
+        return
+      }
+
+      if (!this.acceptRemoteSession(metadata)) return
+      const current = this.publications.get(metadata.trackId)
+      if (current && current.sessionId === metadata.sessionId &&
+        metadata.generation < current.generation) return
+      const tombstone = this.tombstones.get(metadata.trackId)
+      if (tombstone && tombstone.sessionId === metadata.sessionId &&
+        metadata.generation >= tombstone.generation) {
+        this.tombstones.delete(metadata.trackId)
+      }
+      this.publications.set(metadata.trackId, {
+        ...metadata,
+        adapter: current?.sessionId === metadata.sessionId &&
+            current.generation === metadata.generation
+          ? current.adapter
+          : new NativeVideoTrackAdapter(metadata.trackId, this),
+      })
+      this.notify()
+      return
+    }
+    if (isSubscriptionFailedMessage(event.data)) {
+      const { metadata } = event.data
+      if (!this.isActiveRemoteSession(metadata)) return
+      const publication = this.publications.get(metadata.trackId)
+      if (!publication ||
+        publication.sessionId !== metadata.sessionId ||
+        publication.generation !== metadata.generation) return
+      publication.error = metadata.message
+      this.tombstones.set(metadata.trackId, metadata)
+      this.removeTrack(metadata.trackId, metadata)
+      this.notify()
+      return
+    }
     if (isTrackRemovedMessage(event.data)) {
+      const { metadata } = event.data
+      const track = this.tracks.get(metadata.trackId)
+      if (!track?.metadata.local && !this.isActiveRemoteSession(metadata)) return
+      const publication = this.publications.get(metadata.trackId)
+      if (publication &&
+        (publication.sessionId !== metadata.sessionId ||
+          publication.generation !== metadata.generation)) return
+      if (track &&
+        (track.metadata.sessionId !== metadata.sessionId ||
+          track.metadata.generation !== metadata.generation)) return
       this.tombstones.set(event.data.metadata.trackId, event.data.metadata)
       this.removeTrack(event.data.metadata.trackId, event.data.metadata)
       return
     }
     if (!isFrameMessage(event.data)) return
     const { metadata, frame } = event.data
+    if (!metadata.local && !this.acceptRemoteSession(metadata)) {
+      frame.close()
+      return
+    }
     const tombstone = this.tombstones.get(metadata.trackId)
     if (tombstone) {
       if (
@@ -209,21 +330,41 @@ export class NativeVideoRegistry {
     let entry = this.tracks.get(metadata.trackId)
     if (
       entry &&
-      (metadata.rendererEpoch !== entry.metadata.rendererEpoch ||
+      (metadata.sessionId !== entry.metadata.sessionId ||
         metadata.generation !== entry.metadata.generation)
     ) {
       this.removeTrack(metadata.trackId)
       entry = undefined
     }
-    if (entry && metadata.sequence <= entry.metadata.sequence) {
+    const rendererEpochChanged = Boolean(
+      entry && metadata.rendererEpoch !== entry.metadata.rendererEpoch,
+    )
+    if (entry && rendererEpochChanged) {
+      entry.pendingFrame?.close()
+      entry.pendingFrame = null
+      if (entry.drawRequest !== null) {
+        window.cancelAnimationFrame(entry.drawRequest)
+        entry.drawRequest = null
+      }
+      // The publication adapter is intentionally stable across renderer
+      // reloads. Keep the mounted canvas consumers on the same entry; replacing
+      // it would leave React attached to an orphaned consumers map because the
+      // adapter identity did not change.
+      entry.metadata = metadata
+    }
+    if (entry && !rendererEpochChanged && metadata.sequence <= entry.metadata.sequence) {
       frame.close()
       return
     }
 
     if (!entry) {
+      const publication = metadata.source === 'screen' && !metadata.local
+        ? this.publications.get(metadata.trackId)
+        : undefined
       entry = {
         metadata,
-        adapter: new NativeVideoTrackAdapter(metadata.trackId, this),
+        adapter: publication?.adapter ??
+          new NativeVideoTrackAdapter(metadata.trackId, this),
         consumers: new Map(),
         pendingFrame: null,
         drawRequest: null,
@@ -294,10 +435,55 @@ export class NativeVideoRegistry {
       : entry.consumers
   }
 
+  private acceptRemoteSession(metadata: { sessionId: string; generation: number }) {
+    const key = remoteSessionKey(metadata)
+    if (this.retiredRemoteSessions.has(key)) return false
+    const active = this.activeRemoteSession
+    if (!active) {
+      this.activeRemoteSession = {
+        sessionId: metadata.sessionId,
+        generation: metadata.generation,
+      }
+      return true
+    }
+    if (active.sessionId === metadata.sessionId &&
+      active.generation === metadata.generation) return true
+    if (metadata.generation < active.generation) return false
+
+    this.retiredRemoteSessions.add(remoteSessionKey(active))
+    this.clearRemoteEntries()
+    this.activeRemoteSession = {
+      sessionId: metadata.sessionId,
+      generation: metadata.generation,
+    }
+    return true
+  }
+
+  private isActiveRemoteSession(metadata: { sessionId: string; generation: number }) {
+    return this.activeRemoteSession?.sessionId === metadata.sessionId &&
+      this.activeRemoteSession.generation === metadata.generation
+  }
+
+  private clearRemoteEntries() {
+    let changed = this.publications.size > 0 || this.tombstones.size > 0
+    this.publications.clear()
+    this.tombstones.clear()
+    for (const [trackId, entry] of this.tracks) {
+      if (entry.metadata.local) continue
+      changed = true
+      this.disposeTrack(trackId, entry, false)
+    }
+    return changed
+  }
+
   private notify() {
     this.version += 1
     for (const listener of this.listeners) listener()
   }
+}
+
+function remoteSessionKey(value: { sessionId: string; generation: number }) {
+  return `${value.sessionId}:${value.generation}`
 }
 
 function drawFrame(consumer: CanvasConsumer, frame: VideoFrame) {
@@ -329,6 +515,63 @@ function isTrackRemovedMessage(value: unknown): value is {
     Number.isSafeInteger(
       (candidate.metadata as { generation?: unknown }).generation,
     )
+  )
+}
+
+function isSubscriptionFailedMessage(value: unknown): value is {
+  type: 'syrnike-native-video-subscription-failed'
+  metadata: {
+    trackId: string
+    sessionId: string
+    generation: number
+    message: string
+  }
+} {
+  if (!value || typeof value !== 'object') return false
+  if (
+    !('type' in value) ||
+    !('metadata' in value) ||
+    value.type !== 'syrnike-native-video-subscription-failed' ||
+    !value.metadata ||
+    typeof value.metadata !== 'object'
+  ) {
+    return false
+  }
+  const metadata = value.metadata
+  return (
+    'trackId' in metadata &&
+    typeof metadata.trackId === 'string' &&
+    'sessionId' in metadata &&
+    typeof metadata.sessionId === 'string' &&
+    'generation' in metadata &&
+    Number.isSafeInteger(metadata.generation) &&
+    'message' in metadata &&
+    typeof metadata.message === 'string'
+  )
+}
+
+function isPublicationMessage(value: unknown): value is {
+  type: 'syrnike-native-screen-publication-available' |
+    'syrnike-native-screen-publication-unavailable'
+  metadata: {
+    trackId: string
+    participantIdentity: string
+    source: 'screen'
+    sessionId: string
+    generation: number
+  }
+} {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { type?: unknown; metadata?: Record<string, unknown> }
+  const metadata = candidate.metadata
+  return (
+    (candidate.type === 'syrnike-native-screen-publication-available' ||
+      candidate.type === 'syrnike-native-screen-publication-unavailable') &&
+    typeof metadata?.trackId === 'string' &&
+    typeof metadata.participantIdentity === 'string' &&
+    metadata.source === 'screen' &&
+    typeof metadata.sessionId === 'string' &&
+    Number.isSafeInteger(metadata.generation)
   )
 }
 

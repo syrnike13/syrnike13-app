@@ -20,12 +20,16 @@ export const RoleMentionNode = Node.create({
     return [{ tag: 'span[data-role-mention]' }]
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       'span',
       mergeAttributes(HTMLAttributes, { 'data-role-mention': '' }),
-      0,
+      `<%${node.attrs.id ?? ''}>`,
     ]
+  },
+
+  renderText({ node }) {
+    return `<%${node.attrs.id ?? ''}>`
   },
 
   addNodeView() {

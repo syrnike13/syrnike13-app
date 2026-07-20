@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 57; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 59; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1441,7 +1441,61 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
     };
 
     if revision <= 53 {
-        info!("Running migration [revision 53 / 14-07-2026]: Add product feedback suggestions.");
+        info!("Running migration [revision 53 / 18-07-2026]: Add diagnostic reports.");
+
+        db.db().create_collection("diagnostic_reports").await.ok();
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "diagnostic_reports",
+                "indexes": [
+                    {
+                        "key": { "created_at": -1_i32, "_id": -1_i32 },
+                        "name": "created_id"
+                    },
+                    {
+                        "key": { "user_id": 1_i32, "created_at": -1_i32 },
+                        "name": "user_created"
+                    },
+                    {
+                        "key": { "expires_at": 1_i32 },
+                        "name": "expires_at"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create diagnostic_reports indexes.");
+    };
+
+    if revision <= 54 {
+        info!("Running migration [revision 54 / 18-07-2026]: Add diagnostic upload lifecycle.");
+
+        db.col::<Document>("diagnostic_reports")
+            .update_many(
+                doc! { "storage_state": { "$exists": false } },
+                doc! { "$set": { "storage_state": "available" } },
+            )
+            .await
+            .expect("Failed to initialize diagnostic report storage states.");
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "diagnostic_reports",
+                "indexes": [
+                    {
+                        "key": { "storage_state": 1_i32, "created_at": -1_i32, "_id": -1_i32 },
+                        "name": "storage_created_id"
+                    },
+                    {
+                        "key": { "storage_state": 1_i32, "expires_at": 1_i32 },
+                        "name": "storage_expires_at"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create diagnostic upload lifecycle indexes.");
+    };
+
+    if revision <= 55 {
+        info!("Running migration [revision 55 / 14-07-2026]: Add product feedback suggestions.");
 
         db.db().create_collection("feedback_suggestions").await.ok();
         db.db().create_collection("feedback_votes").await.ok();
@@ -1504,8 +1558,8 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             .expect("Failed to create feedback votes indexes.");
     };
 
-    if revision <= 54 {
-        info!("Running migration [revision 54 / 15-07-2026]: Split feedback type and area.");
+    if revision <= 56 {
+        info!("Running migration [revision 56 / 15-07-2026]: Split feedback type and area.");
 
         db.col::<Document>("feedback_suggestions")
             .update_many(
@@ -1558,8 +1612,8 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             .expect("Failed to create feedback type and area index.");
     };
 
-    if revision <= 55 {
-        info!("Running migration [revision 55 / 15-07-2026]: Add anonymous feedback authorship.");
+    if revision <= 57 {
+        info!("Running migration [revision 57 / 15-07-2026]: Add anonymous feedback authorship.");
 
         db.col::<Document>("feedback_suggestions")
             .update_many(
@@ -1570,8 +1624,8 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             .expect("Failed to add anonymous feedback flag.");
     };
 
-    if revision <= 56 {
-        info!("Running migration [revision 56 / 15-07-2026]: Backfill feedback author tags.");
+    if revision <= 58 {
+        info!("Running migration [revision 58 / 15-07-2026]: Backfill feedback author tags.");
 
         let mut suggestions = db
             .col::<Document>("feedback_suggestions")

@@ -1,7 +1,9 @@
 use syrnike_config::configure;
 use syrnike_database::{voice::VoiceClient, DatabaseInfo, AMQP};
 use syrnike_result::Result;
-use tasks::{acks, file_deletion, prune_dangling_files, prune_members, voice_calls};
+use tasks::{
+    acks, diagnostic_reports, file_deletion, prune_dangling_files, prune_members, voice_calls,
+};
 use tokio::try_join;
 
 pub mod tasks;
@@ -16,6 +18,7 @@ async fn main() -> Result<()> {
 
     try_join!(
         file_deletion::task(db.clone()),
+        diagnostic_reports::task(db.clone()),
         prune_dangling_files::task(db.clone()),
         prune_members::task(db.clone()),
         acks::task(db.clone(), amqp.clone()),

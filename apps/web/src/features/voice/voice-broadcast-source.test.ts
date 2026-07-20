@@ -35,7 +35,7 @@ describe('parseScreenShareSurface', () => {
 
 describe('screenShareSurfaceFallbackLabel', () => {
   it('returns a label for each supported surface', () => {
-    expect(screenShareSurfaceFallbackLabel('monitor')).toBe('Весь экран')
+    expect(screenShareSurfaceFallbackLabel('monitor')).toBe('Экран')
     expect(screenShareSurfaceFallbackLabel('window')).toBe('Окно')
     expect(screenShareSurfaceFallbackLabel('browser')).toBe('Вкладка браузера')
   })
@@ -101,7 +101,7 @@ describe('desktop screen-share source', () => {
     })
 
     expect(readDesktopScreenShareBroadcastSource()).toEqual({
-      label: 'Screen 2 (1920x1080)',
+      label: 'Экран 2',
       surface: 'monitor',
     })
   })

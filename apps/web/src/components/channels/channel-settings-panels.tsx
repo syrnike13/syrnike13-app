@@ -37,21 +37,18 @@ export function ChannelSettingsPanelContent({
     channel,
     member,
     auth.user?._id,
-    auth.user?.privileged,
   )
   const canManagePermissions = canManageChannelPermissions(
     server,
     channel,
     member,
     auth.user?._id,
-    auth.user?.privileged,
   )
   const canManageWebhooks = canManageChannelWebhooks(
     server,
     channel,
     member,
     auth.user?._id,
-    auth.user?.privileged,
   )
 
   switch (tab) {

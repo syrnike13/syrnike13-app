@@ -71,12 +71,24 @@ function SyrnikeEntityLink({
 
   if (parsed.kind === 'spoiler') {
     const text = decodeURIComponent(parsed.id)
+    const inlineComponents = {
+      ...createMarkdownComponents(context),
+      p: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    }
     return (
       <span
         className="cursor-pointer rounded bg-foreground/10 px-1 text-transparent transition hover:text-inherit"
         title="Спойлер — наведите, чтобы показать"
       >
-        {text}
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={inlineComponents}
+          urlTransform={(url) =>
+            url.startsWith('syrnike:') ? url : defaultUrlTransform(url)
+          }
+        >
+          {text}
+        </ReactMarkdown>
       </span>
     )
   }

@@ -73,6 +73,7 @@ export async function fetchChannelMessages(
 }
 
 export type SendMessageInput = {
+  nonce?: string
   content?: string
   attachments?: string[]
   replies?: Array<{ id: string; mention: boolean }>
@@ -84,6 +85,10 @@ export async function sendChannelMessage(
   input: SendMessageInput,
 ) {
   const body: DataMessageSend = {}
+
+  if (input.nonce) {
+    body.nonce = input.nonce
+  }
 
   if (input.content?.trim()) {
     body.content = input.content.trim()

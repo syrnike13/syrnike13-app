@@ -11,6 +11,8 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -167,6 +169,54 @@ HRESULT set_codec_uint32(IMFTransform *encoder, const GUID &key,
   return api->SetValue(&key, &setting);
 }
 
+class TrackedBenchmarkInput final : public IMFAsyncCallback {
+public:
+  explicit TrackedBenchmarkInput(std::atomic_bool *available)
+      : available_(available) {}
+
+  HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void **object) override {
+    if (!object)
+      return E_POINTER;
+    if (iid == __uuidof(IUnknown) || iid == __uuidof(IMFAsyncCallback)) {
+      *object = static_cast<IMFAsyncCallback *>(this);
+      AddRef();
+      return S_OK;
+    }
+    *object = nullptr;
+    return E_NOINTERFACE;
+  }
+
+  ULONG STDMETHODCALLTYPE AddRef() override { return ++references_; }
+
+  ULONG STDMETHODCALLTYPE Release() override {
+    const ULONG remaining = --references_;
+    if (!remaining)
+      delete this;
+    return remaining;
+  }
+
+  HRESULT STDMETHODCALLTYPE GetParameters(DWORD *, DWORD *) override {
+    return E_NOTIMPL;
+  }
+
+  HRESULT STDMETHODCALLTYPE Invoke(IMFAsyncResult *) override {
+    Complete();
+    return S_OK;
+  }
+
+  void Complete() noexcept {
+    if (!completed_.exchange(true))
+      available_->store(true, std::memory_order_release);
+  }
+
+private:
+  ~TrackedBenchmarkInput() { Complete(); }
+
+  std::atomic<ULONG> references_{1};
+  std::atomic_bool completed_{false};
+  std::atomic_bool *available_;
+};
+
 void benchmark_hardware_encoder(
     const GUID &subtype, const char *codec, ID3D11Device *device,
     ID3D11DeviceContext *context, ID3D11VideoDevice *video_device,
@@ -306,7 +356,12 @@ void benchmark_hardware_encoder(
   encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
   encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
   const auto setup_end = Clock::now();
-  constexpr size_t pool_size = 8;
+  // Match the production WGC conversion pool so the stress test exercises
+  // the same amount of backpressure and texture reuse.
+  constexpr size_t pool_size = 5;
+  std::array<std::atomic_bool, pool_size> slot_available;
+  for (auto &available : slot_available)
+    available.store(true, std::memory_order_relaxed);
   D3D11_TEXTURE2D_DESC texture_desc{};
   texture_desc.Width = width;
   texture_desc.Height = height;
@@ -372,44 +427,111 @@ void benchmark_hardware_encoder(
       data.pSample->Release();
     return result;
   };
-  auto wait_for_async_event = [&](MediaEventType wanted) -> bool {
+  size_t need_input_events = 0;
+  bool drain_complete = false;
+  auto pump_async_event = [&]() -> HRESULT {
+    ComPtr<IMFMediaEvent> event;
+    const HRESULT event_hr =
+        event_generator->GetEvent(MF_EVENT_FLAG_NO_WAIT, &event);
+    if (event_hr == MF_E_NO_EVENTS_AVAILABLE)
+      return S_FALSE;
+    if (FAILED(event_hr))
+      return event_hr;
+    HRESULT status = S_OK;
+    MediaEventType type = MEUnknown;
+    if (FAILED(event->GetStatus(&status)))
+      return E_FAIL;
+    if (FAILED(status))
+      return status;
+    if (FAILED(event->GetType(&type)))
+      return E_FAIL;
+    if (type == METransformHaveOutput)
+      return pull_output();
+    if (type == METransformNeedInput)
+      ++need_input_events;
+    else if (type == METransformDrainComplete)
+      drain_complete = true;
+    return S_OK;
+  };
+  auto wait_for_async_input = [&]() -> bool {
     const auto deadline = Clock::now() + std::chrono::seconds(2);
     while (Clock::now() < deadline) {
-      ComPtr<IMFMediaEvent> event;
-      const HRESULT event_hr =
-          event_generator->GetEvent(MF_EVENT_FLAG_NO_WAIT, &event);
-      if (event_hr == MF_E_NO_EVENTS_AVAILABLE) {
+      if (need_input_events) {
+        --need_input_events;
+        return true;
+      }
+      const HRESULT event_hr = pump_async_event();
+      if (event_hr == S_FALSE) {
         Sleep(1);
         continue;
       }
       if (FAILED(event_hr))
         return false;
-      HRESULT status = S_OK;
-      MediaEventType type = MEUnknown;
-      if (FAILED(event->GetStatus(&status)) || FAILED(status) ||
-          FAILED(event->GetType(&type)))
-        return false;
-      if (type == METransformHaveOutput) {
-        if (FAILED(pull_output()))
+    }
+    return false;
+  };
+  auto wait_for_slot = [&](size_t slot) -> bool {
+    const auto deadline = Clock::now() + std::chrono::seconds(2);
+    while (Clock::now() < deadline) {
+      if (slot_available[slot].load(std::memory_order_acquire))
+        return true;
+      if (asynchronous) {
+        const HRESULT event_hr = pump_async_event();
+        if (FAILED(event_hr) && event_hr != MF_E_TRANSFORM_NEED_MORE_INPUT)
           return false;
+      } else {
+        const HRESULT output_hr = pull_output();
+        if (FAILED(output_hr) && output_hr != MF_E_TRANSFORM_NEED_MORE_INPUT)
+          return false;
+      }
+      Sleep(1);
+    }
+    return false;
+  };
+  auto wait_for_async_drain = [&]() -> bool {
+    const auto deadline = Clock::now() + std::chrono::seconds(2);
+    while (Clock::now() < deadline) {
+      if (drain_complete)
+        return true;
+      const HRESULT event_hr = pump_async_event();
+      if (event_hr == S_FALSE) {
+        Sleep(1);
         continue;
       }
-      if (type == wanted)
+      if (FAILED(event_hr) && event_hr != MF_E_TRANSFORM_NEED_MORE_INPUT)
+        return false;
+    }
+    return false;
+  };
+  auto wait_for_released_slot = [&](size_t slot) -> bool {
+    const auto deadline = Clock::now() + std::chrono::seconds(2);
+    while (Clock::now() < deadline) {
+      if (slot_available[slot].load(std::memory_order_acquire))
         return true;
+      Sleep(1);
     }
     return false;
   };
   const auto total_begin = Clock::now();
   size_t submitted = 0;
+  bool forced_late_join_keyframe = false;
   for (size_t frame = 0; frame < frames; ++frame) {
+    if (asynchronous && !wait_for_async_input()) {
+      throw std::runtime_error(std::string(codec) +
+                               " async encoder timed out waiting for input");
+    }
+    const size_t slot = frame % pool_size;
+    if (!wait_for_slot(slot))
+      throw std::runtime_error(std::string(codec) +
+                               " encoder retained an NV12 pool slot");
+    slot_available[slot].store(false, std::memory_order_release);
     check(video_context->VideoProcessorBlt(
-              processor, views[frame % pool_size].Get(), 0, 1, &stream),
+              processor, views[slot].Get(), 0, 1, &stream),
           "Encoder VideoProcessorBlt");
     wait_for_gpu(context, query);
     ComPtr<IMFMediaBuffer> surface;
     hr = MFCreateDXGISurfaceBuffer(__uuidof(ID3D11Texture2D),
-                                   textures[frame % pool_size].Get(), 0, FALSE,
-                                   &surface);
+                                   textures[slot].Get(), 0, FALSE, &surface);
     if (FAILED(hr)) {
       std::cout << "SKIP hardware_encode codec=" << codec
                 << " reason=dxgi_surface_buffer_failed hresult=" << hr << '\n';
@@ -417,14 +539,22 @@ void benchmark_hardware_encoder(
       activation->ShutdownObject();
       return;
     }
+    ComPtr<IMFTrackedSample> tracked_sample;
+    check(MFCreateTrackedSample(&tracked_sample), "Create tracked input sample");
     ComPtr<IMFSample> sample;
-    check(MFCreateSample(&sample), "Create input sample");
+    check(tracked_sample.As(&sample), "Query tracked input IMFSample");
     check(sample->AddBuffer(surface.Get()), "Add DXGI input buffer");
     sample->SetSampleTime(static_cast<LONGLONG>(frame) * 10'000'000 / 60);
     sample->SetSampleDuration(10'000'000 / 60);
-    if (asynchronous && !wait_for_async_event(METransformNeedInput)) {
-      throw std::runtime_error(std::string(codec) +
-                               " async encoder timed out waiting for input");
+    ComPtr<TrackedBenchmarkInput> lease;
+    lease.Attach(new TrackedBenchmarkInput(&slot_available[slot]));
+    check(tracked_sample->SetAllocator(lease.Get(), nullptr),
+          "Track encoder input sample");
+    if (frames > 1 && frame == frames / 2) {
+      check(set_codec_uint32(encoder.Get(), CODECAPI_AVEncVideoForceKeyFrame,
+                             TRUE),
+            "Force late-join keyframe");
+      forced_late_join_keyframe = true;
     }
     auto submit_begin = Clock::now();
     hr = encoder->ProcessInput(0, sample.Get(), 0);
@@ -460,23 +590,31 @@ void benchmark_hardware_encoder(
   encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
   encoder->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
   if (asynchronous) {
-    if (!wait_for_async_event(METransformDrainComplete))
+    if (!wait_for_async_drain())
       throw std::runtime_error(std::string(codec) +
                                " async encoder drain timed out");
   } else {
     while (pull_output() == S_OK) {
     }
   }
-  const auto drain_end = Clock::now();
-  const auto total_end = drain_end;
   encoder->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
   encoder->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
   if (shutdown)
     shutdown->Shutdown();
   check(activation->ShutdownObject(), "Shutdown hardware encoder");
+  for (size_t slot = 0; slot < pool_size; ++slot)
+    if (!wait_for_released_slot(slot))
+      throw std::runtime_error(std::string(codec) +
+                               " retained an input sample after shutdown");
+  const auto drain_end = Clock::now();
+  const auto total_end = drain_end;
   if (!output_units || !encoded_bytes)
     throw std::runtime_error(std::string(codec) +
                              " hardware encoder produced no access units");
+  if (forced_late_join_keyframe && keyframes < 2)
+    throw std::runtime_error(
+        std::string(codec) +
+        " hardware encoder did not produce the requested late-join keyframe");
   const double total_ms =
       std::chrono::duration<double, std::milli>(total_end - total_begin)
           .count();
@@ -495,11 +633,13 @@ void benchmark_hardware_encoder(
       << " encoded_bytes=" << encoded_bytes << " keyframes=" << keyframes
       << " cpu_copy_bytes_per_frame=0\n";
   std::cout << "ASSERT hardware_encode codec=" << codec
-            << " nonempty_access_units=pass clean_shutdown=pass\n";
+            << " nonempty_access_units=pass clean_shutdown=pass"
+               " tracked_input_lifetime=pass late_join_keyframe=pass\n";
 }
 } // namespace
 
 int main(int argc, char **argv) try {
+  std::cout << std::unitbuf;
   const uint32_t sw =
       argc > 1 ? static_cast<uint32_t>(std::stoul(argv[1])) : 1920;
   const uint32_t sh =

@@ -64,6 +64,7 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
                 ("safety", _, _) => ("safety", None),
                 ("feedback", _, _) => (feedback_bucket(resource, extra, method), None),
                 ("telemetry", Some("native"), Method::Post) => ("native_telemetry", None),
+                ("diagnostics", Some("reports"), Method::Post) => ("diagnostic_report", None),
                 _ => ("any", None),
             }
         } else {
@@ -89,6 +90,7 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
             "feedback_create" => 4,
             "feedback_vote" => 12,
             "native_telemetry" => 100,
+            "diagnostic_report" => 5,
             _ => 20,
         }
     }

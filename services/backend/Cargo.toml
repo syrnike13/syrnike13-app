@@ -140,6 +140,7 @@ lcms2 = "6.1.1" # for color profile processing
 # File processing
 syrnike_clamav_client = { package = "revolt_clamav-client", version = "0.1.5" }
 simdutf8 = "0.1.4"
+flate2 = "1.0"
 
 # Content type processing
 infer = "0.16.0"

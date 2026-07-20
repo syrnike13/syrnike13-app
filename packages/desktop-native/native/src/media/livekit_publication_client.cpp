@@ -78,7 +78,25 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
       }, [this](std::vector<std::string> identities) {
         postSpeakingActivity(std::move(identities));
       }),
-      remote_video_(electronMainPid(), post_) {
+      remote_video_(electronMainPid(), post_, [this](
+        const std::string& track_id,
+        const std::shared_ptr<livekit::Track>& track,
+        const std::string& message
+      ) {
+        handleRemoteVideoEnded(track_id, track, message);
+      }, {}),
+      local_camera_preview_(
+        electronMainPid(),
+        post_,
+        {},
+        {},
+        VideoBridgeEventTypes{
+          "__localCameraPreviewFrame",
+          "__localCameraPreviewTrackRemoved",
+          "__localCameraPreviewFailed",
+          "Local camera preview"
+        }
+      ) {
     remote_video_.updateIdentity(session_id_, generation_);
   }
 
@@ -105,6 +123,9 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
       generation = generation_;
     }
     changed_.notify_all();
+    if (event.state == livekit::ConnectionState::Disconnected) {
+      clearScreenPublications();
+    }
     logDelegate(
       kind_,
       "connection_state_changed",
@@ -133,6 +154,7 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
       generation = generation_;
     }
     changed_.notify_all();
+    clearScreenPublications();
     logDelegate(
       kind_,
       "disconnected",
@@ -148,23 +170,143 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
     postTerminal(std::move(session_id), generation, std::move(terminal_message));
   }
 
+  void onTrackPublished(livekit::Room&, const livekit::TrackPublishedEvent& event) override {
+    CallbackGuard callback(*this);
+    if (!callback || !event.publication) return;
+    registerScreenPublication(
+      event.publication,
+      event.participant ? event.participant->identity() : std::string{}
+    );
+  }
+
+  void onParticipantConnected(
+    livekit::Room&,
+    const livekit::ParticipantConnectedEvent& event
+  ) override {
+    CallbackGuard callback(*this);
+    if (!callback || !event.participant) return;
+    for (const auto& [_, publication] : event.participant->trackPublications()) {
+      registerScreenPublication(publication, event.participant->identity());
+    }
+  }
+
+  void registerInitialScreenPublications(livekit::Room& room) {
+    CallbackGuard callback(*this);
+    if (!callback) return;
+    for (const auto& weak_participant : room.remoteParticipants()) {
+      const auto participant = weak_participant.lock();
+      if (!participant) continue;
+      for (const auto& [_, publication] : participant->trackPublications()) {
+        registerScreenPublication(publication, participant->identity());
+      }
+    }
+  }
+
+  void onTrackUnpublished(livekit::Room&, const livekit::TrackUnpublishedEvent& event) override {
+    CallbackGuard callback(*this);
+    if (!callback || !event.publication) return;
+    const auto publication_id = event.publication->sid();
+    ScreenPublication removed;
+    std::vector<std::shared_ptr<livekit::RemoteTrackPublication>> paired_audio;
+    bool paired_audio_demanded = false;
+    bool found = false;
+    {
+      std::lock_guard lock(video_publications_mutex_);
+      const auto entry = screen_publications_.find(publication_id);
+      if (entry != screen_publications_.end()) {
+        removed = entry->second;
+        screen_publications_.erase(entry);
+        found = true;
+      }
+      if (found && removed.is_video) {
+        for (const auto& [_, candidate] : screen_publications_) {
+          if (candidate.is_video && candidate.demanded &&
+              candidate.participant_identity == removed.participant_identity) {
+            paired_audio_demanded = true;
+            break;
+          }
+        }
+        for (auto& [_, candidate] : screen_publications_) {
+          if (!candidate.is_video &&
+              candidate.participant_identity == removed.participant_identity) {
+            candidate.demanded = paired_audio_demanded;
+            paired_audio.push_back(candidate.publication);
+          }
+        }
+      }
+    }
+    if (found && removed.is_video) {
+      remote_video_.removeTrack(publication_id);
+      for (const auto& audio : paired_audio) {
+        audio->setSubscribed(paired_audio_demanded);
+      }
+      postScreenPublication("__remoteScreenPublicationUnavailable", publication_id,
+                            removed.participant_identity);
+    }
+  }
+
+  void onParticipantDisconnected(
+    livekit::Room&,
+    const livekit::ParticipantDisconnectedEvent& event
+  ) override {
+    CallbackGuard callback(*this);
+    if (!callback || !event.participant) return;
+    removeScreenPublicationsForParticipant(event.participant->identity());
+  }
+
   void onTrackSubscribed(livekit::Room&, const livekit::TrackSubscribedEvent& event) override {
     CallbackGuard callback(*this);
     if (!callback || !event.track) return;
+    const auto publication_source = event.publication
+      ? std::optional{event.publication->source()}
+      : std::nullopt;
+    const bool is_screen = publication_source == livekit::TrackSource::SOURCE_SCREENSHARE ||
+      publication_source == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO ||
+      event.track->source() == livekit::TrackSource::SOURCE_SCREENSHARE ||
+      event.track->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
+    const auto publication_id = event.publication
+      ? event.publication->sid()
+      : event.track->sid();
+    if (is_screen && event.publication) {
+      bool known = false;
+      {
+        std::lock_guard lock(video_publications_mutex_);
+        known = screen_publications_.contains(publication_id);
+      }
+      if (!known) {
+        registerScreenPublication(
+          event.publication,
+          event.participant ? event.participant->identity() : std::string{}
+        );
+      }
+    }
+    bool demanded = !is_screen;
+    bool duplicate = false;
+    if (is_screen) {
+      std::lock_guard lock(video_publications_mutex_);
+      const auto found = screen_publications_.find(publication_id);
+      demanded = found != screen_publications_.end() && found->second.demanded;
+      if (found != screen_publications_.end() && demanded) {
+        if (found->second.is_video) {
+          duplicate = found->second.current_track == event.track;
+          found->second.current_track = event.track;
+        }
+      }
+    }
+    if (is_screen && !demanded) {
+      if (event.publication) event.publication->setSubscribed(false);
+      return;
+    }
     if (event.track->kind() == livekit::TrackKind::KIND_AUDIO) {
       audio_output_.addTrack(
-        event.publication ? event.publication->sid() : event.track->sid(),
+        publication_id,
         event.participant ? event.participant->identity() : std::string{},
         event.publication
           ? event.publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO
           : event.track->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO,
         event.track
       );
-    } else if (event.track->kind() == livekit::TrackKind::KIND_VIDEO) {
-      if (event.publication) {
-        std::lock_guard lock(video_publications_mutex_);
-        video_publications_[event.track->sid()] = event.publication;
-      }
+    } else if (event.track->kind() == livekit::TrackKind::KIND_VIDEO && !duplicate) {
       remote_video_.addTrack(
         event.track,
         event.participant ? event.participant->identity() : std::string{},
@@ -172,20 +314,69 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
           ? std::optional{event.publication->source()}
           : std::nullopt
       );
+      if (is_screen) {
+        bool still_current = false;
+        {
+          std::lock_guard lock(video_publications_mutex_);
+          const auto found = screen_publications_.find(publication_id);
+          still_current = found != screen_publications_.end() &&
+            found->second.demanded && found->second.current_track == event.track;
+        }
+        if (!still_current) {
+          remote_video_.removeTrackIfCurrent(event.track->sid(), event.track, false);
+        }
+      }
     }
   }
 
   void onTrackUnsubscribed(livekit::Room&, const livekit::TrackUnsubscribedEvent& event) override {
     CallbackGuard callback(*this);
     if (!callback || !event.track) return;
-    audio_output_.removeTrack(
-      event.publication ? event.publication->sid() : event.track->sid()
-    );
-    remote_video_.removeTrack(event.track->sid());
+    const auto publication_id = event.publication
+      ? event.publication->sid()
+      : event.track->sid();
+    const bool is_screen =
+      (event.publication &&
+       (event.publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE ||
+        event.publication->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO)) ||
+      event.track->source() == livekit::TrackSource::SOURCE_SCREENSHARE ||
+      event.track->source() == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO;
+    if (event.track->kind() == livekit::TrackKind::KIND_AUDIO) {
+      audio_output_.removeTrack(publication_id);
+      return;
+    }
+    if (!is_screen) {
+      remote_video_.removeTrack(event.track->sid());
+      return;
+    }
+    bool current = false;
     {
       std::lock_guard lock(video_publications_mutex_);
-      video_publications_.erase(event.track->sid());
+      const auto found = screen_publications_.find(publication_id);
+      if (found != screen_publications_.end() &&
+          found->second.current_track == event.track) {
+        found->second.current_track.reset();
+        current = true;
+      }
     }
+    // LiveKit can deliver an old unsubscribe after a replacement subscribe
+    // for the same publication SID. Only the event for the current track may
+    // retire its decoder or initiate recovery.
+    if (!current) return;
+    remote_video_.removeTrackIfCurrent(event.track->sid(), event.track);
+  }
+
+  void onTrackSubscriptionFailed(
+    livekit::Room&,
+    const livekit::TrackSubscriptionFailedEvent& event
+  ) override {
+    CallbackGuard callback(*this);
+    if (!callback) return;
+    postRemoteVideoSubscriptionFailure(
+      event.track_sid,
+      "subscription_failed",
+      event.error
+    );
   }
 
   void postSpeakingActivity(std::vector<std::string> identities) {
@@ -214,15 +405,72 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) {
     remote_video_.release(track_id, sequence);
   }
+  void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    const std::shared_ptr<livekit::LocalVideoTrack>& track
+  ) {
+    local_camera_preview_.updateIdentity(std::move(session_id), generation);
+    local_camera_preview_.addTrack(
+      track,
+      std::move(participant_identity),
+      livekit::TrackSource::SOURCE_CAMERA,
+      std::move(track_id)
+    );
+  }
+  void stopLocalCameraPreview(const std::string& track_id) {
+    local_camera_preview_.removeTrack(track_id);
+  }
+  void stopLocalCameraPreviews() { local_camera_preview_.stop(); }
+  void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) {
+    local_camera_preview_.release(track_id, sequence);
+  }
   void setRemoteVideoDemand(const std::string& track_id, bool demanded) {
     std::shared_ptr<livekit::RemoteTrackPublication> publication;
+    std::vector<std::shared_ptr<livekit::RemoteTrackPublication>> paired_audio;
+    std::string participant_identity;
     {
       std::lock_guard lock(video_publications_mutex_);
-      const auto found = video_publications_.find(track_id);
-      if (found != video_publications_.end()) publication = found->second;
+      const auto found = screen_publications_.find(track_id);
+      if (found != screen_publications_.end() && found->second.is_video) {
+        found->second.demanded = demanded;
+        if (!demanded) found->second.current_track.reset();
+        publication = found->second.publication;
+        participant_identity = found->second.participant_identity;
+        for (const auto& [_, candidate] : screen_publications_) {
+          if (!candidate.is_video &&
+              candidate.participant_identity == found->second.participant_identity) {
+            paired_audio.push_back(candidate.publication);
+          }
+        }
+        for (auto& [_, candidate] : screen_publications_) {
+          if (!candidate.is_video &&
+              candidate.participant_identity == found->second.participant_identity) {
+            candidate.demanded = demanded;
+          }
+        }
+      }
     }
     if (!demanded) remote_video_.removeTrack(track_id);
     if (publication) publication->setSubscribed(demanded);
+    for (const auto& audio : paired_audio) audio->setSubscribed(demanded);
+    // Re-announce before the asynchronous subscription can produce frames so
+    // the renderer can lift its unsubscribe tombstone without losing inventory.
+    if (demanded && publication) {
+      postScreenPublication("__remoteScreenPublicationAvailable", track_id,
+                            participant_identity);
+    }
+  }
+
+  void retryRemoteVideo(const std::string& track_id, const std::string& reason) {
+    CallbackGuard callback(*this);
+    if (!callback) return;
+    postRemoteVideoSubscriptionFailure(track_id, "bridge_ended", reason);
   }
 
   bool isConnected() const {
@@ -260,6 +508,170 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   }
 
  private:
+  struct ScreenPublication {
+    std::shared_ptr<livekit::RemoteTrackPublication> publication;
+    std::string participant_identity;
+    bool is_video = false;
+    bool demanded = false;
+    std::shared_ptr<livekit::Track> current_track;
+  };
+
+  void postRemoteVideoSubscriptionFailure(
+    const std::string& publication_id,
+    std::string_view reason,
+    const std::string& error
+  ) {
+    std::string participant_identity;
+    bool is_video = false;
+    {
+      std::lock_guard lock(video_publications_mutex_);
+      const auto found = screen_publications_.find(publication_id);
+      if (found == screen_publications_.end() || !found->second.demanded) return;
+      if (reason == "subscription_failed" && found->second.current_track) return;
+      participant_identity = found->second.participant_identity;
+      is_video = found->second.is_video;
+    }
+    logDelegate(
+      kind_,
+      "screen_subscription_failed",
+      {
+        {"publicationId", publication_id},
+        {"participantIdentity", participant_identity},
+        {"reason", std::string(reason)},
+        {"error", error}
+      }
+    );
+    if (!is_video) return;
+    MediaCommand failed;
+    failed.type = "__remoteVideoFailed";
+    failed.track_id = publication_id;
+    failed.participant_identity = participant_identity;
+    failed.video_source = "screen";
+    failed.internal_message = error.empty()
+      ? std::string("Remote screen subscription failed")
+      : error;
+    {
+      std::lock_guard lock(mutex_);
+      failed.session_id = session_id_;
+      failed.generation = generation_;
+    }
+    post_(std::move(failed));
+  }
+
+  void handleRemoteVideoEnded(
+    const std::string& publication_id,
+    const std::shared_ptr<livekit::Track>& track,
+    const std::string&
+  ) {
+    CallbackGuard callback(*this);
+    if (!callback) return;
+    std::lock_guard lock(video_publications_mutex_);
+    const auto found = screen_publications_.find(publication_id);
+    if (found != screen_publications_.end() && found->second.is_video &&
+        found->second.current_track == track) {
+      found->second.current_track.reset();
+    }
+  }
+
+  void registerScreenPublication(
+    const std::shared_ptr<livekit::RemoteTrackPublication>& publication,
+    const std::string& participant_identity
+  ) {
+    if (!publication) return;
+    const auto source = publication->source();
+    if (source != livekit::TrackSource::SOURCE_SCREENSHARE &&
+        source != livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO) return;
+    const auto publication_id = publication->sid();
+    bool demanded = false;
+    {
+      std::lock_guard lock(video_publications_mutex_);
+      const auto existing = screen_publications_.find(publication_id);
+      std::shared_ptr<livekit::Track> current_track;
+      if (existing != screen_publications_.end() &&
+          existing->second.participant_identity == participant_identity) {
+        demanded = existing->second.demanded;
+        current_track = existing->second.current_track;
+      }
+      if (source == livekit::TrackSource::SOURCE_SCREENSHARE_AUDIO) {
+        for (const auto& [_, candidate] : screen_publications_) {
+          if (candidate.is_video && candidate.demanded &&
+              candidate.participant_identity == participant_identity) {
+            demanded = true;
+            break;
+          }
+        }
+      }
+      screen_publications_[publication_id] = ScreenPublication{
+        publication,
+        participant_identity,
+        source == livekit::TrackSource::SOURCE_SCREENSHARE,
+        demanded,
+        std::move(current_track)
+      };
+    }
+    publication->setSubscribed(demanded);
+    if (source == livekit::TrackSource::SOURCE_SCREENSHARE) {
+      postScreenPublication("__remoteScreenPublicationAvailable", publication_id,
+                            participant_identity);
+    }
+  }
+
+  void postScreenPublication(
+    std::string type,
+    std::string publication_id,
+    std::string participant_identity
+  ) {
+    MediaCommand command;
+    command.type = std::move(type);
+    command.track_id = std::move(publication_id);
+    command.participant_identity = std::move(participant_identity);
+    command.video_source = "screen";
+    {
+      std::lock_guard lock(mutex_);
+      command.session_id = session_id_;
+      command.generation = generation_;
+    }
+    post_(std::move(command));
+  }
+
+  void removeScreenPublicationsForParticipant(const std::string& participant_identity) {
+    std::vector<std::string> removed_video_ids;
+    {
+      std::lock_guard lock(video_publications_mutex_);
+      for (auto entry = screen_publications_.begin(); entry != screen_publications_.end();) {
+        if (entry->second.participant_identity != participant_identity) {
+          ++entry;
+          continue;
+        }
+        if (entry->second.is_video) removed_video_ids.push_back(entry->first);
+        entry = screen_publications_.erase(entry);
+      }
+    }
+    for (const auto& publication_id : removed_video_ids) {
+      remote_video_.removeTrack(publication_id);
+      postScreenPublication("__remoteScreenPublicationUnavailable", publication_id,
+                            participant_identity);
+    }
+  }
+
+  void clearScreenPublications() {
+    std::vector<std::pair<std::string, std::string>> removed_videos;
+    {
+      std::lock_guard lock(video_publications_mutex_);
+      for (const auto& [publication_id, entry] : screen_publications_) {
+        if (entry.is_video) {
+          removed_videos.emplace_back(publication_id, entry.participant_identity);
+        }
+      }
+      screen_publications_.clear();
+    }
+    for (const auto& [publication_id, participant_identity] : removed_videos) {
+      remote_video_.removeTrack(publication_id);
+      postScreenPublication("__remoteScreenPublicationUnavailable", publication_id,
+                            participant_identity);
+    }
+  }
+
   bool beginCallback() {
     std::lock_guard lock(callback_mutex_);
     if (shutting_down_) return false;
@@ -326,8 +738,9 @@ class PostedRoomDelegate final : public livekit::RoomDelegate {
   LiveKitPublicationClient::InternalPost post_;
   RemoteAudioOutput audio_output_;
   RemoteVideoBridge remote_video_;
+  RemoteVideoBridge local_camera_preview_;
   std::mutex video_publications_mutex_;
-  std::unordered_map<std::string, std::shared_ptr<livekit::RemoteTrackPublication>> video_publications_;
+  std::unordered_map<std::string, ScreenPublication> screen_publications_;
 };
 
 class RealLiveKitRoomSession final : public LiveKitRoomSession {
@@ -355,6 +768,7 @@ class RealLiveKitRoomSession final : public LiveKitRoomSession {
     // callback is observed, then detach it before Room teardown.
     delegate_->markIntentionalDisconnect();
     delegate_->stopAudio();
+    delegate_->stopLocalCameraPreviews();
     try {
       close();
     } catch (...) {
@@ -373,7 +787,9 @@ class RealLiveKitRoomSession final : public LiveKitRoomSession {
     const std::string& livekit_token,
     const livekit::RoomOptions& options
   ) override {
-    return room_.connect(livekit_url, livekit_token, options);
+    const auto connected = room_.connect(livekit_url, livekit_token, options);
+    if (connected) delegate_->registerInitialScreenPublications(room_);
+    return connected;
   }
 
   bool isConnected() const override {
@@ -426,8 +842,35 @@ class RealLiveKitRoomSession final : public LiveKitRoomSession {
   void releaseRemoteVideoFrame(std::string track_id, std::uint64_t sequence) {
     delegate_->releaseRemoteVideoFrame(std::move(track_id), sequence);
   }
+  void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    const std::shared_ptr<livekit::LocalVideoTrack>& track
+  ) {
+    delegate_->startLocalCameraPreview(
+      std::move(session_id),
+      generation,
+      std::move(track_id),
+      std::move(participant_identity),
+      track
+    );
+  }
+  void stopLocalCameraPreview(const std::string& track_id) {
+    delegate_->stopLocalCameraPreview(track_id);
+  }
+  void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) {
+    delegate_->releaseLocalCameraPreviewFrame(std::move(track_id), sequence);
+  }
   void setRemoteVideoDemand(std::string track_id, bool demanded) {
     delegate_->setRemoteVideoDemand(track_id, demanded);
+  }
+  void retryRemoteVideo(std::string track_id, std::string reason) {
+    delegate_->retryRemoteVideo(track_id, reason);
   }
 
   void disconnect() override {
@@ -554,6 +997,41 @@ class RealLiveKitPublicationClient final : public LiveKitPublicationClient {
   void setRemoteVideoDemand(std::string track_id, bool demanded) override {
     const auto room = roomSnapshot();
     if (room) room->setRemoteVideoDemand(std::move(track_id), demanded);
+  }
+  void retryRemoteVideo(std::string track_id, std::string reason) override {
+    const auto room = roomSnapshot();
+    if (room) room->retryRemoteVideo(std::move(track_id), std::move(reason));
+  }
+
+  void startLocalCameraPreview(
+    std::string session_id,
+    std::uint64_t generation,
+    std::string track_id,
+    std::string participant_identity,
+    std::shared_ptr<livekit::LocalVideoTrack> track
+  ) override {
+    const auto room = roomSnapshot();
+    if (!room) throw std::runtime_error("LiveKit voice Room is not connected");
+    room->startLocalCameraPreview(
+      std::move(session_id),
+      generation,
+      std::move(track_id),
+      std::move(participant_identity),
+      track
+    );
+  }
+
+  void stopLocalCameraPreview(std::string track_id) override {
+    const auto room = roomSnapshot();
+    if (room) room->stopLocalCameraPreview(track_id);
+  }
+
+  void releaseLocalCameraPreviewFrame(
+    std::string track_id,
+    std::uint64_t sequence
+  ) override {
+    const auto room = roomSnapshot();
+    if (room) room->releaseLocalCameraPreviewFrame(std::move(track_id), sequence);
   }
 
   void disconnectVoice() override {
@@ -859,6 +1337,28 @@ void DeterministicFakeLiveKitPublicationClient::releaseRemoteVideoFrame(
 ) {}
 
 void DeterministicFakeLiveKitPublicationClient::setRemoteVideoDemand(std::string, bool) {}
+void DeterministicFakeLiveKitPublicationClient::retryRemoteVideo(std::string, std::string) {}
+
+void DeterministicFakeLiveKitPublicationClient::startLocalCameraPreview(
+  std::string,
+  std::uint64_t,
+  std::string,
+  std::string,
+  std::shared_ptr<livekit::LocalVideoTrack>
+) {
+  std::lock_guard lock(mutex_);
+  local_camera_preview_start_count_ += 1;
+}
+
+void DeterministicFakeLiveKitPublicationClient::stopLocalCameraPreview(std::string) {
+  std::lock_guard lock(mutex_);
+  local_camera_preview_stop_count_ += 1;
+}
+
+void DeterministicFakeLiveKitPublicationClient::releaseLocalCameraPreviewFrame(
+  std::string,
+  std::uint64_t
+) {}
 
 void DeterministicFakeLiveKitPublicationClient::disconnectVoice() {
   {
@@ -962,6 +1462,16 @@ std::vector<std::string>
 DeterministicFakeLiveKitPublicationClient::unpublishedPublicationSids() const {
   std::lock_guard lock(mutex_);
   return unpublished_publication_sids_;
+}
+
+std::size_t DeterministicFakeLiveKitPublicationClient::localCameraPreviewStartCount() const {
+  std::lock_guard lock(mutex_);
+  return local_camera_preview_start_count_;
+}
+
+std::size_t DeterministicFakeLiveKitPublicationClient::localCameraPreviewStopCount() const {
+  std::lock_guard lock(mutex_);
+  return local_camera_preview_stop_count_;
 }
 
 void DeterministicFakeLiveKitPublicationClient::recordUnpublishedPublicationSid(

@@ -26,6 +26,7 @@ export type ServerMenuPermissions = {
 
 export type ServerSettingsAccess = {
   overview: boolean
+  engagement: boolean
   emoji: boolean
   roles: boolean
   members: boolean
@@ -148,10 +149,9 @@ export function canAssignRole(
   member: Member | undefined,
   userId: string | undefined,
   roleRank: number,
-  _userPrivileged = false,
 ) {
   if (!userId || !serverHas(server, ChannelPermission.AssignRoles)) return false
-  if (server.owner === userId || canAccessAdmin()) return true
+  if (server.owner === userId) return true
   return Boolean(
     roleRank > getMemberRank(server, member),
   )
@@ -163,13 +163,12 @@ function canModerateServerMember(
   actorUserId: string | undefined,
   targetMember: Member | undefined,
   permission: number,
-  _actorPrivileged = false,
 ) {
   if (!actorUserId || !targetMember) return false
   if (actorUserId === targetMember._id.user) return false
   if (server.owner === targetMember._id.user) return false
   if (!serverHas(server, permission)) return false
-  if (server.owner === actorUserId || canAccessAdmin()) return true
+  if (server.owner === actorUserId) return true
   return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
 }
 
@@ -178,7 +177,6 @@ export function canKickServerMember(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
-  _actorPrivileged = false,
 ) {
   return canModerateServerMember(
     server,
@@ -186,7 +184,6 @@ export function canKickServerMember(
     actorUserId,
     targetMember,
     ChannelPermission.KickMembers,
-    _actorPrivileged,
   )
 }
 
@@ -195,7 +192,6 @@ export function canBanServerMember(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
-  _actorPrivileged = false,
 ) {
   return canModerateServerMember(
     server,
@@ -203,7 +199,6 @@ export function canBanServerMember(
     actorUserId,
     targetMember,
     ChannelPermission.BanMembers,
-    _actorPrivileged,
   )
 }
 
@@ -212,7 +207,6 @@ export function canTimeoutServerMember(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
-  _actorPrivileged = false,
 ) {
   return canModerateServerMember(
     server,
@@ -220,7 +214,6 @@ export function canTimeoutServerMember(
     actorUserId,
     targetMember,
     ChannelPermission.TimeoutMembers,
-    _actorPrivileged,
   )
 }
 
@@ -229,7 +222,6 @@ export function canMuteServerMember(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
-  _actorPrivileged = false,
 ) {
   return canModerateServerMember(
     server,
@@ -237,7 +229,6 @@ export function canMuteServerMember(
     actorUserId,
     targetMember,
     ChannelPermission.MuteMembers,
-    _actorPrivileged,
   )
 }
 
@@ -246,7 +237,6 @@ export function canDeafenServerMember(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
-  _actorPrivileged = false,
 ) {
   return canModerateServerMember(
     server,
@@ -254,7 +244,6 @@ export function canDeafenServerMember(
     actorUserId,
     targetMember,
     ChannelPermission.DeafenMembers,
-    _actorPrivileged,
   )
 }
 
@@ -263,7 +252,6 @@ export function canMoveServerMember(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
-  _actorPrivileged = false,
 ) {
   return canModerateServerMember(
     server,
@@ -271,7 +259,6 @@ export function canMoveServerMember(
     actorUserId,
     targetMember,
     ChannelPermission.MoveMembers,
-    _actorPrivileged,
   )
 }
 
@@ -280,7 +267,6 @@ export function canChangeMemberNickname(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
-  _actorPrivileged = false,
 ) {
   if (!actorUserId || !targetMember) return false
   if (actorUserId === targetMember._id.user) {
@@ -288,7 +274,7 @@ export function canChangeMemberNickname(
   }
   if (!serverHas(server, ChannelPermission.ManageNicknames)) return false
   if (server.owner === targetMember._id.user) return false
-  if (server.owner === actorUserId || canAccessAdmin()) return true
+  if (server.owner === actorUserId) return true
   return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
 }
 
@@ -297,7 +283,6 @@ export function canEditMember(
   actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member,
-  _actorPrivileged = false,
 ) {
   if (!actorUserId) return false
   if (actorUserId === targetMember._id.user) {
@@ -307,7 +292,7 @@ export function canEditMember(
     serverHas(server, ChannelPermission.AssignRoles) ||
     serverHas(server, ChannelPermission.ManageNicknames)
   if (!canEdit || server.owner === targetMember._id.user) return false
-  if (server.owner === actorUserId || canAccessAdmin()) return true
+  if (server.owner === actorUserId) return true
   return getMemberRank(server, targetMember) > getMemberRank(server, actorMember)
 }
 
@@ -317,12 +302,11 @@ export function canManageChannelPermissionSubject(
   member: Member | undefined,
   userId: string | undefined,
   subject: { userId?: string; roleRank?: number },
-  _userPrivileged = false,
 ) {
   if (!userId || !canManageChannelPermissions(server, channel, member, userId)) {
     return false
   }
-  if (server.owner === userId || canAccessAdmin()) return true
+  if (server.owner === userId) return true
   if (subject.userId) {
     if (subject.userId === userId) return true
     if (subject.userId === server.owner) return false
@@ -336,13 +320,13 @@ export function canManageRole(
   member: Member | undefined,
   userId: string | undefined,
   roleRank: number,
-  options: { permissions?: boolean; privileged?: boolean } = {},
+  options: { permissions?: boolean } = {},
 ) {
   const required = options.permissions
     ? ChannelPermission.ManagePermissions
     : ChannelPermission.ManageRole
   if (!userId || !serverHas(server, required)) return false
-  if (server.owner === userId || canAccessAdmin()) return true
+  if (server.owner === userId) return true
   return roleRank > getMemberRank(server, member)
 }
 
@@ -350,11 +334,11 @@ export function getServerSettingsAccess(
   server: Server,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ): ServerSettingsAccess {
   const has = (permission: number) => serverHas(server, permission)
   return {
     overview: has(ChannelPermission.ManageServer),
+    engagement: has(ChannelPermission.ManageServer),
     emoji: has(ChannelPermission.ManageCustomisation),
     roles:
       has(ChannelPermission.ManageRole) ||
@@ -388,13 +372,11 @@ export function getServerMenuPermissions(
   channels: Channel[],
   member: Member | undefined,
   userId: string | undefined,
-  userPrivileged = false,
 ): ServerMenuPermissions {
   const access = getServerSettingsAccess(
     server,
     member,
     userId,
-    userPrivileged,
   )
   return {
     invite:
@@ -416,7 +398,6 @@ export function canInviteToChannel(
   channel: ServerTextChannel,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ) {
   return channelHas(channel, ChannelPermission.InviteOthers)
 }
@@ -425,7 +406,6 @@ export function canManageServerChannels(
   server: Server,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ) {
   return serverHas(server, ChannelPermission.ManageChannel)
 }
@@ -435,7 +415,6 @@ export function canManageChannel(
   channel: ServerChannel,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ) {
   return Boolean(server && channelHas(channel, ChannelPermission.ManageChannel))
 }
@@ -445,7 +424,6 @@ export function canManageChannelPermissions(
   channel: ServerChannel,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ) {
   return Boolean(
     server && channelHas(channel, ChannelPermission.ManagePermissions),
@@ -457,7 +435,6 @@ export function canManageChannelMessages(
   channel: ServerChannel,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ) {
   return Boolean(
     server &&
@@ -471,7 +448,6 @@ export function canManageChannelWebhooks(
   channel: ServerChannel,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ) {
   return Boolean(
     server &&
@@ -485,7 +461,6 @@ export function canViewChannel(
   channel: ServerTextChannel,
   _member: Member | undefined,
   _userId: string | undefined,
-  _userPrivileged = false,
 ) {
   return Boolean(server && channelHas(channel, ChannelPermission.ViewChannel))
 }

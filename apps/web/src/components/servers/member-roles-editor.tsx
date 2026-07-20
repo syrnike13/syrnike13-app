@@ -60,7 +60,6 @@ export function MemberRolesEditor({
           targetMember,
           role,
           !checked,
-          auth.user?.privileged,
         ) ||
         canToggleMemberRole(
           server,
@@ -69,14 +68,12 @@ export function MemberRolesEditor({
           targetMember,
           role,
           checked,
-          auth.user?.privileged,
         )
       )
     })
   }, [
     actorMember,
     assignedRoleIds,
-    auth.user?.privileged,
     roles,
     server,
     targetMember,
@@ -96,7 +93,6 @@ export function MemberRolesEditor({
         actorMember,
         userId,
         targetMember,
-        auth.user?.privileged,
       )
     : false
 
@@ -113,7 +109,6 @@ export function MemberRolesEditor({
         targetMember,
         role,
         enabled,
-        auth.user?.privileged,
       )
     ) {
       return
@@ -180,7 +175,6 @@ export function MemberRolesEditor({
               targetMember,
               role,
               !checked,
-              auth.user?.privileged,
             )
           const iconUrl = roleIconUrl(role.icon)
 

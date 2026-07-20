@@ -12,6 +12,10 @@
 
 namespace syrnike::voice {
 
+constexpr int kScreenAudioSampleRate = 48'000;
+constexpr int kScreenAudioChannels = 2;
+constexpr int kScreenAudioFramesPerPacket = kScreenAudioSampleRate / 100;
+
 using ScreenAudioFailure = std::function<void(std::string)>;
 using ScreenAudioStats = std::function<void(
     std::uint64_t frames,

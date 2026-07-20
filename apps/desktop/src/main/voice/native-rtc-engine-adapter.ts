@@ -940,6 +940,9 @@ export class NativeRtcEngineAdapter implements RtcEngineAdapter {
 function microphoneConfig(desired: VoiceMediaDesiredState) {
   return {
     deviceId: desired.microphoneDeviceId ?? null,
+    bypassSystemAudioInputProcessing:
+      desired.bypassSystemAudioInputProcessing,
+    automaticGainControl: desired.automaticGainControl,
     noiseSuppression: desired.noiseSuppression,
     echoCancellation: desired.echoCancellation,
     inputVolume: desired.inputVolume,

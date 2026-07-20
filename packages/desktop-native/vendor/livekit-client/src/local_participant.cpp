@@ -197,9 +197,12 @@ void LocalParticipant::publishTrack(const std::shared_ptr<Track>& track, const T
   auto publication = std::make_shared<LocalTrackPublication>(owned_pub);
 
   const std::string sid = publication->sid();
-  published_tracks_by_sid_[sid] = std::weak_ptr<Track>(track);
-
-  track->setPublication(publication);
+  {
+    const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+    published_tracks_by_sid_[sid] = std::weak_ptr<Track>(track);
+    publication_sid_aliases_.erase(sid);
+    track->setPublication(publication);
+  }
 }
 
 std::shared_ptr<LocalVideoTrack> LocalParticipant::publishVideoTrack(const std::string& name,
@@ -232,21 +235,42 @@ void LocalParticipant::unpublishTrack(const std::string& track_sid) {
     throw std::runtime_error("LocalParticipant::unpublishTrack: invalid FFI handle");
   }
 
-  auto fut = FfiClient::instance().unpublishTrackAsync(static_cast<std::uint64_t>(handle_id), track_sid,
+  std::string current_sid = track_sid;
+  {
+    const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+    for (std::size_t depth = 0; depth <= publication_sid_aliases_.size(); ++depth) {
+      const auto alias = publication_sid_aliases_.find(current_sid);
+      if (alias == publication_sid_aliases_.end() || alias->second == current_sid) {
+        break;
+      }
+      current_sid = alias->second;
+    }
+  }
+
+  auto fut = FfiClient::instance().unpublishTrackAsync(static_cast<std::uint64_t>(handle_id), current_sid,
                                                        /*stop_on_unpublish=*/true);
 
   fut.get();
 
-  if (auto it = published_tracks_by_sid_.find(track_sid); it != published_tracks_by_sid_.end()) {
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+  if (auto it = published_tracks_by_sid_.find(current_sid); it != published_tracks_by_sid_.end()) {
     if (auto t = it->second.lock()) {
       t->setPublication(nullptr);
     }
     published_tracks_by_sid_.erase(it);
   }
+  for (auto it = publication_sid_aliases_.begin(); it != publication_sid_aliases_.end();) {
+    if (it->first == track_sid || it->first == current_sid || it->second == current_sid) {
+      it = publication_sid_aliases_.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 LocalParticipant::PublicationMap LocalParticipant::trackPublications() const {
   PublicationMap out;
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
   for (auto it = published_tracks_by_sid_.begin(); it != published_tracks_by_sid_.end();) {
     auto t = it->second.lock();
     if (!t) {
@@ -259,6 +283,38 @@ LocalParticipant::PublicationMap LocalParticipant::trackPublications() const {
     ++it;
   }
   return out;
+}
+
+void LocalParticipant::handleTrackRepublished(const std::string& previous_sid,
+                                              const proto::TrackPublicationInfo& info) {
+  if (previous_sid.empty() || info.sid().empty()) {
+    return;
+  }
+
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+  auto existing = published_tracks_by_sid_.find(previous_sid);
+  if (existing == published_tracks_by_sid_.end()) {
+    return;
+  }
+  auto track = existing->second.lock();
+  if (!track) {
+    published_tracks_by_sid_.erase(existing);
+    return;
+  }
+  auto publication = localTrackPublication(track);
+  if (!publication) {
+    return;
+  }
+
+  publication->updateInfo(info);
+  published_tracks_by_sid_.erase(existing);
+  published_tracks_by_sid_[info.sid()] = track;
+  for (auto& [alias, target] : publication_sid_aliases_) {
+    if (target == previous_sid) {
+      target = info.sid();
+    }
+  }
+  publication_sid_aliases_[previous_sid] = info.sid();
 }
 
 Result<std::shared_ptr<LocalDataTrack>, PublishDataTrackError> LocalParticipant::publishDataTrack(
@@ -443,7 +499,16 @@ void LocalParticipant::handleRpcMethodInvocation(uint64_t invocation_id, const s
 }
 
 std::shared_ptr<TrackPublication> LocalParticipant::findTrackPublication(const std::string& sid) const {
-  auto it = published_tracks_by_sid_.find(sid);
+  const std::scoped_lock<std::mutex> guard(published_tracks_mutex_);
+  std::string current_sid = sid;
+  for (std::size_t depth = 0; depth <= publication_sid_aliases_.size(); ++depth) {
+    const auto alias = publication_sid_aliases_.find(current_sid);
+    if (alias == publication_sid_aliases_.end() || alias->second == current_sid) {
+      break;
+    }
+    current_sid = alias->second;
+  }
+  auto it = published_tracks_by_sid_.find(current_sid);
   if (it == published_tracks_by_sid_.end()) {
     return nullptr;
   }

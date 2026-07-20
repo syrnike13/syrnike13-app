@@ -539,6 +539,14 @@ void Room::onEvent(const FfiEvent& event) {
           }
           break;
         }
+        case proto::RoomEvent::kLocalTrackRepublished: {
+          const std::scoped_lock<std::mutex> guard(lock_);
+          if (local_participant_) {
+            const auto& republished = re.local_track_republished();
+            local_participant_->handleTrackRepublished(republished.previous_sid(), republished.info());
+          }
+          break;
+        }
         case proto::RoomEvent::kLocalTrackUnpublished: {
           LocalTrackUnpublishedEvent ev;
           {
@@ -598,7 +606,7 @@ void Room::onEvent(const FfiEvent& event) {
               const auto& owned_publication = tp.publication();
               auto rpublication = std::make_shared<RemoteTrackPublication>(owned_publication);
               // Store it on the participant, keyed by SID
-              rparticipant->mutableTrackPublications().emplace(rpublication->sid(), std::move(rpublication));
+              rparticipant->mutableTrackPublications().emplace(rpublication->sid(), rpublication);
               ev.participant = rparticipant;
               ev.publication = rpublication;
             } else {
@@ -683,9 +691,11 @@ void Room::onEvent(const FfiEvent& event) {
               LK_LOG_WARN("track_subscribed with unsupported kind: {}", static_cast<int>(track_info.kind()));
               break;
             }
-            // Attach to publication, mark subscribed
+            // This event reports actual FFI state. Do not call
+            // setSubscribed() here: that method sends a new command and can
+            // reorder with application-driven subscribe/unsubscribe requests.
             rpublication->setTrack(remote_track);
-            rpublication->setSubscribed(true);
+            rpublication->setSubscriptionState(true);
           }
 
           // Emit remote track_subscribed-style callback
@@ -727,10 +737,19 @@ void Room::onEvent(const FfiEvent& event) {
               break;
             }
             auto publication = pubIt->second;
+            // A subscribe command can overtake an older unsubscribe event. In
+            // that case, clearing publication->track() here would detach the
+            // newly subscribed replacement. Desired command state is distinct
+            // from actual event state so this check never sends another FFI
+            // command from the callback thread.
+            if (publication->subscriptionDesired()) {
+              LK_LOG_DEBUG("ignoring stale track_unsubscribed for demanded publication sid {}", track_sid);
+              break;
+            }
             unsub_source = publication->source();
             auto track = publication->track();
             publication->setTrack(nullptr);
-            publication->setSubscribed(false);
+            publication->setSubscriptionState(false);
             ev.participant = rparticipant;
             ev.publication = publication;
             ev.track = track;

@@ -1,0 +1,343 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+button {
+  min-height: 2.75rem;
+  border: 1px solid var(--primary);
+  border-radius: 0.75rem;
+  padding: 0.65rem 1rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+button.secondary {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.game-shell {
+  width: min(70rem, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.game-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0.35rem;
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  line-height: 1.1;
+}
+
+h2 {
+  margin-bottom: 0.4rem;
+  font-size: 1rem;
+}
+
+.muted {
+  color: var(--muted-foreground);
+}
+
+#phase-label {
+  color: var(--primary);
+}
+
+.connection {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+#connection-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border: 2px solid var(--muted-foreground);
+  border-radius: 999px;
+}
+
+#connection-dot[data-state='connected'] {
+  border-color: var(--chart-3);
+  background: var(--chart-3);
+}
+
+#connection-dot[data-state='reconnecting'] {
+  border-color: var(--ring);
+  animation: pulse 1s ease-in-out infinite alternate;
+}
+
+.diagnostics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1.25rem 0;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.diagnostics div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.8rem 1rem;
+}
+
+.diagnostics div + div {
+  border-left: 1px solid var(--border);
+}
+
+.diagnostics span {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+}
+
+.diagnostics strong {
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.error {
+  margin-bottom: 1rem;
+  border: 1px solid var(--destructive);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: var(--destructive);
+  font-size: 0.85rem;
+}
+
+.stage {
+  min-height: 23rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.stage[hidden] {
+  display: none;
+}
+
+.stage-copy {
+  max-width: 38rem;
+}
+
+.player-list,
+.scoreboard,
+.event-log ol {
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.player-list li,
+.scoreboard li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.player-list li[data-active='true'],
+.scoreboard li[data-active='true'] {
+  color: var(--primary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.arena-stage {
+  padding: 0.75rem;
+}
+
+.arena {
+  position: relative;
+  min-height: clamp(20rem, 58vh, 34rem);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--muted);
+}
+
+.target {
+  position: absolute;
+  width: clamp(5rem, 12vw, 7rem);
+  height: clamp(5rem, 12vw, 7rem);
+  min-height: 0;
+  translate: -50% -50%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  animation: target-in 140ms ease-out;
+}
+
+.target img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.target:not(:disabled):hover {
+  scale: 1.06;
+}
+
+.arena-hint {
+  margin: 0.75rem 0 0;
+  color: var(--muted-foreground);
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.score-section {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.score-section h2 {
+  margin: 0;
+}
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.scoreboard:not(:empty) {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.scoreboard li {
+  border-bottom: 0;
+  padding: 0.75rem 1rem;
+}
+
+.scoreboard li + li {
+  border-left: 1px solid var(--border);
+}
+
+.event-log {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+}
+
+.event-log summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.event-log li {
+  padding: 0.2rem 0;
+  font-family: ui-monospace, monospace;
+}
+
+@keyframes target-in {
+  from {
+    opacity: 0;
+    scale: 0.72;
+  }
+}
+
+@keyframes pulse {
+  to {
+    opacity: 0.35;
+  }
+}
+
+@media (max-width: 40rem) {
+  .game-header {
+    flex-direction: column;
+  }
+
+  .diagnostics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diagnostics div + div {
+    border-left: 0;
+  }
+
+  .diagnostics div:nth-child(even) {
+    border-left: 1px solid var(--border);
+  }
+
+  .diagnostics div:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
