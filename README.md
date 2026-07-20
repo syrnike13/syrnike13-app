@@ -1,14 +1,81 @@
-# syrnike13 app
+# 🧀 syrnike13
 
-Monorepo for syrnike13 web, desktop, backend and voice infrastructure.
+**Своя платформа для общения: серверы, каналы, голос и активности — всё в одном монорепо.**
 
-## Layout
+[![Version](https://img.shields.io/badge/version-0.6.3-blue)](VERSION)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-orange)](LICENSE)
+[![Web](https://img.shields.io/badge/web-syrnike13.ru-green)](https://syrnike13.ru)
+[![Nightly](https://img.shields.io/badge/nightly-beta.syrnike13.ru-purple)](https://beta.syrnike13.ru)
 
-- `apps/web` - React/TanStack web client.
-- `apps/desktop` - Electron shell for the same web client.
-- `packages/platform` - shared runtime/capability layer for web and desktop.
-- `services/backend` - Rust backend and backend daemons.
-- `services/livekit-server` - LiveKit server fork used by voice.
-- `deploy/production` - production compose and deploy scripts.
+syrnike13 — это самостоятельно хостящийся аналог Discord-подобных платформ:
+текстовые и голосовые каналы, серверы с ролями и бейджами, демонстрация экрана,
+встроенные активности в голосовых каналах, десктопное приложение с нативным
+медиа-движком и полноценный бэкенд на Rust.
 
-`VERSION` is the single release version source. Release workflows run on `main` only when `VERSION` changes.
+## ✨ Что внутри
+
+- 💬 **Серверы и каналы** — текст, голос, роли, права, бейджи, кастомизация.
+- 🎙️ **Голос и видео** — собственный форк LiveKit, демонстрация экрана, нативный
+  медиа-движок (C++/WebRTC) в десктопе с GPU-захватом.
+- 🎮 **Активности в каналах** — встроенные мини-приложения прямо в голосовом
+  канале (гонки сырников и не только).
+- 🖥️ **Десктоп** — Electron-оболочка с автообновлениями, локальными настройками
+  и нативным видео/аудио.
+- 🌙 **Nightly-окружение** — отдельный бета-стенд `beta.syrnike13.ru` для ветки
+  `develop` со своими образами и релизами.
+- 🛠️ **Админка** — модерация фидбека, диагностика, управление платформой.
+
+## 📦 Структура монорепо
+
+| Путь | Что это |
+|------|---------|
+| `apps/web` | React/TanStack веб-клиент |
+| `apps/desktop` | Electron-оболочка того же клиента |
+| `apps/admin` | Административная панель |
+| `packages/platform` | Общий runtime/capability-слой для web и desktop |
+| `packages/api-types` | Сгенерированные типы API |
+| `packages/desktop-native` | Нативный медиа-движок (C++/WebRTC) |
+| `services/backend` | Rust-бэкенд и демоны |
+| `services/livekit-server` | Форк LiveKit для голоса |
+| `deploy/production` | Docker Compose и скрипты продакшена |
+| `deploy/nightly` | Docker Compose nightly-стенда |
+| `tooling` | Скрипты и автоматизация репозитория |
+
+`VERSION` — единственный источник версии релиза. Релизные воркфлоу запускаются
+на `main` при изменении `VERSION`.
+
+## 🚀 Быстрый старт (веб)
+
+```sh
+pnpm install
+pnpm web:dev   # http://localhost:3000
+```
+
+По умолчанию дев-сервер подключается к продакшен-API, так что для
+UI-разработки не нужен локальный бэкенд.
+
+Полезные команды:
+
+```sh
+pnpm web:test          # тесты веб-клиента
+pnpm web:build         # продакшен-сборка
+pnpm desktop:dev       # десктоп (Electron)
+pnpm backend:check     # cargo check бэкенда
+pnpm livekit:check     # тесты LiveKit-форка
+```
+
+## 🌿 Ветки и релизы
+
+- `develop` — nightly-интеграция, деплоится на `beta.syrnike13.ru`.
+- `main` — продакшен, `syrnike13.ru`.
+
+## 📄 Лицензия
+
+Код проекта распространяется под
+[CC BY-NC 4.0](LICENSE) — можно изучать, форкать и использовать в некоммерческих
+целях с указанием авторства. **Коммерческое использование запрещено** без
+отдельного согласования с авторами.
+
+Сторонние компоненты (например, форк LiveKit и вендорные зависимости)
+распространяются под их собственными лицензиями — см. соответствующие
+`LICENSE`-файлы в их директориях.
