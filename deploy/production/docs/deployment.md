@@ -95,6 +95,16 @@ docker compose up -d --remove-orphans
 docker compose ps
 ```
 
+## Updating The Shared Edge
+
+Production and nightly share the production Caddy container. Both deploy
+workflows upload a candidate `Caddyfile` and run
+`scripts/reload-caddy.sh`, which validates the candidate before copying it over
+the bind-mounted file and applies it with `caddy reload`. The reload is locked
+across both workflows and rolls the file back if Caddy rejects the new
+configuration, so an edge update does not restart the container or disconnect
+existing WebSocket and LiveKit sessions.
+
 ## Current Image Policy
 
 `compose.yml` uses syrnike13-owned images:

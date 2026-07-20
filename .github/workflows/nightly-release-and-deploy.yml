@@ -236,6 +236,8 @@ jobs:
       SYRNIKE_DOMAIN: ${{ vars.NIGHTLY_SYRNIKE_DOMAIN || 'beta.syrnike13.ru' }}
       SYRNIKE_ADMIN_DOMAIN: ${{ vars.NIGHTLY_ADMIN_DOMAIN || 'admin.beta.syrnike13.ru' }}
       DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
+      CADDYFILE_CANDIDATE: /tmp/syrnike13-edge-Caddyfile-${{ github.run_id }}-${{ github.run_attempt }}
+      CADDY_RELOAD_SCRIPT: /tmp/syrnike13-reload-caddy-${{ github.run_id }}-${{ github.run_attempt }}.sh
     steps:
       - uses: actions/checkout@v4
       - name: Validate configuration
@@ -286,9 +288,10 @@ jobs:
       - name: Upload shared edge Caddyfile
         run: |
           set -euo pipefail
-          scp -i ~/.ssh/deploy_key deploy/production/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:/tmp/syrnike13-edge-Caddyfile"
+          scp -i ~/.ssh/deploy_key deploy/production/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$CADDYFILE_CANDIDATE"
+          scp -i ~/.ssh/deploy_key deploy/production/scripts/reload-caddy.sh "$DEPLOY_USER@$DEPLOY_HOST:$CADDY_RELOAD_SCRIPT"
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$EDGE_DEPLOY_PATH' && cp Caddyfile \"Caddyfile.pre-nightly-edge-\$(date +%Y%m%d%H%M%S).bak\" && mv /tmp/syrnike13-edge-Caddyfile Caddyfile && touch .env.web && if grep -q '^NIGHTLY_HOSTNAME=' .env.web; then sed -i 's|^NIGHTLY_HOSTNAME=.*|NIGHTLY_HOSTNAME=$SYRNIKE_DOMAIN|' .env.web; else printf '%s\n' 'NIGHTLY_HOSTNAME=$SYRNIKE_DOMAIN' >> .env.web; fi && if grep -q '^NIGHTLY_ADMIN_HOSTNAME=' .env.web; then sed -i 's|^NIGHTLY_ADMIN_HOSTNAME=.*|NIGHTLY_ADMIN_HOSTNAME=$SYRNIKE_ADMIN_DOMAIN|' .env.web; else printf '%s\n' 'NIGHTLY_ADMIN_HOSTNAME=$SYRNIKE_ADMIN_DOMAIN' >> .env.web; fi && docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile && docker compose up -d --no-deps --force-recreate caddy"
+            "cd '$EDGE_DEPLOY_PATH' && CADDY_NIGHTLY_HOSTNAME='$SYRNIKE_DOMAIN' CADDY_NIGHTLY_ADMIN_HOSTNAME='$SYRNIKE_ADMIN_DOMAIN' bash '$CADDY_RELOAD_SCRIPT' '$CADDYFILE_CANDIDATE' && rm -f '$CADDYFILE_CANDIDATE' '$CADDY_RELOAD_SCRIPT'"
       - name: Run nightly deploy
         run: |
           set -euo pipefail
