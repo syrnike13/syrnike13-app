@@ -7,6 +7,7 @@ mod channel_webhooks;
 mod channels;
 mod diagnostic_reports;
 mod emojis;
+mod feedback;
 mod file_hashes;
 mod files;
 mod messages;
@@ -30,6 +31,7 @@ pub use channel_webhooks::*;
 pub use channels::*;
 pub use diagnostic_reports::*;
 pub use emojis::*;
+pub use feedback::*;
 pub use file_hashes::*;
 pub use files::*;
 pub use messages::*;
@@ -63,6 +65,7 @@ pub trait AbstractDatabase:
     + emojis::AbstractEmojis
     + file_hashes::AbstractAttachmentHashes
     + files::AbstractAttachments
+    + feedback::AbstractFeedback
     + messages::AbstractMessages
     + policy_changes::AbstractPolicyChange
     + ratelimit_events::AbstractRatelimitEvents

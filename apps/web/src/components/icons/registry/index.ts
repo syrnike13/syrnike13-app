@@ -1,6 +1,7 @@
 export * from '#/components/icons/registry/actions'
 export * from '#/components/icons/registry/chat'
 export * from '#/components/icons/registry/chrome'
+export * from '#/components/icons/registry/feedback'
 export * from '#/components/icons/registry/navigation'
 export * from '#/components/icons/registry/platform'
 export * from '#/components/icons/registry/settings'

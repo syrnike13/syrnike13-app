@@ -1,4 +1,4 @@
-import { useMatch } from '@tanstack/react-router'
+import { useMatch, useRouterState } from '@tanstack/react-router'
 import {
   HashIcon,
   HomeIcon,
@@ -184,6 +184,10 @@ export function ServerRail({
 
   const homeMatch = useMatch({ from: homePath, shouldThrow: false })
   const channelMatch = useMatch({ from: channelPath, shouldThrow: false })
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const feedbackPath = `${homeTo}/feedback`
+  const isFeedbackPath =
+    pathname === feedbackPath || pathname.startsWith(`${feedbackPath}/`)
   const activeChannelId =
     channelMatch && 'params' in channelMatch
       ? channelMatch.params.channelId
@@ -194,7 +198,7 @@ export function ServerRail({
   )
 
   const homeActive =
-    Boolean(homeMatch) &&
+    Boolean(homeMatch || isFeedbackPath) &&
     !channelMatch &&
     (variant === 'desktop' || !selectedServerId)
 

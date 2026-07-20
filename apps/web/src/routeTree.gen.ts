@@ -30,8 +30,14 @@ import { Route as DesktopOverlayRouteImport } from './routes/desktop/overlay'
 import { Route as AppVoiceDebugRouteImport } from './routes/app/voice-debug'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppFriendsRouteImport } from './routes/app/friends'
+import { Route as MFeedbackIndexRouteImport } from './routes/m/feedback/index'
+import { Route as AppFeedbackIndexRouteImport } from './routes/app/feedback/index'
+import { Route as MFeedbackNewRouteImport } from './routes/m/feedback/new'
+import { Route as MFeedbackFeedbackIdRouteImport } from './routes/m/feedback/$feedbackId'
 import { Route as MCChannelIdRouteImport } from './routes/m/c/$channelId'
 import { Route as LoginResetTokenRouteImport } from './routes/login/reset.$token'
+import { Route as AppFeedbackNewRouteImport } from './routes/app/feedback/new'
+import { Route as AppFeedbackFeedbackIdRouteImport } from './routes/app/feedback/$feedbackId'
 import { Route as AppCChannelIdRouteImport } from './routes/app/c/$channelId'
 import { Route as MServersServerIdSettingsRouteImport } from './routes/m/servers/$serverId/settings'
 import { Route as AppServersServerIdSettingsRouteImport } from './routes/app/servers/$serverId/settings'
@@ -141,6 +147,26 @@ const AppFriendsRoute = AppFriendsRouteImport.update({
   path: '/friends',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const MFeedbackIndexRoute = MFeedbackIndexRouteImport.update({
+  id: '/feedback/',
+  path: '/feedback/',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const AppFeedbackIndexRoute = AppFeedbackIndexRouteImport.update({
+  id: '/feedback/',
+  path: '/feedback/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const MFeedbackNewRoute = MFeedbackNewRouteImport.update({
+  id: '/feedback/new',
+  path: '/feedback/new',
+  getParentRoute: () => MRouteRoute,
+} as any)
+const MFeedbackFeedbackIdRoute = MFeedbackFeedbackIdRouteImport.update({
+  id: '/feedback/$feedbackId',
+  path: '/feedback/$feedbackId',
+  getParentRoute: () => MRouteRoute,
+} as any)
 const MCChannelIdRoute = MCChannelIdRouteImport.update({
   id: '/c/$channelId',
   path: '/c/$channelId',
@@ -150,6 +176,16 @@ const LoginResetTokenRoute = LoginResetTokenRouteImport.update({
   id: '/$token',
   path: '/$token',
   getParentRoute: () => LoginResetRoute,
+} as any)
+const AppFeedbackNewRoute = AppFeedbackNewRouteImport.update({
+  id: '/feedback/new',
+  path: '/feedback/new',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppFeedbackFeedbackIdRoute = AppFeedbackFeedbackIdRouteImport.update({
+  id: '/feedback/$feedbackId',
+  path: '/feedback/$feedbackId',
+  getParentRoute: () => AppRouteRoute,
 } as any)
 const AppCChannelIdRoute = AppCChannelIdRouteImport.update({
   id: '/c/$channelId',
@@ -192,8 +228,14 @@ export interface FileRoutesByFullPath {
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
   '/app/c/$channelId': typeof AppCChannelIdRoute
+  '/app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
+  '/app/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
   '/m/c/$channelId': typeof MCChannelIdRoute
+  '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
+  '/m/feedback/new': typeof MFeedbackNewRoute
+  '/app/feedback/': typeof AppFeedbackIndexRoute
+  '/m/feedback/': typeof MFeedbackIndexRoute
   '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
   '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
@@ -218,8 +260,14 @@ export interface FileRoutesByTo {
   '/login': typeof LoginIndexRoute
   '/m': typeof MIndexRoute
   '/app/c/$channelId': typeof AppCChannelIdRoute
+  '/app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
+  '/app/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
   '/m/c/$channelId': typeof MCChannelIdRoute
+  '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
+  '/m/feedback/new': typeof MFeedbackNewRoute
+  '/app/feedback': typeof AppFeedbackIndexRoute
+  '/m/feedback': typeof MFeedbackIndexRoute
   '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
   '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
@@ -247,8 +295,14 @@ export interface FileRoutesById {
   '/login/': typeof LoginIndexRoute
   '/m/': typeof MIndexRoute
   '/app/c/$channelId': typeof AppCChannelIdRoute
+  '/app/feedback/$feedbackId': typeof AppFeedbackFeedbackIdRoute
+  '/app/feedback/new': typeof AppFeedbackNewRoute
   '/login/reset/$token': typeof LoginResetTokenRoute
   '/m/c/$channelId': typeof MCChannelIdRoute
+  '/m/feedback/$feedbackId': typeof MFeedbackFeedbackIdRoute
+  '/m/feedback/new': typeof MFeedbackNewRoute
+  '/app/feedback/': typeof AppFeedbackIndexRoute
+  '/m/feedback/': typeof MFeedbackIndexRoute
   '/app/servers/$serverId/settings': typeof AppServersServerIdSettingsRoute
   '/m/servers/$serverId/settings': typeof MServersServerIdSettingsRoute
 }
@@ -277,8 +331,14 @@ export interface FileRouteTypes {
     | '/login/'
     | '/m/'
     | '/app/c/$channelId'
+    | '/app/feedback/$feedbackId'
+    | '/app/feedback/new'
     | '/login/reset/$token'
     | '/m/c/$channelId'
+    | '/m/feedback/$feedbackId'
+    | '/m/feedback/new'
+    | '/app/feedback/'
+    | '/m/feedback/'
     | '/app/servers/$serverId/settings'
     | '/m/servers/$serverId/settings'
   fileRoutesByTo: FileRoutesByTo
@@ -303,8 +363,14 @@ export interface FileRouteTypes {
     | '/login'
     | '/m'
     | '/app/c/$channelId'
+    | '/app/feedback/$feedbackId'
+    | '/app/feedback/new'
     | '/login/reset/$token'
     | '/m/c/$channelId'
+    | '/m/feedback/$feedbackId'
+    | '/m/feedback/new'
+    | '/app/feedback'
+    | '/m/feedback'
     | '/app/servers/$serverId/settings'
     | '/m/servers/$serverId/settings'
   id:
@@ -331,8 +397,14 @@ export interface FileRouteTypes {
     | '/login/'
     | '/m/'
     | '/app/c/$channelId'
+    | '/app/feedback/$feedbackId'
+    | '/app/feedback/new'
     | '/login/reset/$token'
     | '/m/c/$channelId'
+    | '/m/feedback/$feedbackId'
+    | '/m/feedback/new'
+    | '/app/feedback/'
+    | '/m/feedback/'
     | '/app/servers/$serverId/settings'
     | '/m/servers/$serverId/settings'
   fileRoutesById: FileRoutesById
@@ -502,6 +574,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppFriendsRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/m/feedback/': {
+      id: '/m/feedback/'
+      path: '/feedback'
+      fullPath: '/m/feedback/'
+      preLoaderRoute: typeof MFeedbackIndexRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/app/feedback/': {
+      id: '/app/feedback/'
+      path: '/feedback'
+      fullPath: '/app/feedback/'
+      preLoaderRoute: typeof AppFeedbackIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/m/feedback/new': {
+      id: '/m/feedback/new'
+      path: '/feedback/new'
+      fullPath: '/m/feedback/new'
+      preLoaderRoute: typeof MFeedbackNewRouteImport
+      parentRoute: typeof MRouteRoute
+    }
+    '/m/feedback/$feedbackId': {
+      id: '/m/feedback/$feedbackId'
+      path: '/feedback/$feedbackId'
+      fullPath: '/m/feedback/$feedbackId'
+      preLoaderRoute: typeof MFeedbackFeedbackIdRouteImport
+      parentRoute: typeof MRouteRoute
+    }
     '/m/c/$channelId': {
       id: '/m/c/$channelId'
       path: '/c/$channelId'
@@ -515,6 +615,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/login/reset/$token'
       preLoaderRoute: typeof LoginResetTokenRouteImport
       parentRoute: typeof LoginResetRoute
+    }
+    '/app/feedback/new': {
+      id: '/app/feedback/new'
+      path: '/feedback/new'
+      fullPath: '/app/feedback/new'
+      preLoaderRoute: typeof AppFeedbackNewRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/app/feedback/$feedbackId': {
+      id: '/app/feedback/$feedbackId'
+      path: '/feedback/$feedbackId'
+      fullPath: '/app/feedback/$feedbackId'
+      preLoaderRoute: typeof AppFeedbackFeedbackIdRouteImport
+      parentRoute: typeof AppRouteRoute
     }
     '/app/c/$channelId': {
       id: '/app/c/$channelId'
@@ -546,6 +660,9 @@ interface AppRouteRouteChildren {
   AppVoiceDebugRoute: typeof AppVoiceDebugRoute
   AppIndexRoute: typeof AppIndexRoute
   AppCChannelIdRoute: typeof AppCChannelIdRoute
+  AppFeedbackFeedbackIdRoute: typeof AppFeedbackFeedbackIdRoute
+  AppFeedbackNewRoute: typeof AppFeedbackNewRoute
+  AppFeedbackIndexRoute: typeof AppFeedbackIndexRoute
   AppServersServerIdSettingsRoute: typeof AppServersServerIdSettingsRoute
 }
 
@@ -555,6 +672,9 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppVoiceDebugRoute: AppVoiceDebugRoute,
   AppIndexRoute: AppIndexRoute,
   AppCChannelIdRoute: AppCChannelIdRoute,
+  AppFeedbackFeedbackIdRoute: AppFeedbackFeedbackIdRoute,
+  AppFeedbackNewRoute: AppFeedbackNewRoute,
+  AppFeedbackIndexRoute: AppFeedbackIndexRoute,
   AppServersServerIdSettingsRoute: AppServersServerIdSettingsRoute,
 }
 
@@ -568,6 +688,9 @@ interface MRouteRouteChildren {
   MSettingsRoute: typeof MSettingsRoute
   MIndexRoute: typeof MIndexRoute
   MCChannelIdRoute: typeof MCChannelIdRoute
+  MFeedbackFeedbackIdRoute: typeof MFeedbackFeedbackIdRoute
+  MFeedbackNewRoute: typeof MFeedbackNewRoute
+  MFeedbackIndexRoute: typeof MFeedbackIndexRoute
   MServersServerIdSettingsRoute: typeof MServersServerIdSettingsRoute
 }
 
@@ -577,6 +700,9 @@ const MRouteRouteChildren: MRouteRouteChildren = {
   MSettingsRoute: MSettingsRoute,
   MIndexRoute: MIndexRoute,
   MCChannelIdRoute: MCChannelIdRoute,
+  MFeedbackFeedbackIdRoute: MFeedbackFeedbackIdRoute,
+  MFeedbackNewRoute: MFeedbackNewRoute,
+  MFeedbackIndexRoute: MFeedbackIndexRoute,
   MServersServerIdSettingsRoute: MServersServerIdSettingsRoute,
 }
 

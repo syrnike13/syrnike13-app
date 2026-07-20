@@ -1,6 +1,10 @@
-import { Link, Outlet, useRouterState } from '@tanstack/react-router'
+import { Link, Outlet, useBlocker, useRouterState } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
+import {
+  AdminDraftProvider,
+  useAdminDraftController,
+} from '#/components/draft-controller-context'
 import {
   AwardIcon,
   BugIcon,
@@ -18,10 +22,30 @@ const NAV = [
   { to: '/diagnostics', label: 'Диагностика', icon: BugIcon },
   { to: '/badges', label: 'Бейджи', icon: AwardIcon },
   { to: '/users', label: 'Пользователи', icon: UserSearchIcon },
+  { to: '/feedback', label: 'Обращения', icon: SparklesIcon },
 ] as const
 
 export function AdminShell({ children }: { children?: ReactNode }) {
+  return (
+    <AdminDraftProvider>
+      <AdminShellContent>{children}</AdminShellContent>
+    </AdminDraftProvider>
+  )
+}
+
+function AdminShellContent({ children }: { children?: ReactNode }) {
   const auth = useAuth()
+  const draftController = useAdminDraftController()
+
+  useBlocker({
+    shouldBlockFn: () => {
+      if (!draftController?.isDirty) return false
+      return !window.confirm(
+        'Есть несохранённые изменения. Покинуть страницу без сохранения?',
+      )
+    },
+    enableBeforeUnload: () => Boolean(draftController?.isDirty),
+  })
 
   if (!auth.isPrivileged) {
     return <AccessDenied />
@@ -68,7 +92,18 @@ export function AdminShell({ children }: { children?: ReactNode }) {
               size="icon-sm"
               className="shrink-0 text-muted-foreground"
               aria-label="Выйти"
-              onClick={() => void auth.logout()}
+              onClick={() => {
+                if (
+                  draftController?.isDirty &&
+                  !window.confirm(
+                    'Есть несохранённые изменения. Выйти без сохранения?',
+                  )
+                ) {
+                  return
+                }
+                draftController?.reset()
+                void auth.logout()
+              }}
             >
               <LogOutIcon className="size-4" aria-hidden />
             </Button>

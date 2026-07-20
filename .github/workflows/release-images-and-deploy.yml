@@ -158,6 +158,10 @@ jobs:
           desktop=false
           services="$frontend_services"
 
+          if printf '%s\n' "$changed_files" | grep -Eq '^deploy/production/compose\.yml$'; then
+            services="$services database"
+          fi
+
           if printf '%s\n' "$changed_files" | grep -Eq '^VERSION$'; then
             desktop=true
           fi

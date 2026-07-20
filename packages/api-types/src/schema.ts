@@ -496,6 +496,38 @@ export interface paths {
     /** Delete an invite by its id. */
     delete: operations["invite_delete_delete"];
   };
+  "/feedback": {
+    get: operations["feedback_list"];
+    post: operations["feedback_create"];
+  };
+  "/feedback/mine": {
+    get: operations["feedback_mine"];
+  };
+  "/feedback/{id}": {
+    get: operations["feedback_detail"];
+  };
+  "/feedback/{id}/vote": {
+    put: operations["feedback_add_vote"];
+    delete: operations["feedback_remove_vote"];
+  };
+  "/feedback/admin/pending": {
+    get: operations["feedback_admin_pending"];
+  };
+  "/feedback/admin/{id}/approve": {
+    post: operations["feedback_admin_approve"];
+  };
+  "/feedback/admin/{id}/reject": {
+    post: operations["feedback_admin_reject"];
+  };
+  "/feedback/admin/{id}/merge": {
+    post: operations["feedback_admin_merge"];
+  };
+  "/feedback/admin/{id}/hide": {
+    post: operations["feedback_admin_hide"];
+  };
+  "/feedback/admin/{id}": {
+    patch: operations["feedback_admin_update_publication"];
+  };
 }
 
 export interface components {
@@ -3313,6 +3345,113 @@ export interface components {
      * @enum {string}
      */
     VoiceCallEndReason: "completed" | "cancelled" | "missed";
+    /**
+     * @description Moderation visibility of a feedback suggestion.
+     * @enum {string}
+     */
+    FeedbackModerationStatus:
+      | "pending"
+      | "approved"
+      | "rejected"
+      | "merged"
+      | "hidden";
+    /**
+     * @description Delivery state of an approved feedback suggestion.
+     * @enum {string}
+     */
+    FeedbackProductStatus:
+      | "collecting"
+      | "under_consideration"
+      | "planned"
+      | "in_progress"
+      | "released"
+      | "not_planned";
+    /**
+     * @description User-selected kind of feedback.
+     * @enum {string}
+     */
+    FeedbackCategory: "bug" | "idea";
+    /**
+     * @description Optional product area affected by the feedback.
+     * @enum {string}
+     */
+    FeedbackArea:
+      | "navigation"
+      | "voice_video"
+      | "community"
+      | "messages"
+      | "moderation"
+      | "desktop"
+      | "activities"
+      | "other";
+    /**
+     * @description Optional client platform where the feedback applies.
+     * @enum {string}
+     */
+    FeedbackPlatform: "windows" | "macos" | "linux" | "web" | "android" | "ios";
+    /**
+     * @description Sort order for the feedback catalogue.
+     * @enum {string}
+     */
+    FeedbackSort: "popular" | "new";
+    /** @description A product feedback suggestion visible to the requesting user. */
+    FeedbackSuggestion: {
+      _id: string;
+      author?: string;
+      author_username?: string;
+      anonymous: boolean;
+      title: string;
+      description: string;
+      category: components["schemas"]["FeedbackCategory"];
+      area?: components["schemas"]["FeedbackArea"];
+      platform?: components["schemas"]["FeedbackPlatform"];
+      moderation_status: components["schemas"]["FeedbackModerationStatus"];
+      status: components["schemas"]["FeedbackProductStatus"];
+      team_response?: string | null;
+      rejection_reason?: string | null;
+      merged_into?: string | null;
+      merge_reason?: string | null;
+      /** Format: uint64 */
+      vote_count: number;
+      voted: boolean;
+      created_at: components["schemas"]["ISO8601 Timestamp"];
+      updated_at: components["schemas"]["ISO8601 Timestamp"];
+    };
+    /** @description Paginated feedback catalogue response. */
+    FeedbackSuggestionPage: {
+      suggestions: components["schemas"]["FeedbackSuggestion"][];
+      /** Format: uint64 */
+      total: number;
+      /** Format: uint64 */
+      offset: number;
+      /** Format: uint64 */
+      limit: number;
+    };
+    /** @description Data for a new feedback suggestion. */
+    DataCreateFeedbackSuggestion: {
+      title: string;
+      description: string;
+      category: components["schemas"]["FeedbackCategory"];
+      area?: components["schemas"]["FeedbackArea"];
+      platform: components["schemas"]["FeedbackPlatform"];
+      /** @default false */
+      anonymous?: boolean;
+    };
+    /** @description Rejection reason supplied by a moderator. */
+    DataRejectFeedbackSuggestion: {
+      reason: string;
+    };
+    /** @description Destination suggestion when merging a duplicate. */
+    DataMergeFeedbackSuggestion: {
+      target_id: string;
+      reason?: string | null;
+    };
+    /** @description Atomic update of the public product status and official team response. */
+    DataUpdateFeedbackPublication: {
+      expected_updated_at: components["schemas"]["ISO8601 Timestamp"];
+      status: components["schemas"]["FeedbackProductStatus"];
+      response?: string | null;
+    };
   };
 }
 
@@ -6200,6 +6339,198 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["Error"];
         };
+      };
+    };
+  };
+  feedback_list: {
+    parameters: {
+      query: {
+        search?: string;
+        category?: components["schemas"]["FeedbackCategory"];
+        area?: components["schemas"]["FeedbackArea"];
+        platform?: components["schemas"]["FeedbackPlatform"];
+        status?: components["schemas"]["FeedbackProductStatus"];
+        sort?: components["schemas"]["FeedbackSort"];
+        offset?: number;
+        limit?: number;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestionPage"];
+        };
+      };
+    };
+  };
+  feedback_create: {
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataCreateFeedbackSuggestion"];
+      };
+    };
+  };
+  feedback_mine: {
+    parameters: {
+      query: {
+        offset?: number;
+        limit?: number;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestionPage"];
+        };
+      };
+    };
+  };
+  feedback_detail: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+  };
+  feedback_add_vote: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+  };
+  feedback_remove_vote: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+  };
+  feedback_admin_pending: {
+    parameters: {
+      query: {
+        offset?: number;
+        limit?: number;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestionPage"];
+        };
+      };
+    };
+  };
+  feedback_admin_approve: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+  };
+  feedback_admin_reject: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataRejectFeedbackSuggestion"];
+      };
+    };
+  };
+  feedback_admin_merge: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataMergeFeedbackSuggestion"];
+      };
+    };
+  };
+  feedback_admin_hide: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+  };
+  feedback_admin_update_publication: {
+    parameters: {
+      path: {
+        id: string;
+      };
+    };
+    responses: {
+      200: {
+        content: {
+          "application/json": components["schemas"]["FeedbackSuggestion"];
+        };
+      };
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataUpdateFeedbackPublication"];
       };
     };
   };
