@@ -1,6 +1,5 @@
 import {
   RiGamepadLine,
-  RiStopCircleLine,
   RiVideoOffFill,
   RiVideoOnFill,
   RiVolumeMuteLine,
@@ -87,10 +86,10 @@ export const VolumeXIcon = defineIcon(RiVolumeMuteLine, {
 })
 
 export const MonitorXIcon = defineIcon(
-  RiStopCircleLine,
+  iconifyIcon('ic:round-stop-screen-share'),
   {
-    pack: 'remixicon',
-    name: 'RiStopCircleLine',
+    pack: 'iconify',
+    name: 'ic:round-stop-screen-share',
   },
 )
 

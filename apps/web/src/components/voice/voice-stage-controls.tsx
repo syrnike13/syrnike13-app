@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { RiStopCircleLine } from '@remixicon/react'
+import { PhoneXmark } from 'iconoir-react/solid'
 import {
   ChevronDownIcon,
   ExternalLinkIcon,
@@ -14,7 +16,6 @@ import {
   MonitorUpIcon,
   MonitorXIcon,
   MoreHorizontalIcon,
-  PhoneOffIcon,
   Settings2Icon,
   VideoIcon,
   VideoOffIcon,
@@ -785,11 +786,6 @@ function VoiceStageExitControl({
   const title = focusedSession
     ? voiceStageViewSessionExitLabel(focusedSession)
     : 'Отключиться от голоса'
-  const PrimaryIcon = focusedSession
-    ? focusedSession.kind === 'activity'
-      ? LogOutIcon
-      : MonitorXIcon
-    : PhoneOffIcon
   const onPrimaryAction = () => {
     if (focusedSession) {
       onExitSession(focusedSession)
@@ -821,7 +817,7 @@ function VoiceStageExitControl({
               : 'rounded-full',
         )}
       >
-        <PrimaryIcon className="size-5" />
+        <PhoneXmark className="size-5" />
       </button>
     </VoiceControlTooltip>
   )
@@ -862,7 +858,7 @@ function VoiceStageExitControl({
           <DropdownMenuLabel>Активные просмотры</DropdownMenuLabel>
           {sessions.map((session) => {
             const SessionIcon =
-              session.kind === 'activity' ? LogOutIcon : MonitorXIcon
+              session.kind === 'activity' ? LogOutIcon : RiStopCircleLine
             return (
               <DropdownMenuItem
                 key={session.id}
