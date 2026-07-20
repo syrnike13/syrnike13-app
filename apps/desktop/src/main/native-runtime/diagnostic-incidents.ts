@@ -8,6 +8,7 @@ import type { DiagnosticLogRecord } from './diagnostic-log'
 import { redactSensitiveText } from './contract'
 
 const MAX_PENDING_INCIDENTS = 100
+const MAX_INCIDENT_FINGERPRINTS = 1_000
 const REPEAT_WINDOW_MS = 5_000
 const INCIDENT_LEASE_MS = 2 * 60 * 1_000
 const INCIDENT_SIGNAL =
@@ -46,7 +47,18 @@ export function captureNativeDiagnosticIncident(
   if (previous !== undefined && timestampMs - previous < REPEAT_WINDOW_MS) {
     return null
   }
+  lastIncidentAt.delete(fingerprint)
   lastIncidentAt.set(fingerprint, timestampMs)
+  for (const [candidate, lastSeenAt] of lastIncidentAt) {
+    if (timestampMs - lastSeenAt >= REPEAT_WINDOW_MS) {
+      lastIncidentAt.delete(candidate)
+    }
+  }
+  while (lastIncidentAt.size > MAX_INCIDENT_FINGERPRINTS) {
+    const oldest = lastIncidentAt.keys().next().value
+    if (oldest === undefined) break
+    lastIncidentAt.delete(oldest)
+  }
 
   const incident: NativeDiagnosticIncident = compactIncident({
     timestampMs,

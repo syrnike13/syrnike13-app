@@ -11,6 +11,7 @@ import type {
 
 const MAX_RENDERER_BYTES = 2 * 1024 * 1024
 const MAX_NATIVE_BYTES = 30 * 1024 * 1024
+const MAX_COMPRESSED_BUNDLE_BYTES = 10 * 1024 * 1024
 const MAX_DECOMPRESSED_BUNDLE_BYTES = 33 * 1024 * 1024
 const INVENTORY_RESERVE_BYTES = 64 * 1024
 const MAX_NATIVE_SESSIONS = 3
@@ -50,6 +51,43 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
     0,
     MAX_DECOMPRESSED_BUNDLE_BYTES - rendererBytes - INVENTORY_RESERVE_BYTES,
   )
+  let selectionBudget = nativeBudget
+  for (let attempt = 0; ; attempt += 1) {
+    const bundle = buildNormalizedBundle(
+      rendererRecords,
+      native,
+      nativeRecordGroups,
+      selectionBudget,
+    )
+    if (bundle.byteLength <= MAX_COMPRESSED_BUNDLE_BYTES) {
+      return new Uint8Array(bundle)
+    }
+    if (selectionBudget === 0) {
+      throw new Error('Compressed diagnostic bundle is too large')
+    }
+    selectionBudget =
+      attempt >= 7
+        ? 0
+        : Math.max(
+            0,
+            Math.min(
+              selectionBudget - 1,
+              Math.floor(
+                selectionBudget *
+                  (MAX_COMPRESSED_BUNDLE_BYTES / bundle.byteLength) *
+                  0.9,
+              ),
+            ),
+          )
+  }
+}
+
+function buildNormalizedBundle(
+  rendererRecords: DiagnosticEnvelope[],
+  native: NativeDiagnosticReadResult,
+  nativeRecordGroups: DiagnosticEnvelope[][],
+  nativeBudget: number,
+) {
   const normalizedGroupBytes = nativeRecordGroups.map(serializedRecordsBytes)
   const normalizedBudgets = allocateFairReadBudgets(normalizedGroupBytes, nativeBudget)
   const selectedGroups = nativeRecordGroups.map((records, index) =>
@@ -70,6 +108,9 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
     'diagnostic.bundle_inventory',
     {
       native_limit_bytes: MAX_NATIVE_BYTES,
+      compressed_limit_bytes: MAX_COMPRESSED_BUNDLE_BYTES,
+      decompressed_limit_bytes: MAX_DECOMPRESSED_BUNDLE_BYTES,
+      native_selection_budget_bytes: nativeBudget,
       native_sessions_found: native.sessionsFound,
       native_sessions_selected: native.sessionsSelected,
       native_files_found: native.filesFound,
@@ -95,7 +136,7 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
   if (Buffer.byteLength(jsonl) > MAX_DECOMPRESSED_BUNDLE_BYTES) {
     throw new Error('Normalized diagnostic bundle is too large')
   }
-  return new Uint8Array(gzipSync(jsonl, { level: 6 }))
+  return gzipSync(jsonl, { level: 6 })
 }
 
 function serializedRecordsBytes(records: DiagnosticEnvelope[]) {

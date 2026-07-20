@@ -723,7 +723,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         : null
 
   useEffect(() => {
-    if (!channelId) setActivityLauncherOpen(false)
+    setActivityLauncherOpen(false)
   }, [channelId])
 
   useEffect(() => {

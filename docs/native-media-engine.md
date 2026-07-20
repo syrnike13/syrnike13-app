@@ -176,6 +176,10 @@ preserved. Logs redact tokens, URLs, identities, device/source/window data and
 paths, remove local run directories older than seven days, and contribute a
 fairly shared maximum of 30 MiB to a report.
 
+After native records are normalized, the desktop bundle is capped at 33 MiB
+decompressed and 10 MiB gzip-compressed; incompressible native tails are reduced
+until both upload limits are satisfied.
+
 The main-process incident monitor promotes any native error code plus failures,
 timeouts, queue exhaustion, degraded states, unexpected exits, restarts,
 recycling, stalls, incompatibility, and contract corruption into an automatic

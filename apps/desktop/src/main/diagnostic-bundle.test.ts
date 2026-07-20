@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -91,4 +92,38 @@ describe('desktop diagnostic bundle', () => {
     )
     expect(gunzipSync(compressed).byteLength).toBeLessThanOrEqual(33 * 1024 * 1024)
   }, 15_000)
+
+  it('reduces native records when gzip output would exceed the upload limit', async () => {
+    const session = path.join(
+      state.userData,
+      'logs',
+      'native-media-diagnostics',
+      'native-media-incompressible',
+    )
+    await mkdir(session, { recursive: true })
+    const records = Array.from({ length: 5_000 }, (_, index) =>
+      JSON.stringify({
+        role: 'native',
+        event: 'runtime_failed',
+        wallTimeUnixMs: index,
+        detail: randomBytes(3_072).toString('base64'),
+      }),
+    ).join('\n')
+    await writeFile(path.join(session, 'native.jsonl'), records, 'utf8')
+
+    const compressed = await createDesktopDiagnosticBundle(
+      '{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}',
+    )
+    expect(compressed.byteLength).toBeLessThanOrEqual(10 * 1024 * 1024)
+    const normalized = gunzipSync(compressed)
+    expect(normalized.byteLength).toBeLessThanOrEqual(33 * 1024 * 1024)
+    const inventory = normalized
+      .toString('utf8')
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .find((record) => record.event === 'diagnostic.bundle_inventory')
+    expect(inventory.data.native_selection_budget_bytes).toBeLessThan(
+      30 * 1024 * 1024,
+    )
+  }, 30_000)
 })

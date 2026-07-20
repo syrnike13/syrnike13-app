@@ -63,6 +63,24 @@ describe('native diagnostic incident monitor', () => {
     expect(leaseNativeDiagnosticIncidents()?.incidents).toHaveLength(2)
   })
 
+  it('bounds high-cardinality fingerprints while preserving recent deduplication', () => {
+    const failure = (reason: string) => ({
+      scope: 'desktop-voice' as const,
+      event: 'runtime_failed',
+      reason,
+    })
+
+    expect(captureNativeDiagnosticIncident(failure('oldest'), 20_000)).not.toBeNull()
+    for (let index = 0; index < 1_000; index += 1) {
+      captureNativeDiagnosticIncident(failure(`unique-${index}`), 20_000)
+    }
+
+    expect(captureNativeDiagnosticIncident(failure('oldest'), 20_001)).not.toBeNull()
+    expect(
+      captureNativeDiagnosticIncident(failure('unique-999'), 20_001),
+    ).toBeNull()
+  })
+
   it('marks contract corruption as fatal', () => {
     captureNativeDiagnosticIncident({
       scope: 'desktop-voice',

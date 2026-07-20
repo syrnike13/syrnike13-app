@@ -71,6 +71,10 @@ export function DiagnosticErrorReporter() {
             'native-runtime',
             'instability_detected',
             incident,
+            {
+              dedupeKey: `native-runtime:${incident.scope}:${incident.triggerCode}`,
+              heartbeatMs: 60_000,
+            },
           )
         }
         const severity = highestIncidentSeverity(incidents)

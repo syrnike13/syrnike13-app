@@ -45,9 +45,12 @@ manifest whose metadata must match the authenticated upload request. Desktop
 bundle creation normalizes legacy native log lines into this envelope before
 upload.
 
-The client gzip-compresses the JSONL bundle and sends it through an authenticated
-backend endpoint. The backend applies compressed and decompressed size limits,
-fully decodes the gzip stream, validates every envelope, and only then permits
+The client caps the normalized desktop bundle at 33 MiB, gzip-compresses it,
+and reduces the selected native record tails if the gzip output would exceed
+10 MiB. It then sends the bundle through an authenticated backend endpoint.
+The backend independently applies the same compressed ceiling and a 34 MiB
+decompressed ceiling, fully decodes the gzip stream, validates every envelope,
+and only then permits
 storage. It creates a short-lived `pending` database record before uploading the
 encrypted object and marks it `available` after S3 returns the encryption IV.
 Privileged admin endpoints only expose available reports.
