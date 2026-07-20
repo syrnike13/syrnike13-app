@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use bson::{Bson, Document, doc};
 use futures::{FutureExt, TryStreamExt, future::BoxFuture};
-use iso8601_timestamp::Timestamp;
+use iso8601_timestamp::{Duration, Timestamp};
 use mongodb::error::{TRANSIENT_TRANSACTION_ERROR, UNKNOWN_TRANSACTION_COMMIT_RESULT};
 use mongodb::options::UpdateOptions;
 use syrnike_models::v0;
@@ -349,22 +349,34 @@ impl AbstractFeedback for MongoDb {
     async fn update_feedback_publication(
         &self,
         id: &str,
+        expected_updated_at: Timestamp,
         status: v0::FeedbackProductStatus,
         response: Option<String>,
     ) -> Result<()> {
         let approved = bson::to_bson(&v0::FeedbackModerationStatus::Approved)
             .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?;
+        let now = Timestamp::now_utc();
+        let updated_at =
+            if now <= expected_updated_at || now.format() == expected_updated_at.format() {
+                expected_updated_at
+                    .checked_add(Duration::milliseconds(1))
+                    .unwrap_or(now)
+            } else {
+                now
+            };
         update_one_checked(
             self,
             doc! {
                 "_id": id,
                 "moderation_status": approved,
+                "updated_at": bson::to_bson(&expected_updated_at)
+                    .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
             },
             doc! {
                 "product_status": bson::to_bson(&status)
                     .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
                 "team_response": response.map(Bson::String).unwrap_or(Bson::Null),
-                "updated_at": bson::to_bson(&Timestamp::now_utc())
+                "updated_at": bson::to_bson(&updated_at)
                     .map_err(|_| create_database_error!("serialize", SUGGESTIONS_COL))?,
             },
         )

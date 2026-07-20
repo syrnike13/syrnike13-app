@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { AdminDraftProvider } from '#/components/draft-controller-context'
+
 const firstSuggestion = feedbackSuggestion({
   _id: 'idea-1',
   title: 'Первая идея',
@@ -114,7 +116,9 @@ function renderFeedbackModerationPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <FeedbackModerationPage />
+      <AdminDraftProvider>
+        <FeedbackModerationPage />
+      </AdminDraftProvider>
     </QueryClientProvider>,
   )
 }
@@ -192,6 +196,7 @@ describe('FeedbackModerationPage', () => {
       expect(mocks.updateFeedback).toHaveBeenCalledTimes(1)
     })
     expect(mocks.updateFeedback).toHaveBeenCalledWith('token', 'idea-1', {
+      expected_updated_at: firstSuggestion.updated_at,
       status: 'planned',
       response: 'Новый официальный ответ',
     })

@@ -309,7 +309,7 @@ pub async fn update_publication(
     let mut data = data.into_inner();
     data.response = normalise_optional(data.response)?;
     data.validate().map_err(validation_from)?;
-    db.update_feedback_publication(&id, data.status, data.response)
+    db.update_feedback_publication(&id, data.expected_updated_at, data.status, data.response)
         .await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
@@ -644,6 +644,9 @@ mod tests {
             v0::FeedbackModerationStatus::Approved
         );
         assert_eq!(body.vote_count, 1);
+        let original_updated_at = body.updated_at;
+        let original_updated_at_json =
+            serde_json::to_string(&original_updated_at).expect("timestamp serialized");
 
         let published = FeedbackTestContext::request_with_session(
             &admin_session,
@@ -651,13 +654,30 @@ mod tests {
                 .client
                 .patch(format!("/feedback/admin/{}", suggestion.id))
                 .header(ContentType::JSON)
-                .body(r#"{"status":"in_progress","response":"  Уже работаем  "}"#),
+                .body(format!(
+                    r#"{{"expected_updated_at":{},"status":"in_progress","response":"  Уже работаем  "}}"#,
+                    original_updated_at_json
+                )),
         )
         .await;
         assert_eq!(published.status(), Status::Ok);
         let body: v0::FeedbackSuggestion = published.into_json().await.expect("response body");
         assert_eq!(body.status, v0::FeedbackProductStatus::InProgress);
         assert_eq!(body.team_response.as_deref(), Some("Уже работаем"));
+
+        let stale_update = FeedbackTestContext::request_with_session(
+            &admin_session,
+            context
+                .client
+                .patch(format!("/feedback/admin/{}", suggestion.id))
+                .header(ContentType::JSON)
+                .body(format!(
+                    r#"{{"expected_updated_at":{},"status":"released","response":"Готово"}}"#,
+                    original_updated_at_json
+                )),
+        )
+        .await;
+        assert_eq!(stale_update.status(), Status::BadRequest);
 
         let create_denied = FeedbackTestContext::request_with_session(
             &normal_session,

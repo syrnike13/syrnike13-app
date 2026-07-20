@@ -3448,6 +3448,7 @@ export interface components {
     };
     /** @description Atomic update of the public product status and official team response. */
     DataUpdateFeedbackPublication: {
+      expected_updated_at: components["schemas"]["ISO8601 Timestamp"];
       status: components["schemas"]["FeedbackProductStatus"];
       response?: string | null;
     };

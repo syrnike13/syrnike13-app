@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 
-use iso8601_timestamp::Timestamp;
+use iso8601_timestamp::{Duration, Timestamp};
 use syrnike_models::v0;
 use syrnike_result::Result;
 
@@ -219,6 +219,7 @@ impl AbstractFeedback for ReferenceDb {
     async fn update_feedback_publication(
         &self,
         id: &str,
+        expected_updated_at: Timestamp,
         status: v0::FeedbackProductStatus,
         response: Option<String>,
     ) -> Result<()> {
@@ -230,10 +231,21 @@ impl AbstractFeedback for ReferenceDb {
         if suggestion.moderation_status != v0::FeedbackModerationStatus::Approved {
             return Err(create_error!(InvalidOperation));
         }
+        if suggestion.updated_at.format() != expected_updated_at.format() {
+            return Err(create_error!(InvalidOperation));
+        }
 
         suggestion.product_status = status;
         suggestion.team_response = response;
-        suggestion.updated_at = Timestamp::now_utc();
+        let now = Timestamp::now_utc();
+        suggestion.updated_at =
+            if now <= expected_updated_at || now.format() == expected_updated_at.format() {
+                expected_updated_at
+                    .checked_add(Duration::milliseconds(1))
+                    .unwrap_or(now)
+            } else {
+                now
+            };
         Ok(())
     }
 
@@ -468,6 +480,46 @@ mod tests {
             .expect("catalogue fetched");
         assert_eq!(catalogue.total, 1);
         assert_eq!(catalogue.suggestions[0].suggestion.id, approved.id);
+    }
+
+    #[async_std::test]
+    async fn publication_update_rejects_a_stale_version() {
+        let db = Database::Reference(ReferenceDb::default());
+        let suggestion = insert(&db, "author", "Concurrent update").await;
+        db.approve_feedback_suggestion(&suggestion.id)
+            .await
+            .expect("suggestion approved");
+        let approved = db
+            .fetch_feedback_suggestion(&suggestion.id)
+            .await
+            .expect("approved suggestion fetched");
+
+        db.update_feedback_publication(
+            &suggestion.id,
+            approved.updated_at,
+            v0::FeedbackProductStatus::Planned,
+            Some("First response".to_string()),
+        )
+        .await
+        .expect("first update accepted");
+
+        let error = db
+            .update_feedback_publication(
+                &suggestion.id,
+                approved.updated_at,
+                v0::FeedbackProductStatus::Released,
+                Some("Stale response".to_string()),
+            )
+            .await
+            .expect_err("stale update rejected");
+        assert!(matches!(error.error_type, ErrorType::InvalidOperation));
+
+        let current = db
+            .fetch_feedback_suggestion(&suggestion.id)
+            .await
+            .expect("current suggestion fetched");
+        assert_eq!(current.product_status, v0::FeedbackProductStatus::Planned);
+        assert_eq!(current.team_response.as_deref(), Some("First response"));
     }
 
     #[async_std::test]

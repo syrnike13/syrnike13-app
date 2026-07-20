@@ -46,6 +46,7 @@ pub trait AbstractFeedback: Sync + Send {
     async fn update_feedback_publication(
         &self,
         id: &str,
+        expected_updated_at: iso8601_timestamp::Timestamp,
         status: v0::FeedbackProductStatus,
         response: Option<String>,
     ) -> Result<()>;

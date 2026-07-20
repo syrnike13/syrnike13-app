@@ -157,6 +157,9 @@ auto_derived!(
     /// Complete public presentation update for an approved suggestion.
     #[cfg_attr(feature = "validator", derive(Validate))]
     pub struct DataUpdateFeedbackPublication {
+        /// Last observed suggestion update time. The write is rejected if the
+        /// suggestion changed after the moderator loaded it.
+        pub expected_updated_at: Timestamp,
         pub status: FeedbackProductStatus,
         /// Official team response. Send `null` to clear it.
         #[cfg_attr(feature = "validator", validate(length(min = 1, max = 4000)))]

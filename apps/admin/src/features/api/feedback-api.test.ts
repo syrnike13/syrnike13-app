@@ -76,6 +76,7 @@ describe('feedback moderation api', () => {
 
   it('updates product status and official response in one admin patch', async () => {
     await updateFeedback('token', 'idea-1', {
+      expected_updated_at: '2026-07-15T12:00:00.000Z',
       status: 'in_progress',
       response: 'Уже работаем',
     })
@@ -86,7 +87,11 @@ describe('feedback moderation api', () => {
       {
         method: 'PATCH',
         token: 'token',
-        body: { status: 'in_progress', response: 'Уже работаем' },
+        body: {
+          expected_updated_at: '2026-07-15T12:00:00.000Z',
+          status: 'in_progress',
+          response: 'Уже работаем',
+        },
       },
     )
   })

@@ -15577,8 +15577,9 @@
       "DataUpdateFeedbackPublication": {
         "description": "Atomic update of the public product status and official team response.",
         "type": "object",
-        "required": ["status"],
+        "required": ["expected_updated_at", "status"],
         "properties": {
+          "expected_updated_at": {"$ref": "#/components/schemas/ISO8601 Timestamp"},
           "status": {"$ref": "#/components/schemas/FeedbackProductStatus"},
           "response": {"type": "string", "minLength": 1, "maxLength": 4000, "nullable": true}
         }

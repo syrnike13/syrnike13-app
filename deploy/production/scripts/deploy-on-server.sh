@@ -101,8 +101,28 @@ upsert_env .env.web ADMIN_HOSTNAME "$admin_domain"
 if [[ -n "${DEPLOY_SERVICES:-}" ]]; then
   read -r -a services <<< "$DEPLOY_SERVICES"
   echo "Deploying services: ${services[*]}"
-  retry 3 5 docker compose pull "${services[@]}"
-  docker compose up -d --no-deps "${services[@]}"
+
+  deploy_database=false
+  application_services=()
+  for service in "${services[@]}"; do
+    if [[ "$service" == "database" ]]; then
+      deploy_database=true
+    else
+      application_services+=("$service")
+    fi
+  done
+
+  if [[ "$deploy_database" == "true" ]]; then
+    echo "Reconciling MongoDB before application services."
+    retry 3 5 docker compose pull database
+    docker compose up -d --no-deps --wait --wait-timeout 120 database
+  fi
+
+  if (( ${#application_services[@]} > 0 )); then
+    retry 3 5 docker compose pull "${application_services[@]}"
+    docker compose up -d --no-deps "${application_services[@]}"
+  fi
+
   docker compose ps "${services[@]}"
 else
   echo "Deploying the full production stack."

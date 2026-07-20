@@ -11,7 +11,6 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { toast } from 'sonner'
 
 import {
-  AdminDraftProvider,
   useAdminDraftController,
   useAdminDraftRegistration,
   type AdminDraftController,
@@ -66,6 +65,7 @@ import {
   type FeedbackSimilarity,
 } from '#/features/feedback/feedback-similarity'
 import { queryKeys } from '#/lib/api/query-keys'
+import { ApiError } from '#/lib/api/client'
 import { cn } from '#/lib/utils'
 
 type Mode = 'pending' | 'published'
@@ -88,11 +88,7 @@ const feedbackDateFormatter = new Intl.DateTimeFormat('ru-RU', {
 })
 
 export function FeedbackModerationPage() {
-  return (
-    <AdminDraftProvider>
-      <FeedbackModerationContent />
-    </AdminDraftProvider>
-  )
+  return <FeedbackModerationContent />
 }
 
 function FeedbackModerationContent() {
@@ -910,12 +906,14 @@ function FeedbackComparisonItem({
 }
 
 type PublishedFeedbackDraft = {
+  updatedAt: string
   status: PublicFeedbackProductStatus | ''
   response: string
 }
 
 function publishedFeedbackDraft(suggestion: FeedbackSuggestion): PublishedFeedbackDraft {
   return {
+    updatedAt: suggestion.updated_at,
     status: publicFeedbackStatus(suggestion.status),
     response: suggestion.team_response ?? '',
   }
@@ -960,6 +958,7 @@ function PublishedFeedbackEditor({
       if (!status) throw new Error('Missing feedback product status')
 
       return updateFeedback(token, suggestion._id, {
+        expected_updated_at: baseline.updatedAt,
         status,
         response: normalizedResponse,
       })
@@ -972,7 +971,15 @@ function PublishedFeedbackEditor({
       toast.success('Обращение обновлено')
       onSaved()
     },
-    onError: () => toast.error('Не удалось сохранить изменения'),
+    onError: (error) => {
+      if (error instanceof ApiError && error.message === 'InvalidOperation') {
+        toast.error(
+          'Обращение изменилось после открытия. Обновите страницу и повторите правки.',
+        )
+        return
+      }
+      toast.error('Не удалось сохранить изменения')
+    },
   })
   const hideMutation = useMutation({
     mutationFn: async () => {
