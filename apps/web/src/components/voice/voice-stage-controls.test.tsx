@@ -94,11 +94,12 @@ describe('VoiceStageControls', () => {
       />,
     )
 
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Прекратить просмотр — Alice',
-      }),
-    )
+    const focusedExitButton = screen.getByRole('button', {
+      name: 'Прекратить просмотр — Alice',
+    })
+    expect(focusedExitButton.querySelector('svg')).not.toBeNull()
+
+    fireEvent.click(focusedExitButton)
 
     expect(exitViewSession).toHaveBeenCalledWith(streamSession)
     expect(voiceLeaveMock).not.toHaveBeenCalled()
@@ -150,11 +151,18 @@ describe('VoiceStageControls', () => {
       screen.queryByRole('menuitem', { name: 'Отключиться от голоса' }),
     ).toBeNull()
 
-    fireEvent.click(
-      await screen.findByRole('menuitem', {
-        name: 'Выйти из активности — Общий счётчик',
-      }),
-    )
+    expect(
+      screen
+        .getByRole('menuitem', { name: 'Прекратить просмотр — Alice' })
+        .querySelector('svg'),
+    ).not.toBeNull()
+
+    const activityExitItem = await screen.findByRole('menuitem', {
+      name: 'Выйти из активности — Общий счётчик',
+    })
+    expect(activityExitItem.querySelector('svg')).not.toBeNull()
+
+    fireEvent.click(activityExitItem)
 
     expect(exitViewSession).toHaveBeenCalledWith(activitySession)
     expect(voiceLeaveMock).not.toHaveBeenCalled()
