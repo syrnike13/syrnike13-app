@@ -121,7 +121,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   const suggestions = activeQuery.data?.pages.flatMap((page) => page.suggestions) ?? []
 
   return (
-    <div className="gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <div className="theme-surface-content gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="gradient-surface-chrome shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">

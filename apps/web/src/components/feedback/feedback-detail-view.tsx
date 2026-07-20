@@ -42,11 +42,11 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   )
 
   if (query.isLoading) {
-    return <div className="gradient-surface-content flex flex-1 items-center justify-center text-sm text-muted-foreground">Загружаем обращение…</div>
+    return <div className="theme-surface-content gradient-surface-content flex flex-1 items-center justify-center text-sm text-muted-foreground">Загружаем обращение…</div>
   }
 
   if (!query.data) {
-    return <div className="gradient-surface-content flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">Обращение не найдено или недоступно.</div>
+    return <div className="theme-surface-content gradient-surface-content flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">Обращение не найдено или недоступно.</div>
   }
 
   const suggestion = query.data
@@ -64,7 +64,7 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
   }).format(new Date(suggestion.created_at))
 
   return (
-    <div className="gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <div className="theme-surface-content gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="gradient-surface-chrome flex h-14 shrink-0 items-center gap-2 border-b border-shell-divider px-3 sm:px-5">
         <Button variant="ghost" size="icon" asChild>
           <Link to={`${prefix}/feedback`} search={{ view: 'all' }} aria-label="Назад к идеям">
