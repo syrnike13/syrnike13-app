@@ -1,6 +1,7 @@
 import { open, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import { gzip } from 'node:zlib'
 
 import { app } from 'electron'
 import type {
@@ -17,6 +18,7 @@ const INVENTORY_RESERVE_BYTES = 64 * 1024
 const MAX_NATIVE_SESSIONS = 3
 const DIAGNOSTIC_SCHEMA = 'syrnike.diagnostic' as const
 const DIAGNOSTIC_SCHEMA_VERSION = 1 as const
+const gzipAsync = promisify(gzip)
 
 type NativeDiagnosticFile = {
   value: string
@@ -53,7 +55,7 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
   )
   let selectionBudget = nativeBudget
   for (let attempt = 0; ; attempt += 1) {
-    const bundle = buildNormalizedBundle(
+    const bundle = await buildNormalizedBundle(
       rendererRecords,
       native,
       nativeRecordGroups,
@@ -82,7 +84,7 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
   }
 }
 
-function buildNormalizedBundle(
+async function buildNormalizedBundle(
   rendererRecords: DiagnosticEnvelope[],
   native: NativeDiagnosticReadResult,
   nativeRecordGroups: DiagnosticEnvelope[][],
@@ -136,7 +138,7 @@ function buildNormalizedBundle(
   if (Buffer.byteLength(jsonl) > MAX_DECOMPRESSED_BUNDLE_BYTES) {
     throw new Error('Normalized diagnostic bundle is too large')
   }
-  return gzipSync(jsonl, { level: 6 })
+  return gzipAsync(jsonl, { level: 6 })
 }
 
 function serializedRecordsBytes(records: DiagnosticEnvelope[]) {
