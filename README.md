@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🧀 СЫРНИКЕ13
+# 🧀 СЫРНИКИ
 
-### Место, где тусуются свои
+### Своя платформа для общения
 
 [![prod](https://img.shields.io/badge/зайти-syrnike13.ru-success?style=flat-square)](https://syrnike13.ru)
 [![nightly](https://img.shields.io/badge/beta-beta.syrnike13.ru-blueviolet?style=flat-square)](https://beta.syrnike13.ru)
@@ -12,7 +12,7 @@
 
 ---
 
-**syrnike13** — это платформа для общения, которую мы делаем сами и для себя.
+**Сырники** — это платформа для общения, которую мы делаем сами и для себя.
 Собирайтесь на серверах, болтайте в каналах, сидите в войсе — всё в одном месте
 и под нашим контролем, а не чужой корпорацией.
 
