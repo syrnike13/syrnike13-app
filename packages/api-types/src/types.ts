@@ -168,5 +168,4 @@ export type FeedbackSuggestionPage = components['schemas']['FeedbackSuggestionPa
 export type DataCreateFeedbackSuggestion = components['schemas']['DataCreateFeedbackSuggestion']
 export type DataRejectFeedbackSuggestion = components['schemas']['DataRejectFeedbackSuggestion']
 export type DataMergeFeedbackSuggestion = components['schemas']['DataMergeFeedbackSuggestion']
-export type DataSetFeedbackProductStatus = components['schemas']['DataSetFeedbackProductStatus']
-export type DataSetFeedbackTeamResponse = components['schemas']['DataSetFeedbackTeamResponse']
+export type DataUpdateFeedbackPublication = components['schemas']['DataUpdateFeedbackPublication']

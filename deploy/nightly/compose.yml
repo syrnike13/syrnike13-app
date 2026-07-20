@@ -9,6 +9,7 @@ x-json-log-rotation: &json-log-rotation
 services:
   database:
     image: docker.io/mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     logging: *json-log-rotation
     environment:
       GLIBC_TUNABLES: glibc.pthread.rseq=1
@@ -16,8 +17,11 @@ services:
     volumes:
       - ./data/db:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "mongosh localhost:27017/test --quiet --eval 'db.runCommand({ ping: 1 }).ok' >/dev/null"]
-      interval: 60s
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --eval 'try { rs.status().ok === 1 && db.hello().isWritablePrimary } catch (err) { rs.initiate({_id: "rs0", members: [{_id: 0, host: "database:27017"}]}); false }' | grep -q true
+      interval: 5s
       timeout: 5s
       retries: 5
       start_period: 30s

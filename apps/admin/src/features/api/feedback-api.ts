@@ -1,8 +1,7 @@
 import type {
   DataMergeFeedbackSuggestion,
   DataRejectFeedbackSuggestion,
-  DataSetFeedbackProductStatus,
-  DataSetFeedbackTeamResponse,
+  DataUpdateFeedbackPublication,
   FeedbackSuggestion,
   FeedbackSuggestionPage,
 } from '@syrnike13/api-types'
@@ -105,24 +104,12 @@ export async function hideFeedback(token: string, id: string) {
   })
 }
 
-export async function setFeedbackStatus(
+export async function updateFeedback(
   token: string,
   id: string,
-  data: DataSetFeedbackProductStatus,
+  data: DataUpdateFeedbackPublication,
 ) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}/status`, {
-    method: 'PATCH',
-    token,
-    body: data,
-  })
-}
-
-export async function setFeedbackResponse(
-  token: string,
-  id: string,
-  data: DataSetFeedbackTeamResponse,
-) {
-  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}/response`, {
+  return apiRequest<FeedbackSuggestion>(`/feedback/admin/${id}`, {
     method: 'PATCH',
     token,
     body: data,

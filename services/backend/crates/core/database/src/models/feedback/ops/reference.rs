@@ -216,10 +216,11 @@ impl AbstractFeedback for ReferenceDb {
         Ok(())
     }
 
-    async fn set_feedback_product_status(
+    async fn update_feedback_publication(
         &self,
         id: &str,
         status: v0::FeedbackProductStatus,
+        response: Option<String>,
     ) -> Result<()> {
         let mut feedback = self.feedback.lock().await;
         let suggestion = feedback
@@ -231,23 +232,6 @@ impl AbstractFeedback for ReferenceDb {
         }
 
         suggestion.product_status = status;
-        suggestion.updated_at = Timestamp::now_utc();
-        Ok(())
-    }
-
-    async fn set_feedback_team_response(&self, id: &str, response: Option<String>) -> Result<()> {
-        let mut feedback = self.feedback.lock().await;
-        let suggestion = feedback
-            .suggestions
-            .get_mut(id)
-            .ok_or_else(|| create_error!(NotFound))?;
-        if matches!(
-            suggestion.moderation_status,
-            v0::FeedbackModerationStatus::Merged | v0::FeedbackModerationStatus::Hidden
-        ) {
-            return Err(create_error!(InvalidOperation));
-        }
-
         suggestion.team_response = response;
         suggestion.updated_at = Timestamp::now_utc();
         Ok(())

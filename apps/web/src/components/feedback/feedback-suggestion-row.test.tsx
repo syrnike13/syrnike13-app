@@ -31,7 +31,7 @@ const suggestion: FeedbackSuggestion = {
   description: 'Описание идеи',
   category: 'idea',
   moderation_status: 'approved',
-  status: 'open',
+  status: 'collecting',
   vote_count: 3,
   voted: false,
   created_at: '2026-07-15T12:00:00.000Z',

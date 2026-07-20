@@ -7,10 +7,17 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { useDeferredValue, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
+import {
+  AdminDraftProvider,
+  useAdminDraftController,
+  useAdminDraftRegistration,
+  type AdminDraftController,
+} from '#/components/draft-controller-context'
 import { AdminEmpty, AdminPage, AdminSection } from '#/components/layout/page'
+import { AdminUnsavedChangesBar } from '#/components/unsaved-changes-bar'
 import { CheckIcon, Loader2Icon, XIcon } from '#/components/icons'
 import { Button } from '#/components/ui/button'
 import {
@@ -41,8 +48,7 @@ import {
   hideFeedback,
   mergeFeedback,
   rejectFeedback,
-  setFeedbackResponse,
-  setFeedbackStatus,
+  updateFeedback,
 } from '#/features/api/feedback-api'
 import {
   FEEDBACK_PRODUCT_STATUSES,
@@ -82,8 +88,17 @@ const feedbackDateFormatter = new Intl.DateTimeFormat('ru-RU', {
 })
 
 export function FeedbackModerationPage() {
+  return (
+    <AdminDraftProvider>
+      <FeedbackModerationContent />
+    </AdminDraftProvider>
+  )
+}
+
+function FeedbackModerationContent() {
   const auth = useAuth()
   const queryClient = useQueryClient()
+  const draftController = useAdminDraftController()
   const token = auth.session?.token
   const [mode, setMode] = useState<Mode>('pending')
   const [selectedId, setSelectedId] = useState<string>()
@@ -188,13 +203,23 @@ export function FeedbackModerationPage() {
     setRejectionReason('')
   }
 
+  function canLeaveActiveDraft() {
+    if (!draftController?.isDirty) return true
+    toast.warning('Сохраните или сбросьте изменения перед сменой обращения')
+    return false
+  }
+
   function selectMode(nextMode: Mode) {
+    if (nextMode === mode) return
+    if (!canLeaveActiveDraft()) return
     setMode(nextMode)
     setSelectedId(undefined)
     resetMergeDraft()
   }
 
   function selectSuggestion(suggestion: FeedbackSuggestion) {
+    if (suggestion._id === selectedSuggestion?._id) return
+    if (!canLeaveActiveDraft()) return
     setSelectedId(suggestion._id)
     resetMergeDraft()
   }
@@ -271,7 +296,6 @@ export function FeedbackModerationPage() {
               />
               {selectedSuggestion ? (
                 <FeedbackInspector
-                  key={`${selectedSuggestion._id}:${selectedSuggestion.updated_at}`}
                   mode={mode}
                   suggestion={selectedSuggestion}
                   mergeTarget={mergeTarget}
@@ -306,6 +330,8 @@ export function FeedbackModerationPage() {
           </AdminSection>
         )}
       </div>
+
+      <AdminUnsavedChangesBar />
 
       <Dialog open={Boolean(dialog)} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent>
@@ -883,6 +909,22 @@ function FeedbackComparisonItem({
   )
 }
 
+type PublishedFeedbackDraft = {
+  status: PublicFeedbackProductStatus | ''
+  response: string
+}
+
+function publishedFeedbackDraft(suggestion: FeedbackSuggestion): PublishedFeedbackDraft {
+  return {
+    status: publicFeedbackStatus(suggestion.status),
+    response: suggestion.team_response ?? '',
+  }
+}
+
+function normalizedTeamResponse(response: string) {
+  return response.trim() || null
+}
+
 function PublishedFeedbackEditor({
   suggestion,
   onSaved,
@@ -892,32 +934,41 @@ function PublishedFeedbackEditor({
 }) {
   const auth = useAuth()
   const token = auth.session?.token
-  const [status, setStatus] = useState<PublicFeedbackProductStatus | ''>(() =>
-    publicFeedbackStatus(suggestion.status),
+  const [baseline, setBaseline] = useState<PublishedFeedbackDraft>(() =>
+    publishedFeedbackDraft(suggestion),
   )
-  const [response, setResponse] = useState(suggestion.team_response ?? '')
+  const [status, setStatus] = useState<PublicFeedbackProductStatus | ''>(
+    baseline.status,
+  )
+  const [response, setResponse] = useState(baseline.response)
 
-  const normalizedResponse = response.trim() || null
-  const statusChanged = status !== '' && status !== suggestion.status
-  const responseChanged = normalizedResponse !== (suggestion.team_response ?? null)
+  useEffect(() => {
+    const next = publishedFeedbackDraft(suggestion)
+    setBaseline(next)
+    setStatus(next.status)
+    setResponse(next.response)
+  }, [suggestion._id])
+
+  const normalizedResponse = normalizedTeamResponse(response)
+  const statusChanged = status !== baseline.status
+  const responseChanged = normalizedResponse !== normalizedTeamResponse(baseline.response)
   const hasChanges = statusChanged || responseChanged
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!token) throw new Error('Missing authentication token')
+      if (!status) throw new Error('Missing feedback product status')
 
-      let updated = suggestion
-      if (statusChanged) {
-        updated = await setFeedbackStatus(token, suggestion._id, { status })
-      }
-      if (responseChanged) {
-        updated = await setFeedbackResponse(token, suggestion._id, {
-          response: normalizedResponse,
-        })
-      }
-      return updated
+      return updateFeedback(token, suggestion._id, {
+        status,
+        response: normalizedResponse,
+      })
     },
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      const next = publishedFeedbackDraft(updated)
+      setBaseline(next)
+      setStatus(next.status)
+      setResponse(next.response)
       toast.success('Обращение обновлено')
       onSaved()
     },
@@ -934,6 +985,34 @@ function PublishedFeedbackEditor({
     },
     onError: () => toast.error('Не удалось скрыть обращение'),
   })
+
+  const saveDraft = useCallback(async () => {
+    if (!hasChanges || saveMutation.isPending) return false
+    try {
+      await saveMutation.mutateAsync()
+      return true
+    } catch {
+      return false
+    }
+  }, [hasChanges, saveMutation])
+
+  const resetDraft = useCallback(() => {
+    if (!hasChanges || saveMutation.isPending) return false
+    setStatus(baseline.status)
+    setResponse(baseline.response)
+    return true
+  }, [baseline, hasChanges, saveMutation.isPending])
+
+  const draftRegistration = useMemo<AdminDraftController>(
+    () => ({
+      isDirty: hasChanges,
+      isSaving: saveMutation.isPending,
+      save: saveDraft,
+      reset: resetDraft,
+    }),
+    [hasChanges, resetDraft, saveDraft, saveMutation.isPending],
+  )
+  useAdminDraftRegistration(draftRegistration)
 
   return (
     <div className="flex flex-col gap-4 border-t border-border/60 pt-5">
@@ -979,13 +1058,10 @@ function PublishedFeedbackEditor({
         <Button
           variant="ghost"
           className="text-destructive hover:text-destructive"
-          disabled={hideMutation.isPending}
+          disabled={hideMutation.isPending || hasChanges}
           onClick={() => hideMutation.mutate()}
         >
           Скрыть
-        </Button>
-        <Button disabled={saveMutation.isPending || !hasChanges} onClick={() => saveMutation.mutate()}>
-          Сохранить
         </Button>
       </div>
     </div>

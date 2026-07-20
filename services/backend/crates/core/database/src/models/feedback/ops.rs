@@ -42,13 +42,13 @@ pub trait AbstractFeedback: Sync + Send {
 
     async fn hide_feedback_suggestion(&self, id: &str) -> Result<()>;
 
-    async fn set_feedback_product_status(
+    /// Atomically replace the public status and official response.
+    async fn update_feedback_publication(
         &self,
         id: &str,
         status: v0::FeedbackProductStatus,
+        response: Option<String>,
     ) -> Result<()>;
-
-    async fn set_feedback_team_response(&self, id: &str, response: Option<String>) -> Result<()>;
 
     /// Idempotently activate a vote. Only approved suggestions may be voted on.
     async fn add_feedback_vote(&self, suggestion_id: &str, user_id: &str) -> Result<()>;

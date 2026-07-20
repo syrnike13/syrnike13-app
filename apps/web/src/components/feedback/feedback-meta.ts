@@ -17,6 +17,7 @@ export const FEEDBACK_AREAS = [
   { value: 'community', label: 'Серверы и сообщества' },
   { value: 'messages', label: 'Сообщения и контент' },
   { value: 'moderation', label: 'Модерация и безопасность' },
+  { value: 'desktop', label: 'Десктопное приложение' },
   { value: 'activities', label: 'Активности' },
   { value: 'other', label: 'Другое' },
 ] satisfies { value: FeedbackArea; label: string }[]

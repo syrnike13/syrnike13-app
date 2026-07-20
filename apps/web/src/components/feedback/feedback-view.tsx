@@ -4,6 +4,7 @@ import type {
   FeedbackPlatform,
   FeedbackProductStatus,
   FeedbackSort,
+  FeedbackSuggestionPage,
 } from '@syrnike13/api-types'
 import { useDeferredValue, useEffect, useState } from 'react'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
@@ -47,6 +48,11 @@ const PAGE_SIZE = 20
 
 export type FeedbackViewMode = 'all' | 'mine'
 
+function getFeedbackNextPageParam(lastPage: FeedbackSuggestionPage) {
+  const next = lastPage.offset + lastPage.suggestions.length
+  return next < lastPage.total ? next : undefined
+}
+
 export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackViewMode }) {
   const auth = useAuth()
   const queryClient = useQueryClient()
@@ -61,6 +67,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   const [area, setArea] = useState<FeedbackArea | 'all'>('all')
   const [platform, setPlatform] = useState<FeedbackPlatform | 'all'>('all')
   const [status, setStatus] = useState<FeedbackProductStatus | 'all'>('all')
+  const showCatalogControls = mode === 'all'
 
   const listParams = {
     search: deferredSearch,
@@ -81,10 +88,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
     // Moderators update statuses in a separate app, so cached list data must be
     // considered stale when the user returns to this view.
     staleTime: 0,
-    getNextPageParam: (lastPage) => {
-      const next = lastPage.offset + lastPage.suggestions.length
-      return next < lastPage.total ? next : undefined
-    },
+    getNextPageParam: getFeedbackNextPageParam,
   })
 
   const mineQuery = useInfiniteQuery({
@@ -94,10 +98,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
     initialPageParam: 0,
     enabled: Boolean(token && viewerId) && mode === 'mine',
     staleTime: 0,
-    getNextPageParam: (lastPage) => {
-      const next = lastPage.offset + lastPage.suggestions.length
-      return next < lastPage.total ? next : undefined
-    },
+    getNextPageParam: getFeedbackNextPageParam,
   })
 
   useEffect(() => {
@@ -112,10 +113,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
         }),
       initialPageParam: 0,
       staleTime: 30_000,
-      getNextPageParam: (lastPage) => {
-        const next = lastPage.offset + lastPage.suggestions.length
-        return next < lastPage.total ? next : undefined
-      },
+      getNextPageParam: getFeedbackNextPageParam,
     })
   }, [allQuery.isSuccess, queryClient, token, viewerId])
 
@@ -146,72 +144,74 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
           </Button>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <label className="relative min-w-56 flex-1">
-            <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Найти обращение"
-              className="h-9 pl-9"
+        {showCatalogControls ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <label className="relative min-w-56 flex-1">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Найти обращение"
+                className="h-9 pl-9"
+              />
+            </label>
+
+            <FeedbackFilterSelect
+              ariaLabel="Сортировка"
+              className="sm:w-36"
+              value={sort}
+              options={[
+                { value: 'popular', label: 'Популярные' },
+                { value: 'new', label: 'Новые' },
+              ]}
+              onValueChange={(value) => setSort(value as FeedbackSort)}
             />
-          </label>
 
-          <FeedbackFilterSelect
-            ariaLabel="Сортировка"
-            className="sm:w-36"
-            value={sort}
-            options={[
-              { value: 'popular', label: 'Популярные' },
-              { value: 'new', label: 'Новые' },
-            ]}
-            onValueChange={(value) => setSort(value as FeedbackSort)}
-          />
+            <FeedbackFilterSelect
+              ariaLabel="Тип обращения"
+              className="sm:w-36"
+              value={category}
+              options={[
+                { value: 'all', label: 'Все типы' },
+                ...FEEDBACK_CATEGORIES,
+              ]}
+              onValueChange={(value) => setCategory(value as FeedbackCategory | 'all')}
+            />
 
-          <FeedbackFilterSelect
-            ariaLabel="Тип обращения"
-            className="sm:w-36"
-            value={category}
-            options={[
-              { value: 'all', label: 'Все типы' },
-              ...FEEDBACK_CATEGORIES,
-            ]}
-            onValueChange={(value) => setCategory(value as FeedbackCategory | 'all')}
-          />
+            <FeedbackFilterSelect
+              ariaLabel="Область"
+              className="sm:w-48"
+              value={area}
+              options={[
+                { value: 'all', label: 'Все области' },
+                ...FEEDBACK_AREAS,
+              ]}
+              onValueChange={(value) => setArea(value as FeedbackArea | 'all')}
+            />
 
-          <FeedbackFilterSelect
-            ariaLabel="Область"
-            className="sm:w-48"
-            value={area}
-            options={[
-              { value: 'all', label: 'Все области' },
-              ...FEEDBACK_AREAS,
-            ]}
-            onValueChange={(value) => setArea(value as FeedbackArea | 'all')}
-          />
+            <FeedbackFilterSelect
+              ariaLabel="Платформа"
+              className="sm:w-40"
+              value={platform}
+              options={[
+                { value: 'all', label: 'Все платформы' },
+                ...FEEDBACK_PLATFORMS,
+              ]}
+              onValueChange={(value) => setPlatform(value as FeedbackPlatform | 'all')}
+            />
 
-          <FeedbackFilterSelect
-            ariaLabel="Платформа"
-            className="sm:w-40"
-            value={platform}
-            options={[
-              { value: 'all', label: 'Все платформы' },
-              ...FEEDBACK_PLATFORMS,
-            ]}
-            onValueChange={(value) => setPlatform(value as FeedbackPlatform | 'all')}
-          />
-
-          <FeedbackFilterSelect
-            ariaLabel="Статус"
-            className="sm:w-44"
-            value={status}
-            options={[
-              { value: 'all', label: 'Все статусы' },
-              ...FEEDBACK_PRODUCT_STATUSES,
-            ]}
-            onValueChange={(value) => setStatus(value as FeedbackProductStatus | 'all')}
-          />
-        </div>
+            <FeedbackFilterSelect
+              ariaLabel="Статус"
+              className="sm:w-44"
+              value={status}
+              options={[
+                { value: 'all', label: 'Все статусы' },
+                ...FEEDBACK_PRODUCT_STATUSES,
+              ]}
+              onValueChange={(value) => setStatus(value as FeedbackProductStatus | 'all')}
+            />
+          </div>
+        ) : null}
 
         <div className="mt-3 flex items-end gap-6">
           {(['all', 'mine'] as const).map((item) => (

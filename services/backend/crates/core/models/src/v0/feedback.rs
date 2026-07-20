@@ -154,14 +154,11 @@ auto_derived!(
         pub reason: Option<String>,
     }
 
-    /// Product delivery status update.
-    pub struct DataSetFeedbackProductStatus {
-        pub status: FeedbackProductStatus,
-    }
-
-    /// Official team response update. Send `null` to clear it.
+    /// Complete public presentation update for an approved suggestion.
     #[cfg_attr(feature = "validator", derive(Validate))]
-    pub struct DataSetFeedbackTeamResponse {
+    pub struct DataUpdateFeedbackPublication {
+        pub status: FeedbackProductStatus,
+        /// Official team response. Send `null` to clear it.
         #[cfg_attr(feature = "validator", validate(length(min = 1, max = 4000)))]
         pub response: Option<String>,
     }

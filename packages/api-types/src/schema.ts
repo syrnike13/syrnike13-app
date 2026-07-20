@@ -525,11 +525,8 @@ export interface paths {
   "/feedback/admin/{id}/hide": {
     post: operations["feedback_admin_hide"];
   };
-  "/feedback/admin/{id}/status": {
-    patch: operations["feedback_admin_set_status"];
-  };
-  "/feedback/admin/{id}/response": {
-    patch: operations["feedback_admin_set_response"];
+  "/feedback/admin/{id}": {
+    patch: operations["feedback_admin_update_publication"];
   };
 }
 
@@ -3449,12 +3446,9 @@ export interface components {
       target_id: string;
       reason?: string | null;
     };
-    /** @description Product delivery status update. */
-    DataSetFeedbackProductStatus: {
+    /** @description Atomic update of the public product status and official team response. */
+    DataUpdateFeedbackPublication: {
       status: components["schemas"]["FeedbackProductStatus"];
-    };
-    /** @description Official team response update. Send null to clear it. */
-    DataSetFeedbackTeamResponse: {
       response?: string | null;
     };
   };
@@ -6520,7 +6514,7 @@ export interface operations {
       };
     };
   };
-  feedback_admin_set_status: {
+  feedback_admin_update_publication: {
     parameters: {
       path: {
         id: string;
@@ -6535,26 +6529,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["DataSetFeedbackProductStatus"];
-      };
-    };
-  };
-  feedback_admin_set_response: {
-    parameters: {
-      path: {
-        id: string;
-      };
-    };
-    responses: {
-      200: {
-        content: {
-          "application/json": components["schemas"]["FeedbackSuggestion"];
-        };
-      };
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataSetFeedbackTeamResponse"];
+        "application/json": components["schemas"]["DataUpdateFeedbackPublication"];
       };
     };
   };

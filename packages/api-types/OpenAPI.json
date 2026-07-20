@@ -7349,22 +7349,12 @@
         "security": [{"Session Token": []}]
       }
     },
-    "/feedback/admin/{id}/status": {
+    "/feedback/admin/{id}": {
       "patch": {
         "tags": ["Product Feedback Administration"],
-        "operationId": "feedback_admin_set_status",
+        "operationId": "feedback_admin_update_publication",
         "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DataSetFeedbackProductStatus"}}}},
-        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
-        "security": [{"Session Token": []}]
-      }
-    },
-    "/feedback/admin/{id}/response": {
-      "patch": {
-        "tags": ["Product Feedback Administration"],
-        "operationId": "feedback_admin_set_response",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DataSetFeedbackTeamResponse"}}}},
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DataUpdateFeedbackPublication"}}}},
         "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
         "security": [{"Session Token": []}]
       }
@@ -15584,18 +15574,12 @@
           "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "nullable": true}
         }
       },
-      "DataSetFeedbackProductStatus": {
-        "description": "Product delivery status update.",
+      "DataUpdateFeedbackPublication": {
+        "description": "Atomic update of the public product status and official team response.",
         "type": "object",
         "required": ["status"],
         "properties": {
-          "status": {"$ref": "#/components/schemas/FeedbackProductStatus"}
-        }
-      },
-      "DataSetFeedbackTeamResponse": {
-        "description": "Official team response update. Send null to clear it.",
-        "type": "object",
-        "properties": {
+          "status": {"$ref": "#/components/schemas/FeedbackProductStatus"},
           "response": {"type": "string", "minLength": 1, "maxLength": 4000, "nullable": true}
         }
       }

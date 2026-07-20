@@ -7,8 +7,7 @@ import {
   mergeFeedback,
   rejectFeedback,
   searchPublishedFeedback,
-  setFeedbackResponse,
-  setFeedbackStatus,
+  updateFeedback,
 } from '#/features/api/feedback-api'
 
 const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }))
@@ -75,19 +74,20 @@ describe('feedback moderation api', () => {
     )
   })
 
-  it('updates product status and the single official response separately', async () => {
-    await setFeedbackStatus('token', 'idea-1', { status: 'in_progress' })
-    await setFeedbackResponse('token', 'idea-1', { response: 'Уже работаем' })
+  it('updates product status and official response in one admin patch', async () => {
+    await updateFeedback('token', 'idea-1', {
+      status: 'in_progress',
+      response: 'Уже работаем',
+    })
 
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
-      1,
-      '/feedback/admin/idea-1/status',
-      { method: 'PATCH', token: 'token', body: { status: 'in_progress' } },
-    )
-    expect(mocks.apiRequest).toHaveBeenNthCalledWith(
-      2,
-      '/feedback/admin/idea-1/response',
-      { method: 'PATCH', token: 'token', body: { response: 'Уже работаем' } },
+    expect(mocks.apiRequest).toHaveBeenCalledTimes(1)
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/feedback/admin/idea-1',
+      {
+        method: 'PATCH',
+        token: 'token',
+        body: { status: 'in_progress', response: 'Уже работаем' },
+      },
     )
   })
 })

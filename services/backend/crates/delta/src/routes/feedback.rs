@@ -1,10 +1,10 @@
-use rocket::{serde::json::Json, State};
+use rocket::{State, serde::json::Json};
 use syrnike_database::{
     Database, FeedbackSuggestion, FeedbackSuggestionPage, FeedbackSuggestionQuery,
     FeedbackSuggestionView, User,
 };
 use syrnike_models::v0;
-use syrnike_result::{create_error, Result};
+use syrnike_result::{Result, create_error};
 use validator::Validate;
 
 const MAX_QUERY_SEARCH_LENGTH: usize = 200;
@@ -22,8 +22,7 @@ pub fn routes() -> (Vec<rocket::Route>, revolt_okapi::openapi3::OpenApi) {
         reject,
         merge,
         hide,
-        set_status,
-        set_response,
+        update_publication,
     ]
 }
 
@@ -294,42 +293,24 @@ pub async fn hide(
     )))
 }
 
-/// # Set Feedback Product Status
+/// # Update Feedback Publication
 ///
-/// Update the public delivery status of an approved suggestion.
+/// Atomically replace the public delivery status and official response of an
+/// approved suggestion.
 #[openapi(tag = "Product Feedback Administration")]
-#[patch("/admin/<id>/status", data = "<data>")]
-pub async fn set_status(
+#[patch("/admin/<id>", data = "<data>")]
+pub async fn update_publication(
     db: &State<Database>,
     user: User,
     id: String,
-    data: Json<v0::DataSetFeedbackProductStatus>,
-) -> Result<Json<v0::FeedbackSuggestion>> {
-    require_privileged(&user)?;
-    db.set_feedback_product_status(&id, data.into_inner().status)
-        .await?;
-    Ok(Json(view_into_api(
-        db.fetch_feedback_suggestion_view(&id, &user.id).await?,
-        &user,
-    )))
-}
-
-/// # Set Feedback Team Response
-///
-/// Add, replace, or clear the optional official response on a suggestion.
-#[openapi(tag = "Product Feedback Administration")]
-#[patch("/admin/<id>/response", data = "<data>")]
-pub async fn set_response(
-    db: &State<Database>,
-    user: User,
-    id: String,
-    data: Json<v0::DataSetFeedbackTeamResponse>,
+    data: Json<v0::DataUpdateFeedbackPublication>,
 ) -> Result<Json<v0::FeedbackSuggestion>> {
     require_privileged(&user)?;
     let mut data = data.into_inner();
     data.response = normalise_optional(data.response)?;
     data.validate().map_err(validation_from)?;
-    db.set_feedback_team_response(&id, data.response).await?;
+    db.update_feedback_publication(&id, data.status, data.response)
+        .await?;
     Ok(Json(view_into_api(
         db.fetch_feedback_suggestion_view(&id, &user.id).await?,
         &user,
@@ -491,16 +472,15 @@ fn routes_under_test() -> Vec<rocket::Route> {
         reject,
         merge,
         hide,
-        set_status,
-        set_response,
+        update_publication,
     ]
 }
 
 #[cfg(test)]
 mod tests {
     use authifier::{
-        models::{Account, EmailVerification, Session},
         Authifier,
+        models::{Account, EmailVerification, Session},
     };
     use rocket::{
         http::{ContentType, Header, Status},
@@ -664,6 +644,20 @@ mod tests {
             v0::FeedbackModerationStatus::Approved
         );
         assert_eq!(body.vote_count, 1);
+
+        let published = FeedbackTestContext::request_with_session(
+            &admin_session,
+            context
+                .client
+                .patch(format!("/feedback/admin/{}", suggestion.id))
+                .header(ContentType::JSON)
+                .body(r#"{"status":"in_progress","response":"  Уже работаем  "}"#),
+        )
+        .await;
+        assert_eq!(published.status(), Status::Ok);
+        let body: v0::FeedbackSuggestion = published.into_json().await.expect("response body");
+        assert_eq!(body.status, v0::FeedbackProductStatus::InProgress);
+        assert_eq!(body.team_response.as_deref(), Some("Уже работаем"));
 
         let create_denied = FeedbackTestContext::request_with_session(
             &normal_session,
