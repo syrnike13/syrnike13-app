@@ -10,7 +10,7 @@ import type {
   DesktopOs,
   DesktopLocalSettings,
   DesktopLocalSettingsPatch,
-  NativeDiagnosticIncident,
+  NativeDiagnosticIncidentBatch,
   DesktopDisplayMediaRequest,
   DesktopDisplayMediaSelection,
   DesktopDisplayMediaSource,
@@ -187,10 +187,22 @@ const syrnikeDesktop: SyrnikeDesktopApi = {
       )
       return new Uint8Array(value)
     },
-    takeNativeIncidents() {
+    leaseNativeIncidents() {
       return ipcRenderer.invoke(
-        IPC.diagnosticsTakeNativeIncidents,
-      ) as Promise<NativeDiagnosticIncident[]>
+        IPC.diagnosticsLeaseNativeIncidents,
+      ) as Promise<NativeDiagnosticIncidentBatch | null>
+    },
+    acknowledgeNativeIncidents(batchId: string) {
+      return ipcRenderer.invoke(
+        IPC.diagnosticsAcknowledgeNativeIncidents,
+        batchId,
+      ) as Promise<boolean>
+    },
+    releaseNativeIncidents(batchId: string) {
+      return ipcRenderer.invoke(
+        IPC.diagnosticsReleaseNativeIncidents,
+        batchId,
+      ) as Promise<boolean>
     },
   },
   updates: {

@@ -11,6 +11,8 @@ import type {
 
 const MAX_RENDERER_BYTES = 2 * 1024 * 1024
 const MAX_NATIVE_BYTES = 30 * 1024 * 1024
+const MAX_DECOMPRESSED_BUNDLE_BYTES = 33 * 1024 * 1024
+const INVENTORY_RESERVE_BYTES = 64 * 1024
 const MAX_NATIVE_SESSIONS = 3
 const DIAGNOSTIC_SCHEMA = 'syrnike.diagnostic' as const
 const DIAGNOSTIC_SCHEMA_VERSION = 1 as const
@@ -40,9 +42,20 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
 
   const rendererRecords = normalizeJsonl(rendererJsonl, 'renderer', true)
   const native = await readRecentNativeDiagnostics()
-  const nativeRecords = native.files.flatMap((file) =>
+  const nativeRecordGroups = native.files.map((file) =>
     normalizeJsonl(file.value, file.source, false),
   )
+  const rendererBytes = serializedRecordsBytes(rendererRecords)
+  const nativeBudget = Math.max(
+    0,
+    MAX_DECOMPRESSED_BUNDLE_BYTES - rendererBytes - INVENTORY_RESERVE_BYTES,
+  )
+  const normalizedGroupBytes = nativeRecordGroups.map(serializedRecordsBytes)
+  const normalizedBudgets = allocateFairReadBudgets(normalizedGroupBytes, nativeBudget)
+  const selectedGroups = nativeRecordGroups.map((records, index) =>
+    selectRecordTail(records, normalizedBudgets[index] ?? 0),
+  )
+  const nativeRecords = selectedGroups.flat()
   const recordsBySource = nativeRecords.reduce<Record<string, number>>(
     (counts, record) => {
       counts[record.source] = (counts[record.source] ?? 0) + 1
@@ -61,9 +74,13 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
       native_sessions_selected: native.sessionsSelected,
       native_files_found: native.filesFound,
       native_files_selected: native.filesSelected,
-      native_files_included: native.files.length,
-      native_files_truncated: native.files.filter((file) => file.truncated).length,
-      native_bytes_included: native.files.reduce((sum, file) => sum + file.bytes, 0),
+      native_files_included: selectedGroups.filter((records) => records.length > 0).length,
+      native_files_truncated: native.files.filter(
+        (file, index) =>
+          file.truncated || selectedGroups[index]!.length < nativeRecordGroups[index]!.length,
+      ).length,
+      native_source_bytes_read: native.files.reduce((sum, file) => sum + file.bytes, 0),
+      native_bytes_included: serializedRecordsBytes(nativeRecords),
       native_records_included: nativeRecords.length,
       native_records_by_source: recordsBySource,
     },
@@ -72,12 +89,33 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
   const events = [...rendererEvents, ...nativeRecords, inventory].sort(
     (left, right) => left.timestamp_ms - right.timestamp_ms,
   )
-  return new Uint8Array(
-    gzipSync(
-      [firstRendererRecord, ...events].map((record) => JSON.stringify(record)).join('\n'),
-      { level: 6 },
-    ),
+  const jsonl = [firstRendererRecord, ...events]
+    .map((record) => JSON.stringify(record))
+    .join('\n')
+  if (Buffer.byteLength(jsonl) > MAX_DECOMPRESSED_BUNDLE_BYTES) {
+    throw new Error('Normalized diagnostic bundle is too large')
+  }
+  return new Uint8Array(gzipSync(jsonl, { level: 6 }))
+}
+
+function serializedRecordsBytes(records: DiagnosticEnvelope[]) {
+  return records.reduce(
+    (total, record) => total + Buffer.byteLength(JSON.stringify(record)) + 1,
+    0,
   )
+}
+
+function selectRecordTail(records: DiagnosticEnvelope[], maximumBytes: number) {
+  const selected: DiagnosticEnvelope[] = []
+  let used = 0
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index]!
+    const bytes = Buffer.byteLength(JSON.stringify(record)) + 1
+    if (bytes > maximumBytes - used) break
+    selected.unshift(record)
+    used += bytes
+  }
+  return selected
 }
 
 function normalizeJsonl(

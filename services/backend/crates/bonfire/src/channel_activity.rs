@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use syrnike_database::{
     channel_activity::{
-        get_channel_activity, mutate_channel_activity_if_current, ChannelActivityMutation,
-        ChannelActivityMutationResult,
+        get_channel_activity, get_channel_activity_snapshot, get_expired_channel_activity_ids,
+        mutate_channel_activity_if_current, next_channel_activity_generation,
+        ChannelActivityMutation, ChannelActivityMutationResult, ChannelActivityRecord,
+        ChannelActivityTombstone, CHANNEL_ACTIVITY_TTL_MILLISECONDS,
     },
     events::{
         client::{ChannelActivityErrorCode, ChannelActivityInstance, EventV1},
@@ -24,6 +26,8 @@ const MAX_IDENTIFIER_BYTES: usize = 128;
 const MAX_COMMAND_BYTES: usize = 4 * 1024;
 const MUTATION_RETRY_LIMIT: usize = 8;
 const SYRNIK_RACE_HITS_PER_ROUND: u32 = 12;
+const EXPIRATION_SWEEP_INTERVAL_SECONDS: u64 = 5;
+const EXPIRATION_SWEEP_BATCH_SIZE: usize = 100;
 
 pub async fn handle_request(
     user: &User,
@@ -61,14 +65,14 @@ pub async fn handle_request(
 
     match result {
         Ok(HandleOutcome::Direct(event)) => Some(event),
-        Ok(HandleOutcome::Published) => None,
+        Ok(HandleOutcome::Published(event)) => Some(event),
         Err(code) => Some(error_event(request_id, channel_id, code)),
     }
 }
 
 enum HandleOutcome {
     Direct(EventV1),
-    Published,
+    Published(EventV1),
 }
 
 async fn sync_activity(
@@ -77,38 +81,44 @@ async fn sync_activity(
     channel_id: &str,
 ) -> std::result::Result<HandleOutcome, ChannelActivityErrorCode> {
     let voice_channel = require_voice_channel(&user.id, channel_id).await?;
-    let active_member_ids = get_voice_channel_members(&voice_channel)
-        .await
-        .map_err(|_| ChannelActivityErrorCode::Internal)?
-        .unwrap_or_default();
-    let mut current = get_channel_activity(channel_id)
+    let (mut current, observed_generation) = get_channel_activity_snapshot(channel_id)
         .await
         .map_err(|_| ChannelActivityErrorCode::Internal)?;
 
     for _ in 0..MUTATION_RETRY_LIMIT {
-        let Some(existing) = current.as_ref() else {
+        let Some(existing) = current.as_ref().and_then(ChannelActivityRecord::active) else {
+            let generation = match current.as_ref() {
+                Some(record) => record.generation(),
+                None => observed_generation,
+            };
             return Ok(HandleOutcome::Direct(EventV1::ChannelActivityEmpty {
                 request_id: request_id.to_string(),
                 channel_id: channel_id.to_string(),
+                generation,
             }));
         };
+        let active_member_ids = get_voice_channel_members(&voice_channel)
+            .await
+            .map_err(|_| ChannelActivityErrorCode::Internal)?
+            .ok_or(ChannelActivityErrorCode::Internal)?;
         let Some(mut next) = reconcile_participants(existing, &active_member_ids) else {
             match persist(
                 channel_id,
                 current.as_ref(),
-                ChannelActivityMutation::Delete,
+                ChannelActivityMutation::Close(tombstone(existing)),
             )
             .await?
             {
                 ChannelActivityMutationResult::Applied => {
-                    publish_closed(
+                    let event = publish_closed(
                         &voice_channel,
                         Some(request_id.to_string()),
                         channel_id,
                         &existing.id,
+                        existing.generation,
                     )
                     .await;
-                    return Ok(HandleOutcome::Published);
+                    return Ok(HandleOutcome::Published(event));
                 }
                 ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
             }
@@ -121,6 +131,7 @@ async fn sync_activity(
             )));
         }
         next.revision = existing.revision + 1;
+        refresh_expiry(&mut next);
         match persist(
             channel_id,
             current.as_ref(),
@@ -129,8 +140,9 @@ async fn sync_activity(
         .await?
         {
             ChannelActivityMutationResult::Applied => {
-                publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
-                return Ok(HandleOutcome::Published);
+                let event =
+                    publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
+                return Ok(HandleOutcome::Published(event));
             }
             ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
         }
@@ -154,24 +166,33 @@ async fn start_activity(
         .map_err(|_| ChannelActivityErrorCode::Internal)?;
 
     for _ in 0..MUTATION_RETRY_LIMIT {
-        let next = match current.as_ref() {
+        let next = match current.as_ref().and_then(ChannelActivityRecord::active) {
             Some(existing) if existing.application_id != application_id => {
                 return Err(ChannelActivityErrorCode::AlreadyRunning);
             }
             Some(existing) => with_participant(existing, &user.id),
-            None => ChannelActivityInstance {
-                id: format!("{ACTIVITY_INSTANCE_ID_PREFIX}{}", ulid::Ulid::new()),
-                application_id: application_id.to_string(),
-                channel_id: channel_id.to_string(),
-                server_id: voice_channel.server_id.clone(),
-                owner_id: user.id.clone(),
-                participant_ids: vec![user.id.clone()],
-                revision: 1,
-                state: application_initial_state(application_id)
-                    .expect("application was validated"),
-                created_at: Timestamp::now_utc(),
-            },
+            None => {
+                let generation = next_channel_activity_generation(channel_id)
+                    .await
+                    .map_err(|_| ChannelActivityErrorCode::Internal)?;
+                ChannelActivityInstance {
+                    id: format!("{ACTIVITY_INSTANCE_ID_PREFIX}{}", ulid::Ulid::new()),
+                    generation,
+                    application_id: application_id.to_string(),
+                    channel_id: channel_id.to_string(),
+                    server_id: voice_channel.server_id.clone(),
+                    owner_id: user.id.clone(),
+                    participant_ids: vec![user.id.clone()],
+                    revision: 1,
+                    state: application_initial_state(application_id)
+                        .expect("application was validated"),
+                    created_at: Timestamp::now_utc(),
+                    expires_at: activity_expiry_ms(),
+                }
+            }
         };
+        let mut next = next;
+        refresh_expiry(&mut next);
 
         match persist(
             channel_id,
@@ -181,8 +202,9 @@ async fn start_activity(
         .await?
         {
             ChannelActivityMutationResult::Applied => {
-                publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
-                return Ok(HandleOutcome::Published);
+                let event =
+                    publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
+                return Ok(HandleOutcome::Published(event));
             }
             ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
         }
@@ -207,13 +229,14 @@ async fn join_activity(
 
     for _ in 0..MUTATION_RETRY_LIMIT {
         let existing = matching_instance(current.as_ref(), instance_id)?;
-        let next = with_participant(existing, &user.id);
+        let mut next = with_participant(existing, &user.id);
         if &next == existing {
             return Ok(HandleOutcome::Direct(snapshot_event(
                 Some(request_id.to_string()),
                 next,
             )));
         }
+        refresh_expiry(&mut next);
         match persist(
             channel_id,
             current.as_ref(),
@@ -222,8 +245,9 @@ async fn join_activity(
         .await?
         {
             ChannelActivityMutationResult::Applied => {
-                publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
-                return Ok(HandleOutcome::Published);
+                let event =
+                    publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
+                return Ok(HandleOutcome::Published(event));
             }
             ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
         }
@@ -260,19 +284,20 @@ async fn leave_activity(
             match persist(
                 channel_id,
                 current.as_ref(),
-                ChannelActivityMutation::Delete,
+                ChannelActivityMutation::Close(tombstone(existing)),
             )
             .await?
             {
                 ChannelActivityMutationResult::Applied => {
-                    publish_closed(
+                    let event = publish_closed(
                         &instance_voice_channel(existing),
                         Some(request_id.to_string()),
                         channel_id,
                         instance_id,
+                        existing.generation,
                     )
                     .await;
-                    return Ok(HandleOutcome::Published);
+                    return Ok(HandleOutcome::Published(event));
                 }
                 ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
             }
@@ -283,6 +308,7 @@ async fn leave_activity(
             next.owner_id = next.participant_ids[0].clone();
         }
         next.revision += 1;
+        refresh_expiry(&mut next);
         match persist(
             channel_id,
             current.as_ref(),
@@ -291,13 +317,13 @@ async fn leave_activity(
         .await?
         {
             ChannelActivityMutationResult::Applied => {
-                publish_snapshot(
+                let event = publish_snapshot(
                     &instance_voice_channel(&next),
                     Some(request_id.to_string()),
                     next,
                 )
                 .await;
-                return Ok(HandleOutcome::Published);
+                return Ok(HandleOutcome::Published(event));
             }
             ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
         }
@@ -331,6 +357,7 @@ async fn command_activity(
         let mut next = existing.clone();
         next.state = application_reduce(existing, &command, &user.id)?;
         next.revision += 1;
+        refresh_expiry(&mut next);
 
         match persist(
             channel_id,
@@ -340,8 +367,9 @@ async fn command_activity(
         .await?
         {
             ChannelActivityMutationResult::Applied => {
-                publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
-                return Ok(HandleOutcome::Published);
+                let event =
+                    publish_snapshot(&voice_channel, Some(request_id.to_string()), next).await;
+                return Ok(HandleOutcome::Published(event));
             }
             ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
         }
@@ -369,19 +397,20 @@ async fn close_activity(
         match persist(
             channel_id,
             current.as_ref(),
-            ChannelActivityMutation::Delete,
+            ChannelActivityMutation::Close(tombstone(existing)),
         )
         .await?
         {
             ChannelActivityMutationResult::Applied => {
-                publish_closed(
+                let event = publish_closed(
                     &voice_channel,
                     Some(request_id.to_string()),
                     channel_id,
                     instance_id,
+                    existing.generation,
                 )
                 .await;
-                return Ok(HandleOutcome::Published);
+                return Ok(HandleOutcome::Published(event));
             }
             ChannelActivityMutationResult::Conflict(conflict) => current = conflict,
         }
@@ -405,10 +434,11 @@ async fn require_voice_channel(
 }
 
 fn matching_instance<'a>(
-    instance: Option<&'a ChannelActivityInstance>,
+    record: Option<&'a ChannelActivityRecord>,
     instance_id: &str,
 ) -> std::result::Result<&'a ChannelActivityInstance, ChannelActivityErrorCode> {
-    instance
+    record
+        .and_then(ChannelActivityRecord::active)
         .filter(|current| current.id == instance_id)
         .ok_or(ChannelActivityErrorCode::InstanceNotFound)
 }
@@ -442,12 +472,36 @@ fn reconcile_participants(
 
 async fn persist(
     channel_id: &str,
-    expected: Option<&ChannelActivityInstance>,
+    expected: Option<&ChannelActivityRecord>,
     mutation: ChannelActivityMutation,
 ) -> std::result::Result<ChannelActivityMutationResult, ChannelActivityErrorCode> {
     mutate_channel_activity_if_current(channel_id, expected, mutation)
         .await
         .map_err(|_| ChannelActivityErrorCode::Internal)
+}
+
+fn refresh_expiry(instance: &mut ChannelActivityInstance) {
+    instance.expires_at = activity_expiry_ms();
+}
+
+fn activity_expiry_ms() -> u64 {
+    now_ms().saturating_add(CHANNEL_ACTIVITY_TTL_MILLISECONDS)
+}
+
+fn tombstone(instance: &ChannelActivityInstance) -> ChannelActivityTombstone {
+    ChannelActivityTombstone {
+        channel_id: instance.channel_id.clone(),
+        instance_id: instance.id.clone(),
+        generation: instance.generation,
+        closed_at: now_ms(),
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn application_initial_state(application_id: &str) -> Option<Value> {
@@ -651,8 +705,10 @@ async fn publish_snapshot(
     channel: &UserVoiceChannel,
     request_id: Option<String>,
     instance: ChannelActivityInstance,
-) {
-    publish_to_voice_members(channel, snapshot_event(request_id, instance)).await;
+) -> EventV1 {
+    let event = snapshot_event(request_id, instance);
+    publish_to_voice_members(channel, event.clone()).await;
+    event
 }
 
 async fn publish_closed(
@@ -660,16 +716,16 @@ async fn publish_closed(
     request_id: Option<String>,
     channel_id: &str,
     instance_id: &str,
-) {
-    publish_to_voice_members(
-        channel,
-        EventV1::ChannelActivityClosed {
-            request_id,
-            channel_id: channel_id.to_string(),
-            instance_id: instance_id.to_string(),
-        },
-    )
-    .await;
+    generation: u64,
+) -> EventV1 {
+    let event = EventV1::ChannelActivityClosed {
+        request_id,
+        channel_id: channel_id.to_string(),
+        instance_id: instance_id.to_string(),
+        generation,
+    };
+    publish_to_voice_members(channel, event.clone()).await;
+    event
 }
 
 async fn publish_to_voice_members(channel: &UserVoiceChannel, event: EventV1) {
@@ -686,6 +742,55 @@ fn snapshot_event(request_id: Option<String>, instance: ChannelActivityInstance)
         request_id,
         instance,
     }
+}
+
+pub async fn run_expiration_sweeper() {
+    loop {
+        if let Err(error) = sweep_expired_activities().await {
+            warn!("Failed to sweep expired Channel Activities: {error:?}");
+        }
+        async_std::task::sleep(std::time::Duration::from_secs(
+            EXPIRATION_SWEEP_INTERVAL_SECONDS,
+        ))
+        .await;
+    }
+}
+
+async fn sweep_expired_activities() -> syrnike_result::Result<()> {
+    let timestamp_ms = now_ms();
+    let channel_ids =
+        get_expired_channel_activity_ids(timestamp_ms, EXPIRATION_SWEEP_BATCH_SIZE).await?;
+    for channel_id in channel_ids {
+        let Some(current) = get_channel_activity(&channel_id).await? else {
+            continue;
+        };
+        let Some(instance) = current.active() else {
+            continue;
+        };
+        if instance.expires_at > timestamp_ms {
+            continue;
+        }
+        let event = EventV1::ChannelActivityClosed {
+            request_id: None,
+            channel_id: channel_id.clone(),
+            instance_id: instance.id.clone(),
+            generation: instance.generation,
+        };
+        let voice_channel = instance_voice_channel(instance);
+        match mutate_channel_activity_if_current(
+            &channel_id,
+            Some(&current),
+            ChannelActivityMutation::Close(tombstone(instance)),
+        )
+        .await?
+        {
+            ChannelActivityMutationResult::Applied => {
+                publish_to_voice_members(&voice_channel, event).await;
+            }
+            ChannelActivityMutationResult::Conflict(_) => {}
+        }
+    }
+    Ok(())
 }
 
 fn error_event(request_id: String, channel_id: String, code: ChannelActivityErrorCode) -> EventV1 {
@@ -721,6 +826,7 @@ mod tests {
     fn instance() -> ChannelActivityInstance {
         ChannelActivityInstance {
             id: "activity-1".to_string(),
+            generation: 1,
             application_id: SHARED_COUNTER_APPLICATION_ID.to_string(),
             channel_id: "channel-1".to_string(),
             server_id: None,
@@ -729,6 +835,7 @@ mod tests {
             revision: 1,
             state: json!({ "count": 0, "last_actor_id": null }),
             created_at: Timestamp::UNIX_EPOCH,
+            expires_at: 7_200_000,
         }
     }
 

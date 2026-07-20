@@ -153,9 +153,16 @@ _Avoid_: Voice game, LiveKit app, rich presence activity
 **Activity Instance**:
 The server-authoritative realtime lifetime of one Channel Activity in one voice
 channel. It owns an immutable instance ID, application ID, participant set,
-monotonic revision, and application-defined state. One channel has at most one
-active Activity Instance in the first-party runtime.
+channel-scoped generation, monotonic revision, expiry, and application-defined
+state. One channel has at most one active Activity Instance in the first-party
+runtime.
 _Avoid_: Game room, Voice Session, iframe session
+
+**Activity Tombstone**:
+The durable, generation-bearing record that replaces a closed or expired
+Activity Instance. It lets reconnecting clients distinguish an authoritative
+absence from a delayed event belonging to an older channel generation.
+_Avoid_: Empty cache entry, deleted Activity, close notification
 
 **Activity Participant**:
 An account that has explicitly joined an Activity Instance and still has Voice

@@ -267,14 +267,14 @@ export function VoiceStageView({
   )
   const activityStageItem = useMemo<VoiceStageActivityItem | null>(
     () =>
-      channelActivitiesEnabled && channelActivity.instance
+      channelActivitiesEnabled && inThisVoiceCall && channelActivity.instance
         ? {
             id: channelActivityStageItemId(channelActivity.instance.id),
             kind: 'activity',
             instance: channelActivity.instance,
           }
         : null,
-    [channelActivitiesEnabled, channelActivity.instance],
+    [channelActivitiesEnabled, channelActivity.instance, inThisVoiceCall],
   )
   const stageItems = useMemo<readonly VoiceStageItem[]>(
     () =>

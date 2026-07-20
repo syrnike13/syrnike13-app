@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { VoicePanelMediaBar } from './voice-panel-media-bar'
 
 const testState = vi.hoisted(() => ({
-  session: { status: 'connected' },
+  session: { status: 'connected', channelId: 'voice-a' },
+  navigate: vi.fn(() => Promise.resolve()),
   uiFeatures: { channelActivities: true },
   stage: {
     activityLauncherOpen: false,
@@ -24,6 +25,14 @@ const testState = vi.hoisted(() => ({
     toggleCamera: vi.fn(),
     toggleScreenShare: vi.fn(),
   },
+}))
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => testState.navigate,
+}))
+
+vi.mock('#/features/navigation/route-prefix', () => ({
+  useAppRoutePrefix: () => '/app',
 }))
 
 vi.mock('#/features/voice/voice-session-context', () => ({
@@ -49,20 +58,25 @@ describe('VoicePanelMediaBar Activities button', () => {
     testState.stage.activityLauncherOpen = false
     testState.stage.focusedMediaId = null
     testState.stage.setActivityLauncherOpen.mockReset()
+    testState.navigate.mockClear()
   })
 
   afterEach(cleanup)
 
-  it('opens Activities from the voice panel button', () => {
+  it('navigates to the active voice stage before opening Activities', async () => {
     const { rerender } = render(<VoicePanelMediaBar />)
     const button = screen.getByRole('button', { name: 'Активности' })
 
     expect(button.getAttribute('aria-pressed')).toBe('false')
     fireEvent.click(button)
-    expect(testState.stage.setActivityLauncherOpen).toHaveBeenCalledOnce()
-    const update = testState.stage.setActivityLauncherOpen.mock
-      .calls[0]?.[0] as (current: boolean) => boolean
-    expect(update(false)).toBe(true)
+    expect(testState.navigate).toHaveBeenCalledWith({
+      to: '/app/c/$channelId',
+      params: { channelId: 'voice-a' },
+      search: { m: undefined },
+    })
+    await vi.waitFor(() =>
+      expect(testState.stage.setActivityLauncherOpen).toHaveBeenCalledWith(true),
+    )
 
     testState.stage.activityLauncherOpen = true
     rerender(<VoicePanelMediaBar />)

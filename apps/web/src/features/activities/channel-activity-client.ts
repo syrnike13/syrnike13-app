@@ -3,6 +3,7 @@ import { eventsGateway } from '#/features/events/gateway'
 import {
   isChannelActivityErrorCode,
   isChannelActivityInstance,
+  validChannelActivityGeneration,
   type ChannelActivityInstance,
   type ChannelActivityViewState,
 } from './channel-activity-types'
@@ -22,9 +23,12 @@ export type ChannelActivityGateway = Readonly<{
 
 const EMPTY_VIEW_STATE: ChannelActivityViewState = Object.freeze({
   instance: null,
+  generation: 0,
   error: null,
   transport: 'disconnected',
 })
+
+const PERIODIC_SYNC_MS = 30_000
 
 export class ChannelActivityClient {
   readonly #gateway: ChannelActivityGateway
@@ -32,6 +36,7 @@ export class ChannelActivityClient {
   readonly #listeners = new Map<string, Set<() => void>>()
   #unsubscribeEvents: (() => void) | null = null
   #unsubscribeGatewayState: (() => void) | null = null
+  #syncTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(gateway: ChannelActivityGateway) {
     this.#gateway = gateway
@@ -142,6 +147,10 @@ export class ChannelActivityClient {
         if (state === 'connected') this.sync(channelId)
       }
     })
+    this.#syncTimer = setInterval(() => {
+      if (this.#gateway.state !== 'connected') return
+      for (const channelId of this.#listeners.keys()) this.sync(channelId)
+    }, PERIODIC_SYNC_MS)
   }
 
   #detachGateway() {
@@ -149,6 +158,8 @@ export class ChannelActivityClient {
     this.#unsubscribeGatewayState?.()
     this.#unsubscribeEvents = null
     this.#unsubscribeGatewayState = null
+    if (this.#syncTimer) clearInterval(this.#syncTimer)
+    this.#syncTimer = null
   }
 
   #handleEvent(event: GatewayEvent) {
@@ -156,41 +167,62 @@ export class ChannelActivityClient {
       case 'ChannelActivitySnapshot': {
         if (!isChannelActivityInstance(event.instance)) return
         const instance = event.instance
-        const current = this.snapshot(instance.channel_id).instance
-        if (
-          current?.id === instance.id &&
-          current.revision > instance.revision
-        ) {
-          return
+        const currentState = this.snapshot(instance.channel_id)
+        const current = currentState.instance
+        if (instance.generation < currentState.generation) return
+        if (instance.generation === currentState.generation) {
+          if (
+            !current ||
+            current.id !== instance.id ||
+            current.revision >= instance.revision
+          ) {
+            return
+          }
         }
         this.#setState(instance.channel_id, {
           instance,
+          generation: instance.generation,
           error: null,
           transport: this.snapshot(instance.channel_id).transport,
         })
         break
       }
       case 'ChannelActivityEmpty': {
-        if (typeof event.channel_id !== 'string') return
-        if (this.snapshot(event.channel_id).instance) return
+        if (
+          typeof event.channel_id !== 'string' ||
+          !validChannelActivityGeneration(event.generation)
+        ) {
+          return
+        }
+        const current = this.snapshot(event.channel_id)
+        if (event.generation < current.generation) return
         this.#setState(event.channel_id, {
           instance: null,
+          generation: event.generation,
           error: null,
-          transport: this.snapshot(event.channel_id).transport,
+          transport: current.transport,
         })
         break
       }
       case 'ChannelActivityClosed': {
         if (
           typeof event.channel_id !== 'string' ||
-          typeof event.instance_id !== 'string'
+          typeof event.instance_id !== 'string' ||
+          !validChannelActivityGeneration(event.generation)
         ) {
           return
         }
         const current = this.snapshot(event.channel_id)
-        if (current.instance?.id !== event.instance_id) return
+        if (event.generation < current.generation) return
+        if (
+          event.generation === current.generation &&
+          current.instance?.id !== event.instance_id
+        ) {
+          return
+        }
         this.#setState(event.channel_id, {
           instance: null,
+          generation: event.generation,
           error: null,
           transport: current.transport,
         })
@@ -232,6 +264,7 @@ export class ChannelActivityClient {
     const current = this.snapshot(channelId)
     if (
       current.instance === next.instance &&
+      current.generation === next.generation &&
       current.error === next.error &&
       current.transport === next.transport
     )

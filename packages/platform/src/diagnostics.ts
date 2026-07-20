@@ -47,3 +47,8 @@ export type NativeDiagnosticIncident = {
   durationMs?: number
   timeoutMs?: number
 }
+
+export type NativeDiagnosticIncidentBatch = {
+  id: string
+  incidents: NativeDiagnosticIncident[]
+}

@@ -1,5 +1,6 @@
 import type {
   NativeDiagnosticIncident,
+  NativeDiagnosticIncidentBatch,
   NativeDiagnosticIncidentSeverity,
 } from '@syrnike13/platform'
 
@@ -8,6 +9,7 @@ import { redactSensitiveText } from './contract'
 
 const MAX_PENDING_INCIDENTS = 100
 const REPEAT_WINDOW_MS = 5_000
+const INCIDENT_LEASE_MS = 2 * 60 * 1_000
 const INCIDENT_SIGNAL =
   /error|fail|timed_out|timeout|rejected|queue_full|exit|restart|recycl|degraded|lost|unresponsive|stalled|incompatible|corrupt|fatal|crash|dropped_out_of_order/i
 const FATAL_SIGNAL = /circuit_open|corrupt|fatal|crash/i
@@ -15,6 +17,7 @@ const WARNING_SIGNAL = /queue_full|restart_scheduled|degraded|dropped_out_of_ord
 
 const pending: NativeDiagnosticIncident[] = []
 const lastIncidentAt = new Map<string, number>()
+let leasedBatch: (NativeDiagnosticIncidentBatch & { expiresAt: number }) | null = null
 
 export function captureNativeDiagnosticIncident(
   record: DiagnosticLogRecord,
@@ -69,13 +72,43 @@ export function captureNativeDiagnosticIncident(
   return incident
 }
 
-export function takeNativeDiagnosticIncidents() {
-  return pending.splice(0, pending.length)
+export function leaseNativeDiagnosticIncidents(timestampMs = Date.now()) {
+  if (leasedBatch && leasedBatch.expiresAt <= timestampMs) {
+    pending.unshift(...leasedBatch.incidents)
+    while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+    leasedBatch = null
+  }
+  if (leasedBatch) {
+    return { id: leasedBatch.id, incidents: leasedBatch.incidents }
+  }
+  if (pending.length === 0) return null
+
+  leasedBatch = {
+    id: crypto.randomUUID(),
+    incidents: pending.splice(0, pending.length),
+    expiresAt: timestampMs + INCIDENT_LEASE_MS,
+  }
+  return { id: leasedBatch.id, incidents: leasedBatch.incidents }
+}
+
+export function acknowledgeNativeDiagnosticIncidents(batchId: string) {
+  if (leasedBatch?.id !== batchId) return false
+  leasedBatch = null
+  return true
+}
+
+export function releaseNativeDiagnosticIncidents(batchId: string) {
+  if (leasedBatch?.id !== batchId) return false
+  pending.unshift(...leasedBatch.incidents)
+  while (pending.length > MAX_PENDING_INCIDENTS) pending.shift()
+  leasedBatch = null
+  return true
 }
 
 export function clearNativeDiagnosticIncidentsForTests() {
   pending.length = 0
   lastIncidentAt.clear()
+  leasedBatch = null
 }
 
 function incidentSeverity(signal: string): NativeDiagnosticIncidentSeverity {

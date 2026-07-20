@@ -3,8 +3,11 @@ const LEGACY_STORAGE_KEY = 'syrnike13:diagnostic-reports:v1'
 const ENABLED = 'enabled'
 const DISABLED = 'disabled'
 
+let volatilePreference: boolean | null = null
+
 export function readBrowserDiagnosticReportsEnabled() {
-  if (typeof localStorage === 'undefined') return true
+  if (volatilePreference !== null) return volatilePreference
+  if (typeof localStorage === 'undefined') return false
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored === ENABLED) return true
@@ -17,15 +20,22 @@ export function readBrowserDiagnosticReportsEnabled() {
     localStorage.removeItem(LEGACY_STORAGE_KEY)
     return true
   } catch {
-    return true
+    return false
   }
 }
 
 export function writeBrowserDiagnosticReportsEnabled(enabled: boolean) {
-  if (typeof localStorage === 'undefined') return
+  volatilePreference = enabled
+  if (typeof localStorage === 'undefined') return false
   try {
     localStorage.setItem(STORAGE_KEY, enabled ? ENABLED : DISABLED)
+    volatilePreference = null
+    return true
   } catch {
-    // Diagnostics preferences must never affect application behavior.
+    return false
   }
+}
+
+export function resetBrowserDiagnosticPreferenceForTests() {
+  volatilePreference = null
 }

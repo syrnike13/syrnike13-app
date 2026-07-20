@@ -66,4 +66,29 @@ describe('desktop diagnostic bundle', () => {
       createDesktopDiagnosticBundle('x'.repeat(2 * 1024 * 1024 + 1)),
     ).rejects.toThrow('too large')
   })
+
+  it('caps the normalized bundle below the backend decompressed limit', async () => {
+    const session = path.join(
+      state.userData,
+      'logs',
+      'native-media-diagnostics',
+      'native-media-large',
+    )
+    await mkdir(session, { recursive: true })
+    const record = `${JSON.stringify({
+      role: 'native',
+      event: 'trace_packet_processed',
+      wallTimeUnixMs: 1,
+      detail: 'x'.repeat(220),
+    })}\n`
+    const nativeJsonl = record.repeat(
+      Math.ceil((30 * 1024 * 1024) / Buffer.byteLength(record)),
+    )
+    await writeFile(path.join(session, 'native.jsonl'), nativeJsonl, 'utf8')
+
+    const compressed = await createDesktopDiagnosticBundle(
+      '{"type":"manifest","source":"desktop"}\n{"event":"voice_failed"}',
+    )
+    expect(gunzipSync(compressed).byteLength).toBeLessThanOrEqual(33 * 1024 * 1024)
+  }, 15_000)
 })

@@ -20,6 +20,7 @@ const testState = vi.hoisted(() => ({
     stageChannelId: 'voice-a' as string | null,
     stageMediaItems: [] as Array<{
       id: string
+      generation: number
       userId: string
       kind: 'camera' | 'screen' | 'avatar'
       isLocal: boolean
@@ -52,7 +53,9 @@ const testState = vi.hoisted(() => ({
       revision: number
       state: unknown
       created_at: string
+      expires_at: number
     },
+    generation: 0,
     error: null,
     transport: 'connected' as const,
   },
@@ -230,6 +233,7 @@ describe('VoiceStageView channel media scope', () => {
     testState.activityHook.mockReset()
     testState.activityHook.mockImplementation(() => testState.activity)
     testState.activity.instance = null
+    testState.activity.generation = 0
     testState.stage.stageMediaItems = [
       {
         id: 'alice:camera',
@@ -341,6 +345,7 @@ describe('VoiceStageView channel media scope', () => {
   it('renders a running Activity as a stage tile without the old header button', () => {
     testState.activity.instance = {
       id: 'activity-1',
+      generation: 1,
       application_id: 'syrnike13.syrnik-race',
       channel_id: 'voice-a',
       owner_id: 'local',
@@ -348,6 +353,7 @@ describe('VoiceStageView channel media scope', () => {
       revision: 1,
       state: {},
       created_at: '2026-07-20T00:00:00Z',
+      expires_at: Date.parse('2026-07-20T02:00:00Z'),
     }
 
     renderStage(voiceChannel('voice-a', 'A'))
@@ -360,11 +366,10 @@ describe('VoiceStageView channel media scope', () => {
     ).toBeNull()
   })
 
-  it('hides Activity UI and disables its subscription outside nightly builds', () => {
-    testState.uiFeatures.channelActivities = false
-    testState.stage.activityLauncherOpen = true
+  it('removes a cached Activity tile after leaving its voice channel', () => {
     testState.activity.instance = {
       id: 'activity-1',
+      generation: 1,
       application_id: 'syrnike13.syrnik-race',
       channel_id: 'voice-a',
       owner_id: 'local',
@@ -372,6 +377,39 @@ describe('VoiceStageView channel media scope', () => {
       revision: 1,
       state: {},
       created_at: '2026-07-20T00:00:00Z',
+      expires_at: Date.parse('2026-07-20T02:00:00Z'),
+    }
+    testState.activity.generation = 1
+
+    const { rerender } = renderStage(voiceChannel('voice-a', 'A'))
+    expect(screen.getByTestId('activity-tile')).toBeTruthy()
+
+    testState.session.status = 'idle'
+    rerender(
+      <VoiceStageView
+        channel={voiceChannel('voice-a', 'A')}
+        title="A"
+        chatOpen={false}
+        onToggleChat={() => undefined}
+      />,
+    )
+    expect(screen.queryByTestId('activity-tile')).toBeNull()
+  })
+
+  it('hides Activity UI and disables its subscription outside nightly builds', () => {
+    testState.uiFeatures.channelActivities = false
+    testState.stage.activityLauncherOpen = true
+    testState.activity.instance = {
+      id: 'activity-1',
+      generation: 1,
+      application_id: 'syrnike13.syrnik-race',
+      channel_id: 'voice-a',
+      owner_id: 'local',
+      participant_ids: ['local'],
+      revision: 1,
+      state: {},
+      created_at: '2026-07-20T00:00:00Z',
+      expires_at: Date.parse('2026-07-20T02:00:00Z'),
     }
 
     renderStage(voiceChannel('voice-a', 'A'))

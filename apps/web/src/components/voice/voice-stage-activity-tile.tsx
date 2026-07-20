@@ -62,8 +62,10 @@ export function VoiceStageActivityTile({
   const [joining, setJoining] = useState(false)
 
   useEffect(() => {
-    if (joined || activity.error) setJoining(false)
-  }, [activity.error, joined])
+    if (joined || activity.error || activity.transport !== 'connected') {
+      setJoining(false)
+    }
+  }, [activity.error, activity.transport, joined])
 
   useEffect(() => {
     if (variant === 'focus') onAspectRatioChange?.(ACTIVITY_ASPECT_RATIO)

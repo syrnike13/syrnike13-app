@@ -53,7 +53,11 @@ import {
   desktopVoiceService,
 } from './voice/desktop-voice-service'
 import { createDesktopDiagnosticBundle } from './diagnostic-bundle'
-import { takeNativeDiagnosticIncidents } from './native-runtime/diagnostic-incidents'
+import {
+  acknowledgeNativeDiagnosticIncidents,
+  leaseNativeDiagnosticIncidents,
+  releaseNativeDiagnosticIncidents,
+} from './native-runtime/diagnostic-incidents'
 
 let lastActivity: ActivityDetails | null = null
 
@@ -199,8 +203,14 @@ export function registerDesktopIpc(
       return createDesktopDiagnosticBundle(rendererJsonl)
     },
   )
-  ipcMain.handle(IPC.diagnosticsTakeNativeIncidents, () =>
-    takeNativeDiagnosticIncidents(),
+  ipcMain.handle(IPC.diagnosticsLeaseNativeIncidents, () =>
+    leaseNativeDiagnosticIncidents(),
+  )
+  ipcMain.handle(IPC.diagnosticsAcknowledgeNativeIncidents, (_event, batchId) =>
+    acknowledgeNativeDiagnosticIncidents(batchId),
+  )
+  ipcMain.handle(IPC.diagnosticsReleaseNativeIncidents, (_event, batchId) =>
+    releaseNativeDiagnosticIncidents(batchId),
   )
 
   ipcMain.handle(IPC.hotkeysGetBindings, () => getHotkeyBindings())

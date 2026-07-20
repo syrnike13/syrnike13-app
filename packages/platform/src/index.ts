@@ -90,6 +90,7 @@ export {
   type DiagnosticEnvelopeSource,
   type DiagnosticJsonValue,
   type NativeDiagnosticIncident,
+  type NativeDiagnosticIncidentBatch,
   type NativeDiagnosticIncidentSeverity,
 } from './diagnostics'
 export { IPC, type IpcChannel } from './ipc'

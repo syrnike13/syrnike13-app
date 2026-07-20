@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ChannelActivityViewState } from '#/features/activities/channel-activity-types'
@@ -27,6 +27,7 @@ vi.mock('#/features/activities/channel-activity-panel', () => ({
 
 const instance = {
   id: 'activity-1',
+  generation: 1,
   application_id: 'syrnike13.syrnik-race',
   channel_id: 'voice-a',
   owner_id: 'owner',
@@ -34,6 +35,7 @@ const instance = {
   revision: 1,
   state: {},
   created_at: '2026-07-20T00:00:00Z',
+  expires_at: Date.parse('2026-07-20T02:00:00Z'),
 }
 
 const item: VoiceStageActivityItem = {
@@ -47,6 +49,7 @@ function activity(
 ): ChannelActivityViewState {
   return {
     instance: { ...instance, participant_ids: participantIds },
+    generation: instance.generation,
     error: null,
     transport: 'connected',
   }
@@ -99,5 +102,50 @@ describe('VoiceStageActivityTile', () => {
 
     expect(await screen.findByTestId('embedded-activity')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Присоединиться' })).toBeNull()
+  })
+
+  it('allows joining again after realtime disconnects', () => {
+    const { rerender } = render(
+      <VoiceStageActivityTile
+        item={item}
+        activity={activity()}
+        currentUserId="guest"
+        variant="grid"
+        onFocus={() => undefined}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Присоединиться' }))
+    expect(
+      (screen.getByRole('button', { name: 'Подключаем…' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+
+    rerender(
+      <VoiceStageActivityTile
+        item={item}
+        activity={{ ...activity(), transport: 'reconnecting' }}
+        currentUserId="guest"
+        variant="grid"
+        onFocus={() => undefined}
+      />,
+    )
+    rerender(
+      <VoiceStageActivityTile
+        item={item}
+        activity={activity()}
+        currentUserId="guest"
+        variant="grid"
+        onFocus={() => undefined}
+      />,
+    )
+
+    return waitFor(() =>
+      expect(
+        (screen.getByRole('button', {
+          name: 'Присоединиться',
+        }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    )
   })
 })

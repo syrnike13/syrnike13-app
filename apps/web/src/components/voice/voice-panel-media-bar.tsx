@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import {
   ActivityIcon,
   Loader2Icon,
@@ -18,6 +19,7 @@ import { voiceMediaControlState } from '#/features/voice/voice-media-availabilit
 import { isChannelActivityStageItemId } from '#/features/activities/channel-activity-stage'
 import { shellDivider } from '#/components/layout/shell-chrome'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
+import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { cn } from '#/lib/utils'
 
 const panelMediaButtonBaseClass =
@@ -99,6 +101,8 @@ function PanelMediaButtonSoon({
 }
 
 export function VoicePanelMediaBar() {
+  const navigate = useNavigate()
+  const routePrefix = useAppRoutePrefix()
   const voiceSession = useVoiceSession()
   const voiceMedia = useVoiceMedia()
   const voiceStage = useVoiceStage()
@@ -162,9 +166,18 @@ export function VoicePanelMediaBar() {
               isChannelActivityStageItemId(voiceStage.focusedMediaId)
             }
             disabled={voiceSession.status !== 'connected'}
-            onClick={() =>
-              voiceStage.setActivityLauncherOpen((current) => !current)
-            }
+            onClick={() => {
+              if (voiceStage.activityLauncherOpen) {
+                voiceStage.setActivityLauncherOpen(false)
+                return
+              }
+              if (!voiceSession.channelId) return
+              void navigate({
+                to: routePrefix === '/m' ? '/m/c/$channelId' : '/app/c/$channelId',
+                params: { channelId: voiceSession.channelId },
+                search: { m: undefined },
+              }).then(() => voiceStage.setActivityLauncherOpen(true))
+            }}
           >
             <ActivityIcon className="size-[1.125rem]" />
           </PanelMediaButton>

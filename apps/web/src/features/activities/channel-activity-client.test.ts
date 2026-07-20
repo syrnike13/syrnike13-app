@@ -48,6 +48,7 @@ class FakeGateway implements ChannelActivityGateway {
 function instance(revision: number): ChannelActivityInstance {
   return {
     id: 'activity-1',
+    generation: 1,
     application_id: 'syrnike13.shared-counter',
     channel_id: 'channel-1',
     owner_id: 'user-a',
@@ -55,6 +56,7 @@ function instance(revision: number): ChannelActivityInstance {
     revision,
     state: { count: revision },
     created_at: 0,
+    expires_at: 7_200_000,
   }
 }
 
@@ -112,7 +114,7 @@ describe('ChannelActivityClient', () => {
     expect(gateway.sent).toHaveLength(1)
   })
 
-  it('does not let a stale empty sync erase an active instance', () => {
+  it('does not let an older-generation empty erase an active instance', () => {
     const gateway = new FakeGateway()
     const client = new ChannelActivityClient(gateway)
     const unsubscribe = client.subscribe('channel-1', () => undefined)
@@ -125,9 +127,71 @@ describe('ChannelActivityClient', () => {
       type: 'ChannelActivityEmpty',
       request_id: 'older-sync',
       channel_id: 'channel-1',
+      generation: 0,
     })
 
     expect(client.snapshot('channel-1').instance?.revision).toBe(3)
+    unsubscribe()
+  })
+
+  it('applies an authoritative tombstone for the current generation', () => {
+    const gateway = new FakeGateway()
+    const client = new ChannelActivityClient(gateway)
+    const unsubscribe = client.subscribe('channel-1', () => undefined)
+
+    gateway.emit({ type: 'ChannelActivitySnapshot', instance: instance(3) })
+    gateway.emit({
+      type: 'ChannelActivityEmpty',
+      request_id: 'current-sync',
+      channel_id: 'channel-1',
+      generation: 1,
+    })
+
+    expect(client.snapshot('channel-1')).toMatchObject({
+      instance: null,
+      generation: 1,
+    })
+    unsubscribe()
+  })
+
+  it('applies a newer close even when its snapshot was missed', () => {
+    const gateway = new FakeGateway()
+    const client = new ChannelActivityClient(gateway)
+    const unsubscribe = client.subscribe('channel-1', () => undefined)
+
+    gateway.emit({ type: 'ChannelActivitySnapshot', instance: instance(3) })
+    gateway.emit({
+      type: 'ChannelActivityClosed',
+      channel_id: 'channel-1',
+      instance_id: 'activity-2',
+      generation: 2,
+    })
+
+    expect(client.snapshot('channel-1')).toMatchObject({
+      instance: null,
+      generation: 2,
+    })
+    unsubscribe()
+  })
+
+  it('does not resurrect a closed generation from a delayed snapshot', () => {
+    const gateway = new FakeGateway()
+    const client = new ChannelActivityClient(gateway)
+    const unsubscribe = client.subscribe('channel-1', () => undefined)
+
+    gateway.emit({ type: 'ChannelActivitySnapshot', instance: instance(2) })
+    gateway.emit({
+      type: 'ChannelActivityClosed',
+      channel_id: 'channel-1',
+      instance_id: 'activity-1',
+      generation: 1,
+    })
+    gateway.emit({ type: 'ChannelActivitySnapshot', instance: instance(3) })
+
+    expect(client.snapshot('channel-1')).toMatchObject({
+      instance: null,
+      generation: 1,
+    })
     unsubscribe()
   })
 

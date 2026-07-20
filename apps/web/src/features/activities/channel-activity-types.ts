@@ -3,6 +3,7 @@ export const SYRNIK_RACE_APPLICATION_ID = 'syrnike13.syrnik-race'
 
 export type ChannelActivityInstance = Readonly<{
   id: string
+  generation: number
   application_id: string
   channel_id: string
   server_id?: string
@@ -11,6 +12,7 @@ export type ChannelActivityInstance = Readonly<{
   revision: number
   state: unknown
   created_at: string | number
+  expires_at: number
 }>
 
 export type ChannelActivityErrorCode =
@@ -26,6 +28,7 @@ export type ChannelActivityErrorCode =
 
 export type ChannelActivityViewState = Readonly<{
   instance: ChannelActivityInstance | null
+  generation: number
   error: ChannelActivityErrorCode | null
   transport: 'connected' | 'reconnecting' | 'disconnected'
 }>
@@ -37,6 +40,7 @@ export function isChannelActivityInstance(
   const instance = value as Record<string, unknown>
   return (
     validIdentifier(instance.id) &&
+    validGeneration(instance.generation) &&
     validIdentifier(instance.application_id) &&
     validIdentifier(instance.channel_id) &&
     (instance.server_id === undefined || validIdentifier(instance.server_id)) &&
@@ -45,9 +49,16 @@ export function isChannelActivityInstance(
     instance.participant_ids.every(validIdentifier) &&
     Number.isSafeInteger(instance.revision) &&
     Number(instance.revision) >= 1 &&
+    typeof instance.expires_at === 'number' &&
+    Number.isSafeInteger(instance.expires_at) &&
+    instance.expires_at > 0 &&
     (typeof instance.created_at === 'string' ||
       typeof instance.created_at === 'number')
   )
+}
+
+export function validChannelActivityGeneration(value: unknown): value is number {
+  return validGeneration(value)
 }
 
 export function isChannelActivityErrorCode(
@@ -68,4 +79,8 @@ export function isChannelActivityErrorCode(
 
 function validIdentifier(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 512
+}
+
+function validGeneration(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0
 }

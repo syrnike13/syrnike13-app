@@ -25,8 +25,16 @@ it does not mutate Voice Intent, Voice Operations, RTC Engine state, or Media
 Tracks.
 
 One voice channel has at most one active Activity Instance. The instance stores
-an application ID, participant IDs, owner ID, monotonically increasing revision,
-application-defined JSON state, and a bounded lifetime in Redis.
+an application ID, participant IDs, owner ID, channel-scoped generation,
+monotonically increasing revision, application-defined JSON state, and an
+explicit expiry in Redis.
+
+Closing or expiring an instance atomically replaces it with a tombstone carrying
+the instance ID and generation. A persistent per-channel generation counter
+orders new instances, while a Redis sorted-set index lets Bonfire sweep expired
+instances and publish their close transition. Tombstones expire after the
+reconnect window, but the generation counter remains so later instances cannot
+reuse an older generation.
 
 ### Server-authoritative application reducers
 
@@ -35,6 +43,9 @@ state. A registered first-party reducer validates each command and produces the
 next state. Redis compare-and-set protects concurrent commands from different
 Bonfire connections, and every accepted mutation increments the instance
 revision.
+
+Snapshot, closed, and empty events carry the channel generation, so delayed
+events from an older generation cannot overwrite newer state.
 
 All mutating requests verify the caller's current committed Voice Membership in
 the target channel. Leaving an Activity is allowed after Voice Membership ends
@@ -80,6 +91,8 @@ Activity controls nor subscribe the VoiceStage to Activity state.
   renderer transport is independent from the platform RTC Engine.
 - Reconnect and late join use server snapshots instead of replaying LiveKit data
   packets.
+- Expiry is an observable server transition rather than passive Redis key
+  deletion, so connected and reconnecting clients converge on the same absence.
 - Every first-party application needs a registered server reducer and a static
   iframe entry point.
 - The existing gateway is sufficient for party and turn-based applications,

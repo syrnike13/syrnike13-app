@@ -126,6 +126,7 @@ pub struct VoiceCall {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ChannelActivityInstance {
     pub id: String,
+    pub generation: u64,
     pub application_id: String,
     pub channel_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -135,6 +136,7 @@ pub struct ChannelActivityInstance {
     pub revision: u64,
     pub state: Value,
     pub created_at: Timestamp,
+    pub expires_at: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -566,10 +568,12 @@ pub enum EventV1 {
         request_id: Option<String>,
         channel_id: String,
         instance_id: String,
+        generation: u64,
     },
     ChannelActivityEmpty {
         request_id: String,
         channel_id: String,
+        generation: u64,
     },
     ChannelActivityError {
         request_id: String,

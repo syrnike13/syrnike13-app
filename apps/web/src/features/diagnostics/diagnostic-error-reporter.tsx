@@ -55,9 +55,17 @@ export function DiagnosticErrorReporter() {
     const drainNativeIncidents = async () => {
       if (draining) return
       draining = true
+      let batchId: string | null = null
       try {
-        const incidents = await desktop.diagnostics.takeNativeIncidents()
-        if (!active || incidents.length === 0) return
+        const batch = await desktop.diagnostics.leaseNativeIncidents()
+        if (!batch) return
+        batchId = batch.id
+        if (!active) {
+          await desktop.diagnostics.releaseNativeIncidents(batch.id)
+          batchId = null
+          return
+        }
+        const incidents = batch.incidents
         for (const incident of incidents) {
           recordDiagnosticEvent(
             'native-runtime',
@@ -66,7 +74,7 @@ export function DiagnosticErrorReporter() {
           )
         }
         const severity = highestIncidentSeverity(incidents)
-        void sendDiagnosticReport({
+        const report = await sendDiagnosticReport({
           token,
           desktop,
           area: 'native-runtime',
@@ -75,9 +83,17 @@ export function DiagnosticErrorReporter() {
           context: { incidents },
           automatic: true,
           automaticCooldownMs: 60_000,
-        }).catch(() => undefined)
+        })
+        if (report) {
+          await desktop.diagnostics.acknowledgeNativeIncidents(batch.id)
+        } else {
+          await desktop.diagnostics.releaseNativeIncidents(batch.id)
+        }
+        batchId = null
       } catch {
-        // Native incident reporting must never affect the renderer lifecycle.
+        if (batchId) {
+          await desktop.diagnostics.releaseNativeIncidents(batchId).catch(() => false)
+        }
       } finally {
         draining = false
       }
