@@ -1,14 +1,39 @@
-# syrnike13 app
+<div align="center">
 
-Monorepo for syrnike13 web, desktop, backend and voice infrastructure.
+# 🥞 СЫРНИКИ
 
-## Layout
+### Своя платформа для общения
 
-- `apps/web` - React/TanStack web client.
-- `apps/desktop` - Electron shell for the same web client.
-- `packages/platform` - shared runtime/capability layer for web and desktop.
-- `services/backend` - Rust backend and backend daemons.
-- `services/livekit-server` - LiveKit server fork used by voice.
-- `deploy/production` - production compose and deploy scripts.
+[![prod](https://img.shields.io/badge/зайти-syrnike13.ru-success?style=flat-square)](https://syrnike13.ru)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-orange?style=flat-square)](LICENSE)
 
-`VERSION` is the single release version source. Release workflows run on `main` only when `VERSION` changes.
+</div>
+
+---
+
+**Сырники** — это платформа для общения, которую мы делаем сами и для себя.
+Собирайтесь на серверах, болтайте в каналах, сидите в войсе — всё в одном месте
+и под нашим контролем, а не чужой корпорацией.
+
+## ✨ Что тут можно
+
+- 💬 **Общаться** — серверы, текстовые и голосовые каналы, роли и бейджи.
+- 🎙️ **Сидеть в войсе** — голос, видео и демонстрация экрана без ограничений.
+- 🏁 **Играть прямо в звонке** — активности в голосовых каналах. Есть гонки сырников. Да, серьёзно.
+- 🖥️ **Ставить приложение** — десктопный клиент для Windows с автообновлениями.
+
+## 🚀 Как попасть
+
+Просто открой [syrnike13.ru](https://syrnike13.ru) в браузере — или скачай
+десктопное приложение.
+
+## 📄 Лицензия
+
+Исходный код открыт под [CC BY-NC 4.0](LICENSE): смотреть, изучать и
+использовать в некоммерческих целях — пожалуйста. Продавать — нельзя.
+
+---
+
+<div align="center">
+<sub>Сделано с любовью и творогом 🥞</sub>
+</div>
