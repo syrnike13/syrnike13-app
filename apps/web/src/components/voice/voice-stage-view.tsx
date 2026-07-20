@@ -79,6 +79,10 @@ import {
 } from '#/features/voice/use-voice-stage-chrome-visible'
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
+import {
+  buildVoiceStageViewSessions,
+  type VoiceStageViewSession,
+} from '#/features/voice/voice-stage-view-session'
 import { canInviteToChannel } from '#/features/authorization/authorization'
 import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { cn } from '#/lib/utils'
@@ -472,6 +476,55 @@ export function VoiceStageView({
     [auth.user, users],
   )
 
+  const viewSessions = useMemo(
+    () =>
+      buildVoiceStageViewSessions({
+        viewedRemoteScreenIds: voiceStage.viewedRemoteScreenIds,
+        screenDisplayName: resolveParticipantDisplayName,
+        activity:
+          activityStageItem && currentUserId
+            ? {
+                stageItemId: activityStageItem.id,
+                instanceId: activityStageItem.instance.id,
+                channelId: activityStageItem.instance.channel_id,
+                label:
+                  getFirstPartyChannelActivity(
+                    activityStageItem.instance.application_id,
+                  )?.title ?? 'Неизвестное приложение',
+                joined: activityStageItem.instance.participant_ids.includes(
+                  currentUserId,
+                ),
+              }
+            : null,
+      }),
+    [
+      activityStageItem,
+      currentUserId,
+      resolveParticipantDisplayName,
+      voiceStage.viewedRemoteScreenIds,
+    ],
+  )
+
+  const exitViewSession = useCallback(
+    (session: VoiceStageViewSession) => {
+      if (session.kind === 'stream') {
+        voiceStage.setStageMediaSubscribed(session.stageItemId, false)
+      } else {
+        channelActivityClient.leave(session.channelId, session.instanceId)
+      }
+
+      if (voiceStage.focusedMediaId === session.stageItemId) {
+        voiceStage.setFocusedMediaId(null)
+        setRequestedMode('grid')
+      }
+    },
+    [
+      voiceStage.focusedMediaId,
+      voiceStage.setFocusedMediaId,
+      voiceStage.setStageMediaSubscribed,
+    ],
+  )
+
   const renderAvatarRoster = useCallback(
     (options?: {
       compact?: boolean
@@ -852,6 +905,9 @@ export function VoiceStageView({
               channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
             }
             onDeclineIncomingCall={onDeclineVoiceCall}
+            viewSessions={viewSessions}
+            focusedStageItemId={voiceStage.focusedMediaId}
+            onExitViewSession={exitViewSession}
           />
         ) : (
           <>
@@ -872,6 +928,9 @@ export function VoiceStageView({
                     : 'Скрыть'
                 }
                 onDeclineIncomingCall={onDeclineVoiceCall}
+                viewSessions={viewSessions}
+                focusedStageItemId={voiceStage.focusedMediaId}
+                onExitViewSession={exitViewSession}
               />
             </div>
             <div className={voiceStageControlsChromeTrailingClass}>
