@@ -75,38 +75,34 @@ export function FeedbackDetailView({ feedbackId }: { feedbackId: string }) {
       </header>
 
       <ScrollArea className="min-h-0 flex-1">
-        <main className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-6 sm:px-8 sm:py-8 lg:grid-cols-[5rem_minmax(0,1fr)]">
-          <aside className="hidden lg:block">
-            {approved ? <FeedbackVoteButton suggestion={suggestion} token={token!} /> : null}
-          </aside>
-
+        <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
           <article className="min-w-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h1 className="text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
                   {suggestion.title}
                 </h1>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
                   <FeedbackCategoryBadge category={suggestion.category} />
+                  {approved ? (
+                    <FeedbackProductStatus status={suggestion.status} />
+                  ) : (
+                    <FeedbackModerationStatus status={suggestion.moderation_status} />
+                  )}
                   {suggestion.area ? (
-                    <span className="inline-flex items-center gap-1.5"><TagIcon className="size-3.5" />{feedbackAreaLabel(suggestion.area)}</span>
+                    <span className="inline-flex items-center gap-1"><TagIcon className="size-3.5" />{feedbackAreaLabel(suggestion.area)}</span>
                   ) : null}
                   {suggestion.platform ? (
-                    <span className="inline-flex items-center gap-1.5"><MonitorIcon className="size-3.5" />{feedbackPlatformLabel(suggestion.platform)}</span>
+                    <span className="inline-flex items-center gap-1"><MonitorIcon className="size-3.5" />{feedbackPlatformLabel(suggestion.platform)}</span>
                   ) : null}
-                  <span className="inline-flex items-center gap-1.5"><UserIcon className="size-3.5" />{authorLabel}</span>
-                  <span className="inline-flex items-center gap-1.5"><CalendarIcon className="size-3.5" />{date}</span>
+                  <span className="inline-flex items-center gap-1"><UserIcon className="size-3.5" />{authorLabel}</span>
+                  <span className="inline-flex items-center gap-1"><CalendarIcon className="size-3.5" />{date}</span>
                 </div>
               </div>
-              {approved ? (
-                <FeedbackProductStatus status={suggestion.status} />
-              ) : (
-                <FeedbackModerationStatus status={suggestion.moderation_status} />
-              )}
             </div>
 
             {approved ? (
-              <div className="mt-5 lg:hidden">
+              <div className="mt-5">
                 <FeedbackVoteButton suggestion={suggestion} token={token!} compact />
               </div>
             ) : null}

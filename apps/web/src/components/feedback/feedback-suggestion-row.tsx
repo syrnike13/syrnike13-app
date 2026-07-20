@@ -1,13 +1,7 @@
 import type { FeedbackSuggestion } from '@syrnike13/api-types'
 import { Link } from '@tanstack/react-router'
 
-import {
-  CalendarIcon,
-  ChevronRightIcon,
-  MonitorIcon,
-  TagIcon,
-  UserIcon,
-} from '#/components/icons'
+import { MonitorIcon, TagIcon } from '#/components/icons'
 import {
   feedbackAreaLabel,
   feedbackPlatformLabel,
@@ -20,7 +14,9 @@ import {
 import { FeedbackVoteButton } from '#/components/feedback/feedback-vote-button'
 import { useAppRoutePrefix } from '#/features/navigation/route-prefix'
 import { useSyncStore } from '#/features/sync/sync-store'
-import { cn } from '#/lib/utils'
+
+const metaChipClass =
+  'inline-flex min-h-6 shrink-0 items-center gap-1 rounded-md border border-border bg-muted/20 px-2 text-[11px] font-medium text-muted-foreground'
 
 function formatFeedbackDate(value: string) {
   const date = new Date(value)
@@ -28,7 +24,6 @@ function formatFeedbackDate(value: string) {
   return new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
     month: 'short',
-    year: 'numeric',
   }).format(date)
 }
 
@@ -52,101 +47,61 @@ export function FeedbackSuggestionRow({
   const publiclyApproved = suggestion.moderation_status === 'approved'
 
   return (
-    <article
-      className={cn(
-        'group/feedback-row relative grid grid-cols-[4rem_minmax(0,1fr)_1.5rem] items-center gap-3 border-b border-shell-divider px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/20',
-        'lg:grid-cols-[4rem_minmax(0,1fr)_13rem_11rem_1.5rem] lg:gap-4',
-        suggestion.voted && 'before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary',
-      )}
-    >
-      {publiclyApproved ? (
-        <FeedbackVoteButton suggestion={suggestion} token={token} />
-      ) : (
-        <div
-          className="flex h-[4.5rem] w-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md border border-border bg-muted/20 text-muted-foreground"
-          aria-label={`${suggestion.vote_count.toLocaleString('ru-RU')} голосов`}
-        >
-          <span className="text-sm font-semibold">
-            {suggestion.vote_count.toLocaleString('ru-RU')}
-          </span>
-          <span className="text-[10px]">голосов</span>
-        </div>
-      )}
+    <article className="group/feedback-row relative flex flex-col gap-2 rounded-lg border border-shell-divider bg-card/25 px-3 py-2.5 transition-colors hover:border-border hover:bg-muted/30">
+      <Link
+        to={`${prefix}/feedback/$feedbackId`}
+        params={{ feedbackId: suggestion._id }}
+        aria-label={`Открыть «${suggestion.title}»`}
+        className="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
 
-      <div className="min-w-0 self-stretch py-0.5">
-        <Link
-          to={`${prefix}/feedback/$feedbackId`}
-          params={{ feedbackId: suggestion._id }}
-          className="block rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <h2 className="truncate text-sm font-semibold text-foreground sm:text-base">
-            {suggestion.title}
-          </h2>
-          <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {suggestion.description}
-          </p>
-        </Link>
-
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground lg:hidden">
-          <FeedbackCategoryBadge category={suggestion.category} />
-          {suggestion.area ? (
-            <span className="inline-flex items-center gap-1">
-              <TagIcon className="size-3.5" aria-hidden />
-              {feedbackAreaLabel(suggestion.area)}
-            </span>
-          ) : null}
-          {suggestion.platform ? (
-            <span className="inline-flex items-center gap-1">
-              <MonitorIcon className="size-3.5" aria-hidden />
-              {feedbackPlatformLabel(suggestion.platform)}
-            </span>
-          ) : null}
-          <span className="inline-flex items-center gap-1">
-            <UserIcon className="size-3.5" aria-hidden />
-            {authorLabel}
-          </span>
-        </div>
-      </div>
-
-      <div className="hidden min-w-0 space-y-1.5 text-xs text-muted-foreground lg:block">
-        <div className="flex min-w-0 items-center gap-2">
-          <FeedbackCategoryBadge category={suggestion.category} />
-          {suggestion.area ? (
-            <span className="truncate">{feedbackAreaLabel(suggestion.area)}</span>
-          ) : null}
-        </div>
-        {suggestion.platform ? (
-          <span className="flex items-center gap-1.5">
-            <MonitorIcon className="size-3.5 shrink-0" aria-hidden />
-            <span className="truncate">{feedbackPlatformLabel(suggestion.platform)}</span>
-          </span>
-        ) : null}
-        <span className="flex items-center gap-1.5">
-          <UserIcon className="size-3.5 shrink-0" aria-hidden />
-          <span className="truncate">{authorLabel}</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <CalendarIcon className="size-3.5 shrink-0" aria-hidden />
-          <span className="truncate">{formatFeedbackDate(suggestion.created_at)}</span>
-        </span>
-      </div>
-
-      <div className="hidden justify-self-start lg:block">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <FeedbackCategoryBadge category={suggestion.category} />
         {publiclyApproved ? (
           <FeedbackProductStatus status={suggestion.status} />
         ) : (
           <FeedbackModerationStatus status={suggestion.moderation_status} />
         )}
+        {suggestion.area ? (
+          <span className={metaChipClass}>
+            <TagIcon className="size-3" aria-hidden />
+            {feedbackAreaLabel(suggestion.area)}
+          </span>
+        ) : null}
+        {suggestion.platform ? (
+          <span className={metaChipClass}>
+            <MonitorIcon className="size-3" aria-hidden />
+            {feedbackPlatformLabel(suggestion.platform)}
+          </span>
+        ) : null}
+        <span className="ml-auto hidden shrink-0 text-[11px] text-muted-foreground sm:block">
+          {authorLabel} · {formatFeedbackDate(suggestion.created_at)}
+        </span>
       </div>
 
-      <Link
-        to={`${prefix}/feedback/$feedbackId`}
-        params={{ feedbackId: suggestion._id }}
-        className="flex size-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`Открыть «${suggestion.title}»`}
-      >
-        <ChevronRightIcon className="size-5" aria-hidden />
-      </Link>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-semibold text-foreground transition-colors group-hover/feedback-row:text-primary">
+            {suggestion.title}
+          </h2>
+          <p className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
+            {suggestion.description}
+          </p>
+        </div>
+
+        <div className="relative z-10 shrink-0">
+          {publiclyApproved ? (
+            <FeedbackVoteButton suggestion={suggestion} token={token} compact />
+          ) : (
+            <span
+              className="flex h-9 items-center rounded-lg border border-border bg-muted/20 px-3 text-xs font-semibold text-muted-foreground"
+              aria-label={`${suggestion.vote_count.toLocaleString('ru-RU')} голосов`}
+            >
+              {suggestion.vote_count.toLocaleString('ru-RU')} голосов
+            </span>
+          )}
+        </div>
+      </div>
     </article>
   )
 }

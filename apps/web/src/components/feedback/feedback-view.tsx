@@ -16,16 +16,24 @@ import {
   FEEDBACK_PLATFORMS,
   FEEDBACK_PRODUCT_STATUSES,
 } from '#/components/feedback/feedback-meta'
+import { FeedbackCreateDialog } from '#/components/feedback/feedback-create-dialog'
 import { FeedbackSuggestionRow } from '#/components/feedback/feedback-suggestion-row'
 import {
+  CheckIcon,
   ChevronLeftIcon,
-  InfoIcon,
+  FilterIcon,
   LightbulbIcon,
   PlusIcon,
+  RotateCcwIcon,
   SearchIcon,
 } from '#/components/icons'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '#/components/ui/popover'
 import { ScrollArea } from '#/components/ui/scroll-area'
 import {
   Select,
@@ -48,12 +56,27 @@ const PAGE_SIZE = 20
 
 export type FeedbackViewMode = 'all' | 'mine'
 
+const MODE_TABS: { id: FeedbackViewMode; label: string }[] = [
+  { id: 'all', label: 'Все обращения' },
+  { id: 'mine', label: 'Мои обращения' },
+]
+
 function getFeedbackNextPageParam(lastPage: FeedbackSuggestionPage) {
   const next = lastPage.offset + lastPage.suggestions.length
   return next < lastPage.total ? next : undefined
 }
 
-export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackViewMode }) {
+export function FeedbackView({
+  initialMode = 'all',
+  createOpen,
+  onCreateClose,
+  onCreated,
+}: {
+  initialMode?: FeedbackViewMode
+  createOpen?: boolean
+  onCreateClose?: () => void
+  onCreated?: () => void
+}) {
   const auth = useAuth()
   const queryClient = useQueryClient()
   const prefix = useAppRoutePrefix()
@@ -67,7 +90,39 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
   const [area, setArea] = useState<FeedbackArea | 'all'>('all')
   const [platform, setPlatform] = useState<FeedbackPlatform | 'all'>('all')
   const [status, setStatus] = useState<FeedbackProductStatus | 'all'>('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [internalCreateOpen, setInternalCreateOpen] = useState(false)
   const showCatalogControls = mode === 'all'
+
+  const createControlled = createOpen !== undefined
+  const isCreateOpen = createOpen ?? internalCreateOpen
+
+  function handleCreateOpenChange(open: boolean) {
+    if (createControlled) {
+      if (!open) onCreateClose?.()
+      return
+    }
+    setInternalCreateOpen(open)
+  }
+
+  function handleCreated() {
+    if (createControlled) {
+      onCreated?.()
+      return
+    }
+    setMode('mine')
+  }
+
+  const activeFilterCount = [category, area, platform, status].filter(
+    (value) => value !== 'all',
+  ).length
+
+  function resetFilters() {
+    setCategory('all')
+    setArea('all')
+    setPlatform('all')
+    setStatus('all')
+  }
 
   const listParams = {
     search: deferredSearch,
@@ -119,124 +174,168 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
 
   const activeQuery = mode === 'all' ? allQuery : mineQuery
   const suggestions = activeQuery.data?.pages.flatMap((page) => page.suggestions) ?? []
+  const total = activeQuery.data?.pages[0]?.total
 
   return (
     <div className="theme-surface-content gradient-surface-content flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="gradient-surface-chrome shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            {prefix === '/m' ? (
-              <Button variant="ghost" size="icon" asChild>
-                <Link to="/m" search={{ tab: 'online' }} aria-label="На главную">
-                  <ChevronLeftIcon className="size-5" />
-                </Link>
-              </Button>
-            ) : null}
+      <header className="gradient-surface-chrome shrink-0 border-b border-shell-divider px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          {prefix === '/m' ? (
+            <Button variant="ghost" size="icon" className="size-8 shrink-0" asChild>
+              <Link to="/m" search={{ tab: 'online' }} aria-label="На главную">
+                <ChevronLeftIcon className="size-5" />
+              </Link>
+            </Button>
+          ) : null}
+          <div className="flex shrink-0 items-center gap-2">
             <LightbulbIcon className="size-5 shrink-0 text-primary" aria-hidden />
-            <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">Идеи</h1>
+            <h1 className="text-sm font-semibold sm:text-base">Идеи</h1>
           </div>
-          <Button className="shrink-0" asChild>
-            <Link to={`${prefix}/feedback/new`}>
-              <PlusIcon className="size-4" data-icon="inline-start" />
-              <span className="hidden sm:inline">Добавить обращение</span>
-              <span className="sm:hidden">Добавить</span>
-            </Link>
+          <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            {MODE_TABS.map((item) => (
+              <Button
+                key={item.id}
+                type="button"
+                variant={mode === item.id ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn('shrink-0 rounded-md', mode === item.id && 'bg-muted')}
+                onClick={() => setMode(item.id)}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </nav>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={() => handleCreateOpenChange(true)}
+          >
+            <PlusIcon className="size-4" data-icon="inline-start" />
+            <span className="hidden sm:inline">Добавить обращение</span>
+            <span className="sm:hidden">Добавить</span>
           </Button>
         </div>
 
         {showCatalogControls ? (
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <label className="relative min-w-56 flex-1">
               <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Найти обращение"
-                className="h-9 pl-9"
+                className="h-9 bg-muted/30 pl-9"
               />
             </label>
 
-            <FeedbackFilterSelect
-              ariaLabel="Сортировка"
-              className="sm:w-36"
-              value={sort}
-              options={[
-                { value: 'popular', label: 'Популярные' },
-                { value: 'new', label: 'Новые' },
-              ]}
-              onValueChange={(value) => setSort(value as FeedbackSort)}
-            />
+            <Select value={sort} onValueChange={(value) => setSort(value as FeedbackSort)}>
+              <SelectTrigger aria-label="Сортировка" size="sm" className="w-32 sm:w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper" side="bottom" align="start" sideOffset={4}>
+                <SelectGroup>
+                  <SelectItem value="popular">Популярные</SelectItem>
+                  <SelectItem value="new">Новые</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
 
-            <FeedbackFilterSelect
-              ariaLabel="Тип обращения"
-              className="sm:w-36"
-              value={category}
-              options={[
-                { value: 'all', label: 'Все типы' },
-                ...FEEDBACK_CATEGORIES,
-              ]}
-              onValueChange={(value) => setCategory(value as FeedbackCategory | 'all')}
-            />
-
-            <FeedbackFilterSelect
-              ariaLabel="Область"
-              className="sm:w-48"
-              value={area}
-              options={[
-                { value: 'all', label: 'Все области' },
-                ...FEEDBACK_AREAS,
-              ]}
-              onValueChange={(value) => setArea(value as FeedbackArea | 'all')}
-            />
-
-            <FeedbackFilterSelect
-              ariaLabel="Платформа"
-              className="sm:w-40"
-              value={platform}
-              options={[
-                { value: 'all', label: 'Все платформы' },
-                ...FEEDBACK_PLATFORMS,
-              ]}
-              onValueChange={(value) => setPlatform(value as FeedbackPlatform | 'all')}
-            />
-
-            <FeedbackFilterSelect
-              ariaLabel="Статус"
-              className="sm:w-44"
-              value={status}
-              options={[
-                { value: 'all', label: 'Все статусы' },
-                ...FEEDBACK_PRODUCT_STATUSES,
-              ]}
-              onValueChange={(value) => setStatus(value as FeedbackProductStatus | 'all')}
-            />
+            <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    'h-9 shrink-0',
+                    filtersOpen && 'bg-accent text-accent-foreground',
+                  )}
+                >
+                  <FilterIcon className="size-4" data-icon="inline-start" />
+                  Фильтры
+                  {activeFilterCount > 0 ? (
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="flex max-h-[70vh] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-0"
+              >
+                <ScrollArea className="min-h-0 flex-1">
+                  <div className="grid gap-4 p-3 sm:grid-cols-2">
+                    <FeedbackFilterGroup
+                      label="Тип обращения"
+                      value={category}
+                      options={[
+                        { value: 'all', label: 'Все типы' },
+                        ...FEEDBACK_CATEGORIES,
+                      ]}
+                      onChange={(value) => setCategory(value as FeedbackCategory | 'all')}
+                    />
+                    <FeedbackFilterGroup
+                      label="Статус"
+                      value={status}
+                      options={[
+                        { value: 'all', label: 'Все статусы' },
+                        ...FEEDBACK_PRODUCT_STATUSES,
+                      ]}
+                      onChange={(value) => setStatus(value as FeedbackProductStatus | 'all')}
+                    />
+                    <FeedbackFilterGroup
+                      label="Область"
+                      value={area}
+                      options={[
+                        { value: 'all', label: 'Все области' },
+                        ...FEEDBACK_AREAS,
+                      ]}
+                      onChange={(value) => setArea(value as FeedbackArea | 'all')}
+                    />
+                    <FeedbackFilterGroup
+                      label="Платформа"
+                      value={platform}
+                      options={[
+                        { value: 'all', label: 'Все платформы' },
+                        ...FEEDBACK_PLATFORMS,
+                      ]}
+                      onChange={(value) => setPlatform(value as FeedbackPlatform | 'all')}
+                    />
+                  </div>
+                </ScrollArea>
+                {activeFilterCount > 0 ? (
+                  <div className="shrink-0 border-t border-shell-divider bg-muted/20 px-3 py-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-muted-foreground"
+                      onClick={resetFilters}
+                    >
+                      <RotateCcwIcon className="size-3.5" data-icon="inline-start" />
+                      Сбросить фильтры
+                    </Button>
+                  </div>
+                ) : null}
+              </PopoverContent>
+            </Popover>
           </div>
         ) : null}
-
-        <div className="mt-3 flex items-end gap-6">
-          {(['all', 'mine'] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={cn(
-                'relative h-8 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground',
-                mode === item && 'text-primary after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary',
-              )}
-              onClick={() => setMode(item)}
-            >
-              {item === 'all' ? 'Все обращения' : 'Мои обращения'}
-            </button>
-          ))}
-        </div>
       </header>
 
-      <div className="gradient-surface-raised flex shrink-0 items-start gap-2 border-b border-shell-divider bg-muted/10 px-4 py-2.5 text-xs leading-5 text-muted-foreground sm:px-6">
-        <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
-        <p>Голоса показывают интерес сообщества, но не являются обещанием реализации.</p>
+      <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 pt-3 pb-2 sm:px-6">
+        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          {mode === 'all' ? 'Все обращения' : 'Мои обращения'}
+          {typeof total === 'number' ? ` — ${total.toLocaleString('ru-RU')}` : ''}
+        </p>
+        <p className="hidden text-xs text-muted-foreground sm:block">
+          Голоса показывают интерес сообщества, но не являются обещанием реализации
+        </p>
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto w-full max-w-[80rem] px-2 py-2 sm:px-4 sm:py-3">
+        <div className="mx-auto w-full max-w-[80rem] px-3 pb-3 sm:px-5">
           {activeQuery.isLoading ? (
             <FeedbackListSkeleton />
           ) : activeQuery.isError ? (
@@ -247,7 +346,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
               description={mode === 'mine' ? 'Добавьте обращение — после модерации оно появится в общем списке.' : 'Измените поиск или фильтры.'}
             />
           ) : (
-            <div className="gradient-surface-card overflow-hidden rounded-lg border border-shell-divider bg-card/25">
+            <div className="space-y-2">
               {suggestions.map((suggestion) => (
                 <FeedbackSuggestionRow
                   key={suggestion._id}
@@ -262,6 +361,7 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
             <div className="flex justify-center py-4">
               <Button
                 variant="secondary"
+                size="sm"
                 disabled={activeQuery.isFetchingNextPage}
                 onClick={() => void activeQuery.fetchNextPage()}
               >
@@ -271,43 +371,55 @@ export function FeedbackView({ initialMode = 'all' }: { initialMode?: FeedbackVi
           ) : null}
         </div>
       </ScrollArea>
+
+      <FeedbackCreateDialog
+        open={isCreateOpen}
+        onOpenChange={handleCreateOpenChange}
+        onCreated={handleCreated}
+      />
     </div>
   )
 }
 
-function FeedbackFilterSelect({
-  ariaLabel,
-  className,
+function FeedbackFilterGroup({
+  label,
   value,
   options,
-  onValueChange,
+  onChange,
 }: {
-  ariaLabel: string
-  className?: string
+  label: string
   value: string
   options: ReadonlyArray<{ value: string; label: string }>
-  onValueChange: (value: string) => void
+  onChange: (value: string) => void
 }) {
   return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger aria-label={ariaLabel} className={cn('w-full', className)}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent
-        position="popper"
-        side="bottom"
-        align="start"
-        sideOffset={0}
-      >
-        <SelectGroup>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+    <div role="group" aria-label={label}>
+      <p className="px-2 pb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        {label}
+      </p>
+      <div className="space-y-0.5">
+        {options.map((option) => {
+          const selected = option.value === value
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={selected}
+              className={cn(
+                'flex h-7 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+                selected && 'bg-accent/60 text-foreground',
+              )}
+              onClick={() => onChange(option.value)}
+            >
+              <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
+              {selected ? (
+                <CheckIcon className="size-3.5 shrink-0 text-primary" aria-hidden />
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -323,13 +435,23 @@ function FeedbackEmpty({ title, description }: { title: string; description: str
 
 function FeedbackListSkeleton() {
   return (
-    <div className="overflow-hidden rounded-lg border border-shell-divider">
+    <div className="space-y-2">
       {Array.from({ length: 5 }, (_, index) => (
-        <div key={index} className="flex items-center gap-4 border-b border-shell-divider p-3 last:border-b-0">
-          <div className="h-[4.5rem] w-16 animate-pulse rounded-md bg-muted" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="h-4 w-2/5 animate-pulse rounded bg-muted" />
-            <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
+        <div
+          key={index}
+          className="space-y-2.5 rounded-lg border border-shell-divider bg-card/25 px-3 py-2.5"
+        >
+          <div className="flex items-center gap-1.5">
+            <div className="h-6 w-14 animate-pulse rounded-md bg-muted" />
+            <div className="h-6 w-24 animate-pulse rounded-md bg-muted" />
+            <div className="h-6 w-20 animate-pulse rounded-md bg-muted" />
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="h-3.5 w-2/5 animate-pulse rounded bg-muted" />
+              <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+            </div>
+            <div className="h-9 w-20 shrink-0 animate-pulse rounded-lg bg-muted" />
           </div>
         </div>
       ))}

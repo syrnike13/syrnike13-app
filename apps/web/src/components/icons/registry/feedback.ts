@@ -25,3 +25,18 @@ export const CalendarIcon = defineIcon(iconifyIcon('lucide:calendar-days'), {
   pack: 'iconify',
   name: 'lucide:calendar-days',
 })
+
+export const FilterIcon = defineIcon(iconifyIcon('lucide:sliders-horizontal'), {
+  pack: 'iconify',
+  name: 'lucide:sliders-horizontal',
+})
+
+export const RotateCcwIcon = defineIcon(iconifyIcon('lucide:rotate-ccw'), {
+  pack: 'iconify',
+  name: 'lucide:rotate-ccw',
+})
+
+export const EyeOffIcon = defineIcon(iconifyIcon('lucide:eye-off'), {
+  pack: 'iconify',
+  name: 'lucide:eye-off',
+})

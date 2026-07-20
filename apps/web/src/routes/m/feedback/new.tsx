@@ -1,7 +1,23 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 
-import { FeedbackCreateForm } from '#/components/feedback/feedback-create-form'
+import { FeedbackView } from '#/components/feedback/feedback-view'
 
 export const Route = createFileRoute('/m/feedback/new')({
-  component: FeedbackCreateForm,
+  component: FeedbackCreatePage,
 })
+
+function FeedbackCreatePage() {
+  const navigate = useNavigate()
+  return (
+    <FeedbackView
+      initialMode="all"
+      createOpen
+      onCreateClose={() =>
+        void navigate({ to: '/m/feedback', search: { view: 'all' } })
+      }
+      onCreated={() =>
+        void navigate({ to: '/m/feedback', search: { view: 'mine' } })
+      }
+    />
+  )
+}

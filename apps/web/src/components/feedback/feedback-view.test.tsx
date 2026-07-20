@@ -75,7 +75,12 @@ describe('FeedbackView', () => {
 
     expect(screen.getByPlaceholderText('Найти обращение')).not.toBeNull()
     expect(screen.getByLabelText('Сортировка')).not.toBeNull()
-    expect(screen.getByLabelText('Тип обращения')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /Фильтры/ }))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Тип обращения')).not.toBeNull()
+    })
     expect(screen.getByLabelText('Область')).not.toBeNull()
     expect(screen.getByLabelText('Платформа')).not.toBeNull()
     expect(screen.getByLabelText('Статус')).not.toBeNull()
@@ -84,6 +89,7 @@ describe('FeedbackView', () => {
 
     expect(screen.queryByPlaceholderText('Найти обращение')).toBeNull()
     expect(screen.queryByLabelText('Сортировка')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Фильтры/ })).toBeNull()
     expect(screen.queryByLabelText('Тип обращения')).toBeNull()
     expect(screen.queryByLabelText('Область')).toBeNull()
     expect(screen.queryByLabelText('Платформа')).toBeNull()

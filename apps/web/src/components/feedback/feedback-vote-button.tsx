@@ -41,8 +41,8 @@ export function FeedbackVoteButton({
     <button
       type="button"
       className={cn(
-        'gradient-surface-input group/vote flex shrink-0 flex-col items-center justify-center rounded-md border text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        compact ? 'size-14 gap-0.5' : 'h-[4.5rem] w-16 gap-1',
+        'gradient-surface-input group/vote flex shrink-0 items-center justify-center rounded-lg border text-xs font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        compact ? 'h-9 flex-row gap-1.5 px-3' : 'h-14 w-12 flex-col gap-0.5',
         suggestion.voted
           ? 'border-primary/45 bg-primary/10 text-primary'
           : 'border-border bg-muted/20 text-muted-foreground hover:border-primary/35 hover:bg-primary/5 hover:text-foreground',
@@ -61,7 +61,7 @@ export function FeedbackVoteButton({
       ) : (
         <ArrowUpIcon
           className={cn(
-            'size-5 transition-transform group-hover/vote:-translate-y-0.5',
+            'size-4 transition-transform group-hover/vote:-translate-y-0.5',
             suggestion.voted && 'text-primary',
           )}
           aria-hidden
