@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { forwardRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -92,7 +99,7 @@ describe('ServerRail', () => {
   it('shows home notifications on the home rail button', () => {
     const { container } = render(<ServerRail variant="desktop" />)
 
-    expect(screen.getByTitle('Главная')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Главная' })).toBeTruthy()
     expect(screen.getByText('1')).toBeTruthy()
     expect(container.firstElementChild?.classList.contains('pt-1')).toBe(true)
     expect(container.firstElementChild?.classList.contains('pb-3')).toBe(true)
@@ -133,11 +140,158 @@ describe('ServerRail', () => {
 
     render(<ServerRail variant="desktop" />)
 
-    const image = screen.getByTitle('Demo').querySelector('img')
+    const image = screen
+      .getByRole('link', { name: 'Demo' })
+      .querySelector('img')
 
     expect(image?.getAttribute('src')).toBe(serverIconUrl(icon as never))
     expect(image?.className).toContain('object-cover')
     expect(screen.queryByText('DE')).toBeNull()
+  })
+
+  it('shows the server name without a configured tooltip delay', async () => {
+    syncStore.applyReady({
+      users: [],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Demo',
+          owner: 'current-user',
+          channels: [],
+          default_permissions: 0,
+        },
+      ],
+      channels: [],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [],
+    } as never)
+
+    render(<ServerRail variant="desktop" />)
+
+    fireEvent.pointerMove(screen.getByRole('link', { name: 'Demo' }), {
+      pointerType: 'mouse',
+    })
+
+    await waitFor(() => {
+      const tooltip = screen.getByRole('tooltip')
+      const tooltipContent = document.querySelector(
+        '[data-slot="tooltip-content"]',
+      )
+      expect(tooltip.textContent).toBe('Demo')
+      expect(tooltipContent?.className).toContain('font-black')
+    })
+  })
+
+  it('separates voice participants and screen sharers in the server tooltip', async () => {
+    const voiceUserId = '01VOICEUSERALICE00000001'
+    const screenSharingUserId = '01VOICEUSERBOB0000000002'
+
+    syncStore.applyReady({
+      authorization: {
+        revision: 1,
+        global: 0,
+        servers: { 'server-1': ChannelPermission.ViewChannel },
+        channels: { 'voice-1': ChannelPermission.ViewChannel },
+        users: {},
+      },
+      users: [
+        {
+          _id: voiceUserId,
+          username: 'alice',
+          discriminator: '0001',
+          relationship: 'User',
+          online: true,
+        },
+        {
+          _id: screenSharingUserId,
+          username: 'bob',
+          discriminator: '0002',
+          relationship: 'User',
+          online: true,
+        },
+      ],
+      servers: [
+        {
+          _id: 'server-1',
+          name: 'Demo',
+          owner: 'current-user',
+          channels: ['voice-1'],
+          default_permissions: 0,
+        },
+      ],
+      channels: [
+        {
+          _id: 'voice-1',
+          channel_type: 'TextChannel',
+          server: 'server-1',
+          name: 'Voice',
+          voice: { max_users: null },
+          last_message_id: null,
+        },
+      ],
+      members: [],
+      emojis: [],
+      channel_unreads: [],
+      voice_states: [
+        {
+          id: 'voice-1',
+          participants: [
+            {
+              id: voiceUserId,
+              joined_at: 1,
+              self_mute: false,
+              self_deaf: false,
+              server_muted: false,
+              server_deafened: false,
+              screensharing: false,
+              camera: false,
+              version: 1,
+            },
+            {
+              id: screenSharingUserId,
+              joined_at: 2,
+              self_mute: false,
+              self_deaf: false,
+              server_muted: false,
+              server_deafened: false,
+              screensharing: true,
+              camera: false,
+              version: 1,
+            },
+          ],
+        },
+      ],
+      voice_calls: [],
+    } as never)
+
+    render(<ServerRail variant="desktop" />)
+
+    fireEvent.pointerMove(screen.getByRole('link', { name: 'Demo' }), {
+      pointerType: 'mouse',
+    })
+
+    await waitFor(() => {
+      const tooltipContent = document.querySelector<HTMLElement>(
+        '[data-slot="tooltip-content"]',
+      )
+      expect(tooltipContent).toBeTruthy()
+
+      const voiceRow = tooltipContent!.querySelector<HTMLElement>(
+        ':scope > div > [data-slot="server-rail-tooltip-row"][data-kind="voice"]',
+      )
+      const screenShareRow = tooltipContent!.querySelector<HTMLElement>(
+        ':scope > div > [data-slot="server-rail-tooltip-row"][data-kind="screen-share"]',
+      )
+      expect(voiceRow).toBeTruthy()
+      expect(screenShareRow).toBeTruthy()
+
+      expect(within(voiceRow!).getByTitle('alice')).toBeTruthy()
+      expect(within(voiceRow!).queryByTitle('bob')).toBeNull()
+      expect(within(screenShareRow!).getByTitle('bob')).toBeTruthy()
+      expect(within(screenShareRow!).queryByTitle('alice')).toBeNull()
+    })
   })
 
   it('animates a GIF server icon only while the rail item is interactive', () => {
@@ -175,7 +329,7 @@ describe('ServerRail', () => {
 
     render(<ServerRail variant="desktop" />)
 
-    const serverLink = screen.getByTitle('Demo')
+    const serverLink = screen.getByRole('link', { name: 'Demo' })
     const image = serverLink.querySelector('img')
 
     expect(image?.getAttribute('src')).toBe(serverIconUrl(icon as never))
@@ -242,7 +396,7 @@ describe('ServerRail', () => {
     render(<ServerRail variant="desktop" />)
     await waitFor(() => expect(mediaListener).toHaveBeenCalled())
 
-    const serverLink = screen.getByTitle('Demo')
+    const serverLink = screen.getByRole('link', { name: 'Demo' })
     const image = serverLink.querySelector('img')
 
     fireEvent.pointerEnter(serverLink)
@@ -293,7 +447,7 @@ describe('ServerRail', () => {
 
     render(<ServerRail variant="desktop" />)
 
-    const home = screen.getByTitle('Главная')
+    const home = screen.getByRole('link', { name: 'Главная' })
     expect(screen.getByTitle('alice')).toBeTruthy()
     expect(home.querySelector('[data-slot="badge"]')).toBeNull()
   })
@@ -397,9 +551,9 @@ describe('ServerRail', () => {
 
     render(<ServerRail variant="desktop" />)
 
-    const home = screen.getByTitle('Главная')
+    const home = screen.getByRole('link', { name: 'Главная' })
     const person = screen.getByTitle('alice')
-    const server = screen.getByTitle('Demo')
+    const server = screen.getByRole('link', { name: 'Demo' })
 
     expect(home.compareDocumentPosition(person) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(person.compareDocumentPosition(server) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -500,7 +654,7 @@ describe('ServerRail', () => {
 
     render(<ServerRail variant="desktop" />)
 
-    const serverLink = screen.getByTitle('Demo')
+    const serverLink = screen.getByRole('link', { name: 'Demo' })
     const serverRow = serverLink.closest('.group')
     const indicator = serverRow?.querySelector('[data-slot="rail-indicator"]')
 
@@ -560,7 +714,9 @@ describe('ServerRail', () => {
 
     render(<ServerRail variant="desktop" />)
 
-    const serverRow = screen.getByTitle('Demo').closest('.group')
+    const serverRow = screen
+      .getByRole('link', { name: 'Demo' })
+      .closest('.group')
     const indicator = serverRow?.querySelector('[data-slot="rail-indicator"]')
 
     fireEvent.mouseLeave(serverRow!)

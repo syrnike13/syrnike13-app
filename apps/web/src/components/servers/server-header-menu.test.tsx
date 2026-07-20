@@ -117,6 +117,12 @@ describe('ServerHeaderMenu', () => {
     expect(triggerClass).toContain('hover:backdrop-blur-sm')
   })
 
+  it('renders the server name with the heaviest font weight', () => {
+    render(<ServerHeaderMenu serverId="server-1" serverName="Server" />)
+
+    expect(screen.getByText('Server').className).toContain('font-black')
+  })
+
   beforeEach(() => {
     syncStore.reset()
     grantAllAuthorizationForTest({ serverIds: ['server-1'] })
