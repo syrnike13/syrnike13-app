@@ -7,6 +7,7 @@ import type {
   DesktopOverlaySnapshot,
   DesktopOverlayState,
 } from './overlay'
+import type { NativeDiagnosticIncidentBatch } from './diagnostics'
 import type { DesktopLocalSettings, DesktopLocalSettingsPatch } from './settings'
 import type { VoiceCommand, VoiceSnapshot } from './voice/voice-types'
 
@@ -204,6 +205,9 @@ export interface SyrnikeDesktopApi {
   }
   diagnostics: {
     createBundle(rendererJsonl: string): Promise<Uint8Array>
+    leaseNativeIncidents(): Promise<NativeDiagnosticIncidentBatch | null>
+    acknowledgeNativeIncidents(batchId: string): Promise<boolean>
+    releaseNativeIncidents(batchId: string): Promise<boolean>
   }
   updates: {
     getState(): Promise<DesktopUpdateState>

@@ -24,7 +24,11 @@ export type NativeDiagnosticSession = {
 }
 
 export type DiagnosticLogRecord = {
-  scope: 'native-runtime-supervisor' | 'native-media-controller' | 'native-video'
+  scope:
+    | 'native-runtime-supervisor'
+    | 'native-media-controller'
+    | 'native-video'
+    | 'desktop-voice'
   event: string
   runtime?: string
   kind?: string

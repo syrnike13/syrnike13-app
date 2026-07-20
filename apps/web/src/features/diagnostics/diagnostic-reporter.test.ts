@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   clearDiagnosticEventsForTests,
@@ -51,5 +51,27 @@ describe('diagnostic reporter', () => {
     const serialized = diagnosticEventsJsonForTests()
     expect(serialized).toContain('event_too_large')
     expect(serialized.length).toBeLessThan(1_000)
+  })
+
+  it('collapses identical state snapshots and reports omitted repetitions', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-19T16:00:00Z'))
+    try {
+      const options = {
+        dedupeKey: 'voice.session_snapshot',
+        heartbeatMs: 30_000,
+      }
+      recordDiagnosticEvent('voice', 'session_snapshot', { connection: 'connected' }, options)
+      recordDiagnosticEvent('voice', 'session_snapshot', { connection: 'connected' }, options)
+      vi.advanceTimersByTime(1_000)
+      recordDiagnosticEvent('voice', 'session_snapshot', { connection: 'failed' }, options)
+
+      expect(diagnosticEventCount()).toBe(2)
+      expect(diagnosticEventsJsonForTests()).toContain(
+        '"repeated_events_omitted":1',
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

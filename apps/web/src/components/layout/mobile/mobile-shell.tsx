@@ -34,6 +34,7 @@ import { cn } from '#/lib/utils'
 export function MobileShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isHomePath = pathname === '/m' || pathname === '/m/'
+  const isFeedbackPath = pathname.startsWith('/m/feedback')
 
   const channelMatch = useMatch({
     from: '/m/c/$channelId',
@@ -78,7 +79,7 @@ export function MobileShell() {
   }
 
   const isProfileRoute = Boolean(profileMatch)
-  const showChatFullscreen = isProfileRoute || isChannelRoute
+  const showChatFullscreen = isProfileRoute || isChannelRoute || isFeedbackPath
   const showHomeSidebar = onHomeRoute && !selectedServerId
 
   return (

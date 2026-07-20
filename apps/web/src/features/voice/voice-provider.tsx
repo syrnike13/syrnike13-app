@@ -176,6 +176,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [focusedMediaId, setFocusedMediaIdState] = useState<string | null>(null)
   const [stageFocusNonce, setStageFocusNonce] = useState(0)
   const [stageFullscreen, setStageFullscreen] = useState(false)
+  const [activityLauncherOpen, setActivityLauncherOpen] = useState(false)
   const [rtcDebugEnabled, setRtcDebugEnabled] = useState(false)
   const [rtcDebugSnapshot, setRtcDebugSnapshot] =
     useState<RtcDebugSnapshot | null>(null)
@@ -532,7 +533,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   }, [snapshot.connection, snapshot.intentChannelId])
 
   useEffect(() => {
-    recordDiagnosticEvent('voice', 'session_snapshot', snapshot)
+    recordDiagnosticEvent('voice', 'session_snapshot', snapshot, {
+      dedupeKey: 'voice.session_snapshot',
+      heartbeatMs: 30_000,
+    })
   }, [snapshot])
 
   useEffect(() => {
@@ -717,6 +721,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       : snapshot.connection === 'connecting' || snapshot.connection === 'recovering'
         ? snapshot.intentChannelId
         : null
+
+  useEffect(() => {
+    setActivityLauncherOpen(false)
+  }, [channelId])
 
   useEffect(() => {
     if (!room || !channelId) return
@@ -1174,8 +1182,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       setStageMediaSubscribed,
       stageFullscreen,
       toggleStageFullscreen: () => setStageFullscreen((value) => !value),
+      activityLauncherOpen,
+      setActivityLauncherOpen,
     }),
     [
+      activityLauncherOpen,
       channelId,
       focusedMediaId,
       setFocusedMediaId,

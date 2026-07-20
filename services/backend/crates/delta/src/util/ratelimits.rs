@@ -3,6 +3,14 @@ use syrnike_ratelimits::ratelimiter::RatelimitResolver;
 
 pub struct DeltaRatelimits;
 
+fn feedback_bucket(resource: Option<&str>, extra: Option<&str>, method: Method) -> &'static str {
+    match (resource, extra, method) {
+        (Some(_), Some("vote"), Method::Put | Method::Delete) => "feedback_vote",
+        (None, _, Method::Post) => "feedback_create",
+        _ => "feedback",
+    }
+}
+
 impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
     fn resolve_bucket<'r>(&self, request: &'r Request<'_>) -> (&'r str, Option<&'r str>) {
         let (segment, resource, extra) = if request.routed_segment(0) == Some("0.8") {
@@ -54,6 +62,7 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
                 ("swagger", _, _) => ("swagger", None),
                 ("safety", Some("report"), _) => ("safety_report", Some("report")),
                 ("safety", _, _) => ("safety", None),
+                ("feedback", _, _) => (feedback_bucket(resource, extra, method), None),
                 ("telemetry", Some("native"), Method::Post) => ("native_telemetry", None),
                 ("diagnostics", Some("reports"), Method::Post) => ("diagnostic_report", None),
                 _ => ("any", None),
@@ -77,9 +86,36 @@ impl<'a> RatelimitResolver<Request<'a>> for DeltaRatelimits {
             "swagger" => 100,
             "safety" => 15,
             "safety_report" => 3,
+            "feedback" => 30,
+            "feedback_create" => 4,
+            "feedback_vote" => 12,
             "native_telemetry" => 100,
             "diagnostic_report" => 5,
             _ => 20,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rocket::http::Method;
+
+    use super::feedback_bucket;
+
+    #[test]
+    fn feedback_rate_limit_routes_creation_votes_and_moderation_separately() {
+        assert_eq!(feedback_bucket(None, None, Method::Post), "feedback_create");
+        assert_eq!(
+            feedback_bucket(Some("suggestion-id"), Some("vote"), Method::Put),
+            "feedback_vote"
+        );
+        assert_eq!(
+            feedback_bucket(Some("suggestion-id"), Some("vote"), Method::Delete),
+            "feedback_vote"
+        );
+        assert_eq!(
+            feedback_bucket(Some("admin"), Some("suggestion-id"), Method::Post),
+            "feedback"
+        );
     }
 }

@@ -14,6 +14,12 @@ import {
 } from '#/components/layout/shell-chrome'
 import { Button } from '#/components/ui/button'
 import { Squircle } from '#/components/ui/squircle'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '#/components/ui/tooltip'
 import { cn } from '#/lib/utils'
 
 /**
@@ -72,6 +78,7 @@ type RailIconButtonProps<TTo extends string> = {
   active: boolean
   unread?: boolean
   title: string
+  tooltipContent?: ReactNode
   children: ReactNode
 } & LinkComponentProps<'a', RegisteredRouter, string, TTo, string, ''>
 
@@ -79,34 +86,47 @@ type RailIconButtonProps<TTo extends string> = {
 export function RailIconButton<TTo extends string>(
   props: RailIconButtonProps<TTo>,
 ) {
-  const { active, unread = false, title, children, ...linkProps } = props
+  const {
+    active,
+    unread = false,
+    title,
+    tooltipContent,
+    children,
+    ...linkProps
+  } = props
   const indicatorKey = active ? 'active' : unread ? 'unread' : 'idle'
   const anchorProps = useLinkProps<RegisteredRouter, string, TTo>({
     ...linkProps,
-    title,
+    'aria-label': title,
   } as UseLinkPropsOptions<RegisteredRouter, string, TTo, string, ''>)
 
   return (
-    <div className={railIconItemRowClass}>
-      {/* key сбрасывает DOM: иначе idle opacity-0 + transition «съедает» unread */}
-      <RailActiveIndicator
-        key={indicatorKey}
-        active={active}
-        unread={unread}
-      />
-      <Squircle asChild {...railIconSquircleProps}>
-        <Button
-          size="icon"
-          variant={active ? 'default' : 'ghost'}
-          className={cn(railIconButtonClass, !active && railIconIdleClass)}
-          title={title}
-          asChild
-        >
-          <a {...anchorProps}>
-            {children}
-          </a>
-        </Button>
-      </Squircle>
-    </div>
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <div className={railIconItemRowClass}>
+          {/* key сбрасывает DOM: иначе idle opacity-0 + transition «съедает» unread */}
+          <RailActiveIndicator
+            key={indicatorKey}
+            active={active}
+            unread={unread}
+          />
+          <Squircle asChild {...railIconSquircleProps}>
+            <Button
+              size="icon"
+              variant={active ? 'default' : 'ghost'}
+              className={cn(railIconButtonClass, !active && railIconIdleClass)}
+              asChild
+            >
+              <TooltipTrigger asChild>
+                <a {...anchorProps}>{children}</a>
+              </TooltipTrigger>
+            </Button>
+          </Squircle>
+        </div>
+        <TooltipContent side="right" sideOffset={8} className="font-black">
+          {tooltipContent ?? title}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

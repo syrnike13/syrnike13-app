@@ -76,7 +76,7 @@ export async function updateDesktopLocalSettings(
     const current = await readDesktopLocalSettings(filePath, defaults)
     const normalizedPatch = normalizeDesktopLocalSettingsPatch(patch)
     result = {
-      version: 2,
+      version: 3,
       voice: {
         ...current.voice,
         ...normalizedPatch.voice,
@@ -122,7 +122,7 @@ async function readDesktopLocalSettings(
 }
 
 function isCurrentSettingsVersion(value: unknown) {
-  return isSettingsObject(value) && value.version === 2
+  return isSettingsObject(value) && value.version === 3
 }
 
 function isSettingsObject(value: unknown): value is Record<string, unknown> {

@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AdminRouteRouteImport } from './routes/_admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminUsersIndexRouteImport } from './routes/_admin/users/index'
+import { Route as AdminFeedbackIndexRouteImport } from './routes/_admin/feedback/index'
 import { Route as AdminDiagnosticsIndexRouteImport } from './routes/_admin/diagnostics/index'
 import { Route as AdminBadgesIndexRouteImport } from './routes/_admin/badges/index'
 import { Route as AdminDiagnosticsReportIdRouteImport } from './routes/_admin/diagnostics/$reportId'
@@ -36,6 +37,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminFeedbackIndexRoute = AdminFeedbackIndexRouteImport.update({
+  id: '/feedback/',
+  path: '/feedback/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminDiagnosticsIndexRoute = AdminDiagnosticsIndexRouteImport.update({
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/diagnostics/$reportId': typeof AdminDiagnosticsReportIdRoute
   '/badges/': typeof AdminBadgesIndexRoute
   '/diagnostics/': typeof AdminDiagnosticsIndexRoute
+  '/feedback/': typeof AdminFeedbackIndexRoute
   '/users/': typeof AdminUsersIndexRoute
 }
 export interface FileRoutesByTo {
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/diagnostics/$reportId': typeof AdminDiagnosticsReportIdRoute
   '/badges': typeof AdminBadgesIndexRoute
   '/diagnostics': typeof AdminDiagnosticsIndexRoute
+  '/feedback': typeof AdminFeedbackIndexRoute
   '/users': typeof AdminUsersIndexRoute
 }
 export interface FileRoutesById {
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/_admin/diagnostics/$reportId': typeof AdminDiagnosticsReportIdRoute
   '/_admin/badges/': typeof AdminBadgesIndexRoute
   '/_admin/diagnostics/': typeof AdminDiagnosticsIndexRoute
+  '/_admin/feedback/': typeof AdminFeedbackIndexRoute
   '/_admin/users/': typeof AdminUsersIndexRoute
 }
 export interface FileRouteTypes {
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/diagnostics/$reportId'
     | '/badges/'
     | '/diagnostics/'
+    | '/feedback/'
     | '/users/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/diagnostics/$reportId'
     | '/badges'
     | '/diagnostics'
+    | '/feedback'
     | '/users'
   id:
     | '__root__'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/_admin/diagnostics/$reportId'
     | '/_admin/badges/'
     | '/_admin/diagnostics/'
+    | '/_admin/feedback/'
     | '/_admin/users/'
   fileRoutesById: FileRoutesById
 }
@@ -165,6 +177,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users/'
       preLoaderRoute: typeof AdminUsersIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/_admin/feedback/': {
+      id: '/_admin/feedback/'
+      path: '/feedback'
+      fullPath: '/feedback/'
+      preLoaderRoute: typeof AdminFeedbackIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
     '/_admin/diagnostics/': {
@@ -211,6 +230,7 @@ interface AdminRouteRouteChildren {
   AdminDiagnosticsReportIdRoute: typeof AdminDiagnosticsReportIdRoute
   AdminBadgesIndexRoute: typeof AdminBadgesIndexRoute
   AdminDiagnosticsIndexRoute: typeof AdminDiagnosticsIndexRoute
+  AdminFeedbackIndexRoute: typeof AdminFeedbackIndexRoute
   AdminUsersIndexRoute: typeof AdminUsersIndexRoute
 }
 
@@ -220,6 +240,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminDiagnosticsReportIdRoute: AdminDiagnosticsReportIdRoute,
   AdminBadgesIndexRoute: AdminBadgesIndexRoute,
   AdminDiagnosticsIndexRoute: AdminDiagnosticsIndexRoute,
+  AdminFeedbackIndexRoute: AdminFeedbackIndexRoute,
   AdminUsersIndexRoute: AdminUsersIndexRoute,
 }
 

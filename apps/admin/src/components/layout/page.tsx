@@ -11,17 +11,24 @@ export function AdminPage({
   back,
   actions,
   className,
+  innerClassName,
 }: {
   children: ReactNode
   title: string
   back?: { to: string; label: string }
   actions?: ReactNode
   className?: string
+  innerClassName?: string
 }) {
   return (
     <div className={cn('admin-enter flex min-h-full flex-col', className)}>
       <header className="shrink-0 border-b border-border/60">
-        <div className="admin-page-inner flex h-14 items-center justify-between gap-4">
+        <div
+          className={cn(
+            'admin-page-inner flex h-14 items-center justify-between gap-4',
+            innerClassName,
+          )}
+        >
           <div className="flex min-w-0 items-center gap-3">
             {back ? (
               <Link
@@ -37,7 +44,9 @@ export function AdminPage({
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
       </header>
-      <div className="admin-page-inner flex-1 py-5">{children}</div>
+      <div className={cn('admin-page-inner flex-1 py-5', innerClassName)}>
+        {children}
+      </div>
     </div>
   )
 }

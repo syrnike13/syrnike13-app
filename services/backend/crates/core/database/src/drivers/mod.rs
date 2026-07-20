@@ -103,11 +103,11 @@ impl DatabaseInfo {
                     .await
                     .map_err(|_| "Failed to init db connection.".to_string())?;
 
-                Ok(Database::MongoDb(MongoDb(client, database_name)))
+                Ok(Database::MongoDb(MongoDb::new(client, database_name)))
             }
             #[cfg(feature = "mongodb")]
             DatabaseInfo::MongoDbFromClient(client, database_name) => {
-                Ok(Database::MongoDb(MongoDb(client, database_name)))
+                Ok(Database::MongoDb(MongoDb::new(client, database_name)))
             }
         }
     }
@@ -240,9 +240,11 @@ impl Database {
             database: match self {
                 Database::Reference(_) => Default::default(),
                 #[cfg(feature = "mongodb")]
-                Database::MongoDb(MongoDb(client, database_name)) => authifier::Database::MongoDb(
-                    authifier::database::MongoDb(client.database(&database_name)),
-                ),
+                Database::MongoDb(MongoDb(client, database_name, _)) => {
+                    authifier::Database::MongoDb(authifier::database::MongoDb(
+                        client.database(&database_name),
+                    ))
+                }
             },
             config: auth_config,
             #[cfg(feature = "tasks")]

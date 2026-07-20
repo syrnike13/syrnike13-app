@@ -223,6 +223,8 @@ int main() try {
     ) != 0,
     "failed to configure native diagnostic test run id"
   );
+  SetEnvironmentVariableW(L"SYRNIKE_NATIVE_APP_VERSION", L"0.6.2-test");
+  SetEnvironmentVariableW(L"SYRNIKE_NATIVE_RELEASE_CHANNEL", L"test");
   auto& diagnostic_log = syrnike::desktop_native::diagnostics::DiagnosticLog::instance();
   diagnostic_log.initializeForMediaProcess();
   diagnostic_log.write(
@@ -249,6 +251,11 @@ int main() try {
     "native diagnostic logger ignored the shared run id"
   );
   require(
+    diagnostic_contents.find("0.6.2-test") != std::string::npos &&
+      diagnostic_contents.find("\"releaseChannel\":\"test\"") != std::string::npos,
+    "native diagnostic logger omitted build context"
+  );
+  require(
     diagnostic_contents.find("user:123") == std::string::npos &&
       diagnostic_contents.find("Alice") == std::string::npos &&
       diagnostic_contents.find("field-secret") == std::string::npos &&
@@ -259,6 +266,8 @@ int main() try {
   std::filesystem::remove(diagnostic_path);
   SetEnvironmentVariableW(L"SYRNIKE_NATIVE_MEDIA_LOG_PATH", nullptr);
   SetEnvironmentVariableW(L"SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID", nullptr);
+  SetEnvironmentVariableW(L"SYRNIKE_NATIVE_APP_VERSION", nullptr);
+  SetEnvironmentVariableW(L"SYRNIKE_NATIVE_RELEASE_CHANNEL", nullptr);
 
   syrnike::voice::RuntimeConfig config;
   const syrnike::desktop_native::MediaCommand default_command;

@@ -1,6 +1,7 @@
 import { open, readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import { gzip } from 'node:zlib'
 
 import { app } from 'electron'
 import type {
@@ -10,10 +11,29 @@ import type {
 } from '@syrnike13/platform'
 
 const MAX_RENDERER_BYTES = 2 * 1024 * 1024
-const MAX_NATIVE_BYTES = 6 * 1024 * 1024
+const MAX_NATIVE_BYTES = 30 * 1024 * 1024
+const MAX_COMPRESSED_BUNDLE_BYTES = 10 * 1024 * 1024
+const MAX_DECOMPRESSED_BUNDLE_BYTES = 33 * 1024 * 1024
+const INVENTORY_RESERVE_BYTES = 64 * 1024
 const MAX_NATIVE_SESSIONS = 3
 const DIAGNOSTIC_SCHEMA = 'syrnike.diagnostic' as const
 const DIAGNOSTIC_SCHEMA_VERSION = 1 as const
+const gzipAsync = promisify(gzip)
+
+type NativeDiagnosticFile = {
+  value: string
+  source: DiagnosticEnvelopeSource
+  bytes: number
+  truncated: boolean
+}
+
+type NativeDiagnosticReadResult = {
+  files: NativeDiagnosticFile[]
+  sessionsFound: number
+  sessionsSelected: number
+  filesFound: number
+  filesSelected: number
+}
 
 export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
   if (typeof rendererJsonl !== 'string') {
@@ -24,14 +44,121 @@ export async function createDesktopDiagnosticBundle(rendererJsonl: string) {
   }
 
   const rendererRecords = normalizeJsonl(rendererJsonl, 'renderer', true)
-  const nativeRecords = normalizeJsonl(
-    await readRecentNativeDiagnostics(),
-    'native',
-    false,
+  const native = await readRecentNativeDiagnostics()
+  const nativeRecordGroups = native.files.map((file) =>
+    normalizeJsonl(file.value, file.source, false),
   )
-  return new Uint8Array(
-    gzipSync([...rendererRecords, ...nativeRecords].join('\n'), { level: 6 }),
+  const rendererBytes = serializedRecordsBytes(rendererRecords)
+  const nativeBudget = Math.max(
+    0,
+    MAX_DECOMPRESSED_BUNDLE_BYTES - rendererBytes - INVENTORY_RESERVE_BYTES,
   )
+  let selectionBudget = nativeBudget
+  for (let attempt = 0; ; attempt += 1) {
+    const bundle = await buildNormalizedBundle(
+      rendererRecords,
+      native,
+      nativeRecordGroups,
+      selectionBudget,
+    )
+    if (bundle.byteLength <= MAX_COMPRESSED_BUNDLE_BYTES) {
+      return new Uint8Array(bundle)
+    }
+    if (selectionBudget === 0) {
+      throw new Error('Compressed diagnostic bundle is too large')
+    }
+    selectionBudget =
+      attempt >= 7
+        ? 0
+        : Math.max(
+            0,
+            Math.min(
+              selectionBudget - 1,
+              Math.floor(
+                selectionBudget *
+                  (MAX_COMPRESSED_BUNDLE_BYTES / bundle.byteLength) *
+                  0.9,
+              ),
+            ),
+          )
+  }
+}
+
+async function buildNormalizedBundle(
+  rendererRecords: DiagnosticEnvelope[],
+  native: NativeDiagnosticReadResult,
+  nativeRecordGroups: DiagnosticEnvelope[][],
+  nativeBudget: number,
+) {
+  const normalizedGroupBytes = nativeRecordGroups.map(serializedRecordsBytes)
+  const normalizedBudgets = allocateFairReadBudgets(normalizedGroupBytes, nativeBudget)
+  const selectedGroups = nativeRecordGroups.map((records, index) =>
+    selectRecordTail(records, normalizedBudgets[index] ?? 0),
+  )
+  const nativeRecords = selectedGroups.flat()
+  const recordsBySource = nativeRecords.reduce<Record<string, number>>(
+    (counts, record) => {
+      counts[record.source] = (counts[record.source] ?? 0) + 1
+      return counts
+    },
+    {},
+  )
+  const inventory = envelope(
+    'event',
+    Date.now(),
+    'electron-main',
+    'diagnostic.bundle_inventory',
+    {
+      native_limit_bytes: MAX_NATIVE_BYTES,
+      compressed_limit_bytes: MAX_COMPRESSED_BUNDLE_BYTES,
+      decompressed_limit_bytes: MAX_DECOMPRESSED_BUNDLE_BYTES,
+      native_selection_budget_bytes: nativeBudget,
+      native_sessions_found: native.sessionsFound,
+      native_sessions_selected: native.sessionsSelected,
+      native_files_found: native.filesFound,
+      native_files_selected: native.filesSelected,
+      native_files_included: selectedGroups.filter((records) => records.length > 0).length,
+      native_files_truncated: native.files.filter(
+        (file, index) =>
+          file.truncated || selectedGroups[index]!.length < nativeRecordGroups[index]!.length,
+      ).length,
+      native_source_bytes_read: native.files.reduce((sum, file) => sum + file.bytes, 0),
+      native_bytes_included: serializedRecordsBytes(nativeRecords),
+      native_records_included: nativeRecords.length,
+      native_records_by_source: recordsBySource,
+    },
+  )
+  const [firstRendererRecord, ...rendererEvents] = rendererRecords
+  const events = [...rendererEvents, ...nativeRecords, inventory].sort(
+    (left, right) => left.timestamp_ms - right.timestamp_ms,
+  )
+  const jsonl = [firstRendererRecord, ...events]
+    .map((record) => JSON.stringify(record))
+    .join('\n')
+  if (Buffer.byteLength(jsonl) > MAX_DECOMPRESSED_BUNDLE_BYTES) {
+    throw new Error('Normalized diagnostic bundle is too large')
+  }
+  return gzipAsync(jsonl, { level: 6 })
+}
+
+function serializedRecordsBytes(records: DiagnosticEnvelope[]) {
+  return records.reduce(
+    (total, record) => total + Buffer.byteLength(JSON.stringify(record)) + 1,
+    0,
+  )
+}
+
+function selectRecordTail(records: DiagnosticEnvelope[], maximumBytes: number) {
+  const selected: DiagnosticEnvelope[] = []
+  let used = 0
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index]!
+    const bytes = Buffer.byteLength(JSON.stringify(record)) + 1
+    if (bytes > maximumBytes - used) break
+    selected.unshift(record)
+    used += bytes
+  }
+  return selected
 }
 
 function normalizeJsonl(
@@ -39,13 +166,13 @@ function normalizeJsonl(
   fallbackSource: DiagnosticEnvelopeSource,
   strict: boolean,
 ) {
-  const records: string[] = []
+  const records: DiagnosticEnvelope[] = []
   for (const line of value.split(/\r?\n/)) {
     if (!line.trim()) continue
     try {
       const normalized = normalizeRecord(JSON.parse(line), fallbackSource)
       if (!normalized) throw new Error('Unsupported diagnostic record')
-      records.push(JSON.stringify(normalized))
+      records.push(normalized)
     } catch (error) {
       if (strict) throw new Error('Renderer diagnostics contain invalid JSONL', { cause: error })
     }
@@ -170,42 +297,123 @@ function isEnvelopeSource(value: unknown): value is DiagnosticEnvelopeSource {
   )
 }
 
-async function readRecentNativeDiagnostics() {
+async function readRecentNativeDiagnostics(): Promise<NativeDiagnosticReadResult> {
   const root = path.join(app.getPath('userData'), 'logs', 'native-media-diagnostics')
   const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
-  const sessions = await Promise.all(
+  const discoveredSessions = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory() && entry.name.startsWith('native-'))
       .map(async (entry) => {
         const directory = path.join(root, entry.name)
-        return { directory, modifiedAt: (await stat(directory)).mtimeMs }
+        const files = await readdir(directory, { withFileTypes: true }).catch(() => [])
+        const diagnostics = (
+          await Promise.all(
+            files
+              .filter((file) => file.isFile() && file.name.endsWith('.jsonl'))
+              .map(async (file) => {
+                const filePath = path.join(directory, file.name)
+                const metadata = await stat(filePath).catch(() => null)
+                if (!metadata) return null
+                return {
+                  filePath,
+                  fileName: file.name,
+                  size: metadata.size,
+                  modifiedAt: metadata.mtimeMs,
+                }
+              }),
+          )
+        ).filter((file): file is NonNullable<typeof file> => file !== null)
+        const directoryModifiedAt = await stat(directory)
+          .then((metadata) => metadata.mtimeMs)
+          .catch(() => 0)
+        return {
+          files: diagnostics,
+          modifiedAt: diagnostics.reduce(
+            (latest, file) => Math.max(latest, file.modifiedAt),
+            directoryModifiedAt,
+          ),
+        }
       }),
   )
-  sessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
-
-  let remaining = MAX_NATIVE_BYTES
-  const chunks: string[] = []
-  for (const session of sessions.slice(0, MAX_NATIVE_SESSIONS)) {
-    const files = await readdir(session.directory, { withFileTypes: true }).catch(
-      () => [],
-    )
-    for (const file of files) {
-      if (!file.isFile() || !file.name.endsWith('.jsonl') || remaining <= 0) continue
-      const filePath = path.join(session.directory, file.name)
-      const { value, truncated } = await readBoundedTail(filePath, remaining)
-      let bounded = value
-      if (truncated) {
-        const firstCompleteLine = bounded.indexOf(0x0a)
-        bounded =
-          firstCompleteLine === -1
-            ? Buffer.alloc(0)
-            : bounded.subarray(firstCompleteLine + 1)
-      }
-      chunks.push(bounded.toString('utf8'))
-      remaining -= bounded.length
+  discoveredSessions.sort((a, b) => b.modifiedAt - a.modifiedAt)
+  const sessions = discoveredSessions.slice(0, MAX_NATIVE_SESSIONS)
+  const candidates = sessions.flatMap((session) => session.files)
+  const budgets = allocateFairReadBudgets(
+    candidates.map((candidate) => candidate.size),
+    MAX_NATIVE_BYTES,
+  )
+  const included: NativeDiagnosticFile[] = []
+  for (const [index, candidate] of candidates.entries()) {
+    const budget = budgets[index] ?? 0
+    if (budget <= 0) continue
+    const { value, truncated } = await readBoundedTail(candidate.filePath, budget)
+    let bounded = value
+    if (truncated) {
+      const firstCompleteLine = bounded.indexOf(0x0a)
+      bounded =
+        firstCompleteLine === -1
+          ? Buffer.alloc(0)
+          : bounded.subarray(firstCompleteLine + 1)
     }
+    if (bounded.length === 0) continue
+    included.push({
+      value: bounded.toString('utf8'),
+      source: diagnosticSourceForFile(candidate.fileName),
+      bytes: bounded.length,
+      truncated,
+    })
   }
-  return chunks.join('\n')
+  return {
+    files: included,
+    sessionsFound: discoveredSessions.length,
+    sessionsSelected: sessions.length,
+    filesFound: discoveredSessions.reduce(
+      (count, session) => count + session.files.length,
+      0,
+    ),
+    filesSelected: candidates.length,
+  }
+}
+
+function allocateFairReadBudgets(sizes: number[], maximumBytes: number) {
+  const budgets = sizes.map(() => 0)
+  let remaining = maximumBytes
+  let pending = sizes
+    .map((size, index) => ({ index, size: Math.max(0, size) }))
+    .filter(({ size }) => size > 0)
+
+  while (pending.length > 0 && remaining > 0) {
+    const share = Math.floor(remaining / pending.length)
+    if (share <= 0) {
+      for (const candidate of pending.slice(0, remaining)) {
+        budgets[candidate.index] = 1
+      }
+      break
+    }
+    const small = pending.filter(({ size }) => size <= share)
+    if (small.length > 0) {
+      const completed = new Set(small.map(({ index }) => index))
+      for (const candidate of small) {
+        budgets[candidate.index] = candidate.size
+        remaining -= candidate.size
+      }
+      pending = pending.filter(({ index }) => !completed.has(index))
+      continue
+    }
+    for (const candidate of pending) budgets[candidate.index] = share
+    remaining -= share * pending.length
+    for (const candidate of pending.slice(0, remaining)) {
+      budgets[candidate.index] += 1
+    }
+    break
+  }
+  return budgets
+}
+
+function diagnosticSourceForFile(fileName: string): DiagnosticEnvelopeSource {
+  if (fileName === 'electron-main.jsonl') return 'electron-main'
+  if (fileName === 'utility.jsonl') return 'utility'
+  return 'native'
 }
 
 async function readBoundedTail(filePath: string, maximumBytes: number) {

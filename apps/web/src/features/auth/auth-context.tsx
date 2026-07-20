@@ -155,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       eventsGateway.disableAutoReconnect()
       syncStore.reset()
       queryClient.removeQueries({ queryKey: queryKeys.auth.session })
+      queryClient.removeQueries({ queryKey: queryKeys.feedback.all })
       queryClient.removeQueries({
         predicate: (query) =>
           query.queryKey[0] === 'auth' && query.queryKey[1] === 'onboarding',

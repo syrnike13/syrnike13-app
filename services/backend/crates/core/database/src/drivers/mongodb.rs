@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::{Arc, OnceLock};
 
 use futures::StreamExt;
 use mongodb::bson::{doc, to_document, Document};
@@ -12,8 +13,22 @@ use serde::Serialize;
 database_derived!(
     /// MongoDB implementation
     #[derive(Debug)]
-    pub struct MongoDb(pub ::mongodb::Client, pub String);
+    pub struct MongoDb(
+        pub ::mongodb::Client,
+        pub String,
+        pub(crate) Arc<OnceLock<bool>>,
+    );
 );
+
+impl MongoDb {
+    pub(crate) fn new(client: ::mongodb::Client, database_name: String) -> Self {
+        Self(client, database_name, Arc::new(OnceLock::new()))
+    }
+
+    pub(crate) fn transaction_capability(&self) -> &OnceLock<bool> {
+        &self.2
+    }
+}
 
 impl Deref for MongoDb {
     type Target = mongodb::Client;

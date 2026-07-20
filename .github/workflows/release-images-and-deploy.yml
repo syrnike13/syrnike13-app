@@ -158,6 +158,10 @@ jobs:
           desktop=false
           services="$frontend_services"
 
+          if printf '%s\n' "$changed_files" | grep -Eq '^deploy/production/compose\.yml$'; then
+            services="$services database"
+          fi
+
           if printf '%s\n' "$changed_files" | grep -Eq '^VERSION$'; then
             desktop=true
           fi
@@ -638,6 +642,7 @@ jobs:
       SYRNIKE_VIDEO_ENABLED: ${{ vars.SYRNIKE_VIDEO_ENABLED || 'true' }}
       DEPLOY_GHCR_TOKEN: ${{ secrets.DEPLOY_GHCR_TOKEN || github.token }}
       APP_SERVICES: ${{ needs.changes.outputs.services }}
+      CADDYFILE_CANDIDATE: /tmp/syrnike13-edge-Caddyfile-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate configuration
@@ -663,6 +668,7 @@ jobs:
         run: |
           set -euo pipefail
           tar -C deploy/production \
+            --exclude='Caddyfile' \
             --exclude='data*' \
             --exclude='.env' \
             --exclude='.env.web' \
@@ -677,7 +683,8 @@ jobs:
             -czf /tmp/syrnike13-production.tar.gz .
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
           scp -i ~/.ssh/deploy_key /tmp/syrnike13-production.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:/tmp/syrnike13-production.tar.gz"
-          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "tar -xzf /tmp/syrnike13-production.tar.gz -C '$DEPLOY_PATH' && rm /tmp/syrnike13-production.tar.gz && chmod +x '$DEPLOY_PATH/scripts/deploy-on-server.sh' '$DEPLOY_PATH/generate_config.sh'"
+          scp -i ~/.ssh/deploy_key deploy/production/Caddyfile "$DEPLOY_USER@$DEPLOY_HOST:$CADDYFILE_CANDIDATE"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" "tar -xzf /tmp/syrnike13-production.tar.gz -C '$DEPLOY_PATH' && rm /tmp/syrnike13-production.tar.gz && chmod +x '$DEPLOY_PATH/scripts/deploy-on-server.sh' '$DEPLOY_PATH/scripts/reload-caddy.sh' '$DEPLOY_PATH/generate_config.sh'"
       - name: Select services
         id: services
         env:
@@ -693,7 +700,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' && ./scripts/deploy-on-server.sh"
+            "cd '$DEPLOY_PATH' && export SYRNIKE_DOMAIN='$SYRNIKE_DOMAIN' SYRNIKE_ADMIN_DOMAIN='$SYRNIKE_ADMIN_DOMAIN' SYRNIKE_REVERSE_PROXY='$SYRNIKE_REVERSE_PROXY' SYRNIKE_VIDEO_ENABLED='$SYRNIKE_VIDEO_ENABLED' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$DEPLOY_GHCR_TOKEN' DEPLOY_SERVICES='${{ steps.services.outputs.services }}' CADDYFILE_CANDIDATE='$CADDYFILE_CANDIDATE' && ./scripts/deploy-on-server.sh && rm -f '$CADDYFILE_CANDIDATE'"
       - name: Verify API
         run: |
           set -euo pipefail

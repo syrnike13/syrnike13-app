@@ -25,3 +25,30 @@ export type DiagnosticEnvelope = {
   event: string
   data: { [key: string]: DiagnosticJsonValue }
 }
+
+export type NativeDiagnosticIncidentSeverity = 'warning' | 'error' | 'fatal'
+
+export type NativeDiagnosticIncident = {
+  timestampMs: number
+  severity: NativeDiagnosticIncidentSeverity
+  triggerCode: string
+  scope: string
+  event: string
+  nativeEventType?: string
+  runtime?: string
+  kind?: string
+  lane?: string
+  stage?: string
+  status?: string
+  reason?: string
+  message?: string
+  errorCode?: string
+  restartCount?: number
+  durationMs?: number
+  timeoutMs?: number
+}
+
+export type NativeDiagnosticIncidentBatch = {
+  id: string
+  incidents: NativeDiagnosticIncident[]
+}

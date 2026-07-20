@@ -1,6 +1,7 @@
 use authifier::AuthifierEvent;
 use iso8601_timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use syrnike_result::Error;
 
@@ -120,6 +121,36 @@ pub struct VoiceCall {
     pub recipients: Vec<String>,
     #[serde(default)]
     pub declined_recipients: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ChannelActivityInstance {
+    pub id: String,
+    pub generation: u64,
+    pub application_id: String,
+    pub channel_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
+    pub owner_id: String,
+    pub participant_ids: Vec<String>,
+    pub revision: u64,
+    pub state: Value,
+    pub created_at: Timestamp,
+    pub expires_at: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelActivityErrorCode {
+    NotInVoiceChannel,
+    UnknownApplication,
+    AlreadyRunning,
+    InstanceNotFound,
+    NotParticipant,
+    NotOwner,
+    InvalidCommand,
+    InvalidRequest,
+    Internal,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -526,6 +557,28 @@ pub enum EventV1 {
     VoiceAuthorityMove {
         from: VoiceAuthorityMembershipClaim,
         lease: VoiceAuthorityLease,
+    },
+    ChannelActivitySnapshot {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+        instance: ChannelActivityInstance,
+    },
+    ChannelActivityClosed {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+        channel_id: String,
+        instance_id: String,
+        generation: u64,
+    },
+    ChannelActivityEmpty {
+        request_id: String,
+        channel_id: String,
+        generation: u64,
+    },
+    ChannelActivityError {
+        request_id: String,
+        channel_id: String,
+        code: ChannelActivityErrorCode,
     },
     /// User's active slowmodes
     UserSlowmodes {

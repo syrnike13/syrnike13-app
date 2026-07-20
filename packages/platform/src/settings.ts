@@ -91,7 +91,7 @@ export {
 } from './appearance'
 
 export type DesktopLocalSettings = {
-  version: 2
+  version: 3
   voice: DesktopVoiceSettings
   voiceListener: DesktopVoiceListenerSettings
   overlay: DesktopOverlaySettings
@@ -161,12 +161,12 @@ export const DEFAULT_DESKTOP_SOUND_SETTINGS: DesktopSoundSettings = {
 
 export const DEFAULT_DESKTOP_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
   anonymousNativeMetrics: true,
-  diagnosticReports: false,
+  diagnosticReports: true,
   nativeCrashReports: false,
 }
 
 export const DEFAULT_DESKTOP_LOCAL_SETTINGS: DesktopLocalSettings = {
-  version: 2,
+  version: 3,
   voice: DEFAULT_DESKTOP_VOICE_SETTINGS,
   voiceListener: DEFAULT_DESKTOP_VOICE_LISTENER_SETTINGS,
   overlay: DEFAULT_DESKTOP_OVERLAY_SETTINGS,
@@ -450,21 +450,26 @@ export function normalizeDesktopLocalSettings(
 ): DesktopLocalSettings {
   const settings = objectRecord(value)
   const voice = normalizeDesktopVoiceSettings(settings.voice, defaults.voice)
-  if (settings.version !== 2) {
+  if (settings.version !== 2 && settings.version !== 3) {
     voice.echoCancellation = false
     voice.automaticGainControl = true
   }
+  const observability = normalizeDesktopObservabilitySettings(
+    settings.observability,
+    defaults.observability,
+  )
+  // Version 3 intentionally enables redacted diagnostics once for every
+  // existing installation. A later explicit opt-out is preserved because the
+  // persisted document is already version 3.
+  if (settings.version !== 3) observability.diagnosticReports = true
   return {
-    version: 2,
+    version: 3,
     voice,
     voiceListener: normalizeDesktopVoiceListenerSettings(settings.voiceListener),
     overlay: normalizeDesktopOverlaySettings(settings.overlay, defaults.overlay),
     appearance: normalizeAppearanceSettings(settings.appearance, defaults.appearance),
     sounds: normalizeDesktopSoundSettings(settings.sounds, defaults.sounds),
-    observability: normalizeDesktopObservabilitySettings(
-      settings.observability,
-      defaults.observability,
-    ),
+    observability,
   }
 }
 

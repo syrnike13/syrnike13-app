@@ -33,24 +33,6 @@ retry() {
   done
 }
 
-upsert_env() {
-  local file="${1:?env file is required}"
-  local key="${2:?env key is required}"
-  local value="${3:?env value is required}"
-
-  touch "$file"
-  if grep -q "^${key}=" "$file"; then
-    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
-  else
-    printf "%s=%s\n" "$key" "$value" >> "$file"
-  fi
-}
-
-reload_caddy() {
-  docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
-  docker compose up -d --no-deps --force-recreate caddy
-}
-
 if [[ -n "${GHCR_USERNAME:-}" && -n "${GHCR_TOKEN:-}" ]]; then
   echo "Logging in to ghcr.io for private image pulls."
   retry 3 5 sh -c 'printf "%s" "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin >/dev/null'
@@ -96,13 +78,34 @@ else
   echo "Existing syrnike13 config found; keeping server-local secrets and generated config."
 fi
 
-upsert_env .env.web ADMIN_HOSTNAME "$admin_domain"
+CADDY_ADMIN_HOSTNAME="$admin_domain" \
+  ./scripts/reload-caddy.sh "${CADDYFILE_CANDIDATE:-Caddyfile}"
 
 if [[ -n "${DEPLOY_SERVICES:-}" ]]; then
   read -r -a services <<< "$DEPLOY_SERVICES"
   echo "Deploying services: ${services[*]}"
-  retry 3 5 docker compose pull "${services[@]}"
-  docker compose up -d --no-deps "${services[@]}"
+
+  deploy_database=false
+  application_services=()
+  for service in "${services[@]}"; do
+    if [[ "$service" == "database" ]]; then
+      deploy_database=true
+    else
+      application_services+=("$service")
+    fi
+  done
+
+  if [[ "$deploy_database" == "true" ]]; then
+    echo "Reconciling MongoDB before application services."
+    retry 3 5 docker compose pull database
+    docker compose up -d --no-deps --wait --wait-timeout 120 database
+  fi
+
+  if (( ${#application_services[@]} > 0 )); then
+    retry 3 5 docker compose pull "${application_services[@]}"
+    docker compose up -d --no-deps "${application_services[@]}"
+  fi
+
   docker compose ps "${services[@]}"
 else
   echo "Deploying the full production stack."
@@ -110,5 +113,3 @@ else
   docker compose up -d --remove-orphans
   docker compose ps
 fi
-
-reload_caddy

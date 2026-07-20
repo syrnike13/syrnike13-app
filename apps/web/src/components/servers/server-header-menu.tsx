@@ -172,7 +172,7 @@ export function ServerHeaderMenu({
             )}
             aria-expanded={menuOpen}
           >
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            <span className="min-w-0 flex-1 truncate text-sm font-black">
               {serverName}
             </span>
             <ChevronDownIcon

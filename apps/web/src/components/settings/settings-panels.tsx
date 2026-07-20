@@ -253,7 +253,11 @@ export function SettingsAccountPanel() {
             checked={diagnosticReports}
             onCheckedChange={(checked) => {
               setDiagnosticReports(checked)
-              writeBrowserDiagnosticReportsEnabled(checked)
+              if (!writeBrowserDiagnosticReportsEnabled(checked)) {
+                toast.warning(
+                  'Браузер не разрешил сохранить настройку; она действует только до закрытия вкладки.',
+                )
+              }
             }}
           />
           <SettingsRow

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import type { Channel, User } from '@syrnike13/api-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -19,6 +20,7 @@ const testState = vi.hoisted(() => ({
     stageChannelId: 'voice-a' as string | null,
     stageMediaItems: [] as Array<{
       id: string
+      generation: number
       userId: string
       kind: 'camera' | 'screen' | 'avatar'
       isLocal: boolean
@@ -38,7 +40,27 @@ const testState = vi.hoisted(() => ({
     setStageMediaSubscribed: vi.fn(),
     stageFullscreen: false,
     toggleStageFullscreen: vi.fn(),
+    activityLauncherOpen: false,
+    setActivityLauncherOpen: vi.fn(),
   },
+  activity: {
+    instance: null as null | {
+      id: string
+      application_id: string
+      channel_id: string
+      owner_id: string
+      participant_ids: string[]
+      revision: number
+      state: unknown
+      created_at: string
+      expires_at: number
+    },
+    generation: 0,
+    error: null,
+    transport: 'connected' as const,
+  },
+  activityHook: vi.fn(),
+  uiFeatures: { channelActivities: true },
   participants: {} as Record<string, Array<{ id: string }>>,
 }))
 
@@ -60,16 +82,29 @@ vi.mock('#/features/voice/voice-stage-context', () => ({
   useVoiceStage: () => testState.stage,
 }))
 
+vi.mock('#/features/activities/use-channel-activity', () => ({
+  useChannelActivity: (channelId: string, enabled: boolean) =>
+    testState.activityHook(channelId, enabled),
+}))
+
+vi.mock('#/lib/ui-feature-flags', () => ({
+  uiFeatureFlags: testState.uiFeatures,
+}))
+
+vi.mock('#/features/activities/channel-activity-client', () => ({
+  channelActivityClient: {
+    sync: vi.fn(),
+  },
+}))
+
 vi.mock('#/features/sync/sync-store', () => ({
   useSyncStore: (selector: (state: unknown) => unknown) =>
     selector({ users, servers: {}, members: {} }),
 }))
 
 vi.mock('#/features/sync/voice-selectors', () => ({
-  getChannelVoiceParticipants: (
-    _state: unknown,
-    channelId: string,
-  ) => testState.participants[channelId] ?? [],
+  getChannelVoiceParticipants: (_state: unknown, channelId: string) =>
+    testState.participants[channelId] ?? [],
   useChannelVoiceParticipantsWithLocalOverride: (
     _channelId: string,
     participants: Array<{ id: string }>,
@@ -96,8 +131,33 @@ vi.mock('#/components/icons/voice-channel-icon', () => ({
 }))
 
 vi.mock('#/components/voice/voice-stage-grid', () => ({
-  VoiceStageGrid: ({ items }: { items: Array<{ id: string }> }) => (
-    <div data-testid="media-grid">{items.map((item) => item.id).join(',')}</div>
+  VoiceStageGrid: ({
+    items,
+    renderTile,
+  }: {
+    items: Array<{ id: string }>
+    renderTile: (item: { id: string }, variant: 'grid') => ReactNode
+  }) => (
+    <div data-testid="media-grid">
+      {items.map((item) => (
+        <div key={item.id}>
+          {item.id}
+          {renderTile(item, 'grid')}
+        </div>
+      ))}
+    </div>
+  ),
+}))
+
+vi.mock('#/components/voice/voice-stage-activity-tile', () => ({
+  VoiceStageActivityTile: ({ item }: { item: { id: string } }) => (
+    <div data-testid="activity-tile">{item.id}</div>
+  ),
+}))
+
+vi.mock('#/features/activities/channel-activity-panel', () => ({
+  ChannelActivityLauncher: () => (
+    <div data-testid="activity-launcher">Activity launcher</div>
   ),
 }))
 
@@ -168,6 +228,12 @@ describe('VoiceStageView channel media scope', () => {
     testState.session.channelId = 'voice-a'
     testState.session.status = 'connected'
     testState.stage.stageChannelId = 'voice-a'
+    testState.stage.activityLauncherOpen = false
+    testState.uiFeatures.channelActivities = true
+    testState.activityHook.mockReset()
+    testState.activityHook.mockImplementation(() => testState.activity)
+    testState.activity.instance = null
+    testState.activity.generation = 0
     testState.stage.stageMediaItems = [
       {
         id: 'alice:camera',
@@ -274,6 +340,83 @@ describe('VoiceStageView channel media scope', () => {
 
     expect(screen.getByTestId('media-grid').textContent).toBe('local:avatar')
     expect(screen.getByTestId('voice-controls').dataset.connecting).toBe('true')
+  })
+
+  it('renders a running Activity as a stage tile without the old header button', () => {
+    testState.activity.instance = {
+      id: 'activity-1',
+      generation: 1,
+      application_id: 'syrnike13.syrnik-race',
+      channel_id: 'voice-a',
+      owner_id: 'local',
+      participant_ids: ['local'],
+      revision: 1,
+      state: {},
+      created_at: '2026-07-20T00:00:00Z',
+      expires_at: Date.parse('2026-07-20T02:00:00Z'),
+    }
+
+    renderStage(voiceChannel('voice-a', 'A'))
+
+    expect(screen.getByTestId('activity-tile').textContent).toBe(
+      'channel-activity:activity-1',
+    )
+    expect(
+      screen.queryByRole('button', { name: 'Открыть Активности' }),
+    ).toBeNull()
+  })
+
+  it('removes a cached Activity tile after leaving its voice channel', () => {
+    testState.activity.instance = {
+      id: 'activity-1',
+      generation: 1,
+      application_id: 'syrnike13.syrnik-race',
+      channel_id: 'voice-a',
+      owner_id: 'local',
+      participant_ids: ['local'],
+      revision: 1,
+      state: {},
+      created_at: '2026-07-20T00:00:00Z',
+      expires_at: Date.parse('2026-07-20T02:00:00Z'),
+    }
+    testState.activity.generation = 1
+
+    const { rerender } = renderStage(voiceChannel('voice-a', 'A'))
+    expect(screen.getByTestId('activity-tile')).toBeTruthy()
+
+    testState.session.status = 'idle'
+    rerender(
+      <VoiceStageView
+        channel={voiceChannel('voice-a', 'A')}
+        title="A"
+        chatOpen={false}
+        onToggleChat={() => undefined}
+      />,
+    )
+    expect(screen.queryByTestId('activity-tile')).toBeNull()
+  })
+
+  it('hides Activity UI and disables its subscription outside nightly builds', () => {
+    testState.uiFeatures.channelActivities = false
+    testState.stage.activityLauncherOpen = true
+    testState.activity.instance = {
+      id: 'activity-1',
+      generation: 1,
+      application_id: 'syrnike13.syrnik-race',
+      channel_id: 'voice-a',
+      owner_id: 'local',
+      participant_ids: ['local'],
+      revision: 1,
+      state: {},
+      created_at: '2026-07-20T00:00:00Z',
+      expires_at: Date.parse('2026-07-20T02:00:00Z'),
+    }
+
+    renderStage(voiceChannel('voice-a', 'A'))
+
+    expect(testState.activityHook).toHaveBeenCalledWith('voice-a', false)
+    expect(screen.queryByTestId('activity-tile')).toBeNull()
+    expect(screen.queryByTestId('activity-launcher')).toBeNull()
   })
 
   it('renders the empty channel title and joins from the centered action', () => {

@@ -21,7 +21,7 @@ const DEFAULT_WINDOW_PREFERENCES: DesktopWindowPreferences = {
 
 const DEFAULT_OBSERVABILITY_SETTINGS: DesktopObservabilitySettings = {
   anonymousNativeMetrics: true,
-  diagnosticReports: false,
+  diagnosticReports: true,
   nativeCrashReports: false,
 }
 

@@ -23,6 +23,7 @@ import {
   type NativeDiagnosticLog,
   type NativeDiagnosticSession,
 } from './native-runtime/diagnostic-log'
+import { captureNativeDiagnosticIncident } from './native-runtime/diagnostic-incidents'
 import { attachNativeRuntimeMetrics } from './native-runtime/anonymous-metrics'
 import { NativeRtcEngineAdapter } from './voice/native-rtc-engine-adapter'
 import { NativeSharedTextureBridge } from './native-video/shared-texture-bridge'
@@ -41,6 +42,7 @@ let nativeMediaDiagnostics: NativeMediaDiagnostics | null | undefined
 
 const diagnosticSink: DiagnosticLogSink = ({ scope, event, ...detail }) => {
   try {
+    captureNativeDiagnosticIncident({ scope, event, ...detail })
     ensureNativeMediaDiagnostics()?.log.log(`${scope}.${event}`, {
       scope,
       ...detail,
@@ -88,10 +90,15 @@ export function createNativeRtcEngineAdapter() {
 
 export function logNativeVoiceDiagnostic(event: string, data?: unknown) {
   try {
+    captureNativeDiagnosticIncident(nativeVoiceDiagnosticRecord(event, data))
     ensureNativeMediaDiagnostics()?.log.log(`desktop_voice.${event}`, data)
   } catch {
     // Voice diagnostics must never change control-plane or RTC behavior.
   }
+}
+
+export async function flushNativeMediaDiagnostics() {
+  await ensureNativeMediaDiagnostics()?.log.flush()
 }
 
 export function registerNativeMediaRuntimeIpc(
@@ -258,7 +265,9 @@ export function startNativeMediaRuntime() {
   void controller
     .start()
     .catch((error) => {
-      diagnostics?.log.log('native_media_bootstrap_failed', {
+      diagnosticSink({
+        scope: 'native-media-controller',
+        event: 'bootstrap_failed',
         message: safeErrorMessage(error),
       })
     })
@@ -277,7 +286,9 @@ export async function disposeNativeMediaRuntime() {
     await controller.dispose()
     diagnostics?.log.log('native_media_dispose_completed')
   } catch (error) {
-    diagnostics?.log.log('native_media_dispose_failed', {
+    diagnosticSink({
+      scope: 'native-media-controller',
+      event: 'dispose_failed',
       message: safeErrorMessage(error),
     })
   } finally {
@@ -302,6 +313,39 @@ function readWindowHwnd(win: BrowserWindow | null) {
 
 function safeErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Native media runtime failed'
+}
+
+function nativeVoiceDiagnosticRecord(
+  event: string,
+  data: unknown,
+): Parameters<DiagnosticLogSink>[0] {
+  const detail = isRecord(data) ? data : {}
+  const failure = isRecord(detail.failure) ? detail.failure : {}
+  return {
+    scope: 'desktop-voice',
+    event,
+    status: diagnosticString(
+      detail.status ?? detail.connection ?? detail.eventType,
+    ),
+    reason: diagnosticString(detail.reason),
+    stage: diagnosticString(detail.stage ?? failure.stage),
+    errorCode: diagnosticString(
+      detail.errorCode ?? detail.errorType ?? failure.code,
+    ),
+    message: diagnosticString(
+      detail.errorMessage ?? detail.message ?? failure.message,
+    ),
+  }
+}
+
+function diagnosticString(value: unknown) {
+  return typeof value === 'string' && value.length > 0
+    ? value.slice(0, 4_096)
+    : undefined
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function ensureNativeMediaDiagnostics(): NativeMediaDiagnostics | null {

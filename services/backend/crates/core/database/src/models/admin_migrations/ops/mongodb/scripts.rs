@@ -26,7 +26,7 @@ struct MigrationInfo {
     revision: i32,
 }
 
-pub const LATEST_REVISION: i32 = 55; // MUST BE +1 to last migration
+pub const LATEST_REVISION: i32 = 59; // MUST BE +1 to last migration
 
 pub async fn migrate_database(db: &MongoDb) {
     let migrations = db.col::<Document>("migrations");
@@ -1492,6 +1492,175 @@ pub async fn run_migrations(db: &MongoDb, revision: i32) -> i32 {
             })
             .await
             .expect("Failed to create diagnostic upload lifecycle indexes.");
+    };
+
+    if revision <= 55 {
+        info!("Running migration [revision 55 / 14-07-2026]: Add product feedback suggestions.");
+
+        db.db().create_collection("feedback_suggestions").await.ok();
+        db.db().create_collection("feedback_votes").await.ok();
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "feedback_suggestions",
+                "indexes": [
+                    {
+                        "key": {
+                            "moderation_status": 1_i32,
+                            "product_status": 1_i32,
+                            "created_at": -1_i32,
+                            "_id": -1_i32
+                        },
+                        "name": "visibility_status_created"
+                    },
+                    {
+                        "key": {
+                            "author_id": 1_i32,
+                            "created_at": -1_i32,
+                            "_id": -1_i32
+                        },
+                        "name": "author_created"
+                    },
+                    {
+                        "key": {
+                            "category": 1_i32,
+                            "product_status": 1_i32,
+                            "created_at": -1_i32
+                        },
+                        "name": "category_status_created"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create feedback suggestions indexes.");
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "feedback_votes",
+                "indexes": [
+                    {
+                        "key": {
+                            "suggestion_id": 1_i32,
+                            "user_id": 1_i32
+                        },
+                        "name": "suggestion_user_unique",
+                        "unique": true
+                    },
+                    {
+                        "key": {
+                            "suggestion_id": 1_i32
+                        },
+                        "name": "suggestion"
+                    }
+                ]
+            })
+            .await
+            .expect("Failed to create feedback votes indexes.");
+    };
+
+    if revision <= 56 {
+        info!("Running migration [revision 56 / 15-07-2026]: Split feedback type and area.");
+
+        db.col::<Document>("feedback_suggestions")
+            .update_many(
+                doc! {},
+                vec![doc! {
+                    "$set": {
+                        "category": "idea",
+                        "area": {
+                            "$switch": {
+                                "branches": [
+                                    { "case": { "$eq": ["$category", "navigation"] }, "then": "navigation" },
+                                    { "case": { "$eq": ["$category", "voice_video"] }, "then": "voice_video" },
+                                    { "case": { "$eq": ["$category", "community"] }, "then": "community" },
+                                    { "case": { "$eq": ["$category", "messages"] }, "then": "messages" },
+                                    { "case": { "$eq": ["$category", "moderation"] }, "then": "moderation" },
+                                    { "case": { "$eq": ["$category", "desktop"] }, "then": "desktop" }
+                                ],
+                                "default": "$$REMOVE"
+                            }
+                        }
+                    }
+                }],
+            )
+            .await
+            .expect("Failed to split feedback type and area.");
+
+        db.db()
+            .run_command(doc! {
+                "dropIndexes": "feedback_suggestions",
+                "index": "category_status_created"
+            })
+            .await
+            .ok();
+
+        db.db()
+            .run_command(doc! {
+                "createIndexes": "feedback_suggestions",
+                "indexes": [{
+                    "key": {
+                        "category": 1_i32,
+                        "area": 1_i32,
+                        "platform": 1_i32,
+                        "product_status": 1_i32,
+                        "created_at": -1_i32
+                    },
+                    "name": "category_area_platform_status_created"
+                }]
+            })
+            .await
+            .expect("Failed to create feedback type and area index.");
+    };
+
+    if revision <= 57 {
+        info!("Running migration [revision 57 / 15-07-2026]: Add anonymous feedback authorship.");
+
+        db.col::<Document>("feedback_suggestions")
+            .update_many(
+                doc! { "anonymous": { "$exists": false } },
+                doc! { "$set": { "anonymous": false } },
+            )
+            .await
+            .expect("Failed to add anonymous feedback flag.");
+    };
+
+    if revision <= 58 {
+        info!("Running migration [revision 58 / 15-07-2026]: Backfill feedback author tags.");
+
+        let mut suggestions = db
+            .col::<Document>("feedback_suggestions")
+            .find(doc! { "author_username": { "$exists": false } })
+            .await
+            .expect("Failed to fetch feedback suggestions without author tags.");
+
+        while let Some(suggestion) = suggestions.next().await {
+            let suggestion = suggestion.expect("Failed to read feedback suggestion.");
+            let Some(id) = suggestion.get_str("_id").ok() else {
+                continue;
+            };
+            let Some(author_id) = suggestion.get_str("author_id").ok() else {
+                continue;
+            };
+            let Some(author) = db
+                .col::<Document>("users")
+                .find_one(doc! { "_id": author_id })
+                .await
+                .expect("Failed to fetch feedback author.")
+            else {
+                continue;
+            };
+            let Some(username) = author.get_str("username").ok() else {
+                continue;
+            };
+
+            db.col::<Document>("feedback_suggestions")
+                .update_one(
+                    doc! { "_id": id },
+                    doc! { "$set": { "author_username": username } },
+                )
+                .await
+                .expect("Failed to backfill feedback author tag.");
+        }
     };
 
     // Reminder to update LATEST_REVISION when adding new migrations.

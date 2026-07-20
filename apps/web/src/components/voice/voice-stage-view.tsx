@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -7,7 +9,11 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { MessageSquareIcon, ChevronDownIcon } from '#/components/icons'
+import {
+  MessageSquareIcon,
+  ChevronDownIcon,
+  Loader2Icon,
+} from '#/components/icons'
 import { VoiceChannelIcon } from '#/components/icons/voice-channel-icon'
 import type { Channel, User } from '@syrnike13/api-types'
 import type {
@@ -21,6 +27,10 @@ import { UserAvatar } from '#/components/user/user-avatar'
 import { VoiceOnAirBadge } from '#/components/voice/voice-participant-icons'
 import { VoiceStageFocusStage } from '#/components/voice/voice-stage-focus-stage'
 import { StageMediaTile } from '#/components/voice/voice-stage-media-tile'
+import {
+  VoiceStageActivityTile,
+  type VoiceStageActivityItem,
+} from '#/components/voice/voice-stage-activity-tile'
 import { VoiceStageStreamVolumeControl } from '#/components/voice/voice-stage-stream-volume-control'
 import {
   VoiceStageControls,
@@ -32,6 +42,10 @@ import { VoiceStageInviteTile } from '#/components/voice/voice-stage-tile'
 import { VoiceStagePopout } from '#/components/voice/voice-stage-popout'
 import { VoiceStagePopoutPlaceholder } from '#/components/voice/voice-stage-popout-placeholder'
 import { useAuth } from '#/features/auth/auth-context'
+import { channelActivityClient } from '#/features/activities/channel-activity-client'
+import { channelActivityStageItemId } from '#/features/activities/channel-activity-stage'
+import { getFirstPartyChannelActivity } from '#/features/activities/channel-activity-catalog'
+import { useChannelActivity } from '#/features/activities/use-channel-activity'
 import {
   getChannelVoiceParticipants,
   useChannelVoiceParticipantsWithLocalOverride,
@@ -66,6 +80,7 @@ import {
 import { voiceParticipantDisplayName } from '#/features/voice/voice-participant-label'
 import { isVoiceLocalUserId } from '#/features/voice/voice-connecting-preview'
 import { canInviteToChannel } from '#/features/authorization/authorization'
+import { uiFeatureFlags } from '#/lib/ui-feature-flags'
 import { cn } from '#/lib/utils'
 
 type VoiceStageDmHeader = {
@@ -94,6 +109,19 @@ type VoiceStageViewProps = {
 
 const STAGE_POPOUT_WINDOW_NAME = 'syrnike13-voice-stage'
 const EMPTY_STAGE_MEDIA_ITEMS: readonly VoiceStageMediaItem[] = []
+const ChannelActivityLauncher = lazy(() =>
+  import('#/features/activities/channel-activity-panel').then((module) => ({
+    default: module.ChannelActivityLauncher,
+  })),
+)
+
+type VoiceStageItem = VoiceStageMediaItem | VoiceStageActivityItem
+
+function isVoiceStageActivityItem(
+  item: VoiceStageItem,
+): item is VoiceStageActivityItem {
+  return item.kind === 'activity'
+}
 
 export function VoiceStageView({
   channel,
@@ -131,6 +159,30 @@ export function VoiceStageView({
   const inVoiceSession = isVoiceSessionInChannel(voiceSession, channelId)
   const inThisVoiceCall = voiceSession.status === 'connected' && inVoiceSession
   const connecting = voiceSession.status === 'connecting' && inVoiceSession
+  const channelActivitiesEnabled = uiFeatureFlags.channelActivities
+  const channelActivity = useChannelActivity(
+    channelId,
+    channelActivitiesEnabled && inThisVoiceCall,
+  )
+  const currentUserId = auth.user?._id
+  const currentActivityId = channelActivity.instance?.id ?? null
+  const closeActivityLauncher = useCallback(() => {
+    voiceStage.setActivityLauncherOpen(false)
+  }, [voiceStage.setActivityLauncherOpen])
+
+  useEffect(() => {
+    if (
+      (!channelActivitiesEnabled || !inThisVoiceCall) &&
+      voiceStage.activityLauncherOpen
+    ) {
+      voiceStage.setActivityLauncherOpen(false)
+    }
+  }, [
+    channelActivitiesEnabled,
+    inThisVoiceCall,
+    voiceStage.activityLauncherOpen,
+    voiceStage.setActivityLauncherOpen,
+  ])
   const isDmVoiceStage =
     channel.channel_type === 'DirectMessage' || channel.channel_type === 'Group'
   const resolvedJoinLabel =
@@ -180,8 +232,29 @@ export function VoiceStageView({
     inVoiceSession ? voiceSession.micPublishing : undefined,
     inVoiceSession ? voiceSession.deafened : undefined,
   )
+  const activityVoiceMembersKey = useMemo(
+    () =>
+      participants
+        .map((participant) => participant.id)
+        .sort()
+        .join(':'),
+    [participants],
+  )
+
+  useEffect(() => {
+    if (channelActivitiesEnabled && inThisVoiceCall && currentActivityId) {
+      channelActivityClient.sync(channelId)
+    }
+  }, [
+    activityVoiceMembersKey,
+    channelActivitiesEnabled,
+    channelId,
+    currentActivityId,
+    inThisVoiceCall,
+  ])
   const participantsById = useMemo(
-    () => new Map(participants.map((participant) => [participant.id, participant])),
+    () =>
+      new Map(participants.map((participant) => [participant.id, participant])),
     [participants],
   )
   const mediaItems =
@@ -192,42 +265,89 @@ export function VoiceStageView({
     () => sortStageMediaItemsForGrid(mediaItems),
     [mediaItems],
   )
+  const activityStageItem = useMemo<VoiceStageActivityItem | null>(
+    () =>
+      channelActivitiesEnabled && inThisVoiceCall && channelActivity.instance
+        ? {
+            id: channelActivityStageItemId(channelActivity.instance.id),
+            kind: 'activity',
+            instance: channelActivity.instance,
+          }
+        : null,
+    [channelActivitiesEnabled, channelActivity.instance, inThisVoiceCall],
+  )
+  const stageItems = useMemo<readonly VoiceStageItem[]>(
+    () =>
+      activityStageItem
+        ? [activityStageItem, ...gridMediaItems]
+        : gridMediaItems,
+    [activityStageItem, gridMediaItems],
+  )
   const videoMediaItems = useMemo(
     () => filterStageVideoMediaItems(gridMediaItems),
     [gridMediaItems],
   )
-  const mediaIds = useMemo(() => mediaItems.map((item) => item.id), [mediaItems])
+  const stageItemIds = useMemo(
+    () => stageItems.map((item) => item.id),
+    [stageItems],
+  )
   const videoUserIds = useMemo(
     () => new Set(videoMediaItems.map((item) => item.userId)),
     [videoMediaItems],
   )
   const avatarOnlyParticipants = useMemo(
-    () => participants.filter((participant) => !videoUserIds.has(participant.id)),
+    () =>
+      participants.filter((participant) => !videoUserIds.has(participant.id)),
     [participants, videoUserIds],
   )
   const useAvatarRosterLayout =
+    !activityStageItem &&
     videoMediaItems.length === 0 &&
     gridMediaItems.length === 0 &&
     participants.length > 0
 
   useEffect(() => {
+    if (!voiceStage.activityLauncherOpen || !activityStageItem) return
+    voiceStage.setActivityLauncherOpen(false)
+    voiceStage.setFocusedMediaId(activityStageItem.id)
+    setRequestedMode('focus')
+  }, [
+    activityStageItem,
+    voiceStage.activityLauncherOpen,
+    voiceStage.setActivityLauncherOpen,
+    voiceStage.setFocusedMediaId,
+  ])
+
+  useEffect(() => {
     if (!voiceStage.stageFocusNonce) return
     const mediaId = voiceStage.focusedMediaId
-    if (!mediaId || !mediaIds.includes(mediaId)) return
+    if (!mediaId || !stageItemIds.includes(mediaId)) return
     setRequestedMode('focus')
-  }, [mediaIds, voiceStage.focusedMediaId, voiceStage.stageFocusNonce])
+  }, [stageItemIds, voiceStage.focusedMediaId, voiceStage.stageFocusNonce])
 
   const layoutMode = resolveStageLayoutMode({
     requestedMode,
     focusedMediaId: voiceStage.focusedMediaId,
-    visibleMediaIds: mediaIds,
+    visibleMediaIds: stageItemIds,
   })
   const focusedItem =
     layoutMode === 'focus'
-      ? mediaItems.find((item) => item.id === voiceStage.focusedMediaId) ?? null
+      ? (stageItems.find((item) => item.id === voiceStage.focusedMediaId) ??
+        null)
       : null
   const focusedMediaHeader = useMemo(() => {
     if (!focusedItem) return null
+    if (isVoiceStageActivityItem(focusedItem)) {
+      return {
+        user: undefined,
+        kindLabel: 'Активность',
+        displayName:
+          getFirstPartyChannelActivity(focusedItem.instance.application_id)
+            ?.title ?? 'Неизвестное приложение',
+        showOnAir: false,
+        showAvatar: false,
+      }
+    }
     const kindLabel = stageMediaKindLabel(focusedItem.kind)
     if (!kindLabel) return null
 
@@ -236,7 +356,8 @@ export function VoiceStageView({
       auth.user?._id ?? null,
     )
     const user =
-      users[focusedItem.userId] ?? (isLocal ? auth.user ?? undefined : undefined)
+      users[focusedItem.userId] ??
+      (isLocal ? (auth.user ?? undefined) : undefined)
     const participant = participantsById.get(focusedItem.userId)
 
     return {
@@ -249,18 +370,14 @@ export function VoiceStageView({
       ),
       showOnAir:
         focusedItem.kind === 'screen' && Boolean(participant?.screensharing),
+      showAvatar: true,
     }
   }, [auth.user, focusedItem, participantsById, users])
   const canToggleStageFullscreen =
-    !mobileDrawer && (participants.length > 0 || mediaItems.length > 0)
+    !mobileDrawer && (participants.length > 0 || stageItems.length > 0)
   const canInvite =
     server && channel.channel_type === 'TextChannel'
-      ? canInviteToChannel(
-          server,
-          channel,
-          member,
-          auth.user?._id,
-        )
+      ? canInviteToChannel(server, channel, member, auth.user?._id)
       : false
   const showInviteSlot =
     canInvite &&
@@ -269,17 +386,12 @@ export function VoiceStageView({
     shouldShowVoiceInviteSlot(participants.length)
   const showEmptyStage =
     participants.length === 0 &&
-    mediaItems.length === 0 &&
+    stageItems.length === 0 &&
     !(isDmVoiceStage && voiceCall)
   const showRemoteJoinPreview =
-    useAvatarRosterLayout &&
-    !inThisVoiceCall &&
-    !connecting &&
-    !isDmVoiceStage
+    useAvatarRosterLayout && !inThisVoiceCall && !connecting && !isDmVoiceStage
   const showCenteredJoin =
-    !inThisVoiceCall &&
-    !connecting &&
-    (showEmptyStage || showRemoteJoinPreview)
+    !inThisVoiceCall && !connecting && (showEmptyStage || showRemoteJoinPreview)
 
   const focusMedia = useCallback(
     (mediaId: string) => {
@@ -356,22 +468,22 @@ export function VoiceStageView({
   ])
 
   const resolveParticipantDisplayName = useCallback(
-    (userId: string) =>
-      voiceParticipantDisplayName(userId, users, auth.user),
+    (userId: string) => voiceParticipantDisplayName(userId, users, auth.user),
     [auth.user, users],
   )
 
   const renderAvatarRoster = useCallback(
-    (options?: { compact?: boolean; rosterParticipants?: typeof participants }) => (
+    (options?: {
+      compact?: boolean
+      rosterParticipants?: typeof participants
+    }) => (
       <VoiceStageAvatarRoster
         participants={options?.rosterParticipants ?? participants}
         users={users}
         currentUser={auth.user}
         speakingUserIds={voiceSession.speakingUserIds}
         displayName={resolveParticipantDisplayName}
-        dimmedUserId={
-          connecting && auth.user?._id ? auth.user._id : undefined
-        }
+        dimmedUserId={connecting && auth.user?._id ? auth.user._id : undefined}
         compact={options?.compact}
         speakingEnabled={inThisVoiceCall}
       />
@@ -389,16 +501,33 @@ export function VoiceStageView({
 
   const renderTile = useCallback(
     (
-      item: VoiceStageMediaItem,
+      item: VoiceStageItem,
       variant: 'grid' | 'focus' | 'strip' | 'fullscreen',
       onStreamAspectRatioChange?: (aspectRatio: number) => void,
     ) => {
+      if (isVoiceStageActivityItem(item)) {
+        if (!currentUserId) return null
+        return (
+          <VoiceStageActivityTile
+            key={item.id}
+            item={item}
+            activity={channelActivity}
+            currentUserId={currentUserId}
+            variant={variant}
+            onFocus={focusMedia}
+            onAspectRatioChange={onStreamAspectRatioChange}
+          />
+        )
+      }
       const isLocal = isVoiceLocalUserId(item.userId, auth.user?._id ?? null)
       return (
         <StageMediaTile
           key={item.id}
           item={item}
-          user={users[item.userId] ?? (isLocal ? auth.user ?? undefined : undefined)}
+          user={
+            users[item.userId] ??
+            (isLocal ? (auth.user ?? undefined) : undefined)
+          }
           participant={participantsById.get(item.userId)}
           displayName={voiceParticipantDisplayName(
             item.userId,
@@ -420,7 +549,9 @@ export function VoiceStageView({
     },
     [
       auth.user,
+      channelActivity,
       connecting,
+      currentUserId,
       focusMedia,
       inThisVoiceCall,
       participantsById,
@@ -460,7 +591,24 @@ export function VoiceStageView({
             : voiceStageContentInsetClass,
         )}
       >
-        {participants.length === 0 && mediaItems.length === 0 ? (
+        {channelActivitiesEnabled &&
+        voiceStage.activityLauncherOpen &&
+        currentUserId ? (
+          <Suspense
+            fallback={
+              <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
+                <Loader2Icon className="mr-2 size-5 animate-spin" />
+                Загружаем Активность…
+              </div>
+            }
+          >
+            <ChannelActivityLauncher
+              channelId={channelId}
+              activity={channelActivity}
+              onClose={closeActivityLauncher}
+            />
+          </Suspense>
+        ) : participants.length === 0 && stageItems.length === 0 ? (
           isDmVoiceStage && voiceCall ? (
             <VoiceStageWaitingCall
               voiceCall={voiceCall}
@@ -494,18 +642,17 @@ export function VoiceStageView({
         ) : focusedItem ? (
           <VoiceStageFocusStage
             focusedItem={focusedItem}
-            mediaItems={gridMediaItems}
+            mediaItems={stageItems}
             chromeVisible={chromeVisible}
             renderTile={renderTile}
           />
         ) : useAvatarRosterLayout ? (
           renderAvatarRoster()
-        ) : isDmVoiceStage && videoMediaItems.length > 0 ? (
+        ) : isDmVoiceStage &&
+          videoMediaItems.length > 0 &&
+          !activityStageItem ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2">
-            <VoiceStageGrid
-              items={videoMediaItems}
-              renderTile={renderTile}
-            />
+            <VoiceStageGrid items={videoMediaItems} renderTile={renderTile} />
             {avatarOnlyParticipants.length > 0
               ? renderAvatarRoster({
                   compact: true,
@@ -515,7 +662,7 @@ export function VoiceStageView({
           </div>
         ) : (
           <VoiceStageGrid
-            items={gridMediaItems}
+            items={stageItems}
             inviteSlot={
               showInviteSlot ? (
                 <VoiceStageInviteTile channelId={channelId} />
@@ -583,7 +730,9 @@ export function VoiceStageView({
                 </>
               ) : null}
               {dmHeader.loading ? (
-                <span className="shrink-0 text-xs text-white/50">загрузка…</span>
+                <span className="shrink-0 text-xs text-white/50">
+                  загрузка…
+                </span>
               ) : null}
             </div>
           </>
@@ -609,12 +758,14 @@ export function VoiceStageView({
                     <span className="shrink-0 text-white/45" aria-hidden>
                       •
                     </span>
-                    <UserAvatar
-                      user={focusedMediaHeader.user}
-                      className="size-5"
-                      fallbackClassName="size-5 text-[10px]"
-                      showPresence={false}
-                    />
+                    {focusedMediaHeader.showAvatar ? (
+                      <UserAvatar
+                        user={focusedMediaHeader.user}
+                        className="size-5"
+                        fallbackClassName="size-5 text-[10px]"
+                        showPresence={false}
+                      />
+                    ) : null}
                     <span className="shrink-0 text-white/70">
                       {focusedMediaHeader.kindLabel}
                     </span>
@@ -638,12 +789,14 @@ export function VoiceStageView({
             <span className="shrink-0 text-white/45" aria-hidden>
               •
             </span>
-            <UserAvatar
-              user={focusedMediaHeader.user}
-              className="size-5"
-              fallbackClassName="size-5 text-[10px]"
-              showPresence={false}
-            />
+            {focusedMediaHeader.showAvatar ? (
+              <UserAvatar
+                user={focusedMediaHeader.user}
+                className="size-5"
+                fallbackClassName="size-5 text-[10px]"
+                showPresence={false}
+              />
+            ) : null}
             <span className="shrink-0">{focusedMediaHeader.kindLabel}</span>
             <span className="min-w-0 truncate">
               {focusedMediaHeader.displayName}
@@ -654,7 +807,9 @@ export function VoiceStageView({
           </div>
         ) : null}
         {headerTrailing ? (
-          <div className="flex shrink-0 items-center gap-1">{headerTrailing}</div>
+          <div className="flex shrink-0 items-center gap-1">
+            {headerTrailing}
+          </div>
         ) : null}
         {presentation === 'embedded' && showChatToggle && !mobileDrawer ? (
           <Button
@@ -708,9 +863,13 @@ export function VoiceStageView({
                 connecting={connecting}
                 joinLabel={resolvedJoinLabel}
                 overlay
-                incomingCall={voiceCallIncoming && voiceCall?.phase === 'ringing'}
+                incomingCall={
+                  voiceCallIncoming && voiceCall?.phase === 'ringing'
+                }
                 declineLabel={
-                  channel.channel_type === 'DirectMessage' ? 'Отклонить' : 'Скрыть'
+                  channel.channel_type === 'DirectMessage'
+                    ? 'Отклонить'
+                    : 'Скрыть'
                 }
                 onDeclineIncomingCall={onDeclineVoiceCall}
               />
@@ -735,7 +894,6 @@ export function VoiceStageView({
           </>
         )}
       </div>
-
     </div>
   )
 
@@ -795,8 +953,8 @@ function VoiceStageWaitingCall({
   const counterpartName = displayName(counterpartId)
   const counterpartDeclined = Boolean(
     currentUserId &&
-      voiceCall.initiatorId === currentUserId &&
-      voiceCall.declinedRecipients.includes(counterpartId),
+    voiceCall.initiatorId === currentUserId &&
+    voiceCall.declinedRecipients.includes(counterpartId),
   )
   let statusLabel = 'Звонок идёт'
   if (voiceCallIncoming) {
@@ -879,7 +1037,8 @@ function VoiceStageJoinPreview({
   onJoin: () => void
 }) {
   const visibleParticipants = participants.slice(0, 4)
-  const hiddenParticipantCount = participants.length - visibleParticipants.length
+  const hiddenParticipantCount =
+    participants.length - visibleParticipants.length
   const firstParticipantName = displayName(participants[0].id)
   const status =
     participants.length === 1
@@ -900,7 +1059,7 @@ function VoiceStageJoinPreview({
               const user =
                 users[participant.id] ??
                 (participant.id === currentUser?._id
-                  ? currentUser ?? undefined
+                  ? (currentUser ?? undefined)
                   : undefined)
               return (
                 <li key={participant.id} title={displayName(participant.id)}>

@@ -4,26 +4,27 @@ import {
   voiceStageFilmstripSpacingClass,
   voiceStageFilmstripTightTopClass,
 } from '#/components/voice/voice-stage-layout'
-import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { cn } from '#/lib/utils'
 
-type VoiceStageFilmstripProps = {
-  items: readonly VoiceStageMediaItem[]
+type VoiceStageFilmstripItem = Readonly<{ id: string }>
+
+type VoiceStageFilmstripProps<TItem extends VoiceStageFilmstripItem> = {
+  items: readonly TItem[]
   focusedMediaId: string
   tightTop?: boolean
   tileWidth: number
   tileHeight: number
-  renderTile: (item: VoiceStageMediaItem, variant: 'strip') => ReactNode
+  renderTile: (item: TItem, variant: 'strip') => ReactNode
 }
 
-export function VoiceStageFilmstrip({
+export function VoiceStageFilmstrip<TItem extends VoiceStageFilmstripItem>({
   items,
   focusedMediaId,
   tightTop = false,
   tileWidth,
   tileHeight,
   renderTile,
-}: VoiceStageFilmstripProps) {
+}: VoiceStageFilmstripProps<TItem>) {
   const stripItems = items.filter((item) => item.id !== focusedMediaId)
   if (stripItems.length === 0) return null
 

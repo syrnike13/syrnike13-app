@@ -24,6 +24,11 @@ namespace {
 
 constexpr wchar_t kLogPathEnv[] = L"SYRNIKE_NATIVE_MEDIA_LOG_PATH";
 constexpr wchar_t kRunIdEnv[] = L"SYRNIKE_NATIVE_DIAGNOSTIC_RUN_ID";
+constexpr wchar_t kAppVersionEnv[] = L"SYRNIKE_NATIVE_APP_VERSION";
+constexpr wchar_t kReleaseChannelEnv[] = L"SYRNIKE_NATIVE_RELEASE_CHANNEL";
+constexpr wchar_t kContractVersionEnv[] = L"SYRNIKE_NATIVE_CONTRACT_VERSION";
+constexpr wchar_t kLiveKitVersionEnv[] = L"SYRNIKE_NATIVE_LIVEKIT_VERSION";
+constexpr wchar_t kCommitShaEnv[] = L"SYRNIKE_NATIVE_COMMIT_SHA";
 constexpr std::size_t kMaxQueuedLines = 4096;
 constexpr std::size_t kMaxBatchLines = 128;
 constexpr std::size_t kMaxDiagnosticTextLength = 4096;
@@ -395,7 +400,13 @@ class DiagnosticLogState final {
         "diagnostic_logger_started",
         {
           {"runId", run_id_},
-          {"pid", static_cast<std::uint64_t>(GetCurrentProcessId())}
+          {"pid", static_cast<std::uint64_t>(GetCurrentProcessId())},
+          {"architectureBits", static_cast<std::uint64_t>(sizeof(void*) * 8)},
+          {"appVersion", narrowUtf8(readEnvironment(kAppVersionEnv))},
+          {"releaseChannel", narrowUtf8(readEnvironment(kReleaseChannelEnv))},
+          {"contractVersion", narrowUtf8(readEnvironment(kContractVersionEnv))},
+          {"livekitVersion", narrowUtf8(readEnvironment(kLiveKitVersionEnv))},
+          {"commitSha", narrowUtf8(readEnvironment(kCommitShaEnv))}
         }
       );
     } catch (...) {

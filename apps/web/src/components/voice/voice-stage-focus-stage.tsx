@@ -9,7 +9,6 @@ import {
 } from '#/components/ui/tooltip'
 import { VoiceStageFilmstrip } from '#/components/voice/voice-stage-filmstrip'
 import { voiceStageFocusStackGapClass } from '#/components/voice/voice-stage-layout'
-import type { VoiceStageMediaItem } from '#/features/voice/voice-context'
 import { useVoiceStageFocusSizing } from '#/features/voice/use-voice-stage-focus-sizing'
 import { voiceStageChromeMotion } from '#/features/voice/use-voice-stage-chrome-visible'
 import { cn } from '#/lib/utils'
@@ -36,23 +35,25 @@ function stripToggleTopPx(focusHeight: number, stripCollapsed: boolean) {
   return focusHeight + FOCUS_STRIP_GAP_PX - STRIP_TOGGLE_SIZE_PX / 2
 }
 
-type VoiceStageFocusStageProps = {
-  focusedItem: VoiceStageMediaItem
-  mediaItems: readonly VoiceStageMediaItem[]
+type VoiceStageFocusItem = Readonly<{ id: string }>
+
+type VoiceStageFocusStageProps<TItem extends VoiceStageFocusItem> = {
+  focusedItem: TItem
+  mediaItems: readonly TItem[]
   chromeVisible: boolean
   renderTile: (
-    item: VoiceStageMediaItem,
+    item: TItem,
     variant: 'focus' | 'strip',
     onStreamAspectRatioChange?: (aspectRatio: number) => void,
   ) => ReactNode
 }
 
-export function VoiceStageFocusStage({
+export function VoiceStageFocusStage<TItem extends VoiceStageFocusItem>({
   focusedItem,
   mediaItems,
   chromeVisible,
   renderTile,
-}: VoiceStageFocusStageProps) {
+}: VoiceStageFocusStageProps<TItem>) {
   const layoutRef = useRef<HTMLDivElement>(null)
   const [streamAspectRatio, setStreamAspectRatio] = useState(
     DEFAULT_STREAM_ASPECT_RATIO,
@@ -75,7 +76,11 @@ export function VoiceStageFocusStage({
 
   return (
     <div className="relative flex min-h-0 min-w-0 w-full flex-1">
-      <div ref={layoutRef} className="pointer-events-none absolute inset-0" aria-hidden />
+      <div
+        ref={layoutRef}
+        className="pointer-events-none absolute inset-0"
+        aria-hidden
+      />
       <div className="relative flex min-h-0 min-w-0 w-full flex-1 items-center justify-center overflow-x-hidden">
         <div
           className={cn(
@@ -158,7 +163,9 @@ export function VoiceStageFocusStage({
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top" sideOffset={8}>
-                      {stripCollapsed ? 'Показать участников' : 'Убрать участников'}
+                      {stripCollapsed
+                        ? 'Показать участников'
+                        : 'Убрать участников'}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

@@ -97,6 +97,13 @@ Use the narrower package/service command when a task touches only one area.
 
 Подробнее: `.cursor/rules/ui-theming.mdc`.
 
+## Nightly-only UI
+
+- `VITE_RELEASE_CHANNEL` is the single environment source for the client release channel: `nightly` enables experimental UI and `stable` disables it. Do not introduce a parallel `NIGHTLY`/`VITE_NIGHTLY` flag because the values could diverge.
+- Declare release-channel-dependent UI capabilities only in `apps/web/src/lib/ui-feature-flags.ts`. UI components must use the named capability and must not read `import.meta.env` or `config.releaseChannel` directly to decide experimental feature visibility.
+- Gate every UI entry point and projection of an experimental feature. For Channel Activities this includes the voice-panel launcher, catalog, running VoiceStage tile, join actions, focus view, popout, and fullscreen projection.
+- Nightly UI flags control discoverability only. They are not authorization or security boundaries, so sensitive backend operations still require normal server-side permission checks.
+
 ### Windows backend checks
 
 - On Windows, do not spend time installing or repairing the backend Rust/OpenSSL/Docker toolchain just to satisfy `pnpm backend:check`. This workspace may not have OpenSSL/vcpkg/Docker configured.

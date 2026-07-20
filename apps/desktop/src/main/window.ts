@@ -93,7 +93,20 @@ export function createMainWindow(loadUrl: string) {
   void win.loadURL(new URL('/app', loadUrl).toString())
 
   if (!app.isPackaged) {
-    win.webContents.openDevTools({ mode: 'detach' })
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown' || input.key !== 'F12') return
+
+      event.preventDefault()
+      if (win.webContents.isDevToolsOpened()) {
+        win.webContents.closeDevTools()
+      } else {
+        win.webContents.openDevTools({ mode: 'detach' })
+      }
+    })
+
+    if (process.env.SYRNIKE_DESKTOP_OPEN_DEVTOOLS === '1') {
+      win.webContents.openDevTools({ mode: 'detach' })
+    }
   }
 
   return win

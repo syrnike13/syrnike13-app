@@ -7236,6 +7236,128 @@
           }
         ]
       }
+    },
+    "/feedback": {
+      "get": {
+        "tags": ["Product Feedback"],
+        "operationId": "feedback_list",
+        "parameters": [
+          {"name": "search", "in": "query", "required": false, "schema": {"type": "string", "maxLength": 200}},
+          {"name": "category", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackCategory"}},
+          {"name": "area", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackArea"}},
+          {"name": "platform", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackPlatform"}},
+          {"name": "status", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackProductStatus"}},
+          {"name": "sort", "in": "query", "required": false, "schema": {"$ref": "#/components/schemas/FeedbackSort"}},
+          {"name": "offset", "in": "query", "required": false, "schema": {"type": "integer", "format": "uint64", "minimum": 0}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "format": "uint64", "minimum": 1, "maximum": 100}}
+        ],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestionPage"}}}}},
+        "security": [{"Session Token": []}]
+      },
+      "post": {
+        "tags": ["Product Feedback"],
+        "operationId": "feedback_create",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DataCreateFeedbackSuggestion"}}}},
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/mine": {
+      "get": {
+        "tags": ["Product Feedback"],
+        "operationId": "feedback_mine",
+        "parameters": [
+          {"name": "offset", "in": "query", "required": false, "schema": {"type": "integer", "format": "uint64", "minimum": 0}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "format": "uint64", "minimum": 1, "maximum": 100}}
+        ],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestionPage"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/{id}": {
+      "get": {
+        "tags": ["Product Feedback"],
+        "operationId": "feedback_detail",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/{id}/vote": {
+      "put": {
+        "tags": ["Product Feedback"],
+        "operationId": "feedback_add_vote",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      },
+      "delete": {
+        "tags": ["Product Feedback"],
+        "operationId": "feedback_remove_vote",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/admin/pending": {
+      "get": {
+        "tags": ["Product Feedback Administration"],
+        "operationId": "feedback_admin_pending",
+        "parameters": [
+          {"name": "offset", "in": "query", "required": false, "schema": {"type": "integer", "format": "uint64", "minimum": 0}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "format": "uint64", "minimum": 1, "maximum": 100}}
+        ],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestionPage"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/admin/{id}/approve": {
+      "post": {
+        "tags": ["Product Feedback Administration"],
+        "operationId": "feedback_admin_approve",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/admin/{id}/reject": {
+      "post": {
+        "tags": ["Product Feedback Administration"],
+        "operationId": "feedback_admin_reject",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DataRejectFeedbackSuggestion"}}}},
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/admin/{id}/merge": {
+      "post": {
+        "tags": ["Product Feedback Administration"],
+        "operationId": "feedback_admin_merge",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DataMergeFeedbackSuggestion"}}}},
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/admin/{id}/hide": {
+      "post": {
+        "tags": ["Product Feedback Administration"],
+        "operationId": "feedback_admin_hide",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
+    },
+    "/feedback/admin/{id}": {
+      "patch": {
+        "tags": ["Product Feedback Administration"],
+        "operationId": "feedback_admin_update_publication",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DataUpdateFeedbackPublication"}}}},
+        "responses": {"200": {"description": "", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/FeedbackSuggestion"}}}}},
+        "security": [{"Session Token": []}]
+      }
     }
   },
   "components": {
@@ -15354,6 +15476,113 @@
           "cancelled",
           "missed"
         ]
+      },
+      "FeedbackModerationStatus": {
+        "description": "Moderation visibility of a feedback suggestion.",
+        "type": "string",
+        "enum": ["pending", "approved", "rejected", "merged", "hidden"]
+      },
+      "FeedbackProductStatus": {
+        "description": "Delivery state of an approved feedback suggestion.",
+        "type": "string",
+        "enum": ["collecting", "under_consideration", "planned", "in_progress", "released", "not_planned"]
+      },
+      "FeedbackCategory": {
+        "description": "User-selected kind of feedback.",
+        "type": "string",
+        "enum": ["bug", "idea"]
+      },
+      "FeedbackArea": {
+        "description": "Optional product area affected by the feedback.",
+        "type": "string",
+        "enum": ["navigation", "voice_video", "community", "messages", "moderation", "desktop", "activities", "other"]
+      },
+      "FeedbackPlatform": {
+        "description": "Optional client platform where the feedback applies.",
+        "type": "string",
+        "enum": ["windows", "macos", "linux", "web", "android", "ios"]
+      },
+      "FeedbackSort": {
+        "description": "Sort order for the feedback catalogue.",
+        "type": "string",
+        "enum": ["popular", "new"]
+      },
+      "FeedbackSuggestion": {
+        "description": "A product feedback suggestion visible to the requesting user.",
+        "type": "object",
+        "required": ["_id", "anonymous", "title", "description", "category", "moderation_status", "status", "vote_count", "voted", "created_at", "updated_at"],
+        "properties": {
+          "_id": {"type": "string"},
+          "author": {"type": "string"},
+          "author_username": {"type": "string"},
+          "anonymous": {"type": "boolean"},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "category": {"$ref": "#/components/schemas/FeedbackCategory"},
+          "area": {"$ref": "#/components/schemas/FeedbackArea"},
+          "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
+          "moderation_status": {"$ref": "#/components/schemas/FeedbackModerationStatus"},
+          "status": {"$ref": "#/components/schemas/FeedbackProductStatus"},
+          "team_response": {"type": "string", "nullable": true},
+          "rejection_reason": {"type": "string", "nullable": true},
+          "merged_into": {"type": "string", "nullable": true},
+          "merge_reason": {"type": "string", "nullable": true},
+          "vote_count": {"type": "integer", "format": "uint64", "minimum": 0},
+          "voted": {"type": "boolean"},
+          "created_at": {"$ref": "#/components/schemas/ISO8601 Timestamp"},
+          "updated_at": {"$ref": "#/components/schemas/ISO8601 Timestamp"}
+        }
+      },
+      "FeedbackSuggestionPage": {
+        "description": "Paginated feedback catalogue response.",
+        "type": "object",
+        "required": ["suggestions", "total", "offset", "limit"],
+        "properties": {
+          "suggestions": {"type": "array", "items": {"$ref": "#/components/schemas/FeedbackSuggestion"}},
+          "total": {"type": "integer", "format": "uint64", "minimum": 0},
+          "offset": {"type": "integer", "format": "uint64", "minimum": 0},
+          "limit": {"type": "integer", "format": "uint64", "minimum": 1, "maximum": 100}
+        }
+      },
+      "DataCreateFeedbackSuggestion": {
+        "description": "Data for a new feedback suggestion.",
+        "type": "object",
+        "required": ["title", "description", "category", "platform"],
+        "properties": {
+          "title": {"type": "string", "minLength": 3, "maxLength": 140},
+          "description": {"type": "string", "minLength": 10, "maxLength": 5000},
+          "category": {"$ref": "#/components/schemas/FeedbackCategory"},
+          "area": {"$ref": "#/components/schemas/FeedbackArea"},
+          "platform": {"$ref": "#/components/schemas/FeedbackPlatform"},
+          "anonymous": {"type": "boolean", "default": false}
+        }
+      },
+      "DataRejectFeedbackSuggestion": {
+        "description": "Rejection reason supplied by a moderator.",
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": {"type": "string", "minLength": 3, "maxLength": 1000}
+        }
+      },
+      "DataMergeFeedbackSuggestion": {
+        "description": "Destination suggestion when merging a duplicate.",
+        "type": "object",
+        "required": ["target_id"],
+        "properties": {
+          "target_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 1000, "nullable": true}
+        }
+      },
+      "DataUpdateFeedbackPublication": {
+        "description": "Atomic update of the public product status and official team response.",
+        "type": "object",
+        "required": ["expected_updated_at", "status"],
+        "properties": {
+          "expected_updated_at": {"$ref": "#/components/schemas/ISO8601 Timestamp"},
+          "status": {"$ref": "#/components/schemas/FeedbackProductStatus"},
+          "response": {"type": "string", "minLength": 1, "maxLength": 4000, "nullable": true}
+        }
       }
     },
     "securitySchemes": {
