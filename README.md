@@ -5,7 +5,6 @@
 ### Своя платформа для общения
 
 [![prod](https://img.shields.io/badge/зайти-syrnike13.ru-success?style=flat-square)](https://syrnike13.ru)
-[![nightly](https://img.shields.io/badge/beta-beta.syrnike13.ru-blueviolet?style=flat-square)](https://beta.syrnike13.ru)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/license-CC%20BY--NC%204.0-orange?style=flat-square)](LICENSE)
 
 </div>
@@ -22,12 +21,11 @@
 - 🎙️ **Сидеть в войсе** — голос, видео и демонстрация экрана без ограничений.
 - 🏁 **Играть прямо в звонке** — активности в голосовых каналах. Есть гонки сырников. Да, серьёзно.
 - 🖥️ **Ставить приложение** — десктопный клиент для Windows с автообновлениями.
-- 🌙 **Тестировать новое первым** — бета-версия живёт на [beta.syrnike13.ru](https://beta.syrnike13.ru), там появляется всё самое свежее (и иногда сломанное).
 
 ## 🚀 Как попасть
 
 Просто открой [syrnike13.ru](https://syrnike13.ru) в браузере — или скачай
-десктопное приложение, если хочешь полный фарш.
+десктопное приложение.
 
 ## 📄 Лицензия
 
