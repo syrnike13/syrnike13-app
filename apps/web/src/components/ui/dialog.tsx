@@ -61,6 +61,7 @@ function DialogContent({
   overlayClassName,
   showCloseButton = true,
   themedSurface = true,
+  onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   overlayClassName?: string
@@ -77,6 +78,17 @@ function DialogContent({
           themedSurface && "gradient-surface-solid",
           className
         )}
+        onOpenAutoFocus={(event) => {
+          if (onOpenAutoFocus) {
+            onOpenAutoFocus(event)
+            return
+          }
+          // Do not auto-focus the first focusable child: it is often a
+          // tooltip trigger (badges, icon buttons), which flashes the
+          // tooltip and steals visual focus on dialog open. The focus trap
+          // still keeps Tab cycling inside the dialog.
+          event.preventDefault()
+        }}
         {...props}
       >
         {children}
