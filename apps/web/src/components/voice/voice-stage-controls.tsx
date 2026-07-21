@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { RiStopCircleLine } from '@remixicon/react'
 import { PhoneXmark } from 'iconoir-react/solid'
 import {
   ChevronDownIcon,
@@ -817,7 +816,31 @@ function VoiceStageExitControl({
               : 'rounded-full',
         )}
       >
-        <PhoneXmark className="size-5" />
+        {focusedSession?.kind === 'stream' ? (
+          <span
+            className="inline-flex size-5 shrink-0"
+            data-voice-stage-exit-icon="stream"
+            aria-hidden
+          >
+            <MonitorXIcon className="size-5" />
+          </span>
+        ) : focusedSession?.kind === 'activity' ? (
+          <span
+            className="inline-flex size-5 shrink-0"
+            data-voice-stage-exit-icon="activity"
+            aria-hidden
+          >
+            <LogOutIcon className="size-5" />
+          </span>
+        ) : (
+          <span
+            className="inline-flex size-5 shrink-0"
+            data-voice-stage-exit-icon="voice"
+            aria-hidden
+          >
+            <PhoneXmark className="size-5" />
+          </span>
+        )}
       </button>
     </VoiceControlTooltip>
   )
@@ -858,13 +881,19 @@ function VoiceStageExitControl({
           <DropdownMenuLabel>Активные просмотры</DropdownMenuLabel>
           {sessions.map((session) => {
             const SessionIcon =
-              session.kind === 'activity' ? LogOutIcon : RiStopCircleLine
+              session.kind === 'activity' ? LogOutIcon : MonitorXIcon
             return (
               <DropdownMenuItem
                 key={session.id}
                 onSelect={() => onExitSession(session)}
               >
-                <SessionIcon />
+                <span
+                  className="inline-flex size-4 shrink-0"
+                  data-voice-stage-exit-icon={session.kind}
+                  aria-hidden
+                >
+                  <SessionIcon className="size-4" />
+                </span>
                 <span className="min-w-0 truncate">
                   {voiceStageViewSessionExitLabel(session)}
                 </span>

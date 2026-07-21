@@ -97,7 +97,14 @@ describe('VoiceStageControls', () => {
     const focusedExitButton = screen.getByRole('button', {
       name: 'Прекратить просмотр — Alice',
     })
-    expect(focusedExitButton.querySelector('svg')).not.toBeNull()
+    expect(
+      focusedExitButton.querySelector(
+        '[data-voice-stage-exit-icon="stream"]',
+      ),
+    ).not.toBeNull()
+    expect(
+      focusedExitButton.querySelector('[data-voice-stage-exit-icon="voice"]'),
+    ).toBeNull()
 
     fireEvent.click(focusedExitButton)
 
@@ -154,13 +161,17 @@ describe('VoiceStageControls', () => {
     expect(
       screen
         .getByRole('menuitem', { name: 'Прекратить просмотр — Alice' })
-        .querySelector('svg'),
+        .querySelector('[data-voice-stage-exit-icon="stream"]'),
     ).not.toBeNull()
 
     const activityExitItem = await screen.findByRole('menuitem', {
       name: 'Выйти из активности — Общий счётчик',
     })
-    expect(activityExitItem.querySelector('svg')).not.toBeNull()
+    expect(
+      activityExitItem.querySelector(
+        '[data-voice-stage-exit-icon="activity"]',
+      ),
+    ).not.toBeNull()
 
     fireEvent.click(activityExitItem)
 
