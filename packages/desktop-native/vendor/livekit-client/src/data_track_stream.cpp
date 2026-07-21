@@ -46,7 +46,8 @@ DataTrackStream::~DataTrackStream() { close(); }
 void DataTrackStream::init(FfiHandle subscription_handle) {
   subscription_handle_ = std::move(subscription_handle);
 
-  listener_id_ = FfiClient::instance().addListener([this](const FfiEvent& e) { this->onFfiEvent(e); });
+  listener_id_ =
+      FfiClient::instance().addListener([this](const FfiEvent& e) { this->onFfiEvent(e); }, "data-track-stream");
 }
 
 bool DataTrackStream::read(DataTrackFrame& out) {

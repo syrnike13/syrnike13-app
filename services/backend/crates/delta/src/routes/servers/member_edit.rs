@@ -14,9 +14,10 @@ use syrnike_database::{
         cancel_current_pending_voice_join_in_server, create_voice_session, get_channel_node,
         get_current_voice_operation_id, get_current_voice_session,
         get_user_voice_channel_in_server, get_voice_state,
+        publish_authoritative_voice_snapshot,
         remove_temporary_server_member_after_voice_disconnect_locked,
-        remove_user_from_voice_channel, set_channel_node, set_user_moved_from_voice,
-        set_user_moved_to_voice, sync_user_voice_permissions, voice_participant_identity,
+        remove_user_from_voice_channel, set_channel_node, sync_user_voice_permissions,
+        voice_participant_identity,
         voice_session_for_join_request, with_temporary_voice_user_lock, UserVoiceChannel,
         VoiceClient, VOICE_OPERATION_ID_PREFIX,
     },
@@ -60,19 +61,41 @@ fn changes_persisted_member(data: &v0::DataMemberEdit) -> bool {
 
 async fn disconnect_member_from_voice(
     db: &Database,
+    voice_client: &VoiceClient,
     server_id: &str,
     user_id: &str,
     cleanup_temporary_member: bool,
 ) -> Result<()> {
     let disconnected_at = Timestamp::now_utc();
     cancel_current_pending_voice_join_in_server(user_id, server_id).await?;
-    let active_channel = get_user_voice_channel_in_server(user_id, server_id).await?;
-    if let Some(channel) = active_channel {
-        let voice_channel = UserVoiceChannel {
-            id: channel,
-            server_id: Some(server_id.to_string()),
-        };
-        remove_user_from_voice_channel(&voice_channel, user_id).await?;
+    let active_session = get_current_voice_session(user_id)
+        .await?
+        .filter(|session| session.channel.server_id.as_deref() == Some(server_id));
+    if let Some(session) = active_session {
+        remove_user_from_voice_channel(&session.channel, user_id).await?;
+        publish_authoritative_voice_snapshot(user_id).await?;
+
+        let identity = voice_participant_identity(
+            user_id,
+            session.rtc_engine,
+            &session.client_instance_id,
+            &session.operation_id,
+            &session.connection_epoch,
+        );
+        let removal = async_std::future::timeout(
+            std::time::Duration::from_secs(2),
+            voice_client.remove_user(&session.node, &identity, &session.channel.id),
+        )
+        .await;
+        if !matches!(removal, Ok(Ok(()))) {
+            warn!(
+                "Voice transport removal did not complete for user {user_id} after authoritative disconnect"
+            );
+        }
+    } else {
+        // A cancelled pending join also changes authority even though it has no
+        // committed roster entry to remove.
+        publish_authoritative_voice_snapshot(user_id).await?;
     }
     if cleanup_temporary_member {
         remove_temporary_server_member_after_voice_disconnect_locked(
@@ -172,17 +195,6 @@ pub async fn edit(
         permissions.throw_if_lacking_channel_permission(ChannelPermission::TimeoutMembers)?;
     }
 
-    let changes_voice_moderation = data.can_publish.is_some()
-        || data.remove.contains(&v0::FieldsMember::CanPublish)
-        || data.can_receive.is_some()
-        || data.remove.contains(&v0::FieldsMember::CanReceive)
-        || data.voice_channel.is_some()
-        || data.remove.contains(&v0::FieldsMember::VoiceChannel);
-
-    if changes_voice_moderation && member.id.user == user.id {
-        return Err(create_error!(InvalidOperation));
-    }
-
     if data.can_publish.is_some() || data.remove.contains(&v0::FieldsMember::CanPublish) {
         permissions.throw_if_lacking_channel_permission(ChannelPermission::MuteMembers)?;
     }
@@ -205,9 +217,7 @@ pub async fn edit(
             return Err(create_error!(LiveKitUnavailable));
         };
 
-        if member.id.user != user.id {
-            permissions.throw_if_lacking_channel_permission(ChannelPermission::MoveMembers)?;
-        }
+        permissions.throw_if_lacking_channel_permission(ChannelPermission::MoveMembers)?;
     }
 
     let new_voice_channel = if let Some(new_channel) = &data.voice_channel {
@@ -222,10 +232,11 @@ pub async fn edit(
             Err(create_error!(UnknownChannel))?
         }
 
-        let channel_permissions =
-            calculate_channel_permissions(&mut query.clone().channel(&channel)).await;
-        channel_permissions.throw_if_lacking_channel_permission(ChannelPermission::Connect)?;
-
+        if member.id.user == user.id {
+            let channel_permissions =
+                calculate_channel_permissions(&mut query.clone().channel(&channel)).await;
+            channel_permissions.throw_if_lacking_channel_permission(ChannelPermission::Connect)?;
+        }
         if get_user_voice_channel_in_server(&target_user.id, &server.id)
             .await?
             .is_none()
@@ -240,13 +251,15 @@ pub async fn edit(
 
     let actor_rank = query.get_member_rank();
 
+    // Voice moderation is explicitly permission-gated above and is allowed
+    // against the server owner. Server kick/ban/roles and other punitive
+    // mutations keep their separate hierarchy policy.
     let changes_ranked_member_fields = data.nickname.is_some()
         || data.remove.contains(&v0::FieldsMember::Nickname)
         || data.avatar.is_some()
         || data.remove.contains(&v0::FieldsMember::Avatar)
         || data.timeout.is_some()
-        || data.remove.contains(&v0::FieldsMember::Timeout)
-        || changes_voice_moderation;
+        || data.remove.contains(&v0::FieldsMember::Timeout);
 
     if member.id.user != user.id && changes_ranked_member_fields {
         hierarchy_policy::ensure_member_below_actor(&user, &server, actor_rank, &member)?;
@@ -432,14 +445,6 @@ pub async fn edit(
                     server_id: new_user_voice_channel.server_id.clone(),
                 };
 
-                set_user_moved_from_voice(&channel, &new_user_voice_channel, &target_user.id)
-                    .await?;
-                set_user_moved_to_voice(
-                    new_voice_channel.id(),
-                    &old_user_voice_channel,
-                    &target_user.id,
-                )
-                .await?;
                 let existing_voice_state =
                     get_voice_state(&old_user_voice_channel, &target_user.id).await?;
                 let self_mute = existing_voice_state
@@ -459,8 +464,12 @@ pub async fn edit(
                     .await?
                     .ok_or_else(|| create_error!(NotConnected))?;
                 let connection_epoch = Uuid::new_v4().to_string();
-                let mut query = perms(db, &target_user).channel(&new_voice_channel);
-                let permissions = calculate_channel_permissions(&mut query).await;
+                let query = perms(db, &target_user).channel(&new_voice_channel);
+                let destination_was_visible = calculate_channel_permissions(&mut query.clone())
+                    .await
+                    .has_channel_permission(ChannelPermission::ViewChannel);
+                let permissions =
+                    calculate_channel_permissions(&mut query.voice_channel_membership()).await;
 
                 voice_client
                     .create_room(&new_node, &new_voice_channel)
@@ -508,6 +517,16 @@ pub async fn edit(
                     .get(&new_node)
                     .cloned()
                     .ok_or_else(|| create_error!(UnknownNode))?;
+
+                // The move publisher already owns the authoritative channel
+                // object. Project a hidden destination before the credentialed
+                // move so Bonfire does not have to recover it with a fallible
+                // database lookup while processing the authority event.
+                if !destination_was_visible {
+                    EventV1::ChannelCreate(new_voice_channel.clone().into())
+                        .private(target_user.id.clone())
+                        .await;
+                }
 
                 EventV1::VoiceAuthorityMove {
                     from: VoiceAuthorityMembershipClaim {
@@ -594,8 +613,14 @@ pub async fn edit(
         };
 
         if remove.contains(&FieldsMember::VoiceChannel) {
-            disconnect_member_from_voice(db, &server.id, &target_user.id, was_temporary_member)
-                .await?;
+            disconnect_member_from_voice(
+                db,
+                voice_client,
+                &server.id,
+                &target_user.id,
+                was_temporary_member,
+            )
+            .await?;
         }
 
         Ok(member)

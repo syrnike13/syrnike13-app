@@ -92,6 +92,10 @@ async fn validate_user_permissions() {
             true
         }
 
+        async fn have_voice_channel_membership(&mut self) -> bool {
+            false
+        }
+
         async fn set_recipient_as_user(&mut self) {
             // no-op
         }
@@ -190,6 +194,10 @@ async fn validate_group_permissions() {
 
         async fn are_we_part_of_the_channel(&mut self) -> bool {
             true
+        }
+
+        async fn have_voice_channel_membership(&mut self) -> bool {
+            false
         }
 
         async fn set_recipient_as_user(&mut self) {
@@ -304,6 +312,10 @@ async fn validate_server_permissions() {
             unreachable!()
         }
 
+        async fn have_voice_channel_membership(&mut self) -> bool {
+            false
+        }
+
         async fn set_recipient_as_user(&mut self) {
             unreachable!()
         }
@@ -408,6 +420,10 @@ async fn channel_role_override_allow_wins_over_other_role_deny() {
             unreachable!()
         }
 
+        async fn have_voice_channel_membership(&mut self) -> bool {
+            false
+        }
+
         async fn set_recipient_as_user(&mut self) {
             unreachable!()
         }
@@ -508,6 +524,10 @@ async fn channel_user_override_applies_after_role_overrides() {
             unreachable!()
         }
 
+        async fn have_voice_channel_membership(&mut self) -> bool {
+            false
+        }
+
         async fn set_recipient_as_user(&mut self) {
             unreachable!()
         }
@@ -600,6 +620,10 @@ async fn validate_timed_out_member() {
 
         async fn are_we_part_of_the_channel(&mut self) -> bool {
             unreachable!()
+        }
+
+        async fn have_voice_channel_membership(&mut self) -> bool {
+            false
         }
 
         async fn set_recipient_as_user(&mut self) {
@@ -714,6 +738,10 @@ impl PermissionQuery for AccessAdminWithoutMembership {
         unreachable!()
     }
 
+    async fn have_voice_channel_membership(&mut self) -> bool {
+        false
+    }
+
     async fn set_recipient_as_user(&mut self) {
         unreachable!()
     }
@@ -721,4 +749,142 @@ impl PermissionQuery for AccessAdminWithoutMembership {
     async fn set_server_from_channel(&mut self) {
         // no-op
     }
+}
+
+struct ServerChannelAccessScenario {
+    server_permissions: u64,
+    role_permissions: Override,
+    channel_permissions: Override,
+    voice_membership: bool,
+}
+
+#[async_trait]
+impl PermissionQuery for ServerChannelAccessScenario {
+    async fn are_we_a_bot(&mut self) -> bool {
+        false
+    }
+
+    async fn are_the_users_same(&mut self) -> bool {
+        false
+    }
+
+    async fn user_relationship(&mut self) -> RelationshipStatus {
+        RelationshipStatus::None
+    }
+
+    async fn user_is_bot(&mut self) -> bool {
+        false
+    }
+
+    async fn have_mutual_connection(&mut self) -> bool {
+        false
+    }
+
+    async fn are_we_server_owner(&mut self) -> bool {
+        false
+    }
+
+    async fn are_we_a_member(&mut self) -> bool {
+        true
+    }
+
+    async fn get_default_server_permissions(&mut self) -> u64 {
+        self.server_permissions
+    }
+
+    async fn get_our_server_role_overrides(&mut self) -> Vec<Override> {
+        vec![self.role_permissions.clone()]
+    }
+
+    async fn are_we_timed_out(&mut self) -> bool {
+        false
+    }
+
+    async fn do_we_have_publish_overwrites(&mut self) -> bool {
+        true
+    }
+
+    async fn do_we_have_receive_overwrites(&mut self) -> bool {
+        true
+    }
+
+    async fn get_channel_type(&mut self) -> ChannelType {
+        ChannelType::ServerChannel
+    }
+
+    async fn get_default_channel_permissions(&mut self) -> Override {
+        self.channel_permissions.clone()
+    }
+
+    async fn get_our_channel_role_overrides(&mut self) -> Vec<Override> {
+        vec![]
+    }
+
+    async fn get_our_channel_user_override(&mut self) -> Option<Override> {
+        None
+    }
+
+    async fn do_we_own_the_channel(&mut self) -> bool {
+        false
+    }
+
+    async fn are_we_part_of_the_channel(&mut self) -> bool {
+        false
+    }
+
+    async fn have_voice_channel_membership(&mut self) -> bool {
+        self.voice_membership
+    }
+
+    async fn set_recipient_as_user(&mut self) {
+        unreachable!()
+    }
+
+    async fn set_server_from_channel(&mut self) {}
+}
+
+#[async_std::test]
+async fn administrator_grants_all_regular_permissions_and_bypasses_channel_denies() {
+    let mut query = ServerChannelAccessScenario {
+        server_permissions: 0,
+        role_permissions: Override {
+            allow: ChannelPermission::Administrator as u64,
+            deny: 0,
+        },
+        channel_permissions: Override {
+            allow: 0,
+            deny: ChannelPermission::GrantAllSafe as u64,
+        },
+        voice_membership: false,
+    };
+
+    assert_eq!(
+        u64::from(calculate_server_permissions(&mut query).await),
+        ChannelPermission::GrantAllSafe as u64
+    );
+    assert_eq!(
+        u64::from(calculate_channel_permissions(&mut query).await),
+        ChannelPermission::GrantAllSafe as u64
+    );
+}
+
+#[async_std::test]
+async fn active_voice_membership_only_bypasses_view_and_connect_denies() {
+    let mut query = ServerChannelAccessScenario {
+        server_permissions: ChannelPermission::Speak as u64 | ChannelPermission::Listen as u64,
+        role_permissions: Override::default(),
+        channel_permissions: Override {
+            allow: 0,
+            deny: ChannelPermission::ViewChannel as u64
+                | ChannelPermission::Connect as u64
+                | ChannelPermission::Listen as u64,
+        },
+        voice_membership: true,
+    };
+
+    let permissions = calculate_channel_permissions(&mut query).await;
+    assert!(permissions.has_channel_permission(ChannelPermission::ViewChannel));
+    assert!(permissions.has_channel_permission(ChannelPermission::Connect));
+    assert!(permissions.has_channel_permission(ChannelPermission::Speak));
+    assert!(!permissions.has_channel_permission(ChannelPermission::Listen));
 }

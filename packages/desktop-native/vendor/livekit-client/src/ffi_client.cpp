@@ -275,13 +275,13 @@ bool FfiClient::isInitialized() const noexcept {
   return lifecycle_state_.load(std::memory_order_acquire) == LifecycleState::Initialized;
 }
 
-FfiClient::ListenerId FfiClient::addListener(const FfiClient::Listener& listener) {
+FfiClient::ListenerId FfiClient::addListener(const FfiClient::Listener& listener, std::string debug_name) {
   const std::scoped_lock<std::mutex> guard(lock_);
   if (lifecycle_state_.load(std::memory_order_acquire) == LifecycleState::ShuttingDown) {
     logAndThrow("FfiClient::addListener failed: LiveKit is shutting down");
   }
   const FfiClient::ListenerId id = next_listener_id++;
-  listeners_[id] = std::make_shared<ListenerSlot>(listener);
+  listeners_[id] = std::make_shared<ListenerSlot>(listener, std::move(debug_name));
   return id;
 }
 
@@ -385,9 +385,11 @@ void FfiClient::pushEvent(const proto::FfiEvent& event) const {
     try {
       listener(event);
     } catch (const std::exception& e) {
-      LK_LOG_ERROR("FfiClient listener threw: {}", e.what());
+      LK_LOG_ERROR("FfiClient listener '{}' threw for event case {}: {}", slot->debug_name,
+                   static_cast<int>(event.message_case()), e.what());
     } catch (...) {
-      LK_LOG_ERROR("FfiClient listener threw: unknown exception");
+      LK_LOG_ERROR("FfiClient listener '{}' threw for event case {}: unknown exception", slot->debug_name,
+                   static_cast<int>(event.message_case()));
     }
 
     {

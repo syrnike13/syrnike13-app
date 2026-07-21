@@ -219,47 +219,42 @@ export function canTimeoutServerMember(
 
 export function canMuteServerMember(
   server: Server,
-  actorMember: Member | undefined,
+  _actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ) {
-  return canModerateServerMember(
-    server,
-    actorMember,
-    actorUserId,
-    targetMember,
-    ChannelPermission.MuteMembers,
+  return Boolean(
+    actorUserId &&
+      targetMember &&
+      serverHas(server, ChannelPermission.MuteMembers),
   )
 }
 
 export function canDeafenServerMember(
   server: Server,
-  actorMember: Member | undefined,
+  _actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ) {
-  return canModerateServerMember(
-    server,
-    actorMember,
-    actorUserId,
-    targetMember,
-    ChannelPermission.DeafenMembers,
+  return Boolean(
+    actorUserId &&
+      targetMember &&
+      serverHas(server, ChannelPermission.DeafenMembers),
   )
 }
 
 export function canMoveServerMember(
   server: Server,
-  actorMember: Member | undefined,
+  _actorMember: Member | undefined,
   actorUserId: string | undefined,
   targetMember: Member | undefined,
 ) {
-  return canModerateServerMember(
-    server,
-    actorMember,
-    actorUserId,
-    targetMember,
-    ChannelPermission.MoveMembers,
-  )
+  if (!actorUserId || !targetMember) return false
+
+  // Voice moderation is independent from the server role hierarchy. Moving
+  // any active session, including your own, requires MoveMembers. The backend
+  // additionally checks Connect on the destination for self-moves.
+  return serverHas(server, ChannelPermission.MoveMembers)
 }
 
 export function canChangeMemberNickname(

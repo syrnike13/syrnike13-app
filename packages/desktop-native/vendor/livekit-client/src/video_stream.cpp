@@ -130,7 +130,8 @@ void VideoStream::initFromTrack(const std::shared_ptr<Track>& track, const Optio
   capacity_ = options.capacity;
 
   // Subscribe to FFI events, this is essential to get video frames from FFI.
-  listener_id_ = FfiClient::instance().addListener([this](const proto::FfiEvent& e) { this->onFfiEvent(e); });
+  listener_id_ = FfiClient::instance().addListener(
+      [this](const proto::FfiEvent& e) { this->onFfiEvent(e); }, "video-stream-track");
 
   // Send FFI request to create a new video stream bound to this track
   FfiRequest req;
@@ -155,7 +156,8 @@ void VideoStream::initFromParticipant(Participant& participant, TrackSource trac
   capacity_ = options.capacity;
 
   // 1) Subscribe to FFI events
-  listener_id_ = FfiClient::instance().addListener([this](const FfiEvent& e) { this->onFfiEvent(e); });
+  listener_id_ = FfiClient::instance().addListener(
+      [this](const FfiEvent& e) { this->onFfiEvent(e); }, "video-stream-participant");
 
   // 2) Send FFI request to create a video stream from participant + track
   // source
