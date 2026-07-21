@@ -93,6 +93,26 @@ describe('registerDesktopIpc', () => {
     saveDesktopSessionMock.mockReset().mockResolvedValue(undefined)
   })
 
+  it('handles a rejected boot-time session load', async () => {
+    const loadError = new Error('session file is unreadable')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    loadDesktopSessionMock.mockRejectedValueOnce(loadError)
+
+    try {
+      const { registerDesktopIpc } = await import('./ipc')
+      registerDesktopIpc(() => null, ipcOptions())
+
+      await vi.waitFor(() => {
+        expect(errorSpy).toHaveBeenCalledWith(
+          '[desktop] failed to load persisted session',
+          loadError,
+        )
+      })
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
   it('writes copied text through the native Electron clipboard', async () => {
     const { IPC } = await import('@syrnike13/platform')
     const { registerDesktopIpc } = await import('./ipc')

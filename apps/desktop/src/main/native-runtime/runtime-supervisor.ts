@@ -1195,7 +1195,8 @@ function isLossyMediaEvent(event: NativeRuntimeEvent) {
     event.type === 'stats' ||
     event.type === 'remoteVideoFrame' ||
     event.type === 'localScreenPreviewFrame' ||
-    event.type === 'localCameraPreviewFrame'
+    event.type === 'localCameraPreviewFrame' ||
+    event.type === 'activeSpeakers'
   )
 }
 

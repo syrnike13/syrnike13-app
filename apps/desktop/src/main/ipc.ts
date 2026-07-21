@@ -102,10 +102,14 @@ export function registerDesktopIpc(
   const initialAuthSessionRevision = authSessionRevision
   void serializeAuthPersistence(() =>
     loadDesktopSession(options.sessionPath),
-  ).then((session) => {
-    if (authSessionRevision !== initialAuthSessionRevision) return
-    applyAuthenticatedSession(session)
-  })
+  )
+    .then((session) => {
+      if (authSessionRevision !== initialAuthSessionRevision) return
+      applyAuthenticatedSession(session)
+    })
+    .catch((error) => {
+      console.error('[desktop] failed to load persisted session', error)
+    })
 
   ipcMain.handle(IPC.versions, () => ({
     app: app.getVersion(),

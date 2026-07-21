@@ -249,6 +249,49 @@ describe('NativeRuntimeSupervisor', () => {
     ])
   })
 
+  it('keeps active speaker delivery independent from the control sequence fence', async () => {
+    const adapter = new FakeAdapter()
+    const supervisor = new NativeRuntimeSupervisor({
+      runtime: 'media',
+      createAdapter: () => adapter,
+    })
+    const eventListener = vi.fn()
+    supervisor.onEvent(eventListener)
+
+    const start = supervisor.start()
+    adapter.ready(MEDIA_READY)
+    await start
+
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'activeSpeakers',
+        sequence: 10,
+        sessionId: 'voice-a',
+        generation: 1,
+        participantIdentities: ['participant-a'],
+      },
+    })
+    adapter.callbacks?.onMessage({
+      type: 'event',
+      event: {
+        type: 'runtimeError',
+        sequence: 9,
+        error: {
+          code: 'control_after_active_speakers',
+          message: 'control lane is independently ordered',
+          retryable: false,
+          stage: 'test',
+        },
+      },
+    })
+
+    expect(eventListener.mock.calls.map(([event]) => event.type)).toEqual([
+      'activeSpeakers',
+      'runtimeError',
+    ])
+  })
+
   it('keeps lossy frame delivery independent from the control sequence fence', async () => {
     const adapter = new FakeAdapter()
     const supervisor = new NativeRuntimeSupervisor({
